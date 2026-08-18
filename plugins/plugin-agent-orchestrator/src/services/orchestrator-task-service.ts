@@ -27,7 +27,7 @@ import {
   stat,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import {
   ElizaError,
   getTrajectoryContext,
@@ -242,7 +242,11 @@ import {
   subtractChangeSetBaseline,
   type WorkspaceChangeSet,
 } from "./workspace-diff.js";
-import { getCodingWorkspaceService } from "./workspace-service.js";
+import {
+  type CodingWorkspaceService,
+  getCodingWorkspaceService,
+  type WorkspaceResult,
+} from "./workspace-service.js";
 
 /**
  * Recoverable operator-recovery conflict.
@@ -1777,13 +1781,6 @@ export class OrchestratorTaskService extends Service {
           summary ?? "",
           completionBundle,
         );
-        // Auto-submit for provisioned-repo tasks: children run behind the
-        // isolated git wrapper and cannot push, BY DESIGN — the orchestrator
-        // owns credentials. Without this, every "…and open a PR" repo ask
-        // ended with committed-but-unpushed work and a human had to finish
-        // the last leg (live 2026-08-17: two hello-validation runs). Push +
-        // PR fire-and-forget; verification proceeds independently.
-        void this.autoSubmitProvisionedWorkspace(taskId, sessionId);
         break;
       }
       case "error": {
@@ -3282,51 +3279,79 @@ export class OrchestratorTaskService extends Service {
     );
   }
 
-  /**
-   * Push a provisioned-repo session's committed branch and open the PR the
-   * request asked for. Children commit behind the isolated git wrapper and
-   * cannot push (by design — the orchestrator owns credentials), so this is
-   * the completion leg of every "…and open a PR" repo task. Fire-and-forget
-   * from the task_complete bridge; every failure is loud in the log but never
-   * breaks the event path. The `autoSubmittedAt` metadata stamp makes it
-   * once-per-task (a verify re-engage's second task_complete must not race a
-   * second PR).
-   */
+  /** Resolve the registry-backed authority for an orchestrator-owned submit. */
+  private async resolveAutoSubmitContext(
+    doc: OrchestratorTaskDocument,
+    sessionId: string,
+  ): Promise<
+    | {
+        workspaceId: string;
+        workspace: WorkspaceResult;
+        workspaceService: CodingWorkspaceService;
+      }
+    | undefined
+  > {
+    const intentText = `${doc.task.goal ?? ""} ${doc.task.originalRequest ?? ""}`;
+    if (!OrchestratorTaskService.wantsPullRequest(intentText)) return undefined;
+    const session = doc.sessions.find((row) => row.sessionId === sessionId);
+    const liveMeta = this.acp()
+      ? (await this.acp()?.getSession(sessionId))?.metadata
+      : undefined;
+    const workspaceId =
+      (typeof liveMeta?.provisionedWorkspaceId === "string"
+        ? liveMeta.provisionedWorkspaceId
+        : undefined) ??
+      (typeof session?.metadata?.provisionedWorkspaceId === "string"
+        ? (session.metadata.provisionedWorkspaceId as string)
+        : undefined);
+    if (!workspaceId) return undefined;
+    const workspaceService = getCodingWorkspaceService(this.runtime);
+    if (!workspaceService) {
+      throw new ElizaError(
+        "Coding workspace authority is unavailable for the requested pull request",
+        {
+          code: "CODING_WORKSPACE_SERVICE_UNAVAILABLE",
+          context: { taskId: doc.task.id, workspaceId },
+        },
+      );
+    }
+    const workspace = workspaceService.getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new ElizaError("Provisioned workspace is not registered", {
+        code: "CODING_WORKSPACE_NOT_REGISTERED",
+        context: { taskId: doc.task.id, workspaceId },
+      });
+    }
+    if (
+      !session?.workdir ||
+      resolvePath(session.workdir) !== resolvePath(workspace.path)
+    ) {
+      throw new ElizaError(
+        "Provisioned workspace does not match the reporting session",
+        {
+          code: "CODING_WORKSPACE_SESSION_MISMATCH",
+          context: { taskId: doc.task.id, workspaceId },
+        },
+      );
+    }
+    return { workspaceId, workspace, workspaceService };
+  }
+
+  /** Publish a verifier-approved, registry-backed workspace exactly once. */
   private async autoSubmitProvisionedWorkspace(
     taskId: string,
     sessionId: string,
   ): Promise<void> {
+    let claimed = false;
     try {
       const doc = await this.store.getTask(taskId);
-      if (!doc || doc.task.metadata?.autoSubmittedAt) return;
-      const session = doc.sessions.find((s) => s.sessionId === sessionId);
+      if (!doc) return;
+      const priorUrl = str(doc.task.metadata?.autoSubmittedPrUrl);
+      if (priorUrl) return;
+      const context = await this.resolveAutoSubmitContext(doc, sessionId);
+      if (!context) return;
+      const { workspaceId, workspace, workspaceService } = context;
       const acp = this.acp();
-      const liveMeta = acp
-        ? (await acp.getSession(sessionId))?.metadata
-        : undefined;
-      const workspaceId =
-        (typeof liveMeta?.provisionedWorkspaceId === "string"
-          ? liveMeta.provisionedWorkspaceId
-          : undefined) ??
-        (typeof session?.metadata?.provisionedWorkspaceId === "string"
-          ? (session.metadata.provisionedWorkspaceId as string)
-          : undefined);
-      if (!workspaceId) return;
-      const intentText = `${doc.task.goal ?? ""} ${doc.task.originalRequest ?? ""}`;
-      if (!OrchestratorTaskService.wantsPullRequest(intentText)) return;
-      const workspaceService = getCodingWorkspaceService(this.runtime);
-      if (!workspaceService) return;
-      const workspace = workspaceService.getWorkspace(workspaceId);
-      if (!workspace) return;
-      // Claim before the slow work so a redelivered task_complete cannot race
-      // a duplicate submit.
-      await this.store.updateTask(taskId, {
-        metadata: { ...doc.task.metadata, autoSubmittedAt: nowIso() },
-      });
-      // The ACP git wrapper commits on its own exec branch; the workspace
-      // service pushes/PRs its REGISTERED branch. Point the registered branch
-      // at the child's actual work first, or the PR is opened from a branch
-      // with no commits (live: push landed the exec branch, createPR 422'd).
       const { execFile } = await import("node:child_process");
       const gitIn = (args: string[]) =>
         new Promise<void>((resolve, reject) =>
@@ -3346,17 +3371,12 @@ export class OrchestratorTaskService extends Service {
             (err, stdout) => (err ? reject(err) : resolve(stdout.trim())),
           ),
         );
-      // task_complete can fire while the child is still writing its final
-      // commit (live 2026-08-18: README edited but uncommitted, three
-      // empty-diff gate blocks in a row). Wait — bounded — for actual new
-      // commits before submitting: poll while the tree is dirty or the
-      // session is still live; give up loudly when neither.
-      const baseCommit = await gitOut(["rev-parse", "origin/HEAD"]).catch(() =>
-        gitOut(["rev-parse", "origin/main"]).catch(() => ""),
-      );
+      const baseRef = `refs/remotes/origin/${workspace.baseBranch}`;
+      const baseCommit = await gitOut(["rev-parse", "--verify", baseRef]);
       const waitDeadline = Date.now() + 5 * 60_000;
+      let head = "";
       for (;;) {
-        const head = await gitOut(["rev-parse", "HEAD"]).catch(() => "");
+        head = await gitOut(["rev-parse", "--verify", "HEAD"]).catch(() => "");
         if (head && head !== baseCommit) break;
         const dirty = await gitOut(["status", "--porcelain"]).catch(() => "");
         const live = acp ? await acp.getSession(sessionId) : undefined;
@@ -3371,24 +3391,86 @@ export class OrchestratorTaskService extends Service {
         }
         await new Promise((r) => setTimeout(r, 10_000));
       }
-      // checkout -B: moves (or creates) the registered branch at the child's
-      // HEAD and checks it out in one step — including when the registered
-      // branch IS the currently checked-out branch, where `branch -f` refuses
-      // ("cannot force update the checked-out branch", live 2026-08-18).
-      await gitIn(["checkout", "-B", workspace.branch, "HEAD"]);
-      await workspaceService.push(workspaceId, { setUpstream: true });
-      const title = (doc.task.title || workspace.branch).slice(0, 120);
-      const pr = await workspaceService.createPR(workspaceId, {
-        title,
-        body: `${doc.task.originalRequest?.slice(0, 800) ?? doc.task.goal?.slice(0, 800) ?? title}\n\n🤖 Automated submit by the coding orchestrator on task completion.`,
+      const ahead = await gitOut([
+        "rev-list",
+        "--count",
+        `${baseCommit}..${head}`,
+      ]);
+      if (!/^\d+$/.test(ahead) || Number(ahead) < 1) {
+        throw new Error(
+          "auto-submit found no commits ahead of the registered base branch",
+        );
+      }
+      const fresh = (await this.store.getTask(taskId)) ?? doc;
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...fresh.task.metadata,
+          autoSubmitState: {
+            state: "claimed",
+            workspaceId,
+            head,
+            baseBranch: workspace.baseBranch,
+            claimedAt: nowIso(),
+          },
+        },
       });
+      claimed = true;
+      await gitIn(["checkout", "-B", workspace.branch, "HEAD"]);
+
+      // The exact local HEAD is scanned only after completion verification has
+      // passed and before credentials publish a single byte.
+      await workspaceService.assertPullRequestDiffReady(
+        workspaceId,
+        workspace.baseBranch,
+      );
+      const scannedHead = await gitOut(["rev-parse", "--verify", "HEAD"]);
+      const dirtyAfterScan = await gitOut(["status", "--porcelain"]);
+      if (scannedHead !== head || dirtyAfterScan) {
+        throw new Error(
+          "workspace changed during the pre-push review; refusing to publish an unscanned revision",
+        );
+      }
+      await workspaceService.push(workspaceId, { setUpstream: true });
+      const pushed = (await this.store.getTask(taskId)) ?? doc;
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...pushed.task.metadata,
+          autoSubmitState: {
+            state: "pushed",
+            workspaceId,
+            head,
+            baseBranch: workspace.baseBranch,
+            claimedAt: nowIso(),
+          },
+        },
+      });
+      const title = (doc.task.title || workspace.branch).slice(0, 120);
+      const pr =
+        (await workspaceService.findOpenPullRequest(
+          workspaceId,
+          workspace.baseBranch,
+        )) ??
+        (await workspaceService.createPR(workspaceId, {
+          title,
+          body: `Automated submission for orchestrator task ${taskId}.\n\nThe request text is intentionally omitted because it may contain private context.`,
+          base: workspace.baseBranch,
+        }));
       await this.store.updateTask(taskId, {
         metadata: {
           ...(((await this.store.getTask(taskId))?.task.metadata ??
             {}) as Record<string, unknown>),
           autoSubmittedPrUrl: pr.url,
+          prUrl: pr.url,
+          autoSubmitState: {
+            state: "opened",
+            workspaceId,
+            head,
+            baseBranch: workspace.baseBranch,
+            prUrl: pr.url,
+          },
         },
       });
+      claimed = false;
       this.log("info", "auto-submitted provisioned workspace", {
         taskId,
         sessionId,
@@ -3406,17 +3488,25 @@ export class OrchestratorTaskService extends Service {
         }
       ).sendMessageToTarget;
       if (origin && typeof send === "function") {
-        await send(
-          { source: origin.source, roomId: origin.roomId as UUID },
-          {
-            text: `pushed ${workspace.branch} and opened the pull request: ${pr.url}`,
-            source: origin.source,
-          },
-        );
+        try {
+          await send(
+            { source: origin.source, roomId: origin.roomId as UUID },
+            {
+              text: `pushed ${workspace.branch} and opened the pull request: ${pr.url}`,
+              source: origin.source,
+            },
+          );
+        } catch (error) {
+          // error-policy:J7 notification delivery is diagnostic after the
+          // durable PR URL is stored; it must never re-arm external creation.
+          this.runtime.reportError?.(
+            "OrchestratorTaskService.autoSubmit.notify",
+            error,
+            { taskId, sessionId, workspaceId, prUrl: pr.url },
+          );
+        }
       }
     } catch (error) {
-      // error-policy:J7 auto-submit is fire-and-forget from the event bridge;
-      // failure is loud here and the user still gets the completion relay.
       const submitError =
         error instanceof Error ? error.message : String(error);
       this.log(
@@ -3424,20 +3514,38 @@ export class OrchestratorTaskService extends Service {
         `auto-submit of provisioned workspace failed (task=${taskId} session=${sessionId}): ${submitError}`,
         { taskId, sessionId, error: submitError },
       );
-      // Re-arm: a failed submit must not permanently claim the once-per-task
-      // stamp — a later genuine task_complete (verify re-engage, retry)
-      // deserves another attempt.
-      try {
-        const latest = await this.store.getTask(taskId);
-        if (latest?.task.metadata?.autoSubmittedAt) {
-          const { autoSubmittedAt: _dropped, ...rest } =
-            latest.task.metadata as Record<string, unknown>;
-          await this.store.updateTask(taskId, { metadata: rest });
+      if (claimed)
+        try {
+          const latest = await this.store.getTask(taskId);
+          if (latest && !latest.task.metadata?.autoSubmittedPrUrl) {
+            const { autoSubmitState: _dropped, ...rest } = latest.task
+              .metadata as Record<string, unknown>;
+            await this.store.updateTask(taskId, { metadata: rest });
+          }
+        } catch {
+          // error-policy:J6 best-effort re-arm; the primary failure is reported.
         }
-      } catch {
-        // error-policy:J6 best-effort re-arm; the warn above already reported the submit failure
-      }
+      throw error;
     }
+  }
+
+  /**
+   * A positive completion verdict is necessary but not sufficient for a
+   * provisioned PR task: publish under the same task lock, then perform the
+   * canonical final validation against the now-pushed remote artifact.
+   */
+  private async finishVerifiedCompletionLocked(
+    taskId: string,
+    sessionId: string,
+    result: {
+      passed: true;
+      summary?: string;
+      evidence?: string;
+      verifier?: string;
+    },
+  ): Promise<void> {
+    await this.autoSubmitProvisionedWorkspace(taskId, sessionId);
+    await this.validateTaskLocked(taskId, result);
   }
 
   async getTaskOriginTarget(
@@ -4053,6 +4161,10 @@ export class OrchestratorTaskService extends Service {
       // Only act on the state the task_complete event just produced. A human or
       // the manual auto-validate route may have already moved it on.
       if (doc.task.status !== "validating") return;
+      const autoSubmitContext = await this.resolveAutoSubmitContext(
+        doc,
+        sessionId,
+      );
       const attempts = num(doc.task.metadata?.autoVerifyAttempts);
       const parse = parseCompletionEnvelope(rawCompletion);
 
@@ -4080,6 +4192,7 @@ export class OrchestratorTaskService extends Service {
                 residualRisks: parse.envelope.residualRisks,
               }
             : {}),
+          ...(autoSubmitContext ? { orchestratorOwnsPendingPush: true } : {}),
         });
         await this.store.updateTask(taskId, {
           metadata: {
@@ -4154,7 +4267,7 @@ export class OrchestratorTaskService extends Service {
       const hardFailGroundTruth = groundTruthHardFailEnabled((key) =>
         this.runtime.getSetting(key),
       );
-      if (includeGroundTruth || hardFailGroundTruth) {
+      if ((includeGroundTruth || hardFailGroundTruth) && !autoSubmitContext) {
         const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
         const workspace = getCodingWorkspaceService(this.runtime);
         const groundTruth = await verifyGroundTruth(
@@ -4380,7 +4493,7 @@ export class OrchestratorTaskService extends Service {
         const explicitContract =
           doc.task.metadata.acceptanceCriteriaOrigin === "caller";
         if (detVerdict.allMet && explicitContract) {
-          await this.validateTaskLocked(taskId, {
+          await this.finishVerifiedCompletionLocked(taskId, sessionId, {
             passed: true,
             summary: `All ${acceptanceCriteria.length} criteria deterministically verified from the write ledger, probed URLs, and captured output.`,
             evidence: renderDeterministicVerdict(detVerdict),
@@ -4496,7 +4609,7 @@ export class OrchestratorTaskService extends Service {
       );
 
       if (verdict.passed) {
-        await this.validateTaskLocked(taskId, {
+        await this.finishVerifiedCompletionLocked(taskId, sessionId, {
           passed: true,
           summary: verdict.summary,
           evidence: verdict.rawResponse || evidence,

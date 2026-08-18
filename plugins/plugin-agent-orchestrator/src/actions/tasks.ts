@@ -48,6 +48,7 @@ import { OrchestratorTaskService } from "../services/orchestrator-task-service.j
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
 import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
+import { resolveRequestedRepository } from "../services/repo-target-resolution.js";
 import {
   runDurableTask,
   type SmithersDurableRunLink,
@@ -1127,6 +1128,7 @@ async function runCreateLegacy(
         const registeredCreateWorkspace = registeredWorkspaceForPath(
           createWorkspaceService,
           explicitWorkdir,
+          createRequestedRepo,
         );
         if (registeredCreateWorkspace) {
           sessionWorkdir = registeredCreateWorkspace.path;
@@ -1159,6 +1161,14 @@ async function runCreateLegacy(
               }`,
             );
           }
+        } else {
+          throw new ElizaError(
+            "A repository was requested, but coding workspace authority is unavailable",
+            {
+              code: "CODING_WORKSPACE_SERVICE_UNAVAILABLE",
+              context: { repo: createRequestedRepo },
+            },
+          );
         }
       }
 
@@ -1851,75 +1861,28 @@ async function resolveTaskProjectBinding(
   return detail?.projectId ?? undefined;
 }
 
-
-/** Cached login of the configured GITHUB_TOKEN's account (module-lifetime). */
-let cachedTokenOwner: string | null | undefined;
-async function githubTokenOwner(
-  runtime: IAgentRuntime,
-): Promise<string | null> {
-  if (cachedTokenOwner !== undefined) return cachedTokenOwner;
-  try {
-    const token = runtime.getSetting?.("GITHUB_TOKEN");
-    if (typeof token !== "string" || !token.trim()) {
-      cachedTokenOwner = null;
-      return null;
-    }
-    const res = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `token ${token.trim()}`,
-        "User-Agent": "eliza-orchestrator",
-      },
-    });
-    const body = (await res.json()) as { login?: string };
-    cachedTokenOwner =
-      typeof body.login === "string" && body.login ? body.login : null;
-  } catch {
-    // error-policy:J4 owner lookup is best-effort sugar for possessive repo
-    // names; failing it just means the ask needs an explicit owner/URL.
-    cachedTokenOwner = null;
-  }
-  return cachedTokenOwner;
-}
-
-const PLACEHOLDER_REPO_OWNERS = new Set([
-  "yourusername",
-  "your-username",
-  "your_username",
-  "username",
-  "youruser",
-  "your-user",
-  "user",
-  "yourorg",
-  "your-org",
-  "your_org",
-  "org",
-  "owner",
-  "yourname",
-  "your-name",
-  "example",
-  "examples",
-  "myusername",
-  "my-username",
-  "acme",
-  "yourhandle",
-  "your-handle",
-  "placeholder",
-]);
-
 /** The registered workspace whose path is `workdir`, if any. Planner-supplied
  *  workdirs on repo-targeted asks are usually context junk (a stale workspace
  *  path copied from room history — live 2026-08-18); only a path the registry
  *  actually tracks is a trustworthy binding. */
 function registeredWorkspaceForPath(
-  service: { listWorkspaces(): Array<{ id: string; path: string }> } | null,
+  service: {
+    listWorkspaces(): Array<{ id: string; path: string; repo: string }>;
+  } | null,
   workdir: string | undefined,
-): { id: string; path: string } | undefined {
-  if (!service || !workdir || !workdir.trim()) return undefined;
+  requestedRepo?: string,
+): { id: string; path: string; repo: string } | undefined {
+  if (!service || !workdir?.trim()) return undefined;
   try {
     const resolved = nodePathResolve(workdir);
-    return service
+    const match = service
       .listWorkspaces()
       .find((workspace) => nodePathResolve(workspace.path) === resolved);
+    if (!match || !requestedRepo) return match;
+    return normalizeRepositoryInput(match.repo) ===
+      normalizeRepositoryInput(requestedRepo)
+      ? match
+      : undefined;
   } catch {
     // error-policy:J3 an unresolvable path is simply not a registered workspace.
     return undefined;
@@ -1962,112 +1925,16 @@ async function resolveRequestedRepo(
   params: Record<string, unknown>,
   requestTexts: ReadonlyArray<string | undefined>,
 ): Promise<string | undefined> {
-  const paramRepo =
-    typeof params.repo === "string" && params.repo.trim()
-      ? params.repo.trim()
-      : undefined;
-  const text = requestTexts.filter(Boolean).join("\n");
-  let candidate = paramRepo;
-  if (!candidate) {
-    const url = text.match(
-      /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+\/[\w.-]+(?:\.git)?/i,
-    );
-    if (url) candidate = url[0];
-  }
-  if (!candidate) {
-    const slug = text.match(/\b([\w.-]+)\/([\w.-]+)\b(?=[^\/]|$)/);
-    if (slug && /\brepo(?:sitory)?\b/i.test(text)) {
-      candidate = `${slug[1]}/${slug[2]}`;
-    }
-  }
-  // Planner models emit placeholder owners when they only know the bare name
-  // (live 2026-08-18: repo="https://github.com/yourusername/eliza-code-sandbox"
-  // for a "my eliza-code-sandbox repo" ask — the clone then fails, or worse).
-  // A placeholder owner is not identity; strip it so the bare name resolves
-  // through the configured token owner like any possessive ask.
-  if (candidate) {
-    const slugForm = candidate
-      .replace(/^https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\//i, "")
-      .replace(/\.git$/i, "");
-    const parts = slugForm.split("/");
-    if (
-      parts.length >= 2 &&
-      parts[0] !== undefined &&
-      parts[1] !== undefined &&
-      PLACEHOLDER_REPO_OWNERS.has(parts[0].toLowerCase())
-    ) {
-      candidate = parts[1];
-    }
-  }
-  // Possessive bare name: "my <name> repo" / "<name> repo" + a param repo
-  // that is a bare name — owner defaults to the configured token's account.
-  const bare =
-    candidate && !candidate.includes("/")
-      ? candidate
-      : (text.match(/\bmy\s+([\w.-]+)\s+repo\b/i)?.[1] ?? undefined);
-  if (bare && (!candidate || !candidate.includes("/"))) {
-    const owner = await githubTokenOwner(runtime);
-    if (owner) candidate = `${owner}/${bare}`;
-    else return undefined;
-  }
-  if (!candidate) return undefined;
-  let normalized: string | undefined;
   try {
-    normalized = normalizeRepositoryInput(candidate);
-  } catch {
-    // error-policy:J3 an unparseable candidate is not a repo request.
-    return undefined;
-  }
-  // Planner models also GUESS plausible-but-wrong owners the placeholder list
-  // cannot catch (live 2026-08-18: "github.com/nubs/eliza-code-sandbox" for a
-  // "my eliza-code-sandbox repo" ask — the token owner is NubsCarson). When a
-  // possessive bare name is in the request, verify the candidate exists and
-  // fall back to <token-owner>/<name> when it does not. Verification is
-  // best-effort: no token or an API failure keeps the candidate untouched,
-  // and the clone failure stays the loud backstop.
-  const possessiveName = text.match(/\bmy\s+([\w.-]+)\s+repo\b/i)?.[1];
-  if (possessiveName) {
-    const exists = await repositoryExists(runtime, normalized);
-    if (exists === false) {
-      const owner = await githubTokenOwner(runtime);
-      if (owner) {
-        const fallback = `${owner}/${possessiveName}`;
-        if ((await repositoryExists(runtime, fallback)) === true) {
-          return normalizeRepositoryInput(fallback);
-        }
-      }
-    }
-  }
-  return normalized;
-}
-
-/** true / false when the GitHub API answered, null when unverifiable (no
- *  token, non-github host, network failure). */
-async function repositoryExists(
-  runtime: IAgentRuntime,
-  repoInput: string,
-): Promise<boolean | null> {
-  try {
-    const token = runtime.getSetting("GITHUB_TOKEN");
-    if (typeof token !== "string" || !token.trim()) return null;
-    const slug = repoInput
-      .replace(/^https?:\/\/github\.com\//i, "")
-      .replace(/\.git$/i, "");
-    if (/^https?:\/\//i.test(slug) || slug.split("/").length !== 2) {
-      return null;
-    }
-    const res = await fetch(`https://api.github.com/repos/${slug}`, {
-      headers: {
-        Authorization: `token ${token.trim()}`,
-        "User-Agent": "eliza-orchestrator",
-      },
+    return await resolveRequestedRepository({
+      runtime,
+      params,
+      requestTexts,
     });
-    if (res.status === 404) return false;
-    if (res.ok) return true;
-    return null;
   } catch {
-    // error-policy:J4 existence probing is best-effort routing sugar.
-    return null;
+    // error-policy:J3 invalid structured/prose repo inputs do not become clone
+    // authority; explicit valid targets still fail loudly during provisioning.
+    return undefined;
   }
 }
 
@@ -2280,6 +2147,7 @@ async function runSpawnAgent(
       const registeredSpawnWorkspace = registeredWorkspaceForPath(
         workspaceService,
         explicitWorkdir,
+        requestedRepo,
       );
       if (registeredSpawnWorkspace) {
         effectiveWorkdir = registeredSpawnWorkspace.path;
@@ -2312,6 +2180,9 @@ async function runSpawnAgent(
           }`;
           return { success: false, text, error: new Error(text) };
         }
+      } else {
+        const text = `Could not clone ${requestedRepo} for this task: coding workspace authority is unavailable.`;
+        return { success: false, text, error: new Error(text) };
       }
     }
     const spawnTaskForChild =

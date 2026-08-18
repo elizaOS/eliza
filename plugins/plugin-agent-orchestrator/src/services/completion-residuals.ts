@@ -157,6 +157,13 @@ export interface CompletionResidualsInput {
   residualRisks?: readonly string[];
   /** Files the orchestrator wrote and can verify by content fingerprint. */
   orchestratorOwnedArtifacts?: readonly OrchestratorOwnedArtifact[];
+  /**
+   * The registered coding-workspace submission lane owns the eventual push.
+   * Its verifier may ignore only the upstream-ahead finding while it judges
+   * the completed local commit; dirty files and every other residual still
+   * block. The caller must establish registry/path/intent authority first.
+   */
+  orchestratorOwnsPendingPush?: boolean;
 }
 
 interface GitProbe {
@@ -472,7 +479,7 @@ export async function collectCompletionResiduals(
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
-      if (shas.length > 0) {
+      if (shas.length > 0 && !input.orchestratorOwnsPendingPush) {
         residuals.push({
           kind: "unpushed_commits",
           detail: `${shas.length} commit(s) not pushed to the upstream branch`,

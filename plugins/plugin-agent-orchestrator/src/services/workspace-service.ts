@@ -906,6 +906,78 @@ export class CodingWorkspaceService {
     this.log(`Pushed workspace ${workspaceId}`);
   }
 
+  /**
+   * Capture and enforce the exact branch-vs-base PR security scan before any
+   * caller publishes the branch. This is intentionally separate from
+   * {@link createPR}, which repeats the gate to protect direct callers and to
+   * annotate warnings on the final PR body.
+   */
+  async assertPullRequestDiffReady(
+    workspaceId: string,
+    baseBranch?: string,
+  ): Promise<DiffGateResult | undefined> {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) throw new Error(`Workspace ${workspaceId} not found`);
+    const gateBase = baseBranch?.trim() || workspace.baseBranch;
+    let result: DiffGateResult | undefined;
+    try {
+      result = await this.runDiffReviewGate(workspaceId, workspace, gateBase);
+    } catch (error) {
+      // error-policy:J1 the publication boundary reports and preserves the
+      // typed capture/configuration error; callers must not push afterward.
+      this.runtime.reportError(
+        "CodingWorkspaceService.assertPullRequestDiffReady",
+        error,
+        { workspaceId, baseBranch: gateBase },
+      );
+      throw error;
+    }
+    if (result && !result.passed) {
+      this.emitDiffGateEvent(workspaceId, workspace, result, "blocked");
+      throw new DiffGateBlockedError(result);
+    }
+    if (result) {
+      this.emitDiffGateEvent(
+        workspaceId,
+        workspace,
+        result,
+        result.warnings.length > 0 ? "annotated" : "passed",
+      );
+    }
+    return result;
+  }
+
+  /** Return the existing open PR for this exact registered head/base pair. */
+  async findOpenPullRequest(
+    workspaceId: string,
+    baseBranch?: string,
+  ): Promise<PullRequestInfo | null> {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) throw new Error(`Workspace ${workspaceId} not found`);
+    const { owner, repo } = parseGitHubRepository(workspace.repo);
+    const credentials = this.resolveUserCredentials(workspace.repo, undefined);
+    const token =
+      credentials?.type === "pat" || credentials?.type === "oauth"
+        ? credentials.token
+        : undefined;
+    if (!token) {
+      throw new Error("GitHub credentials are unavailable for PR lookup");
+    }
+    const octokit = new Octokit({ auth: token });
+    const response = await octokit.pulls.list({
+      owner,
+      repo,
+      state: "open",
+      head: `${owner}:${workspace.branch}`,
+      base: baseBranch?.trim() || workspace.baseBranch,
+      per_page: 2,
+    });
+    const match = response.data[0];
+    return match
+      ? ({ number: match.number, url: match.html_url } as PullRequestInfo)
+      : null;
+  }
+
   async createPR(
     workspaceId: string,
     options: PROptions,

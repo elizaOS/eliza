@@ -141,6 +141,22 @@ describe("collectCompletionResiduals — real git legs", () => {
     expect(residual?.items?.[0]).toBe(head);
   });
 
+  it("lets only the authorized submission lane own the pending push", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "feature.ts"), "export const x = 1;\n");
+    git(workdir, "add", ".");
+    git(workdir, "commit", "-q", "-m", "pending orchestrator push");
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      orchestratorOwnsPendingPush: true,
+    });
+
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+  });
+
   it("clears after the unpushed commit is pushed", async () => {
     const { workdir } = makeRepo();
     writeFileSync(join(workdir, "feature.ts"), "export const x = 1;\n");
