@@ -76,6 +76,7 @@ export class ProxyServer {
   private requestCount = 0;
   private startedAt = 0;
   private listening = false;
+  private readonly sockets = new Set<import("node:net").Socket>();
 
   private readonly port: number;
   private readonly bindHost: string;
@@ -149,6 +150,10 @@ export class ProxyServer {
     }
 
     this.server = createServer((req, res) => this.handleRequest(req, res));
+    this.server.on("connection", (socket) => {
+      this.sockets.add(socket);
+      socket.once("close", () => this.sockets.delete(socket));
+    });
     const server = this.server;
     this.startedAt = Date.now();
     await new Promise<void>((resolve, reject) => {
@@ -167,6 +172,12 @@ export class ProxyServer {
   async stop(): Promise<void> {
     if (!this.server || !this.listening) return;
     const server = this.server;
+    // Destroy tracked open connections so server.close() callback fires immediately
+    // rather than waiting for keep-alive or in-flight connections to drain.
+    for (const socket of this.sockets) {
+      socket.destroy();
+    }
+    this.sockets.clear();
     await new Promise<void>((resolve) => {
       server.close(() => {
         this.listening = false;
