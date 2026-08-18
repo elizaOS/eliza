@@ -139,6 +139,7 @@ describe("Jupiter API request deadline", () => {
   });
 
   it("creates a fresh deadline signal for every successful request", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     const signals: AbortSignal[] = [];
     const fetchFn = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       if (!init?.signal) throw new Error("missing deadline signal");
@@ -149,6 +150,8 @@ describe("Jupiter API request deadline", () => {
     await fetchJupiterJson(fetchFn, "https://jupiter.test/quote", "quote");
     await fetchJupiterJson(fetchFn, "https://jupiter.test/swap", "swap");
 
+    expect(timeoutSpy).toHaveBeenCalledTimes(2);
+    expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_JUPITER_FETCH_TIMEOUT_MS);
     expect(signals).toHaveLength(2);
     expect(signals[0]).not.toBe(signals[1]);
     expect(signals.every((signal) => !signal.aborted)).toBe(true);
