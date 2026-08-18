@@ -789,15 +789,15 @@ export class CanvasWeb extends WebPlugin {
     if (!tempCtx) throw new Error("Failed to create temp canvas");
 
     if (options.layerIds && options.layerIds.length > 0) {
-      const requested = new Set(options.layerIds);
-      const subset = Array.from(managed.layers.values())
-        .filter((layer) => requested.has(layer.id))
-        .sort((a, b) => a.zIndex - b.zIndex);
-
-      for (const layer of subset) {
-        if (!layer.visible) continue;
-        tempCtx.globalAlpha = layer.opacity;
-        tempCtx.drawImage(layer.canvas, 0, 0);
+      // Explicit subsets are composited in caller-provided order, matching the
+      // iOS and Android bridges. z-index ordering applies only to the default
+      // full-canvas export.
+      for (const layerId of options.layerIds) {
+        const layer = managed.layers.get(layerId);
+        if (layer?.visible) {
+          tempCtx.globalAlpha = layer.opacity;
+          tempCtx.drawImage(layer.canvas, 0, 0);
+        }
       }
     } else {
       tempCtx.globalAlpha = 1;

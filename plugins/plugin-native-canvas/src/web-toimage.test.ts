@@ -163,4 +163,27 @@ describe("CanvasWeb.toImage composite contract", () => {
     expect(drawImageSources).not.toContain(baseEl);
     expect(drawImageSources).not.toContain(secondEl);
   });
+
+  it("preserves caller-provided order for an explicit layerIds subset", async () => {
+    const { canvas, canvasId, host } = await setup();
+    const { layerId: lowId } = await canvas.createLayer({
+      canvasId,
+      layer: { visible: true, opacity: 1, zIndex: 1 },
+    });
+    const lowEl = lastCanvas(host);
+    const { layerId: highId } = await canvas.createLayer({
+      canvasId,
+      layer: { visible: true, opacity: 1, zIndex: 5 },
+    });
+    const highEl = lastCanvas(host);
+
+    drawImageSources.length = 0;
+    await canvas.toImage({
+      canvasId,
+      format: "png",
+      layerIds: [highId, lowId],
+    });
+
+    expect(drawImageSources).toEqual([highEl, lowEl]);
+  });
 });
