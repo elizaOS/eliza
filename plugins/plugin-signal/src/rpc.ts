@@ -286,6 +286,7 @@ export async function streamSignalEvents(params: {
   account?: string;
   abortSignal?: AbortSignal;
   onEvent: (event: SignalSseEvent) => void;
+  onConnected?: () => void;
 }): Promise<void> {
   const baseUrl = normalizeBaseUrl(params.baseUrl);
   const url = new URL(`${baseUrl}/api/v1/events`);
@@ -302,6 +303,10 @@ export async function streamSignalEvents(params: {
   if (!res.ok || !res.body) {
     throw new Error(`Signal SSE failed (${res.status} ${res.statusText || "error"})`);
   }
+
+  // Fires only once the daemon has accepted the stream (`res.ok`), so callers
+  // can distinguish a genuinely established connection from a failed dial.
+  params.onConnected?.();
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -411,8 +416,9 @@ export function createSignalEventStream(params: {
 } {
   let abortController: AbortController | null = null;
   let running = false;
-  let reconnectDelay = params.reconnectDelayMs ?? 1000;
+  const baseDelay = params.reconnectDelayMs ?? 1000;
   const maxDelay = params.maxReconnectDelayMs ?? 30000;
+  let reconnectDelay = baseDelay;
 
   const connect = async () => {
     if (!running) {
@@ -422,14 +428,19 @@ export function createSignalEventStream(params: {
     abortController = new AbortController();
 
     try {
-      params.onConnect?.();
-      reconnectDelay = params.reconnectDelayMs ?? 1000;
-
       await streamSignalEvents({
         baseUrl: params.baseUrl,
         account: params.account,
         abortSignal: abortController.signal,
         onEvent: params.onEvent,
+        onConnected: () => {
+          // A connection was actually established; announce it and reset the
+          // backoff so the next drop restarts from the base delay. Resetting
+          // per-attempt (the previous behavior) defeated exponential backoff
+          // and let a persistently-down daemon be hit every base interval.
+          params.onConnect?.();
+          reconnectDelay = baseDelay;
+        },
       });
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
