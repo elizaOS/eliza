@@ -1751,6 +1751,20 @@
       "when": 1790712000000,
       "tag": "0250_agent_restore_receipt_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1790798400000,
+      "tag": "0251_agent_backup_restore_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 251,
+      "version": "7",
+      "when": 1790884800000,
+      "tag": "0252_agent_backup_restore_operation_guard",
+      "breakpoints": true
     }
   ]
 }

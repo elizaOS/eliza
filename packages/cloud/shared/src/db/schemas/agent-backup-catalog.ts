@@ -368,6 +368,156 @@ export const agentBackupRestoreLeases = pgTable(
   }),
 );
 
+/** Phases a restore attempt walks, in order. `failed_retryable` records the phase to re-enter. */
+export type AgentBackupRestorePhase =
+  | "reserved"
+  | "vault_seeded"
+  | "container_created"
+  | "restoring"
+  | "committed"
+  | "restart_attested"
+  | "probed"
+  | "published"
+  | "finalized"
+  | "failed_retryable"
+  | "failed_terminal";
+
+/**
+ * Durable per-attempt restore coordination. Mirrors migrations 0251/0252: the
+ * `expected_*` columns pre-record each side effect's exact identity so a lost
+ * response is re-verified rather than re-executed, and the fencing token is the
+ * lease's own `generation` rather than a second minted token.
+ */
+export const agentBackupRestoreOperations = pgTable(
+  "agent_backup_restore_operations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organization_id: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    agent_id: uuid("agent_id").notNull(),
+    backup_id: uuid("backup_id").notNull(),
+    restore_attempt_id: uuid("restore_attempt_id").notNull(),
+    lease_id: uuid("lease_id").notNull(),
+    lease_generation: uuid("lease_generation").notNull(),
+    lease_owner_id: text("lease_owner_id").notNull(),
+    catalog_epoch: bigint("catalog_epoch", { mode: "bigint" }).notNull(),
+    copy_role: text("copy_role").$type<AgentBackupCopyRole>().notNull(),
+    phase: text("phase").$type<AgentBackupRestorePhase>().notNull().default("reserved"),
+    resume_phase: text("resume_phase").$type<AgentBackupRestorePhase>(),
+    claim_owner: text("claim_owner"),
+    claim_generation: uuid("claim_generation"),
+    claim_expires_at: timestamp("claim_expires_at", { withTimezone: true }),
+    attempts: integer("attempts").notNull().default(0),
+    next_attempt_at: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    expected_manifest_sha256: text("expected_manifest_sha256").notNull(),
+    expected_activation_generation: uuid("expected_activation_generation").notNull(),
+    expected_lifecycle_revision: numeric("expected_lifecycle_revision", {
+      precision: 20,
+      scale: 0,
+      mode: "bigint",
+    }).notNull(),
+    expected_node_record_id: uuid("expected_node_record_id"),
+    expected_node_incarnation: uuid("expected_node_incarnation"),
+    expected_container_id: text("expected_container_id"),
+    expected_image_digest: text("expected_image_digest"),
+    receipt_digest: text("receipt_digest"),
+    last_error_code: text("last_error_code"),
+    last_error: text("last_error"),
+    last_failure_generation: uuid("last_failure_generation"),
+    last_failure_digest: text("last_failure_digest"),
+    completed_at: timestamp("completed_at", { withTimezone: true }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    attempt_authority_fk: foreignKey({
+      name: "agent_backup_restore_operations_attempt_authority_fkey",
+      columns: [table.organization_id, table.restore_attempt_id],
+      foreignColumns: [
+        agentBackupRestoreLeases.organization_id,
+        agentBackupRestoreLeases.restore_attempt_id,
+      ],
+    }).onDelete("restrict"),
+    fence_authority_fk: foreignKey({
+      name: "agent_backup_restore_operations_fence_authority_fkey",
+      columns: [table.organization_id, table.backup_id, table.lease_generation],
+      foreignColumns: [
+        agentBackupRestoreLeases.organization_id,
+        agentBackupRestoreLeases.backup_id,
+        agentBackupRestoreLeases.generation,
+      ],
+    }).onDelete("restrict"),
+    catalog_authority_fk: foreignKey({
+      name: "agent_backup_restore_operations_catalog_authority_fkey",
+      columns: [table.organization_id, table.agent_id],
+      foreignColumns: [
+        agentBackupCatalogAuthorities.organization_id,
+        agentBackupCatalogAuthorities.agent_id,
+      ],
+    }).onDelete("restrict"),
+    attempt_uidx: uniqueIndex("agent_backup_restore_operations_attempt_uidx").on(
+      table.organization_id,
+      table.restore_attempt_id,
+    ),
+    one_open_uidx: uniqueIndex("agent_backup_restore_operations_one_open_uidx")
+      .on(table.organization_id, table.backup_id)
+      .where(sql`${table.phase} NOT IN ('finalized', 'failed_terminal')`),
+    due_idx: index("agent_backup_restore_operations_due_idx")
+      .on(table.next_attempt_at, table.created_at)
+      .where(sql`${table.phase} NOT IN ('finalized', 'failed_terminal')`),
+    phase_check: check(
+      "agent_backup_restore_operations_phase_check",
+      sql`(${table.phase} IN ('reserved','vault_seeded','container_created','restoring','committed',
+          'restart_attested','probed','published','finalized','failed_retryable','failed_terminal')
+        AND (${table.resume_phase} IS NULL) = (${table.phase} <> 'failed_retryable')
+        AND (${table.resume_phase} IS NULL OR ${table.resume_phase} IN ('reserved','vault_seeded',
+          'container_created','restoring','committed','restart_attested','probed','published'))
+      ) IS TRUE`,
+    ),
+    claim_shape_check: check(
+      "agent_backup_restore_operations_claim_shape_check",
+      sql`((${table.claim_owner} IS NULL AND ${table.claim_generation} IS NULL
+          AND ${table.claim_expires_at} IS NULL)
+        OR (${table.claim_owner} IS NOT NULL AND btrim(${table.claim_owner}) = ${table.claim_owner}
+          AND octet_length(${table.claim_owner}) BETWEEN 1 AND 255
+          AND ${table.claim_generation} IS NOT NULL AND ${table.claim_expires_at} IS NOT NULL)
+      ) IS TRUE`,
+    ),
+    receipt_shape_check: check(
+      "agent_backup_restore_operations_receipt_shape_check",
+      sql`((${table.phase} <> 'finalized' AND ${table.completed_at} IS NULL
+          AND ${table.receipt_digest} IS NULL)
+        OR (${table.phase} = 'finalized' AND ${table.completed_at} IS NOT NULL
+          AND ${table.receipt_digest} ~ '^[0-9a-f]{64}$')
+      ) IS TRUE`,
+    ),
+    failure_replay_check: check(
+      "agent_backup_restore_operations_failure_replay_check",
+      sql`((${table.last_failure_generation} IS NULL AND ${table.last_failure_digest} IS NULL)
+        OR (${table.last_failure_generation} IS NOT NULL
+          AND ${table.last_failure_digest} ~ '^[0-9a-f]{64}$')
+      ) IS TRUE`,
+    ),
+    expected_shape_check: check(
+      "agent_backup_restore_operations_expected_shape_check",
+      sql`(${table.attempts} >= 0
+        AND ${table.catalog_epoch} >= 0
+        AND ${table.expected_lifecycle_revision} BETWEEN 0 AND 18446744073709551615
+        AND ${table.expected_manifest_sha256} ~ '^[0-9a-f]{64}$'
+        AND ${table.copy_role} IN ('primary','secondary')
+        AND btrim(${table.lease_owner_id}) = ${table.lease_owner_id}
+        AND octet_length(${table.lease_owner_id}) BETWEEN 1 AND 255
+        AND (${table.expected_container_id} IS NULL
+          OR ${table.expected_container_id} ~ '^[0-9a-f]{64}$')
+        AND (${table.expected_image_digest} IS NULL
+          OR ${table.expected_image_digest} ~ '^sha256:[0-9a-f]{64}$')
+        AND (${table.expected_node_record_id} IS NULL) = (${table.expected_node_incarnation} IS NULL)
+      ) IS TRUE`,
+    ),
+  }),
+);
+
 export type AgentBackupObject = InferSelectModel<typeof agentBackupObjects>;
 export type AgentBackupCatalogAuthority = InferSelectModel<typeof agentBackupCatalogAuthorities>;
 export type NewAgentBackupCatalogAuthority = InferInsertModel<typeof agentBackupCatalogAuthorities>;
@@ -376,3 +526,5 @@ export type AgentBackupGcOutboxRow = InferSelectModel<typeof agentBackupGcOutbox
 export type NewAgentBackupGcOutboxRow = InferInsertModel<typeof agentBackupGcOutbox>;
 export type AgentBackupRestoreLease = InferSelectModel<typeof agentBackupRestoreLeases>;
 export type NewAgentBackupRestoreLease = InferInsertModel<typeof agentBackupRestoreLeases>;
+export type AgentBackupRestoreOperation = InferSelectModel<typeof agentBackupRestoreOperations>;
+export type NewAgentBackupRestoreOperation = InferInsertModel<typeof agentBackupRestoreOperations>;
