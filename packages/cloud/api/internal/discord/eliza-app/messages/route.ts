@@ -35,7 +35,15 @@ app.post("/", async (c) => {
     const authMs = performance.now() - authStartedAt;
 
     const validationStartedAt = performance.now();
-    const body = messageSchema.parse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not failureResponse(SyntaxError) → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const body = messageSchema.parse(rawBody);
     const validationMs = performance.now() - validationStartedAt;
     if (body.guildId) {
       const [gatewayRouter, guildText, sharedWorker] = await Promise.all([
