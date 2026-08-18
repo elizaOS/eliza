@@ -84,12 +84,29 @@ export interface DocumentsFetchers {
   fetchSearch: (query: string) => Promise<DocumentsSearchWire>;
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${client.getBaseUrl()}${path}`);
+/** Documents JSON GETs are short UI reads — same 15s family as TodosView / GoalsView. */
+export const DOCUMENTS_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getDocumentsJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = DOCUMENTS_VIEW_JSON_TIMEOUT_MS,
+): Promise<T> {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   if (!response.ok) {
-    throw new Error(`Documents request failed (${response.status}): ${path}`);
+    throw new Error(`Documents request failed (${response.status}): ${url}`);
   }
   return (await response.json()) as T;
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  return getDocumentsJsonWithFetch<T>(
+    `${client.getBaseUrl()}${path}`,
+    globalThis.fetch,
+  );
 }
 
 const DEFAULT_LIST_LIMIT = 100;
