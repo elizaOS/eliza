@@ -664,6 +664,7 @@ async function fetchPumpFunTransaction(
       priorityFee: settings.priorityFee,
       pool: settings.pool,
     }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
