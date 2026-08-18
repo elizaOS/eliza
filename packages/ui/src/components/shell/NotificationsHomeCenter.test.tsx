@@ -1,8 +1,10 @@
-/** Verifies orderDashboardNotifications through the package's configured test harness. */
+/**
+ * Exercises notification ordering, store-backed dashboard behavior, and
+ * auth/base-URL-gated hydration through the jsdom harness. The notification
+ * store stays real while API transport and navigation boundaries are mocked.
+ */
 // @vitest-environment jsdom
 
-// Dashboard notification center behavior against the real notification store
-// (driven via the test-only ingest; HTTP mutations mocked at the API client).
 // Pins the shade spec: a control-free full inbox, liquid-glass Z-stacked groups
 // with no headers/dividers, DIRECTIONAL pull/wheel expand-collapse (down
 // expands, up collapses — never a toggle, so trailing trackpad momentum can't
@@ -262,6 +264,7 @@ function setOverflowingListGeometry(list: HTMLElement): void {
 beforeEach(() => {
   vi.useFakeTimers();
   seq = 0;
+  vi.mocked(client.getBaseUrl).mockReset().mockReturnValue("");
 });
 
 afterEach(() => {
@@ -741,6 +744,7 @@ describe("NotificationsHomeCenter", () => {
     renderRestedNotifications();
 
     const retry = screen.getByRole("button", { name: "Retry" });
+    vi.mocked(client.getBaseUrl).mockClear();
     vi.mocked(client.listNotifications).mockClear();
     await act(async () => {
       fireEvent.click(retry);
@@ -752,7 +756,6 @@ describe("NotificationsHomeCenter", () => {
     expect(client.getBaseUrl).toHaveBeenCalled();
     expect(client.listNotifications).not.toHaveBeenCalled();
     expect(screen.queryByTestId("notifications-empty")).toBeNull();
-    vi.mocked(client.getBaseUrl).mockReturnValue("");
   });
 
   it("applies directional fades only where notification content is hidden", () => {

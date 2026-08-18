@@ -639,6 +639,61 @@ describe("secret redaction", () => {
 });
 
 /**
+ * Binary-payload redaction contract: a Buffer/TypedArray/DataView logged under
+ * a neutral key must collapse to a size-only marker in both the node and
+ * browser log paths — JSON would otherwise serialize the raw bytes verbatim
+ * (`{"type":"Buffer","data":[...]}`) into the ring buffer and every sink.
+ */
+describe("binary payload redaction", () => {
+  afterEach(() => {
+    createLogger({ level: "info" }).clear();
+    vi.restoreAllMocks();
+  });
+
+  it("masks a Buffer under a neutral key in the node path", () => {
+    const logger = createLogger({ level: "trace" });
+    logger.info({ payload: Buffer.from("topsecret-bytes") }, "ctx");
+    const logs = recentLogs();
+    expect(logs).toContain("[BUFFER REDACTED 15 bytes]");
+    expect(logs).not.toContain('"type":"Buffer"');
+    expect(logs).not.toContain("116,111,112");
+  });
+
+  it("masks TypedArray, DataView, and ArrayBuffer values", () => {
+    const logger = createLogger({ level: "trace" });
+    logger.info(
+      {
+        u8: new Uint8Array([1, 2, 3]),
+        view: new DataView(new ArrayBuffer(7)),
+        buf: new ArrayBuffer(9),
+      },
+      "ctx",
+    );
+    const logs = recentLogs();
+    expect(logs).toContain("[BUFFER REDACTED 3 bytes]");
+    expect(logs).toContain("[BUFFER REDACTED 7 bytes]");
+    expect(logs).toContain("[BUFFER REDACTED 9 bytes]");
+  });
+
+  it("masks a Buffer passed as a trailing arg", () => {
+    const logger = createLogger({ level: "trace" });
+    logger.info("plain message", { file: Buffer.from("trailing-secret") });
+    const logs = recentLogs();
+    expect(logs).toContain("[BUFFER REDACTED 15 bytes]");
+    expect(logs).not.toContain('"type":"Buffer"');
+  });
+
+  it("masks a Buffer in the browser logger path", () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const logger = createLogger({ level: "trace", __forceType: "browser" });
+    logger.info({ payload: Buffer.from("browser-secret") }, "ctx");
+    const out = infoSpy.mock.calls.flat().join(" ");
+    expect(out).toContain("[BUFFER REDACTED 14 bytes]");
+    expect(out).not.toContain('"type":"Buffer"');
+  });
+});
+
+/**
  * File-sink permission contract (W1-059): output.log/prompts.log/chat.log
  * must be created 0600, and files left world-readable by older builds must be
  * healed on first open. Needs a fresh module instance per case because the
