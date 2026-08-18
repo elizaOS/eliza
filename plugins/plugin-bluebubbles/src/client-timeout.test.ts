@@ -100,6 +100,37 @@ describe("BlueBubbles client request deadlines", () => {
 		).rejects.toMatchObject({ name: "TimeoutError" });
 	});
 
+	it("keeps the composed deadline armed while the response body stalls", async () => {
+		const controller = new AbortController();
+		const fetchImpl: typeof fetch = async (_input, init) => {
+			const signal = init?.signal;
+			if (!signal) throw new Error("expected bluebubbles abort signal");
+
+			return new Response(
+				new ReadableStream({
+					start(streamController) {
+						const onAbort = () => streamController.error(signal.reason);
+						if (signal.aborted) {
+							onAbort();
+							return;
+						}
+						signal.addEventListener("abort", onAbort, { once: true });
+					},
+				}),
+				{ headers: { "Content-Type": "application/json" } },
+			);
+		};
+
+		await expect(
+			blueBubblesRequestWithFetch(
+				REQUEST_URL,
+				{ signal: controller.signal },
+				fetchImpl,
+				10,
+			),
+		).rejects.toMatchObject({ name: "TimeoutError" });
+	});
+
 	it("honors caller abort without waiting for the request deadline", async () => {
 		const controller = new AbortController();
 		controller.abort();
