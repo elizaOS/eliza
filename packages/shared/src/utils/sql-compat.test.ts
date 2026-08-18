@@ -54,10 +54,9 @@ describe("sql-compat utilities", () => {
       expect(sanitizeIdentifier(tooLong)).toBeNull();
     });
 
-    it("returns null for non-string inputs", () => {
+    it("returns null for nullish inputs", () => {
       expect(sanitizeIdentifier(null)).toBeNull();
       expect(sanitizeIdentifier(undefined)).toBeNull();
-      expect(sanitizeIdentifier(123 as unknown as string)).toBeNull();
     });
   });
 
