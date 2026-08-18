@@ -3,6 +3,7 @@
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { client } from "../api/client";
 import {
   __resetAuthStatusForTests,
   __setAuthStatusForTests,
@@ -30,6 +31,7 @@ const originalVisibilityDescriptor = Object.getOwnPropertyDescriptor(
 );
 const WEATHER_CACHE_KEY = "eliza:weather:v2";
 const LOCATION_NOTICE_FLAG_KEY = "eliza:weather:location-notice:v1";
+const originalAgentBase = client.getBaseUrl();
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -132,6 +134,7 @@ afterEach(() => {
     Reflect.deleteProperty(document, "visibilityState");
   }
   localStorage.clear();
+  client.setBaseUrl(originalAgentBase, { persist: false });
 });
 
 describe("describeWeatherCode", () => {
@@ -549,5 +552,31 @@ describe("useWeather — protected-probe gate (#16242)", () => {
     expect(calls.some((u) => u.includes("/api/location/approximate"))).toBe(
       true,
     );
+  });
+
+  it("settles unsupported weather as unavailable on an authenticated limited Cloud agent", async () => {
+    setOrigin("file:///Applications/Eliza-canary.app/");
+    client.setBaseUrl(
+      "https://api.eliza.app/api/v1/eliza/agents/personal%3Aowner-id",
+      { persist: false },
+    );
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+      session: { id: "s-1", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
+    const { calls } = installFetchRouter();
+    denyGeolocation();
+
+    const { result } = renderHook(() => useWeather());
+
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    expect(calls).toEqual([]);
   });
 });
