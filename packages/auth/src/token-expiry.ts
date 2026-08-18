@@ -43,7 +43,7 @@ export function isTokenExpiryText(text: string | null | undefined): boolean {
 export function classifyAuthFailureReason(
   text: string | null | undefined,
 ): CodingAuthFailureReason {
-  if (!text) return "unknown";
+  if (!text || text.trim().length === 0) return "unknown";
   if (isTokenExpiryText(text)) return "token_expired";
   return "needs_reauth";
 }
