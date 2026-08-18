@@ -96,58 +96,56 @@ export async function verifyProductAsrReleaseAuthority(
 
   const release = result.release;
   const remoteErrors = [];
-  await Promise.all(
-    release.ggufAssets.map(async (asset) => {
-      const url = voiceModelAssetUrl(release, asset);
-      let response;
-      try {
-        response = await fetchFn(url, {
-          method: "HEAD",
-          redirect: "manual",
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-      } catch (error) {
-        remoteErrors.push(
-          `${asset.filename} could not be resolved at the pinned Hugging Face revision: ${error instanceof Error ? error.message : String(error)}.`,
-        );
-        return;
-      }
+  for (const asset of release.ggufAssets) {
+    const url = voiceModelAssetUrl(release, asset);
+    let response;
+    try {
+      response = await fetchFn(url, {
+        method: "HEAD",
+        redirect: "manual",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      remoteErrors.push(
+        `${asset.filename} could not be resolved at the pinned Hugging Face revision: ${error instanceof Error ? error.message : String(error)}.`,
+      );
+      continue;
+    }
 
-      if (response.status < 200 || response.status >= 400) {
-        remoteErrors.push(
-          `${asset.filename} is not downloadable at the pinned Hugging Face revision (HTTP ${response.status}).`,
-        );
-        return;
-      }
+    if (response.status < 200 || response.status >= 400) {
+      remoteErrors.push(
+        `${asset.filename} is not downloadable at the pinned Hugging Face revision (HTTP ${response.status}).`,
+      );
+      continue;
+    }
 
-      const repositoryCommit = response.headers.get("x-repo-commit");
-      if (repositoryCommit !== release.hfRevision) {
-        remoteErrors.push(
-          `${asset.filename} resolved from revision ${JSON.stringify(repositoryCommit)}, expected ${release.hfRevision}.`,
-        );
-      }
+    const repositoryCommit = response.headers.get("x-repo-commit");
+    if (repositoryCommit !== release.hfRevision) {
+      remoteErrors.push(
+        `${asset.filename} resolved from revision ${JSON.stringify(repositoryCommit)}, expected ${release.hfRevision}.`,
+      );
+    }
 
-      const linkedDigest = unquoteHeader(response.headers.get("x-linked-etag"));
-      if (linkedDigest !== asset.sha256) {
-        remoteErrors.push(
-          `${asset.filename} resolver sha256 ${JSON.stringify(linkedDigest)} does not match the catalog pin.`,
-        );
-      }
+    const linkedDigest = unquoteHeader(response.headers.get("x-linked-etag"));
+    if (linkedDigest !== asset.sha256) {
+      remoteErrors.push(
+        `${asset.filename} resolver sha256 ${JSON.stringify(linkedDigest)} does not match the catalog pin.`,
+      );
+    }
 
-      const linkedSize = Number(response.headers.get("x-linked-size"));
-      if (!Number.isSafeInteger(linkedSize) || linkedSize !== asset.sizeBytes) {
-        remoteErrors.push(
-          `${asset.filename} resolver size ${JSON.stringify(response.headers.get("x-linked-size"))} does not match the catalog pin ${asset.sizeBytes}.`,
-        );
-      }
+    const linkedSize = Number(response.headers.get("x-linked-size"));
+    if (!Number.isSafeInteger(linkedSize) || linkedSize !== asset.sizeBytes) {
+      remoteErrors.push(
+        `${asset.filename} resolver size ${JSON.stringify(response.headers.get("x-linked-size"))} does not match the catalog pin ${asset.sizeBytes}.`,
+      );
+    }
 
-      if (response.status >= 300 && !response.headers.get("location")) {
-        remoteErrors.push(
-          `${asset.filename} resolver returned HTTP ${response.status} without a download location.`,
-        );
-      }
-    }),
-  );
+    if (response.status >= 300 && !response.headers.get("location")) {
+      remoteErrors.push(
+        `${asset.filename} resolver returned HTTP ${response.status} without a download location.`,
+      );
+    }
+  }
 
   return { release, errors: [...result.errors, ...remoteErrors] };
 }

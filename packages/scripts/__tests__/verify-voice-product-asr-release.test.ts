@@ -1,6 +1,7 @@
 /**
  * Verifies the product-ASR publication gate and its Voice Live E2E wiring with
- * deterministic release fixtures; no model download or provider is mocked.
+ * deterministic release fixtures and mocked resolver metadata, without model
+ * downloads.
  */
 
 import { readFileSync } from "node:fs";
