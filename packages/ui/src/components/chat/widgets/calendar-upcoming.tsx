@@ -19,7 +19,6 @@ import {
   useIntervalWhenDocumentVisible,
 } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
-import { withTimeout } from "../../../utils/with-timeout";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import type { WidgetProps } from "../../../widgets/types";
@@ -31,8 +30,10 @@ const GOOGLE_PROVIDER = "google";
 const DEFAULT_SPAN = "col-span-4 row-span-1";
 // Bound the bridge/feed calls so a hung agent channel settles the tile (connect
 // CTA / "No events today") instead of spinning on "Loading…" forever.
-const PROBE_TIMEOUT_MS = 6_000;
-const FEED_TIMEOUT_MS = 8_000;
+/** Connector-accounts probe — existing 6s glance budget, native timeoutMs. */
+export const CALENDAR_PROBE_FETCH_TIMEOUT_MS = 6_000;
+/** Calendar feed GET — existing 8s glance budget, independent hop. */
+export const CALENDAR_FEED_FETCH_TIMEOUT_MS = 8_000;
 
 // The home glanceable widget refreshes on a calm 60s cadence, the calendar
 // feed is far less volatile than the todo list.
@@ -88,6 +89,39 @@ function parseCalendarFeed(value: unknown): CalendarFeedEventWire[] {
   const events = (value as Record<string, unknown>).events;
   if (!Array.isArray(events)) return [];
   return events.filter(isCalendarFeedEvent);
+}
+
+type CalendarApi = Pick<typeof client, "fetch">;
+
+export async function fetchCalendarConnectorAccounts(
+  api: CalendarApi = client,
+  timeoutMs: number = CALENDAR_PROBE_FETCH_TIMEOUT_MS,
+): Promise<Array<{ status?: string }>> {
+  const body = await api.fetch<unknown>(
+    `/api/connectors/${encodeURIComponent(GOOGLE_PROVIDER)}/accounts`,
+    undefined,
+    { timeoutMs },
+  );
+  if (typeof body !== "object" || body === null) return [];
+  const accounts = (body as { accounts?: unknown }).accounts;
+  if (!Array.isArray(accounts)) return [];
+  return accounts.filter(
+    (account): account is { status?: string } =>
+      typeof account === "object" && account !== null,
+  );
+}
+
+export async function fetchCalendarUpcomingFeed(
+  api: CalendarApi = client,
+  params: URLSearchParams,
+  timeoutMs: number = CALENDAR_FEED_FETCH_TIMEOUT_MS,
+): Promise<CalendarFeedEventWire[]> {
+  const body = await api.fetch<unknown>(
+    `/api/lifeops/calendar/feed?${params.toString()}`,
+    undefined,
+    { timeoutMs },
+  );
+  return parseCalendarFeed(body);
 }
 
 /** Upcoming events (start >= now), soonest first. */
@@ -222,15 +256,12 @@ export function CalendarUpcomingWidget({
     if (!authenticated) return false;
 
     try {
-      const res = await withTimeout(
-        client.listConnectorAccounts(GOOGLE_PROVIDER),
-        PROBE_TIMEOUT_MS,
-      );
+      const accounts = await fetchCalendarConnectorAccounts();
       // Linked ONLY when an account is actually connected, a "needs-reauth" /
       // "pending" account is NOT usable, and treating it as linked left the tile
       // stuck on "Loading…" forever (the feed never returns), instead of showing
       // the "Connect calendar" affordance (matching the connectors strip).
-      const linked = res.accounts.some(
+      const linked = accounts.some(
         (account) => account.status === "connected",
       );
       setConnection(linked ? "connected" : "disconnected");
@@ -257,15 +288,7 @@ export function CalendarUpcomingWidget({
       timeZone,
     });
     try {
-      const res = await withTimeout(
-        fetch(
-          `${client.getBaseUrl()}/api/lifeops/calendar/feed?${params.toString()}`,
-        ),
-        FEED_TIMEOUT_MS,
-      );
-      if (!res.ok) return;
-      const json: unknown = await res.json();
-      const next = parseCalendarFeed(json);
+      const next = await fetchCalendarUpcomingFeed(client, params);
       // Skip the state update (and the re-render) when the poll is unchanged.
       setEvents((prev) => (eventsEqual(prev, next) ? prev : next));
     } catch {

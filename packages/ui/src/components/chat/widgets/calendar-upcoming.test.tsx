@@ -25,20 +25,18 @@ vi.mock("../../../hooks/useAuthStatus", () => ({
 
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 
-const { getBaseUrlMock, publishMock, listConnectorAccountsMock } = vi.hoisted(
-  () => ({
-    getBaseUrlMock: vi.fn(() => "http://localhost"),
-    publishMock: vi.fn(),
-    listConnectorAccountsMock: vi.fn(),
-  }),
-);
+const { getBaseUrlMock, publishMock, fetchMock } = vi.hoisted(() => ({
+  getBaseUrlMock: vi.fn(() => "http://localhost"),
+  publishMock: vi.fn(),
+  fetchMock: vi.fn(),
+}));
 
 // Mock the client: getBaseUrl resolves without booting the real ElizaClient,
-// and listConnectorAccounts is the connection probe driven per-test.
+// and fetch is the native-complete seam for probe + feed hops.
 vi.mock("../../../api", () => ({
   client: {
     getBaseUrl: getBaseUrlMock,
-    listConnectorAccounts: listConnectorAccountsMock,
+    fetch: fetchMock,
   },
 }));
 
@@ -54,7 +52,13 @@ vi.mock("../../../chat/useSlashCommandController", () => ({
 }));
 
 import type { WidgetProps } from "../../../widgets/types";
-import { CalendarUpcomingWidget } from "./calendar-upcoming";
+import {
+  CALENDAR_FEED_FETCH_TIMEOUT_MS,
+  CALENDAR_PROBE_FETCH_TIMEOUT_MS,
+  CalendarUpcomingWidget,
+  fetchCalendarConnectorAccounts,
+  fetchCalendarUpcomingFeed,
+} from "./calendar-upcoming";
 
 // Minimal wire event matching LifeOpsCalendarEvent (@elizaos/shared
 // contracts/calendar.ts), only the fields the widget reads.
@@ -79,39 +83,35 @@ function event(
   };
 }
 
-function mockFeed(events: ReturnType<typeof event>[]) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ events }),
-    })),
-  );
-}
-
-/** A linked Google account makes the connection probe resolve "connected". */
-function connectedGoogle() {
-  listConnectorAccountsMock.mockResolvedValue({
-    provider: "google",
-    connectorId: "google",
-    accounts: [
-      {
-        id: "g1",
-        provider: "google",
-        connectorId: "google",
-        label: "Work",
-        status: "connected",
-      },
-    ],
+function connectedGoogleWithFeed(events: ReturnType<typeof event>[]) {
+  fetchMock.mockImplementation(async (path: string) => {
+    if (String(path).includes("/api/connectors/")) {
+      return {
+        accounts: [
+          {
+            id: "g1",
+            provider: "google",
+            connectorId: "google",
+            label: "Work",
+            status: "connected",
+          },
+        ],
+      };
+    }
+    if (String(path).includes("/api/lifeops/calendar/feed")) {
+      return { events };
+    }
+    return { events: [] };
   });
 }
 
 /** No accounts → the probe resolves "disconnected" (connect affordance). */
 function disconnectedGoogle() {
-  listConnectorAccountsMock.mockResolvedValue({
-    provider: "google",
-    connectorId: "google",
-    accounts: [],
+  fetchMock.mockImplementation(async (path: string) => {
+    if (String(path).includes("/api/connectors/")) {
+      return { accounts: [] };
+    }
+    return { events: [] };
   });
 }
 
@@ -131,7 +131,7 @@ beforeEach(() => {
   getBaseUrlMock.mockReset();
   getBaseUrlMock.mockReturnValue("http://localhost");
   publishMock.mockReset();
-  listConnectorAccountsMock.mockReset();
+  fetchMock.mockReset();
 });
 
 describe("CalendarUpcomingWidget", () => {
@@ -144,19 +144,17 @@ describe("CalendarUpcomingWidget", () => {
     await waitFor(() => {
       expect(container.firstChild).toBeNull();
     });
-    expect(listConnectorAccountsMock).not.toHaveBeenCalled();
-    expect(globalThis.fetch as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("renders NOTHING when no Google account is linked, no connect-CTA tile", async () => {
     disconnectedGoogle();
-    mockFeed([]);
     const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
 
     // The probe settles to "disconnected" and the widget self-hides; the
     // connect flow lives in Settings → Connectors, not the home grid.
     await waitFor(() => {
-      expect(listConnectorAccountsMock).toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalled();
     });
     await waitFor(() => {
       expect(container.firstChild).toBeNull();
@@ -167,9 +165,7 @@ describe("CalendarUpcomingWidget", () => {
   });
 
   it("renders NOTHING when connected but no upcoming events, the row must earn its place", async () => {
-    connectedGoogle();
-    // A past event only, filtered out (startAt < now).
-    mockFeed([
+    connectedGoogleWithFeed([
       event({
         id: "past",
         startAt: new Date(Date.now() - 60 * 60_000).toISOString(),
@@ -178,7 +174,7 @@ describe("CalendarUpcomingWidget", () => {
     const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
 
     await waitFor(() => {
-      expect(listConnectorAccountsMock).toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalled();
     });
     await waitFor(() => {
       expect(container.firstChild).toBeNull();
@@ -187,8 +183,7 @@ describe("CalendarUpcomingWidget", () => {
   });
 
   it("shows ONE high-priority datum, the soonest event, with a +N more badge", async () => {
-    connectedGoogle();
-    mockFeed([
+    connectedGoogleWithFeed([
       event({
         id: "a",
         title: "Standup",
@@ -220,8 +215,7 @@ describe("CalendarUpcomingWidget", () => {
   // is the narrower 18h window.
 
   it("renders the card when the next event is just inside the 18h gate (17h59m)", async () => {
-    connectedGoogle();
-    mockFeed([
+    connectedGoogleWithFeed([
       event({
         id: "soon",
         title: "Design sync",
@@ -235,10 +229,7 @@ describe("CalendarUpcomingWidget", () => {
   });
 
   it("yields its slot (renders null) when the next event is just past the 18h gate (18h01m)", async () => {
-    connectedGoogle();
-    // A real upcoming event, but beyond the 18h glance window: the feed returns
-    // it (14d query) yet the render gate holds the card null.
-    mockFeed([
+    connectedGoogleWithFeed([
       event({
         id: "far",
         title: "Next Tuesday",
@@ -250,10 +241,10 @@ describe("CalendarUpcomingWidget", () => {
     // The connector probe + feed both run (the event exists), but the card is
     // gated out, no tile occupies the home grid.
     await waitFor(() => {
-      expect(listConnectorAccountsMock).toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalled();
     });
     await waitFor(() => {
-      expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalled();
     });
     await waitFor(() => {
       expect(container.firstChild).toBeNull();
@@ -262,8 +253,7 @@ describe("CalendarUpcomingWidget", () => {
   });
 
   it("does not publish home attention for a beyond-18h event (no card = no signal)", async () => {
-    connectedGoogle();
-    mockFeed([
+    connectedGoogleWithFeed([
       event({
         id: "far",
         title: "Next Tuesday",
@@ -273,7 +263,7 @@ describe("CalendarUpcomingWidget", () => {
     render(<CalendarUpcomingWidget {...homeProps} />);
 
     await waitFor(() => {
-      expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalled();
     });
     // A gated-out card must never float the tile up; every publish call is null.
     await waitFor(() => {
@@ -290,8 +280,7 @@ describe("CalendarUpcomingWidget", () => {
     // render must still be null (the `now === 0` guard), the card only appears
     // after the effect installs the live clock. We assert the pre-effect frame,
     // then let the async probe/feed settle so nothing leaks past the test.
-    connectedGoogle();
-    mockFeed([
+    connectedGoogleWithFeed([
       event({
         id: "soon",
         title: "Design sync",
@@ -310,8 +299,7 @@ describe("CalendarUpcomingWidget", () => {
   });
 
   it("publishes the reminder weight when the next event starts within 2 hours (home slot)", async () => {
-    connectedGoogle();
-    mockFeed([
+    connectedGoogleWithFeed([
       event({
         id: "imminent",
         title: "Call",
@@ -327,8 +315,7 @@ describe("CalendarUpcomingWidget", () => {
   });
 
   it("navigates to the Calendar view when the populated card is clicked", async () => {
-    connectedGoogle();
-    mockFeed([event({ id: "a", title: "Standup" })]);
+    connectedGoogleWithFeed([event({ id: "a", title: "Standup" })]);
     const navEvents: string[] = [];
     const onNav = (e: Event) => {
       const detail = (e as CustomEvent<{ viewPath?: string }>).detail;
@@ -347,31 +334,109 @@ describe("CalendarUpcomingWidget", () => {
   // probe and the calendar feed must stay dormant while unauthenticated.
   it("does not probe the connector or fetch the feed while unauthenticated", async () => {
     authMock.authenticated = false;
-    connectedGoogle();
-    mockFeed([event({ id: "a", title: "Standup" })]);
+    connectedGoogleWithFeed([event({ id: "a", title: "Standup" })]);
 
     render(<CalendarUpcomingWidget {...homeProps} />);
 
     await Promise.resolve();
-    expect(listConnectorAccountsMock).not.toHaveBeenCalled();
-    expect(globalThis.fetch as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("starts the probe + feed once the session flips to authenticated", async () => {
     authMock.authenticated = false;
-    connectedGoogle();
-    mockFeed([event({ id: "a", title: "Standup" })]);
+    connectedGoogleWithFeed([event({ id: "a", title: "Standup" })]);
 
     const { rerender } = render(<CalendarUpcomingWidget {...homeProps} />);
     await Promise.resolve();
-    expect(listConnectorAccountsMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
 
     authMock.authenticated = true;
     rerender(<CalendarUpcomingWidget {...homeProps} />);
 
     const card = await screen.findByTestId("chat-widget-calendar-upcoming");
     expect(card.textContent).toContain("Standup");
-    expect(listConnectorAccountsMock).toHaveBeenCalled();
-    expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalled();
+  });
+});
+
+describe("calendar-upcoming native-complete deadlines", () => {
+  it("keeps a documented budget per hop", () => {
+    expect(CALENDAR_PROBE_FETCH_TIMEOUT_MS).toBe(6_000);
+    expect(CALENDAR_FEED_FETCH_TIMEOUT_MS).toBe(8_000);
+  });
+
+  it("passes probe timeoutMs through client.fetch", async () => {
+    fetchMock.mockResolvedValue({ accounts: [{ status: "connected" }] });
+    const accounts = await fetchCalendarConnectorAccounts({
+      fetch: fetchMock,
+    });
+    expect(accounts).toEqual([{ status: "connected" }]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/connectors/google/accounts",
+      undefined,
+      { timeoutMs: CALENDAR_PROBE_FETCH_TIMEOUT_MS },
+    );
+  });
+
+  it("passes feed timeoutMs through client.fetch", async () => {
+    fetchMock.mockResolvedValue({
+      events: [
+        {
+          id: "evt-1",
+          title: "Standup",
+          startAt: "2026-08-18T10:00:00.000Z",
+          endAt: "2026-08-18T10:30:00.000Z",
+          isAllDay: false,
+          location: "",
+        },
+      ],
+    });
+    const events = await fetchCalendarUpcomingFeed(
+      { fetch: fetchMock },
+      new URLSearchParams({ side: "owner" }),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]?.title).toBe("Standup");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/lifeops/calendar/feed?side=owner",
+      undefined,
+      { timeoutMs: CALENDAR_FEED_FETCH_TIMEOUT_MS },
+    );
+  });
+
+  it("aborts a stalled feed hop as TimeoutError", async () => {
+    const timeout = Object.assign(new Error("Request timed out after 10ms"), {
+      name: "ApiError",
+      kind: "timeout",
+    });
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          setTimeout(() => reject(timeout), 10);
+        }),
+    );
+    await expect(
+      fetchCalendarUpcomingFeed(
+        { fetch: fetchMock },
+        new URLSearchParams({ side: "owner" }),
+        10,
+      ),
+    ).rejects.toMatchObject({ name: "ApiError", kind: "timeout" });
+  });
+
+  it("surfaces a provider error from a completed feed GET", async () => {
+    fetchMock.mockRejectedValue(
+      Object.assign(new Error("Goals request failed (503)"), {
+        name: "ApiError",
+        kind: "http",
+        status: 503,
+      }),
+    );
+    await expect(
+      fetchCalendarUpcomingFeed(
+        { fetch: fetchMock },
+        new URLSearchParams({ side: "owner" }),
+      ),
+    ).rejects.toMatchObject({ status: 503 });
   });
 });
