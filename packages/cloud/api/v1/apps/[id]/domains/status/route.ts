@@ -24,7 +24,15 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: ctx.error }, ctx.status);
     const { user, appId } = ctx;
 
-    const parsed = StatusSchema.safeParse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not failureResponse(SyntaxError) → 500.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = StatusSchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json(
         {
