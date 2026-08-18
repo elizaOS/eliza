@@ -78,6 +78,27 @@ describe("openExternalUrl navigation guard", () => {
     expect(openSpy).not.toHaveBeenCalled();
     expect(invokeDesktopBridgeRequestWithTimeout).not.toHaveBeenCalled();
   });
+
+  it("permits only an explicitly opted-in OS deep-link scheme", async () => {
+    const settingsUrl =
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => null as unknown as Window);
+
+    await expect(openExternalUrl(settingsUrl)).resolves.toBe(false);
+    await expect(
+      openExternalUrl(settingsUrl, {
+        extraSchemes: ["x-apple.systempreferences:"],
+      }),
+    ).resolves.toBe(true);
+    expect(openSpy).toHaveBeenCalledOnce();
+    expect(openSpy).toHaveBeenCalledWith(
+      settingsUrl,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
 });
 
 describe("navigatePreOpenedWindow navigation guard", () => {
