@@ -1152,7 +1152,11 @@ else
     --tags tag:eliza-proxy --expiration 1h -o json 2>/dev/null | jq -r '.key')
   [ -n "$PREAUTH_KEY" ] || { echo "failed to mint preauth key for cp-router"; exit 1; }
 
+  # This branch already proved the expected router is absent and minted a
+  # fresh, single-use key. Force reauthentication so a daemon still signed in
+  # to the legacy login server can move to the canonical Headscale origin.
   sudo tailscale up \\
+    --force-reauth \\
     --login-server="$LOGIN_SERVER" \\
     --authkey="$PREAUTH_KEY" \\
     --hostname="$CP_ROUTER_HOST" \\
