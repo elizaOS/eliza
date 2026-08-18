@@ -42,6 +42,7 @@ import {
   applyDatabaseResolutionToEnv,
   backupPgliteDirectory,
   classifyDatabaseError,
+  classifyDatabaseRuntimeLogError,
   createDatabaseSnapshot,
   createUnknownDatabaseSnapshot,
   type DatabaseSnapshot,
@@ -2339,8 +2340,8 @@ export class AgentManager {
       });
       return;
     }
-    const status = classifyDatabaseError(line);
-    if (status === "error") return;
+    const status = classifyDatabaseRuntimeLogError(line);
+    if (status === null) return;
     const error = redactSensitiveDiagnostics(line);
     this.databaseSnapshot = updateDatabaseSnapshotStatus(
       this.databaseSnapshot,

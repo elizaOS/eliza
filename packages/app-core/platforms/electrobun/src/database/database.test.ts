@@ -9,6 +9,7 @@ import {
   assertSafePgliteResetTarget,
   backupPgliteDirectory,
   classifyDatabaseError,
+  classifyDatabaseRuntimeLogError,
   describePglitePath,
   ensurePgliteDataDir,
   inspectDatabaseStartupLock,
@@ -193,5 +194,23 @@ describe("database boot policy", () => {
     expect(classifyDatabaseError("Migration failed for plugin-x")).toBe(
       "migration-failed",
     );
+  });
+
+  it("ignores unrelated plugin paths on the shared runtime stderr stream", () => {
+    expect(
+      classifyDatabaseRuntimeLogError(
+        "[imessage] Failed to open chat.db at /Users/me/Library/Messages/chat.db: authorization denied",
+      ),
+    ).toBeNull();
+    expect(
+      classifyDatabaseRuntimeLogError(
+        "[plugin-sql] PGlite database path failed with ENOENT",
+      ),
+    ).toBe("path-error");
+    expect(
+      classifyDatabaseRuntimeLogError(
+        "[plugin-sql] PGlite database directory: permission denied",
+      ),
+    ).toBe("permission-error");
   });
 });

@@ -164,6 +164,31 @@ export function classifyDatabaseError(message: string): DatabaseStatus {
   return "error";
 }
 
+/**
+ * Classifies database failures observed on the agent's shared stderr stream.
+ * The stream also carries unrelated plugin diagnostics, so generic filesystem
+ * words are actionable only when the line identifies a database subsystem.
+ */
+export function classifyDatabaseRuntimeLogError(
+  message: string,
+): DatabaseStatus | null {
+  const text = message.toLowerCase();
+  const identifiesDatabaseSubsystem =
+    text.includes("pglite") ||
+    text.includes("postgres") ||
+    text.includes("plugin-sql") ||
+    text.includes("database startup") ||
+    text.includes("database migration") ||
+    text.includes("database connection") ||
+    text.includes("database directory") ||
+    text.includes("database path") ||
+    text.includes("database is locked");
+
+  if (!identifiesDatabaseSubsystem) return null;
+  const status = classifyDatabaseError(message);
+  return status === "error" ? null : status;
+}
+
 export function updateDatabaseSnapshotStatus(
   snapshot: DatabaseSnapshot,
   status: DatabaseStatus,
