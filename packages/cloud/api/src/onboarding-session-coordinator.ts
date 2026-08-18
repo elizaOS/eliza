@@ -972,6 +972,11 @@ export class OnboardingSessionCoordinator {
         );
         return Response.json(result);
       } catch (error) {
+        if (error instanceof SyntaxError) {
+          // error-policy:J3 untrusted request body — malformed JSON is caller
+          // error (400), not onboardingCoordinatorErrorResponse(SyntaxError) → 500.
+          return Response.json({ error: "Invalid JSON body" }, 400);
+        }
         // error-policy:J1 Durable Object transport boundary; inner onboarding
         // failures remain observable as a failed request and are never replaced
         // with an empty or successful-looking result.
