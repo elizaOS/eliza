@@ -140,6 +140,70 @@ describe("TranscriptViewerOverlay", () => {
     expect(screen.getByText("My Recording")).toBeTruthy();
   });
 
+  it("loads a stored transcript without waiting on or fetching its inline fallback", async () => {
+    const mediaFetch = vi.fn(
+      () => new Promise<Response>(() => undefined),
+    ) as unknown as typeof fetch;
+    vi.stubGlobal("fetch", mediaFetch);
+    try {
+      render(
+        <TranscriptViewerOverlay
+          attachment={{
+            ...transcriptAttachment(),
+            text: undefined,
+            url: "/api/media/stalled-fallback.md",
+          }}
+          onClose={() => {}}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(screen.getByText("My Recording")).toBeTruthy(),
+      );
+      expect(mediaFetch).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("aborts a pending inline fallback when the overlay unmounts", async () => {
+    const request: { signal?: AbortSignal } = {};
+    const mediaFetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.signal) request.signal = init.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          request.signal?.addEventListener(
+            "abort",
+            () => reject(request.signal?.reason),
+            { once: true },
+          );
+        });
+      },
+    ) as unknown as typeof fetch;
+    vi.stubGlobal("fetch", mediaFetch);
+    try {
+      const rendered = render(
+        <TranscriptViewerOverlay
+          attachment={{
+            id: "att-stalled",
+            url: "/api/media/stalled.md",
+            contentType: "document",
+            mimeType: "text/markdown",
+            title: "Stalled transcript.md",
+          }}
+          onClose={() => {}}
+        />,
+      );
+      await waitFor(() => expect(mediaFetch).toHaveBeenCalledTimes(1));
+
+      rendered.unmount();
+
+      expect(request.signal?.aborted).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("edits, undoes back to the loaded text, and persists on save & exit", async () => {
     const onClose = vi.fn();
     render(

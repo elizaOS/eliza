@@ -108,6 +108,7 @@ function copyButtonLabel(status: CopyStatus): string {
  */
 async function readInlineText(
   att: MessageAttachment,
+  signal: AbortSignal,
 ): Promise<{ text: string; loadFailed?: boolean }> {
   if (att.text?.trim()) return { text: att.text };
   const src = resolveUrl(att.url);
@@ -127,13 +128,60 @@ async function readInlineText(
     }
   }
   try {
-    const res = await fetch(src);
-    if (res.ok) return { text: await res.text() };
+    const text = await getTranscriptOverlayTextWithFetch(
+      src,
+      globalThis.fetch,
+      TRANSCRIPT_OVERLAY_FETCH_TIMEOUT_MS,
+      signal,
+    );
+    return { text };
   } catch {
     // error-policy:J4 transport failure — flagged below; the viewer renders
     // an error state when no stored record covers for it
   }
   return { text: "", loadFailed: true };
+}
+
+/** Inline transcript GET is a short UI read — same 15s family as BuildBadge. */
+export const TRANSCRIPT_OVERLAY_FETCH_TIMEOUT_MS = 15_000;
+
+export async function getTranscriptOverlayTextWithFetch(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = TRANSCRIPT_OVERLAY_FETCH_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+): Promise<string> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const controller = callerSignal ? new AbortController() : null;
+  const sources = callerSignal ? [callerSignal, timeoutSignal] : [];
+  const listeners: Array<() => void> = [];
+
+  if (controller) {
+    for (const source of sources) {
+      const abort = () => {
+        if (!controller.signal.aborted) controller.abort(source.reason);
+      };
+      if (source.aborted) {
+        abort();
+        break;
+      }
+      source.addEventListener("abort", abort, { once: true });
+      listeners.push(() => source.removeEventListener("abort", abort));
+    }
+  }
+
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      signal: controller?.signal ?? timeoutSignal,
+    });
+    if (!response.ok) {
+      throw new Error(`Transcript request failed (${response.status})`);
+    }
+    return await response.text();
+  } finally {
+    for (const remove of listeners) remove();
+  }
 }
 
 /**
@@ -223,8 +271,9 @@ export function TranscriptViewerOverlay({
   // Load the rich record (or the inline text) once.
   React.useEffect(() => {
     let live = true;
+    const inlineController = new AbortController();
+    setLoad({ status: "loading" });
     void (async () => {
-      const inline = await readInlineText(attachment);
       const id = attachment.transcriptId;
       if (id) {
         try {
@@ -248,6 +297,8 @@ export function TranscriptViewerOverlay({
         }
       }
       if (!live) return;
+      const inline = await readInlineText(attachment, inlineController.signal);
+      if (!live) return;
       if (inline.loadFailed && !inline.text) {
         // Never render "(empty transcript)" for a transcript we failed to
         // read — loading, empty, and error must stay distinguishable.
@@ -270,6 +321,7 @@ export function TranscriptViewerOverlay({
     })();
     return () => {
       live = false;
+      inlineController.abort();
     };
   }, [attachment]);
 
