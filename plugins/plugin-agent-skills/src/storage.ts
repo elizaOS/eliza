@@ -437,42 +437,58 @@ export class FileSystemSkillStore implements ISkillStorage {
 		// malicious later entry must not leave a partially installed skill behind.
 		const validatedFiles = [...pkg.files].map(([relativePath, file]) => ({
 			file,
-			fullPath: resolveContainedPath(
+			relativePath: validateSkillPackagePath(
 				path,
 				resolvedSkillDir,
-				path.join(resolvedSkillDir, relativePath),
 				relativePath,
 			),
-			relativePath,
 		}));
 
-		// Create skill directory
-		if (!fs.existsSync(skillDir)) {
-			fs.mkdirSync(skillDir);
+		if (fs.existsSync(skillDir)) {
+			assertExistingRealPathContained(fs, path, resolvedBase, skillDir, pkg.slug);
 		}
-		assertExistingRealPathContained(fs, path, resolvedBase, skillDir, pkg.slug);
 
-		// Write all files
-		for (const { file, fullPath, relativePath } of validatedFiles) {
-			const dir = path.dirname(fullPath);
+		// Materialize the entire validated package beside the live skill. The
+		// replacement becomes visible only after every file has been written, and
+		// an unsafe or failed replacement leaves the previous installation intact.
+		const stagingDir = fs.mkdtempSync(path.join(resolvedBase, ".skill-install-"));
+		const backupDir = `${stagingDir}.previous`;
+		let movedExisting = false;
+		let installed = false;
 
-			// Ensure directory exists
-			ensureContainedDirectory(
-				fs,
-				path,
-				resolvedSkillDir,
-				dir,
-				relativePath,
-			);
-			if (fs.existsSync(fullPath) && fs.lstatSync(fullPath).isSymbolicLink()) {
-				throwSkillPathTraversal(relativePath);
+		try {
+			for (const { file, relativePath } of validatedFiles) {
+				const fullPath = resolveContainedPath(
+					path,
+					stagingDir,
+					path.join(stagingDir, relativePath),
+					relativePath,
+				);
+				fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+				if (file.isText) {
+					fs.writeFileSync(fullPath, file.content as string, "utf-8");
+				} else {
+					fs.writeFileSync(fullPath, file.content as Uint8Array);
+				}
 			}
 
-			// Write file
-			if (file.isText) {
-				fs.writeFileSync(fullPath, file.content as string, "utf-8");
-			} else {
-				fs.writeFileSync(fullPath, file.content as Uint8Array);
+			if (fs.existsSync(skillDir)) {
+				fs.renameSync(skillDir, backupDir);
+				movedExisting = true;
+			}
+			fs.renameSync(stagingDir, skillDir);
+			installed = true;
+			if (movedExisting) {
+				fs.rmSync(backupDir, { recursive: true, force: true });
+			}
+		} catch (error) {
+			if (movedExisting && !installed && !fs.existsSync(skillDir)) {
+				fs.renameSync(backupDir, skillDir);
+			}
+			throw error;
+		} finally {
+			if (!installed) {
+				fs.rmSync(stagingDir, { recursive: true, force: true });
 			}
 		}
 	}
@@ -610,6 +626,12 @@ const WINDOWS_RESERVED_STEMS = new Set([
 	"NUL",
 	...Array.from({ length: 10 }, (_, i) => `COM${i}`),
 	...Array.from({ length: 10 }, (_, i) => `LPT${i}`),
+	"COM¹",
+	"COM²",
+	"COM³",
+	"LPT¹",
+	"LPT²",
+	"LPT³",
 ]);
 
 /**
@@ -644,6 +666,28 @@ function sanitizeZipEntryPath(fileName: string): string | null {
 		kept.push(part);
 	}
 	return kept.length === 0 ? null : kept.join("/");
+}
+
+/** Validate a direct storage package path against lexical and portable rules. */
+function validateSkillPackagePath(
+	path: typeof import("path"),
+	resolvedSkillDir: string,
+	relativePath: string,
+): string {
+	resolveContainedPath(
+		path,
+		resolvedSkillDir,
+		path.join(resolvedSkillDir, relativePath),
+		relativePath,
+	);
+	const normalized = sanitizeZipEntryPath(relativePath);
+	if (normalized === null || normalized !== relativePath) {
+		throw new ElizaError("Skill file has an unsafe path", {
+			code: "SKILL_ZIP_ENTRY_UNSAFE",
+			context: { entry: relativePath },
+		});
+	}
+	return normalized;
 }
 
 /**
@@ -755,36 +799,6 @@ function assertExistingRealPathContained(
 	const realTarget = fs.realpathSync(target);
 	if (realTarget !== realBase && !realTarget.startsWith(realBase + path.sep)) {
 		throwSkillPathTraversal(label);
-	}
-}
-
-/**
- * Create each missing directory only after its existing parent has passed the
- * real-path containment check. A recursive mkdir could otherwise traverse a
- * stored symlink and mutate outside the skill root before the final check.
- */
-function ensureContainedDirectory(
-	fs: typeof import("fs"),
-	path: typeof import("path"),
-	base: string,
-	target: string,
-	label: string,
-): void {
-	const resolvedBase = path.resolve(base);
-	const resolvedTarget = path.resolve(target);
-	if (resolvedTarget !== resolvedBase) {
-		assertContainedPath(path, resolvedBase, resolvedTarget, label);
-	}
-	assertExistingRealPathContained(fs, path, resolvedBase, resolvedBase, label);
-
-	const relative = path.relative(resolvedBase, resolvedTarget);
-	let current = resolvedBase;
-	for (const component of relative.split(path.sep).filter(Boolean)) {
-		current = path.join(current, component);
-		if (!fs.existsSync(current)) {
-			fs.mkdirSync(current);
-		}
-		assertExistingRealPathContained(fs, path, resolvedBase, current, label);
 	}
 }
 

@@ -97,6 +97,8 @@ const windowsCanonicalizationEntries: Array<[label: string, entryName: string]> 
 		["lowercase reserved device stem", "nul.md"],
 		["reserved device name as directory segment", "com1/escape.txt"],
 		["reserved device name LPT", "lpt9/escape.txt"],
+		["reserved device name COM with superscript digit", "COM¹.txt"],
+		["reserved device name LPT with superscript digit", "lpt³/escape.txt"],
 	];
 
 describe("zip entry path validation", () => {
@@ -172,6 +174,42 @@ describe("zip entry path validation", () => {
 		await memStore.loadFromZip("demo", zip);
 		expect(await memStore.loadSkillContent("demo")).toBe("# demo skill");
 		expect(await memStore.loadFile("demo", "scripts/run.sh")).toBe("echo hi");
+	});
+
+	it("keeps an existing installation intact when a replacement package is unsafe", async () => {
+		await fsStore.saveFromZip(
+			"demo",
+			makeZip({ "SKILL.md": "# original", "original.txt": "keep" }),
+		);
+
+		await expect(
+			fsStore.saveFromZip(
+				"demo",
+				makeZip({ "SKILL.md": "# replacement", "COM².txt": "unsafe" }),
+			),
+		).rejects.toMatchObject({ code: "SKILL_ZIP_ENTRY_UNSAFE" });
+
+		expect(await fsStore.loadSkillContent("demo")).toBe("# original");
+		expect(fs.readFileSync(path.join(basePath, "demo", "original.txt"), "utf-8")).toBe(
+			"keep",
+		);
+	});
+
+	it("atomically replaces the complete installed package", async () => {
+		await fsStore.saveFromZip(
+			"demo",
+			makeZip({ "SKILL.md": "# original", "obsolete.txt": "old" }),
+		);
+		await fsStore.saveFromZip(
+			"demo",
+			makeZip({ "SKILL.md": "# replacement", "current.txt": "new" }),
+		);
+
+		expect(await fsStore.loadSkillContent("demo")).toBe("# replacement");
+		expect(fs.existsSync(path.join(basePath, "demo", "obsolete.txt"))).toBe(false);
+		expect(fs.readFileSync(path.join(basePath, "demo", "current.txt"), "utf-8")).toBe(
+			"new",
+		);
 	});
 
 	it("skips directory entries without rejecting the archive", async () => {
@@ -416,7 +454,7 @@ describe("filesystem path containment", () => {
 	);
 
 	it.runIf(process.platform !== "win32")(
-		"does not create directories through a symlink stored inside a skill",
+		"replaces a skill without following a stored child symlink",
 		async () => {
 			const outside = path.join(outerDir, "outside");
 			const skillDir = path.join(basePath, "demo");
@@ -424,22 +462,23 @@ describe("filesystem path containment", () => {
 			fs.mkdirSync(skillDir);
 			fs.symlinkSync(outside, path.join(skillDir, "linked"), "dir");
 
-			await expect(
-				store.saveSkill({
-					slug: "demo",
-					files: new Map([
-						[
-							"linked/nested/file.txt",
-							{
-								path: "linked/nested/file.txt",
-								content: "payload",
-								isText: true,
-							},
-						],
-					]),
-				}),
-			).rejects.toMatchObject({ code: "SKILL_PATH_TRAVERSAL" });
+			await store.saveSkill({
+				slug: "demo",
+				files: new Map([
+					[
+						"linked/nested/file.txt",
+						{
+							path: "linked/nested/file.txt",
+							content: "payload",
+							isText: true,
+						},
+					],
+				]),
+			});
 			expect(fs.existsSync(path.join(outside, "nested"))).toBe(false);
+			expect(
+				fs.readFileSync(path.join(skillDir, "linked", "nested", "file.txt"), "utf8"),
+			).toBe("payload");
 		},
 	);
 
