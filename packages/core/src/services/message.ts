@@ -846,7 +846,6 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"ATTACHMENTS",
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
-	"RUNTIME_MODEL_CONTEXT",
 	// FACTS is dynamic and would otherwise never run during response
 	// composition. Stage 1 keeps it rendered when present (see
 	// STAGE1_EXTRA_PROVIDER_EXCLUSIONS) precisely so durable user facts
