@@ -49,7 +49,16 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const bodyResult = createSessionSchema.safeParse(await c.req.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      // error-policy:J3 untrusted request JSON — Hono's c.req.json() is a
+      // bare JSON.parse. SyntaxError must be a caller 400, not the
+      // failureResponse 500 that treats it as an unexpected server fault.
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const bodyResult = createSessionSchema.safeParse(rawBody);
     if (!bodyResult.success) {
       return c.json(
         {
