@@ -1,8 +1,12 @@
 /**
  * Multi-account configuration model for the iMessage connector: config shapes,
  * the merge order (env defaults < base config < per-account overrides), and the
- * DM/group policy + allowlist checks (`isIMessageUserAllowed`,
- * `isIMessageMentionRequired`) that decide whether an inbound message is handled.
+ * mention-policy check (`isIMessageMentionRequired`) that decides whether a
+ * group inbound message is handled. DM access is gated live by
+ * `IMessageService.checkDmAccess`, which routes the `pairing` policy through
+ * the core PairingService — there is intentionally no exported DM allow
+ * helper, because a synchronous policy check cannot honor the pairing
+ * handshake and would mislead importers into default-open behavior.
  * Config is read from `character.settings.imessage`. In practice one macOS host
  * runs a single Messages account (`DEFAULT_ACCOUNT_ID`); these helpers still model
  * the general inventory so the connector-account provider and service share one
@@ -296,63 +300,6 @@ export function resolveIMessageGroupConfig(
 
   // Fall back to base-level groups
   return multiConfig.groups?.[groupId];
-}
-
-/**
- * Checks if a user is allowed based on policy and allowlist
- */
-export function isIMessageUserAllowed(params: {
-  identifier: string;
-  accountConfig: IMessageAccountConfig;
-  isGroup: boolean;
-  groupId?: string;
-  groupConfig?: IMessageGroupConfig;
-}): boolean {
-  const { identifier, accountConfig, isGroup, groupConfig } = params;
-
-  if (isGroup) {
-    const policy = accountConfig.groupPolicy ?? "allowlist";
-    if (policy === "disabled") {
-      return false;
-    }
-
-    if (policy === "open") {
-      return true;
-    }
-
-    // Check group-specific allowlist first
-    if (groupConfig?.allowFrom?.length) {
-      return groupConfig.allowFrom.some((allowed) => String(allowed) === identifier);
-    }
-
-    // Check account-level group allowlist
-    if (accountConfig.groupAllowFrom?.length) {
-      return accountConfig.groupAllowFrom.some((allowed) => String(allowed) === identifier);
-    }
-
-    return policy !== "allowlist";
-  }
-
-  // DM handling
-  const policy = accountConfig.dmPolicy ?? "pairing";
-  if (policy === "disabled") {
-    return false;
-  }
-
-  if (policy === "open") {
-    return true;
-  }
-
-  if (policy === "pairing") {
-    return true;
-  }
-
-  // Allowlist policy
-  if (accountConfig.allowFrom?.length) {
-    return accountConfig.allowFrom.some((allowed) => String(allowed) === identifier);
-  }
-
-  return false;
 }
 
 /**

@@ -57,6 +57,7 @@ import {
   registerTelegramCommandHandlers,
 } from "./command-registration";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
+import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "./dm-policy";
 import { resolveTelegramRuntimeEntityId } from "./identity";
 import { MessageManager } from "./messageManager";
 import {
@@ -1076,8 +1077,10 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Authorization middleware - checks if chat is allowed to interact with the bot
-   * based on the TELEGRAM_ALLOWED_CHATS configuration.
+   * Authorization middleware - checks if chat is allowed to interact with the
+   * bot based on the TELEGRAM_ALLOWED_CHATS configuration and, for private
+   * chats without an allowlist, the TELEGRAM_DM_POLICY gate. A denied sender
+   * who was issued a pairing code receives it as a one-time reply.
    *
    * @param {Context} ctx - The context of the incoming update
    * @param {Function} next - The function to call to proceed to the next middleware
@@ -1089,7 +1092,8 @@ export class TelegramService extends Service {
     next: MiddlewareNext,
     accountId = this.defaultAccountId,
   ): Promise<void> {
-    if (!(await this.isGroupAuthorized(ctx, accountId))) {
+    const access = await this.checkChatAccess(ctx, accountId);
+    if (!access.allowed) {
       // Skip further processing if chat is not authorized
       logger.debug(
         {
@@ -1100,6 +1104,25 @@ export class TelegramService extends Service {
         },
         "Chat not authorized, skipping",
       );
+      if (access.pairingReplyMessage) {
+        try {
+          await ctx.reply(access.pairingReplyMessage);
+        } catch (error) {
+          // error-policy:J1 The middleware is the transport boundary: a failed
+          // pairing reply is logged with context and the update stays blocked;
+          // the sender can retry on their next message.
+          logger.warn(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              accountId,
+              chatId: ctx.chat?.id,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Failed to deliver pairing reply",
+          );
+        }
+      }
       return;
     }
     await next();
@@ -1263,61 +1286,101 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Checks if a group is authorized, based on the TELEGRAM_ALLOWED_CHATS setting.
+   * Checks if a chat is authorized to interact with the bot.
+   *
+   * A configured allowlist (per-account `allowedChats`, else the
+   * TELEGRAM_ALLOWED_CHATS JSON array) is authoritative for every chat type.
+   * With no allowlist configured, non-private chats stay open — a bot only
+   * sees groups it was invited to — while private DMs fall to the
+   * TELEGRAM_DM_POLICY gate, which fails closed to the core pairing handshake
+   * by default so an unconfigured bot is never default-open to strangers.
+   *
    * @param {Context} ctx - The context of the incoming update.
-   * @returns {Promise<boolean>} A Promise that resolves with a boolean indicating if the group is authorized.
+   * @returns {Promise<{allowed: boolean, pairingReplyMessage?: string}>} The
+   *   access decision, plus the pairing-code reply to deliver when the DM
+   *   policy issued one.
    */
-  private async isGroupAuthorized(
+  private async checkChatAccess(
     ctx: Context,
     accountId = this.defaultAccountId,
-  ): Promise<boolean> {
+  ): Promise<{ allowed: boolean; pairingReplyMessage?: string }> {
     const chatId = ctx.chat?.id.toString();
     if (!chatId) {
-      return false;
+      return { allowed: false };
     }
 
     const accountAllowedChats =
       this.getAccountState(accountId)?.account.config.allowedChats;
     if (accountAllowedChats?.length) {
-      return accountAllowedChats.includes(chatId);
+      return { allowed: accountAllowedChats.includes(chatId) };
     }
 
     const allowedChats = this.runtime.getSetting("TELEGRAM_ALLOWED_CHATS");
-    if (!allowedChats) {
-      return true;
-    }
-    if (typeof allowedChats !== "string") {
-      logger.warn(
-        { src: "plugin:telegram", agentId: this.runtime.agentId, accountId },
-        "TELEGRAM_ALLOWED_CHATS must be a JSON array of chat-id strings; blocking all chats until fixed",
-      );
-      return false;
-    }
-
-    try {
-      const parsed = JSON.parse(allowedChats);
-      if (!Array.isArray(parsed)) {
-        // A bare JSON string (e.g. "-1001234567") would make `.includes` a
-        // substring match and silently over-authorize — fail closed instead.
+    if (allowedChats) {
+      if (typeof allowedChats !== "string") {
         logger.warn(
           { src: "plugin:telegram", agentId: this.runtime.agentId, accountId },
           "TELEGRAM_ALLOWED_CHATS must be a JSON array of chat-id strings; blocking all chats until fixed",
         );
-        return false;
+        return { allowed: false };
       }
-      return parsed.map((entry) => String(entry)).includes(chatId);
-    } catch (error) {
-      logger.error(
-        {
-          src: "plugin:telegram",
-          agentId: this.runtime.agentId,
-          accountId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error parsing TELEGRAM_ALLOWED_CHATS",
-      );
-      return false;
+
+      try {
+        const parsed = JSON.parse(allowedChats);
+        if (!Array.isArray(parsed)) {
+          // A bare JSON string (e.g. "-1001234567") would make `.includes` a
+          // substring match and silently over-authorize — fail closed instead.
+          logger.warn(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              accountId,
+            },
+            "TELEGRAM_ALLOWED_CHATS must be a JSON array of chat-id strings; blocking all chats until fixed",
+          );
+          return { allowed: false };
+        }
+        return {
+          allowed: parsed.map((entry) => String(entry)).includes(chatId),
+        };
+      } catch (error) {
+        logger.error(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Error parsing TELEGRAM_ALLOWED_CHATS",
+        );
+        return { allowed: false };
+      }
     }
+
+    if (ctx.chat?.type !== "private") {
+      return { allowed: true };
+    }
+
+    const senderId = ctx.from?.id?.toString();
+    if (!senderId) {
+      // A private chat without a stable sender id cannot complete the pairing
+      // handshake — fail closed rather than skipping the DM policy.
+      return { allowed: false };
+    }
+    const policy = resolveTelegramDmPolicy(
+      this.runtime.getSetting("TELEGRAM_DM_POLICY"),
+    );
+    const access = await checkTelegramDmAccess(this.runtime, {
+      policy,
+      senderId,
+      username: ctx.from?.username,
+    });
+    return {
+      allowed: access.allowed,
+      ...(access.replyMessage
+        ? { pairingReplyMessage: access.replyMessage }
+        : {}),
+    };
   }
 
   /**
