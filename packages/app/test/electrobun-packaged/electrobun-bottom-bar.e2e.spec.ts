@@ -136,7 +136,7 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         pillLabel: "Open Eliza",
         pillText: "",
         pillHeight: 32,
-        pillBackground: "rgba(0, 0, 0, 0)",
+        pillBackground: expect.stringMatching(/^(?!rgba\(0, 0, 0, 0\)$).+/),
         markWidth: 48,
         markHeight: 10,
         markPainted: true,
@@ -248,9 +248,35 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     await harness.eval(
       `document.querySelector('[data-testid="shell-home-pill"]')?.click()`,
     );
+    const composerState = await harness.waitForState(
+      (next) =>
+        next.mainWindow.bounds?.width === 600 &&
+        next.mainWindow.bounds?.height === 64,
+      "Expected opening the pill to form the exact compact composer frame.",
+      30_000,
+    );
+    const composerBounds = composerState.mainWindow.bounds;
+    expect(composerBounds).toBeTruthy();
+    if (!bounds || !composerBounds) {
+      throw new Error("bottom-bar composer bounds unavailable");
+    }
+    expect(composerBounds.y + composerBounds.height).toBe(
+      bounds.y + bounds.height,
+    );
+    await expect
+      .poll(() =>
+        harness.eval(`(() => ({
+          composerPresent: Boolean(document.querySelector('[data-testid="chat-composer-textarea"]')),
+          providerTruthVisible: Boolean(document.querySelector('[data-testid="serving-provider-chip"]')),
+        }))()`),
+      )
+      .toEqual({ composerPresent: true, providerTruthVisible: false });
+    await harness.eval(
+      `document.querySelector('[data-testid="chat-composer-textarea"]')?.focus()`,
+    );
     const expandedState = await harness.waitForState(
       (next) => (next.mainWindow.bounds?.height ?? 0) > 400,
-      "Expected opening the pill to expand the bottom-anchored native chat window.",
+      "Expected focusing the composer to expand the bottom-anchored native chat window.",
       30_000,
     );
     const expandedBounds = expandedState.mainWindow.bounds;
@@ -264,17 +290,16 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     await expect
       .poll(() =>
         harness.eval(`(() => {
-          const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
+          const panel = document.querySelector('[data-testid="chat-sheet"]');
+          const surface = document.querySelector('[data-testid="chat-sheet-surface"]');
+          const overlay = document.querySelector('[data-testid="chat-overlay"]');
           return {
-            present: Boolean(panel && document.querySelector('input[aria-label="Message Eliza"]')),
-            placeholder: document.querySelector('input[aria-label="Message Eliza"]')?.getAttribute('placeholder') ?? null,
-            glassTier: panel?.getAttribute('data-glass-tier') ?? null,
-            material: panel?.getAttribute('data-popup-material') ?? null,
-            radius: panel instanceof HTMLElement ? getComputedStyle(panel).borderRadius : null,
-            background: panel instanceof HTMLElement ? getComputedStyle(panel).backgroundColor : null,
-            textColor: panel instanceof HTMLElement ? getComputedStyle(panel).color : null,
-            backdropFilter: panel instanceof HTMLElement ? getComputedStyle(panel).backdropFilter : null,
-            webkitBackdropFilter: panel instanceof HTMLElement ? getComputedStyle(panel).webkitBackdropFilter : null,
+            present: Boolean(panel && document.querySelector('[data-testid="chat-composer-textarea"]')),
+            placeholder: document.querySelector('[data-testid="chat-composer-textarea"]')?.getAttribute('placeholder') ?? null,
+            variant: panel?.getAttribute('data-variant') ?? null,
+            chatState: panel?.getAttribute('data-chat-state') ?? null,
+            glassTier: surface?.getAttribute('data-glass-tier') ?? null,
+            detached: overlay?.getAttribute('data-desktop-overlay') ?? null,
             providerLabel: document.querySelector('[data-testid="serving-provider-chip"]')?.textContent?.trim() ?? null,
             width: panel instanceof HTMLElement ? Math.round(panel.getBoundingClientRect().width) : null,
             height: panel instanceof HTMLElement ? Math.round(panel.getBoundingClientRect().height) : null,
@@ -287,19 +312,16 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
       )
       .toMatchObject({
         present: true,
-        placeholder: "Message Eliza…",
-        glassTier: expect.stringMatching(/^css-/),
-        material: "dark-frosted",
-        radius: "24px",
-        background: expect.stringMatching(/12|0\.047/),
-        textColor: expect.stringMatching(/rgb\(2\d{2}, 2\d{2}, 2\d{2}\)/),
-        backdropFilter: expect.stringContaining("blur(30px)"),
-        webkitBackdropFilter: expect.stringContaining("blur(30px)"),
-        // The mock advertises an Eliza Cloud route while deliberately staying
-        // disconnected, so the truthful serving result is its on-device fallback.
-        providerLabel: "On device",
-        width: 560,
-        height: 600,
+        placeholder: "Message Eliza",
+        variant: "open",
+        chatState: "OPEN_HALF_OR_OVER",
+        glassTier: expect.stringMatching(/^(css|native)-/),
+        detached: "true",
+        // End-user chat intentionally omits provider diagnostics. Settings is
+        // the supported surface for inspecting serving truth.
+        providerLabel: null,
+        width: expandedBounds.width,
+        height: expandedBounds.height,
       });
 
     const readExpandedGeometry = () =>
@@ -308,13 +330,11 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         panelRight: number;
         panelTop: number;
         panelBottom: number;
-        pillTop: number;
         viewportHeight: number;
         viewportWidth: number;
       }>(`(() => {
-        const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
-        const pill = document.querySelector('[data-testid="shell-home-pill"]');
-        if (!(panel instanceof HTMLElement) || !(pill instanceof HTMLElement)) {
+        const panel = document.querySelector('[data-testid="chat-sheet"]');
+        if (!(panel instanceof HTMLElement)) {
           throw new Error('expanded chat geometry unavailable');
         }
         return {
@@ -322,7 +342,6 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
           panelRight: Math.round(panel.getBoundingClientRect().right),
           panelTop: Math.round(panel.getBoundingClientRect().top),
           panelBottom: Math.round(panel.getBoundingClientRect().bottom),
-          pillTop: Math.round(pill.getBoundingClientRect().top),
           viewportHeight: Math.round(window.innerHeight),
           viewportWidth: Math.round(window.innerWidth),
         };
@@ -330,45 +349,26 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     await expect
       .poll(async () => {
         const geometry = await readExpandedGeometry();
-        const expectedTop =
-          geometry.viewportHeight -
-          56 -
-          Math.min(600, geometry.viewportHeight - 80);
-        return geometry.panelTop - expectedTop;
+        return {
+          top: geometry.panelTop,
+          bottomGap: geometry.viewportHeight - geometry.panelBottom,
+        };
       })
-      .toBe(0);
+      .toEqual({ top: 0, bottomGap: 0 });
     const expandedGeometry = await readExpandedGeometry();
-    expect(expandedGeometry.panelTop).toBeGreaterThanOrEqual(16);
-    expect(expandedGeometry.panelTop).toBe(
-      expandedGeometry.viewportHeight -
-        56 -
-        Math.min(600, expandedGeometry.viewportHeight - 80),
-    );
-    expect(expandedGeometry.panelLeft).toBeGreaterThanOrEqual(0);
-    expect(expandedGeometry.panelRight).toBeLessThanOrEqual(
-      expandedGeometry.viewportWidth,
-    );
-    expect(
-      Math.abs(
-        (expandedGeometry.panelLeft + expandedGeometry.panelRight) / 2 -
-          expandedGeometry.viewportWidth / 2,
-      ),
-    ).toBeLessThanOrEqual(1);
-    expect(expandedGeometry.panelBottom).toBeLessThan(expandedGeometry.pillTop);
-    expect(
-      expandedGeometry.pillTop - expandedGeometry.panelBottom,
-    ).toBeGreaterThanOrEqual(8);
+    expect(expandedGeometry.panelLeft).toBe(0);
+    expect(expandedGeometry.panelRight).toBe(expandedGeometry.viewportWidth);
 
     const inputResult = await harness.eval<{
       updated: boolean;
       error?: string;
     }>(`(() => {
-      const input = document.querySelector('[data-testid="shell-chat-surface"] input');
-      if (!(input instanceof HTMLInputElement)) {
+      const input = document.querySelector('[data-testid="chat-composer-textarea"]');
+      if (!(input instanceof HTMLTextAreaElement)) {
         return { updated: false, error: 'chat composer input not found' };
       }
       const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
+        window.HTMLTextAreaElement.prototype,
         'value',
       )?.set;
       if (!setter) return { updated: false, error: 'native value setter missing' };
@@ -569,12 +569,31 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
     await harness.eval(
       `document.querySelector('[aria-label="Close assistant"]')?.click()`,
     );
-    await harness.waitForState(
+    const collapsedComposerState = await harness.waitForState(
       (next) =>
-        (next.mainWindow.bounds?.height ?? Number.POSITIVE_INFINITY) <= 200,
-      "Expected closing chat to restore the compact native launcher frame.",
+        next.mainWindow.bounds?.width === 600 &&
+        next.mainWindow.bounds?.height === 64,
+      "Expected closing chat to restore the exact compact composer frame.",
       30_000,
     );
+    expect(collapsedComposerState.mainWindow.bounds).toMatchObject({
+      width: 600,
+      height: 64,
+    });
+    await harness.eval(
+      `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`,
+    );
+    const restoredPillState = await harness.waitForState(
+      (next) =>
+        next.mainWindow.bounds?.width === 64 &&
+        next.mainWindow.bounds?.height === 32,
+      "Expected a second Escape to restore the exact resting pill frame.",
+      30_000,
+    );
+    expect(restoredPillState.mainWindow.bounds).toMatchObject({
+      width: 64,
+      height: 32,
+    });
 
     const desktopBridge = await harness.eval(`({
       windowId: typeof window.__electrobunWindowId,
