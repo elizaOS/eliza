@@ -1,4 +1,4 @@
-/** Exercises onboarding coordinator request parsing with deterministic collaborators. */
+/** Verifies the onboarding coordinator JSON boundary with deterministic service mocks. */
 import { describe, expect, mock, test } from "bun:test";
 
 mock.module("../../shared/src/lib/cache/client", () => ({
@@ -43,7 +43,7 @@ function coordinator(): InstanceType<typeof OnboardingSessionCoordinator> {
 }
 
 describe("onboarding session coordinator malformed JSON", () => {
-  test("rejects truncated JSON", async () => {
+  test("returns 400 instead of 500 on truncated JSON", async () => {
     const response = await coordinator().fetch(
       new Request("https://onboarding.test/turn", {
         method: "POST",
@@ -54,6 +54,32 @@ describe("onboarding session coordinator malformed JSON", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: "Invalid JSON body",
+    });
+  });
+
+  test("does not relabel an internal SyntaxError as malformed request JSON", async () => {
+    const instance = coordinator();
+    const mutableInstance = instance as unknown as {
+      runTurn: () => Promise<never>;
+    };
+    mutableInstance.runTurn = mock(async () => {
+      throw new SyntaxError("internal parser failed");
+    });
+
+    const response = await instance.fetch(
+      new Request("https://onboarding.test/turn", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "platform:discord:user-1",
+          input: { message: "hello" },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "internal parser failed",
     });
   });
 

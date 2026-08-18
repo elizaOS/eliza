@@ -190,7 +190,7 @@ async function __hono_POST(c: AppContext) {
     try {
       rawBody = await request.json();
     } catch {
-      // error-policy:J3 malformed JSON is invalid request input.
+      // error-policy:J3 malformed JSON is an explicit invalid request.
       return Response.json({ error: "Invalid JSON body" }, { status: 400 });
     }
     const parsed = TtsBody.safeParse(rawBody);

@@ -1,4 +1,4 @@
-/** Exercises malformed request input with deterministic route collaborators. */
+/** Verifies the voice TTS request boundary with deterministic provider mocks. */
 import { afterAll, describe, expect, mock, test } from "bun:test";
 
 const assertSafeForPublicUse = mock(async () => undefined);
@@ -21,7 +21,7 @@ const fetchMock = mock(
     throw new Error(`unexpected fetch ${url}`);
   },
 );
-globalThis.fetch = fetchMock as typeof fetch;
+globalThis.fetch = fetchMock as unknown as typeof fetch;
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   requireGenerativeRouteCaller: async () => ({

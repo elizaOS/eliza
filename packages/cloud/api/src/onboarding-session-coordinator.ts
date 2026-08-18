@@ -960,7 +960,13 @@ export class OnboardingSessionCoordinator {
         if (pathname !== "/turn") {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
-        const body: unknown = await request.json();
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          // error-policy:J3 malformed JSON is an explicit invalid request.
+          return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+        }
         if (!isCoordinatorRequest(body)) {
           return Response.json(
             { error: "Invalid coordinator request" },
@@ -972,10 +978,6 @@ export class OnboardingSessionCoordinator {
         );
         return Response.json(result);
       } catch (error) {
-        if (error instanceof SyntaxError) {
-          // error-policy:J3 Reject malformed request JSON at the transport boundary.
-          return Response.json({ error: "Invalid JSON body" }, { status: 400 });
-        }
         // error-policy:J1 Durable Object transport boundary; inner onboarding
         // failures remain observable as a failed request and are never replaced
         // with an empty or successful-looking result.

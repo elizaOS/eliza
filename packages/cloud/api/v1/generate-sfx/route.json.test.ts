@@ -1,4 +1,4 @@
-/** Exercises malformed request input with deterministic route collaborators. */
+/** Verifies the sound-effect generation request boundary with deterministic provider mocks. */
 import { describe, expect, mock, test } from "bun:test";
 
 const assertSafeForPublicUse = mock(async () => undefined);
