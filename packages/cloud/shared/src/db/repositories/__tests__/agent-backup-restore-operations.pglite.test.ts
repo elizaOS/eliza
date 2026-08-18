@@ -32,11 +32,13 @@ import {
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
+import type { AgentBackupRestorePhase } from "../../schemas/agent-backup-catalog";
 import type { AgentBackupRestoreLeaseAuthorityReceipt } from "../agent-backup-restore-lease";
 import {
   advanceAgentBackupRestoreOperation,
   claimAgentBackupRestoreOperation,
   failAgentBackupRestoreOperation,
+  heartbeatAgentBackupRestoreOperation,
   openAgentBackupRestoreOperation,
 } from "../agent-backup-restore-operations";
 
@@ -95,6 +97,34 @@ async function seedLease(expiresInMs = 600_000): Promise<void> {
     catalog_epoch: 3n,
     expires_at: new Date(Date.now() + expiresInMs),
   });
+}
+
+/** Walks the machine one adjacent step at a time, re-claiming per phase. */
+async function walkTo(operationId: string, target: AgentBackupRestorePhase): Promise<void> {
+  const order: AgentBackupRestorePhase[] = [
+    "reserved",
+    "vault_seeded",
+    "container_created",
+    "restoring",
+    "committed",
+    "restart_attested",
+    "probed",
+    "published",
+  ];
+  for (let index = 0; order[index] !== target; index += 1) {
+    const claim = await claimAgentBackupRestoreOperation({
+      operationId,
+      ownerId: "restore-worker",
+      claimMs: 60_000,
+    });
+    await advanceAgentBackupRestoreOperation({
+      operationId,
+      ownerId: "restore-worker",
+      claimGeneration: claim.claimGeneration,
+      fromPhase: order[index] as AgentBackupRestorePhase,
+      toPhase: order[index + 1] as AgentBackupRestorePhase,
+    });
+  }
 }
 
 beforeAll(async () => {
@@ -283,16 +313,16 @@ describe("restore operation spine", () => {
       });
       const claim = await claimAgentBackupRestoreOperation({
         operationId: operation.id,
-        ownerId: "worker-a",
+        ownerId: "restore-worker",
         claimMs: 60_000,
       });
-      expect(claim.operation.claim_owner).toBe("worker-a");
+      expect(claim.operation.claim_owner).toBe("restore-worker");
       expect(claim.operation.attempts).toBe(1);
 
       await expect(
         claimAgentBackupRestoreOperation({
           operationId: operation.id,
-          ownerId: "worker-b",
+          ownerId: "restore-worker",
           claimMs: 60_000,
         }),
       ).rejects.toThrow("claimed by another worker");
@@ -310,28 +340,28 @@ describe("restore operation spine", () => {
       });
       const claim = await claimAgentBackupRestoreOperation({
         operationId: operation.id,
-        ownerId: "worker-a",
+        ownerId: "restore-worker",
         claimMs: 60_000,
       });
       const advanced = await advanceAgentBackupRestoreOperation({
         operationId: operation.id,
-        ownerId: "worker-a",
+        ownerId: "restore-worker",
         claimGeneration: claim.claimGeneration,
         fromPhase: "reserved",
-        toPhase: "container_created",
+        toPhase: "vault_seeded",
         recordedIdentity: { containerId: CONTAINER },
       });
-      expect(advanced.phase).toBe("container_created");
+      expect(advanced.phase).toBe("vault_seeded");
       expect(advanced.expected_container_id).toBe(CONTAINER);
       expect(advanced.claim_owner).toBeNull();
 
       await expect(
         advanceAgentBackupRestoreOperation({
           operationId: operation.id,
-          ownerId: "worker-a",
+          ownerId: "restore-worker",
           claimGeneration: claim.claimGeneration,
-          fromPhase: "container_created",
-          toPhase: "restoring",
+          fromPhase: "vault_seeded",
+          toPhase: "container_created",
         }),
       ).rejects.toThrow("claim is not live");
     },
@@ -349,7 +379,7 @@ describe("restore operation spine", () => {
       await expect(
         advanceAgentBackupRestoreOperation({
           operationId: operation.id,
-          ownerId: "worker-a",
+          ownerId: "restore-worker",
           claimGeneration: FENCE,
           fromPhase: "restoring",
           toPhase: "reserved",
@@ -369,12 +399,12 @@ describe("restore operation spine", () => {
       });
       const claim = await claimAgentBackupRestoreOperation({
         operationId: operation.id,
-        ownerId: "worker-a",
+        ownerId: "restore-worker",
         claimMs: 60_000,
       });
       const failed = await failAgentBackupRestoreOperation({
         operationId: operation.id,
-        ownerId: "worker-a",
+        ownerId: "restore-worker",
         claimGeneration: claim.claimGeneration,
         retryable: true,
         resumePhase: "reserved",
@@ -390,10 +420,143 @@ describe("restore operation spine", () => {
 
       const reclaim = await claimAgentBackupRestoreOperation({
         operationId: operation.id,
-        ownerId: "worker-b",
+        ownerId: "restore-worker",
         claimMs: 60_000,
       });
       expect(reclaim.operation.attempts).toBe(2);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses a receipt naming an agent the lease does not cover",
+    async () => {
+      const OTHER_AGENT = "00000000-0000-4000-8000-00000000fb02";
+      await dbWrite
+        .insert(agentBackupCatalogAuthorities)
+        .values({ organization_id: ORG_ID, agent_id: OTHER_AGENT, catalog_revision: 3n });
+      await seedLease();
+      await expect(
+        openAgentBackupRestoreOperation({
+          authority: { ...authorityReceipt(), agentId: OTHER_AGENT },
+          leaseId: LEASE_ID,
+        }),
+      ).rejects.toThrow("Restore lease authority does not match");
+      expect(await dbWrite.select().from(agentBackupRestoreOperations)).toEqual([]);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "a retryable failure pins the phase it was in, and resuming re-enters exactly that phase",
+    async () => {
+      await seedLease();
+      const { operation } = await openAgentBackupRestoreOperation({
+        authority: authorityReceipt(),
+        leaseId: LEASE_ID,
+      });
+      await walkTo(operation.id, "restoring");
+      const claim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      await expect(
+        failAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimGeneration: claim.claimGeneration,
+          retryable: true,
+          resumePhase: "published",
+          errorCode: "STREAM_TIMEOUT",
+          error: "stream timed out",
+          failureDigest: SHA,
+          retryDelayMs: 0,
+        }),
+      ).rejects.toThrow("is in restoring and cannot pin a resume at published");
+
+      const failed = await failAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: claim.claimGeneration,
+        retryable: true,
+        resumePhase: "restoring",
+        errorCode: "STREAM_TIMEOUT",
+        error: "stream timed out",
+        failureDigest: SHA,
+        retryDelayMs: 0,
+      });
+      expect(failed.phase).toBe("failed_retryable");
+      expect(failed.resume_phase).toBe("restoring");
+
+      const retry = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      await expect(
+        advanceAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimGeneration: retry.claimGeneration,
+          fromPhase: "failed_retryable",
+          toPhase: "committed",
+        }),
+      ).rejects.toThrow("must resume restoring, not committed");
+
+      const resumed = await advanceAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: retry.claimGeneration,
+        fromPhase: "failed_retryable",
+        toPhase: "restoring",
+      });
+      expect(resumed.phase).toBe("restoring");
+      expect(resumed.resume_phase).toBeNull();
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "a heartbeat extends a live claim and an expired claim can no longer write a failure",
+    async () => {
+      await seedLease();
+      const { operation } = await openAgentBackupRestoreOperation({
+        authority: authorityReceipt(),
+        leaseId: LEASE_ID,
+      });
+      const claim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 1_000,
+      });
+      const renewed = await heartbeatAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: claim.claimGeneration,
+        claimMs: 600_000,
+      });
+      expect(renewed.claim_expires_at?.getTime()).toBeGreaterThan(
+        claim.operation.claim_expires_at?.getTime() ?? 0,
+      );
+
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({ claim_expires_at: new Date(Date.now() - 3_600_000) })
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      await expect(
+        failAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimGeneration: claim.claimGeneration,
+          retryable: true,
+          resumePhase: "reserved",
+          errorCode: "LATE",
+          error: "zombie writer",
+          failureDigest: SHA,
+          retryDelayMs: 900_000,
+        }),
+      ).rejects.toThrow("claim is not live");
     },
     TIMEOUT,
   );
@@ -406,36 +569,27 @@ describe("restore operation spine", () => {
         authority: authorityReceipt(),
         leaseId: LEASE_ID,
       });
+      await walkTo(operation.id, "published");
       const claim = await claimAgentBackupRestoreOperation({
         operationId: operation.id,
-        ownerId: "worker-a",
+        ownerId: "restore-worker",
         claimMs: 60_000,
       });
       await expect(
         advanceAgentBackupRestoreOperation({
           operationId: operation.id,
-          ownerId: "worker-a",
+          ownerId: "restore-worker",
           claimGeneration: claim.claimGeneration,
-          fromPhase: "reserved",
+          fromPhase: "published",
           toPhase: "finalized",
         }),
       ).rejects.toThrow("Finalization requires a receipt digest");
-      await expect(
-        advanceAgentBackupRestoreOperation({
-          operationId: operation.id,
-          ownerId: "worker-a",
-          claimGeneration: claim.claimGeneration,
-          fromPhase: "reserved",
-          toPhase: "restoring",
-          receiptDigest: SHA,
-        }),
-      ).rejects.toThrow("no other phase accepts one");
 
       const finalized = await advanceAgentBackupRestoreOperation({
         operationId: operation.id,
-        ownerId: "worker-a",
+        ownerId: "restore-worker",
         claimGeneration: claim.claimGeneration,
-        fromPhase: "reserved",
+        fromPhase: "published",
         toPhase: "finalized",
         receiptDigest: SHA,
       });
@@ -446,7 +600,7 @@ describe("restore operation spine", () => {
       await expect(
         claimAgentBackupRestoreOperation({
           operationId: operation.id,
-          ownerId: "worker-b",
+          ownerId: "restore-worker",
           claimMs: 60_000,
         }),
       ).rejects.toThrow("terminal in phase finalized");

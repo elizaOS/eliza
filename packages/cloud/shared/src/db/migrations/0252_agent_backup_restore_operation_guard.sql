@@ -25,6 +25,8 @@ BEGIN
     OR NEW."expected_activation_generation" IS DISTINCT FROM OLD."expected_activation_generation"
     OR NEW."expected_lifecycle_revision" IS DISTINCT FROM OLD."expected_lifecycle_revision"
     OR NEW."copy_role" IS DISTINCT FROM OLD."copy_role"
+    OR NEW."lease_owner_id" IS DISTINCT FROM OLD."lease_owner_id"
+    OR NEW."catalog_epoch" IS DISTINCT FROM OLD."catalog_epoch"
     OR NEW."created_at" IS DISTINCT FROM OLD."created_at" THEN
     RAISE EXCEPTION 'restore operation identity is immutable: %', OLD."id"
       USING ERRCODE = '55000';

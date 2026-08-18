@@ -1,16 +1,16 @@
 /**
  * Durable phase store for one restore attempt.
  *
- * A restore has one side effect per phase and each is expensive or destructive,
- * so every effect's exact identity is recorded before it is attempted: a worker
- * that loses its response re-reads the recorded identity and verifies, instead
- * of re-running the effect. The fencing token is the lease's own `generation` —
- * a second token would let the operation outlive the authority it rests on.
+ * Each phase records the identity of the side effect it completed, so a worker
+ * that loses its response can later compare rather than repeat. The readers that
+ * do that comparison arrive with the phases themselves; this slice is the spine
+ * they hang from, and nothing here creates containers or contacts an agent.
  *
- * Nothing here creates containers or contacts an agent; this is the spine those
- * later phases hang from.
+ * The fencing token is the lease's own `generation`: a second token would let an
+ * operation outlive the authority it rests on.
  */
 
+import { Buffer } from "node:buffer";
 import { and, eq, notInArray } from "drizzle-orm";
 import { requireBoundedIdentity } from "../../lib/services/agent-backup-catalog-state";
 import { isValidUUID } from "../../lib/utils/validation";
@@ -58,6 +58,21 @@ export interface AgentBackupRestoreOperationClaim {
   databaseNow: Date;
 }
 
+function requireOwnerId(value: string): string {
+  requireBoundedIdentity(value, "ownerId");
+  if (Buffer.byteLength(value, "utf8") > 255) {
+    throw new AgentBackupCatalogConflictError("ownerId must contain at most 255 UTF-8 bytes");
+  }
+  return value;
+}
+
+function requireSha256(value: string, field: string): string {
+  if (!/^[0-9a-f]{64}$/.test(value)) {
+    throw new AgentBackupCatalogConflictError(`${field} must be a lowercase sha256 digest`);
+  }
+  return value;
+}
+
 function requireUuid(value: string, field: string): string {
   if (!isValidUUID(value) || value !== value.toLowerCase()) {
     throw new AgentBackupCatalogConflictError(`${field} must be a canonical lowercase UUID`);
@@ -80,9 +95,13 @@ export async function openAgentBackupRestoreOperation(
   const restoreAttemptId = requireUuid(authority.restoreAttemptId, "restoreAttemptId");
   const leaseId = requireUuid(input.leaseId, "leaseId");
   const fencingToken = requireUuid(authority.fencingToken, "fencingToken");
-  requireBoundedIdentity(authority.ownerId, "ownerId");
+  requireOwnerId(authority.ownerId);
 
   return await dbWrite.transaction(async (tx) => {
+    // Catalogue authority before lease: acquire/renew/release all take the
+    // authority first, and taking them the other way round here would deadlock
+    // a replay against a concurrent renewal.
+    const catalogAuthority = await lockAgentBackupCatalogAuthority(tx, organizationId, agentId);
     const [lease] = await tx
       .select()
       .from(agentBackupRestoreLeases)
@@ -90,6 +109,7 @@ export async function openAgentBackupRestoreOperation(
         and(
           eq(agentBackupRestoreLeases.id, leaseId),
           eq(agentBackupRestoreLeases.organization_id, organizationId),
+          eq(agentBackupRestoreLeases.agent_id, agentId),
           eq(agentBackupRestoreLeases.backup_id, backupId),
           eq(agentBackupRestoreLeases.restore_attempt_id, restoreAttemptId),
           eq(agentBackupRestoreLeases.generation, fencingToken),
@@ -105,7 +125,6 @@ export async function openAgentBackupRestoreOperation(
     // The catalogue epoch is re-proved here, not inherited from the receipt: a
     // revision advanced between acquire and open invalidates the attempt, and an
     // operation row is permanent once written.
-    const catalogAuthority = await lockAgentBackupCatalogAuthority(tx, organizationId, agentId);
     if (catalogAuthority.catalog_revision !== lease.catalog_epoch) {
       throw new AgentBackupCatalogConflictError(
         "Restore attempt was invalidated by a catalogue revision",
@@ -171,8 +190,9 @@ export async function openAgentBackupRestoreOperation(
 }
 
 /**
- * Take a claim on one due operation. Discovery is not authorization: the row is
- * re-locked and every fence re-proved inside the claiming transaction.
+ * Take a claim on one due operation. The row is re-locked inside the claiming
+ * transaction and the lease is re-proved live; the claimant must be the lease's
+ * own owner, because nobody else can renew the lease it will run under.
  */
 export async function claimAgentBackupRestoreOperation(params: {
   operationId: string;
@@ -180,7 +200,7 @@ export async function claimAgentBackupRestoreOperation(params: {
   claimMs: number;
 }): Promise<AgentBackupRestoreOperationClaim> {
   const operationId = requireUuid(params.operationId, "operationId");
-  requireBoundedIdentity(params.ownerId, "ownerId");
+  requireOwnerId(params.ownerId);
   if (
     !Number.isSafeInteger(params.claimMs) ||
     params.claimMs < MIN_CLAIM_MS ||
@@ -221,6 +241,10 @@ export async function claimAgentBackupRestoreOperation(params: {
       .limit(1);
     if (!lease) {
       throw new AgentBackupCatalogConflictError("Restore lease fence was lost");
+    }
+
+    if (lease.owner_id !== params.ownerId) {
+      throw new AgentBackupCatalogConflictError("Restore lease belongs to another owner");
     }
 
     const databaseNow = await readPostLockDatabaseNow(tx);
@@ -279,13 +303,36 @@ export async function advanceAgentBackupRestoreOperation(params: {
 }): Promise<Readonly<AgentBackupRestoreOperation>> {
   const operationId = requireUuid(params.operationId, "operationId");
   const claimGeneration = requireUuid(params.claimGeneration, "claimGeneration");
-  const fromRank = PHASE_ORDER.indexOf(params.fromPhase);
   const toRank = PHASE_ORDER.indexOf(params.toPhase);
-  if (fromRank < 0 || toRank < 0 || toRank <= fromRank) {
+  // Resuming re-enters the recorded phase; otherwise a phase advances to exactly
+  // its successor. Skipping would let a coordinator bug finalize a restore that
+  // never created a container or streamed a byte.
+  const resuming = params.fromPhase === "failed_retryable";
+  if (!resuming) {
+    const fromRank = PHASE_ORDER.indexOf(params.fromPhase);
+    if (fromRank < 0 || toRank !== fromRank + 1) {
+      throw new AgentBackupCatalogConflictError(
+        `Restore operation cannot advance from ${params.fromPhase} to ${params.toPhase}`,
+      );
+    }
+  } else if (toRank < 0) {
+    throw new AgentBackupCatalogConflictError(`${params.toPhase} is not a resumable phase`);
+  }
+  const identity = params.recordedIdentity ?? {};
+  if ((identity.nodeRecordId === undefined) !== (identity.nodeIncarnation === undefined)) {
     throw new AgentBackupCatalogConflictError(
-      `Restore operation cannot advance from ${params.fromPhase} to ${params.toPhase}`,
+      "Recording a node identity requires both the record id and the incarnation",
     );
   }
+  if (identity.nodeRecordId !== undefined) requireUuid(identity.nodeRecordId, "nodeRecordId");
+  if (identity.nodeIncarnation !== undefined) {
+    requireUuid(identity.nodeIncarnation, "nodeIncarnation");
+  }
+  if (identity.containerId !== undefined) requireSha256(identity.containerId, "containerId");
+  if (identity.imageDigest !== undefined && !/^sha256:[0-9a-f]{64}$/.test(identity.imageDigest)) {
+    throw new AgentBackupCatalogConflictError("imageDigest must be a canonical sha256 reference");
+  }
+  if (params.receiptDigest !== undefined) requireSha256(params.receiptDigest, "receiptDigest");
   if ((params.toPhase === "finalized") !== (params.receiptDigest !== undefined)) {
     throw new AgentBackupCatalogConflictError(
       "Finalization requires a receipt digest and no other phase accepts one",
@@ -332,7 +379,12 @@ export async function advanceAgentBackupRestoreOperation(params: {
       throw new AgentBackupCatalogConflictError("Restore operation claim is not live");
     }
 
-    const identity = params.recordedIdentity ?? {};
+    if (resuming && operation.resume_phase !== params.toPhase) {
+      throw new AgentBackupCatalogConflictError(
+        `Restore operation must resume ${operation.resume_phase}, not ${params.toPhase}`,
+      );
+    }
+
     const [advanced] = await tx
       .update(agentBackupRestoreOperations)
       .set({
@@ -373,8 +425,90 @@ export async function advanceAgentBackupRestoreOperation(params: {
 }
 
 /**
- * Record a failure. A retryable failure pins the phase to re-enter so a later
- * claim cannot resume somewhere cheaper; a terminal one closes the operation.
+ * Extend a live claim. A phase that streams a whole backup outlives any sane
+ * default claim window, so the worker renews rather than losing the claim
+ * mid-work and handing the operation to a second worker.
+ */
+export async function heartbeatAgentBackupRestoreOperation(params: {
+  operationId: string;
+  ownerId: string;
+  claimGeneration: string;
+  claimMs: number;
+}): Promise<Readonly<AgentBackupRestoreOperation>> {
+  const operationId = requireUuid(params.operationId, "operationId");
+  const claimGeneration = requireUuid(params.claimGeneration, "claimGeneration");
+  requireOwnerId(params.ownerId);
+  if (
+    !Number.isSafeInteger(params.claimMs) ||
+    params.claimMs < MIN_CLAIM_MS ||
+    params.claimMs > MAX_CLAIM_MS
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      `claimMs must be an integer between ${MIN_CLAIM_MS} and ${MAX_CLAIM_MS}`,
+    );
+  }
+
+  return await dbWrite.transaction(async (tx) => {
+    const [operation] = await tx
+      .select()
+      .from(agentBackupRestoreOperations)
+      .where(eq(agentBackupRestoreOperations.id, operationId))
+      .for("update")
+      .limit(1);
+    if (!operation) {
+      throw new AgentBackupCatalogConflictError("Restore operation is missing");
+    }
+
+    const [lease] = await tx
+      .select()
+      .from(agentBackupRestoreLeases)
+      .where(
+        and(
+          eq(agentBackupRestoreLeases.id, operation.lease_id),
+          eq(agentBackupRestoreLeases.organization_id, operation.organization_id),
+          eq(agentBackupRestoreLeases.generation, operation.lease_generation),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!lease) {
+      throw new AgentBackupCatalogConflictError("Restore lease fence was lost");
+    }
+
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (lease.released_at !== null || lease.expires_at <= databaseNow) {
+      throw new AgentBackupCatalogConflictError("Restore lease is expired or released");
+    }
+    if (
+      operation.claim_owner !== params.ownerId ||
+      operation.claim_generation !== claimGeneration ||
+      operation.claim_expires_at === null ||
+      operation.claim_expires_at <= databaseNow
+    ) {
+      throw new AgentBackupCatalogConflictError("Restore operation claim is not live");
+    }
+
+    const [renewed] = await tx
+      .update(agentBackupRestoreOperations)
+      .set({ claim_expires_at: new Date(databaseNow.getTime() + params.claimMs) })
+      .where(
+        and(
+          eq(agentBackupRestoreOperations.id, operationId),
+          eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
+        ),
+      )
+      .returning();
+    if (!renewed) {
+      throw new AgentBackupCatalogConflictError("Restore operation heartbeat lost its CAS");
+    }
+    return Object.freeze(renewed);
+  });
+}
+
+/**
+ * Record a failure under a live claim. A retryable failure pins the phase to
+ * re-enter — which must be the phase the operation is actually in, or the guard
+ * would turn a caller's mistake into an enforced skip. A terminal one closes it.
  */
 export async function failAgentBackupRestoreOperation(params: {
   operationId: string;
@@ -389,7 +523,10 @@ export async function failAgentBackupRestoreOperation(params: {
 }): Promise<Readonly<AgentBackupRestoreOperation>> {
   const operationId = requireUuid(params.operationId, "operationId");
   const claimGeneration = requireUuid(params.claimGeneration, "claimGeneration");
-  if (!PHASE_ORDER.includes(params.resumePhase) || params.resumePhase === "finalized") {
+  requireOwnerId(params.ownerId);
+  requireSha256(params.failureDigest, "failureDigest");
+  requireBoundedIdentity(params.errorCode, "errorCode");
+  if (params.retryable && !PHASE_ORDER.includes(params.resumePhase)) {
     throw new AgentBackupCatalogConflictError(`${params.resumePhase} is not a resumable phase`);
   }
 
@@ -403,12 +540,38 @@ export async function failAgentBackupRestoreOperation(params: {
     if (!operation) {
       throw new AgentBackupCatalogConflictError("Restore operation is missing");
     }
+    const [lease] = await tx
+      .select()
+      .from(agentBackupRestoreLeases)
+      .where(
+        and(
+          eq(agentBackupRestoreLeases.id, operation.lease_id),
+          eq(agentBackupRestoreLeases.organization_id, operation.organization_id),
+          eq(agentBackupRestoreLeases.generation, operation.lease_generation),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!lease) {
+      throw new AgentBackupCatalogConflictError("Restore lease fence was lost");
+    }
+
     const databaseNow = await readPostLockDatabaseNow(tx);
+    if (lease.released_at !== null || lease.expires_at <= databaseNow) {
+      throw new AgentBackupCatalogConflictError("Restore lease is expired or released");
+    }
     if (
       operation.claim_owner !== params.ownerId ||
-      operation.claim_generation !== claimGeneration
+      operation.claim_generation !== claimGeneration ||
+      operation.claim_expires_at === null ||
+      operation.claim_expires_at <= databaseNow
     ) {
       throw new AgentBackupCatalogConflictError("Restore operation claim is not live");
+    }
+    if (params.retryable && params.resumePhase !== operation.phase) {
+      throw new AgentBackupCatalogConflictError(
+        `Restore operation is in ${operation.phase} and cannot pin a resume at ${params.resumePhase}`,
+      );
     }
 
     const [failed] = await tx
