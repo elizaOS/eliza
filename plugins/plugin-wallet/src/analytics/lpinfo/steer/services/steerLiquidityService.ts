@@ -91,6 +91,8 @@ const SUPPORTED_CHAIN_IDS = [1, 137, 42161, 10, 8453]; // mainnet, polygon, arbi
 const STEER_GRAPHQL_ENDPOINT =
   "https://api.subgraph.ormilabs.com/api/public/803c8c8c-be12-4188-8523-b9853e23051d/subgraphs/steer-protocol-base/prod/gn";
 
+export const DEFAULT_STEER_FETCH_TIMEOUT_MS = 10_000;
+
 interface TokenLiquidityStats {
   tokenIdentifier: string;
   normalizedToken: string;
@@ -1152,6 +1154,7 @@ export class SteerLiquidityService extends Service {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(DEFAULT_STEER_FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) {
@@ -1630,6 +1633,7 @@ export class SteerLiquidityService extends Service {
           query,
           variables,
         }),
+        signal: AbortSignal.timeout(DEFAULT_STEER_FETCH_TIMEOUT_MS),
       });
 
       if (!response.ok) {
