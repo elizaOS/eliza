@@ -3346,8 +3346,17 @@ export class OrchestratorTaskService extends Service {
    * the user to review. Matched against the durable goal + original request.
    */
   static wantsPullRequest(text: string): boolean {
+    // Negation-aware: "just commit it locally, no pr needed" matched the bare
+    // \bpr\b token and auto-submit opened the PR the user explicitly declined
+    // (live 2026-08-18, battery probe). Strip negated PR mentions (a negation
+    // word within a short bounded gap of the PR token) first; whatever PR
+    // mention survives is a genuine ask.
+    const withoutNegated = text.replace(
+      /\b(?:no|without|skip|don'?t|do not|never|not)\b(?:\s+\w+){0,3}?\s*(?:pr|pull[- ]?request|merge[- ]?request)s?\b/gi,
+      " ",
+    );
     return /\b(?:pull[- ]request|merge[- ]request|\bpr\b|open (?:a |the )?pr\b)/i.test(
-      text,
+      withoutNegated,
     );
   }
 
