@@ -46,6 +46,7 @@ const PHASE_ORDER: readonly AgentBackupRestorePhase[] = [
 
 const MIN_CLAIM_MS = 1_000;
 const MAX_CLAIM_MS = 3_600_000;
+const MAX_RETRY_DELAY_MS = 3_600_000;
 
 export interface OpenAgentBackupRestoreOperationInput {
   authority: AgentBackupRestoreLeaseAuthorityReceipt;
@@ -156,6 +157,7 @@ export async function openAgentBackupRestoreOperation(
         existing.lease_owner_id !== authority.ownerId ||
         existing.catalog_epoch !== lease.catalog_epoch ||
         existing.copy_role !== lease.copy_role ||
+        existing.expected_operation_id !== lease.operation_id ||
         existing.expected_manifest_sha256 !== lease.expected_manifest_sha256 ||
         existing.expected_activation_generation !== lease.activation_generation ||
         existing.expected_lifecycle_revision !== lease.lifecycle_revision
@@ -177,6 +179,7 @@ export async function openAgentBackupRestoreOperation(
         lease_owner_id: authority.ownerId,
         catalog_epoch: lease.catalog_epoch,
         copy_role: lease.copy_role,
+        expected_operation_id: lease.operation_id,
         expected_manifest_sha256: lease.expected_manifest_sha256,
         expected_activation_generation: lease.activation_generation,
         expected_lifecycle_revision: lease.lifecycle_revision,
@@ -529,6 +532,15 @@ export async function failAgentBackupRestoreOperation(params: {
   if (params.retryable && !PHASE_ORDER.includes(params.resumePhase)) {
     throw new AgentBackupCatalogConflictError(`${params.resumePhase} is not a resumable phase`);
   }
+  if (
+    !Number.isSafeInteger(params.retryDelayMs) ||
+    params.retryDelayMs < 0 ||
+    params.retryDelayMs > MAX_RETRY_DELAY_MS
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      `retryDelayMs must be an integer between 0 and ${MAX_RETRY_DELAY_MS}`,
+    );
+  }
 
   return await dbWrite.transaction(async (tx) => {
     const [operation] = await tx
@@ -582,7 +594,7 @@ export async function failAgentBackupRestoreOperation(params: {
         claim_owner: null,
         claim_generation: null,
         claim_expires_at: null,
-        next_attempt_at: new Date(databaseNow.getTime() + Math.max(0, params.retryDelayMs)),
+        next_attempt_at: new Date(databaseNow.getTime() + params.retryDelayMs),
         last_error_code: params.errorCode,
         last_error: params.error.slice(0, 2_000),
         last_failure_generation: claimGeneration,

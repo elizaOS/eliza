@@ -21,6 +21,7 @@ BEGIN
     OR NEW."restore_attempt_id" IS DISTINCT FROM OLD."restore_attempt_id"
     OR NEW."lease_id" IS DISTINCT FROM OLD."lease_id"
     OR NEW."lease_generation" IS DISTINCT FROM OLD."lease_generation"
+    OR NEW."expected_operation_id" IS DISTINCT FROM OLD."expected_operation_id"
     OR NEW."expected_manifest_sha256" IS DISTINCT FROM OLD."expected_manifest_sha256"
     OR NEW."expected_activation_generation" IS DISTINCT FROM OLD."expected_activation_generation"
     OR NEW."expected_lifecycle_revision" IS DISTINCT FROM OLD."expected_lifecycle_revision"
@@ -58,6 +59,10 @@ BEGIN
   new_rank := array_position(ordinals, NEW."phase");
   IF old_rank IS NOT NULL AND new_rank IS NOT NULL AND new_rank < old_rank THEN
     RAISE EXCEPTION 'restore operation % cannot rewind from % to %',
+      OLD."id", OLD."phase", NEW."phase" USING ERRCODE = '55000';
+  END IF;
+  IF old_rank IS NOT NULL AND new_rank IS NOT NULL AND new_rank > old_rank + 1 THEN
+    RAISE EXCEPTION 'restore operation % cannot skip from % to %',
       OLD."id", OLD."phase", NEW."phase" USING ERRCODE = '55000';
   END IF;
 

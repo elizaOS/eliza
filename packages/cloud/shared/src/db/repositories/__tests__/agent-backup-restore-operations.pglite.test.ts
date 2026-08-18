@@ -246,32 +246,33 @@ afterAll(async () => {
 
 describe("restore operation spine", () => {
   test(
-    "opens once, replays identically, and refuses a divergent replay",
+    "opens once under concurrent response-loss replay and DB-refuses divergent authority",
     async () => {
       await seedLease();
-      const opened = await openAgentBackupRestoreOperation({
-        authority: authorityReceipt(),
-        leaseId: LEASE_ID,
-      });
-      expect(opened.replayed).toBe(false);
-      expect(opened.operation.phase).toBe("reserved");
-      expect(opened.operation.lease_generation).toBe(FENCE);
-      expect(opened.operation.catalog_epoch).toBe(3n);
-
-      const replay = await openAgentBackupRestoreOperation({
-        authority: authorityReceipt(),
-        leaseId: LEASE_ID,
-      });
-      expect(replay.replayed).toBe(true);
-      expect(replay.operation.id).toBe(opened.operation.id);
-
-      await dbWrite
-        .update(agentBackupRestoreOperations)
-        .set({ lease_owner_id: "someone-else" })
-        .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
-      await expect(
+      const results = await Promise.all([
         openAgentBackupRestoreOperation({ authority: authorityReceipt(), leaseId: LEASE_ID }),
-      ).rejects.toThrow("Restore operation replay authority mismatch");
+        openAgentBackupRestoreOperation({ authority: authorityReceipt(), leaseId: LEASE_ID }),
+      ]);
+      const opened = results.find((result) => !result.replayed);
+      const replay = results.find((result) => result.replayed);
+      expect(opened?.operation.phase).toBe("reserved");
+      expect(opened?.operation.lease_generation).toBe(FENCE);
+      expect(opened?.operation.catalog_epoch).toBe(3n);
+      expect(replay?.operation.id).toBe(opened?.operation.id);
+
+      let divergenceError: unknown;
+      try {
+        await dbWrite
+          .update(agentBackupRestoreOperations)
+          .set({ lease_owner_id: "someone-else" })
+          .where(eq(agentBackupRestoreOperations.id, opened?.operation.id ?? ""))
+          .execute();
+      } catch (error) {
+        divergenceError = error;
+      }
+      expect((divergenceError as { cause?: { constraint?: string } }).cause?.constraint).toBe(
+        "agent_backup_restore_operations_lease_authority_fkey",
+      );
     },
     TIMEOUT,
   );
@@ -418,6 +419,21 @@ describe("restore operation spine", () => {
         ownerId: "restore-worker",
         claimMs: 60_000,
       });
+      for (const retryDelayMs of [-1, Number.NaN, 3_600_001]) {
+        await expect(
+          failAgentBackupRestoreOperation({
+            operationId: operation.id,
+            ownerId: "restore-worker",
+            claimGeneration: claim.claimGeneration,
+            retryable: true,
+            resumePhase: "reserved",
+            errorCode: "VAULT_SEED_TIMEOUT",
+            error: "seeding timed out",
+            failureDigest: SHA,
+            retryDelayMs,
+          }),
+        ).rejects.toThrow("retryDelayMs must be an integer between 0 and 3600000");
+      }
       const failed = await failAgentBackupRestoreOperation({
         operationId: operation.id,
         ownerId: "restore-worker",

@@ -348,6 +348,21 @@ export const agentBackupRestoreLeases = pgTable(
       table.owner_id,
       table.generation,
     ),
+    operation_authority_unique: unique("agent_backup_restore_leases_operation_authority_unique").on(
+      table.id,
+      table.organization_id,
+      table.agent_id,
+      table.backup_id,
+      table.restore_attempt_id,
+      table.owner_id,
+      table.generation,
+      table.catalog_epoch,
+      table.copy_role,
+      table.operation_id,
+      table.activation_generation,
+      table.lifecycle_revision,
+      table.expected_manifest_sha256,
+    ),
     one_unreleased_uidx: uniqueIndex("agent_backup_restore_leases_one_unreleased_uidx")
       .on(table.organization_id, table.backup_id)
       .where(sql`${table.released_at} IS NULL`),
@@ -411,6 +426,7 @@ export const agentBackupRestoreOperations = pgTable(
     attempts: integer("attempts").notNull().default(0),
     next_attempt_at: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     expected_manifest_sha256: text("expected_manifest_sha256").notNull(),
+    expected_operation_id: uuid("expected_operation_id").notNull(),
     expected_activation_generation: uuid("expected_activation_generation").notNull(),
     expected_lifecycle_revision: numeric("expected_lifecycle_revision", {
       precision: 20,
@@ -431,10 +447,39 @@ export const agentBackupRestoreOperations = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    // The two composite FKs onto agent_backup_restore_leases live in migration
-    // 0251 only. Their targets are unique INDEXES on that table, and pushSchema
-    // emits foreign keys before indexes, so declaring them here would break
-    // every pushSchema-based suite while the real migration applies cleanly.
+    lease_authority_fk: foreignKey({
+      name: "agent_backup_restore_operations_lease_authority_fkey",
+      columns: [
+        table.lease_id,
+        table.organization_id,
+        table.agent_id,
+        table.backup_id,
+        table.restore_attempt_id,
+        table.lease_owner_id,
+        table.lease_generation,
+        table.catalog_epoch,
+        table.copy_role,
+        table.expected_operation_id,
+        table.expected_activation_generation,
+        table.expected_lifecycle_revision,
+        table.expected_manifest_sha256,
+      ],
+      foreignColumns: [
+        agentBackupRestoreLeases.id,
+        agentBackupRestoreLeases.organization_id,
+        agentBackupRestoreLeases.agent_id,
+        agentBackupRestoreLeases.backup_id,
+        agentBackupRestoreLeases.restore_attempt_id,
+        agentBackupRestoreLeases.owner_id,
+        agentBackupRestoreLeases.generation,
+        agentBackupRestoreLeases.catalog_epoch,
+        agentBackupRestoreLeases.copy_role,
+        agentBackupRestoreLeases.operation_id,
+        agentBackupRestoreLeases.activation_generation,
+        agentBackupRestoreLeases.lifecycle_revision,
+        agentBackupRestoreLeases.expected_manifest_sha256,
+      ],
+    }).onDelete("restrict"),
     catalog_authority_fk: foreignKey({
       name: "agent_backup_restore_operations_catalog_authority_fkey",
       columns: [table.organization_id, table.agent_id],
