@@ -113,6 +113,9 @@ export class SharedMemoryStore {
       userId: this.scope.userId,
       agentId,
     };
+    // Round-3 transfer fence lives INSIDE the writer's insert transaction
+    // (shared advisory lock + fenced-state check, see shared-transfer-epochs
+    // acquireSharedWriteGuard) — no separate read-then-write window here.
     const landedAt = Date.now();
     // One batched sidecar round-trip for both texts; an embedding failure
     // degrades to vector-less rows (recall coverage shrinks) but never loses

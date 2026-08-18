@@ -293,6 +293,16 @@
       "import": "./dist/contracts/index.js",
       "default": "./dist/contracts/index.js"
     },
+    "./contracts/shared-memory-transfer": {
+      "types": "./dist/contracts/shared-memory-transfer.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/shared-memory-transfer.ts",
+        "import": "./src/contracts/shared-memory-transfer.ts",
+        "default": "./src/contracts/shared-memory-transfer.ts"
+      },
+      "import": "./dist/contracts/shared-memory-transfer.js",
+      "default": "./dist/contracts/shared-memory-transfer.js"
+    },
     "./contracts/pendant-session-sync": {
       "types": "./dist/contracts/pendant-session-sync.d.ts",
       "eliza-source": {

@@ -38,6 +38,7 @@ export { logTable } from "./log";
 export { longTermMemories } from "./longTermMemories";
 export { memoryTable } from "./memory";
 export { memoryAccessLogs } from "./memoryAccessLogs";
+export { memoryImportStagingTable } from "./memoryImportStaging";
 export { messageTable } from "./message";
 export { messageServerTable } from "./messageServer";
 export { messageServerAgentsTable } from "./messageServerAgent";

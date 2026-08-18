@@ -1,0 +1,510 @@
+/**
+ * Exercises the promotion-epoch state machine, the write fence, and the
+ * fenced sealed export against real PGlite: concurrent opens racing on the
+ * partial unique index, invalid transitions, double-promotion, fence
+ * enforcement ahead of any store write, keyset pagination across equal
+ * timestamps, and seal signature verification — the exact-head concurrency
+ * evidence for the round-3 transfer (#21090 review).
+ */
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
+
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
+process.env.NODE_ENV ||= "test";
+
+const TIMEOUT = 60_000;
+const ORG = "51000000-0000-4000-8000-000000000001";
+const USER = "52000000-0000-4000-8000-000000000001";
+const AGENT = "53000000-0000-4000-8000-000000000001";
+const SCOPE = { organizationId: ORG, userId: USER, agentId: AGENT };
+const KEY = "pglite-test-seal-key";
+
+let epochs: typeof import("./shared-transfer-epochs");
+let memories: typeof import("./shared-agent-memories");
+let sealedExport: typeof import("../../lib/services/shared-runtime/shared-memory-sealed-export");
+let coordinator: typeof import("../../lib/services/shared-runtime/shared-memory-promotion-coordinator");
+let records: typeof import("./shared-transfer-records");
+let contract: typeof import("@elizaos/shared/contracts/shared-memory-transfer");
+let dbWrite: typeof import("../client").dbWrite;
+let closeForTests: typeof import("../client").closeDatabaseConnectionsForTests | undefined;
+
+beforeAll(async () => {
+  const client = await import("../client");
+  dbWrite = client.dbWrite;
+  closeForTests = client.closeDatabaseConnectionsForTests;
+  epochs = await import("./shared-transfer-epochs");
+  memories = await import("./shared-agent-memories");
+  records = await import("./shared-transfer-records");
+  sealedExport = await import("../../lib/services/shared-runtime/shared-memory-sealed-export");
+  coordinator = await import(
+    "../../lib/services/shared-runtime/shared-memory-promotion-coordinator"
+  );
+  contract = await import("@elizaos/shared/contracts/shared-memory-transfer");
+  await client.getPgliteClientForTests().exec(`
+    CREATE TABLE organizations (id uuid PRIMARY KEY);
+    CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE shared_transfer_epochs (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      agent_id uuid NOT NULL,
+      epoch integer NOT NULL,
+      state text NOT NULL,
+      seal_digest text,
+      fenced_at timestamp,
+      resolved_at timestamp,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE UNIQUE INDEX uq_shared_transfer_epochs_scope_epoch
+      ON shared_transfer_epochs (organization_id, user_id, agent_id, epoch);
+    CREATE UNIQUE INDEX uq_shared_transfer_epochs_scope_active
+      ON shared_transfer_epochs (organization_id, user_id, agent_id)
+      WHERE state IN ('open','fenced');
+    CREATE TABLE shared_agent_memories (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL,
+      user_id uuid NOT NULL,
+      agent_id uuid NOT NULL,
+      entity_id uuid,
+      room_id uuid,
+      world_id uuid,
+      type text NOT NULL,
+      content jsonb NOT NULL,
+      embedding real[],
+      embedding_model text,
+      created_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE TABLE shared_transfer_records (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      agent_id uuid NOT NULL,
+      epoch integer NOT NULL,
+      destination_host text NOT NULL,
+      seal_digest text,
+      batch_count integer,
+      state text NOT NULL,
+      receipts jsonb NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    );
+    CREATE UNIQUE INDEX uq_shared_transfer_records_scope_epoch
+      ON shared_transfer_records (organization_id, user_id, agent_id, epoch);
+    INSERT INTO organizations (id) VALUES ('${ORG}');
+    INSERT INTO users (id) VALUES ('${USER}');
+  `);
+}, TIMEOUT);
+
+afterAll(async () => {
+  await closeForTests?.();
+});
+
+async function resetEpochs() {
+  await dbWrite.execute(sql`DELETE FROM shared_transfer_epochs`);
+  await dbWrite.execute(sql`DELETE FROM shared_transfer_records`);
+}
+
+async function insertMemoryRow(i: number, createdAt: string) {
+  const id = `61000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+  await dbWrite.execute(sql`
+    INSERT INTO shared_agent_memories
+      (id, organization_id, user_id, agent_id, type, content, embedding, created_at)
+    VALUES (${id}, ${ORG}, ${USER}, ${AGENT}, 'messages',
+      ${JSON.stringify({ text: `m${i}` })}::jsonb,
+      ${`{0.1,0.2}`}::real[], ${createdAt}::timestamp)
+  `);
+  return id;
+}
+
+describe("epoch state machine (pglite)", () => {
+  test(
+    "open → fence → promote records digest and is terminal",
+    async () => {
+      await resetEpochs();
+      const opened = await epochs.openEpoch(SCOPE);
+      expect(opened.state).toBe("open");
+      const fenced = await epochs.fenceEpoch(SCOPE, opened.epoch);
+      expect(fenced.state).toBe("fenced");
+      const promoted = await epochs.promoteEpoch(SCOPE, opened.epoch, "a".repeat(64));
+      expect(promoted.state).toBe("promoted");
+      expect(promoted.seal_digest).toBe("a".repeat(64));
+      await expect(epochs.promoteEpoch(SCOPE, opened.epoch, "b".repeat(64))).rejects.toMatchObject({
+        code: epochs.SHARED_TRANSFER_EPOCH_INVALID_STATE,
+      });
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "concurrent opens race at the partial unique index — exactly one wins",
+    async () => {
+      await resetEpochs();
+      const results = await Promise.allSettled([
+        epochs.openEpoch(SCOPE),
+        epochs.openEpoch(SCOPE),
+        epochs.openEpoch(SCOPE),
+      ]);
+      const wins = results.filter((r) => r.status === "fulfilled");
+      expect(wins).toHaveLength(1);
+      for (const loss of results.filter((r) => r.status === "rejected")) {
+        expect((loss as PromiseRejectedResult).reason?.code).toBe(
+          epochs.SHARED_TRANSFER_EPOCH_CONFLICT,
+        );
+      }
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "promote requires fenced; fence requires open",
+    async () => {
+      await resetEpochs();
+      const opened = await epochs.openEpoch(SCOPE);
+      await expect(epochs.promoteEpoch(SCOPE, opened.epoch, "c".repeat(64))).rejects.toMatchObject({
+        code: epochs.SHARED_TRANSFER_EPOCH_INVALID_STATE,
+      });
+      await epochs.fenceEpoch(SCOPE, opened.epoch);
+      await expect(epochs.fenceEpoch(SCOPE, opened.epoch)).rejects.toMatchObject({
+        code: epochs.SHARED_TRANSFER_EPOCH_INVALID_STATE,
+      });
+      await epochs.abortEpoch(SCOPE, opened.epoch);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "write fence: open does not block, fenced does, abort lifts it",
+    async () => {
+      await resetEpochs();
+      await epochs.assertScopeWritable(SCOPE);
+      const opened = await epochs.openEpoch(SCOPE);
+      await epochs.assertScopeWritable(SCOPE);
+      await epochs.fenceEpoch(SCOPE, opened.epoch);
+      await expect(epochs.assertScopeWritable(SCOPE)).rejects.toMatchObject({
+        code: epochs.SHARED_TRANSFER_SCOPE_FENCED,
+      });
+      await epochs.abortEpoch(SCOPE, opened.epoch);
+      await epochs.assertScopeWritable(SCOPE);
+    },
+    TIMEOUT,
+  );
+});
+
+describe("fenced sealed export (pglite)", () => {
+  test(
+    "export refuses an unfenced scope",
+    async () => {
+      await resetEpochs();
+      await expect(sealedExport.exportSealedSharedMemories(SCOPE, KEY)).rejects.toMatchObject({
+        code: sealedExport.SHARED_MEMORY_EXPORT_NOT_FENCED,
+      });
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "export paginates across equal timestamps without loss and seals verifiably",
+    async () => {
+      await resetEpochs();
+      await dbWrite.execute(sql`DELETE FROM shared_agent_memories`);
+      // 503 rows forces two keyset pages; a shared timestamp across the
+      // boundary exercises the tuple-compare cursor.
+      const SHARED_TS = "2026-08-17T12:00:00.000Z";
+      for (let i = 0; i < 503; i++) {
+        const ts =
+          i < 490 ? new Date(Date.parse(SHARED_TS) - (503 - i) * 1000).toISOString() : SHARED_TS;
+        await insertMemoryRow(i, ts);
+      }
+      const opened = await epochs.openEpoch(SCOPE);
+      await epochs.fenceEpoch(SCOPE, opened.epoch);
+      const out = await sealedExport.exportSealedSharedMemories(SCOPE, KEY);
+      expect(out.rows).toHaveLength(503);
+      expect(new Set(out.rows.map((r) => r.id)).size).toBe(503);
+      expect(out.seal.row_count).toBe(503);
+      expect(out.seal.epoch).toBe(opened.epoch);
+      expect(out.seal.vector_dimension).toBe(2);
+      expect(await contract.verifySealSignature(out.seal, KEY)).toBe(true);
+      expect(await contract.verifySealSignature(out.seal, "wrong")).toBe(false);
+      expect(await contract.computeSharedMemoryTransferDigest(out.rows)).toBe(out.seal.digest);
+      await epochs.promoteEpoch(SCOPE, opened.epoch, out.seal.digest);
+    },
+    TIMEOUT,
+  );
+});
+
+describe("writer-level fence coordination (pglite)", () => {
+  test(
+    "a fenced scope refuses insertMemory with a typed error — no read-then-write window",
+    async () => {
+      await resetEpochs();
+      const opened = await epochs.openEpoch(SCOPE);
+      await epochs.fenceEpoch(SCOPE, opened.epoch);
+      await expect(
+        memories.sharedAgentMemoriesWriter.insertMemory({
+          scope: SCOPE,
+          type: "messages",
+          content: { text: "should not land" },
+        }),
+      ).rejects.toMatchObject({ code: epochs.SHARED_TRANSFER_SCOPE_FENCED });
+      await epochs.abortEpoch(SCOPE, opened.epoch);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "an in-flight guarded write delays the fence; the export contains it — no lost writes",
+    async () => {
+      await resetEpochs();
+      await dbWrite.execute(sql`DELETE FROM shared_agent_memories`);
+      const opened = await epochs.openEpoch(SCOPE);
+      const order: string[] = [];
+      let releaseWriter: () => void = () => {};
+      const writerHold = new Promise<void>((r) => {
+        releaseWriter = r;
+      });
+      // Writer transaction: shared guard, then hold the transaction open.
+      const writer = dbWrite.transaction(async (tx) => {
+        await epochs.acquireSharedWriteGuard(tx, SCOPE);
+        await tx.execute(sql`
+					INSERT INTO shared_agent_memories
+						(id, organization_id, user_id, agent_id, type, content, created_at)
+					VALUES ('62000000-0000-4000-8000-000000000001', ${SCOPE.organizationId},
+						${SCOPE.userId}, ${SCOPE.agentId}, 'messages',
+						${JSON.stringify({ text: "in-flight" })}::jsonb, now())
+				`);
+        await writerHold;
+        order.push("writer-committed");
+      });
+      // Give the writer time to take the shared lock, then fence.
+      await new Promise((r) => setTimeout(r, 300));
+      const fence = epochs.fenceEpoch(SCOPE, opened.epoch).then((row) => {
+        order.push("fence-committed");
+        return row;
+      });
+      // The fence must NOT resolve while the writer holds the shared lock.
+      await new Promise((r) => setTimeout(r, 500));
+      expect(order).toEqual([]);
+      releaseWriter();
+      await writer;
+      await fence;
+      expect(order).toEqual(["writer-committed", "fence-committed"]);
+      const out = await sealedExport.exportSealedSharedMemories(SCOPE, KEY);
+      expect(out.rows.map((r) => r.id)).toContain("62000000-0000-4000-8000-000000000001");
+      await epochs.promoteEpoch(SCOPE, opened.epoch, out.seal.digest);
+    },
+    TIMEOUT,
+  );
+});
+
+describe("promotion coordinator (pglite)", () => {
+  function okFetch(calls: Array<{ url: string; body: Record<string, unknown> }>) {
+    return async (url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+      calls.push({ url, body });
+      const isFinalize = url.includes("finalize");
+      const seal = body.seal as { row_count: number };
+      return new Response(
+        JSON.stringify(
+          isFinalize ? { ok: true, published: seal.row_count, skipped_existing: 0 } : { ok: true },
+        ),
+        { status: 200 },
+      );
+    };
+  }
+
+  test(
+    "end to end: open→fence→export→stage→finalize→promote, conservation checked",
+    async () => {
+      await resetEpochs();
+      await dbWrite.execute(sql`DELETE FROM shared_agent_memories`);
+      await insertMemoryRow(900, "2026-08-17T10:00:00.000Z");
+      const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+      const result = await coordinator.runSealedPromotion({
+        scope: SCOPE,
+        destination: { baseUrl: "http://100.64.9.9:7777" },
+        sealKey: KEY,
+        fetchImpl: okFetch(calls),
+      });
+      expect(result.published).toBe(1);
+      expect(result.resumed).toBe(false);
+      expect(calls.map((c) => c.url.split("/").pop())).toEqual(["stage", "finalize"]);
+      const after = await epochs.getActiveEpoch(SCOPE);
+      expect(after).toBeNull();
+      const promotedRows = (await dbWrite.execute(
+        sql`SELECT state, seal_digest FROM shared_transfer_epochs WHERE agent_id = ${SCOPE.agentId} ORDER BY epoch DESC LIMIT 1`,
+      )) as { rows?: Array<{ state: string; seal_digest: string }> };
+      const promoted = Array.isArray(promotedRows) ? promotedRows[0] : promotedRows.rows?.[0];
+      expect(promoted?.state).toBe("promoted");
+      expect(promoted?.seal_digest).toBe(result.seal.digest);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "delivery failure aborts the epoch and lifts the fence",
+    async () => {
+      await resetEpochs();
+      const failing = async () => new Response(JSON.stringify({ ok: false }), { status: 500 });
+      await expect(
+        coordinator.runSealedPromotion({
+          scope: SCOPE,
+          destination: { baseUrl: "http://100.64.9.9:7777" },
+          sealKey: KEY,
+          fetchImpl: failing,
+        }),
+      ).rejects.toMatchObject({
+        code: coordinator.SHARED_MEMORY_PROMOTION_DELIVERY_FAILED,
+      });
+      expect(await epochs.getActiveEpoch(SCOPE)).toBeNull();
+      await memories.sharedAgentMemoriesWriter.insertMemory({
+        scope: SCOPE,
+        type: "messages",
+        content: { text: "fence lifted after abort" },
+      });
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "a crashed run's fenced epoch is RESUMED, not reopened",
+    async () => {
+      await resetEpochs();
+      const opened = await epochs.openEpoch(SCOPE);
+      await epochs.fenceEpoch(SCOPE, opened.epoch);
+      const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+      const result = await coordinator.runSealedPromotion({
+        scope: SCOPE,
+        destination: { baseUrl: "http://100.64.9.9:7777" },
+        sealKey: KEY,
+        fetchImpl: okFetch(calls),
+      });
+      expect(result.resumed).toBe(true);
+      expect(result.epoch).toBe(opened.epoch);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "destination outside CGNAT and suffix allowlist is refused before any request",
+    async () => {
+      await resetEpochs();
+      let touched = false;
+      await expect(
+        coordinator.runSealedPromotion({
+          scope: SCOPE,
+          destination: { baseUrl: "https://evil.example.com" },
+          sealKey: KEY,
+          fetchImpl: async () => {
+            touched = true;
+            return new Response("{}", { status: 200 });
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: coordinator.SHARED_MEMORY_PROMOTION_TARGET_FORBIDDEN,
+      });
+      expect(touched).toBe(false);
+      expect(await epochs.getActiveEpoch(SCOPE)).toBeNull();
+    },
+    TIMEOUT,
+  );
+});
+
+describe("destination-bound transfer record (pglite)", () => {
+  test(
+    "happy path persists the full receipt ledger and promoted state",
+    async () => {
+      await resetEpochs();
+      await dbWrite.execute(sql`DELETE FROM shared_agent_memories`);
+      await insertMemoryRow(950, "2026-08-17T11:00:00.000Z");
+      const result = await coordinator.runSealedPromotion({
+        scope: SCOPE,
+        destination: { baseUrl: "http://100.64.9.9:7777" },
+        sealKey: KEY,
+        fetchImpl: async (url: string, init: RequestInit) => {
+          const body = JSON.parse(String(init.body)) as { seal: { row_count: number } };
+          return new Response(
+            JSON.stringify(
+              url.includes("finalize")
+                ? { ok: true, published: body.seal.row_count, skipped_existing: 0 }
+                : { ok: true, total_staged: 1 },
+            ),
+            { status: 200 },
+          );
+        },
+      });
+      const record = await records.getRecord(SCOPE, result.epoch);
+      expect(record?.state).toBe("promoted");
+      expect(record?.destination_host).toBe("100.64.9.9");
+      expect(record?.seal_digest).toBe(result.seal.digest);
+      const kinds = (record?.receipts ?? []).map((r) => r.kind);
+      expect(kinds).toEqual(["stage", "finalize"]);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "resume against a DIFFERENT destination is refused — the record is destination-bound",
+    async () => {
+      await resetEpochs();
+      const opened = await epochs.openEpoch(SCOPE);
+      await epochs.fenceEpoch(SCOPE, opened.epoch);
+      await records.createOrResumeRecord(SCOPE, opened.epoch, "100.64.9.9");
+      await expect(
+        coordinator.runSealedPromotion({
+          scope: SCOPE,
+          destination: { baseUrl: "http://100.64.1.1:7777" },
+          sealKey: KEY,
+          fetchImpl: async () => new Response("{}", { status: 200 }),
+        }),
+      ).rejects.toMatchObject({
+        code: records.SHARED_TRANSFER_RECORD_DESTINATION_MISMATCH,
+      });
+      await epochs.abortEpoch(SCOPE, opened.epoch);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "resume skips batches that already carry a stage receipt",
+    async () => {
+      await resetEpochs();
+      await dbWrite.execute(sql`DELETE FROM shared_agent_memories`);
+      await insertMemoryRow(960, "2026-08-17T11:30:00.000Z");
+      const opened = await epochs.openEpoch(SCOPE);
+      await epochs.fenceEpoch(SCOPE, opened.epoch);
+      await records.createOrResumeRecord(SCOPE, opened.epoch, "100.64.9.9");
+      await records.appendReceipt(SCOPE, opened.epoch, {
+        kind: "stage",
+        batch_index: 0,
+        total_staged: 1,
+        at: "2026-08-18T03:00:00.000Z",
+      });
+      const stageCalls: number[] = [];
+      const result = await coordinator.runSealedPromotion({
+        scope: SCOPE,
+        destination: { baseUrl: "http://100.64.9.9:7777" },
+        sealKey: KEY,
+        fetchImpl: async (url: string, init: RequestInit) => {
+          const body = JSON.parse(String(init.body)) as {
+            batch_index?: number;
+            seal: { row_count: number };
+          };
+          if (!url.includes("finalize")) stageCalls.push(body.batch_index ?? -1);
+          return new Response(
+            JSON.stringify(
+              url.includes("finalize")
+                ? { ok: true, published: body.seal.row_count, skipped_existing: 0 }
+                : { ok: true, total_staged: 1 },
+            ),
+            { status: 200 },
+          );
+        },
+      });
+      expect(result.skipped_batches).toEqual([0]);
+      expect(stageCalls).toEqual([]);
+      expect(result.resumed).toBe(true);
+    },
+    TIMEOUT,
+  );
+});
