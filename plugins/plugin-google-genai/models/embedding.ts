@@ -4,8 +4,12 @@
  * A `null`/empty-object input is treated as an initialization probe and answered
  * with a fixed 768-length marker vector so the runtime can size its embedding
  * column without a network call; real text is truncated to the model's ~8192
- * token limit, embedded, and reported via `emitModelUsageEvent`. Throws on empty
- * text and on an empty API response rather than fabricating a vector.
+ * token limit, embedded, and reported via `emitModelUsageEvent`. Real requests
+ * pin `outputDimensionality` to the same 768 width as the probe and L2-normalize
+ * the result, because the default `gemini-embedding-001` otherwise emits its
+ * 3072-dim default and every write would fail the probe-sized column (#22010).
+ * Throws on empty text, on an empty API response, and on a width that disagrees
+ * with the probe rather than fabricating or misfitting a vector.
  *
  * A 404 / NOT_FOUND from the provider (e.g. a decommissioned model id like
  * `text-embedding-004` on the current `v1beta` route) fails CLOSED with one
@@ -16,7 +20,7 @@
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { createGoogleGenAI, getEmbeddingModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { countTokens } from "../utils/tokenization";
@@ -25,10 +29,72 @@ const TEXT_EMBEDDING_MODEL_TYPE = ((
   ElizaCore as { ModelType?: Record<string, string> }
 ).ModelType?.TEXT_EMBEDDING ?? "TEXT_EMBEDDING") as string;
 
+/**
+ * Target embedding width for both the init probe and every real write. Chosen
+ * to match the historical/native default so an existing 768-wide pgvector
+ * column keeps working after the default model moved to `gemini-embedding-001`
+ * (which otherwise emits 3072). `gemini-embedding-001` accepts an
+ * `outputDimensionality` in {768, 1536, 3072}; 768 is Google's supported
+ * reduced width.
+ */
+const EMBEDDING_DIMENSIONS = 768;
+
 function createInitProbeVector(): number[] {
-  const vector = Array(768).fill(0);
+  const vector = Array(EMBEDDING_DIMENSIONS).fill(0);
   vector[0] = 0.1;
   return vector;
+}
+
+/**
+ * L2-normalize an embedding so its Euclidean norm is 1. Google returns
+ * sub-3072 `outputDimensionality` vectors un-normalized, so callers that expect
+ * cosine-comparable unit vectors (as the native 768-dim `text-embedding-004`
+ * produced) must renormalize. Three inputs cannot yield a unit vector and are
+ * each rejected here with a typed error rather than returning a silently-corrupt
+ * embedding a downstream store could persist: a non-finite component (a
+ * `NaN`/`±Infinity` slipping through a transport/SDK bug), a norm that overflows
+ * to a non-finite value (a huge or accumulating magnitude whose squares exceed
+ * `Number.MAX_VALUE` even though every component is finite — dividing by it
+ * would yield an all-zero "unit" vector), and a zero-magnitude vector.
+ */
+function l2Normalize(vector: number[]): number[] {
+  let sumSquares = 0;
+  for (let index = 0; index < vector.length; index++) {
+    const value = vector[index];
+    if (!Number.isFinite(value)) {
+      throw new ElizaError(
+        "Google GenAI API returned a non-finite embedding component that cannot be normalized",
+        {
+          code: "EMBEDDING_NON_FINITE",
+          context: { dimensions: vector.length, index },
+        },
+      );
+    }
+    sumSquares += value * value;
+  }
+  const norm = Math.sqrt(sumSquares);
+  if (!Number.isFinite(norm)) {
+    // Every component is finite but their squared sum overflowed the double
+    // range, so `norm` is `Infinity` and `value / norm` would be all zeros —
+    // a silent all-zero "unit" vector. Fail closed like the other classes.
+    throw new ElizaError(
+      "Google GenAI API returned an embedding whose magnitude overflowed to a non-finite value and cannot be normalized",
+      {
+        code: "EMBEDDING_NORM_OVERFLOW",
+        context: { dimensions: vector.length },
+      },
+    );
+  }
+  if (norm === 0) {
+    throw new ElizaError(
+      "Google GenAI API returned a zero-magnitude embedding that cannot be normalized",
+      {
+        code: "EMBEDDING_ZERO_MAGNITUDE",
+        context: { dimensions: vector.length },
+      },
+    );
+  }
+  return vector.map((value) => value / norm);
 }
 
 function extractText(
@@ -86,12 +152,39 @@ export async function handleTextEmbedding(
     const response = await genAI.models.embedContent({
       model: embeddingModelName,
       contents: text,
+      // Pin the output width to the same size as the init probe so the value
+      // written matches the pgvector column the runtime sized from the probe.
+      // Without this, `gemini-embedding-001` returns its 3072-dim default and
+      // every write fails against the 768-wide column (#22010).
+      config: { outputDimensionality: EMBEDDING_DIMENSIONS },
     });
 
-    const embedding = response.embeddings?.[0]?.values || [];
-    if (embedding.length === 0) {
+    const rawEmbedding = response.embeddings?.[0]?.values || [];
+    if (rawEmbedding.length === 0) {
       throw new Error("Google GenAI API returned no embedding");
     }
+
+    // Fail CLOSED on a width that disagrees with the probe rather than writing a
+    // mismatched vector into a column the runtime already sized from the probe.
+    if (rawEmbedding.length !== EMBEDDING_DIMENSIONS) {
+      throw new ElizaError(
+        `Google embedding model "${embeddingModelName}" returned ${rawEmbedding.length} dimensions, ` +
+          `but the init probe pinned the embedding width to ${EMBEDDING_DIMENSIONS}. ` +
+          `Set GOOGLE_EMBEDDING_MODEL to a model whose output matches the ${EMBEDDING_DIMENSIONS}-dim probe.`,
+        {
+          code: "EMBEDDING_DIMENSION_MISMATCH",
+          context: {
+            model: embeddingModelName,
+            returnedDimensions: rawEmbedding.length,
+            expectedDimensions: EMBEDDING_DIMENSIONS,
+          },
+        },
+      );
+    }
+
+    // Google does not pre-normalize sub-3072 outputs; renormalize so the vector
+    // is unit-length and cosine-comparable like the native 768-dim model.
+    const embedding = l2Normalize(rawEmbedding);
 
     const promptTokens = await countTokens(text);
 
@@ -106,6 +199,13 @@ export async function handleTextEmbedding(
   } catch (error) {
     // error-policy:J2 context-adding rethrow — never fabricate a vector; the
     // provider failure surfaces to the caller (#9324: throw, never fabricate).
+    // Our own typed failures (width mismatch, non-finite/zero magnitude) are
+    // already actionable — rethrow them as-is so a value like a "returned 404
+    // dimensions" mismatch is never re-bucketed by the 404 message probe below.
+    if (error instanceof ElizaError) {
+      logger.error(`Error generating embedding: ${error.message}`);
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     // Fail CLOSED on a 404 / NOT_FOUND with one clear, model-named error rather
     // than propagating the raw SDK 404 on every subsequent call. This is the

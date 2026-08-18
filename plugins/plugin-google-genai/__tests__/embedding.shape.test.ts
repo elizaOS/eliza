@@ -1,7 +1,13 @@
 /**
- * Unit tests for `handleTextEmbedding`: the null-probe marker vector, usage
- * emission, and the throw paths (empty input, empty API response). The config,
- * events, tokenization, and `@google/genai` layers are mocked — no live call.
+ * Unit tests for `handleTextEmbedding`: the null-probe marker vector, the
+ * probe/write width contract (#22010 — both pinned to 768 so the runtime's
+ * probe-sized pgvector column matches every write), L2 normalization, usage
+ * emission, and the typed fail-closed throw paths (empty input, empty API
+ * response, width mismatch, zero-magnitude, non-finite components, and a norm
+ * that overflows to a non-finite value). The real `ElizaError` is used via
+ * `importActual` so the typed `code`/`context` contract is asserted against the
+ * class the handler actually throws; the config, events, tokenization, and
+ * `@google/genai` layers are mocked — no live call.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,21 +19,28 @@ const mocks = vi.hoisted(() => ({
   emitModelUsageEvent: vi.fn(),
 }));
 
-vi.mock("@elizaos/core", () => ({
-  logger: {
-    debug: vi.fn(),
-    error: vi.fn(),
-    log: vi.fn(),
-    warn: vi.fn(),
-  },
-  ModelType: {
-    TEXT_EMBEDDING: "TEXT_EMBEDDING",
-  },
-}));
+vi.mock("@elizaos/core", async () => {
+  // Use the real ElizaError so `instanceof` and the typed code/context contract
+  // are exercised against the class the handler throws, not a drifting stub.
+  const actual =
+    await vi.importActual<typeof import("@elizaos/core")>("@elizaos/core");
+  return {
+    ElizaError: actual.ElizaError,
+    logger: {
+      debug: vi.fn(),
+      error: vi.fn(),
+      log: vi.fn(),
+      warn: vi.fn(),
+    },
+    ModelType: {
+      TEXT_EMBEDDING: "TEXT_EMBEDDING",
+    },
+  };
+});
 
 vi.mock("../utils/config", () => ({
   createGoogleGenAI: mocks.createGoogleGenAI,
-  getEmbeddingModel: vi.fn(() => "text-embedding-004"),
+  getEmbeddingModel: vi.fn(() => "gemini-embedding-001"),
 }));
 
 vi.mock("../utils/events", () => ({
@@ -51,8 +64,10 @@ describe("Google GenAI embeddings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.countTokens.mockResolvedValue(5);
+    // gemini-embedding-001 honours outputDimensionality:768 and returns a
+    // 768-length (un-normalized) vector for that request.
     mocks.embedContent.mockResolvedValue({
-      embeddings: [{ values: [0.1, 0.2, 0.3] }],
+      embeddings: [{ values: Array(768).fill(0.5) }],
     });
     mocks.createGoogleGenAI.mockReturnValue({
       models: {
@@ -76,11 +91,7 @@ describe("Google GenAI embeddings", () => {
 
     const embedding = await handleTextEmbedding(runtime, "hello");
 
-    expect(embedding).toEqual([0.1, 0.2, 0.3]);
-    expect(mocks.embedContent).toHaveBeenCalledWith({
-      model: "text-embedding-004",
-      contents: "hello",
-    });
+    expect(embedding).toHaveLength(768);
     expect(mocks.emitModelUsageEvent).toHaveBeenCalledWith(
       runtime,
       "TEXT_EMBEDDING",
@@ -91,6 +102,141 @@ describe("Google GenAI embeddings", () => {
         totalTokens: 5,
       },
     );
+  });
+
+  it("pins outputDimensionality to the probe width so the write matches the sized column (#22010)", async () => {
+    // Regression for #22010: the default model gemini-embedding-001 emits 3072
+    // dims by default, but the runtime sizes its pgvector column from the 768
+    // init probe. The real request MUST constrain the width to 768 or every
+    // memory write fails with "expected 768 dimensions, not 3072".
+    const probe = await handleTextEmbedding(createRuntime(), null);
+    const embedding = await handleTextEmbedding(createRuntime(), "hello");
+
+    expect(mocks.embedContent).toHaveBeenCalledWith({
+      model: "gemini-embedding-001",
+      contents: "hello",
+      config: { outputDimensionality: 768 },
+    });
+    // The probe (which sizes the column) and a real write agree on width.
+    expect(embedding).toHaveLength(probe.length);
+    expect(embedding).toHaveLength(768);
+  });
+
+  it("L2-normalizes the returned vector to unit length", async () => {
+    // Google does not pre-normalize sub-3072 outputs; the handler renormalizes
+    // so vectors stay cosine-comparable like the native 768-dim model did.
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: Array(768).fill(2) }],
+    });
+
+    const embedding = await handleTextEmbedding(createRuntime(), "hello");
+
+    const norm = Math.sqrt(
+      embedding.reduce((acc, value) => acc + value * value, 0),
+    );
+    expect(norm).toBeCloseTo(1, 10);
+    // Every component of a uniform vector normalizes to 1/sqrt(768).
+    expect(embedding[0]).toBeCloseTo(1 / Math.sqrt(768), 10);
+  });
+
+  it("fails closed with a typed width-mismatch error when the provider returns a width other than the probe (no mismatched write)", async () => {
+    // Adversarial: a provider ignoring outputDimensionality and returning 3072
+    // must not be written into the 768-sized column; the handler throws instead.
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: Array(3072).fill(0.01) }],
+    });
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_DIMENSION_MISMATCH",
+      context: {
+        model: "gemini-embedding-001",
+        returnedDimensions: 3072,
+        expectedDimensions: 768,
+      },
+    });
+  });
+
+  it("rejects a zero-magnitude embedding with a typed error that cannot be normalized", async () => {
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: Array(768).fill(0) }],
+    });
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_ZERO_MAGNITUDE",
+      context: { dimensions: 768 },
+    });
+  });
+
+  it("fails closed when the norm overflows to a non-finite value (all components finite)", async () => {
+    // A single enormous component squares past Number.MAX_VALUE, so sumSquares
+    // (and thus the norm) is Infinity even though every component is finite and
+    // the per-component Number.isFinite guard passes. Dividing by an Infinity
+    // norm would return an all-zero "unit" vector — a silent corrupt embedding a
+    // store could persist — so the handler must fail closed instead.
+    const single = Array(768).fill(1e-10);
+    single[0] = 1e200;
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: single }],
+    });
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_NORM_OVERFLOW",
+      context: { dimensions: 768 },
+    });
+
+    // Accumulation variant: 768 finite components whose squares each fit the
+    // double range but whose sum overflows, even though the true norm
+    // (√768·10^154 ≈ 2.77e155) is perfectly representable. The naive sum can't
+    // see this, so guarding the norm — not just each component — is required.
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: Array(768).fill(1e154) }],
+    });
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_NORM_OVERFLOW",
+      context: { dimensions: 768 },
+    });
+  });
+
+  it("fails closed on a non-finite component instead of returning an all-NaN unit vector", async () => {
+    // A NaN slipping through a transport/SDK bug would leave norm = NaN, so a
+    // bare `norm === 0` guard never fires and an all-NaN "unit" vector escapes.
+    // pgvector accepts NaN literals, so it would store silently and corrupt
+    // similarity ordering; the handler must reject the vector instead.
+    const poisoned = Array(768).fill(0.5);
+    poisoned[7] = Number.NaN;
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: poisoned }],
+    });
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_NON_FINITE",
+      context: { dimensions: 768, index: 7 },
+    });
+
+    // Infinity is analogous (norm = Infinity), and must also fail closed.
+    const infinite = Array(768).fill(0.5);
+    infinite[7] = Number.POSITIVE_INFINITY;
+    mocks.embedContent.mockResolvedValue({
+      embeddings: [{ values: infinite }],
+    });
+
+    await expect(
+      handleTextEmbedding(createRuntime(), "hello"),
+    ).rejects.toMatchObject({
+      code: "EMBEDDING_NON_FINITE",
+      context: { dimensions: 768, index: 7 },
+    });
   });
 
   it("throws for empty embedding input before creating a client", async () => {

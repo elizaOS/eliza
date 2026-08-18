@@ -17,7 +17,7 @@ Registers model handlers for all elizaOS `ModelType` tiers (nano through mega, p
 | `TEXT_MEGA` | `handleTextMega` | falls back to large model |
 | `RESPONSE_HANDLER` | `handleResponseHandler` | falls back to nano model |
 | `ACTION_PLANNER` | `handleActionPlanner` | falls back to medium model |
-| `TEXT_EMBEDDING` | `handleTextEmbedding` | `text-embedding-004` (768-dim) |
+| `TEXT_EMBEDDING` | `handleTextEmbedding` | `gemini-embedding-001` (pinned to 768-dim, L2-normalized) |
 | `IMAGE_DESCRIPTION` | `handleImageDescription` | `gemini-2.5-pro-preview-03-25` |
 
 Event emitted after each model call: `MODEL_USED` (via `runtime.emitEvent`).
@@ -76,7 +76,7 @@ Settings are read first from `runtime.getSetting(key)`, then from `process.env`.
 | `GOOGLE_RESPONSE_HANDLER_MODEL` / `GOOGLE_SHOULD_RESPOND_MODEL` / `RESPONSE_HANDLER_MODEL` / `SHOULD_RESPOND_MODEL` | No | falls back to nano | |
 | `GOOGLE_ACTION_PLANNER_MODEL` / `GOOGLE_PLANNER_MODEL` / `ACTION_PLANNER_MODEL` / `PLANNER_MODEL` | No | falls back to medium | |
 | `GOOGLE_IMAGE_MODEL` / `IMAGE_MODEL` | No | `gemini-2.5-pro-preview-03-25` | |
-| `GOOGLE_EMBEDDING_MODEL` | No | `text-embedding-004` | 768-dimension output |
+| `GOOGLE_EMBEDDING_MODEL` | No | `gemini-embedding-001` | Output pinned to 768 dims via `outputDimensionality` and L2-normalized so writes match the runtime's probe-sized column (#22010) |
 
 ## How to extend
 
