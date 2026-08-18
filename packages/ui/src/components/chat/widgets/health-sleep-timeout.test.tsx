@@ -1,94 +1,97 @@
 /**
  * @vitest-environment jsdom
  *
- * Behavioral HealthSleepWidget sleep-JSON deadline. Executes
- * getHealthSleepJsonWithFetch under abort — not a source-grep of
- * health-sleep.tsx.
+ * HealthSleepWidget sleep JSON through the canonical ElizaClient seam.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const { clientFetch } = vi.hoisted(() => ({
+  clientFetch: vi.fn(),
+}));
 
 vi.mock("../../../api", () => ({
-	client: { getBaseUrl: () => "http://test.local" },
+  client: {
+    fetch: clientFetch,
+    getBaseUrl: () => "http://test.local",
+  },
 }));
 
 vi.mock("../../../api/app-shell-capabilities", () => ({
-	supportsFullAppShellRoutes: () => true,
+  supportsFullAppShellRoutes: () => true,
 }));
 
 vi.mock("../../../widgets/home-priority", () => ({
-	HOME_SIGNAL_WEIGHTS: { "check-in": 1 },
+  HOME_SIGNAL_WEIGHTS: { "check-in": 1 },
 }));
 
 vi.mock("lucide-react", () => ({
-	Moon: () => null,
+  Moon: () => null,
 }));
 
 vi.mock("./home-widget-card", () => ({
-	HomeWidgetCard: () => null,
-	useWidgetNavigation: () => ({ openView: () => undefined }),
+  HomeWidgetCard: () => null,
+  useWidgetNavigation: () => ({ openView: () => undefined }),
 }));
 
 vi.mock("../../../hooks", () => ({
-	useIntervalWhenDocumentVisible: () => undefined,
+  useIntervalWhenDocumentVisible: () => undefined,
 }));
 
 vi.mock("../../../hooks/useAuthStatus", () => ({
-	useIsAuthenticated: () => false,
+  useIsAuthenticated: () => false,
 }));
 
 vi.mock("../../../widgets/home-attention-store", () => ({
-	usePublishHomeAttention: () => undefined,
+  usePublishHomeAttention: () => undefined,
 }));
 
 import {
-	HEALTH_SLEEP_JSON_TIMEOUT_MS,
-	getHealthSleepJsonWithFetch,
+  getHealthSleepJsonWithClient,
+  HEALTH_SLEEP_JSON_TIMEOUT_MS,
 } from "./health-sleep";
 
-const URL = "http://test.local/api/lifeops/sleep/regularity?windowDays=14";
-
-function stallUntilAborted(): typeof fetch {
-	return ((_input, init) =>
-		new Promise<Response>((_resolve, reject) => {
-			const signal = init?.signal;
-			if (!signal) throw new Error("expected health-sleep abort signal");
-			signal.addEventListener("abort", () => reject(signal.reason), {
-				once: true,
-			});
-		})) as typeof fetch;
-}
+const PATH = "/api/lifeops/sleep/regularity?windowDays=14";
 
 describe("HealthSleepWidget sleep JSON deadline", () => {
-	it("keeps a documented UI JSON budget", () => {
-		expect(HEALTH_SLEEP_JSON_TIMEOUT_MS).toBe(15_000);
-	});
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
 
-	it("aborts a stalled sleep GET at the injected deadline", async () => {
-		await expect(
-			getHealthSleepJsonWithFetch(URL, stallUntilAborted(), 10),
-		).rejects.toMatchObject({ name: "TimeoutError" });
-	});
+  it("keeps a documented UI JSON budget", () => {
+    expect(HEALTH_SLEEP_JSON_TIMEOUT_MS).toBe(15_000);
+  });
 
-	it("surfaces a provider error from a completed sleep GET", async () => {
-		const fetchImpl: typeof fetch = async () =>
-			new Response("nope", { status: 503, statusText: "Service Unavailable" });
+  it("surfaces a timeout from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(
+      new DOMException("The operation timed out", "TimeoutError"),
+    );
 
-		await expect(
-			getHealthSleepJsonWithFetch(URL, fetchImpl, 1_000),
-		).rejects.toThrow("503");
-	});
+    await expect(
+      getHealthSleepJsonWithClient(PATH, { fetch: clientFetch }, 10),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(clientFetch).toHaveBeenCalledWith(PATH, undefined, {
+      timeoutMs: 10,
+    });
+  });
 
-	it("uses the injected fetch for a successful sleep GET", async () => {
-		const signals: AbortSignal[] = [];
-		const fetchImpl: typeof fetch = async (_input, init) => {
-			if (init?.signal) signals.push(init.signal);
-			return Response.json({ classification: "regular" });
-		};
+  it("surfaces a provider error from the canonical client", async () => {
+    clientFetch.mockRejectedValueOnce(
+      new Error(`Sleep request failed (503): ${PATH}`),
+    );
 
-		const body = await getHealthSleepJsonWithFetch(URL, fetchImpl, 1_000);
+    await expect(
+      getHealthSleepJsonWithClient(PATH, { fetch: clientFetch }, 1_000),
+    ).rejects.toThrow("503");
+  });
 
-		expect(signals).toHaveLength(1);
-		expect(signals[0]?.aborted).toBe(false);
-		expect(body).toEqual({ classification: "regular" });
-	});
+  it("uses the bounded client path for a successful sleep GET", async () => {
+    clientFetch.mockResolvedValueOnce({ classification: "regular" });
+
+    await expect(
+      getHealthSleepJsonWithClient(PATH, { fetch: clientFetch }, 1_000),
+    ).resolves.toEqual({ classification: "regular" });
+    expect(clientFetch).toHaveBeenCalledWith(PATH, undefined, {
+      timeoutMs: 1_000,
+    });
+  });
 });
