@@ -33,6 +33,7 @@ import {
   type ResolvedAttachmentBytes,
   resolveAttachmentBytes,
   ServiceType,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -1404,8 +1405,9 @@ export class MessageManager {
         }
 
         if (availableLength > 0) {
-          currentChunk += remaining.slice(0, availableLength);
-          remaining = remaining.slice(availableLength);
+          const head = truncateWellFormed(remaining, availableLength);
+          currentChunk += head;
+          remaining = remaining.slice(head.length);
         }
 
         if (currentChunk) {

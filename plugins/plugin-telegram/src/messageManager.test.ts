@@ -974,3 +974,21 @@ describe("MessageManager typing-indicator resilience", () => {
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("MessageManager.splitMessage surrogate-pair resilience", () => {
+  it("keeps a surrogate pair (emoji) intact instead of splitting it across chunks", () => {
+    const { manager } = createManager();
+    const text = `a${"🙂".repeat(4096)}`;
+
+    const chunks = (
+      manager as unknown as { splitMessage(text: string): string[] }
+    ).splitMessage(text);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(4096);
+      expect(chunk.isWellFormed()).toBe(true);
+    }
+    expect(chunks.join("")).toBe(text);
+  });
+});
