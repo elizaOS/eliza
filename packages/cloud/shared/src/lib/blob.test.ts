@@ -17,6 +17,14 @@ const MAX_BYTES = 25 * 1024 * 1024;
 
 const puts: Array<{ key: string; bytes: Uint8Array; contentType?: string }> = [];
 
+async function waitForCondition(condition: () => boolean, label: string): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (condition()) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
+
 function expireDeadlineImmediately(): void {
   vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: () => void) => {
     queueMicrotask(callback);
@@ -168,7 +176,7 @@ describe("uploadFromUrl", () => {
     await expect(
       uploadFromUrl("https://images.example/non-cooperative-body.png", { filename: "x.png" }),
     ).rejects.toHaveProperty("code", "REMOTE_BLOB_FETCH_TIMEOUT");
-    await vi.waitFor(() => expect(cancelled).toBe(true));
+    await waitForCondition(() => cancelled, "response body cancellation");
     expect(puts).toHaveLength(0);
   });
 
@@ -190,7 +198,10 @@ describe("uploadFromUrl", () => {
     });
 
     const upload = uploadFromUrl("https://images.example/image.png", { filename: "x.png" });
-    await vi.waitFor(() => expect(clearTimeoutSpy).toHaveBeenCalledTimes(1));
+    await waitForCondition(
+      () => clearTimeoutSpy.mock.calls.length === 1,
+      "the remote deadline to clear",
+    );
     expect(fetchSignal?.aborted).toBe(false);
     finishPut?.();
     await expect(upload).resolves.toMatchObject({ size: 5 });
