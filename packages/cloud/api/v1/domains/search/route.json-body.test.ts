@@ -1,5 +1,6 @@
 /** Verifies syntax and schema failures at the domain-search JSON request boundary. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { AvailabilityResult } from "@/lib/services/cloudflare-registrar";
 
 const USER_ID = "00000000-0000-4000-8000-0000000000aa";
 const ORG_ID = "00000000-0000-4000-8000-0000000000bb";
@@ -9,9 +10,11 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   organization_id: ORG_ID,
 }));
 
-const searchDomains = mock(async () => {
-  throw new Error("cloudflareRegistrarService.searchDomains must not run");
-});
+const searchDomains = mock(
+  async (_query: string, _limit: number): Promise<AvailabilityResult[]> => {
+    throw new Error("cloudflareRegistrarService.searchDomains must not run");
+  },
+);
 const computeDomainPrice = mock((cents: number) => cents);
 const failureResponse = mock(
   (c: { json: (body: unknown, status: number) => unknown }) =>
@@ -108,7 +111,6 @@ describe("POST /api/v1/domains/search JSON body", () => {
       {
         domain: "eliza.ai",
         available: true,
-        reason: null,
         currency: "USD",
         years: 1,
         priceUsdCents: 1200,
