@@ -596,17 +596,18 @@ export async function runPollingBackend(
     typeof window !== "undefined" &&
     (window as { __ELIZA_DESKTOP_RUNTIME_MODE__?: unknown })
       .__ELIZA_DESKTOP_RUNTIME_MODE__ === "cloud";
+  const freshCloudOnlyTarget =
+    policy.defaultTarget === "cloud-managed" || cloudOnlyDesktopRenderer;
 
   if (
     !cancelled.current &&
     effectRunRef.current === effectRunId &&
     !ctx?.persistedActiveServer &&
     !ctx?.hadPriorFirstRun &&
-    (cloudOnlyDesktopRenderer ||
-      (isViteDevUiShell() && isSameOriginProxyBase()))
+    (freshCloudOnlyTarget || (isViteDevUiShell() && isSameOriginProxyBase()))
   ) {
     routeToOfflineFirstRun(
-      cloudOnlyDesktopRenderer
+      freshCloudOnlyTarget
         ? "fresh cloud-only desktop has no saved agent; opening Cloud sign-in onboarding"
         : "dev web shell has no saved backend target; skipping same-origin API proxy probe",
     );
