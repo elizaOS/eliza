@@ -20,6 +20,7 @@ import { computeNextCronRunAtMs } from "@elizaos/core/edge";
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import { windowOccurrenceKey } from "./due.js";
 import { resolveLocalHHMMToIso } from "./local-time.js";
+import { isRepresentableMs, MAX_DATE_MS } from "./time-range.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
@@ -46,15 +47,8 @@ function parseIsoMs(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Maximum |ms| a JS Date can represent (±100,000,000 days from epoch). */
-const MAX_DATE_MS = 8_640_000_000_000_000;
-
 /** Headroom for core's cron scan window (366 days) before the Date limit. */
 const CRON_SCAN_HEADROOM_MS = 366 * 24 * 60 * MINUTE_MS;
-
-function isRepresentableMs(ms: number): boolean {
-  return Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
-}
 
 function nextWindowStartIso(
   windowKey: string,

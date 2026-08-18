@@ -13,6 +13,7 @@ import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core/edge";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import { InvalidLocalTimeError, resolveLocalHHMMToIso } from "./local-time.js";
+import { isRepresentableMs } from "./time-range.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
@@ -42,13 +43,6 @@ function parseIsoMs(value: unknown): number | null {
   if (typeof value !== "string" || value.length === 0) return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-/** Maximum |ms| a JS Date can represent (±100,000,000 days from epoch). */
-const MAX_DATE_MS = 8_640_000_000_000_000;
-
-function isRepresentableMs(ms: number): boolean {
-  return Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
 }
 
 function isTerminalStatus(status: ScheduledTaskStatus): boolean {

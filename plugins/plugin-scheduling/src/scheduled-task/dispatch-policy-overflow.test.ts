@@ -260,4 +260,58 @@ describe("dispatch-policy overflow guard (#22136)", () => {
     );
     expect(ok?.fireAtIso).toBe("2026-05-11T12:30:00.000Z");
   });
+
+  it("rejects invalid registered-ladder delays instead of parking in the past", () => {
+    const cursor = {
+      stepIndex: -1,
+      lastDispatchedAt: "2026-05-11T12:00:00.000Z",
+    };
+    for (const delayMinutes of [
+      -1,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ]) {
+      expect(
+        nextEscalationStep(
+          {
+            ladderKey: "invalid-contributor-ladder",
+            steps: [{ delayMinutes, channelKey: "in_app" }],
+          },
+          cursor,
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it("settles an overflowing concurrent claim once and spawns onFail once", async () => {
+    const h = makeHarness();
+    const onFailChild: ScheduledTask = {
+      taskId: "st_overflow_concurrent_onfail",
+      state: { status: "scheduled", followupCount: 0 },
+      ...reminderInput({ trigger: { kind: "manual" } }),
+    };
+    const task = await h.runner.schedule(
+      reminderInput({ pipeline: { onFail: [onFailChild] } }),
+    );
+    h.queueDispatchResults({
+      ok: false,
+      reason: "rate_limited",
+      retryAfterMinutes: OVERFLOW_MINUTES,
+      userActionable: false,
+    });
+
+    const results = await Promise.all([
+      h.runner.fireWithResult(task.taskId),
+      h.runner.fireWithResult(task.taskId),
+    ]);
+    expect(results.map((result) => result.kind).sort()).toEqual([
+      "dispatch_failed",
+      "raced",
+    ]);
+    const children = (await h.store.list()).filter(
+      (candidate) => candidate.state.pipelineParentId === task.taskId,
+    );
+    expect(children).toHaveLength(1);
+  });
 });
