@@ -28,7 +28,15 @@ const searchRequestSchema = z.object({
 async function handlePOST(req: Request) {
   try {
     const authResult = await requireAuthOrApiKeyWithOrg(req);
-    const bodyResult = searchRequestSchema.safeParse(await req.json());
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch {
+      // error-policy:J3 untrusted request body — malformed JSON is caller
+      // error (400), not getErrorStatusCode(SyntaxError) → 500.
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const bodyResult = searchRequestSchema.safeParse(raw);
 
     if (!bodyResult.success) {
       return Response.json(
