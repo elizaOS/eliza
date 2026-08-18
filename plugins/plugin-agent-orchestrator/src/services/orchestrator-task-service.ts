@@ -3397,23 +3397,12 @@ export class OrchestratorTaskService extends Service {
         }
       ).sendMessageToTarget;
       if (origin && typeof send === "function") {
-        const { text } = await phraseForUser(
-          this.runtime,
-          {
-            intent: "notify",
-            facts: {
-              what: "branch pushed and pull request opened",
-              branch: workspace.branch,
-              prUrl: pr.url,
-            },
-            mustInclude: [pr.url],
-            mustNotClaim: ["merged", "reviewed"],
-          },
-          `pushed ${workspace.branch} and opened the pull request: ${pr.url}`,
-        );
         await send(
           { source: origin.source, roomId: origin.roomId as UUID },
-          { text, source: origin.source, ...AGENT_VOICED_METADATA },
+          {
+            text: `pushed ${workspace.branch} and opened the pull request: ${pr.url}`,
+            source: origin.source,
+          },
         );
       }
     } catch (error) {
@@ -3439,144 +3428,6 @@ export class OrchestratorTaskService extends Service {
       } catch {
         // error-policy:J6 best-effort re-arm; the warn above already reported the submit failure
       }
-    }
-  }
-
-  /**
-   * Post the one-time "verification gave up, task parked for you" notice to
-   * the task's origin room. Best-effort at every step (no origin, no send
-   * handler, or a delivery failure must never break the escalation itself —
-   * the park already happened); the `verifyEscalationNotifiedAt` metadata
-   * stamp makes the notice once-per-task.
-   */
-  private async notifyVerifyEscalation(
-    taskId: string,
-    details: {
-      attempts: number;
-      summary: string;
-      missing: string[];
-      sessionId?: string;
-    },
-  ): Promise<void> {
-    try {
-      const doc = await this.store.getTask(taskId);
-      if (!doc || doc.task.metadata?.verifyEscalationNotifiedAt) return;
-      const origin = await this.getTaskOriginTarget(taskId);
-      if (!origin) return;
-      const send = (
-        this.runtime as IAgentRuntime & {
-          sendMessageToTarget?: (
-            target: { source: string; roomId?: UUID },
-            content: { text: string; source: string; agentVoiced?: boolean },
-          ) => Promise<unknown>;
-        }
-      ).sendMessageToTarget;
-      if (typeof send !== "function") return;
-      // Request-level dedupe: a verify-driven respawn can double the TASK
-      // record for one user request lineage, so the once-per-task
-      // verifyEscalationNotifiedAt stamp alone still allowed two park notices.
-      // Claim the request's terminal slot on the router's voice ledger, keyed
-      // by the SAME canonical ladder the router keys its session terminal
-      // claims with (requestVoiceKeyForMeta: spawnRootMessageId ??
-      // originConnectorMessageId ?? messageId ?? task:<id>, plus the fan-out
-      // part suffix). The parking session's OWN metadata is preferred — it is
-      // exactly what the router keyed that session's claims on, so the park
-      // supersedes its provisional result and lane-scoped parts resolve; the
-      // task-level projection covers restart parks whose session is already
-      // gone. Denied → a sibling task already parked this request lineage:
-      // stamp (so this task never re-tries) but do not send. Router
-      // absent/disabled/no method → send as today (fail-open; the per-task
-      // stamp remains the durable backstop).
-      let suppressed = false;
-      const router = this.runtime.getService?.(
-        SUB_AGENT_ROUTER_SERVICE_TYPE,
-      ) as RequestVoiceLedgerRouter | null;
-      if (typeof router?.claimRequestTerminal === "function") {
-        let sessionVoiceMeta: Record<string, unknown> | undefined;
-        if (details.sessionId) {
-          try {
-            const live = await this.acp()?.getSession(details.sessionId);
-            sessionVoiceMeta = live?.metadata as
-              | Record<string, unknown>
-              | undefined;
-          } catch {
-            // error-policy:J4 session metadata lookup failure degrades to the
-            // task-level key projection below (today's behavior).
-            sessionVoiceMeta = undefined;
-          }
-        }
-        const requestKey =
-          requestVoiceKeyForMeta({
-            ...(doc.task.metadata ?? {}),
-            ...(sessionVoiceMeta ?? {}),
-            taskId,
-          }) ?? `task:${taskId}`;
-        try {
-          suppressed = terminalClaimDenied(
-            router.claimRequestTerminal(
-              requestKey,
-              details.sessionId ?? taskId,
-              "parked",
-              false,
-            ),
-          );
-        } catch (claimErr) {
-          // error-policy:J4 ledger claim failure degrades to sending the
-          // notice (fail-open) — the dedupe is lost, never the notice.
-          this.log("warn", "verify-escalation ledger claim failed", {
-            taskId,
-            error:
-              claimErr instanceof Error ? claimErr.message : String(claimErr),
-          });
-          suppressed = false;
-        }
-      }
-      await this.store.updateTask(taskId, {
-        metadata: {
-          ...doc.task.metadata,
-          verifyEscalationNotifiedAt: nowIso(),
-        },
-      });
-      if (suppressed) return;
-      // Model-phrased park notice (owner directive: user-facing text is
-      // LLM-written). Runs AFTER the terminal claim + stamp above
-      // (claim-before-phrase), so model latency cannot double the notice.
-      // composeVerifyEscalationNotice remains the factual fallback.
-      const label = doc.task.title.trim() || "the coding task";
-      const missing = details.missing
-        .filter((item) => item.trim().length > 0)
-        .slice(0, 3);
-      const { text } = await phraseForUser(
-        this.runtime,
-        {
-          intent: "warn",
-          facts: {
-            title: label,
-            attempts: details.attempts,
-            summary: details.summary,
-            ...(missing.length > 0 ? { couldNotConfirm: missing } : {}),
-            parked: true,
-            workMayStillBeFine: true,
-            userShouldCheckThenAcceptOrSayWhatToFix: true,
-          },
-          mustInclude: [label],
-          mustNotClaim: [
-            "the work was confirmed good",
-            "the task was abandoned",
-          ],
-        },
-        composeVerifyEscalationNotice(doc.task.title, details),
-      );
-      await send(
-        { source: origin.source, roomId: origin.roomId as UUID },
-        { text, source: origin.source, ...AGENT_VOICED_METADATA },
-      );
-    } catch (err) {
-      // error-policy:J7 escalation notice is best-effort; the park must stand even when the room notice cannot be delivered
-      this.log("warn", "verify-escalation notice delivery failed", {
-        taskId,
-        error: err instanceof Error ? err.message : String(err),
-      });
     }
   }
 
