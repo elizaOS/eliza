@@ -133,6 +133,29 @@ test.describe("real cloud login + provisioning + chat", () => {
       timeout: 60_000,
     });
 
+    // The process-level contract above only pins the spawned runtime's proxy.
+    // The renderer resolves its own Cloud origin at BUILD time from
+    // VITE_ELIZA_CLOUD_BASE and silently falls back to production, and
+    // onboarding provisions straight from the browser -- so a bundle built
+    // without that var drives production while holding a staging key and every
+    // provision 401s. Assert what the loaded bundle actually targets (#18076).
+    const rendererCloudOrigin = await page.evaluate(() => {
+      const config = (
+        window as unknown as {
+          __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
+        }
+      ).__ELIZAOS_APP_BOOT_CONFIG__;
+      return config?.cloudApiBase ?? "";
+    });
+    test.info().annotations.push({
+      type: "renderer-cloud-origin",
+      description: rendererCloudOrigin,
+    });
+    expect(
+      rendererCloudOrigin ? new URL(rendererCloudOrigin).origin : "",
+      `renderer bundle targets ${rendererCloudOrigin || "<unset>"}; the lane pinned ${originContract.origin}`,
+    ).toBe(originContract.origin);
+
     await chooseCloudRuntime(page);
 
     // Real provisioning (create -> provision -> poll jobs -> launch) persists a
