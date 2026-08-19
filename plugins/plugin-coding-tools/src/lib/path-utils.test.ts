@@ -1,5 +1,8 @@
 /** Unit tests for the path predicates and blocklist resolution. */
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   isAbsolutePath,
   isBlockedPath,
@@ -8,6 +11,7 @@ import {
   isWithinAnyRoot,
   normalizeAbsolute,
   relativeFromRoot,
+  resolveRealPath,
 } from "./path-utils.js";
 
 /** Sandbox path validation — prevents traversal/escape, so the matching is pinned. */
@@ -63,6 +67,34 @@ describe("isWithinAnyRoot", () => {
     );
     expect(await isWithinAnyRoot("/etc/passwd", ["/srv/app"])).toBe(false);
   });
+});
+
+describe("resolveRealPath — missing leaf through a symlink parent", () => {
+  const temps: string[] = [];
+  afterEach(() => {
+    for (const dir of temps.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  const itSymlink = process.platform === "win32" ? it.skip : it;
+
+  itSymlink(
+    "resolves a not-yet-created file through a directory symlink",
+    async () => {
+      const root = mkdtempSync(path.join(tmpdir(), "eliza-coding-root-"));
+      const victim = mkdtempSync(path.join(tmpdir(), "eliza-coding-victim-"));
+      temps.push(root, victim);
+      const realRoot = await resolveRealPath(root);
+      const realVictim = await resolveRealPath(victim);
+      symlinkSync(realVictim, path.join(realRoot, "escape"), "dir");
+      const resolved = await resolveRealPath(
+        path.join(realRoot, "escape", "planted.txt"),
+      );
+      expect(resolved).toBe(path.join(realVictim, "planted.txt"));
+      expect(await isWithinAnyRoot(resolved, [realRoot])).toBe(false);
+    },
+  );
 });
 
 describe("normalizeAbsolute / relativeFromRoot", () => {

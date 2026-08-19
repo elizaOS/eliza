@@ -1,5 +1,6 @@
 /** Tests for the SandboxService path policy: blocklist defaults and allow-root enforcement. */
-import { homedir } from "node:os";
+import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -201,6 +202,34 @@ describe("SandboxService default blocklist", () => {
     expect(outside.ok).toBe(false);
     if (!outside.ok) expect(outside.reason).toBe("outside_allowed_roots");
   });
+
+  const itSymlink = process.platform === "win32" ? it.skip : it;
+  itSymlink(
+    "rejects a write through a workspace directory symlink to a missing leaf",
+    async () => {
+      const rawRoot = mkdtempSync(path.join(tmpdir(), "eliza-sandbox-root-"));
+      const rawVictim = mkdtempSync(
+        path.join(tmpdir(), "eliza-sandbox-victim-"),
+      );
+      try {
+        const root = realpathSync(rawRoot);
+        const victim = realpathSync(rawVictim);
+        symlinkSync(victim, path.join(root, "escape"), "dir");
+        const svc = await SandboxService.start(
+          mockRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root }),
+        );
+        const result = await svc.validatePath(
+          undefined,
+          path.join(root, "escape", "planted.txt"),
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.reason).toBe("outside_allowed_roots");
+      } finally {
+        rmSync(rawRoot, { recursive: true, force: true });
+        rmSync(rawVictim, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("supports conversation-scoped allow roots", async () => {
     const root = path.join(homedir(), "conversation-root");
