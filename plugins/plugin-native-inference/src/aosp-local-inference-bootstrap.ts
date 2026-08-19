@@ -2745,14 +2745,42 @@ function decodeMonoPcm16WavBytes(bytes: Uint8Array): {
   return { samples, sampleRate };
 }
 
+const MIN_AOSP_RESAMPLE_RATE_HZ = 1_000;
+const MAX_AOSP_RESAMPLE_RATE_HZ = 192_000;
+const MAX_AOSP_RESAMPLE_OUTPUT_SAMPLES = 16_000 * 120;
+
 function resampleLinear(
   samples: Float32Array,
   fromHz: number,
   toHz: number,
 ): Float32Array {
+  if (
+    !Number.isFinite(fromHz) ||
+    fromHz < MIN_AOSP_RESAMPLE_RATE_HZ ||
+    fromHz > MAX_AOSP_RESAMPLE_RATE_HZ
+  ) {
+    throw new Error(
+      `[aosp-local-inference] resample rejected source rate ${fromHz}`,
+    );
+  }
+  if (
+    !Number.isFinite(toHz) ||
+    toHz < MIN_AOSP_RESAMPLE_RATE_HZ ||
+    toHz > MAX_AOSP_RESAMPLE_RATE_HZ
+  ) {
+    throw new Error(
+      `[aosp-local-inference] resample rejected target rate ${toHz}`,
+    );
+  }
   if (fromHz === toHz) return samples;
   const ratio = toHz / fromHz;
-  const out = new Float32Array(Math.max(1, Math.round(samples.length * ratio)));
+  const outLen = Math.max(1, Math.round(samples.length * ratio));
+  if (outLen > MAX_AOSP_RESAMPLE_OUTPUT_SAMPLES) {
+    throw new Error(
+      `[aosp-local-inference] resample output ${outLen} exceeds ${MAX_AOSP_RESAMPLE_OUTPUT_SAMPLES}`,
+    );
+  }
+  const out = new Float32Array(outLen);
   for (let i = 0; i < out.length; i++) {
     const src = i / ratio;
     const i0 = Math.floor(src);

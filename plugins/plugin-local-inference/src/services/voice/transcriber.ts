@@ -110,15 +110,40 @@ function extractWords(text: string): string[] {
  * frames (commonly 16 / 24 / 48 kHz) to the ASR rate. Not a polyphase
  * filter — adequate for speech ASR; the fused build does its own
  * resampling so this is interim-batch only.
+ *
+ * `fromRate` is often a WAV/container header. A 1 Hz header on a few
+ * thousand samples would allocate tens of millions of output frames.
  */
+export const MIN_RESAMPLE_RATE_HZ = 1_000;
+export const MAX_RESAMPLE_RATE_HZ = 192_000;
+/** Two minutes at 16 kHz — hostile 1 Hz headers cannot allocate past this. */
+export const MAX_RESAMPLE_OUTPUT_SAMPLES = 16_000 * 120;
+
+function requireResampleRate(rate: number, label: string): void {
+	if (
+		!Number.isFinite(rate) ||
+		rate < MIN_RESAMPLE_RATE_HZ ||
+		rate > MAX_RESAMPLE_RATE_HZ
+	) {
+		throw new Error(`[transcriber] resample rejected ${label} rate ${rate}`);
+	}
+}
+
 export function resampleLinear(
 	pcm: Float32Array,
 	fromRate: number,
 	toRate: number,
 ): Float32Array {
+	requireResampleRate(fromRate, "source");
+	requireResampleRate(toRate, "target");
 	if (fromRate === toRate || pcm.length === 0) return pcm;
 	const ratio = toRate / fromRate;
 	const outLen = Math.max(1, Math.round(pcm.length * ratio));
+	if (outLen > MAX_RESAMPLE_OUTPUT_SAMPLES) {
+		throw new Error(
+			`[transcriber] resample output ${outLen} exceeds ${MAX_RESAMPLE_OUTPUT_SAMPLES}`,
+		);
+	}
 	const out = new Float32Array(outLen);
 	for (let i = 0; i < outLen; i++) {
 		const srcPos = i / ratio;
