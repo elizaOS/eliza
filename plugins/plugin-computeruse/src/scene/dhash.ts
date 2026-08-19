@@ -66,12 +66,20 @@ export interface RawImage {
   rgba: Buffer;
 }
 
+/** Inflate seam for tests: prove over-budget IHDR never reaches zlib. */
+export type DecodePngInflate = typeof inflateSync;
+
 /**
  * Decode a PNG buffer to RGBA. Returns null for unsupported variants
  * (interlaced, palette-indexed, 16-bit depth) — caller handles that by
  * falling back to a non-block-grid hash strategy.
+ *
+ * `inflate` is a test seam. Production callers omit it.
  */
-export function decodePng(png: Buffer): RawImage | null {
+export function decodePng(
+  png: Buffer,
+  inflate: DecodePngInflate = inflateSync,
+): RawImage | null {
   if (png.length < PNG_SIGNATURE.length) return null;
   for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
     if (png[i] !== PNG_SIGNATURE[i]) return null;
@@ -121,7 +129,7 @@ export function decodePng(png: Buffer): RawImage | null {
 
   let inflated: Buffer;
   try {
-    inflated = inflateSync(Buffer.concat(idatChunks), {
+    inflated = inflate(Buffer.concat(idatChunks), {
       maxOutputLength: expected,
     });
   } catch {
