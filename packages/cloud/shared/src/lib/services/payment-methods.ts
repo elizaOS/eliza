@@ -2,7 +2,7 @@
 import type Stripe from "stripe";
 import { type Organization, organizationsRepository } from "../../db/repositories";
 import { requireStripe } from "../stripe";
-import { logger } from "../utils/logger";
+import { stripeCustomerAuthorityService } from "./stripe-customer-authority";
 
 /**
  * Service for managing Stripe payment methods
@@ -21,35 +21,10 @@ export class PaymentMethodsService {
     if (org.stripe_customer_id) {
       return org.stripe_customer_id;
     }
-
-    logger.info(`[PaymentMethodsService] Creating Stripe customer for org ${org.id} (${org.name})`);
-
-    try {
-      const customer = await requireStripe().customers.create({
-        name: org.name,
-        email: org.billing_email || undefined,
-        metadata: {
-          organization_id: org.id,
-        },
-      });
-
-      await organizationsRepository.update(org.id, {
-        stripe_customer_id: customer.id,
-        updated_at: new Date(),
-      });
-
-      logger.info(
-        `[PaymentMethodsService] ✓ Created Stripe customer ${customer.id} for org ${org.id}`,
-      );
-
-      return customer.id;
-    } catch (error) {
-      logger.error(
-        `[PaymentMethodsService] Failed to create Stripe customer for org ${org.id}:`,
-        error,
-      );
-      throw new Error("Failed to create payment customer. Please try again.");
-    }
+    return stripeCustomerAuthorityService.ensure({
+      organizationId: org.id,
+      callerIntent: "payment_method",
+    });
   }
 
   /**

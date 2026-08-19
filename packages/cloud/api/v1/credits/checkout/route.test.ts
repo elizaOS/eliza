@@ -26,6 +26,7 @@ const requireUserOrApiKeyWithOrg = mock(async () => {
   );
 });
 const updateOrganization = mock(async () => undefined);
+const ensureStripeCustomer = mock(async () => "cus_created");
 const createOrder = mock(
   async (): Promise<{
     id: string;
@@ -46,19 +47,33 @@ const bindCustomer = mock(async (orderId: string, customerId: string) => ({
 const markProviderStarted = mock(async () => undefined);
 const bindSession = mock(async () => undefined);
 const markProviderAmbiguous = mock(async () => undefined);
-const getWithOrganization = mock(async () => ({
-  id: "agent-user",
-  email: "agent@example.test",
-  wallet_address: "0x0000000000000000000000000000000000000001",
-  organization_id: "agent-org",
-  organization: {
-    id: "agent-org",
-    name: "Agent Org",
-    stripe_customer_id: "cus_agent",
-    billing_email: "billing@example.test",
-    is_active: true,
-  },
-}));
+const getWithOrganization = mock(
+  async (): Promise<{
+    id: string;
+    email: string;
+    wallet_address: string | null;
+    organization_id: string;
+    organization: {
+      id: string;
+      name: string;
+      stripe_customer_id: string | null;
+      billing_email: string | null;
+      is_active: boolean;
+    };
+  }> => ({
+    id: "agent-user",
+    email: "agent@example.test",
+    wallet_address: "0x0000000000000000000000000000000000000001",
+    organization_id: "agent-org",
+    organization: {
+      id: "agent-org",
+      name: "Agent Org",
+      stripe_customer_id: "cus_agent",
+      billing_email: "billing@example.test",
+      is_active: true,
+    },
+  }),
+);
 
 function dbChain(rows: unknown[]) {
   return {
@@ -110,6 +125,9 @@ mock.module("@/lib/services/stripe-checkout-orders", () => ({
     markProviderAmbiguous,
   },
 }));
+mock.module("@/lib/services/stripe-customer-authority", () => ({
+  stripeCustomerAuthorityService: { ensure: ensureStripeCustomer },
+}));
 
 mock.module("@/lib/security/redirect-validation", () => ({
   getDefaultPlatformRedirectOrigins: () => ["https://waifu.example.test"],
@@ -123,9 +141,6 @@ mock.module("@/lib/stripe", () => ({
         create: checkoutCreate,
         list: checkoutList,
       },
-    },
-    customers: {
-      create: mock(async () => ({ id: "cus_created" })),
     },
   }),
 }));
@@ -152,6 +167,7 @@ describe("credits checkout service-key agent bridge", () => {
     validateServiceKey.mockClear();
     requireUserOrApiKeyWithOrg.mockClear();
     updateOrganization.mockClear();
+    ensureStripeCustomer.mockClear();
     getWithOrganization.mockClear();
     dbRead.select.mockClear();
   });
@@ -254,5 +270,47 @@ describe("credits checkout service-key agent bridge", () => {
       expect.objectContaining({ customer: "cus_order_winner" }),
     );
     expect(markProviderStarted).not.toHaveBeenCalled();
+  });
+
+  test("uses shared durable customer authority when the organization is unbound", async () => {
+    getWithOrganization.mockImplementationOnce(async () => ({
+      id: "agent-user",
+      email: "agent@example.test",
+      wallet_address: null,
+      organization_id: "agent-org",
+      organization: {
+        id: "agent-org",
+        name: "Agent Org",
+        stripe_customer_id: null,
+        billing_email: null,
+        is_active: true,
+      },
+    }));
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Service-Key": "svc",
+          "Idempotency-Key": "agent-checkout-request-3",
+        },
+        body: JSON.stringify({
+          credits: 5,
+          agent_id: agentId,
+          success_url: "https://waifu.example.test/success",
+          cancel_url: "https://waifu.example.test/cancel",
+        }),
+      }),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+    expect(response.status).toBe(200);
+    expect(ensureStripeCustomer).toHaveBeenCalledWith({
+      organizationId: "agent-org",
+      callerIntent: "credit_checkout",
+    });
+    expect(bindCustomer).toHaveBeenCalledWith(
+      "30000000-0000-4000-8000-000000000001",
+      "cus_created",
+    );
   });
 });

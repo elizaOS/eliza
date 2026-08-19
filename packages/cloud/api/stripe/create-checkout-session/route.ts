@@ -16,8 +16,8 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { creditsService } from "@/lib/services/credits";
-import { organizationsService } from "@/lib/services/organizations";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
+import { stripeCustomerAuthorityService } from "@/lib/services/stripe-customer-authority";
 import { isStripeConfigured, requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -300,18 +300,10 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       if (!checkoutOrder.stripe_customer_id) {
         const candidateCustomerId =
           customerId ??
-          (
-            await requireStripe().customers.create(
-              stripeCustomerCreateParams({
-                organizationId,
-                organizationName: orgFull.name,
-                billingEmail: orgFull.billing_email,
-                userEmail: user.email,
-                walletAddress: user.wallet_address,
-              }),
-              { idempotencyKey: `checkout-customer:${organizationId}` },
-            )
-          ).id;
+          (await stripeCustomerAuthorityService.ensure({
+            organizationId,
+            callerIntent: "interactive_checkout",
+          }));
         checkoutOrder = await stripeCheckoutOrdersService.bindCustomer(
           checkoutOrder.id,
           candidateCustomerId,
@@ -319,19 +311,9 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       }
       customerId = checkoutOrder.stripe_customer_id;
     } else if (!customerId) {
-      const customer = await requireStripe().customers.create(
-        stripeCustomerCreateParams({
-          organizationId,
-          organizationName: orgFull.name,
-          billingEmail: orgFull.billing_email,
-          userEmail: user.email,
-          walletAddress: user.wallet_address,
-        }),
-      );
-      customerId = customer.id;
-      await organizationsService.update(organizationId, {
-        stripe_customer_id: customerId,
-        updated_at: new Date(),
+      customerId = await stripeCustomerAuthorityService.ensure({
+        organizationId,
+        callerIntent: "interactive_checkout",
       });
     }
     if (!customerId) {
@@ -436,28 +418,6 @@ function canonicalCredits(value: string | number): string {
   const match = /^(\d+)(?:\.(\d{1,6}))?$/.exec(String(value));
   if (!match?.[1]) throw new Error("Credit pack grant is invalid");
   return `${match[1]}.${(match[2] ?? "").padEnd(6, "0")}`;
-}
-
-function stripeCustomerCreateParams(input: {
-  organizationId: string;
-  organizationName?: string;
-  billingEmail?: string | null;
-  userEmail?: string | null;
-  walletAddress?: string | null;
-}): Stripe.CustomerCreateParams {
-  const customerData: Stripe.CustomerCreateParams = {
-    name: input.organizationName,
-    metadata: { organization_id: input.organizationId },
-  };
-  const email = input.billingEmail || input.userEmail;
-  if (email) customerData.email = email;
-  if (input.walletAddress) {
-    customerData.metadata = {
-      ...customerData.metadata,
-      wallet_address: input.walletAddress,
-    };
-  }
-  return customerData;
 }
 
 async function findCheckoutSessionForOrder(

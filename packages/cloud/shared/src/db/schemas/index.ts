@@ -115,6 +115,7 @@ export * from "./stripe-checkout-orders";
 export * from "./stripe-checkout-orders";
 export * from "./stripe-checkout-orders";
 export * from "./stripe-connect-accounts";
+export * from "./stripe-customer-attempts";
 export * from "./telegram-chats";
 export * from "./tenant-db-clusters";
 export * from "./token-redemptions";

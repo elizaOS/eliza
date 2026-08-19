@@ -25,6 +25,7 @@ import {
   getDefaultPlatformRedirectOrigins,
 } from "@/lib/security/redirect-validation";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
+import { stripeCustomerAuthorityService } from "@/lib/services/stripe-customer-authority";
 import { usersService } from "@/lib/services/users";
 import { requireStripe } from "@/lib/stripe";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
@@ -151,18 +152,10 @@ app.post("/", async (c) => {
     if (!order.stripe_customer_id) {
       const candidateCustomerId =
         customerId ??
-        (
-          await requireStripe().customers.create(
-            stripeCustomerCreateParams({
-              organizationId,
-              organizationName: orgFull.name,
-              billingEmail: orgFull.billing_email,
-              userEmail: user.email,
-              walletAddress: user.wallet_address,
-            }),
-            { idempotencyKey: `checkout-customer:${organizationId}` },
-          )
-        ).id;
+        (await stripeCustomerAuthorityService.ensure({
+          organizationId,
+          callerIntent: "credit_checkout",
+        }));
       order = await stripeCheckoutOrdersService.bindCustomer(
         order.id,
         candidateCustomerId,
@@ -281,25 +274,6 @@ async function findCheckoutSessionForOrder(
   throw new Error(
     "Stripe Checkout reconciliation exceeded its safe search bound",
   );
-}
-
-function stripeCustomerCreateParams(input: {
-  organizationId: string;
-  organizationName?: string;
-  billingEmail?: string | null;
-  userEmail?: string | null;
-  walletAddress?: string | null;
-}): Stripe.CustomerCreateParams {
-  const data: Stripe.CustomerCreateParams = {
-    name: input.organizationName,
-    metadata: { organization_id: input.organizationId },
-  };
-  const email = input.billingEmail || input.userEmail;
-  if (email) data.email = email;
-  if (input.walletAddress) {
-    data.metadata = { ...data.metadata, wallet_address: input.walletAddress };
-  }
-  return data;
 }
 
 async function resolveCreditUser(

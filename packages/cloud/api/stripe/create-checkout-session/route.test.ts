@@ -39,12 +39,7 @@ const bindCustomer = mock(async (orderId: string, customerId: string) => ({
 }));
 const markProviderStarted = mock(async () => undefined);
 const bindSession = mock(async () => undefined);
-const customerCreate = mock(
-  async (
-    _params: Record<string, unknown>,
-    _options?: { idempotencyKey?: string },
-  ) => ({ id: "cus_a" }),
-);
+const ensureStripeCustomer = mock(async () => "cus_a");
 const requireUserWithOrg = mock(
   async (): Promise<{
     id: string;
@@ -83,6 +78,9 @@ mock.module("@/lib/services/stripe-checkout-orders", () => ({
     markProviderAmbiguous: mock(async () => undefined),
   },
 }));
+mock.module("@/lib/services/stripe-customer-authority", () => ({
+  stripeCustomerAuthorityService: { ensure: ensureStripeCustomer },
+}));
 mock.module("@/lib/stripe", () => ({
   isStripeConfigured: () => true,
   requireStripe: () => ({
@@ -94,7 +92,6 @@ mock.module("@/lib/stripe", () => ({
         list: mock(async () => ({ data: [], has_more: false })),
       },
     },
-    customers: { create: customerCreate },
   }),
 }));
 mock.module("@/lib/utils/logger", () => ({
@@ -127,7 +124,8 @@ beforeEach(() => {
   bindCustomer.mockClear();
   markProviderStarted.mockClear();
   bindSession.mockClear();
-  customerCreate.mockClear();
+  ensureStripeCustomer.mockClear();
+  ensureStripeCustomer.mockResolvedValue("cus_a");
   requireUserWithOrg.mockClear();
   requireUserWithOrg.mockResolvedValue({
     id: "user-a",
@@ -208,7 +206,7 @@ describe("Stripe credit-pack Checkout authority", () => {
     );
   });
 
-  test("concurrent no-customer retries use one provider customer idempotency authority", async () => {
+  test("concurrent no-customer retries use the shared durable customer authority", async () => {
     requireUserWithOrg.mockResolvedValue({
       id: "user-a",
       email: "user@example.test",
@@ -216,16 +214,17 @@ describe("Stripe credit-pack Checkout authority", () => {
       organization_id: "org-a",
       organization: { stripe_customer_id: null, name: "Org A" },
     });
-    customerCreate.mockResolvedValue({ id: "cus_race_winner" });
+    ensureStripeCustomer.mockResolvedValue("cus_race_winner");
     const responses = await Promise.all([
       app.fetch(request("pack-customer-race-1"), { STRIPE_CURRENCY: "usd" }),
       app.fetch(request("pack-customer-race-1"), { STRIPE_CURRENCY: "usd" }),
     ]);
     expect(responses.map((response) => response.status)).toEqual([200, 200]);
-    expect(customerCreate).toHaveBeenCalledTimes(2);
-    for (const call of customerCreate.mock.calls) {
-      expect(call[1]).toEqual({ idempotencyKey: "checkout-customer:org-a" });
-    }
+    expect(ensureStripeCustomer).toHaveBeenCalledTimes(2);
+    expect(ensureStripeCustomer).toHaveBeenCalledWith({
+      organizationId: "org-a",
+      callerIntent: "interactive_checkout",
+    });
     expect(
       sessionCreate.mock.calls.every(
         (call) =>
