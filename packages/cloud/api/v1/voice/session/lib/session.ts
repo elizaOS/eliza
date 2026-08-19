@@ -101,6 +101,7 @@ const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
  * land, while keeping the total first-turn penalty bounded below eight seconds.
  */
 const CACHE_WARMING_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
+const MAX_RECORDED_UPSTREAM_ATTEMPTS = 8;
 /** Replace a failed realtime recognizer without dropping the live phone call. */
 const STT_RECONNECT_DELAYS_MS = [0, 250, 1_000, 2_000, 5_000] as const;
 /** Consecutive revoke-store failures tolerated before the session fails closed. */
@@ -230,6 +231,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private started = false;
   private closed = false;
   private startedAtMs: number | null = null;
+  private prewarmStartedAtMs: number | null = null;
+  private prewarmCompletedAtMs: number | null = null;
+  private prewarmStatus: "not_configured" | "pending" | "success" | "error" =
+    "not_configured";
+  private prewarmPromise: Promise<void> | null = null;
+  private prewarmRetryWakeConsumed = false;
 
   /** Monotonic turn counter; the current turn's trace id derives from it. */
   private turnCounter = 0;
@@ -362,14 +369,40 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // is a latency hint only: the response path has its own typed cache-warming
     // retries and must never wait indefinitely for optional background fills.
     if (this.config.prewarmElizaContext) {
-      void this.config.prewarmElizaContext().catch((error) => {
-        // error-policy:J7 prewarm is latency-only; the response path retains
-        // its typed cache-warming retry fallback and reports the failed hint.
-        logger.warn("[voice-session] Eliza context prewarm failed", {
-          sessionId: this.sessionId,
-          error: error instanceof Error ? error.message : String(error),
+      this.prewarmStartedAtMs = this.now();
+      this.prewarmStatus = "pending";
+      const prewarmPromise: Promise<void> = Promise.resolve()
+        .then(() => this.config.prewarmElizaContext?.())
+        .then(() => {
+          this.prewarmCompletedAtMs = this.now();
+          this.prewarmStatus = "success";
+          logger.info("[voice-session] Eliza context prewarm completed", {
+            sessionId: this.sessionId,
+            prewarmDurationMs:
+              this.prewarmCompletedAtMs -
+              (this.prewarmStartedAtMs ?? this.prewarmCompletedAtMs),
+          });
+        })
+        .catch((error) => {
+          this.prewarmCompletedAtMs = this.now();
+          this.prewarmStatus = "error";
+          // error-policy:J7 prewarm is latency-only; the response path retains
+          // its typed cache-warming retry fallback and reports the failed hint.
+          logger.warn("[voice-session] Eliza context prewarm failed", {
+            sessionId: this.sessionId,
+            prewarmDurationMs:
+              this.prewarmCompletedAtMs -
+              (this.prewarmStartedAtMs ?? this.prewarmCompletedAtMs),
+            error: error instanceof Error ? error.message : String(error),
+          });
+        })
+        .finally(() => {
+          if (this.prewarmPromise === prewarmPromise) {
+            this.prewarmPromise = null;
+          }
         });
-      });
+      this.prewarmPromise = prewarmPromise;
+      void prewarmPromise;
     }
     // The session-level trace span id is stable until the first turn mints its own.
     const sessionTrace = this.mintTraceId("session");
@@ -819,10 +852,23 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.currentVoiceTurnId = traceId;
     this.turnTtsChars = text.length;
     this.firstLlmTextEmitted = false;
+    const greetingStartedAt = this.now();
+    let ttsOpenedAt: number | null = null;
 
     const stream = this.createTtsStream(traceId, {
       onFirstAudio: () => {
         if (this.currentVoiceTurnId !== traceId) return;
+        const firstAudioAt = this.now();
+        logger.info("[voice-session] opening greeting latency", {
+          traceId,
+          greetingChars: text.length,
+          firstAudioMs: firstAudioAt - greetingStartedAt,
+          ttsTransportReadyMs:
+            ttsOpenedAt === null ? null : ttsOpenedAt - greetingStartedAt,
+          ttsSynthesisAfterReadyMs:
+            ttsOpenedAt === null ? null : firstAudioAt - ttsOpenedAt,
+          ...this.prewarmTimingFields(firstAudioAt),
+        });
         this.state = "speaking";
         this.send({ t: "speaking_start", traceId });
       },
@@ -846,8 +892,67 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       },
     });
     this.ttsStream = stream;
-    void stream.opened.catch(() => undefined);
+    void stream.opened
+      .then(() => {
+        ttsOpenedAt = this.now();
+      })
+      .catch(() => undefined);
     stream.sendPhrase({ text, continueContext: false });
+  }
+
+  private prewarmTimingFields(atMs: number): {
+    prewarmStatus: "not_configured" | "pending" | "success" | "error";
+    prewarmStartedOffsetMs: number | null;
+    prewarmDurationMs: number | null;
+    prewarmCompletedBeforeEventMs: number | null;
+  } {
+    return {
+      prewarmStatus: this.prewarmStatus,
+      prewarmStartedOffsetMs:
+        this.startedAtMs === null || this.prewarmStartedAtMs === null
+          ? null
+          : this.prewarmStartedAtMs - this.startedAtMs,
+      prewarmDurationMs:
+        this.prewarmStartedAtMs === null || this.prewarmCompletedAtMs === null
+          ? null
+          : this.prewarmCompletedAtMs - this.prewarmStartedAtMs,
+      prewarmCompletedBeforeEventMs:
+        this.prewarmCompletedAtMs === null
+          ? null
+          : atMs - this.prewarmCompletedAtMs,
+    };
+  }
+
+  /**
+   * A cold-turn 503 normally sleeps before retrying. If the session prewarm
+   * lands sooner, retry immediately; the normal hot request never waits for
+   * this latency-only hint, and the delay remains the upper bound.
+   */
+  private waitForRetryDelayOrPrewarm(
+    delayMs: number,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const pendingPrewarm = this.prewarmPromise;
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        signal.removeEventListener("abort", settle);
+        resolve();
+      };
+      const timeout = setTimeout(settle, delayMs);
+      signal.addEventListener("abort", settle, { once: true });
+      if (
+        !this.prewarmRetryWakeConsumed &&
+        (pendingPrewarm || this.prewarmCompletedAtMs !== null)
+      ) {
+        this.prewarmRetryWakeConsumed = true;
+        if (pendingPrewarm) void pendingPrewarm.then(settle);
+        else queueMicrotask(settle);
+      }
+    });
   }
 
   private createTtsStream(
@@ -878,8 +983,17 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   ): Promise<void> {
     const responseStartedAt = this.now();
     let firstModelTextAt: number | null = null;
-    let upstreamHeadersMs: number | null = null;
+    const upstreamAttempts: Array<{
+      attempt: number;
+      status: number;
+      attemptHeadersMs: number;
+      turnHeadersOffsetMs: number;
+    }> = [];
+    let upstreamAttemptCount = 0;
+    let activeUpstreamAttempt = 0;
+    let upstreamSuccessfulHeadersOffsetMs: number | null = null;
     let upstreamServerTiming: string | null = null;
+    let ttsTransportReadyAt: number | null = null;
     const abort = new AbortController();
     this.llmAbort = abort;
     const phrase = new PhraseAggregator({
@@ -912,8 +1026,19 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
               firstModelTextAt === null
                 ? null
                 : firstAudioAt - firstModelTextAt,
-            upstreamHeadersMs,
+            ttsTransportReadyMs:
+              ttsTransportReadyAt === null
+                ? null
+                : ttsTransportReadyAt - responseStartedAt,
+            ttsSynthesisAfterReadyMs:
+              ttsTransportReadyAt === null
+                ? null
+                : firstAudioAt - ttsTransportReadyAt,
+            upstreamAttemptCount,
+            upstreamAttempts,
+            upstreamSuccessfulHeadersOffsetMs,
             upstreamServerTiming,
+            ...this.prewarmTimingFields(firstAudioAt),
           });
           this.state = "speaking";
           this.send({ t: "speaking_start", traceId });
@@ -959,7 +1084,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // Cancellation before the provider's open event rejects `opened`. This
       // turn does not await readiness because outbound phrases queue in the
       // adapter, so consume that designed rejection on fast teardown.
-      void prewarmedTts.opened.catch(() => undefined);
+      void prewarmedTts.opened
+        .then(() => {
+          ttsTransportReadyAt = this.now();
+        })
+        .catch(() => undefined);
 
       const request = {
         endpoint: this.config.elizaEndpoint,
@@ -978,11 +1107,26 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         signal: abort.signal,
         fetchImpl: this.config.fetchImpl,
         onResponseHeaders: (headers: ElizaSseBridgeResponseHeaders) => {
-          upstreamHeadersMs = headers.elapsedMs;
-          upstreamServerTiming = headers.serverTiming;
+          const turnHeadersOffsetMs = this.now() - responseStartedAt;
+          upstreamAttemptCount += 1;
+          if (upstreamAttempts.length < MAX_RECORDED_UPSTREAM_ATTEMPTS) {
+            upstreamAttempts.push({
+              attempt: activeUpstreamAttempt,
+              status: headers.status,
+              attemptHeadersMs: headers.elapsedMs,
+              turnHeadersOffsetMs,
+            });
+          }
+          if (headers.status >= 200 && headers.status < 300) {
+            upstreamSuccessfulHeadersOffsetMs = turnHeadersOffsetMs;
+            upstreamServerTiming = headers.serverTiming;
+          }
           logger.info("[voice-session] Eliza response headers", {
             traceId,
-            elapsedMs: headers.elapsedMs,
+            attempt: activeUpstreamAttempt,
+            status: headers.status,
+            attemptHeadersMs: headers.elapsedMs,
+            turnHeadersOffsetMs,
             serverTiming: headers.serverTiming,
           });
         },
@@ -1020,6 +1164,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.config.cacheWarmingRetryDelaysMs ?? CACHE_WARMING_RETRY_DELAYS_MS;
       let result: Awaited<ReturnType<typeof streamElizaConversation>>;
       for (let attempt = 0; ; attempt += 1) {
+        activeUpstreamAttempt = attempt + 1;
         try {
           result = await streamElizaConversation(request, onDelta);
           break;
@@ -1045,17 +1190,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             upstreamCode: bridgeError.upstreamCode,
             elapsedMs: this.now() - responseStartedAt,
           });
-          await new Promise<void>((resolve) => {
-            const timeout = setTimeout(resolve, retryDelay);
-            abort.signal.addEventListener(
-              "abort",
-              () => {
-                clearTimeout(timeout);
-                resolve();
-              },
-              { once: true },
-            );
-          });
+          await this.waitForRetryDelayOrPrewarm(retryDelay, abort.signal);
           if (abort.signal.aborted || this.currentVoiceTurnId !== traceId) {
             return;
           }

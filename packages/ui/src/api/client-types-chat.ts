@@ -675,7 +675,12 @@ export interface MemoryBrowseQuery {
 
 export interface MemoryBrowseResponse {
   memories: MemoryBrowseItem[];
+  /** Number of eligible rows observed while assembling this page. */
   total: number;
+  /** Whether `total` is complete rather than a lower bound. */
+  totalIsExact?: boolean;
+  /** Whether another page is known to exist. */
+  hasMore?: boolean;
   limit: number;
   offset: number;
 }

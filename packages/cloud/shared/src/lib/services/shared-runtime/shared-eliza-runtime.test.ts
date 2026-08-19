@@ -4,10 +4,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { AgentRuntime } from "@elizaos/core/edge";
+import { AgentRuntime, ChannelType } from "@elizaos/core/edge";
 import { NotificationService } from "@elizaos/core/services/notification";
 import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
+import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
 const scheduledInputs: Array<Record<string, unknown>> = [];
 type StoredTodo = Awaited<ReturnType<TodoStore["create"]>>;
@@ -307,8 +308,12 @@ describe("Shared Eliza Workerd runtime", () => {
       onProviderDispatch: async () => {
         dispatches += 1;
       },
+      traceId: "trace-observer-nonfatal",
+      onRuntimeTiming: () => {
+        throw new Error("diagnostics sink unavailable");
+      },
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
       },
     });
@@ -335,6 +340,7 @@ describe("Shared Eliza Workerd runtime", () => {
 
   test("aborts the genuine runtime provider stream before barge-in can emit text", async () => {
     const providerStarted = Promise.withResolvers<AbortSignal>();
+    const timingOutcomes: string[] = [];
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
       const signal = init?.signal;
       if (!signal) throw new Error("Expected the runtime provider abort signal");
@@ -362,8 +368,10 @@ describe("Shared Eliza Workerd runtime", () => {
       },
       history: [],
       message: "do not finish this turn",
+      traceId: "trace-aborted-runtime",
+      onRuntimeTiming: (receipt) => timingOutcomes.push(`${receipt.traceId}:${receipt.outcome}`),
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
       },
     });
@@ -380,6 +388,7 @@ describe("Shared Eliza Workerd runtime", () => {
 
     expect(providerSignal.aborted).toBe(true);
     await expect(nextPart).rejects.toThrow();
+    expect(timingOutcomes).toContain("trace-aborted-runtime:aborted");
   });
 
   test("runs HANDLE_RESPONSE through AgentRuntime and preserves native usage", async () => {
@@ -451,7 +460,7 @@ describe("Shared Eliza Workerd runtime", () => {
         dispatches += 1;
       },
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
       },
     });
@@ -477,6 +486,88 @@ describe("Shared Eliza Workerd runtime", () => {
         (tool) => tool.function?.name === "HANDLE_RESPONSE",
       ),
     ).toBe(true);
+  });
+
+  test("persists an ambiguous group message when AgentRuntime chooses IGNORE", async () => {
+    let timingReceipt: SharedRuntimeTimingReceipt | null = null;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl-shared-runtime-ignore",
+          object: "chat.completion",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "shared-handle-response-ignore",
+                    type: "function",
+                    function: {
+                      name: "HANDLE_RESPONSE",
+                      arguments: JSON.stringify({
+                        shouldRespond: "IGNORE",
+                        thought: "The guild message is ambient and not addressed to Eliza.",
+                        contexts: ["general"],
+                        intents: [],
+                        candidateActionNames: [],
+                        replyText: "",
+                        replyEffectStatus: "none",
+                        facts: [],
+                        relationships: [],
+                        addressedTo: [],
+                      }),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 21, completion_tokens: 7, total_tokens: 28 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )) as typeof fetch;
+
+    const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+    const result = await runSharedAgentTurn({
+      character: { name: "Shared Eliza", system: "You are Eliza.", model: "gemma-4-31b" },
+      history: [],
+      message: "Alice and Bob should continue without me.",
+      messageIds: {
+        user: "ba919f47-c00d-4dfa-a4da-09d1078c1462",
+        assistant: "be654e90-f3e7-44ef-b9ba-e215212c430e",
+      },
+      traceId: "trace-shared-ignore",
+      onRuntimeTiming: (receipt) => {
+        timingReceipt = receipt;
+      },
+      execution: {
+        channel: { type: ChannelType.GROUP, source: "discord" },
+        agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+      },
+    });
+
+    expect(result).toMatchObject({ reply: "", responded: false, degraded: false });
+    expect(result.history).toHaveLength(1);
+    expect(result.history[0]).toMatchObject({
+      role: "user",
+      content: "Alice and Bob should continue without me.",
+    });
+    expect(timingReceipt).toMatchObject({
+      traceId: "trace-shared-ignore",
+      outcome: "success",
+      routing: { decision: "silent", contextIds: ["general"] },
+      inference: {
+        composeStateDurationMs: expect.any(Number),
+        shouldRespondAndContextDurationMs: expect.any(Number),
+        providerTotalDurationMs: expect.any(Number),
+      },
+    });
   });
 
   test("awaits notification hydration before inference and dispatches through the genuine runtime", async () => {
@@ -559,7 +650,7 @@ describe("Shared Eliza Workerd runtime", () => {
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
         model: "gemma-4-31b",
         execution: {
-          engine: "eliza-runtime",
+          channel: { type: ChannelType.DM, source: "shared-runtime" },
           agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
           mobilePush: {
             dispatch: async (message) => {
@@ -662,7 +753,7 @@ describe("Shared Eliza Workerd runtime", () => {
       ],
       message: "summarize the previous three messages",
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:d6b81293-6440-4ec1-ae46-8fed715c1570",
       },
     });
@@ -815,7 +906,7 @@ describe("Shared Eliza Workerd runtime", () => {
         assistant: "059e33bc-8215-49f4-841f-7642e7505bc7",
       },
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
       },
     });
@@ -933,7 +1024,7 @@ describe("Shared Eliza Workerd runtime", () => {
         assistant: "d042cc9e-c7d4-485b-a49f-ff6eb231bc27",
       },
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:2d88dfa1-7687-4285-a423-f51883f2aa66",
         authenticatedPersonalSharedUser: true,
         media: {
@@ -1078,7 +1169,7 @@ describe("Shared Eliza Workerd runtime", () => {
         message: "A phone call connected. Greet the caller without taking any action.",
         messageRole: "system",
         execution: {
-          engine: "eliza-runtime",
+          channel: { type: ChannelType.VOICE_DM, source: "shared-runtime" },
           agentKey: "personal:4fa13137-cb01-43a9-948c-76d162be13af",
           authenticatedPersonalSharedUser: true,
           media: {
@@ -1121,6 +1212,7 @@ describe("Shared Eliza Workerd runtime", () => {
       expect(lifecycleConnection).toMatchObject({
         userName: "Shared lifecycle",
         source: "shared-runtime-system",
+        type: ChannelType.VOICE_DM,
       });
       expect(lifecycleConnection?.metadata).toBeUndefined();
     } finally {
@@ -1243,7 +1335,7 @@ describe("Shared Eliza Workerd runtime", () => {
       history: [],
       message: "Generate an image of a tiny orange lighthouse at dusk",
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:f5f2c7dd-cec2-432f-8882-9b43c84ecbcf",
         authenticatedPersonalSharedUser: true,
         media: {
@@ -1351,7 +1443,7 @@ describe("Shared Eliza Workerd runtime", () => {
       history: [],
       message: "Generate an image of a tiny orange lighthouse at dusk",
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:dd283829-b3d2-4ae1-a788-15ca74a9aa04",
       },
     });
@@ -1480,7 +1572,7 @@ describe("Shared Eliza Workerd runtime", () => {
         assistant: "83de2c02-ec48-48d6-a734-c665b27d23cf",
       },
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
         reminders: {
           runner: reminderRunner,
@@ -1762,7 +1854,7 @@ describe("Shared Eliza Workerd runtime", () => {
           assistant: "83de2c02-ec48-48d6-a734-c665b27d23cf",
         },
         execution: {
-          engine: "eliza-runtime",
+          channel: { type: ChannelType.DM, source: "shared-runtime" },
           agentKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
           reminders: {
             runner: lifecycleRunner,
@@ -1950,7 +2042,7 @@ describe("Shared Eliza Workerd runtime", () => {
         assistant: "70000000-0000-5000-8000-000000000004",
       },
       execution: {
-        engine: "eliza-runtime",
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:70000000-0000-5000-8000-000000000005",
         todos: { scope, store: todoStore },
       },

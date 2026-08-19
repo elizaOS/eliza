@@ -562,14 +562,17 @@ function runOnHostWithShell(
     let stderr = "";
     let timedOut = false;
 
-    proc.stdout.on("data", (chunk: Buffer) => {
+    // Preserve code points split across OS pipe chunks before accumulating.
+    proc.stdout.setEncoding("utf8");
+    proc.stderr.setEncoding("utf8");
+    proc.stdout.on("data", (chunk: string) => {
       if (stdout.length < STREAM_CAP_CHARS * 2) {
-        stdout += chunk.toString("utf8");
+        stdout += chunk;
       }
     });
-    proc.stderr.on("data", (chunk: Buffer) => {
+    proc.stderr.on("data", (chunk: string) => {
       if (stderr.length < STREAM_CAP_CHARS * 2) {
-        stderr += chunk.toString("utf8");
+        stderr += chunk;
       }
     });
 

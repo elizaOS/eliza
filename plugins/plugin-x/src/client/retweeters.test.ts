@@ -80,6 +80,13 @@ function retweeterPage(id: string, nextToken?: string) {
   };
 }
 
+function terminalPage(id: string, previousToken?: string) {
+  return {
+    data: [{ id, username: id, name: id, description: "" }],
+    meta: previousToken ? { previous_token: previousToken } : {},
+  };
+}
+
 describe("getAllRetweeters", () => {
   it("concatenates pages until the API stops returning a next cursor", async () => {
     const tweetRetweetedBy = vi
@@ -137,6 +144,46 @@ describe("getAllRetweeters", () => {
     // Exactly 3 calls: the cycle back to "A" is caught on the page that
     // returns it, not after further oscillation.
     expect(tweetRetweetedBy).toHaveBeenCalledTimes(3);
+  });
+
+  it("completes on a terminal page whose previous_token echoes the just-sent cursor", async () => {
+    const tweetRetweetedBy = vi
+      .fn()
+      .mockResolvedValueOnce(retweeterPage("user-1", "c1"))
+      .mockResolvedValueOnce(terminalPage("user-2", "c1"));
+    const auth = {
+      getV2Client: async () => ({ v2: { tweetRetweetedBy } }),
+    };
+
+    const result = await getAllRetweeters("tweet-1", auth as never);
+
+    expect(result.map((r) => r.rest_id)).toEqual(["user-1", "user-2"]);
+    expect(tweetRetweetedBy).toHaveBeenCalledTimes(2);
+    expect(tweetRetweetedBy).toHaveBeenNthCalledWith(
+      2,
+      "tweet-1",
+      expect.objectContaining({ pagination_token: "c1" }),
+    );
+  });
+
+  it("completes on a terminal page whose previous_token is a novel value", async () => {
+    const tweetRetweetedBy = vi
+      .fn()
+      .mockResolvedValueOnce(retweeterPage("user-1", "c1"))
+      .mockResolvedValueOnce(terminalPage("user-2", "novel-value"));
+    const auth = {
+      getV2Client: async () => ({ v2: { tweetRetweetedBy } }),
+    };
+
+    const result = await getAllRetweeters("tweet-1", auth as never);
+
+    expect(result.map((r) => r.rest_id)).toEqual(["user-1", "user-2"]);
+    expect(tweetRetweetedBy).toHaveBeenCalledTimes(2);
+    expect(tweetRetweetedBy).toHaveBeenNthCalledWith(
+      2,
+      "tweet-1",
+      expect.objectContaining({ pagination_token: "c1" }),
+    );
   });
 
   it("caps total pages so a provider that never repeats but never stops still terminates", async () => {

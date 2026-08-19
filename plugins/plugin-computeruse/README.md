@@ -76,8 +76,8 @@ on the SHELL action. They are **not** exposed by this plugin.
 
 - [`docs/MULTI_MONITOR.md`](./docs/MULTI_MONITOR.md) — multi-display
   capture and coordinate translation.
-- [`docs/SCENE_BUILDER.md`](./docs/SCENE_BUILDER.md) — how windows,
-  a11y, screen, and OCR are composed into a single `Scene`.
+- Scene composition — how windows, a11y, screen, and OCR are composed into a
+  single `Scene` (the separate design note was never committed).
 - [`docs/IOS_CONSTRAINTS.md`](./docs/IOS_CONSTRAINTS.md) /
   [`docs/ANDROID_CONSTRAINTS.md`](./docs/ANDROID_CONSTRAINTS.md) —
   honest scope on mobile.

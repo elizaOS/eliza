@@ -284,7 +284,7 @@
     "saxes": "6.0.0",
     "secp256k1": "^5.0.1",
     "semver": "7.8.5",
-    "tesseract.js": "^6.0.1",
+    "tesseract.js": "^7.0.0",
     "tsx": "^4.21.0",
     "turbo": "^2.9.16",
     "typescript": "^6.0.3",

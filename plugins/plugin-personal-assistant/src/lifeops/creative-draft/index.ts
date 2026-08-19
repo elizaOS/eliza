@@ -347,6 +347,23 @@ function isInvariantWordCharacter(value: string | undefined): boolean {
   return value !== undefined && /[\p{L}\p{M}\p{N}]/u.test(value);
 }
 
+function codePointBefore(value: string, index: number): string | undefined {
+  if (index <= 0) return undefined;
+  const trailing = value.charCodeAt(index - 1);
+  if (trailing >= 0xdc00 && trailing <= 0xdfff && index > 1) {
+    const leading = value.charCodeAt(index - 2);
+    if (leading >= 0xd800 && leading <= 0xdbff) {
+      return value.slice(index - 2, index);
+    }
+  }
+  return value[index - 1];
+}
+
+function codePointAt(value: string, index: number): string | undefined {
+  const point = value.codePointAt(index);
+  return point === undefined ? undefined : String.fromCodePoint(point);
+}
+
 /** Match a normalized phrase without treating a short token as a word fragment. */
 function containsInvariantPhrase(haystack: string, needle: string): boolean {
   const normalizedHaystack = normalizedInvariantText(haystack);
@@ -360,10 +377,11 @@ function containsInvariantPhrase(haystack: string, needle: string): boolean {
   while (fromIndex <= normalizedHaystack.length - normalizedNeedle.length) {
     const index = normalizedHaystack.indexOf(normalizedNeedle, fromIndex);
     if (index < 0) return false;
-    const before = Array.from(normalizedHaystack.slice(0, index)).at(-1);
-    const after = Array.from(
-      normalizedHaystack.slice(index + normalizedNeedle.length),
-    )[0];
+    const before = codePointBefore(normalizedHaystack, index);
+    const after = codePointAt(
+      normalizedHaystack,
+      index + normalizedNeedle.length,
+    );
     const startsAtBoundary =
       !isInvariantWordCharacter(firstNeedle) ||
       !isInvariantWordCharacter(before);

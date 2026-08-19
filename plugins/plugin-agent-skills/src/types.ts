@@ -473,6 +473,9 @@ export interface SkillsServiceConfig {
 	/** Registry API URL */
 	registryUrl?: string;
 
+	/** Remote request deadline in milliseconds. Set to null to disable. */
+	fetchTimeoutMs?: number | null;
+
 	/** Sync the remote skill catalog during service initialization */
 	syncCatalogOnStart?: boolean;
 

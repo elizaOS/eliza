@@ -1299,8 +1299,7 @@ export async function getAllRetweeters(
       );
     }
 
-    // Destructure bottomCursor / topCursor
-    const { retweeters, bottomCursor, topCursor } = await fetchRetweetersPage(
+    const { retweeters, bottomCursor } = await fetchRetweetersPage(
       tweetId,
       auth,
       cursor,
@@ -1308,17 +1307,19 @@ export async function getAllRetweeters(
     );
     allRetweeters = allRetweeters.concat(retweeters);
 
-    const newCursor = bottomCursor || topCursor;
-
-    // Stop if there is no new cursor
-    if (!newCursor) {
+    // Pagination continuation is driven by `bottomCursor` (next_token)
+    // alone. `topCursor` (previous_token) is deliberately ignored here: a
+    // well-behaved terminal page has no next_token but can still echo a
+    // non-empty previous_token, which would otherwise re-trigger pagination
+    // backwards and false-positive the repeat/cycle guard below.
+    if (!bottomCursor) {
       break;
     }
 
     // A cursor the API already returned means it stopped advancing (an
     // immediate repeat or a longer cycle) — treat it as a fault rather than
     // looping forever on it.
-    if (seenCursors.has(newCursor)) {
+    if (seenCursors.has(bottomCursor)) {
       throw new ElizaError(
         `Retweeter pagination for tweet ${tweetId} repeated a page cursor`,
         {
@@ -1327,8 +1328,8 @@ export async function getAllRetweeters(
         },
       );
     }
-    seenCursors.add(newCursor);
-    cursor = newCursor;
+    seenCursors.add(bottomCursor);
+    cursor = bottomCursor;
   }
 
   return allRetweeters;

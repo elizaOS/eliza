@@ -64,6 +64,7 @@ describe("useVoiceChat cloud ASR", () => {
       stop,
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const onTranscript = vi.fn();
 
@@ -124,6 +125,7 @@ describe("useVoiceChat cloud ASR", () => {
       stop: vi.fn().mockResolvedValue(new Uint8Array([9, 9])),
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const onTranscript = vi.fn();
 
@@ -185,6 +187,7 @@ describe("useVoiceChat cloud ASR", () => {
       stop,
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const onTranscript = vi.fn();
 
@@ -253,6 +256,7 @@ describe("useVoiceChat cloud ASR", () => {
       stop: vi.fn().mockResolvedValue(new Uint8Array([1, 2])),
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const onTranscript = vi.fn();
 
@@ -357,6 +361,7 @@ describe("useVoiceChat cloud ASR", () => {
       stop: vi.fn().mockResolvedValue(new Uint8Array([1])),
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const { result } = renderHook(() =>
       useVoiceChat({
@@ -382,6 +387,7 @@ describe("useVoiceChat cloud ASR", () => {
       stop: vi.fn().mockResolvedValue(new Uint8Array([1])),
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     fetchWithCsrfMock.mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : String(input);

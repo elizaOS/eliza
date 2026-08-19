@@ -71,6 +71,7 @@ describe("managed Discord Shared connector boundary", () => {
     expect(call?.[2]).toContain("[Public Discord guild channel; speaker: Alice.");
     expect(call?.[2]).toContain(message);
     expect(call?.[9]).toBe(message);
+    expect(call?.[10]).toEqual({ type: "GROUP", source: "discord" });
   });
 
   test("keeps the voice privacy wrapper for the model and sends raw transcript separately", async () => {
@@ -93,6 +94,7 @@ describe("managed Discord Shared connector boundary", () => {
     expect(call?.[2]).toContain("[Public Discord guild voice; speaker: Alice.");
     expect(call?.[2]).toContain(transcript);
     expect(call?.[9]).toBe(transcript);
+    expect(call?.[10]).toEqual({ type: "VOICE_GROUP", source: "discord" });
     expect(textToSpeech).toHaveBeenCalledWith({
       text: "Shared reply",
       outputFormat: "mp3_44100_128",

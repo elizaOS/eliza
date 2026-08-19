@@ -18,6 +18,7 @@ import {
   sharedAgentMemoriesWriter,
 } from "../../../db/repositories/shared-agent-memories";
 import { logger } from "../../utils/logger";
+import type { SharedRuntimeChannel } from "./shared-runtime-channel";
 import {
   type SharedTodoStorageScope,
   sharedRuntimeConversationRoomId,
@@ -51,6 +52,8 @@ export interface SharedMemoryTurnPair {
   messageRole?: "system" | "user";
   /** Mirrors the canonical history marker for a client-cancelled partial reply. */
   interrupted?: boolean;
+  /** Trusted transport semantics projected onto durable runtime memories. */
+  channel?: SharedRuntimeChannel;
 }
 
 /** Row id from a transport message id: pass through uuids, hash anything else. */
@@ -146,8 +149,8 @@ export class SharedMemoryStore {
       type: SHARED_MEMORY_TYPE,
       content: {
         text: pair.userMessage,
-        source: "shared-runtime",
-        channelType: "DM",
+        source: pair.channel?.source ?? "shared-runtime",
+        channelType: pair.channel?.type ?? "DM",
         ...(pair.messageRole === "system" ? { role: "system" } : {}),
       },
       ...embeddingFields(0),
@@ -165,8 +168,8 @@ export class SharedMemoryStore {
       type: SHARED_MEMORY_TYPE,
       content: {
         text: assistantReply,
-        source: "shared-runtime",
-        channelType: "DM",
+        source: pair.channel?.source ?? "shared-runtime",
+        channelType: pair.channel?.type ?? "DM",
       },
       createdAt: new Date(landedAt + 1),
     };

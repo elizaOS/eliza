@@ -13,7 +13,8 @@ shelling out to `cmake` against the **upstream npm package's bundled
 `ios/` source tree**. That source has none of the eliza kernels —
 TurboQuant, QJL, PolarQuant, MTP — so every iOS Capacitor build
 silently shipped a stock llama.cpp framework, in violation of
-[`packages/inference/AGENTS.md`](../../../inference/AGENTS.md) §3
+the kernel-coverage rule now kept in
+[`plugins/plugin-local-inference/native/README.md`](../../../../plugins/plugin-local-inference/native/README.md)
 ("Required for ALL tiers — TurboQuant / QJL / PolarQuant / MTP;
 runtime MUST refuse to load a bundle missing any required kernel").
 

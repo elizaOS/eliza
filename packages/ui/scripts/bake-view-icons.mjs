@@ -30,11 +30,30 @@ const out = join(
 );
 const assetDir = join(here, "..", "src", "components", "views", "view-icons");
 
-const files = existsSync(srcDir)
-  ? readdirSync(srcDir)
-      .filter((f) => f.endsWith(".png"))
-      .sort()
-  : [];
+// Fail closed before the destructive rewrite below: on any machine that has
+// not run gen-view-icons.mjs (or passed an explicit srcDir), the source
+// directory is absent, and proceeding would delete every committed icon and
+// bake an empty VIEW_ICONS map with a zero exit status.
+if (!existsSync(srcDir)) {
+  console.error(
+    `[bake-view-icons] source directory ${srcDir} does not exist; ` +
+      "run scripts/gen-view-icons.mjs first (FAL_KEY required) or pass the icon directory as an argument. " +
+      "Refusing to delete the committed icons under src/components/views/view-icons.",
+  );
+  process.exit(1);
+}
+
+const files = readdirSync(srcDir)
+  .filter((f) => f.endsWith(".png"))
+  .sort();
+
+if (files.length === 0) {
+  console.error(
+    `[bake-view-icons] ${srcDir} contains no .png files; ` +
+      "refusing to replace the committed icon set with an empty bake.",
+  );
+  process.exit(1);
+}
 
 rmSync(assetDir, { force: true, recursive: true });
 mkdirSync(assetDir, { recursive: true });

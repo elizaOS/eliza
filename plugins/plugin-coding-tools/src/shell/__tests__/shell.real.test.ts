@@ -89,6 +89,26 @@ describePosixShell("shell plugin real local integration", () => {
     expect(provider.values?.currentWorkingDirectory).toBe(allowedDirectory);
   });
 
+  it("captures deliberately split multibyte stdout and stderr without corruption", async () => {
+    const script = [
+      'const value = Buffer.from("\u4f60");',
+      "process.stdout.write(value.subarray(0, 1));",
+      "process.stderr.write(value.subarray(0, 2));",
+      "setTimeout(() => {",
+      "  process.stdout.write(value.subarray(1));",
+      "  process.stderr.write(value.subarray(2));",
+      "}, 50);",
+    ].join("");
+    const result = await service.executeCommand(
+      `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
+      "room-utf8",
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.stdout).toBe("\u4f60");
+    expect(result.stderr).toBe("\u4f60");
+  });
+
   it("stores and provides only redacted configured bare secrets", async () => {
     const secret = "marigold9";
     await service.stop();

@@ -12,15 +12,16 @@ import {
   AgentRuntime,
   basicProviders,
   basicServices,
-  ChannelType,
+  CONTEXT_ROUTING_METADATA_KEY,
   createMessageMemory,
   type GenerateTextParams,
   generateMediaAction,
   type IAgentRuntime,
   IMediaGenerationService,
+  type InferenceTurnSummary,
   InMemoryDatabaseAdapter,
-  MESSAGE_SOURCE_CLIENT_CHAT,
   type MediaGenerationRequest,
+  type Memory,
   ModelType,
   NOTIFICATION_STREAM,
   NotificationService,
@@ -57,11 +58,21 @@ import type {
   SharedMediaGenerationPort,
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
-import { appendSharedTurn } from "./run-shared-agent-turn";
+import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
+import {
+  createSharedRuntimeCapabilitiesPlugin,
+  REQUEST_DEDICATED_UPGRADE_ACTION,
+  SHARED_RUNTIME_CAPABILITIES_PROVIDER,
+} from "./shared-runtime-capabilities";
 import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
 } from "./shared-runtime-storage-identity";
+import {
+  SharedRuntimeTimingCollector,
+  type SharedRuntimeTimingOutcome,
+} from "./shared-runtime-timing";
+import { SHARED_TURN_MAX_RETRIES } from "./shared-turn-retry-budget";
 
 type NativeTextModelResult = string & {
   text: string;
@@ -69,6 +80,12 @@ type NativeTextModelResult = string & {
   finishReason: string;
   usage: SharedAgentTurnUsage;
   providerMetadata: { modelName: string };
+};
+
+type SharedElizaRuntimeTurnInput = Omit<RunSharedAgentTurnInput, "execution"> & {
+  execution: NonNullable<RunSharedAgentTurnInput["execution"]>;
+  agentKey: string;
+  model: string;
 };
 
 interface SharedNotificationEventBus {
@@ -219,12 +236,25 @@ function createRuntime(options: {
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
 }): AgentRuntime {
+  const capabilityPlugin = createSharedRuntimeCapabilitiesPlugin({
+    agentId: options.agentKey,
+    webSearch: options.actionsEnabled,
+    reminders: options.actionsEnabled && Boolean(options.reminderPlugin),
+    todos: options.actionsEnabled && Boolean(options.todoPlugin),
+    media: options.actionsEnabled && Boolean(options.mediaPlugin),
+  });
   return new AgentRuntime({
     agentId: options.agentId ?? stringToUuid(options.agentKey),
     character: {
       name: options.character.name,
       system: options.character.system,
       bio: options.character.bio ?? [],
+      messageExamples: options.character.messageExamples ?? [],
+      postExamples: options.character.postExamples ?? [],
+      topics: options.character.topics ?? [],
+      adjectives: options.character.adjectives ?? [],
+      style: options.character.style,
+      templates: options.character.templates,
       plugins: [],
       settings: {
         ELIZA_CANONICAL_LLM_TEXT_ENABLED: true,
@@ -235,6 +265,7 @@ function createRuntime(options: {
     plugins: [
       options.modelPlugin,
       ...(!options.actionsEnabled ? [sharedSystemLifecyclePlugin] : []),
+      ...(options.actionsEnabled ? [capabilityPlugin] : []),
       ...(options.actionsEnabled ? [webSearchEdgePlugin] : []),
       ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
       ...(options.actionsEnabled && options.reminderPlugin ? [options.reminderPlugin] : []),
@@ -243,7 +274,7 @@ function createRuntime(options: {
     logLevel: "error",
     disableBasicCapabilities: !options.actionsEnabled,
     actionPlanning: options.actionsEnabled,
-    checkShouldRespond: false,
+    checkShouldRespond: true,
     enableAutonomy: false,
     enableDocuments: false,
     enableRelationships: false,
@@ -415,17 +446,86 @@ function projectedHistoryTimestamps(history: SharedTurnMessage[]): number[] {
   return timestamps;
 }
 
+function logSharedProviderSpans(
+  input: SharedElizaRuntimeTurnInput,
+  summary: InferenceTurnSummary | undefined,
+  responded: boolean,
+): void {
+  const providerSpans = (summary?.spans ?? [])
+    .filter((span) => span.name === "composeState" || span.name.startsWith("provider:"))
+    .map((span) => ({ name: span.name, durationMs: span.durationMs }));
+  const slowProviderSpans = providerSpans.filter((span) => span.durationMs > 500);
+  logger.info("[shared-eliza-runtime] provider latency", {
+    traceId: input.traceId ?? input.messageIds?.assistant ?? null,
+    channelType: input.execution.channel.type,
+    source: input.execution.channel.source,
+    responded,
+    providerSpans,
+    providerBudgetTargetMs: 300,
+    providerBudgetCeilingMs: 500,
+  });
+  if (slowProviderSpans.length > 0) {
+    logger.warn("[shared-eliza-runtime] provider latency exceeded ceiling", {
+      traceId: input.traceId ?? input.messageIds?.assistant ?? null,
+      slowProviderSpans,
+      providerBudgetCeilingMs: 500,
+    });
+  }
+}
+
+function routedContextIds(message: Memory): string[] {
+  const metadata = message.content?.metadata;
+  if (!metadata || typeof metadata !== "object") return [];
+  const routing = (metadata as Record<string, unknown>)[CONTEXT_ROUTING_METADATA_KEY];
+  if (!routing || typeof routing !== "object" || Array.isArray(routing)) return [];
+  const record = routing as Record<string, unknown>;
+  const primary = typeof record.primaryContext === "string" ? [record.primaryContext] : [];
+  const secondary = Array.isArray(record.secondaryContexts)
+    ? record.secondaryContexts.filter((value): value is string => typeof value === "string")
+    : [];
+  return [...primary, ...secondary];
+}
+
 async function executeSharedElizaRuntimeTurn(
-  input: RunSharedAgentTurnInput & { agentKey: string; model: string },
+  input: SharedElizaRuntimeTurnInput,
   onStreamChunk?: (chunk: string) => void | Promise<void>,
 ): Promise<RunSharedAgentTurnResult> {
-  const turnStartedAt = performance.now();
+  const timing = new SharedRuntimeTimingCollector(
+    input.traceId ?? input.messageIds?.assistant ?? "unattributed",
+    input.history.length,
+  );
+  const emitTiming = (outcome: SharedRuntimeTimingOutcome): void => {
+    try {
+      input.onRuntimeTiming?.(timing.receipt(outcome));
+    } catch (error) {
+      // error-policy:J7 diagnostics must not kill the loop — the observer is
+      // outside the authoritative response and persistence path.
+      logger.warn("[shared-eliza-runtime] timing observer failed", {
+        traceId: input.traceId ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+  try {
+    const result = await executeMeasuredSharedElizaRuntimeTurn(input, onStreamChunk, timing);
+    emitTiming("success");
+    return result;
+  } catch (error) {
+    emitTiming(input.abortSignal?.aborted ? "aborted" : "error");
+    throw error;
+  }
+}
+
+async function executeMeasuredSharedElizaRuntimeTurn(
+  input: SharedElizaRuntimeTurnInput,
+  onStreamChunk: ((chunk: string) => void | Promise<void>) | undefined,
+  timing: SharedRuntimeTimingCollector,
+): Promise<RunSharedAgentTurnResult> {
   await ensureEdgeStreamingContext();
-  const edgeContextReadyAt = performance.now();
+  timing.markEdgeContextReady();
   const adapter = new InMemoryDatabaseAdapter();
   let providerDispatched = false;
-  let providerDispatchedAt: number | null = null;
-  let providerFirstTextAt: number | null = null;
+  const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
   const model = getInteractiveCerebrasLanguageModel(input.model);
 
@@ -435,12 +535,12 @@ async function executeSharedElizaRuntimeTurn(
   ): Promise<string | NativeTextModelResult | TextStreamResult> => {
     if (!providerDispatched) {
       providerDispatched = true;
-      providerDispatchedAt = performance.now();
       await input.onProviderDispatch?.();
+      timing.markProviderDispatched();
     }
     const generation = {
       model,
-      maxRetries: 0,
+      maxRetries: SHARED_TURN_MAX_RETRIES,
       allowSystemInMessages: true,
       ...(params.messages
         ? { messages: params.messages as ModelMessage[] }
@@ -479,14 +579,13 @@ async function executeSharedElizaRuntimeTurn(
                 ? (record.inputTextDelta ?? record.delta)
                 : undefined;
             if (chunk) {
-              providerFirstTextAt ??= performance.now();
               yield chunk;
             }
           }
           return;
         }
         for await (const chunk of result.textStream) {
-          providerFirstTextAt ??= performance.now();
+          if (chunk) timing.markProviderFirstText();
           yield chunk;
         }
       })();
@@ -518,7 +617,7 @@ async function executeSharedElizaRuntimeTurn(
     const result = await generateText({
       ...generation,
     });
-    providerFirstTextAt ??= performance.now();
+    if (result.text.trim()) timing.markProviderFirstText();
     usage = addUsage(usage, normalizeUsage(result.usage));
     if (result.toolCalls.length === 0) {
       return result.text;
@@ -570,9 +669,8 @@ async function executeSharedElizaRuntimeTurn(
     reminderPlugin,
     todoPlugin,
   });
-
   try {
-    const initializeStartedAt = performance.now();
+    timing.markRuntimeInitializeStarted();
     await runtime.initialize({ skipMigrations: true });
     if (mediaPlugin) {
       await runtime.getServiceLoadPromise(ServiceType.MEDIA_GENERATION);
@@ -594,7 +692,7 @@ async function executeSharedElizaRuntimeTurn(
       mobilePushDispatch && isSharedNotificationEventBus(eventBus)
         ? subscribeSharedMobilePush(eventBus, mobilePushDispatch, pushDispatches)
         : undefined;
-    const runtimeReadyAt = performance.now();
+    timing.markRuntimeReady();
     if (runtime.actions.some((action) => action.name === "VIEWS")) {
       throw new Error("Eliza Shared runtime must not register client view-navigation actions");
     }
@@ -607,6 +705,16 @@ async function executeSharedElizaRuntimeTurn(
     } else {
       if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
         throw new Error("Eliza Shared runtime initialized without its WEB_SEARCH action");
+      }
+      if (!runtime.actions.some((action) => action.name === REQUEST_DEDICATED_UPGRADE_ACTION)) {
+        throw new Error("Eliza Shared runtime initialized without its Dedicated review action");
+      }
+      if (
+        !runtime.providers.some(
+          (provider) => provider.name === SHARED_RUNTIME_CAPABILITIES_PROVIDER,
+        )
+      ) {
+        throw new Error("Eliza Shared runtime initialized without its capability provider");
       }
       if (
         input.execution?.reminders &&
@@ -625,14 +733,14 @@ async function executeSharedElizaRuntimeTurn(
       }
     }
     const roomId = sharedRuntimeConversationRoomId(input.agentKey);
-    const connectionStartedAt = performance.now();
+    timing.markConnectionStarted();
     await runtime.ensureConnection({
       entityId: incomingEntityId,
       roomId,
       worldId: sharedRuntimeWorldId(input.agentKey),
       userName: actionsEnabled ? "Shared user" : "Shared lifecycle",
-      source: actionsEnabled ? "shared-runtime" : "shared-runtime-system",
-      type: ChannelType.DM,
+      source: actionsEnabled ? input.execution.channel.source : "shared-runtime-system",
+      type: input.execution.channel.type,
       ...(authenticatedPersonalSharedUser
         ? {
             metadata: {
@@ -642,8 +750,8 @@ async function executeSharedElizaRuntimeTurn(
           }
         : {}),
     });
-    const connectionReadyAt = performance.now();
-    const historyStartedAt = performance.now();
+    timing.markConnectionReady();
+    timing.markHistoryStarted();
     if (input.history.length > 0) {
       const historyTimestamps = projectedHistoryTimestamps(input.history);
       await adapter.createMemories(
@@ -661,8 +769,11 @@ async function executeSharedElizaRuntimeTurn(
             roomId,
             content: {
               text: message.content,
-              source: message.role === "system" ? "shared-runtime-system" : "shared-runtime",
-              channelType: ChannelType.DM,
+              source:
+                message.role === "system"
+                  ? "shared-runtime-system"
+                  : input.execution.channel.source,
+              channelType: input.execution.channel.type,
             },
           });
           memory.createdAt = createdAt;
@@ -677,41 +788,38 @@ async function executeSharedElizaRuntimeTurn(
         }),
       );
     }
-    const historyReadyAt = performance.now();
+    timing.markHistoryReady();
 
     const delivered: string[] = [];
     const messageService = runtime.messageService;
     if (!messageService) {
       throw new Error("Eliza Shared runtime initialized without a message service");
     }
+    const incomingMessage = createMessageMemory({
+      id: stringToUuid(input.messageIds?.user ?? `${input.agentKey}:${input.message}`),
+      entityId: incomingEntityId,
+      agentId: runtime.agentId,
+      roomId,
+      content: {
+        text: input.message.trim(),
+        // Only the server-owned execution attestation may translate a Shared
+        // turn to authenticated client-chat provenance. Connector payloads and
+        // direct runtime callers remain on the fail-closed Shared source.
+        source: actionsEnabled ? input.execution.channel.source : "shared-runtime-system",
+        channelType: input.execution.channel.type,
+        ...(input.originClientMessageId
+          ? {
+              chatIdempotency: {
+                version: 1,
+                clientMessageId: input.originClientMessageId,
+              },
+            }
+          : {}),
+      },
+    });
     const result = await messageService.handleMessage(
       runtime,
-      createMessageMemory({
-        id: stringToUuid(input.messageIds?.user ?? `${input.agentKey}:${input.message}`),
-        entityId: incomingEntityId,
-        agentId: runtime.agentId,
-        roomId,
-        content: {
-          text: input.message.trim(),
-          // Only the server-owned execution attestation may translate a Shared
-          // turn to authenticated client-chat provenance. Connector payloads and
-          // direct runtime callers remain on the fail-closed Shared source.
-          source: !actionsEnabled
-            ? "shared-runtime-system"
-            : authenticatedPersonalSharedUser
-              ? MESSAGE_SOURCE_CLIENT_CHAT
-              : "shared-runtime",
-          channelType: ChannelType.DM,
-          ...(input.originClientMessageId
-            ? {
-                chatIdempotency: {
-                  version: 1,
-                  clientMessageId: input.originClientMessageId,
-                },
-              }
-            : {}),
-        },
-      }),
+      incomingMessage,
       async (content) => {
         const text = content.text?.trim();
         const attachmentUrls = (content.attachments ?? []).flatMap((attachment) =>
@@ -727,8 +835,20 @@ async function executeSharedElizaRuntimeTurn(
         ? {
             ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
             ...(onStreamChunk ? { onStreamChunk } : {}),
+            onInferenceTimingSummary: (summary) => {
+              inferenceTelemetry.summary = summary;
+            },
           }
-        : undefined,
+        : {
+            onInferenceTimingSummary: (summary) => {
+              inferenceTelemetry.summary = summary;
+            },
+          },
+    );
+    timing.markInferenceSpans(inferenceTelemetry.summary?.spans ?? []);
+    timing.markRoutingDecision(
+      result?.didRespond || delivered.length > 0 ? "respond" : "silent",
+      routedContextIds(incomingMessage),
     );
     unsubscribePush?.();
     const pushResults = await Promise.allSettled(pushDispatches);
@@ -746,29 +866,29 @@ async function executeSharedElizaRuntimeTurn(
     // A verified action may own the response and deliver it through the
     // callback with `agentVoiced`; core then correctly reports no second model
     // response. The callback receipt is still an actual user-visible delivery.
-    if ((!result?.didRespond && delivered.length === 0) || !reply) {
+    if (!result?.didRespond && delivered.length === 0) {
+      logSharedProviderSpans(input, inferenceTelemetry.summary, false);
+      return {
+        reply: "",
+        responded: false,
+        history: appendSharedInput(
+          input.history,
+          input.message.trim(),
+          input.messageIds,
+          input.messageRole,
+        ),
+        model: input.model,
+        degraded: false,
+        usage,
+      };
+    }
+    if (!reply) {
       throw new Error("Eliza Shared runtime completed without a user-visible reply");
     }
-    const completedAt = performance.now();
-    logger.info("[shared-eliza-runtime] turn latency", {
-      turnId: input.messageIds?.assistant ?? null,
-      historyMessages: input.history.length,
-      edgeContextMs: Math.round((edgeContextReadyAt - turnStartedAt) * 10) / 10,
-      runtimeInitializeMs: Math.round((runtimeReadyAt - initializeStartedAt) * 10) / 10,
-      connectionMs: Math.round((connectionReadyAt - connectionStartedAt) * 10) / 10,
-      historyProjectionMs: Math.round((historyReadyAt - historyStartedAt) * 10) / 10,
-      providerDispatchMs:
-        providerDispatchedAt === null
-          ? null
-          : Math.round((providerDispatchedAt - turnStartedAt) * 10) / 10,
-      providerFirstTextMs:
-        providerFirstTextAt === null
-          ? null
-          : Math.round((providerFirstTextAt - turnStartedAt) * 10) / 10,
-      totalMs: Math.round((completedAt - turnStartedAt) * 10) / 10,
-    });
+    logSharedProviderSpans(input, inferenceTelemetry.summary, true);
     return {
       reply,
+      responded: true,
       history: appendSharedTurn(
         input.history,
         input.message.trim(),
@@ -788,7 +908,7 @@ async function executeSharedElizaRuntimeTurn(
 }
 
 export async function runSharedElizaRuntimeTurn(
-  input: RunSharedAgentTurnInput & { agentKey: string; model: string },
+  input: SharedElizaRuntimeTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   return await executeSharedElizaRuntimeTurn(input);
 }
@@ -810,7 +930,7 @@ function isRuntimeControlChunk(chunk: string): boolean {
 }
 
 export async function runSharedElizaRuntimeTurnStream(
-  input: RunSharedAgentTurnInput & { agentKey: string; model: string },
+  input: SharedElizaRuntimeTurnInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const controller = new AbortController();
   const abortFromCaller = () => controller.abort(input.abortSignal?.reason);
@@ -852,6 +972,7 @@ export async function runSharedElizaRuntimeTurnStream(
       push({
         type: "finish",
         text: result.reply,
+        ...(result.responded === false ? { responded: false } : {}),
         usage: result.usage,
         ...(result.actionResults?.length ? { actionResults: result.actionResults } : {}),
       });

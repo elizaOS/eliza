@@ -502,6 +502,16 @@ jobs:
   device:
     name: Device bundles
     if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:device')
+    # A workflow_call caller must grant every permission any nested job
+    # requests, even jobs whose `if` can never fire on this event: GitHub
+    # validates the compiled graph before evaluating conditions, and an
+    # uncovered nested request fails the entire CI run at startup. These
+    # mirror the schedule-only reconcile-scheduled-android-status job; the
+    # label gate above keeps the grant off unlabeled PRs entirely.
+    permissions:
+      actions: read
+      contents: read
+      issues: write
     uses: ./.github/workflows/device-e2e.yml
 
   secrets:

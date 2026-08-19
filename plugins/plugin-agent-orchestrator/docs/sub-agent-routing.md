@@ -223,5 +223,4 @@ selection over the synthetic Memory emitted by `SubAgentRouter`.
 - [src/services/sub-agent-router.ts](../src/services/sub-agent-router.ts)
 - [src/providers/active-sub-agents.ts](../src/providers/active-sub-agents.ts)
 - [src/services/acp-service.ts](../src/services/acp-service.ts)
-- [src/actions/create-task.ts](../src/actions/create-task.ts)
-- [src/actions/send-to-agent.ts](../src/actions/send-to-agent.ts)
+- [src/actions/tasks.ts](../src/actions/tasks.ts) — `CREATE_TASK`, `SEND_TO_AGENT`

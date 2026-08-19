@@ -38,8 +38,8 @@ export function parseFrontmatter(content: string): {
 	body: string;
 	raw: string;
 } {
-	// Match frontmatter block
-	const match = content.match(/^---\n([\s\S]*?)\n---\n?/);
+	// Match frontmatter block regardless of line-ending style.
+	const match = content.match(/^---(?:\r?\n)([\s\S]*?)(?:\r?\n)---(?:\r?\n)?/);
 
 	if (!match) {
 		return { frontmatter: null, body: content, raw: "" };

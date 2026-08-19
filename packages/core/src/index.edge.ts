@@ -45,6 +45,7 @@ export { generateMediaAction } from "./features/advanced-capabilities/actions/ge
 export * from "./features/basic-capabilities/index.edge";
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
+export type { InferenceTurnSummary } from "./inference-timing";
 export * from "./logger";
 export * from "./markdown";
 export * from "./memory";

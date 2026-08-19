@@ -115,7 +115,7 @@ task creation is modeled as opening the LifeOps task feature.
 
 Build-time flag set: `VITE_ELIZA_ANDROID_RUNTIME_MODE=cloud`. The
 renderer reads this via
-[`packages/ui/src/platform/android-runtime.ts`](../../../../ui/src/platform/android-runtime.ts)
+[`packages/ui/src/platform/android-runtime.ts`](../../../ui/src/platform/android-runtime.ts)
 and the `RuntimeSettingsSection` hides the Local picker option so users
 cannot try to provision an on-device agent that physically isn't there.
 
