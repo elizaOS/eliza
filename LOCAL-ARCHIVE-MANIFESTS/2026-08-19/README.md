@@ -6,6 +6,8 @@ This directory is preservation evidence only. Nothing here is a merge candidate.
 
 The `nubs/trash/*-do-not-merge` branches on `elizaOS/eliza` preserve the reviewable source changes. They were pushed without upstream tracking and no pull requests were created for them.
 
+`trash-branches.tsv` records the exact remote SHA and pull-request count for all eight archive branches. `local-checkouts.tsv` records the post-archive state of every related local Git checkout found under the task directories.
+
 ## Duplicated bulk payload
 
 `duplicated-bulk-files.sha256.tsv` records 850 files totaling 1,261,395,504 bytes. The complete SHA-256 manifest was generated independently from these two local checkouts and the results were byte-for-byte identical:
@@ -34,3 +36,7 @@ tar --zstd -xf coding-qa-and-trajectory-evidence.tar.zst -C /path/to/disposable-
 - Exact credential-shape scans returned zero matches before archival.
 - No reset, clean, stash, merge, deployment, or production mutation was performed.
 - Do not merge any trash branch wholesale. Review and cherry-pick individual commits only after fresh verification.
+
+## Historical pull requests
+
+`related-account-prs.tsv` is a title/branch-name filtered inventory of potentially related pull requests opened by the `NubsCarson` GitHub account since 2026-08-12. It is an accountability aid, not proof that a PR originated from a particular laptop checkout. Some listed PRs were already merged before this archive operation; the trash branches do not revert or supersede them.

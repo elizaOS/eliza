@@ -1,0 +1,14 @@
+path	branch	head	dirty_entries	untracked_entries	origin
+/home/nubs/Documents/ChatGPT/voice	master	unborn	2	2	none
+/home/nubs/Documents/Codex/2026-08-14/eliza-voice-consolidated	nubs/trash/voice-consolidated-2026-08-18-do-not-merge	4487d60c25a0e4add050309f580874ebcfcc5944	19	19	https://github.com/elizaOS/eliza.git
+/home/nubs/Documents/Codex/2026-08-14/eliza-voice-implementation-2/work/eliza	nubs/trash/voice-epoch-safety-2026-08-19-do-not-merge	a4c8e7a59612608a1e8db05648ae4b4197a1ce17	19	19	https://github.com/elizaOS/eliza.git
+/home/nubs/Documents/Codex/2026-08-14/eliza-voice-implementation/work/eliza-public	nubs/trash/voice-provisional-barge-in-2026-08-19-do-not-merge	8ba52403f2ff0362efce06309b5d31b56ec48f10	0	0	https://github.com/elizaOS/eliza.git
+/home/nubs/Documents/Codex/2026-08-14/eliza-voice-latest	nubs/trash/voice-linux-week-2026-08-18-do-not-merge	a32ad33a418283197a866d7c580f7b1e70733ff8	0	0	https://github.com/elizaOS/eliza.git
+/home/nubs/Documents/Codex/2026-08-17/eliza-coding-agent-latest-develop/work/eliza	nubs/trash/coding-linux-week-2026-08-18-do-not-merge	7f89b040ed41c22a0a3435d7a3515887cd172456	0	0	https://github.com/elizaOS/eliza.git
+/home/nubs/Documents/Codex/2026-08-17/eliza-coding-agent-latest-develop/work/qa-workspace	master	unborn	28	15	none
+/home/nubs/Documents/Codex/2026-08-17/eliza-coding-agent-latest-develop/work/qa-workspace/final-e2e-eliza-code-2	main	468ed85bf0c036db25db8db378e0d3cc6165993b	5	5	/home/nubs/Documents/Codex/2026-08-17/eliza-coding-agent-latest-develop/work/qa-workspace/final-e2e-eliza-code
+/home/nubs/Documents/Codex/2026-08-17/eliza-coding-agent-latest-develop/work/qa-workspace/final-e2e-eliza-code	main	468ed85bf0c036db25db8db378e0d3cc6165993b	5	5	none
+/home/nubs/Documents/Codex/2026-08-17/eliza-coding-agent-latest-develop/work/qa-workspace/sandbox-live-postfix	main	9ae70617c438a6b3c2c8d956214dd4f931c34018	3	3	none
+/home/nubs/Documents/Codex/2026-08-17/eliza-coding-agent-latest-develop/work/runtime/local-agent-state-final/workspace	master	unborn	6	6	none
+/home/nubs/Documents/Codex/2026-08-17/eliza-coding-agent-latest-develop/work/runtime/local-agent-state/workspace	master	unborn	6	6	none
+/home/nubs/Documents/Codex/2026-08-17/eliza-embedding-streaming	nubs/trash/embedding-streaming-2026-08-18-do-not-merge	0fa7e55793dd107f11040643fe670fe0188030e5	0	0	https://github.com/elizaOS/eliza.git
