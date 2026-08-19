@@ -13,6 +13,7 @@ import { redeemableEarningsService } from "./redeemable-earnings";
 import { referralsService } from "./referrals";
 import { findOrCreateUserByWalletAddress } from "./wallet-signup";
 import { x402FacilitatorService } from "./x402-facilitator";
+import { buildX402PaymentRequired } from "./x402-payment-required";
 
 const USDC_ASSETS_BY_NETWORK: Record<string, { caip2: string; asset: string; decimals: number }> = {
   base: {
@@ -317,12 +318,7 @@ function paymentRequiredResponse(
   requirements: PaymentRequirements,
   extensions?: PaymentRequiredExtensions,
 ): Response {
-  const paymentRequired = {
-    x402Version: 2,
-    error: "payment_required",
-    accepts: [requirements],
-    ...(extensions && { extensions }),
-  };
+  const paymentRequired = buildX402PaymentRequired(requirements, extensions);
   const encoded = Buffer.from(JSON.stringify(paymentRequired)).toString("base64");
   return Response.json(paymentRequired, {
     status: 402,

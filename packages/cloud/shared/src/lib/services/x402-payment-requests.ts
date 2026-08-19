@@ -26,6 +26,7 @@ import { logger } from "../utils/logger";
 import { callbackRoomBelongsToOrganization } from "./callback-channel-authz";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { x402FacilitatorService } from "./x402-facilitator";
+import { buildX402PaymentRequired } from "./x402-payment-required";
 
 const KIND = "x402_payment_request";
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -267,30 +268,6 @@ function buildExtensions(network: NetworkConfig): PaymentRequiredExtensions | un
         validBefore: now + 300,
       },
     },
-  };
-}
-
-type ResourceInfo = {
-  url: string;
-  description: string;
-  mimeType: string;
-};
-
-function buildPaymentRequired(
-  requirements: PaymentRequirements,
-  resource: ResourceInfo,
-  extensions?: PaymentRequiredExtensions,
-) {
-  // x402 v2 (section 5.1.2) requires a top-level `resource` object on
-  // PaymentRequired. The v1 `resource`/`description`/`mimeType` fields on the
-  // accepts[0] entry are retained additively for dual-version clients; a strict
-  // v2 facilitator validates the top-level object below, not the accepts entry.
-  return {
-    x402Version: 2,
-    error: "payment_required",
-    resource,
-    accepts: [requirements],
-    ...(extensions && { extensions }),
   };
 }
 
@@ -540,7 +517,9 @@ async function recordAppScopedPaymentEarnings(
 class X402PaymentRequestsService {
   async create(input: CreatePaymentRequestInput): Promise<{
     paymentRequest: X402PaymentRequestView;
-    paymentRequired: ReturnType<typeof buildPaymentRequired>;
+    paymentRequired: ReturnType<
+      typeof buildX402PaymentRequired<PaymentRequirements, PaymentRequiredExtensions>
+    >;
     paymentRequiredHeader: string;
   }> {
     if (!Number.isFinite(input.amountUsd) || input.amountUsd <= 0) {
@@ -635,11 +614,7 @@ class X402PaymentRequestsService {
       },
     };
 
-    const paymentRequired = buildPaymentRequired(
-      requirements,
-      { url: resource, description, mimeType: "application/json" },
-      extensions,
-    );
+    const paymentRequired = buildX402PaymentRequired(requirements, extensions);
     const payment = await cryptoPaymentsRepository.create({
       id,
       organization_id: input.organizationId,
