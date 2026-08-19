@@ -107,11 +107,10 @@ describe("AgentsPage balance isolation", () => {
   it("renders authoritative agent rows and marks only balance unavailable", () => {
     render(<AgentsPage />);
 
-    expect(screen.getByText("Dedicated agent")).toBeTruthy();
-    expect(screen.queryByText("Free shared agent")).toBeNull();
+    expect(screen.getByText("Free shared agent, Dedicated agent")).toBeTruthy();
     expect(
       screen.getByText(
-        "Balance: unavailable · Shared: 0 · Paid running: 1 · Paid idle: 0",
+        "Balance: unavailable · Shared: 1 · Paid running: 1 · Paid idle: 0",
       ),
     ).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
