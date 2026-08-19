@@ -128,6 +128,95 @@ describe("chunkDiscordText surrogate-pair safety", () => {
 		}
 	});
 
+	// When a mid-fence flush reopens `current` with the fence's own opening
+	// line (e.g. "```" or "```js"), the very next appended segment is NOT a
+	// continuation of that opening line -- it must start on its own line.
+	// Before the fix, the append loop used a stale delimiter computed before
+	// the flush, gluing content directly onto the opener (e.g. "```😀"
+	// instead of "```\n😀"), which Discord parses as fence info/language
+	// metadata rather than code content. Covers backtick and tilde fences,
+	// plain and language-tagged and indented openers.
+	function assertNoContentGluedOntoFenceOpener(
+		chunks: string[],
+		openLine: string,
+	) {
+		for (const chunk of chunks) {
+			if (!chunk.startsWith(openLine)) {
+				continue;
+			}
+			const rest = chunk.slice(openLine.length);
+			if (rest.length > 0) {
+				expect(rest.startsWith("\n")).toBe(true);
+			}
+		}
+	}
+
+	it("separates a reopened fence opener from its content with a newline (backtick)", () => {
+		const maxChars = 10;
+		const body = `x${"\u{1F600}".repeat(30)}`;
+		const text = `\`\`\`\n${body}\n\`\`\``;
+		const chunks = chunkDiscordText(text, { maxChars, maxLines: 999 });
+
+		expect(chunks.length).toBeGreaterThan(1);
+		assertNoContentGluedOntoFenceOpener(chunks, "```");
+	});
+
+	it("separates a reopened fence opener from its content with a newline (tilde)", () => {
+		const maxChars = 10;
+		const body = `x${"\u{1F600}".repeat(30)}`;
+		const text = `~~~\n${body}\n~~~`;
+		const chunks = chunkDiscordText(text, { maxChars, maxLines: 999 });
+
+		expect(chunks.length).toBeGreaterThan(1);
+		assertNoContentGluedOntoFenceOpener(chunks, "~~~");
+	});
+
+	it("separates a reopened fence opener from its content with a newline (language tag)", () => {
+		const maxChars = 12;
+		const body = `x${"\u{1F600}".repeat(30)}`;
+		const text = `\`\`\`js\n${body}\n\`\`\``;
+		const chunks = chunkDiscordText(text, { maxChars, maxLines: 999 });
+
+		expect(chunks.length).toBeGreaterThan(1);
+		assertNoContentGluedOntoFenceOpener(chunks, "```js");
+	});
+
+	it("separates a reopened fence opener from its content with a newline (indented)", () => {
+		const maxChars = 20;
+		const body = `x${"\u{1F600}".repeat(30)}`;
+		const text = `   \`\`\`\n${body}\n   \`\`\``;
+		const chunks = chunkDiscordText(text, { maxChars, maxLines: 999 });
+
+		expect(chunks.length).toBeGreaterThan(1);
+		assertNoContentGluedOntoFenceOpener(chunks, "   ```");
+	});
+
+	// Balanced, parseable fences and exact content preservation: every open
+	// marker line must be matched by a close marker line, and stripping all
+	// marker lines from every chunk (in order) must reproduce the original
+	// body exactly -- no characters lost, duplicated, or merged into a
+	// marker line during a close/reopen split.
+	it("keeps fences balanced and preserves body content exactly across a close/reopen split", () => {
+		const maxChars = 10;
+		const body = `x${"\u{1F600}".repeat(30)}`;
+		const text = `\`\`\`\n${body}\n\`\`\``;
+		const chunks = chunkDiscordText(text, { maxChars, maxLines: 999 });
+
+		expect(chunks.length).toBeGreaterThan(1);
+		const isMarkerLine = (line: string) => /^ {0,3}`{3,}$/.test(line);
+		let bodyOnly = "";
+		for (const chunk of chunks) {
+			const lines = chunk.split("\n");
+			expect(lines.filter(isMarkerLine).length % 2).toBe(0);
+			for (const line of lines) {
+				if (!isMarkerLine(line)) {
+					bodyOnly += line;
+				}
+			}
+		}
+		expect(bodyOnly).toBe(body);
+	});
+
 	// The reasoning-italics path reserves 2 chars off maxChars specifically so
 	// a re-opening/closing "_" can be added back to each chunk without
 	// exceeding the requested bound -- verify that budget actually holds at

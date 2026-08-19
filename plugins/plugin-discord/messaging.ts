@@ -380,25 +380,39 @@ export function chunkDiscordText(
 		for (let segIndex = 0; segIndex < segments.length; segIndex++) {
 			const segment = segments[segIndex];
 			const isLineContinuation = segIndex > 0;
-			const delimiter = isLineContinuation
+			const provisionalDelimiter = isLineContinuation
 				? ""
 				: current.length > 0
 					? "\n"
 					: "";
-			const addition = `${delimiter}${segment}`;
-			const nextLen = current.length + addition.length;
+			const provisionalAddition = `${provisionalDelimiter}${segment}`;
+			const nextLen = current.length + provisionalAddition.length;
 			const nextLines = currentLines + (isLineContinuation ? 0 : 1);
 
 			const wouldExceedChars = nextLen > charLimit;
 			const wouldExceedLines = nextLines > lineLimit;
 
+			let flushedForThisSegment = false;
 			if ((wouldExceedChars || wouldExceedLines) && current.length > 0) {
 				flush();
+				flushedForThisSegment = true;
 			}
+
+			// A flush can repopulate `current` with a reopened fence's opening
+			// line (see flush() above). This segment is never a continuation of
+			// that line -- gluing it on with the stale "" delimiter would merge
+			// content into the fence's info-string, corrupting the fence. It
+			// always needs its own newline here, regardless of isLineContinuation.
+			const delimiter = flushedForThisSegment
+				? current.length > 0
+					? "\n"
+					: ""
+				: provisionalDelimiter;
+			const addition = `${delimiter}${segment}`;
 
 			if (current.length > 0) {
 				current += addition;
-				if (!isLineContinuation) {
+				if (!isLineContinuation || flushedForThisSegment) {
 					currentLines += 1;
 				}
 			} else {
