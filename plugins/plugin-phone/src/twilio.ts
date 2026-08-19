@@ -8,6 +8,7 @@
  * owned by the PA-hosted VOICE_CALL action.
  */
 
+import { randomUUID } from "node:crypto";
 import { logger } from "@elizaos/core";
 
 export interface TwilioCredentials {
@@ -300,6 +301,14 @@ export async function sendTwilioSms(args: {
   });
   if (validationError) return validationFailure(validationError);
 
+  // Twilio's /Messages.json is a non-idempotent create endpoint, but
+  // sendTwilioRequest retries transient failures (network throw/timeout, 5xx).
+  // Without a stable idempotency token a post-send timeout or retryable 5xx
+  // after acceptance would re-POST and deliver a duplicate, doubly-billed SMS.
+  // Default one token per logical send so every retry attempt deduplicates,
+  // while distinct logical sends still get distinct tokens.
+  const idempotencyKey = args.idempotencyKey ?? randomUUID();
+
   const result = await sendTwilioRequest({
     credentials,
     path: "/Messages.json",
@@ -308,7 +317,7 @@ export async function sendTwilioSms(args: {
       From: credentials.fromPhoneNumber,
       Body: body,
     }),
-    ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
+    idempotencyKey,
   });
 
   if (!result.ok) {
@@ -345,6 +354,11 @@ export async function sendTwilioVoiceCall(args: {
   });
   if (validationError) return validationFailure(validationError);
 
+  // /Calls.json is a non-idempotent create endpoint under the same retrying
+  // transport, so default an idempotency token to keep retries from placing a
+  // duplicate, doubly-billed voice call. See sendTwilioSms for the rationale.
+  const idempotencyKey = args.idempotencyKey ?? randomUUID();
+
   return sendTwilioRequest({
     credentials,
     path: "/Calls.json",
@@ -353,6 +367,6 @@ export async function sendTwilioVoiceCall(args: {
       From: credentials.fromPhoneNumber,
       Twiml: `<Response><Say>${escapeXml(message)}</Say></Response>`,
     }),
-    ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
+    idempotencyKey,
   });
 }
