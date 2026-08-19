@@ -1862,6 +1862,11 @@ async function runCreateLegacy(
       agents: results,
       taskId: threadId,
       suppressActionResultClipboard: true,
+      // The out-of-band ack IS this turn's answer; without this the planner's
+      // evaluator mimicked the ack and the turn delivered it again at the end
+      // (live 2026-08-19: trajectory shows eval FINISH "On it — building that
+      // now." trailing the completion relay).
+      ...(ackPostedOutOfBand ? { suppressPlannerReply: true } : {}),
     },
   };
 }
