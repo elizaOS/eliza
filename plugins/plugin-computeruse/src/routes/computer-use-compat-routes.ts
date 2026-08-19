@@ -11,7 +11,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { resolveAliasedEnvValue } from "@elizaos/core";
-import { isTrustedComputerUseLocalRequest } from "./computer-use-compat-local-trust.ts";
+import { isTrustedComputerUseLocalRequest } from "./computer-use-compat-local-trust.js";
 import { decodePathComponent } from "./route-utils.js";
 
 type CompatRuntimeState = {
