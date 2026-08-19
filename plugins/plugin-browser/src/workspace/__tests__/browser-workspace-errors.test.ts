@@ -71,6 +71,12 @@ describe("classifyBrowserWorkspaceErrorCode", () => {
       ),
     ],
     [
+      "path_forbidden",
+      new Error(
+        "browser workspace file path escapes the workspace root: /etc/passwd",
+      ),
+    ],
+    [
       "unknown_element_ref",
       new Error(
         "Unknown browser snapshot element ref e7. Run snapshot or inspect again before reusing element refs.",
