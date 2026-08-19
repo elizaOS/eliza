@@ -102,9 +102,7 @@ export interface VoiceSelfTestOptions {
  * through the selected output while this recorder is live; fake-device browser
  * lanes continue to receive the same phrase from Chromium's injected device.
  */
-async function captureMicWav(
-  opts: VoiceSelfTestOptions,
-): Promise<{
+async function captureMicWav(opts: VoiceSelfTestOptions): Promise<{
   wav: Uint8Array;
   captureStartedAt: string;
   captureFinishedAt: string;
@@ -120,7 +118,9 @@ async function captureMicWav(
   try {
     await sleep(300);
     const fixture = new Uint8Array(
-      await (await fetch(opts.fixtureUrl, { signal: opts.signal })).arrayBuffer(),
+      await (
+        await fetch(opts.fixtureUrl, { signal: opts.signal })
+      ).arrayBuffer(),
     );
     opts.onArtifact?.("reference", fixture);
     const buffer = await opts.audioCtx.decodeAudioData(fixture.slice().buffer);
@@ -436,9 +436,7 @@ export async function runVoiceSelfTest(
           agentName: send.agentName,
           backend: sendBackend,
           ...(send.messageId ? { messageId: send.messageId } : {}),
-          ...(send.userMessageId
-            ? { userMessageId: send.userMessageId }
-            : {}),
+          ...(send.userMessageId ? { userMessageId: send.userMessageId } : {}),
           ...(failureKind ? { failureKind } : {}),
           ...(fallbackReplyKind ? { fallbackReplyKind } : {}),
         },

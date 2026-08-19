@@ -439,9 +439,7 @@ export async function startLocalAsrRecorder(
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
-        ...(options.deviceId
-          ? { deviceId: { exact: options.deviceId } }
-          : {}),
+        ...(options.deviceId ? { deviceId: { exact: options.deviceId } } : {}),
       },
     });
   } catch (err) {

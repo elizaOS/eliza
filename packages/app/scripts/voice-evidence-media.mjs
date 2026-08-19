@@ -921,10 +921,7 @@ function assertPhysicalCaptureProvenance(
   const deviceLabel = normalizedDeviceIdentity;
   const sameDeviceLabel = (left, right) => {
     const tokens = (value) =>
-      deviceLabel(value)
-        .split(" ")
-        .filter(Boolean)
-        .sort();
+      deviceLabel(value).split(" ").filter(Boolean).sort();
     const leftTokens = tokens(left);
     const rightTokens = tokens(right);
     if (leftTokens.length === 0 || leftTokens.length !== rightTokens.length) {
@@ -991,8 +988,7 @@ function assertPhysicalCaptureProvenance(
     typeof provenance.speakerLoopback?.device !== "string" ||
     provenance.speakerLoopback.device.trim().length === 0 ||
     provenance.microphone.device === provenance.speakerLoopback.device ||
-    provenance.browserDevices?.microphone !==
-      asrStage?.detail?.inputDeviceId ||
+    provenance.browserDevices?.microphone !== asrStage?.detail?.inputDeviceId ||
     provenance.browserDevices?.speaker !==
       desktopEvidence.report.stages.find((stage) => stage.stage === "tts")
         ?.detail?.outputDeviceId ||

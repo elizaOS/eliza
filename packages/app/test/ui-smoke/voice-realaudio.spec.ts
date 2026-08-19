@@ -954,7 +954,8 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
     );
     const ttsResponses: Response[] = [];
     page.on("response", (response) => {
-      if (response.url().includes("/api/tts/cloud")) ttsResponses.push(response);
+      if (response.url().includes("/api/tts/cloud"))
+        ttsResponses.push(response);
     });
 
     await openAppPath(page, "/chat");
@@ -1058,9 +1059,9 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
     // Real cloud TTS returned decoded, non-silent audio that actually played.
     const responseMatchesVoiceReply = (response: Response) => {
       try {
-        const body = JSON.parse(
-          response.request().postData() ?? "{}",
-        ) as { text?: unknown };
+        const body = JSON.parse(response.request().postData() ?? "{}") as {
+          text?: unknown;
+        };
         return body.text === streamDone?.fullText;
       } catch {
         // error-policy:J3 captured request bodies are untrusted input;
@@ -1069,13 +1070,10 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
       }
     };
     await expect
-      .poll(
-        () => ttsResponses.some(responseMatchesVoiceReply),
-        {
-          timeout: 120_000,
-          message: "cloud TTS must synthesize the exact persisted voice reply",
-        },
-      )
+      .poll(() => ttsResponses.some(responseMatchesVoiceReply), {
+        timeout: 120_000,
+        message: "cloud TTS must synthesize the exact persisted voice reply",
+      })
       .toBe(true);
     const ttsResponse = ttsResponses.find(responseMatchesVoiceReply);
     expect(ttsResponse).toBeDefined();

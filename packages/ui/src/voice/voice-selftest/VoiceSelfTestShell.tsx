@@ -87,11 +87,13 @@ export function VoiceSelfTestShell() {
   const [running, setRunning] = useState(false);
 
   const run = useCallback(
-    async (opts: {
-      mode?: VoiceSelfTestMode;
-      microphoneDeviceId?: string;
-      speakerDeviceId?: string;
-    } = {}): Promise<VoiceSelfTestReport> => {
+    async (
+      opts: {
+        mode?: VoiceSelfTestMode;
+        microphoneDeviceId?: string;
+        speakerDeviceId?: string;
+      } = {},
+    ): Promise<VoiceSelfTestReport> => {
       setRunning(true);
       try {
         artifactsRef.current = {};
@@ -151,7 +153,9 @@ export function VoiceSelfTestShell() {
       if (!bytes) return undefined;
       let binary = "";
       for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-        binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+        binary += String.fromCharCode(
+          ...bytes.subarray(offset, offset + 0x8000),
+        );
       }
       return btoa(binary);
     };
