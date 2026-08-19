@@ -619,9 +619,11 @@ describe("ChatOverlay first-run gating", () => {
       "true",
     );
 
-    // The compact composer is an initial state, not a trap: focus reopens the
-    // shared transcript where the immediate retry action lives.
-    fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
+    // The compact composer is an initial state, not a trap: clicking the
+    // read-only waiting field reopens the shared transcript where the immediate
+    // retry action lives. This must not depend on a fresh focus event because a
+    // read-only field can already own focus when the user clicks it again.
+    fireEvent.click(screen.getByTestId("chat-composer-textarea"));
     expect(sheet.getAttribute("data-detent")).toBe("half");
     expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
 

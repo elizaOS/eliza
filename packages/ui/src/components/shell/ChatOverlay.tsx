@@ -6633,6 +6633,14 @@ export function ChatOverlay({
                       expand();
                     }
                   }}
+                  onClick={() => {
+                    // External sign-in deliberately makes the composer
+                    // read-only, but the familiar bar remains the recovery
+                    // affordance. A field that already owns focus will not emit
+                    // another focus event, so the real click must reopen the
+                    // transcript and its retry action explicitly.
+                    if (cloudLoginWaiting) expand();
+                  }}
                   onBlur={() => {
                     setComposerFocused(false);
                     // A suppress-expand flag armed for a focus that never landed
