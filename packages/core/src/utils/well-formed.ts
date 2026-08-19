@@ -7,7 +7,19 @@
  * Truncation helpers here never create a lone surrogate, and the sanitizers
  * replace any pre-existing lone surrogate with U+FFFD so a wire request is
  * always well-formed regardless of upstream text handling.
+ *
+ * `deepToWellFormedUnicode` is depth-, visit-, and cycle-bounded. OpenAI and
+ * Anthropic text handlers call it on every request body; on origin a cyclic
+ * object and a 20k-deep array both threw `RangeError: Maximum call stack`
+ * and hung the turn. Over-budget input throws `ElizaError` `WELL_FORMED_UNBOUNDED`.
  */
+
+import { ElizaError } from "../errors.ts";
+
+/** Nesting ceiling. Honest provider bodies are a handful of objects deep. */
+export const MAX_WELL_FORMED_DEPTH = 64;
+/** Node visit ceiling so a wide hostile tree cannot pin a model call. */
+export const MAX_WELL_FORMED_VISITS = 65_536;
 
 const HIGH_SURROGATE_START = 0xd800;
 const HIGH_SURROGATE_END = 0xdbff;
@@ -109,17 +121,49 @@ export function tailWellFormed(text: string, maxLength: number): string {
 	return text.slice(start);
 }
 
+type WalkCtx = {
+	visits: number;
+	visiting: WeakSet<object>;
+};
+
+function failUnbounded(
+	reason: "depth" | "cycle" | "visits",
+	context: Record<string, unknown>,
+): never {
+	const message =
+		reason === "cycle"
+			? "deepToWellFormedUnicode: cyclic object"
+			: reason === "depth"
+				? "deepToWellFormedUnicode: nesting exceeds cap"
+				: "deepToWellFormedUnicode: visit budget exceeded";
+	throw new ElizaError(message, {
+		code: "WELL_FORMED_UNBOUNDED",
+		context: { reason, ...context },
+		severity: "fatal",
+	});
+}
+
+function enterContainer(value: object, depth: number, ctx: WalkCtx): void {
+	if (depth >= MAX_WELL_FORMED_DEPTH) {
+		failUnbounded("depth", { depth, max: MAX_WELL_FORMED_DEPTH });
+	}
+	if (ctx.visiting.has(value)) {
+		failUnbounded("cycle", { depth });
+	}
+	ctx.visiting.add(value);
+}
+
 /**
  * Copy-on-write sanitizer for objects that carry SDK-identifying symbols or
  * function-valued or accessor properties (AI SDK tool schemas and execute
  * callbacks).
  *
- * Unlike the plain-object path in {@link deepToWellFormedUnicode}, this builds
- * a NEW object so the caller's input is never mutated — even if frozen. String
- * enumerable string keys AND values are sanitized; non-enumerable and symbol
- * properties retain their original descriptors; nested enumerable values are
- * routed through {@link deepToWellFormedUnicode} for the same recursive
- * treatment. Returns the same reference when nothing needed sanitizing.
+ * Unlike the plain-object path in {@link walkDeep}, this builds a NEW object so
+ * the caller's input is never mutated — even if frozen. String enumerable
+ * string keys AND values are sanitized; non-enumerable and symbol properties
+ * retain their original descriptors; nested enumerable values are routed
+ * through {@link walkDeep}. Returns the same reference when nothing needed
+ * sanitizing.
  *
  * Key-safety policy mirrors the plain-object branch: the clone is built on a
  * null-prototype staging object with `Object.defineProperty` so an own
@@ -127,14 +171,18 @@ export function tailWellFormed(text: string, maxLength: number): string {
  * after all keys are defined, and a first-write-wins collision policy prevents
  * distinct keys from collapsing onto the same sanitized form.
  */
-function sanitizeObjectPreservingDescriptors<T>(value: T): T {
+function sanitizeObjectPreservingDescriptors<T>(
+	value: T,
+	depth: number,
+	ctx: WalkCtx,
+): T {
 	if (value === null || typeof value !== "object") {
 		return value;
 	}
 	if (Array.isArray(value)) {
 		let changed = false;
 		const next = value.map((item) => {
-			const sanitized = deepToWellFormedUnicode(item);
+			const sanitized = walkDeep(item, depth + 1, ctx);
 			if (sanitized !== item) {
 				changed = true;
 			}
@@ -161,7 +209,7 @@ function sanitizeObjectPreservingDescriptors<T>(value: T): T {
 
 		const sanitizedKey = toWellFormedUnicode(key);
 		const entry = "value" in descriptor ? descriptor.value : source[key];
-		const sanitizedValue = deepToWellFormedUnicode(entry);
+		const sanitizedValue = walkDeep(entry, depth + 1, ctx);
 		if (sanitizedKey !== key || sanitizedValue !== entry) {
 			changed = true;
 		}
@@ -186,36 +234,32 @@ function sanitizeObjectPreservingDescriptors<T>(value: T): T {
 	return (changed ? clone : value) as T;
 }
 
-/**
- * Recursively applies {@link toWellFormedUnicode} to every string in a
- * JSON-shaped value — including **object keys**, which `Object.entries`
- * skips by default. A key containing a lone surrogate (e.g.
- * `{"bad\uD83D": "ok"}`) serializes to the same `\\uD8xx` escape that strict
- * provider JSON parsers reject.
- *
- * The clone is built on a null-prototype object with `Object.defineProperty`
- * so an own `__proto__` key from a JSON-parsed input is preserved as a data
- * member instead of mutating the clone's prototype chain. A collision policy
- * (first-write-wins) prevents two distinct keys from collapsing onto the same
- * sanitized form. Non-plain objects (typed arrays, URLs, class instances such
- * as AI SDK model handles) pass through untouched, and untouched subtrees keep
- * their original references so a clean input returns the same instance.
- * Intended for provider request bodies right before serialization.
- */
-export function deepToWellFormedUnicode<T>(value: T): T {
+function walkDeep<T>(value: T, depth: number, ctx: WalkCtx): T {
+	ctx.visits += 1;
+	if (ctx.visits > MAX_WELL_FORMED_VISITS) {
+		failUnbounded("visits", {
+			visits: ctx.visits,
+			max: MAX_WELL_FORMED_VISITS,
+		});
+	}
 	if (typeof value === "string") {
 		return toWellFormedUnicode(value) as unknown as T;
 	}
 	if (Array.isArray(value)) {
-		let changed = false;
-		const next = value.map((item) => {
-			const sanitized = deepToWellFormedUnicode(item);
-			if (sanitized !== item) {
-				changed = true;
-			}
-			return sanitized;
-		});
-		return (changed ? next : value) as T;
+		enterContainer(value, depth, ctx);
+		try {
+			let changed = false;
+			const next = value.map((item) => {
+				const sanitized = walkDeep(item, depth + 1, ctx);
+				if (sanitized !== item) {
+					changed = true;
+				}
+				return sanitized;
+			});
+			return (changed ? next : value) as T;
+		} finally {
+			ctx.visiting.delete(value);
+		}
 	}
 	if (value !== null && typeof value === "object") {
 		const proto = Object.getPrototypeOf(value);
@@ -239,31 +283,59 @@ export function deepToWellFormedUnicode<T>(value: T): T {
 				);
 			},
 		);
-		if (needsDescriptorPreservingClone) {
-			return sanitizeObjectPreservingDescriptors(value);
-		}
-		let changed = false;
-		const next = Object.create(null) as Record<string, unknown>;
-		for (const [key, entry] of Object.entries(value)) {
-			const sanitizedKey = toWellFormedUnicode(key);
-			const sanitized = deepToWellFormedUnicode(entry);
-			if (sanitizedKey !== key || sanitized !== entry) {
-				changed = true;
+		enterContainer(value, depth, ctx);
+		try {
+			if (needsDescriptorPreservingClone) {
+				return sanitizeObjectPreservingDescriptors(value, depth, ctx);
 			}
-			if (!(sanitizedKey in next)) {
-				Object.defineProperty(next, sanitizedKey, {
-					value: sanitized,
-					writable: true,
-					enumerable: true,
-					configurable: true,
-				});
+			let changed = false;
+			const next = Object.create(null) as Record<string, unknown>;
+			for (const [key, entry] of Object.entries(value)) {
+				const sanitizedKey = toWellFormedUnicode(key);
+				const sanitized = walkDeep(entry, depth + 1, ctx);
+				if (sanitizedKey !== key || sanitized !== entry) {
+					changed = true;
+				}
+				if (!(sanitizedKey in next)) {
+					Object.defineProperty(next, sanitizedKey, {
+						value: sanitized,
+						writable: true,
+						enumerable: true,
+						configurable: true,
+					});
+				}
 			}
+			// Restore the source prototype after defining every own key. Staging on
+			// a null prototype makes `__proto__` safe; restoring afterward preserves
+			// the caller's Object.prototype/null-prototype contract.
+			Object.setPrototypeOf(next, proto);
+			return (changed ? next : value) as T;
+		} finally {
+			ctx.visiting.delete(value);
 		}
-		// Restore the source prototype after defining every own key. Staging on
-		// a null prototype makes `__proto__` safe; restoring afterward preserves
-		// the caller's Object.prototype/null-prototype contract.
-		Object.setPrototypeOf(next, proto);
-		return (changed ? next : value) as T;
 	}
 	return value;
+}
+
+/**
+ * Recursively applies {@link toWellFormedUnicode} to every string in a
+ * JSON-shaped value — including **object keys**, which `Object.entries`
+ * skips by default. A key containing a lone surrogate (e.g.
+ * `{"bad\uD83D": "ok"}`) serializes to the same `\\uD8xx` escape that strict
+ * provider JSON parsers reject.
+ *
+ * The clone is built on a null-prototype object with `Object.defineProperty`
+ * so an own `__proto__` key from a JSON-parsed input is preserved as a data
+ * member instead of mutating the clone's prototype chain. A collision policy
+ * (first-write-wins) prevents two distinct keys from collapsing onto the same
+ * sanitized form. Non-plain objects (typed arrays, URLs, class instances such
+ * as AI SDK model handles) pass through untouched, and untouched subtrees keep
+ * their original references so a clean input returns the same instance.
+ * Intended for provider request bodies right before serialization.
+ *
+ * Depth, visit count, and cycles fail closed with {@link ElizaError}
+ * `WELL_FORMED_UNBOUNDED` so a hostile nest cannot hang the model call.
+ */
+export function deepToWellFormedUnicode<T>(value: T): T {
+	return walkDeep(value, 0, { visits: 0, visiting: new WeakSet<object>() });
 }
