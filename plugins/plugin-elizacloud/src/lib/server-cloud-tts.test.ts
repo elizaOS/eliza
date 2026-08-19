@@ -3,9 +3,10 @@
  * real node req/res fakes and a stubbed upstream fetch. Pins the #16425
  * contract — the client's per-utterance Idempotency-Key is forwarded upstream
  * so the cloud route can replay the direct attempt's committed reservation —
- * plus the handler's auth/validation/success/error envelope and the #16347
+ * plus the handler's auth/validation/success/error envelope, the #16347
  * `ELIZA_TTS_DEBUG` contract (phases observably emitted on the structured
- * logger when the flag is set, silent otherwise).
+ * logger when the flag is set, silent otherwise), and the proxy fetch abort
+ * so a stalled upstream cannot hang the warming `for (;;)` loop.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type http from "node:http";
@@ -34,6 +35,7 @@ interface CapturedUpstream {
   url: string;
   headers: Record<string, string>;
   body: unknown;
+  signal?: AbortSignal;
 }
 
 let upstream: CapturedUpstream[] = [];
@@ -131,6 +133,7 @@ beforeEach(() => {
           : init?.body
             ? JSON.parse(String(init.body))
             : null,
+      signal: init?.signal,
     });
     return upstreamResponse();
   }) as typeof fetch;
@@ -287,6 +290,56 @@ describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
     expect(state.statusCode).toBe(200);
     expect(upstream).toHaveLength(2);
   });
+
+  test("passes an abort signal on the default TTS timeout", async () => {
+    const { res, state } = fakeRes();
+    await handleCloudTtsPreviewRoute(
+      fakeReq(JSON.stringify({ text: "signal me" })),
+      res,
+    );
+    expect(state.statusCode).toBe(200);
+    expect(upstream[0]?.signal).toBeDefined();
+    expect(upstream[0]?.signal?.aborted).toBe(false);
+  });
+
+  test("aborts a hanging TTS upstream instead of waiting forever", async () => {
+    const prevTimeout = process.env.ELIZAOS_CLOUD_TTS_TIMEOUT_MS;
+    process.env.ELIZAOS_CLOUD_TTS_TIMEOUT_MS = "50";
+    globalThis.fetch = ((
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      upstream.push({
+        url: String(input),
+        headers: (init?.headers ?? {}) as Record<string, string>,
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+        signal: init?.signal,
+      });
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) return;
+        const abort = () =>
+          reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+      });
+    }) as typeof fetch;
+    try {
+      const { res, state } = fakeRes();
+      await handleCloudTtsPreviewRoute(
+        fakeReq(JSON.stringify({ text: "do not hang" })),
+        res,
+      );
+      expect(state.statusCode).toBe(502);
+      expect(String(state.body)).toMatch(/aborted|timeout/i);
+    } finally {
+      if (prevTimeout === undefined) {
+        delete process.env.ELIZAOS_CLOUD_TTS_TIMEOUT_MS;
+      } else {
+        process.env.ELIZAOS_CLOUD_TTS_TIMEOUT_MS = prevTimeout;
+      }
+    }
+  });
 });
 
 describe("handleCloudSttRoute (/api/asr/cloud proxy)", () => {
@@ -338,6 +391,45 @@ describe("handleCloudSttRoute (/api/asr/cloud proxy)", () => {
 
     expect(state.statusCode).toBe(502);
     expect(upstream).toHaveLength(1);
+  });
+
+  test("aborts a hanging STT upstream instead of waiting forever", async () => {
+    const prevTimeout = process.env.ELIZAOS_CLOUD_STT_TIMEOUT_MS;
+    process.env.ELIZAOS_CLOUD_STT_TIMEOUT_MS = "50";
+    globalThis.fetch = ((
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      upstream.push({
+        url: String(input),
+        headers: (init?.headers ?? {}) as Record<string, string>,
+        body: init?.body instanceof FormData ? init.body : null,
+        signal: init?.signal,
+      });
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) return;
+        const abort = () =>
+          reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+      });
+    }) as typeof fetch;
+    try {
+      const { res, state } = fakeRes();
+      await handleCloudSttRoute(
+        fakeReq("RIFF-audio", { "content-type": "audio/wav" }),
+        res,
+      );
+      expect(state.statusCode).toBe(502);
+      expect(String(state.body)).toMatch(/aborted|timeout/i);
+    } finally {
+      if (prevTimeout === undefined) {
+        delete process.env.ELIZAOS_CLOUD_STT_TIMEOUT_MS;
+      } else {
+        process.env.ELIZAOS_CLOUD_STT_TIMEOUT_MS = prevTimeout;
+      }
+    }
   });
 });
 
