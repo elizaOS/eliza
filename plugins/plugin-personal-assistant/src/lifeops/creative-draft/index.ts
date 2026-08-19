@@ -271,7 +271,6 @@ export function applyCreativeDraftRevision(
   const acceptedEdits = revision.acceptedEdit
     ? [...draft.acceptedEdits, revision.acceptedEdit]
     : [...draft.acceptedEdits];
-  const acceptedPassages = [...(draft.acceptedPassages ?? [])];
   const vetoedPhrases = revision.vetoedPhrase
     ? [...draft.vetoedPhrases, revision.vetoedPhrase]
     : [...draft.vetoedPhrases];
@@ -286,9 +285,6 @@ export function applyCreativeDraftRevision(
       }, sectionIndex=${revision.sectionIndex ?? "<none>"})`,
     );
   }
-  if (replacementText && revision.acceptedEdit) {
-    acceptedPassages.push(replacementText);
-  }
   const sections =
     replacementText && targetIndex !== null
       ? draft.sections.map((section, index) =>
@@ -297,12 +293,30 @@ export function applyCreativeDraftRevision(
             : section,
         )
       : draft.sections;
+  const acceptedPassages = replacementText
+    ? (draft.acceptedPassages ?? []).filter((passage) =>
+        sections.some(
+          (section) =>
+            normalizedInvariantText(section.text) ===
+            normalizedInvariantText(passage),
+        ),
+      )
+    : [...(draft.acceptedPassages ?? [])];
+  if (
+    replacementText &&
+    revision.acceptedEdit &&
+    !acceptedPassages.some(
+      (passage) =>
+        normalizedInvariantText(passage) ===
+        normalizedInvariantText(replacementText),
+    )
+  ) {
+    acceptedPassages.push(replacementText);
+  }
   for (const vetoedPhrase of vetoedPhrases) {
-    const normalizedVeto = normalizedInvariantText(vetoedPhrase);
     if (
-      normalizedVeto &&
       sections.some((section) =>
-        normalizedInvariantText(section.text).includes(normalizedVeto),
+        containsInvariantPhrase(section.text, vetoedPhrase),
       )
     ) {
       throw new Error(
@@ -329,6 +343,38 @@ function normalizedInvariantText(value: string): string {
   );
 }
 
+function isInvariantWordCharacter(value: string | undefined): boolean {
+  return value !== undefined && /[\p{L}\p{M}\p{N}]/u.test(value);
+}
+
+/** Match a normalized phrase without treating a short token as a word fragment. */
+function containsInvariantPhrase(haystack: string, needle: string): boolean {
+  const normalizedHaystack = normalizedInvariantText(haystack);
+  const normalizedNeedle = normalizedInvariantText(needle);
+  if (!normalizedNeedle) return false;
+
+  const needleCodePoints = Array.from(normalizedNeedle);
+  const firstNeedle = needleCodePoints[0];
+  const lastNeedle = needleCodePoints.at(-1);
+  let fromIndex = 0;
+  while (fromIndex <= normalizedHaystack.length - normalizedNeedle.length) {
+    const index = normalizedHaystack.indexOf(normalizedNeedle, fromIndex);
+    if (index < 0) return false;
+    const before = Array.from(normalizedHaystack.slice(0, index)).at(-1);
+    const after = Array.from(
+      normalizedHaystack.slice(index + normalizedNeedle.length),
+    )[0];
+    const startsAtBoundary =
+      !isInvariantWordCharacter(firstNeedle) ||
+      !isInvariantWordCharacter(before);
+    const endsAtBoundary =
+      !isInvariantWordCharacter(lastNeedle) || !isInvariantWordCharacter(after);
+    if (startsAtBoundary && endsAtBoundary) return true;
+    fromIndex = index + 1;
+  }
+  return false;
+}
+
 /**
  * Verify that generated prose honors the durable, owner-controlled revision
  * constraints. Accepted labels are audit notes; only literal replacement
@@ -338,17 +384,14 @@ export function creativeDraftNarrativeViolations(
   narrative: string,
   draft: CreativeDraftArtifact,
 ): readonly string[] {
-  const normalizedNarrative = normalizedInvariantText(narrative);
   const violations: string[] = [];
   for (const phrase of draft.vetoedPhrases) {
-    const normalizedPhrase = normalizedInvariantText(phrase);
-    if (normalizedPhrase && normalizedNarrative.includes(normalizedPhrase)) {
+    if (containsInvariantPhrase(narrative, phrase)) {
       violations.push(`vetoed phrase reintroduced: ${phrase}`);
     }
   }
   for (const passage of draft.acceptedPassages ?? []) {
-    const normalizedPassage = normalizedInvariantText(passage);
-    if (normalizedPassage && !normalizedNarrative.includes(normalizedPassage)) {
+    if (!containsInvariantPhrase(narrative, passage)) {
       violations.push(`accepted passage omitted: ${passage}`);
     }
   }
