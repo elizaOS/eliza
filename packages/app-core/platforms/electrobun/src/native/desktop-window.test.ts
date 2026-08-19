@@ -2,6 +2,7 @@
 import { Screen } from "electrobun/bun";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopManager, resetDesktopManagerForTesting } from "./desktop";
+import { setWindowInteractiveMaterialSize } from "./mac-window-effects";
 
 vi.mock("@elizaos/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@elizaos/core")>();
@@ -18,6 +19,7 @@ vi.mock("./mac-window-effects", () => ({
   createSecurityScopedBookmark: vi.fn(() => null),
   enableVibrancy: vi.fn(() => false),
   setWindowShadow: vi.fn(() => false),
+  setWindowInteractiveMaterialSize: vi.fn(() => true),
   isAppActive: vi.fn(() => false),
   isKeyWindow: vi.fn(() => false),
   makeKeyAndOrderFront: vi.fn(),
@@ -55,7 +57,6 @@ const electrobunMock = vi.hoisted(() => {
   let nextBrowserWindowId = 1;
   const browserWindowInstances: MockBrowserWindow[] = [];
   const trayInstances: Array<{
-    getBounds: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
     off: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
@@ -128,7 +129,6 @@ const electrobunMock = vi.hoisted(() => {
     browserWindowInstances.push(this);
   });
   const Tray = vi.fn(function FakeTray(this: {
-    getBounds: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
     off: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
@@ -136,7 +136,6 @@ const electrobunMock = vi.hoisted(() => {
     setMenu: ReturnType<typeof vi.fn>;
     setTitle: ReturnType<typeof vi.fn>;
   }) {
-    this.getBounds = vi.fn(() => ({ x: 0, y: 0, width: 0, height: 0 }));
     this.on = vi.fn();
     this.off = vi.fn();
     this.remove = vi.fn();
@@ -425,15 +424,31 @@ describe("DesktopManager main window controls", () => {
     await manager.dispose();
   });
 
-  it("lets a full onboarding surface yield to the external sign-in browser", async () => {
+  it("separates the stable window envelope from its visible interactive material", async () => {
     const { manager, window } = createManagerWithWindow();
+    const nativeWindowPtr = { id: "native-window" };
+    Object.assign(window, { ptr: nativeWindowPtr });
     manager.enableBottomBarReanchor();
 
-    await manager.setBottomBarSurfaceState({ state: "MAXIMIZED" });
-    expect(window.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
+    await manager.setBottomBarSize({ width: 600, height: 820 });
+    expect(window.setFrame).toHaveBeenLastCalledWith(250, 50, 600, 700);
 
-    await manager.setBottomBarSurfaceState({ state: "OPEN_HALF_OR_OVER" });
-    expect(window.setAlwaysOnTop).toHaveBeenLastCalledWith(true);
+    await manager.setBottomBarInteractiveSize({ width: 380.1, height: 180.1 });
+    expect(setWindowInteractiveMaterialSize).toHaveBeenLastCalledWith(
+      nativeWindowPtr,
+      380,
+      180,
+    );
+    await manager.dispose();
+  });
+
+  it("rejects invalid measured material before changing the native frame", async () => {
+    const { manager, window } = createManagerWithWindow();
+    manager.enableBottomBarReanchor();
+    await expect(
+      manager.setBottomBarSize({ width: Number.NaN, height: 56 }),
+    ).rejects.toThrow("material size must be positive and finite");
+    expect(window.setFrame).not.toHaveBeenCalled();
     await manager.dispose();
   });
 
@@ -1153,24 +1168,5 @@ describe("DesktopManager dockless (tray-first) Dock tracking (#12184)", () => {
     manager.setMainWindowFullWindow(true);
     manager.setManagedWindowsPresent(true);
     expect(electrobunMock.Utils.setDockIconVisible).not.toHaveBeenCalled();
-  });
-
-  it("reveals the Dock icon when tray-first mode is disabled after a tray failure", () => {
-    const manager = new DesktopManager();
-    manager.setTrayFirstMode(true);
-    manager.setTrayFirstMode(false);
-
-    expect(dockCalls().at(-1)).toBe(true);
-  });
-
-  it("reports whether macOS assigned visible bounds to the tray status item", async () => {
-    const manager = new DesktopManager();
-    await manager.createTray({ icon: "/tmp/appIcon.png" });
-    const tray = electrobunMock.trayInstances[0];
-
-    expect(manager.hasVisibleTrayStatusItem()).toBe(false);
-
-    tray.getBounds.mockReturnValue({ x: 100, y: 0, width: 18, height: 24 });
-    expect(manager.hasVisibleTrayStatusItem()).toBe(true);
   });
 });

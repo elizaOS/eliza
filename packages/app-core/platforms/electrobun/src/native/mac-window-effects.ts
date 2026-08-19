@@ -16,6 +16,11 @@ import { resolveNativeLibraryCandidate } from "../../../../src/platform/native-l
  */
 type MacEffectsSymbols = {
   enableWindowVibrancy(ptr: Pointer): boolean;
+  setWindowInteractiveMaterialSize(
+    ptr: Pointer,
+    width: number,
+    height: number,
+  ): boolean;
   setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
   setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
   setNativeWindowDragRegion(ptr: Pointer, x: number, height: number): boolean;
@@ -76,6 +81,10 @@ function loadLib(): MacEffectsLib {
     // FFIType descriptors at the TypeScript level.
     return dlopen(dylibPath, {
       enableWindowVibrancy: { args: [FFIType.ptr], returns: FFIType.bool },
+      setWindowInteractiveMaterialSize: {
+        args: [FFIType.ptr, FFIType.f64, FFIType.f64],
+        returns: FFIType.bool,
+      },
       setWindowShadowEnabled: {
         args: [FFIType.ptr, FFIType.bool],
         returns: FFIType.bool,
@@ -165,6 +174,17 @@ function getLib(): LoadedMacEffectsLib | null {
 
 export function enableVibrancy(ptr: Pointer): boolean {
   return getLib()?.symbols.enableWindowVibrancy(ptr) ?? false;
+}
+
+export function setWindowInteractiveMaterialSize(
+  ptr: Pointer,
+  width: number,
+  height: number,
+): boolean {
+  return (
+    getLib()?.symbols.setWindowInteractiveMaterialSize(ptr, width, height) ??
+    false
+  );
 }
 
 export function setWindowShadow(ptr: Pointer, enabled: boolean): boolean {

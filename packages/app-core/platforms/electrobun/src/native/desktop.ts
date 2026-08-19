@@ -49,6 +49,7 @@ import {
   computeBottomBarFrame,
   computeBottomBarSurfaceFrame,
   isBottomBarSurfaceState,
+  normalizeBottomBarMaterialSize,
   resolveBottomBarFrameSize,
   type ScreenWorkArea,
   shouldReanchorBottomBar,
@@ -105,6 +106,7 @@ import {
   makeKeyAndOrderFront,
   orderOut,
   pollFnMonitor,
+  setWindowInteractiveMaterialSize,
   startAccessingSecurityScopedBookmark,
   startFnMonitor,
   stopAccessingSecurityScopedBookmarks,
@@ -381,6 +383,9 @@ export class DesktopManager {
   private bottomBarSurfaceState: BottomBarSurfaceState | null = null;
   private bottomBarPoller: ReturnType<typeof setInterval> | null = null;
   private bottomBarSize = resolveBottomBarFrameSize({ expanded: false });
+  private bottomBarInteractiveSize = resolveBottomBarFrameSize({
+    expanded: false,
+  });
   private bottomBarFrameDirty = false;
 
   // Callback to open the settings window (set by index.ts)
@@ -1563,6 +1568,57 @@ X-GNOME-Autostart-enabled=true
     this.bottomBarFrameDirty = false;
   }
 
+  /** Resize the stable native envelope around the renderer animation. */
+  async setBottomBarSize(size: {
+    width: number;
+    height: number;
+  }): Promise<void> {
+    this.bottomBarSurfaceState = null;
+    this.bottomBarSize = normalizeBottomBarMaterialSize(size);
+    this.bottomBarFrameDirty = true;
+    if (!this.bottomBarReanchorEnabled) return;
+    const win = this.mainWindow;
+    const workArea = this.readPrimaryWorkArea();
+    if (!win || !workArea) return;
+    const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
+    win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    this.applyBottomBarInteractiveMaterial();
+    this.bottomBarWorkArea = workArea;
+    this.bottomBarFrameDirty = false;
+  }
+
+  /** Keep transparent envelope pixels mouse-transparent outside visible UI. */
+  async setBottomBarInteractiveSize(size: {
+    width: number;
+    height: number;
+  }): Promise<void> {
+    this.bottomBarInteractiveSize = normalizeBottomBarMaterialSize(size);
+    if (!this.bottomBarReanchorEnabled) return;
+    this.applyBottomBarInteractiveMaterial();
+  }
+
+  private applyBottomBarInteractiveMaterial(): void {
+    if (process.platform !== "darwin") return;
+    const win = this.mainWindow;
+    if (!win) return;
+    const ptr = (win as typeof win & { ptr?: unknown }).ptr;
+    if (!ptr) {
+      throw new Error(
+        "[Desktop] bottom-bar native window pointer is unavailable",
+      );
+    }
+    const applied = setWindowInteractiveMaterialSize(
+      ptr as Parameters<typeof setWindowInteractiveMaterialSize>[0],
+      this.bottomBarInteractiveSize.width,
+      this.bottomBarInteractiveSize.height,
+    );
+    if (!applied) {
+      throw new Error(
+        "[Desktop] failed to apply bottom-bar interactive material bounds",
+      );
+    }
+  }
+
   /** Mirror the canonical mobile pull-sheet state in the native host frame. */
   async setBottomBarSurfaceState(options: {
     state: BottomBarSurfaceState;
@@ -1622,6 +1678,7 @@ X-GNOME-Autostart-enabled=true
       : computeBottomBarFrame(nextWorkArea, this.bottomBarSize);
     try {
       win.setFrame(frame.x, frame.y, frame.width, frame.height);
+      this.applyBottomBarInteractiveMaterial();
       this.bottomBarWorkArea = nextWorkArea;
       this.bottomBarFrameDirty = false;
     } catch (err) {

@@ -158,6 +158,31 @@ export interface BottomBarSizeOptions {
   hovered?: boolean;
 }
 
+export interface BottomBarMaterialSize {
+  width: number;
+  height: number;
+}
+
+/** Validate renderer-measured material geometry at the native boundary. */
+export function normalizeBottomBarMaterialSize(
+  size: BottomBarMaterialSize,
+): BottomBarMaterialSize {
+  if (
+    !Number.isFinite(size.width) ||
+    !Number.isFinite(size.height) ||
+    size.width <= 0 ||
+    size.height <= 0
+  ) {
+    throw new RangeError(
+      "[desktop-bottom-bar] material size must be positive and finite",
+    );
+  }
+  return {
+    width: Math.max(1, Math.round(size.width)),
+    height: Math.max(1, Math.round(size.height)),
+  };
+}
+
 /** Resolve the native bottom-bar size for rest, hover, sign-in, or overlay. */
 export function resolveBottomBarFrameSize(options: BottomBarSizeOptions): {
   width: number;

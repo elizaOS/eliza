@@ -778,6 +778,12 @@ export function buildBunRpcHandlers({
     desktopSetBottomBarExpanded: async (
       params: Parameters<typeof desktop.setBottomBarExpanded>[0],
     ) => desktop.setBottomBarExpanded(params),
+    desktopSetBottomBarSize: async (
+      params: Parameters<typeof desktop.setBottomBarSize>[0],
+    ) => desktop.setBottomBarSize(params),
+    desktopSetBottomBarInteractiveSize: async (
+      params: Parameters<typeof desktop.setBottomBarInteractiveSize>[0],
+    ) => desktop.setBottomBarInteractiveSize(params),
     desktopSetBottomBarSurfaceState: async (
       params: Parameters<typeof desktop.setBottomBarSurfaceState>[0],
     ) => desktop.setBottomBarSurfaceState(params),

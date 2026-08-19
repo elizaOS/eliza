@@ -53,6 +53,15 @@ function createDesktopFixture() {
 }
 
 describe("window RPC handlers", () => {
+  it("maps renderer window and interactive-material sizing to distinct RPC methods", () => {
+    expect(CHANNEL_TO_RPC_METHOD["desktop:setBottomBarSize"]).toBe(
+      "desktopSetBottomBarSize",
+    );
+    expect(CHANNEL_TO_RPC_METHOD["desktop:setBottomBarInteractiveSize"]).toBe(
+      "desktopSetBottomBarInteractiveSize",
+    );
+  });
+
   it("opens settings with an optional tab hint", async () => {
     const { desktop, handlers } = createDesktopFixture();
 

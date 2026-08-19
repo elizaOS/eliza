@@ -13,6 +13,7 @@ import {
   HOVER_BOTTOM_BAR_HEIGHT,
   HOVER_BOTTOM_BAR_WIDTH,
   isBottomBarSurfaceState,
+  normalizeBottomBarMaterialSize,
   resolveBottomBarFrameSize,
   resolveDesktopShellWindowPresentation,
   shouldReanchorBottomBar,
@@ -20,6 +21,24 @@ import {
 } from "./desktop-bottom-bar-config";
 
 describe("desktop bottom-bar config", () => {
+  describe("normalizeBottomBarMaterialSize", () => {
+    it("rounds renderer measurements to native pixel dimensions", () => {
+      expect(
+        normalizeBottomBarMaterialSize({ width: 599.6, height: 63.5 }),
+      ).toEqual({ width: 600, height: 64 });
+    });
+
+    it.each([
+      { width: 0, height: 32 },
+      { width: 64, height: 0 },
+      { width: -1, height: 32 },
+      { width: 64, height: Number.NaN },
+      { width: Number.POSITIVE_INFINITY, height: 32 },
+    ])("rejects non-positive or non-finite material size %#", (size) => {
+      expect(() => normalizeBottomBarMaterialSize(size)).toThrow(RangeError);
+    });
+  });
+
   describe("shouldStartBottomBar", () => {
     it("is OFF by default so the normal full app is the desktop surface", () => {
       expect(shouldStartBottomBar({}, [])).toBe(false);
