@@ -357,6 +357,20 @@ async function scanLocalPlugins(): Promise<Map<string, RegistryPlugin>> {
 	return plugins;
 }
 
+function isTimeoutError(err: unknown): boolean {
+	if (err instanceof DOMException) return err.name === "TimeoutError";
+	if (err instanceof Error) {
+		if (err.name === "TimeoutError") return true;
+		// Node fetch may wrap the abort reason as cause
+		const cause = (err as Error & { cause?: unknown }).cause;
+		if (cause instanceof DOMException && cause.name === "TimeoutError")
+			return true;
+		if (cause instanceof Error && (cause as Error).name === "TimeoutError")
+			return true;
+	}
+	return false;
+}
+
 export async function fetchGeneratedRegistry(
 	options: {
 		fetchImpl?: typeof fetch;
@@ -372,13 +386,30 @@ export async function fetchGeneratedRegistry(
 	const signal = callerSignal
 		? AbortSignal.any([callerSignal, AbortSignal.timeout(timeoutMs)])
 		: AbortSignal.timeout(timeoutMs);
-	const response = await fetchImpl(GENERATED_REGISTRY_URL, { signal });
-	if (!response.ok) {
-		throw new Error(
-			`generated-registry.json: ${response.status} ${response.statusText}`,
-		);
+	let response: Response;
+	let data: GeneratedRegistryFile;
+	try {
+		response = await fetchImpl(GENERATED_REGISTRY_URL, { signal });
+		if (!response.ok) {
+			throw new Error(
+				`generated-registry.json: ${response.status} ${response.statusText}`,
+			);
+		}
+		data = (await response.json()) as GeneratedRegistryFile; // same signal still active
+	} catch (err) {
+		if (isTimeoutError(err)) {
+			throw new ElizaError(
+				`Plugin registry fetch timed out after ${timeoutMs}ms`,
+				{
+					code: "PLUGIN_REGISTRY_FETCH_TIMEOUT",
+					cause: err,
+					context: { timeoutMs, url: GENERATED_REGISTRY_URL },
+					severity: "ephemeral",
+				},
+			);
+		}
+		throw err;
 	}
-	const data = (await response.json()) as GeneratedRegistryFile; // same signal still active
 	const plugins = new Map<string, RegistryPlugin>();
 	for (const [name, entry] of Object.entries(data.registry)) {
 		plugins.set(name, entryToPlugin(name, entry));
