@@ -4489,7 +4489,24 @@ function mappedLocalTarget(
     parsed.pathname.slice(prefixPath.length),
   );
   if (!relativePath) return undefined;
-  const localRoot = path.resolve(workdir, mapping.localPath);
+  let localRoot = path.resolve(workdir, mapping.localPath);
+  if (!fs.existsSync(localRoot)) {
+    // Slug-dir sessions live INSIDE the mapped tree (the route stamp carries
+    // the session's own directory), so resolving localPath against the
+    // session workdir doubles the path — …/name-picker-wheel-2/data/apps/… —
+    // and URL verification reported a live page as missing (2026-08-19).
+    // Anchor at the enclosing mapped tree instead.
+    const normalizedLocal = mapping.localPath
+      .replace(/^\.?\//, "")
+      .replace(/\/+$/, "");
+    const marker = `${path.sep}${normalizedLocal.split("/").join(path.sep)}${path.sep}`;
+    const index = `${workdir}${path.sep}`.indexOf(marker);
+    if (index >= 0) {
+      localRoot = path.resolve(
+        `${workdir.slice(0, index)}${marker}`.replace(/[\\/]+$/, ""),
+      );
+    }
+  }
   const target = path.resolve(localRoot, relativePath);
   if (target !== localRoot && !target.startsWith(`${localRoot}${path.sep}`)) {
     return undefined;
