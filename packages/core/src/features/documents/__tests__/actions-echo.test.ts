@@ -267,8 +267,9 @@ describe("DOCUMENT structural extraction on hardened messages", () => {
 			options({ action: "import_file", filePath: `/tmp/${BLOB_QUERY}` }),
 		);
 		expect(res.text).toBe(
-			"No file exists at that path; tell the user it couldn't be found.",
+			"Only the owner or agent runtime can import a local host file. Upload the document content or use a URL instead.",
 		);
+		expect(res.values).toMatchObject({ error: "forbidden" });
 		const filePath = (res.values as { filePath: string }).filePath;
 		expect(filePath).not.toContain("\n");
 		expect(filePath.length).toBeLessThanOrEqual(121);

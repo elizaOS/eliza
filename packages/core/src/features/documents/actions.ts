@@ -1057,6 +1057,16 @@ async function handleImportFile(
 		params,
 	);
 	if (filePath) {
+		const canReadHostFile =
+			isAgentSelf(runtime, message) ||
+			(await hasRoleAccess(runtime, message, "OWNER"));
+		if (!canReadHostFile) {
+			const text =
+				"Only the owner or agent runtime can import a local host file. Upload the document content or use a URL instead.";
+			return result(false, text, "import_file", {
+				values: { error: "forbidden", filePath: queryLogView(filePath) },
+			});
+		}
 		if (!fs.existsSync(filePath)) {
 			const text = `No file exists at ${describeUserReference(filePath, "that path")}; tell the user it couldn't be found.`;
 			return result(false, text, "import_file", {
