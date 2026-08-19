@@ -38,7 +38,7 @@ export function wordErrorRate(reference: string, hypothesis: string): number {
     reference.length > MAX_WER_INPUT_CHARS ||
     hypothesis.length > MAX_WER_INPUT_CHARS
   ) {
-    throw new Error(
+    throw new RangeError(
       `[voice-wer] transcript exceeds ${MAX_WER_INPUT_CHARS} UTF-16 code units (ref=${reference.length} hyp=${hypothesis.length})`,
     );
   }
@@ -48,7 +48,7 @@ export function wordErrorRate(reference: string, hypothesis: string): number {
   if (refWords.length === 0) return hypWords.length === 0 ? 0 : 1;
   const editCells = refWords.length * hypWords.length;
   if (editCells > MAX_WER_EDIT_CELLS) {
-    throw new Error(
+    throw new RangeError(
       `[voice-wer] comparison exceeds ${MAX_WER_EDIT_CELLS} edit cells (refWords=${refWords.length} hypWords=${hypWords.length})`,
     );
   }

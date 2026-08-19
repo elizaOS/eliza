@@ -168,6 +168,7 @@ class IncludeProcessor {
     try {
       raw = this.resolver.readFile(normalized);
     } catch (err) {
+      // error-policy:J2 preserve the filesystem failure at the include boundary.
       throw new ConfigIncludeError(
         `Failed to read include file: ${includePath} (resolved: ${normalized})`,
         includePath,
@@ -198,6 +199,7 @@ class IncludeProcessor {
     try {
       parsed = this.resolver.parseJson(raw);
     } catch (err) {
+      // error-policy:J2 preserve the parser failure at the include boundary.
       throw new ConfigIncludeError(
         `Failed to parse include file: ${includePath} (resolved: ${normalized})`,
         includePath,
