@@ -7,10 +7,8 @@ import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
-import {
-  isPlausibleFragmentSource,
-  normalizeUniforms,
-} from "../backgrounds/shader-schema";
+import { getShaderPreset } from "../backgrounds/shader-presets";
+import { normalizeUniforms } from "../backgrounds/shader-schema";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { MAX_BACKGROUND_HISTORY } from "./background-history";
 
@@ -207,23 +205,23 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };
   }
-  // GLSL mode requires a plausible fragment source; a malformed/oversized/absent
-  // source (or a hostile persisted value) falls back to the color field so a bad
-  // shader can never wedge the background on load.
+  // Persisted records identify repository-owned presets; raw stored shader text
+  // is never an authority. Resolving the id on every load also upgrades records
+  // to the current canonical source when a preset changes.
   if (record.mode === "glsl") {
     const shaderRecord = asRecord(record.shader);
-    const source = shaderRecord?.source;
-    if (isPlausibleFragmentSource(source)) {
-      const presetId =
-        typeof shaderRecord?.presetId === "string"
-          ? shaderRecord.presetId
-          : undefined;
+    const preset = getShaderPreset(
+      typeof shaderRecord?.presetId === "string"
+        ? shaderRecord.presetId
+        : undefined,
+    );
+    if (preset) {
       return {
         mode: "glsl",
         color,
         shader: {
-          presetId,
-          source,
+          presetId: preset.id,
+          source: preset.source,
           uniforms: normalizeUniforms(shaderRecord?.uniforms),
         },
       };
