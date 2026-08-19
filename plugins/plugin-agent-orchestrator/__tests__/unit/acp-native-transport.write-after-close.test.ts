@@ -1,20 +1,7 @@
 /**
- * Regression: write-after-close on the agent stdin pipe must not crash the
- * host runtime.
- *
- * Live failure (sol-dev 2026-08-19, backend-hot.log line 600383): sub-agent
- * teardown called `closeSession` after the agent subprocess had already gone
- * away; the JSON-RPC write hit a broken pipe and the resulting EPIPE became an
- * uncaught exception that killed the entire eliza runtime ("Uncaught
- * exception: Error: write EPIPE ... acp-native-transport.ts:318 closeSession
- * <- acp-service.ts stopNativeClient"), 5 crashes in 24h, dropping a live
- * user turn mid-compose.
- *
- * The fix: all writes to the agent stdin go through a guard that checks
- * destroyed/ended state and swallows synchronous throws, plus a stdin 'error'
- * listener that absorbs the asynchronous EPIPE emission. These tests fail
- * against the unguarded transport (bare `proc.stdin.write`, no 'error'
- * listener) and pass with the guard.
+ * Deterministic regression coverage for ACP subprocess stdin failures. The
+ * mocked transport exercises write-state guards, synchronous and asynchronous
+ * EPIPE delivery, pending-request settlement, and successful JSON-RPC traffic.
  */
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
@@ -75,19 +62,24 @@ async function waitForWrites(p: MockProc, count: number): Promise<void> {
     if (p.stdinWrites.length >= count) return;
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
-  throw new Error(`expected ${count} stdin writes, got ${p.stdinWrites.length}`);
+  throw new Error(
+    `expected ${count} stdin writes, got ${p.stdinWrites.length}`,
+  );
 }
 
 function emitJson(p: MockProc, message: Record<string, unknown>): void {
   p.stdout.emit("data", Buffer.from(`${JSON.stringify(message)}\n`));
 }
 
-async function startClient(): Promise<{ client: NativeAcpClient; p: MockProc }> {
+async function startClient(opts?: {
+  onEvent?: (event: Record<string, unknown>) => void;
+}): Promise<{ client: NativeAcpClient; p: MockProc }> {
   const p = queueProc();
   const client = new NativeAcpClient({
     command: "agent-acp",
     cwd: "/tmp/native-acp",
     approvalPreset: "autonomous",
+    onEvent: opts?.onEvent,
   });
   const started = client.start();
   await waitForWrites(p, 1);
@@ -133,14 +125,58 @@ describe("NativeAcpClient write-after-close (EPIPE crash regression)", () => {
     expect(p.stdinWrites.length).toBe(writesBefore);
   });
 
-  it("an asynchronous stdin 'error' (EPIPE) is absorbed, not uncaught", async () => {
-    const { p } = await startClient();
+  it.each([
+    ["destroyed", "destroyed"],
+    ["ended", "writableEnded"],
+    ["non-writable", "writable"],
+  ] as const)(
+    "rejects promptly for a %s stream without calling write",
+    async (_label, property) => {
+      const events: Record<string, unknown>[] = [];
+      const { client, p } = await startClient({
+        onEvent: (event) => events.push(event),
+      });
+      events.length = 0;
+      const write = vi.spyOn(p.stdin, "write");
+      Object.defineProperty(p.stdin, property, {
+        configurable: true,
+        value: property !== "writable",
+      });
+
+      const startedAt = Date.now();
+      await expect(
+        (
+          client as unknown as {
+            request(method: string, params: unknown): Promise<unknown>;
+          }
+        ).request("session/prompt", { sessionId: "s-1" }),
+      ).rejects.toThrow(/transport/i);
+
+      expect(Date.now() - startedAt).toBeLessThan(250);
+      expect(write).not.toHaveBeenCalled();
+      expect(events).toEqual([]);
+    },
+  );
+
+  it("an asynchronous stdin EPIPE rejects pending work and closes the transport", async () => {
+    const { client, p } = await startClient();
+    const pending = (
+      client as unknown as {
+        request(method: string, params: unknown): Promise<unknown>;
+      }
+    ).request("session/prompt", { sessionId: "s-1" });
+    await waitForWrites(p, 2);
     const err = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
-    // Without a listener, EventEmitter turns 'error' into a throw — which is
-    // exactly the uncaught exception that killed the runtime. The transport
-    // must install a listener in start().
     expect(p.stdin.listenerCount("error")).toBeGreaterThan(0);
     expect(() => p.stdin.emit("error", err)).not.toThrow();
+    await expect(pending).rejects.toThrow(/stdin failed.*EPIPE/i);
+    expect(() =>
+      (
+        client as unknown as {
+          request(method: string, params: unknown): Promise<unknown>;
+        }
+      ).request("session/new", { cwd: "/tmp" }),
+    ).toThrow(/client is closed/i);
   });
 
   it("request over a broken pipe rejects with a transport-closed error instead of crashing", async () => {
@@ -152,7 +188,7 @@ describe("NativeAcpClient write-after-close (EPIPE crash regression)", () => {
           request(method: string, params: unknown): Promise<unknown>;
         }
       ).request("session/prompt", { sessionId: "s-1" }),
-    ).rejects.toThrow(/transport closed/i);
+    ).rejects.toThrow(/transport (?:closed|stdin failed)/i);
   });
 
   it("notify over a destroyed pipe resolves silently (cancel during teardown)", async () => {
@@ -174,7 +210,11 @@ describe("NativeAcpClient write-after-close (EPIPE crash regression)", () => {
       method: string;
     };
     expect(written.method).toBe("session/new");
-    emitJson(p, { jsonrpc: "2.0", id: written.id, result: { sessionId: "s-9" } });
+    emitJson(p, {
+      jsonrpc: "2.0",
+      id: written.id,
+      result: { sessionId: "s-9" },
+    });
     await expect(pending).resolves.toEqual({ sessionId: "s-9" });
   });
 });
