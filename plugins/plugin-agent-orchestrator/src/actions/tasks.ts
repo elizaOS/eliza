@@ -1031,8 +1031,15 @@ async function runCreateLegacy(
   // task literally titled ",title:" shipped from a JSON-fragment label (live
   // 2026-08-19). A label with no letters or digits carries no identity; drop
   // it so labelFrom derives one from the task text instead.
+  // Generic labels ("web app", "page") name nothing — one produced the slug
+  // web-app-2 as a published URL (live 2026-08-19). Treat them like absent
+  // labels so labelFrom derives identity from the task text.
+  const GENERIC_LABEL_RE =
+    /^(?:web\s*app|webapp|web\s*page|webpage|app|page|site|website|task|build|project)$/i;
   const baseLabelSane =
-    baseLabelParam && /[a-z0-9]/i.test(baseLabelParam)
+    baseLabelParam &&
+    /[a-z0-9]/i.test(baseLabelParam) &&
+    !GENERIC_LABEL_RE.test(baseLabelParam.trim())
       ? baseLabelParam
       : undefined;
   const baseLabel = baseLabelSane
