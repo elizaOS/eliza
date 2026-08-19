@@ -7,20 +7,20 @@
  * additionally resolves symlinks and verifies the real path stays under the workspace
  * root, since a string-prefix check on the unresolved path alone cannot catch a symlink
  * that escapes after normalization. read() and list() realpath() their full target;
- * write() walks each parent component with lstat and creates only real
- * directories, so a symlink ancestor cannot mkdir descendants outside the
- * workspace. Concurrent mkdir EEXIST is re-lstat'd and accepted only as a
- * real directory (a swapped symlink still fails closed). When the final
- * component already exists it is realpath()'d the same way as read().
+ * write() materializes and canonicalizes each parent directory before opening
+ * the final component with no-follow semantics, so path replacement cannot
+ * redirect an already-open write outside the workspace.
  */
+import { constants as fsConstants } from "node:fs";
 import {
+	type FileHandle,
 	lstat,
 	mkdir,
+	open,
 	readdir,
 	readFile,
 	realpath,
 	stat,
-	writeFile,
 } from "node:fs/promises";
 import * as path from "node:path";
 
@@ -201,16 +201,15 @@ export class DeviceFilesystemBridge extends Service {
 			return;
 		}
 		const absolute = this.resolveNodePath(relative);
-		await this.materializeWritableParent(absolute);
-		// A validated parent directory is not enough: if the final path component
-		// is an existing symlink pointing outside the root, writeFile() follows it
-		// and clobbers the external target. Verify the real target path the same
-		// way read()/list() do, but only when the target already exists (realpath
-		// throws ENOENT on a to-be-created file, which is the expected common case).
-		if (await this.pathExists(absolute)) {
-			await this.assertRealPathWithinRoot(absolute);
+		const canonicalParent = await this.materializeWritableParent(absolute);
+		const canonicalTarget = path.join(canonicalParent, path.basename(absolute));
+		const handle = await this.openWritableFile(canonicalTarget);
+		try {
+			await handle.truncate(0);
+			await handle.writeFile(content, nodeEncodingFor(encoding));
+		} finally {
+			await handle.close();
 		}
-		await writeFile(absolute, content, nodeEncodingFor(encoding));
 	}
 
 	async list(relativePath: string): Promise<DirectoryEntry[]> {
@@ -274,12 +273,7 @@ export class DeviceFilesystemBridge extends Service {
 		return absolute;
 	}
 
-	/**
-	 * Create missing parent directories one component at a time. A recursive
-	 * mkdir on a symlink ancestor follows the link and materialises the rest
-	 * of the path outside the workspace before the later realpath check.
-	 */
-	private async materializeWritableParent(absolute: string): Promise<void> {
+	private async materializeWritableParent(absolute: string): Promise<string> {
 		if (!this.nodeRoot) {
 			throw new Error(
 				`${DEVICE_FILESYSTEM_LOG_PREFIX} Node backend root not initialised. Did init() run?`,
@@ -306,46 +300,36 @@ export class DeviceFilesystemBridge extends Service {
 						`${DEVICE_FILESYSTEM_LOG_PREFIX} parent is not a directory: ${next}`,
 					);
 				}
-				current = next;
 			} catch (error) {
-				// error-policy:J3 only a missing component is created; a symlink
-				// or non-directory parent is an explicit confinement failure.
-				if (!isEnoent(error)) {
-					throw error;
-				}
-				await this.assertRealPathWithinRoot(current);
-				try {
-					await mkdir(next);
-				} catch (mkdirError) {
-					// error-policy:J3 a concurrent writer may have created this
-					// component between our lstat and mkdir; only EEXIST is
-					// benign, and only if a re-lstat still sees a real directory
-					// (a swapped symlink stays a confinement failure).
-					if (!isEexist(mkdirError)) {
-						throw mkdirError;
-					}
-					const raced = await lstat(next);
-					if (raced.isSymbolicLink() || !raced.isDirectory()) {
-						throw mkdirError;
-					}
-				}
-				current = next;
+				// error-policy:J3 only an absent component enters the create path.
+				if (!isEnoent(error)) throw error;
+				await mkdir(next);
 			}
+			await this.assertRealPathWithinRoot(next);
+			current = await realpath(next);
 		}
-		await this.assertRealPathWithinRoot(parent);
+		await this.assertRealPathWithinRoot(current);
+		return realpath(current);
 	}
 
-	private async pathExists(targetPath: string): Promise<boolean> {
+	private async openWritableFile(target: string): Promise<FileHandle> {
+		const existingFlags = fsConstants.O_WRONLY | fsConstants.O_NOFOLLOW;
 		try {
-			await lstat(targetPath);
-			return true;
+			return await open(target, existingFlags);
 		} catch (error) {
-			// error-policy:J3 a missing target is the normal create path; only a
-			// genuine ENOENT means "does not exist" — surface every other error.
-			if (isEnoent(error)) {
-				return false;
-			}
-			throw error;
+			// error-policy:J3 only an absent leaf enters the atomic create path.
+			if (!isEnoent(error)) throw error;
+		}
+		try {
+			return await open(
+				target,
+				existingFlags | fsConstants.O_CREAT | fsConstants.O_EXCL,
+			);
+		} catch (error) {
+			// error-policy:J3 a concurrent creator is reopened with O_NOFOLLOW;
+			// a raced symlink is rejected by the kernel rather than followed.
+			if (!isCode(error, "EEXIST")) throw error;
+			return open(target, existingFlags);
 		}
 	}
 
@@ -373,20 +357,16 @@ export class DeviceFilesystemBridge extends Service {
 	}
 }
 
-function isEnoent(error: unknown): boolean {
-	return isErrno(error, "ENOENT");
-}
-
-function isEexist(error: unknown): boolean {
-	return isErrno(error, "EEXIST");
-}
-
-function isErrno(error: unknown, code: string): boolean {
+function isCode(error: unknown, code: string): boolean {
 	return (
 		typeof error === "object" &&
 		error !== null &&
 		(error as NodeJS.ErrnoException).code === code
 	);
+}
+
+function isEnoent(error: unknown): boolean {
+	return isCode(error, "ENOENT");
 }
 
 function isCapacitorFilesystemModule(

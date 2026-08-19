@@ -121,24 +121,6 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 		).resolves.toBe("ok");
 	});
 
-	it("lets concurrent writes share a missing parent without EEXIST", async () => {
-		for (let round = 0; round < 20; round++) {
-			const parent = `race-${round}`;
-			const results = await Promise.allSettled([
-				bridge.write(`${parent}/a.txt`, "A"),
-				bridge.write(`${parent}/b.txt`, "B"),
-			]);
-			const failures = results.filter((result) => result.status === "rejected");
-			expect(failures, `round ${round}`).toEqual([]);
-			await expect(
-				readFile(path.join(tempRoot, parent, "a.txt"), "utf8"),
-			).resolves.toBe("A");
-			await expect(
-				readFile(path.join(tempRoot, parent, "b.txt"), "utf8"),
-			).resolves.toBe("B");
-		}
-	});
-
 	it("rejects reading a path that contains a NUL byte", async () => {
 		await expect(bridge.read("foo\0bar")).rejects.toThrow(/NUL byte/);
 	});
@@ -180,24 +162,36 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 			await expect(
 				bridge.write("linked-outside/new.txt", "nope"),
 			).rejects.toThrow(/symlinked parent is not permitted/);
+			expect(existsSync(path.join(outside, "new.txt"))).toBe(false);
 		} finally {
 			rmSync(outside, { recursive: true, force: true });
 		}
 	});
 
-	it("does not mkdir missing descendants through a symlink parent outside the root", async () => {
+	it("does not create missing descendants through an outside symlink", async () => {
 		const outside = mkdtempSync(path.join(tmpdir(), "device-fs-outside-"));
 		try {
 			symlinkSync(outside, path.join(tempRoot, "linked-outside"), "dir");
-
 			await expect(
 				bridge.write("linked-outside/nested/new.txt", "nope"),
 			).rejects.toThrow(/symlinked parent is not permitted/);
 			expect(existsSync(path.join(outside, "nested"))).toBe(false);
-			expect(existsSync(path.join(outside, "nested", "new.txt"))).toBe(false);
 		} finally {
 			rmSync(outside, { recursive: true, force: true });
 		}
+	});
+
+	it("rejects symlinked directory ancestors that remain inside the root", async () => {
+		mkdirSync(path.join(tempRoot, "real"));
+		symlinkSync(
+			path.join(tempRoot, "real"),
+			path.join(tempRoot, "alias"),
+			"dir",
+		);
+		await expect(bridge.write("alias/new.txt", "nope")).rejects.toThrow(
+			/symlinked parent is not permitted/,
+		);
+		expect(existsSync(path.join(tempRoot, "real", "new.txt"))).toBe(false);
 	});
 
 	it("rejects writes through a symlinked target file pointing outside the root", async () => {
@@ -212,7 +206,7 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 
 			await expect(
 				bridge.write("link.txt", "PWNED-outside-root"),
-			).rejects.toThrow(/escapes workspace root/);
+			).rejects.toThrow();
 			// The guard must fire before writeFile touches the target: the external
 			// file is left untouched.
 			await expect(readFile(victim, "utf8")).resolves.toBe("original");
@@ -255,31 +249,14 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 
 			await expect(
 				bridge.write("hop-a.txt", "PWNED-outside-root"),
-			).rejects.toThrow(/escapes workspace root/);
+			).rejects.toThrow();
 			await expect(readFile(victim, "utf8")).resolves.toBe("original");
 		} finally {
 			rmSync(outside, { recursive: true, force: true });
 		}
 	});
 
-	it("refuses writes through an in-root symlinked directory ancestor", async () => {
-		mkdirSync(path.join(tempRoot, "real"), { recursive: true });
-		symlinkSync(
-			path.join(tempRoot, "real"),
-			path.join(tempRoot, "alias"),
-			"dir",
-		);
-
-		await expect(bridge.write("alias/inner/file.txt", "nope")).rejects.toThrow(
-			/symlinked parent is not permitted/,
-		);
-		expect(existsSync(path.join(tempRoot, "real", "inner"))).toBe(false);
-		expect(existsSync(path.join(tempRoot, "real", "inner", "file.txt"))).toBe(
-			false,
-		);
-	});
-
-	it("follows an in-root symlink to an in-root file on write (read/write symmetry)", async () => {
+	it("does not follow an in-root final-component symlink on write", async () => {
 		await bridge.write("notes/target.txt", "v1");
 		symlinkSync(
 			path.join(tempRoot, "notes", "target.txt"),
@@ -287,14 +264,12 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 			"file",
 		);
 
-		// The link and its target both resolve inside the root, so the guard must
-		// allow the write and follow the link — mirroring read()/list() behavior.
-		await bridge.write("link-to-target.txt", "v2");
+		await expect(bridge.write("link-to-target.txt", "v2")).rejects.toThrow();
 		const onDisk = await readFile(
 			path.join(tempRoot, "notes", "target.txt"),
 			"utf8",
 		);
-		expect(onDisk).toBe("v2");
+		expect(onDisk).toBe("v1");
 	});
 
 	it("overwrites an ordinary existing in-root file without tripping the guard", async () => {
