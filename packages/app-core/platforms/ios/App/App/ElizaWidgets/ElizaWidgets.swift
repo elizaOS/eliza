@@ -93,7 +93,7 @@ struct ElizaWidgetTimelineProvider: TimelineProvider {
     }
 }
 
-/// The two quick actions mirror the app target's App Intents: Ask and voice.
+/// The two quick actions mirror the app target's App Intents: message and voice.
 private struct ElizaQuickAction: Identifiable {
     let id: String
     let title: LocalizedStringResource
@@ -104,7 +104,7 @@ private struct ElizaQuickAction: Identifiable {
 private let elizaQuickActions: [ElizaQuickAction] = [
     ElizaQuickAction(
         id: "ask",
-        title: "Ask",
+        title: "Message",
         systemImage: "sparkles",
         url: ElizaWidgetDeepLink.ask(source: .widget)
     ),
@@ -151,9 +151,9 @@ struct ElizaQuickActionsWidgetView: View {
                 .font(.title2)
                 .foregroundStyle(elizaWidgetAccent)
             Spacer(minLength: 0)
-            Text("Ask Eliza")
+            Text("Message Eliza")
                 .font(.headline)
-            Text("Ask · Talk")
+            Text("Message · Talk")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -200,9 +200,9 @@ struct ElizaQuickActionsWidgetView: View {
             Image(systemName: "sparkles")
                 .font(.title3)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Ask Eliza")
+                Text("Message Eliza")
                     .font(.headline)
-                Text("Ask · Talk")
+                Text("Message · Talk")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -222,7 +222,7 @@ struct ElizaQuickActionsWidget: Widget {
             ElizaQuickActionsWidgetView()
         }
         .configurationDisplayName("Eliza Quick Actions")
-        .description("Ask or talk to Eliza from your Home and Lock Screen.")
+        .description("Message or talk to Eliza from your Home and Lock Screen.")
         .supportedFamilies([
             .systemSmall,
             .systemMedium,

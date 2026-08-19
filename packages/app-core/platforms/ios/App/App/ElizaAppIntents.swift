@@ -52,8 +52,8 @@ private enum ElizaAppIntentRouter {
 
 @available(iOS 16.0, *)
 struct AskElizaIntent: AppIntent {
-    static var title: LocalizedStringResource = "Ask Eliza"
-    static var description = IntentDescription("Ask Eliza a question or hand off a request to chat.")
+    static var title: LocalizedStringResource = "Message Eliza"
+    static var description = IntentDescription("Message Eliza or hand off a request to chat.")
     static var openAppWhenRun = true
 
     @Parameter(title: "Prompt", requestValueDialog: "What would you like to ask Eliza?")
@@ -95,9 +95,9 @@ struct ElizaAppShortcutsProvider: AppShortcutsProvider {
         AppShortcut(
             intent: AskElizaIntent(),
             phrases: [
-                "Ask \(.applicationName)",
+                "Message \(.applicationName)",
             ],
-            shortTitle: "Ask Eliza",
+            shortTitle: "Message Eliza",
             systemImageName: "sparkles"
         )
 

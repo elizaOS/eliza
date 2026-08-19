@@ -27,8 +27,8 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         try openControlGalleryAndSearchEliza()
 
         XCTAssertTrue(
-            springboard.staticTexts["Ask Eliza"].waitForExistence(timeout: 8),
-            "Control Center gallery search must list the Ask Eliza control; a missing result means the ElizaWidgets appex/control registration path regressed."
+            springboard.staticTexts["Message Eliza"].waitForExistence(timeout: 8),
+            "Control Center gallery search must list the Message Eliza control; a missing result means the ElizaWidgets appex/control registration path regressed."
         )
         XCTAssertTrue(
             springboard.staticTexts["Talk to Eliza"].waitForExistence(timeout: 8),
@@ -42,10 +42,10 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
     func testHomeScreenWidgetTapForegroundsApp() throws {
         try installHomeScreenWidgetFromGallery()
 
-        let ask = springboard.staticTexts["Ask Eliza"].firstMatch
+        let ask = springboard.staticTexts["Message Eliza"].firstMatch
         XCTAssertTrue(
             ask.waitForExistence(timeout: 8),
-            "The Eliza home-screen widget must expose the Ask Eliza quick action after being added from the widget gallery."
+            "The Eliza home-screen widget must expose the Message Eliza quick action after being added from the widget gallery."
         )
 
         attachScreenshot(named: "widget-assert-00-home-with-widget")
