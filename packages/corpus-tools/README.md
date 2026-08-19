@@ -91,7 +91,9 @@ metadata alone never produces an attachment SHA-256.
 
 Telegram's `verification_codes` dialog is always excluded and counted as
 credential material. Input is capped at 64 MiB and read only through that byte
-boundary before parsing. Publications use an output-root lock, account-owned
+boundary before parsing. Symlinked or hardlinked inputs, duplicate JSON object
+keys, and files changed during capture are rejected. Publications use an
+output-root lock, account-owned
 `telegram/<account>/summary.json` files, and a manifest installed last as the
 generation commit marker. Before the first changed or stale shard is installed,
 an existing marker is removed so an interrupted update is visibly incomplete;

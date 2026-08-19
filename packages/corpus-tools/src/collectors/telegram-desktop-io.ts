@@ -43,6 +43,66 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Rejects duplicate JSON object keys before `JSON.parse` can collapse them via
+ * last-wins semantics. Keys are decoded before comparison, so escaped aliases
+ * such as `"id"` and `"\u0069d"` are the same boundary key.
+ */
+function assertNoDuplicateJsonObjectKeys(body: string): void {
+  const stack: Array<
+    { kind: "object"; keys: Set<string> } | { kind: "array" }
+  > = [];
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+    if (char === "{") {
+      stack.push({ kind: "object", keys: new Set() });
+      continue;
+    }
+    if (char === "[") {
+      stack.push({ kind: "array" });
+      continue;
+    }
+    if (char === "}" || char === "]") {
+      stack.pop();
+      continue;
+    }
+    if (char !== '"') continue;
+
+    const start = index;
+    index += 1;
+    while (index < body.length) {
+      if (body[index] === "\\") {
+        index += 2;
+        continue;
+      }
+      if (body[index] === '"') break;
+      index += 1;
+    }
+    if (index >= body.length) return; // JSON.parse reports the malformed string.
+    let cursor = index + 1;
+    while (/\s/.test(body[cursor] ?? "")) cursor += 1;
+    const frame = stack.at(-1);
+    if (body[cursor] !== ":" || frame?.kind !== "object") continue;
+
+    let key: unknown;
+    try {
+      key = JSON.parse(body.slice(start, index + 1));
+    } catch {
+      // error-policy:J3 the full JSON parser below owns malformed-token reporting.
+      return; // The main parser emits the canonical malformed-JSON error.
+    }
+    if (typeof key !== "string") continue;
+    if (frame.keys.has(key)) {
+      throw inputError(
+        "TELEGRAM_EXPORT_DUPLICATE_KEY",
+        "Telegram Desktop result.json contains a duplicate object key",
+        { key },
+      );
+    }
+    frame.keys.add(key);
+  }
+}
+
 export async function readTelegramDesktopJson(
   exportPath: string,
   maxInputBytes: number,
@@ -72,11 +132,11 @@ export async function readTelegramDesktopJson(
   let bytes: Buffer;
   try {
     const entry = await input.stat();
-    if (!entry.isFile()) {
+    if (!entry.isFile() || entry.nlink !== 1) {
       throw inputError(
         "TELEGRAM_EXPORT_BAD_PATH",
-        "Telegram Desktop input must be a regular, non-symlink file",
-        { exportPath },
+        "Telegram Desktop input must be a regular, non-symlink, unaliased file",
+        { exportPath, linkCount: entry.nlink },
       );
     }
     if (entry.size > maxInputBytes) {
@@ -99,6 +159,22 @@ export async function readTelegramDesktopJson(
       totalBytes += bytesRead;
     }
     bytes = boundedBytes.subarray(0, totalBytes);
+    const afterRead = await input.stat();
+    if (
+      afterRead.dev !== entry.dev ||
+      afterRead.ino !== entry.ino ||
+      afterRead.nlink !== 1 ||
+      afterRead.size !== entry.size ||
+      afterRead.mtimeMs !== entry.mtimeMs ||
+      afterRead.ctimeMs !== entry.ctimeMs ||
+      totalBytes !== entry.size
+    ) {
+      throw inputError(
+        "TELEGRAM_EXPORT_INPUT_CHANGED",
+        "Telegram Desktop input changed while it was being read",
+        { exportPath },
+      );
+    }
   } catch (error) {
     if (error instanceof ElizaError) throw error;
     // error-policy:J2 wrap input read failures without fabricating an empty export.
@@ -119,8 +195,11 @@ export async function readTelegramDesktopJson(
     );
   }
   try {
-    return JSON.parse(bytes.toString("utf8"));
+    const body = bytes.toString("utf8");
+    assertNoDuplicateJsonObjectKeys(body);
+    return JSON.parse(body);
   } catch (error) {
+    if (error instanceof ElizaError) throw error;
     // error-policy:J2 wrap untrusted Telegram JSON with a typed boundary error.
     throw inputError(
       "TELEGRAM_EXPORT_BAD_JSON",

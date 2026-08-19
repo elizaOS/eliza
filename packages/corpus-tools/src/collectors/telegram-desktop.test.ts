@@ -447,7 +447,40 @@ describe("collectTelegramDesktopExport", () => {
       await expect(collectFixture(link, outDir)).rejects.toMatchObject({
         code: "TELEGRAM_EXPORT_BAD_PATH",
       });
+
+      const hardlinkDir = await makeTempDir();
+      const hardlink = path.join(hardlinkDir, "result.json");
+      await fs.link(FIXTURE_PATH, hardlink);
+      await expect(collectFixture(hardlink, outDir)).rejects.toMatchObject({
+        code: "TELEGRAM_EXPORT_BAD_PATH",
+      });
     }
+  });
+
+  it("rejects duplicate and escaped-equivalent JSON keys before last-wins parsing", async () => {
+    const outDir = await makeTempDir();
+    const direct = await copyFixture();
+    const directBody = await fs.readFile(direct, "utf8");
+    await fs.writeFile(
+      direct,
+      directBody.replace(
+        '"type": "personal_chat"',
+        '"type": "bot_chat", "type": "personal_chat"',
+      ),
+    );
+    await expect(collectFixture(direct, outDir)).rejects.toMatchObject({
+      code: "TELEGRAM_EXPORT_DUPLICATE_KEY",
+    });
+
+    const escaped = await copyFixture();
+    const escapedBody = await fs.readFile(escaped, "utf8");
+    await fs.writeFile(
+      escaped,
+      escapedBody.replace('"id": 200', '"\\u0069d": 999, "id": 200'),
+    );
+    await expect(collectFixture(escaped, outDir)).rejects.toMatchObject({
+      code: "TELEGRAM_EXPORT_DUPLICATE_KEY",
+    });
   });
 
   it("reads at most the configured byte limit plus one", async () => {
