@@ -63,17 +63,21 @@ function sentenceContaining(text: string, index: number): string {
 	return text.slice(start, end);
 }
 
-// Committed-mutation syntax. When a generic "done" opener's sentence carries
-// one of these write verbs, it is a save/schedule report and outranks any
-// read verb present ("Done — I saved your note and it's visible").
-const COMMITTED_MUTATION_SYNTAX_PATTERN =
-	/\b(?:set(?:\s+up)?|schedul(?:e|ed|ing)|saved|creat(?:e|ed)|add(?:s|ed)?|book(?:s|ed)?|logg(?:ed|ing)|arrang(?:e|ed)|updat(?:e|ed)|renam(?:e|ed)|delet(?:e|ed)|remov(?:e|ed)|cancell?(?:s|ed)?|in\s+place)\b/i;
-// Read/navigation predicates. A tracked noun described only by one of these
-// verbs was surfaced/opened, not committed ("Done — your notes are
-// loaded/visible/on screen"), so a generic completion opener must NOT read as
-// a mutation report (#22609).
-const READ_NAVIGATION_PREDICATE_PATTERN =
-	/\b(?:load(?:s|ed|ing)?|visible|shown|show(?:s|ing)?|display(?:s|ed|ing)?|open(?:s|ed|ing)?|render(?:s|ed|ing)?|onscreen|on\s+screen|in\s+view|pulled\s+up|brought\s+up|highlighted)\b/i;
+// A generic "done" sentence is exempt only when its complete grammar is a
+// read/navigation acknowledgement. Keeping this full-sentence match narrow is
+// important: a loose "contains a read verb and no known write verb" test lets
+// an unlisted mutation hide beside the read (for example, "notes are visible
+// and I archived the old ones").
+const READ_NAVIGATION_ONLY_SENTENCE_PATTERN = new RegExp(
+	String.raw`^[\s.!?…–—-]*done\b[\s:;,…–—-]*(?:` +
+		String.raw`(?:showing|displaying|loading|opening|rendering|highlighting|pulled\s+up|brought\s+up)\s+` +
+		String.raw`(?:the\s+|your\s+)?(?:\d+\s+)?(?:notes?|reminders?|tasks?|todos?|to[- ]dos?|goals?|habits?|appointments?|calendar|settings)(?:\s+view)?` +
+		"|" +
+		String.raw`(?:the\s+|your\s+)?(?:\d+\s+)?(?:notes?|reminders?|tasks?|todos?|to[- ]dos?|goals?|habits?|appointments?|calendar|settings)(?:\s+view)?\s+` +
+		String.raw`(?:is|are)\s+(?:now\s+)?(?:loaded|visible|shown|displayed|open|rendered|onscreen|on\s+screen|in\s+view|pulled\s+up|brought\s+up|highlighted)` +
+		String.raw`)[\s…✅🎉]*$`,
+	"iu",
+);
 // A bare completion opener ("Done —", "Done!", "Done.") carries no verb of its
 // own — only the rest of its sentence can. Match text that begins with "done"
 // (after the leading sentence-boundary anchor the STATE pattern captures)
@@ -104,8 +108,7 @@ function stateSideEffectClaimHasLocalSubject(text: string): boolean {
 		if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(sentence)) continue;
 		if (
 			GENERIC_COMPLETION_OPENER_PATTERN.test(match[0]) &&
-			READ_NAVIGATION_PREDICATE_PATTERN.test(sentence) &&
-			!COMMITTED_MUTATION_SYNTAX_PATTERN.test(sentence)
+			READ_NAVIGATION_ONLY_SENTENCE_PATTERN.test(sentence)
 		) {
 			continue;
 		}

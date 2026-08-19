@@ -626,11 +626,35 @@ async function runPlannerLoopIterations(
 						},
 						"[planner-loop] required-reply synthesis returned an unsolicited tool call; rejecting the whole response and routing the completed action through the evaluator",
 					);
-					const evaluator = await evaluateTrajectory(
-						params,
-						trajectory,
-						iteration,
-					);
+					let evaluator: EvaluatorOutput;
+					try {
+						evaluator = await evaluateTrajectory(params, trajectory, iteration);
+					} catch (err) {
+						// error-policy:J4 explicit user-facing degrade - the action has
+						// already succeeded, so an expected provider failure must use the
+						// same truthful post-tool fallback as the normal evaluator path.
+						if (!isModelProviderError(err)) throw err;
+						const relay = deterministicSuccessfulToolRelay(trajectory);
+						if (!relay) throw err;
+						params.runtime.logger?.warn?.(
+							{
+								iteration,
+								err: err instanceof Error ? err.message : String(err),
+								...(modelProviderErrorDetail(err)
+									? { providerErrorDetail: modelProviderErrorDetail(err) }
+									: {}),
+							},
+							"[planner-loop] required-reply evaluator model call failed; relaying the completed tool result instead of discarding the turn",
+						);
+						return {
+							status: "finished",
+							trajectory,
+							finalMessage: userSafeFinalMessage(
+								terminalMessageWithFailureAuthority(trajectory, relay),
+								trajectory,
+							),
+						};
+					}
 					trajectory.evaluatorOutputs.push(
 						projectToolDiagnosticValue(
 							evaluator,

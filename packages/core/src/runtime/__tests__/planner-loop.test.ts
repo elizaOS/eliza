@@ -3900,6 +3900,62 @@ describe("v5 planner loop — evaluator gate", () => {
 		);
 	});
 
+	it("relays the completed action when the required-reply evaluator has a provider failure (#22609)", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "views-1",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "notes",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "Notes are open — I also archived the old ones.",
+				toolCalls: [
+					{
+						id: "invented-archive",
+						name: "ARCHIVE",
+						arguments: { target: "old-notes" },
+					},
+				],
+			});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "Your notes are open.",
+			userFacingText: "Your notes are open.",
+			verifiedUserFacing: true,
+			modelReplyRequired: true,
+		}));
+		const providerError = Object.assign(new Error("provider unavailable"), {
+			statusCode: 503,
+		});
+		const evaluate = vi.fn(async () => {
+			throw providerError;
+		});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel, logger: { warn: vi.fn() } },
+			context: { id: "ctx" },
+			tools: [{ name: "VIEWS", description: "Open a UI view." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Your notes are open.");
+	});
+
 	it("keeps full evaluation when model-reply navigation scope is incomplete", async () => {
 		const runtime = {
 			useModel: plannerNativeWith({

@@ -312,6 +312,7 @@ describe("replyClaimsCompletedSideEffect", () => {
 			"Done — I saved your note.",
 			"Done — your reminders are set.",
 			"Done — your 3 reminders are now scheduled.",
+			"Done — your notes are visible and I archived the old ones.",
 		]) {
 			expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
 		}
