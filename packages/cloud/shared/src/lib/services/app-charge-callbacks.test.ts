@@ -67,7 +67,7 @@ const DISPATCH_PARAMS = {
   status: "paid" as const,
   provider: "stripe" as const,
   providerPaymentId: "pi_123",
-  amountUsd: "12.50",
+  amountUsd: "12.500000000000000001",
 };
 
 describe("AppChargeCallbacksService — SSRF-guarded HTTP callback", () => {
@@ -97,6 +97,12 @@ describe("AppChargeCallbacksService — SSRF-guarded HTTP callback", () => {
     expect(headers["Content-Type"]).toBe("application/json");
     expect(headers["X-Eliza-Event"]).toBe("app_charge.paid");
     expect(headers["X-Eliza-Signature"]).toMatch(/^sha256=[0-9a-f]{64}$/);
+    const body = JSON.parse(String(call.init?.body)) as {
+      charge: { amountUsd: string };
+      payment: { amountUsd: string };
+    };
+    expect(body.charge.amountUsd).toBe("12.500000000000000001");
+    expect(body.payment.amountUsd).toBe("12.500000000000000001");
   });
 
   it("records a guard rejection as a dispatch error instead of throwing", async () => {
