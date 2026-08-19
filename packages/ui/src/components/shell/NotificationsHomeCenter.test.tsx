@@ -1817,6 +1817,24 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.hasAttribute("data-shade-settling")).toBe(false);
   });
 
+  it("does not collapse for a portaled chat action control", () => {
+    seedTriage();
+    render(
+      <>
+        <NotificationsHomeCenter />
+        <div data-chat-overlay-control="">
+          <button type="button">Upload file</button>
+        </div>
+      </>,
+    );
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.click(screen.getByText("Upload file"), { detail: 1 });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-settling")).toBe(false);
+  });
+
   it("does not let a mouse drag on chat controls pull the notification shade", () => {
     seedTriage();
     const surfaceRef = { current: null as HTMLElement | null };
@@ -1862,6 +1880,76 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
 
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(list.hasAttribute("data-shade-settling")).toBe(false);
+  });
+
+  it("keeps nested chat controls isolated from touch, wheel, and pen shade gestures", () => {
+    seedTriage();
+    const surfaceRef = { current: null as HTMLElement | null };
+    render(
+      <div
+        ref={(node) => {
+          surfaceRef.current = node;
+        }}
+        data-testid="home-gesture-surface"
+      >
+        <NotificationsHomeCenter emptyGestureTargetRef={surfaceRef} />
+        <button type="button" data-chat-gesture-surface="">
+          <span data-testid="nested-chat-control">Chat action icon</span>
+        </button>
+      </div>,
+    );
+    const list = collapseShade();
+    const nestedControl = screen.getByTestId("nested-chat-control");
+
+    fireEvent.touchStart(nestedControl, {
+      touches: [{ identifier: 71, clientX: 180, clientY: 250 }],
+    });
+    fireEvent.touchMove(nestedControl, {
+      touches: [{ identifier: 71, clientX: 180, clientY: 520 }],
+    });
+    fireEvent.touchEnd(nestedControl, {
+      touches: [],
+      changedTouches: [{ identifier: 71, clientX: 180, clientY: 520 }],
+    });
+    fireEvent.wheel(nestedControl, { deltaY: -(PULL_COMMIT_PX + 20) });
+    fireEvent.pointerDown(nestedControl, {
+      pointerType: "pen",
+      isPrimary: true,
+      pointerId: 72,
+      clientX: 180,
+      clientY: 250,
+    });
+    fireEvent.pointerMove(nestedControl, {
+      pointerType: "pen",
+      pointerId: 72,
+      clientX: 180,
+      clientY: 520,
+    });
+    fireEvent.pointerUp(nestedControl, {
+      pointerType: "pen",
+      pointerId: 72,
+      clientX: 180,
+      clientY: 520,
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+
+    expandShade();
+    fireEvent.touchStart(nestedControl, {
+      touches: [{ identifier: 73, clientX: 180, clientY: 520 }],
+    });
+    fireEvent.touchMove(nestedControl, {
+      touches: [{ identifier: 73, clientX: 180, clientY: 220 }],
+    });
+    fireEvent.touchEnd(nestedControl, {
+      touches: [],
+      changedTouches: [{ identifier: 73, clientX: 180, clientY: 220 }],
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(list.hasAttribute("data-shade-dragging")).toBe(false);
     expect(list.hasAttribute("data-shade-settling")).toBe(false);
   });

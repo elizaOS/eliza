@@ -587,7 +587,9 @@ let notificationsHomeCenterRenderObserverForTests: (() => void) | null = null;
 function isChatGestureTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
-    target.closest("[data-chat-gesture-surface]") !== null
+    target.closest(
+      "[data-chat-gesture-surface], [data-chat-overlay-control]",
+    ) !== null
   );
 }
 
