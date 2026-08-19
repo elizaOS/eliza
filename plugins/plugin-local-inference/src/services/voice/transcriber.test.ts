@@ -368,6 +368,15 @@ describe("transcriber helpers", () => {
 		const down = resampleLinear(pcm, 48000, 16000);
 		expect(down.length).toBe(Math.round((pcm.length * 16000) / 48000));
 	});
+
+	it("resampleLinear fails closed on a 1 Hz header instead of allocating millions of frames", () => {
+		const pcm = new Float32Array(8_000);
+		const started = performance.now();
+		expect(() => resampleLinear(pcm, 1, 16_000)).toThrow(
+			/rejected source rate/,
+		);
+		expect(performance.now() - started).toBeLessThan(50);
+	});
 });
 
 /* ---- fake ElizaInferenceFfi -------------------------------------- */
