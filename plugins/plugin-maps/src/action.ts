@@ -52,6 +52,10 @@ function text(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function opaqueText(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 function number(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
@@ -134,7 +138,17 @@ function directPlace(params: Params, prefix = ""): PlaceRef | null {
   const latitude = number(params[field("latitude")]);
   const longitude = number(params[field("longitude")]);
   const name = text(params[field("name")]);
-  if (latitude === undefined || longitude === undefined || !name) return null;
+  const hasDirectInput =
+    params[field("latitude")] !== undefined ||
+    params[field("longitude")] !== undefined ||
+    params[field("name")] !== undefined;
+  if (!hasDirectInput) return null;
+  if (latitude === undefined || longitude === undefined || !name) {
+    throw new MapsError(
+      "Coordinate-defined places require latitude, longitude, and name together.",
+      { code: "MAPS_INVALID_INPUT" },
+    );
+  }
   const coordinates = coordinatesSchema.safeParse({ latitude, longitude });
   if (!coordinates.success) {
     throw new MapsError(
@@ -148,10 +162,8 @@ function directPlace(params: Params, prefix = ""): PlaceRef | null {
   return validated(
     placeRefSchema,
     {
-      provider: text(params.provider) ?? "coordinates",
-      providerPlaceId:
-        text(params[field("placeId")]) ??
-        `coordinates:${latitude},${longitude}`,
+      provider: "coordinates",
+      providerPlaceId: `coordinates:${latitude},${longitude}`,
       name,
       coordinates: coordinates.data,
       formattedAddress: text(params[field("address")]),
@@ -166,13 +178,13 @@ async function resolvedPlace(
   params: Params,
   ownerEntityId: string,
 ): Promise<PlaceRef | null> {
-  const savedPlaceId = text(params.savedPlaceId);
+  const savedPlaceId = opaqueText(params.savedPlaceId);
   if (savedPlaceId) {
     return (
       (await service.getSavedPlace(ownerEntityId, savedPlaceId))?.place ?? null
     );
   }
-  const placeId = text(params.placeId);
+  const placeId = opaqueText(params.placeId);
   if (placeId) return service.getPlace(placeId, text(params.provider));
   return directPlace(params);
 }
@@ -228,7 +240,7 @@ async function execute(
   try {
     switch (action) {
       case "place": {
-        const placeId = text(params.placeId);
+        const placeId = opaqueText(params.placeId);
         if (placeId) {
           const place = await service.getPlace(placeId, text(params.provider));
           if (!place) {
@@ -297,7 +309,7 @@ async function execute(
           {
             query,
             near,
-            cursor: text(params.cursor),
+            cursor: opaqueText(params.cursor),
             limit: number(params.limit),
           },
           text(params.provider),
@@ -325,8 +337,8 @@ async function execute(
         );
       }
       case "route": {
-        const originPlaceId = text(params.originPlaceId);
-        const destinationPlaceId = text(params.destinationPlaceId);
+        const originPlaceId = opaqueText(params.originPlaceId);
+        const destinationPlaceId = opaqueText(params.destinationPlaceId);
         const origin =
           directPlace(params, "origin") ??
           (originPlaceId

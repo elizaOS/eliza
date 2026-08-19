@@ -3,6 +3,7 @@
 import * as z from "zod";
 
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
+const opaqueText = (max: number) => z.string().min(1).max(max);
 
 export const coordinatesSchema = z
   .object({
@@ -14,7 +15,7 @@ export const coordinatesSchema = z
 export const coordinateBindingSchema = z
   .object({
     provider: z.literal("coordinates"),
-    providerPlaceId: boundedText(512),
+    providerPlaceId: opaqueText(512),
     coordinates: coordinatesSchema,
   })
   .strict();
@@ -22,7 +23,7 @@ export const coordinateBindingSchema = z
 export const placeRefSchema = z
   .object({
     provider: boundedText(64).regex(/^[a-z0-9][a-z0-9_-]*$/i),
-    providerPlaceId: boundedText(512),
+    providerPlaceId: opaqueText(512),
     name: boundedText(300),
     coordinates: coordinatesSchema,
     formattedAddress: boundedText(1_000).optional(),
@@ -37,7 +38,7 @@ export const travelModeSchema = z.enum(["drive", "walk", "bicycle", "transit"]);
 export const routePlanSchema = z
   .object({
     provider: boundedText(64).regex(/^[a-z0-9][a-z0-9_-]*$/i),
-    routeId: boundedText(512),
+    routeId: opaqueText(512),
     origin: placeRefSchema,
     destination: placeRefSchema,
     travelMode: travelModeSchema,
@@ -62,7 +63,7 @@ export const savedPlaceSchema = z
 export const placePageSchema = z
   .object({
     places: z.array(placeRefSchema).max(100),
-    nextCursor: z.string().min(1).max(2_048).nullable(),
+    nextCursor: opaqueText(2_048).nullable(),
   })
   .strict();
 
@@ -70,7 +71,7 @@ export const placeSearchRequestSchema = z
   .object({
     query: boundedText(500),
     near: coordinatesSchema.optional(),
-    cursor: boundedText(2_048).optional(),
+    cursor: opaqueText(2_048).optional(),
     limit: z.number().int().min(1).max(100).optional(),
   })
   .strict();

@@ -280,13 +280,13 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
   }
 
   async getPlace(providerPlaceId: string): Promise<PlaceRef | null> {
-    if (!providerPlaceId.trim() || providerPlaceId.length > 512) {
+    if (!providerPlaceId || providerPlaceId.length > 512) {
       throw new MapsError("Place id is invalid.", {
         code: "MAPS_INVALID_INPUT",
       });
     }
     const url = new URL(
-      `/places/${encodeURIComponent(providerPlaceId.trim())}`,
+      `/places/${encodeURIComponent(providerPlaceId)}`,
       this.baseOrigin,
     );
     const deadline = requestDeadline(this.timeoutMs);
@@ -377,7 +377,18 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
     surface: string,
   ): void {
     if (request.provider !== "coordinates") {
-      this.assertPlaceProvider(response, surface);
+      if (
+        response.provider !== request.provider ||
+        response.providerPlaceId !== request.providerPlaceId
+      ) {
+        throw new MapsError(
+          "Maps route response substituted a requested endpoint.",
+          {
+            code: "MAPS_MALFORMED_RESPONSE",
+            context: { adapterId: this.id, surface },
+          },
+        );
+      }
       return;
     }
     if (

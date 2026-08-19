@@ -228,6 +228,62 @@ describe("MapsService and MAPS action", () => {
     });
   });
 
+  it("rejects partial coordinates and cannot relabel direct coordinates", async () => {
+    await expect(
+      invoke(runtime, { action: "save", latitude: 34, name: "Partial" }),
+    ).resolves.toMatchObject({
+      success: false,
+      data: { error: "MAPS_INVALID_INPUT" },
+    });
+    const result = await invoke(runtime, {
+      action: "save",
+      latitude: 34,
+      longitude: -118,
+      name: "Pinned coordinate",
+      provider: "contract-maps",
+    });
+    expect(result.data?.savedPlace).toMatchObject({
+      place: {
+        provider: "coordinates",
+        providerPlaceId: "coordinates:34,-118",
+      },
+    });
+  });
+
+  it("preserves opaque place ids and cursors and rejects invalid adapters", async () => {
+    const getPlace = vi.fn(async () => home);
+    const searchPlaces = vi.fn(async () => ({
+      places: [home],
+      nextCursor: null,
+    }));
+    const opaqueService = new MapsService(runtime);
+    opaqueService.registerAdapter({ ...adapter, getPlace, searchPlaces }, true);
+    await opaqueService.getPlace("  opaque id  ");
+    await opaqueService.searchPlaces({ query: "home", cursor: "  cursor  " });
+    expect(getPlace).toHaveBeenCalledWith("  opaque id  ");
+    expect(searchPlaces).toHaveBeenCalledWith(
+      expect.objectContaining({ cursor: "  cursor  " }),
+    );
+    expect(() =>
+      opaqueService.registerAdapter({ ...adapter, id: " invalid " }),
+    ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+  });
+
+  it("validates public store UUIDs before creating persistence namespaces", async () => {
+    const ensureWorld = vi.spyOn(runtime, "ensureWorldExists");
+    await expect(service.listSavedPlaces("not-a-uuid")).rejects.toMatchObject({
+      code: "MAPS_INVALID_INPUT",
+    });
+    await expect(
+      service.savePlace({
+        ownerEntityId: OWNER_ID,
+        roomId: "not-a-uuid",
+        place: home,
+      }),
+    ).rejects.toMatchObject({ code: "MAPS_INVALID_INPUT" });
+    expect(ensureWorld).not.toHaveBeenCalled();
+  });
+
   it("persists saved places with concurrent idempotent replay and owner scoping", async () => {
     const request = {
       ownerEntityId: OWNER_ID,

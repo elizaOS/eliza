@@ -54,6 +54,18 @@ const savedPlaceStateSchema = z
 
 type SavedPlaceState = z.infer<typeof savedPlaceStateSchema>;
 type SavedPlaceOperation = z.infer<typeof savedPlaceOperationSchema>;
+const publicUuidSchema = z.string().uuid();
+
+function validatedUuid(value: string, field: string): string {
+  const parsed = publicUuidSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new MapsError(`${field} must be a UUID.`, {
+      code: "MAPS_INVALID_INPUT",
+      cause: parsed.error,
+    });
+  }
+  return parsed.data;
+}
 
 const namespacePromises = new WeakMap<IAgentRuntime, Promise<void>>();
 const PROCESS_LOCKS_KEY = Symbol.for(
@@ -297,6 +309,8 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
 
   async save(request: SavePlaceRequest): Promise<SavePlaceResult> {
     assertCasStorage(this.runtime);
+    validatedUuid(request.ownerEntityId, "ownerEntityId");
+    validatedUuid(request.roomId, "roomId");
     await ensureNamespace(this.runtime);
     const normalized = mutation(request);
     if (!(this.runtime.adapter instanceof InMemoryDatabaseAdapter)) {
@@ -321,6 +335,7 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
 
   async list(ownerEntityId: string): Promise<SavedPlace[]> {
     assertCasStorage(this.runtime);
+    validatedUuid(ownerEntityId, "ownerEntityId");
     await ensureNamespace(this.runtime);
     const memory = await this.runtime.adapter.getDocument({
       ...requester(this.runtime),
@@ -339,6 +354,8 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
     ownerEntityId: string,
     savedPlaceId: string,
   ): Promise<SavedPlace | null> {
+    validatedUuid(ownerEntityId, "ownerEntityId");
+    validatedUuid(savedPlaceId, "savedPlaceId");
     return (
       (await this.list(ownerEntityId)).find(
         (place) => place.id === savedPlaceId,

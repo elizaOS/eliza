@@ -141,6 +141,14 @@ export class MapsService extends Service {
   }
 
   registerAdapter(adapter: MapsProviderAdapter, makeDefault = false): void {
+    if (
+      !/^[a-z0-9][a-z0-9_-]*$/i.test(adapter.id) ||
+      !/^conn_[A-Za-z0-9_-]{16,}$/.test(adapter.connectionId)
+    ) {
+      throw new MapsError("Maps adapter identity is invalid.", {
+        code: "MAPS_INVALID_INPUT",
+      });
+    }
     this.adapters.set(adapter.id, adapter);
     if (makeDefault || this.defaultAdapterId === null)
       this.defaultAdapterId = adapter.id;
@@ -180,7 +188,12 @@ export class MapsService extends Service {
     provider?: string,
   ): Promise<PlaceRef | null> {
     const adapter = this.adapter(provider);
-    const place = await adapter.getPlace(providerPlaceId.trim());
+    if (!providerPlaceId || providerPlaceId.length > 512) {
+      throw new MapsError("Place id is invalid.", {
+        code: "MAPS_INVALID_INPUT",
+      });
+    }
+    const place = await adapter.getPlace(providerPlaceId);
     return place ? assertProviderPlace(place, adapter, "place detail") : null;
   }
 
@@ -246,7 +259,23 @@ export class MapsService extends Service {
       ["route destination", route.destination, normalized.destination],
     ] as const) {
       if (requestPlace.provider !== "coordinates") {
-        assertProviderPlace(response, adapter, surface);
+        const bound = validated(
+          placeRefSchema,
+          response,
+          `Maps provider returned an invalid ${surface}.`,
+        );
+        if (
+          bound.provider !== requestPlace.provider ||
+          bound.providerPlaceId !== requestPlace.providerPlaceId
+        ) {
+          throw new MapsError(
+            "Maps provider substituted a requested route endpoint.",
+            {
+              code: "MAPS_MALFORMED_RESPONSE",
+              context: { adapterId: adapter.id, surface },
+            },
+          );
+        }
         continue;
       }
       if (
