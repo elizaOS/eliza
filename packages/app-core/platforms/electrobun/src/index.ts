@@ -2415,6 +2415,10 @@ async function runShutdownCleanup(reason: string): Promise<void> {
 
 function setupShutdown(): void {
   Electrobun.events.on("before-quit", () => {
+    // Electrobun does not await this callback before terminating the Bun host.
+    // Revoke the embedded runtime synchronously before asynchronous native
+    // cleanup so a system-level Quit cannot orphan a multi-gigabyte child.
+    terminateManagedAgentOnHostExit();
     void runShutdownCleanup("before-quit");
   });
   process.once("exit", () => {
