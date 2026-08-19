@@ -276,11 +276,17 @@ export function assertXArchiveZipUncompressedSize(zipBuffer: Uint8Array): void {
         context: { reason: "malformed central directory entry", entryIndex: i },
       });
     }
-    const declared = view.getUint32(offset + 24, true);
-    if (declared === 0xffffffff) {
+    const centralFlags = view.getUint16(offset + 8, true);
+    const centralMethod = view.getUint16(offset + 10, true);
+    const declaredCompressed = view.getUint32(offset + 20, true);
+    const declaredUncompressed = view.getUint32(offset + 24, true);
+    if (
+      declaredCompressed === 0xffffffff ||
+      declaredUncompressed === 0xffffffff
+    ) {
       throw new ElizaError("X archive ZIP uses zip64, which is not supported", {
         code: "X_ARCHIVE_ZIP_INVALID",
-        context: { reason: "zip64 uncompressed size", entryIndex: i },
+        context: { reason: "zip64 entry size", entryIndex: i },
       });
     }
     const nameLen = view.getUint16(offset + 28, true);
@@ -317,12 +323,19 @@ export function assertXArchiveZipUncompressedSize(zipBuffer: Uint8Array): void {
     }
     const localNameLen = view.getUint16(localHeaderOffset + 26, true);
     const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
+    const localFlags = view.getUint16(localHeaderOffset + 6, true);
+    const localMethod = view.getUint16(localHeaderOffset + 8, true);
+    const localCompressed = view.getUint32(localHeaderOffset + 18, true);
+    const localUncompressed = view.getUint32(localHeaderOffset + 22, true);
     const localDataOffset =
       localHeaderOffset + 30 + localNameLen + localExtraLen;
-    if (localDataOffset > cdOffset) {
+    if (
+      localDataOffset > cdOffset ||
+      declaredCompressed > cdOffset - localDataOffset
+    ) {
       throw new ElizaError("X archive ZIP is not a valid archive", {
         code: "X_ARCHIVE_ZIP_INVALID",
-        context: { reason: "local file header exceeds bounds", entryIndex: i },
+        context: { reason: "local file data exceeds bounds", entryIndex: i },
       });
     }
     const localName = new TextDecoder().decode(
@@ -337,8 +350,40 @@ export function assertXArchiveZipUncompressedSize(zipBuffer: Uint8Array): void {
         context: { reason: "file name differs between headers", entryIndex: i },
       });
     }
+    if (localFlags !== centralFlags || localMethod !== centralMethod) {
+      throw new ElizaError("X archive ZIP is not a valid archive", {
+        code: "X_ARCHIVE_ZIP_INVALID",
+        context: {
+          reason: "compression metadata differs between headers",
+          entryIndex: i,
+        },
+      });
+    }
+    const usesDataDescriptor = (centralFlags & 0x0008) !== 0;
+    if (
+      !usesDataDescriptor &&
+      (localCompressed !== declaredCompressed ||
+        localUncompressed !== declaredUncompressed)
+    ) {
+      throw new ElizaError("X archive ZIP is not a valid archive", {
+        code: "X_ARCHIVE_ZIP_INVALID",
+        context: {
+          reason: "entry sizes differ between headers",
+          entryIndex: i,
+        },
+      });
+    }
+    if (centralMethod === 0 && declaredCompressed !== declaredUncompressed) {
+      throw new ElizaError("X archive ZIP is not a valid archive", {
+        code: "X_ARCHIVE_ZIP_INVALID",
+        context: {
+          reason: "stored entry sizes differ",
+          entryIndex: i,
+        },
+      });
+    }
     if (name.startsWith("data/") && name.endsWith(".js")) {
-      totalUncompressed += declared;
+      totalUncompressed += Math.max(declaredCompressed, declaredUncompressed);
       if (totalUncompressed > MAX_X_ARCHIVE_UNCOMPRESSED_BYTES) {
         throw new ElizaError(
           "X archive data files expand beyond the uncompressed size limit",

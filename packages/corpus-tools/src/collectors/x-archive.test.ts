@@ -301,6 +301,53 @@ describe("collectXArchive", () => {
     );
   });
 
+  it("rejects a stored entry whose central size would bypass the budget", () => {
+    const zip = new Uint8Array(
+      zipSync({
+        "data/tweets.js": [new Uint8Array(1024), { level: 0 }],
+      }),
+    );
+    const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    const centralOffset = view.getUint32(findEocd(zip) + 16, true);
+    expect(view.getUint16(centralOffset + 10, true)).toBe(0);
+    view.setUint32(centralOffset + 24, 0, true);
+
+    expect(() => assertXArchiveZipUncompressedSize(zip)).toThrowError(
+      expect.objectContaining({ code: "X_ARCHIVE_ZIP_INVALID" }),
+    );
+  });
+
+  it("rejects central compressed data that extends into the directory", () => {
+    const zip = new Uint8Array(
+      zipSync({ "data/tweets.js": new Uint8Array([1, 2, 3]) }),
+    );
+    const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    const centralOffset = view.getUint32(findEocd(zip) + 16, true);
+    view.setUint32(centralOffset + 20, centralOffset, true);
+
+    expect(() => assertXArchiveZipUncompressedSize(zip)).toThrowError(
+      expect.objectContaining({ code: "X_ARCHIVE_ZIP_INVALID" }),
+    );
+  });
+
+  it("rejects a compression-method mismatch between headers", () => {
+    const zip = new Uint8Array(
+      zipSync({ "data/tweets.js": new Uint8Array([1, 2, 3]) }),
+    );
+    const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    const centralOffset = view.getUint32(findEocd(zip) + 16, true);
+    const localOffset = view.getUint32(centralOffset + 42, true);
+    view.setUint16(
+      localOffset + 8,
+      view.getUint16(localOffset + 8, true) ^ 8,
+      true,
+    );
+
+    expect(() => assertXArchiveZipUncompressedSize(zip)).toThrowError(
+      expect.objectContaining({ code: "X_ARCHIVE_ZIP_INVALID" }),
+    );
+  });
+
   it("rejects a buffer that is not a ZIP archive", async () => {
     const zipPath = path.join(await makeTempDir(), "not.zip");
     await fs.writeFile(zipPath, "this is not a zip file at all");
@@ -357,7 +404,9 @@ function forgeUncompressedSizes(zip: Uint8Array, size: number): Uint8Array {
   let offset = view.getUint32(eocd + 16, true);
   for (let i = 0; i < entryCount; i++) {
     expect(view.getUint32(offset, true)).toBe(0x02014b50);
+    const localOffset = view.getUint32(offset + 42, true);
     view.setUint32(offset + 24, size, true);
+    view.setUint32(localOffset + 22, size, true);
     offset +=
       46 +
       view.getUint16(offset + 28, true) +
@@ -382,7 +431,11 @@ function forgeEntryUncompressedSize(
     const name = new TextDecoder().decode(
       out.subarray(offset + 46, offset + 46 + nameLen),
     );
-    if (name === wantedName) view.setUint32(offset + 24, size, true);
+    if (name === wantedName) {
+      const localOffset = view.getUint32(offset + 42, true);
+      view.setUint32(offset + 24, size, true);
+      view.setUint32(localOffset + 22, size, true);
+    }
     offset +=
       46 +
       nameLen +
