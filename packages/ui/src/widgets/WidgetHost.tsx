@@ -430,7 +430,7 @@ export function WidgetHost({
   // Whether the resolved widgets actually rendered any visible DOM. `children`
   // counts RESOLVED widget elements, but each data widget self-hides (renders
   // `null`) when it has nothing to show - so the home can resolve the
-  // always-visible cards (notifications, needs-response, …) yet paint nothing.
+  // always-visible cards (notifications, setup progress, …) yet paint nothing.
   // We measure the real rendered child count after layout and, when a `fallback`
   // is supplied (the home's default clock/calendar), show it whenever the
   // widgets painted nothing. Only meaningful when a fallback exists.
