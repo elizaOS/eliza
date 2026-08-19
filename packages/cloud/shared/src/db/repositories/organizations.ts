@@ -118,7 +118,7 @@ export class OrganizationsRepository {
   /**
    * Creates a new organization.
    */
-  async create(data: NewOrganization): Promise<Organization> {
+  async create(data: Omit<NewOrganization, "stripe_customer_id">): Promise<Organization> {
     const [organization] = await dbWrite.insert(organizations).values(data).returning();
     return organization;
   }
@@ -126,7 +126,10 @@ export class OrganizationsRepository {
   /**
    * Updates an existing organization.
    */
-  async update(id: string, data: Partial<NewOrganization>): Promise<Organization | undefined> {
+  async update(
+    id: string,
+    data: Partial<Omit<NewOrganization, "stripe_customer_id">>,
+  ): Promise<Organization | undefined> {
     const [updated] = await dbWrite
       .update(organizations)
       .set({

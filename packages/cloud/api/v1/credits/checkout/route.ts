@@ -25,6 +25,7 @@ import {
   getDefaultPlatformRedirectOrigins,
 } from "@/lib/security/redirect-validation";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
+import { stripeCustomerAuthorityService } from "@/lib/services/stripe-customer-authority";
 import { usersService } from "@/lib/services/users";
 import { requireStripe } from "@/lib/stripe";
 import { decodeRequestJson } from "@/lib/utils/json-parsing";
@@ -148,24 +149,20 @@ app.post("/", async (c) => {
       stripeCustomerId: null,
       metadata: agent_id ? { agent_id } : {},
     });
+    const authoritativeCustomerId = await stripeCustomerAuthorityService.ensure(
+      {
+        organizationId,
+        callerIntent: "credit_checkout",
+      },
+    );
     if (!order.stripe_customer_id) {
-      const candidateCustomerId =
-        customerId ??
-        (
-          await requireStripe().customers.create(
-            stripeCustomerCreateParams({
-              organizationId,
-              organizationName: orgFull.name,
-              billingEmail: orgFull.billing_email,
-              userEmail: user.email,
-              walletAddress: user.wallet_address,
-            }),
-            { idempotencyKey: `checkout-customer:${organizationId}` },
-          )
-        ).id;
       order = await stripeCheckoutOrdersService.bindCustomer(
         order.id,
-        candidateCustomerId,
+        authoritativeCustomerId,
+      );
+    } else if (order.stripe_customer_id !== authoritativeCustomerId) {
+      throw new Error(
+        "Checkout order customer conflicts with Stripe customer authority",
       );
     }
     customerId = order.stripe_customer_id;
@@ -220,6 +217,7 @@ app.post("/", async (c) => {
       );
       await stripeCheckoutOrdersService.bindSession(order.id, session.id);
     } catch (error) {
+      // error-policy:J1 Route boundary durably records an ambiguous provider outcome before translating it.
       await stripeCheckoutOrdersService.markProviderAmbiguous(
         order.id,
         error instanceof Error ? error.name : "unknown_error",
@@ -236,6 +234,7 @@ app.post("/", async (c) => {
 
     return c.json({ url: session.url, sessionId: session.id });
   } catch (error) {
+    // error-policy:J1 HTTP boundary translates checkout failures into explicit client or server responses.
     const errorMessage = error instanceof Error ? error.message : "";
     if (
       errorMessage.includes("Invalid success_url") ||
@@ -281,25 +280,6 @@ async function findCheckoutSessionForOrder(
   throw new Error(
     "Stripe Checkout reconciliation exceeded its safe search bound",
   );
-}
-
-function stripeCustomerCreateParams(input: {
-  organizationId: string;
-  organizationName?: string;
-  billingEmail?: string | null;
-  userEmail?: string | null;
-  walletAddress?: string | null;
-}): Stripe.CustomerCreateParams {
-  const data: Stripe.CustomerCreateParams = {
-    name: input.organizationName,
-    metadata: { organization_id: input.organizationId },
-  };
-  const email = input.billingEmail || input.userEmail;
-  if (email) data.email = email;
-  if (input.walletAddress) {
-    data.metadata = { ...data.metadata, wallet_address: input.walletAddress };
-  }
-  return data;
 }
 
 async function resolveCreditUser(

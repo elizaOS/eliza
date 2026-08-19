@@ -364,7 +364,7 @@ describe("Stripe Checkout order authority", () => {
     ).rejects.toThrow("session");
   });
 
-  test("customer pinning uses the durable winner across concurrency and org changes", async () => {
+  test("customer pinning accepts only the customer already published by authority", async () => {
     const order = await service.create({
       organizationId: ORG_A,
       initiatedByUserId: USER_A,
@@ -376,20 +376,13 @@ describe("Stripe Checkout order authority", () => {
       currency: "usd",
       stripeCustomerId: null,
     });
-    await dbWrite.execute(
-      sql`UPDATE organizations SET stripe_customer_id = NULL WHERE id = ${ORG_A}`,
+    await expect(service.bindCustomer(order.id, "cus_candidate_a")).rejects.toThrow(
+      "must already be published",
     );
-    const [first, second] = await Promise.all([
-      service.bindCustomer(order.id, "cus_candidate_a"),
-      service.bindCustomer(order.id, "cus_candidate_b"),
-    ]);
-    expect(first.stripe_customer_id).toBe(second.stripe_customer_id);
-    const pinned = first.stripe_customer_id;
-    await dbWrite.execute(
-      sql`UPDATE organizations SET stripe_customer_id = 'cus_changed_later' WHERE id = ${ORG_A}`,
-    );
+    const pinned = await service.bindCustomer(order.id, "cus_a");
+    expect(pinned.stripe_customer_id).toBe("cus_a");
     expect((await service.bindCustomer(order.id, "cus_changed_later")).stripe_customer_id).toBe(
-      pinned,
+      "cus_a",
     );
   });
 

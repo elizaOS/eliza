@@ -2,7 +2,7 @@
 import type Stripe from "stripe";
 import { type Organization, organizationsRepository } from "../../db/repositories";
 import { requireStripe } from "../stripe";
-import { logger } from "../utils/logger";
+import { stripeCustomerAuthorityService } from "./stripe-customer-authority";
 
 /**
  * Service for managing Stripe payment methods
@@ -18,38 +18,10 @@ export class PaymentMethodsService {
    * @throws Error if customer creation fails
    */
   private async ensureStripeCustomer(org: Organization): Promise<string> {
-    if (org.stripe_customer_id) {
-      return org.stripe_customer_id;
-    }
-
-    logger.info(`[PaymentMethodsService] Creating Stripe customer for org ${org.id} (${org.name})`);
-
-    try {
-      const customer = await requireStripe().customers.create({
-        name: org.name,
-        email: org.billing_email || undefined,
-        metadata: {
-          organization_id: org.id,
-        },
-      });
-
-      await organizationsRepository.update(org.id, {
-        stripe_customer_id: customer.id,
-        updated_at: new Date(),
-      });
-
-      logger.info(
-        `[PaymentMethodsService] ✓ Created Stripe customer ${customer.id} for org ${org.id}`,
-      );
-
-      return customer.id;
-    } catch (error) {
-      logger.error(
-        `[PaymentMethodsService] Failed to create Stripe customer for org ${org.id}:`,
-        error,
-      );
-      throw new Error("Failed to create payment customer. Please try again.");
-    }
+    return stripeCustomerAuthorityService.ensure({
+      organizationId: org.id,
+      callerIntent: "payment_method",
+    });
   }
 
   /**
@@ -77,6 +49,7 @@ export class PaymentMethodsService {
         customer: customerId,
       });
     } catch (error) {
+      // error-policy:J1 Service boundary translates Stripe attachment failures.
       if (error instanceof Error) {
         throw new Error(`Failed to attach payment method: ${error.message}`);
       }
@@ -114,14 +87,16 @@ export class PaymentMethodsService {
     if (!org.stripe_customer_id) {
       throw new Error("Organization does not have a Stripe customer. Please contact support.");
     }
+    const customerId = await this.ensureStripeCustomer(org);
 
     // Verify the payment method belongs to this customer
     try {
       const paymentMethod = await requireStripe().paymentMethods.retrieve(paymentMethodId);
-      if (paymentMethod.customer !== org.stripe_customer_id) {
+      if (paymentMethod.customer !== customerId) {
         throw new Error("Payment method does not belong to this customer");
       }
     } catch (error) {
+      // error-policy:J1 Service boundary translates Stripe ownership failures.
       if (error instanceof Error) {
         throw new Error(`Failed to verify payment method: ${error.message}`);
       }
@@ -130,12 +105,13 @@ export class PaymentMethodsService {
 
     // Update customer's default payment method in Stripe
     try {
-      await requireStripe().customers.update(org.stripe_customer_id, {
+      await requireStripe().customers.update(customerId, {
         invoice_settings: {
           default_payment_method: paymentMethodId,
         },
       });
     } catch (error) {
+      // error-policy:J1 Service boundary translates Stripe customer-update failures.
       if (error instanceof Error) {
         throw new Error(`Failed to update default payment method in Stripe: ${error.message}`);
       }
@@ -166,6 +142,15 @@ export class PaymentMethodsService {
       throw new Error("Organization not found");
     }
 
+    if (!org.stripe_customer_id) {
+      throw new Error("Organization does not have a Stripe customer. Please contact support.");
+    }
+    const customerId = await this.ensureStripeCustomer(org);
+    const paymentMethod = await requireStripe().paymentMethods.retrieve(paymentMethodId);
+    if (paymentMethod.customer !== customerId) {
+      throw new Error("Payment method does not belong to this customer");
+    }
+
     // SECURITY: If auto-top-up is enabled, prevent removing the last payment method
     // This prevents auto-top-up from failing when balance falls below threshold
     if (org.auto_top_up_enabled) {
@@ -191,6 +176,7 @@ export class PaymentMethodsService {
     try {
       await requireStripe().paymentMethods.detach(paymentMethodId);
     } catch (error) {
+      // error-policy:J4 Only Stripe's explicit already-detached shapes degrade to success.
       if (error instanceof Error) {
         // If payment method is already detached, that's fine
         if (
@@ -237,8 +223,9 @@ export class PaymentMethodsService {
       return [];
     }
 
+    const customerId = await this.ensureStripeCustomer(org);
     const paymentMethods = await requireStripe().paymentMethods.list({
-      customer: org.stripe_customer_id,
+      customer: customerId,
       type: "card",
     });
 
@@ -263,10 +250,11 @@ export class PaymentMethodsService {
       return null;
     }
 
+    const customerId = await this.ensureStripeCustomer(org);
     const paymentMethod = await requireStripe().paymentMethods.retrieve(paymentMethodId);
 
     // Verify it belongs to this customer
-    if (paymentMethod.customer !== org.stripe_customer_id) {
+    if (paymentMethod.customer !== customerId) {
       return null;
     }
 

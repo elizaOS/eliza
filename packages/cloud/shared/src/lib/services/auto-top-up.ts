@@ -28,6 +28,10 @@ import { requireStripe } from "../stripe";
 import { logger } from "../utils/logger";
 import { emailService } from "./email";
 import { invalidateOrgTierCache } from "./org-rate-limits";
+import {
+  type StripeCustomerAuthorityService,
+  stripeCustomerAuthorityService,
+} from "./stripe-customer-authority";
 
 export const AUTO_TOP_UP_LIMITS = {
   MIN_AMOUNT: 1,
@@ -107,6 +111,7 @@ interface AutoTopUpServiceDependencies {
   now: () => Date;
   randomUUID: () => string;
   rolloutEnabled: () => boolean;
+  customerAuthority: Pick<StripeCustomerAuthorityService, "ensure">;
 }
 
 interface DurableRequestSnapshot {
@@ -395,6 +400,7 @@ export class AutoTopUpService {
   private readonly now: () => Date;
   private readonly randomUUID: () => string;
   private readonly rolloutEnabled: () => boolean;
+  private readonly customerAuthority: Pick<StripeCustomerAuthorityService, "ensure">;
 
   constructor(dependencies: Partial<AutoTopUpServiceDependencies> = {}) {
     this.repository = dependencies.repository ?? autoTopUpAttemptsRepository;
@@ -404,6 +410,7 @@ export class AutoTopUpService {
     this.rolloutEnabled =
       dependencies.rolloutEnabled ??
       (() => getCloudAwareEnv().AUTO_TOP_UP_DURABLE_ENABLED === "true");
+    this.customerAuthority = dependencies.customerAuthority ?? stripeCustomerAuthorityService;
   }
 
   validateSettings(amount: number, threshold: number): void {
@@ -462,6 +469,30 @@ export class AutoTopUpService {
       };
     }
 
+    if (await this.repository.customerReconciliationMayBeNeeded(organizationId)) {
+      try {
+        await this.customerAuthority.ensure({
+          organizationId,
+          callerIntent: "auto_top_up",
+        });
+      } catch (error) {
+        // error-policy:J4 Customer reconciliation failure becomes an explicit
+        // unavailable state before any auto-top-up attempt or provider charge exists.
+        logger.warn("[AutoTopUp] Stripe Customer authority is unavailable", {
+          organizationId,
+          source: options.source,
+          error: safeErrorMessage(error),
+        });
+        return {
+          organizationId,
+          success: false,
+          error: "Stripe Customer requires reconciliation before auto top-up can continue",
+          status: "unavailable",
+          recovered: false,
+        };
+      }
+    }
+
     const now = this.now();
     const attemptId = this.randomUUID();
     const claim = await this.repository.claimEligibleAttempt({
@@ -514,6 +545,7 @@ export class AutoTopUpService {
         balance_at_or_above_threshold: "Auto top-up not needed",
         balance_not_rearmed: "Auto top-up is waiting for a new balance decrease",
         missing_customer: "Missing Stripe customer",
+        unverified_customer_authority: "Stripe Customer authority is not verified",
         missing_payment_method: "Missing default payment method",
         invalid_balance: "Invalid credit balance",
         invalid_threshold: "Invalid auto top-up threshold",
@@ -899,16 +931,26 @@ export class AutoTopUpService {
       return this.finishSucceededAttempt(attempt, leaseToken, recovered);
     }
 
-    if (!attempt.providerRequestStartedAt) {
-      const providerStart = this.now();
-      const started = await this.repository.markProviderRequestStarted({
-        attemptId: attempt.id,
-        leaseToken,
-        now: providerStart,
-        recoveryDeadlineAt: new Date(providerStart.getTime() + AUTO_TOP_UP_UNKNOWN_PI_RECOVERY_MS),
-      });
-      if (!started) return this.resultAfterFenceMiss(attempt, recovered);
-      attempt = started;
+    const providerStart = this.now();
+    const authorization = await this.repository.authorizeProviderRequest({
+      attemptId: attempt.id,
+      leaseToken,
+      now: providerStart,
+      recoveryDeadlineAt: new Date(providerStart.getTime() + AUTO_TOP_UP_UNKNOWN_PI_RECOVERY_MS),
+    });
+    if (authorization.outcome === "fence_lost") {
+      return this.resultAfterFenceMiss(attempt, recovered);
+    }
+    if (authorization.outcome === "rejected") {
+      return resultFromAttempt(
+        authorization.attempt,
+        recovered,
+        authorization.attempt.lastError ?? "Stripe Customer authority is not verified",
+      );
+    }
+    const wasProviderStarted = attempt.providerRequestStartedAt !== null;
+    attempt = authorization.attempt;
+    if (!wasProviderStarted) {
       logger.info("[AutoTopUp] Provider request durably started", {
         organizationId: attempt.organizationId,
         attemptId: attempt.id,

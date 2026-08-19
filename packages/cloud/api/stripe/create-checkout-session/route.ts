@@ -16,8 +16,8 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { creditsService } from "@/lib/services/credits";
-import { organizationsService } from "@/lib/services/organizations";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
+import { stripeCustomerAuthorityService } from "@/lib/services/stripe-customer-authority";
 import { isStripeConfigured, requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -296,43 +296,26 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
           metadata: { return_url: returnUrl },
         })
       : null;
+    const authoritativeCustomerId = await stripeCustomerAuthorityService.ensure(
+      {
+        organizationId,
+        callerIntent: "interactive_checkout",
+      },
+    );
     if (checkoutOrder) {
       if (!checkoutOrder.stripe_customer_id) {
-        const candidateCustomerId =
-          customerId ??
-          (
-            await requireStripe().customers.create(
-              stripeCustomerCreateParams({
-                organizationId,
-                organizationName: orgFull.name,
-                billingEmail: orgFull.billing_email,
-                userEmail: user.email,
-                walletAddress: user.wallet_address,
-              }),
-              { idempotencyKey: `checkout-customer:${organizationId}` },
-            )
-          ).id;
         checkoutOrder = await stripeCheckoutOrdersService.bindCustomer(
           checkoutOrder.id,
-          candidateCustomerId,
+          authoritativeCustomerId,
+        );
+      } else if (checkoutOrder.stripe_customer_id !== authoritativeCustomerId) {
+        throw new Error(
+          "Checkout order customer conflicts with Stripe customer authority",
         );
       }
       customerId = checkoutOrder.stripe_customer_id;
-    } else if (!customerId) {
-      const customer = await requireStripe().customers.create(
-        stripeCustomerCreateParams({
-          organizationId,
-          organizationName: orgFull.name,
-          billingEmail: orgFull.billing_email,
-          userEmail: user.email,
-          walletAddress: user.wallet_address,
-        }),
-      );
-      customerId = customer.id;
-      await organizationsService.update(organizationId, {
-        stripe_customer_id: customerId,
-        updated_at: new Date(),
-      });
+    } else {
+      customerId = authoritativeCustomerId;
     }
     if (!customerId) {
       throw new Error("Stripe customer authority was not established");
@@ -398,6 +381,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
           : undefined,
       );
     } catch (cause) {
+      // error-policy:J1 Route boundary durably records an ambiguous provider outcome before translating it.
       if (checkoutOrder) {
         await stripeCheckoutOrdersService.markProviderAmbiguous(
           checkoutOrder.id,
@@ -415,6 +399,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
 
     return c.json({ sessionId: session.id, url: session.url });
   } catch (error) {
+    // error-policy:J1 HTTP boundary translates checkout failures into the shared structured response.
     logger.error("[Stripe Checkout] Error creating checkout session:", error);
     return failureResponse(c, error);
   }
@@ -436,28 +421,6 @@ function canonicalCredits(value: string | number): string {
   const match = /^(\d+)(?:\.(\d{1,6}))?$/.exec(String(value));
   if (!match?.[1]) throw new Error("Credit pack grant is invalid");
   return `${match[1]}.${(match[2] ?? "").padEnd(6, "0")}`;
-}
-
-function stripeCustomerCreateParams(input: {
-  organizationId: string;
-  organizationName?: string;
-  billingEmail?: string | null;
-  userEmail?: string | null;
-  walletAddress?: string | null;
-}): Stripe.CustomerCreateParams {
-  const customerData: Stripe.CustomerCreateParams = {
-    name: input.organizationName,
-    metadata: { organization_id: input.organizationId },
-  };
-  const email = input.billingEmail || input.userEmail;
-  if (email) customerData.email = email;
-  if (input.walletAddress) {
-    customerData.metadata = {
-      ...customerData.metadata,
-      wallet_address: input.walletAddress,
-    };
-  }
-  return customerData;
 }
 
 async function findCheckoutSessionForOrder(

@@ -89,6 +89,11 @@ mock.module("../../utils/logger", () => ({
   },
 }));
 
+const ensureStripeCustomer = mock(async () => "cus_123");
+mock.module("../stripe-customer-authority", () => ({
+  stripeCustomerAuthorityService: { ensure: ensureStripeCustomer },
+}));
+
 const { AutoTopUpService, CorruptAutoTopUpNumberError, parseAutoTopUpNumber } = await import(
   "../auto-top-up"
 );
@@ -219,6 +224,16 @@ function repository(overrides: Partial<RepositoryDependency> = {}): RepositoryDe
     findById: mock(async () => null),
     findBlockingByOrganization: mock(async () => null),
     findByPaymentIntentId: mock(async () => null),
+    customerReconciliationMayBeNeeded: mock(async () => true),
+    customerSnapshotHasAuthority: mock(async () => true),
+    authorizeProviderRequest: mock(async ({ leaseToken, recoveryDeadlineAt }) => ({
+      outcome: "authorized" as const,
+      attempt: attempt({
+        leaseToken,
+        leaseExpiresAt: new Date(NOW.getTime() + 120_000),
+        recoveryDeadlineAt,
+      }),
+    })),
     claimEligibleAttempt: mock(async () => ({
       outcome: "not_eligible" as const,
       organizationId: ORG_ID,
@@ -297,6 +312,10 @@ function processingRepository(
       events?.push("lease-due");
       return leased;
     }),
+    authorizeProviderRequest: mock(async () => ({
+      outcome: "authorized" as const,
+      attempt: leased,
+    })),
     recordPaymentIntent: mock(async () => {
       events?.push("record-payment-intent");
       return recorded;
@@ -575,13 +594,13 @@ describe("AutoTopUpService durable provider recovery", () => {
         });
         return durable;
       }),
-      markProviderRequestStarted: mock(async ({ now, recoveryDeadlineAt }) => {
+      authorizeProviderRequest: mock(async ({ now, recoveryDeadlineAt }) => {
         durable = attempt({
           ...durable,
           providerRequestStartedAt: now,
           recoveryDeadlineAt,
         });
-        return durable;
+        return { outcome: "authorized" as const, attempt: durable };
       }),
       recordPaymentIntent: mock(async ({ paymentIntentId, providerStatus }) => {
         durable = attempt({
@@ -633,7 +652,7 @@ describe("AutoTopUpService durable provider recovery", () => {
       idempotencyKey: `auto_top_up:v1:${ATTEMPT_ID}`,
     });
     expect(durableRepository.finalizeRequest).toHaveBeenCalledTimes(1);
-    expect(durableRepository.markProviderRequestStarted).toHaveBeenCalledTimes(1);
+    expect(durableRepository.authorizeProviderRequest).toHaveBeenCalledTimes(2);
     expect(getBillingAttributionForOrganization).toHaveBeenCalledTimes(1);
   });
 
