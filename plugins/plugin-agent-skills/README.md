@@ -54,6 +54,9 @@ import { AgentSkillsService, MemorySkillStore } from '@elizaos/plugin-agent-skil
 // Create with explicit memory storage
 const service = await AgentSkillsService.start(runtime, {
   storageType: 'memory',
+  // Registry metadata and package bodies share this per-request deadline.
+  // The default is 30 seconds; null explicitly accepts unbounded remote I/O.
+  fetchTimeoutMs: 30_000,
 });
 
 // Or use the store directly
