@@ -57,12 +57,15 @@ mock.module("../invoices", () => ({
 let appPurchaseSawTransaction = false;
 mock.module("../app-credits", () => ({
   appCreditsService: {
-    async processPurchase(params: { transaction?: { execute(query: string): Promise<unknown> } }) {
+    async processPurchase(params: {
+      stripePaymentIntentId: string;
+      transaction?: { execute(query: string): Promise<unknown> };
+    }) {
       appPurchaseSawTransaction = params.transaction !== undefined;
       await params.transaction?.execute(
         `INSERT INTO credit_transactions
           (organization_id, amount, type, description, metadata, stripe_payment_intent_id)
-         VALUES ('${ORG_ID}', '1', 'credit', 'app purchase sentinel', '{}', 'app-sentinel')`,
+         VALUES ('${ORG_ID}', '1', 'credit', 'app purchase sentinel', '{}', '${params.stripePaymentIntentId}')`,
       );
       return {
         success: true,
@@ -564,6 +567,40 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
     await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xcallback", settlementEvidence());
     rows = await dbWrite.execute(`SELECT delivery_key FROM app_charge_callback_outbox`);
     expect(rows.rows).toHaveLength(1);
+    expect(await creditRowCount()).toBe(1);
+  });
+
+  test("one app charge request cannot be purchased by two crypto payments", async () => {
+    if (!pgliteReady) return;
+    await dbWrite.execute(
+      `INSERT INTO crypto_payments
+         (id, organization_id, user_id, payment_address, token, network,
+          expected_amount, credits_to_add, status, expires_at, metadata)
+       VALUES
+         ('${CHARGE_REQUEST_ID}', '${ORG_ID}', '${USER_ID}', 'app-charge', 'USD', 'internal',
+          '10', '10', 'pending', now() + interval '1 hour',
+          '{"kind":"app_charge_request","app_id":"${APP_ID}","creator_organization_id":"${ORG_ID}"}'::jsonb),
+         ('${PAYMENT_ID}', '${ORG_ID}', '${USER_ID}', '0xpay-1', 'USDT', 'bsc',
+          '10', '10', 'pending', now() + interval '1 hour',
+          '{"oxapay_track_id":"track-123","fiat_amount":"10","fiat_currency":"USD","kind":"app_credit_purchase","app_id":"${APP_ID}","charge_request_id":"${CHARGE_REQUEST_ID}"}'::jsonb),
+         ('${OTHER_PAYMENT_ID}', '${ORG_ID}', '${USER_ID}', '0xpay-2', 'USDT', 'bsc',
+          '10', '10', 'pending', now() + interval '1 hour',
+          '{"oxapay_track_id":"track-456","fiat_amount":"10","fiat_currency":"USD","kind":"app_credit_purchase","app_id":"${APP_ID}","charge_request_id":"${CHARGE_REQUEST_ID}"}'::jsonb)`,
+    );
+
+    await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xappfirst", settlementEvidence());
+    await expect(
+      cryptoPaymentsService.confirmPayment(
+        OTHER_PAYMENT_ID,
+        "0xappsecond",
+        settlementEvidence("10", "USDT", "track-456"),
+      ),
+    ).rejects.toThrow("already settled by another payment");
+
+    const second = await dbWrite.execute(
+      `SELECT status FROM crypto_payments WHERE id='${OTHER_PAYMENT_ID}'`,
+    );
+    expect((second.rows[0] as { status: string }).status).toBe("pending");
     expect(await creditRowCount()).toBe(1);
   });
 

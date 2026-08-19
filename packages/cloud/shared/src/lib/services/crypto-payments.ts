@@ -631,7 +631,37 @@ class CryptoPaymentsService {
           throw new Error("Charge request metadata mismatch");
         }
 
-        if (chargeRequest.status === "confirmed") return;
+        const callbackSettlement: AppChargeCallbackDispatchParams = {
+          appId: appPurchase.appId,
+          chargeRequestId: appPurchase.chargeRequestId,
+          status: "paid",
+          provider: "oxapay",
+          providerPaymentId: payment.id,
+          amountUsd: creditsToAdd,
+          payerUserId: payment.user_id,
+          payerOrganizationId: payment.organization_id,
+          metadata: {
+            crypto_payment_id: payment.id,
+            transaction_hash: canonicalTxHash,
+            network: payment.network,
+            token: payCurrency,
+          },
+        };
+
+        if (chargeRequest.status === "confirmed") {
+          if (
+            chargeMetadata.paid_provider !== "oxapay" ||
+            chargeMetadata.paid_provider_payment_id !== payment.id ||
+            chargeMetadata.paid_crypto_payment_id !== payment.id
+          ) {
+            throw new Error("Charge request is already settled by another payment");
+          }
+          await appChargeCallbacksService.enqueue(callbackSettlement, tx);
+          return callbackSettlement;
+        }
+        if (chargeRequest.status !== "pending") {
+          throw new Error(`Charge request cannot settle from status ${chargeRequest.status}`);
+        }
 
         await tx
           .update(cryptoPayments)
@@ -656,22 +686,6 @@ class CryptoPaymentsService {
           })
           .where(eq(cryptoPayments.id, appPurchase.chargeRequestId));
 
-        const callbackSettlement: AppChargeCallbackDispatchParams = {
-          appId: appPurchase.appId,
-          chargeRequestId: appPurchase.chargeRequestId,
-          status: "paid",
-          provider: "oxapay",
-          providerPaymentId: payment.id,
-          amountUsd: creditsToAdd,
-          payerUserId: payment.user_id,
-          payerOrganizationId: payment.organization_id,
-          metadata: {
-            crypto_payment_id: payment.id,
-            transaction_hash: canonicalTxHash,
-            network: payment.network,
-            token: payCurrency,
-          },
-        };
         await appChargeCallbacksService.enqueue(callbackSettlement, tx);
         return callbackSettlement;
       };
