@@ -3,7 +3,12 @@
  * UINT64_MAX key length must fail closed with `-EINVAL` instead of wrapping
  * `ptr + u64` and memcpy-crashing the process. Contrast: a well-formed empty
  * GGUF (zero KVs, zero tensors) still opens.
+ *
+ * `_POSIX_C_SOURCE` must precede every system header. The package builds
+ * C11 with extensions off, so `strdup` / `mkstemp` are otherwise implicit
+ * on glibc and the returned pointer is truncated to `int`.
  */
+#define _POSIX_C_SOURCE 200809L
 
 #include "face_internal.h"
 

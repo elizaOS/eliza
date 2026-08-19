@@ -94,6 +94,7 @@ add_test(NAME face_embed_runtime_test COMMAND face_embed_runtime_test)
 add_executable(face_gguf_hostile_test test/face_gguf_hostile_test.c)
 target_link_libraries(face_gguf_hostile_test PRIVATE face)
 target_include_directories(face_gguf_hostile_test PRIVATE src)
+target_compile_definitions(face_gguf_hostile_test PRIVATE _POSIX_C_SOURCE=200809L)
 target_compile_options(face_gguf_hostile_test PRIVATE -O2 -Wall -Wextra)
 add_test(NAME face_gguf_hostile_test COMMAND face_gguf_hostile_test)
 
