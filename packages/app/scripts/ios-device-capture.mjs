@@ -58,7 +58,7 @@ import {
   classifyRunnerSigningMode,
   classifyXcresultSummaryForGate,
   DEFAULT_APP_BUNDLE_ID,
-  deriveSigningEntitlements,
+  deriveTargetSigningEntitlements,
   evaluateRunnerStaleness,
   extractSwiftXcuitestEntries,
   extractXctestrunAppPaths,
@@ -487,7 +487,7 @@ function graftSignRunner({ runnerApp, deviceUdid, workDir }) {
   const entitlementsPath = path.join(workDir, "ent-xctrunner.plist");
   fs.writeFileSync(
     entitlementsPath,
-    buildPlistXml(deriveSigningEntitlements(profile, runnerBundleId)),
+    buildPlistXml(deriveTargetSigningEntitlements(profile, runnerBundleId, {})),
   );
 
   const frameworksDir = path.join(runnerApp, "Frameworks");

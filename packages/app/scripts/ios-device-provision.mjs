@@ -32,9 +32,9 @@
  * device gets its own stable profile name, so provisioning one device never
  * removes another device's working profile. Existing valid profiles are
  * reused; invalid or stale same-name profiles are preserved while a uniquely
- * named replacement is created and validated.
- * Minted profiles are written into the profiles dir where `discoverProfiles()`
- * looks.
+ * named replacement is created and validated. New bytes stay in a
+ * same-filesystem quarantine until validation succeeds, then move atomically
+ * into the directory where `discoverProfiles()` looks.
  *
  * The API-flow, JWT construction, and credential handling are exported as pure
  * functions with an injectable `fetchImpl` so the contract is unit-tested
@@ -48,7 +48,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parsePlist } from "./ios-device-lib.mjs";
+import {
+  entitlementSourceForTarget,
+  normalizeProvisioningProfile,
+  parsePlist,
+  profileEntitlementAuthorizes,
+  profileMatchesTarget,
+} from "./ios-device-lib.mjs";
 
 export const ASC_API_BASE = "https://api.appstoreconnect.apple.com";
 export const ASC_AUDIENCE = "appstoreconnect-v1";
@@ -58,6 +64,13 @@ export const REQUIRED_ENV = [
   "APP_STORE_API_ISSUER_ID",
   "APP_STORE_API_KEY_P8",
 ];
+
+export class ProvisioningProfileValidationError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = "ProvisioningProfileValidationError";
+  }
+}
 
 export function profilesDir() {
   return path.join(
@@ -314,21 +327,6 @@ export async function reconcileBundleCapabilities(
   return enabled;
 }
 
-function entitlementValueCovered(required, granted) {
-  if (required === true) return granted === true;
-  if (Array.isArray(required)) {
-    return (
-      Array.isArray(granted) && required.every((item) => granted.includes(item))
-    );
-  }
-  // Build-variable values such as $(APS_ENVIRONMENT) mean the entitlement must
-  // exist; the profile chooses the concrete development value.
-  if (typeof required === "string" && /^\$\(.+\)$/.test(required)) {
-    return granted !== undefined && granted !== false;
-  }
-  return Object.is(required, granted);
-}
-
 export function validateProvisioningEntitlements(
   required,
   granted,
@@ -336,20 +334,35 @@ export function validateProvisioningEntitlements(
 ) {
   const requirements = classifyEntitlementProvisioningRequirements(required);
   if (requirements.unclassified.length > 0) {
-    throw new Error(
+    throw new ProvisioningProfileValidationError(
       `Provisioning requirements for ${bundleIdentifier} contain unclassified target entitlements: ${requirements.unclassified.join(", ")}. ` +
         "Add an explicit ASC-supported or profile-managed policy before minting.",
     );
   }
+  const applicationIdentifier = granted?.["application-identifier"];
+  const appIdPrefix =
+    typeof applicationIdentifier === "string"
+      ? applicationIdentifier.split(".", 1)[0]
+      : null;
+  const teamId =
+    typeof granted?.["com.apple.developer.team-identifier"] === "string"
+      ? granted["com.apple.developer.team-identifier"]
+      : appIdPrefix;
   const missing = Object.entries(required ?? {})
-    .filter(([key, value]) => !entitlementValueCovered(value, granted?.[key]))
+    .filter(
+      ([key, value]) =>
+        !profileEntitlementAuthorizes(key, value, granted?.[key], {
+          appIdPrefix,
+          teamId,
+        }),
+    )
     .map(([key]) => key);
   if (missing.length > 0) {
     const guidance = requirements.profileValidatedManaged
       .filter((row) => missing.includes(row.key))
       .map((row) => `${row.key}: ${row.guidance}`)
       .join("; ");
-    throw new Error(
+    throw new ProvisioningProfileValidationError(
       `Provisioning profile for ${bundleIdentifier} does not grant target entitlements: ${missing.join(", ")}. ` +
         `${guidance || "Reconcile the Bundle ID capabilities in App Store Connect before deploying."}`,
     );
@@ -600,10 +613,88 @@ export function writeProfile(profileData, dir = profilesDir()) {
     );
   }
   fs.mkdirSync(dir, { recursive: true });
-  const stem = profileData.attributes?.uuid || profileData.id;
-  const file = path.join(dir, `${stem}.mobileprovision`);
+  const file = path.join(dir, profileFilename(profileData));
   fs.writeFileSync(file, Buffer.from(content, "base64"));
   return file;
+}
+
+function profileFilename(profileData) {
+  const stem = profileData?.attributes?.uuid || profileData?.id;
+  if (
+    typeof stem !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(stem) ||
+    path.basename(stem) !== stem
+  ) {
+    throw new ProvisioningProfileValidationError(
+      `Provisioning profile returned an unsafe uuid/id for local storage: ${JSON.stringify(stem)}.`,
+    );
+  }
+  return `${stem}.mobileprovision`;
+}
+
+/** Validate profile bytes in a same-filesystem quarantine and optionally install atomically. */
+export function validateAndInstallProfile(
+  profileData,
+  {
+    dir = profilesDir(),
+    requiredEntitlements = {},
+    bundleIdentifier,
+    deviceUdid = null,
+    now = new Date(),
+    decodeProfile = decodeMobileProvision,
+    install = true,
+  },
+) {
+  fs.mkdirSync(dir, { recursive: true });
+  const quarantine = fs.mkdtempSync(
+    path.join(dir, ".eliza-profile-quarantine-"),
+  );
+  try {
+    const quarantinedFile = writeProfile(profileData, quarantine);
+    let decoded;
+    try {
+      decoded = decodeProfile(quarantinedFile);
+    } catch (error) {
+      // error-policy:J2 Preserve the decoder failure as rejected profile content.
+      throw new ProvisioningProfileValidationError(
+        `Provisioning profile ${profileData?.attributes?.uuid || profileData?.id || "?"} could not be decoded.`,
+        { cause: error },
+      );
+    }
+    const expectedUuid = profileData?.attributes?.uuid ?? profileData?.id;
+    if (
+      typeof decoded?.UUID !== "string" ||
+      decoded.UUID.toUpperCase() !== expectedUuid.toUpperCase()
+    ) {
+      throw new ProvisioningProfileValidationError(
+        `Provisioning profile content UUID ${JSON.stringify(decoded?.UUID)} does not match App Store Connect UUID ${expectedUuid}.`,
+      );
+    }
+    validateProvisioningEntitlements(
+      requiredEntitlements,
+      decoded?.Entitlements ?? {},
+      bundleIdentifier,
+    );
+    const normalized = normalizeProvisioningProfile(decoded, quarantinedFile);
+    const coverage = profileMatchesTarget(normalized, {
+      bundleId: bundleIdentifier,
+      deviceUdid,
+      now,
+      requireGetTaskAllow: true,
+      requiredEntitlements,
+    });
+    if (!coverage.ok) {
+      throw new ProvisioningProfileValidationError(
+        `Provisioning profile for ${bundleIdentifier} is not a usable development profile: ${coverage.reasons.join("; ")}.`,
+      );
+    }
+    if (!install) return null;
+    const installedFile = path.join(dir, profileFilename(profileData));
+    fs.renameSync(quarantinedFile, installedFile);
+    return installedFile;
+  } finally {
+    fs.rmSync(quarantine, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -636,14 +727,10 @@ export function discoverAppBundleIds(
   const readEntitlements =
     readTargetEntitlements ??
     ((targetName) => {
-      const source =
-        targetName === "App"
-          ? path.join(entitlementsRoot, "App.entitlements")
-          : path.join(
-              entitlementsRoot,
-              targetName,
-              `${targetName}.entitlements`,
-            );
+      const source = path.join(
+        entitlementsRoot,
+        entitlementSourceForTarget(targetName),
+      );
       if (!fs.existsSync(source)) {
         throw new Error(
           `No maintained entitlement source found for iOS target ${targetName}: ${source}`,
@@ -744,22 +831,25 @@ export async function provision({
     let profile = null;
     let file = null;
     for (const candidate of listedProfiles.reusable) {
-      const candidateFile = writeProfile(candidate, dir);
-      const decoded = decodeProfile(candidateFile);
       try {
-        validateProvisioningEntitlements(
-          bid.entitlements ?? {},
-          decoded?.Entitlements ?? {},
-          bid.identifier,
-        );
+        const candidateFile = validateAndInstallProfile(candidate, {
+          dir,
+          requiredEntitlements: bid.entitlements ?? {},
+          bundleIdentifier: bid.identifier,
+          deviceUdid: udid,
+          decodeProfile,
+        });
         profile = candidate;
         file = candidateFile;
         break;
-      } catch {
+      } catch (error) {
         // error-policy:J3 ASC profile content is untrusted input; an explicit
         // validation failure rejects only this candidate and scans the rest.
         // An ACTIVE profile can still carry stale managed grants. Keep scanning
         // newer/older candidates before minting another immutable profile.
+        if (!(error instanceof ProvisioningProfileValidationError)) {
+          throw error;
+        }
       }
     }
     if (!profile) {
@@ -776,13 +866,13 @@ export async function provision({
         deviceIds: [device.id],
         certificateIds,
       });
-      file = writeProfile(profile, dir);
-      const decoded = decodeProfile(file);
-      validateProvisioningEntitlements(
-        bid.entitlements ?? {},
-        decoded?.Entitlements ?? {},
-        bid.identifier,
-      );
+      file = validateAndInstallProfile(profile, {
+        dir,
+        requiredEntitlements: bid.entitlements ?? {},
+        bundleIdentifier: bid.identifier,
+        deviceUdid: udid,
+        decodeProfile,
+      });
     }
     results.push({
       identifier: bid.identifier,

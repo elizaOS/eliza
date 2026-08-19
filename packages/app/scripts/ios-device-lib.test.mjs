@@ -14,6 +14,7 @@ import {
   resolveAgentProbeTarget,
   summarizeChatSkipAccounting,
 } from "./ios-device-capture.mjs";
+import { readMaintainedTargetEntitlements } from "./ios-device-deploy.mjs";
 import {
   assertDeviceUnlocked,
   buildCodesignPlan,
@@ -32,6 +33,8 @@ import {
   classifyXcresultSummaryForGate,
   DEFAULT_IOS_XCUITEST_SHARDS,
   deriveSigningEntitlements,
+  deriveTargetSigningEntitlements,
+  entitlementSourceForTarget,
   evaluateRunnerStaleness,
   extractSwiftXcuitestEntries,
   extractXctestrunAppPaths,
@@ -39,6 +42,7 @@ import {
   findUncoveredIosXcuitestEntries,
   formatDeviceUnlockWaitMessage,
   hasBundleKeyInSimctlListappsOutput,
+  IOS_APPEX_TARGET_NAMES,
   isBenignIosAppAbsence,
   normalizeDeviceLockState,
   normalizeProvisioningProfile,
@@ -50,6 +54,8 @@ import {
   planSignedAppDdOverwrite,
   profileMatchesTarget,
   resolveDeviceId,
+  resolveMaintainedIosSigningTargets,
+  resolveTargetEntitlementValue,
   resolveXctestrunTestRoot,
   rewriteXctestrunUITargetApp,
   safeShardName,
@@ -80,6 +86,7 @@ function profilePlist({
   expiration = new Date("2027-06-22T00:00:00Z"),
   devices = [DEVICE_UDID],
   getTaskAllow = true,
+  extraEntitlements = {},
 } = {}) {
   return {
     Name: name,
@@ -94,6 +101,7 @@ function profilePlist({
       "com.apple.developer.team-identifier": TEAM,
       "get-task-allow": getTaskAllow,
       "keychain-access-groups": [`${TEAM}.*`],
+      ...extraEntitlements,
     },
   };
 }
@@ -327,6 +335,121 @@ describe("selectProvisioningProfile", () => {
     expect(rejected[0].reasons.length).toBeGreaterThan(0);
     expect(rejected[1].reasons.length).toBeGreaterThan(0);
   });
+
+  it("rejects an exact profile missing a maintained target grant", () => {
+    const { selected, rejected } = selectProvisioningProfile([normalized()], {
+      ...target,
+      requiredEntitlements: {
+        "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+      },
+    });
+    expect(selected).toBeNull();
+    expect(rejected[0].reasons.join(" ")).toMatch(/application-groups/);
+  });
+
+  it("selects complete profiles for the app and every maintained appex", () => {
+    const targetNames = ["App", ...IOS_APPEX_TARGET_NAMES];
+    for (const targetName of targetNames) {
+      expect(entitlementSourceForTarget(targetName)).toMatch(/\.entitlements$/);
+      const targetBundleId =
+        targetName === "App"
+          ? "ai.elizaos.app"
+          : `ai.elizaos.app.${targetName}`;
+      const requiredEntitlements = {
+        "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+      };
+      const profile = normalized({
+        appIdentifier: `${TEAM}.${targetBundleId}`,
+        extraEntitlements: requiredEntitlements,
+      });
+      expect(
+        selectProvisioningProfile([profile], {
+          bundleId: targetBundleId,
+          deviceUdid: DEVICE_UDID,
+          requireGetTaskAllow: true,
+          requiredEntitlements,
+        }).selected,
+      ).toBe(profile);
+    }
+  });
+
+  it("does not let a newer exact distribution profile beat a development profile", () => {
+    const distribution = normalized({
+      expiration: new Date("2099-01-01T00:00:00.000Z"),
+      getTaskAllow: false,
+    });
+    const development = normalized({
+      appIdentifier: `${TEAM}.*`,
+      expiration: new Date("2027-01-01T00:00:00.000Z"),
+      getTaskAllow: true,
+    });
+    const result = selectProvisioningProfile([distribution, development], {
+      bundleId: "ai.elizaos.app",
+      deviceUdid: DEVICE_UDID,
+      requireGetTaskAllow: true,
+    });
+    expect(result.selected).toBe(development);
+    expect(result.rejected[0].reasons).toContain(
+      "profile is not a development/debug profile (get-task-allow is not true)",
+    );
+  });
+});
+
+describe("resolveMaintainedIosSigningTargets", () => {
+  const completeAppexes = IOS_APPEX_TARGET_NAMES.map((targetName) => ({
+    targetName,
+    bundleId: `ai.elizaos.app.${targetName}`,
+    path: `/App.app/PlugIns/${targetName}.appex`,
+  }));
+
+  it("accepts the exact full app/appex target layout", () => {
+    expect(
+      resolveMaintainedIosSigningTargets({
+        appBundleId: "ai.elizaos.app",
+        appexes: completeAppexes,
+      }),
+    ).toHaveLength(1 + IOS_APPEX_TARGET_NAMES.length);
+  });
+
+  it("fails for missing, unknown, or bundle-id-substituted appexes", () => {
+    expect(() =>
+      resolveMaintainedIosSigningTargets({
+        appBundleId: "ai.elizaos.app",
+        appexes: completeAppexes.slice(1),
+      }),
+    ).toThrow(/missing maintained appexes/);
+    expect(() =>
+      resolveMaintainedIosSigningTargets({
+        appBundleId: "ai.elizaos.app",
+        appexes: [
+          ...completeAppexes,
+          {
+            targetName: "UnknownExtension",
+            bundleId: "ai.elizaos.app.UnknownExtension",
+          },
+        ],
+      }),
+    ).toThrow(/No maintained entitlement source/);
+    expect(() =>
+      resolveMaintainedIosSigningTargets({
+        appBundleId: "ai.elizaos.app",
+        appexes: completeAppexes.map((appex, index) =>
+          index === 0
+            ? { ...appex, bundleId: "com.attacker.substitute" }
+            : appex,
+        ),
+      }),
+    ).toThrow(/expected ai\.elizaos\.app\./);
+  });
+
+  it("fails when a mapped target entitlement source is absent", () => {
+    expect(() =>
+      readMaintainedTargetEntitlements("ElizaWidgets", {
+        root: "/missing-entitlements",
+        exists: () => false,
+      }),
+    ).toThrow(/entitlement source.*missing/i);
+  });
 });
 
 describe("signing identities", () => {
@@ -395,6 +518,117 @@ describe("deriveSigningEntitlements", () => {
     const profile = normalized({ appIdentifier: `${TEAM}.*` });
     deriveSigningEntitlements(profile, "ai.elizaos.app");
     expect(profile.entitlements["application-identifier"]).toBe(`${TEAM}.*`);
+  });
+});
+
+describe("deriveTargetSigningEntitlements", () => {
+  it("signs target claims plus identity keys, never the whole profile allowlist", () => {
+    const profile = normalized({
+      extraEntitlements: {
+        "com.apple.developer.associated-domains": ["*"],
+        "com.apple.security.application-groups": [
+          "group.ai.elizaos.app",
+          "group.unintended",
+        ],
+        "com.apple.developer.healthkit": true,
+        "keychain-access-groups": [`${TEAM}.*`, `${TEAM}.unintended`],
+      },
+    });
+    const claims = deriveTargetSigningEntitlements(profile, "ai.elizaos.app", {
+      "com.apple.developer.associated-domains": ["applinks:eliza.app"],
+      "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+    });
+    expect(claims["com.apple.developer.associated-domains"]).toEqual([
+      "applinks:eliza.app",
+    ]);
+    expect(claims["com.apple.security.application-groups"]).toEqual([
+      "group.ai.elizaos.app",
+    ]);
+    expect(claims["com.apple.developer.healthkit"]).toBeUndefined();
+    expect(claims["keychain-access-groups"]).toEqual([
+      `${TEAM}.ai.elizaos.app`,
+    ]);
+    expect(claims["application-identifier"]).toBe(`${TEAM}.ai.elizaos.app`);
+  });
+
+  it("fails closed when a required App Group is absent", () => {
+    expect(() =>
+      deriveTargetSigningEntitlements(normalized(), "ai.elizaos.app", {
+        "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+      }),
+    ).toThrow(/application-groups/);
+  });
+
+  it("normalizes AppIdentifierPrefix and TeamIdentifierPrefix claims", () => {
+    const profile = normalized({
+      appIdentifier: `${TEAM}.*`,
+      extraEntitlements: {
+        "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+        "keychain-access-groups": [`${TEAM}.*`],
+      },
+    });
+    const claims = deriveTargetSigningEntitlements(profile, "ai.elizaos.app", {
+      "application-identifier": "$(AppIdentifierPrefix)ai.elizaos.app",
+      "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+      "keychain-access-groups": ["$(TeamIdentifierPrefix)ai.elizaos.app"],
+    });
+    expect(claims["application-identifier"]).toBe(`${TEAM}.ai.elizaos.app`);
+    expect(claims["keychain-access-groups"]).toEqual([
+      `${TEAM}.ai.elizaos.app`,
+    ]);
+    expect(
+      resolveTargetEntitlementValue("$(AppIdentifierPrefix)ai.elizaos.app", {
+        appIdPrefix: TEAM,
+      }),
+    ).toBe(`${TEAM}.ai.elizaos.app`);
+  });
+
+  it("uses the correct concrete prefix for app ids, keychain groups, and App Groups", () => {
+    const appPrefix = "APPIDPREFIX";
+    const teamPrefix = "TEAMIDPREFIX";
+    const profile = {
+      ...normalized({ appIdentifier: `${appPrefix}.*` }),
+      appIdPrefix: appPrefix,
+      teamId: teamPrefix,
+      entitlements: {
+        ...normalized().entitlements,
+        "application-identifier": `${appPrefix}.*`,
+        "com.apple.developer.team-identifier": teamPrefix,
+        "keychain-access-groups": [`${teamPrefix}.*`],
+        "com.apple.security.application-groups": [
+          `${teamPrefix}.group.ai.elizaos.app`,
+        ],
+      },
+    };
+    const claims = deriveTargetSigningEntitlements(profile, "ai.elizaos.app", {
+      "application-identifier": "$(AppIdentifierPrefix)ai.elizaos.app",
+      "keychain-access-groups": ["$(TeamIdentifierPrefix)ai.elizaos.app"],
+      "com.apple.security.application-groups": [
+        "$(TeamIdentifierPrefix)group.ai.elizaos.app",
+      ],
+    });
+    expect(claims["application-identifier"]).toBe(
+      `${appPrefix}.ai.elizaos.app`,
+    );
+    expect(claims["keychain-access-groups"]).toEqual([
+      `${teamPrefix}.ai.elizaos.app`,
+    ]);
+    expect(claims["com.apple.security.application-groups"]).toEqual([
+      `${teamPrefix}.group.ai.elizaos.app`,
+    ]);
+  });
+
+  it("does not accept wildcard substitution for App Groups", () => {
+    const profile = normalized({
+      extraEntitlements: {
+        "com.apple.security.application-groups": ["*"],
+      },
+    });
+    expect(() =>
+      deriveTargetSigningEntitlements(profile, "ai.elizaos.app", {
+        "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+      }),
+    ).toThrow(/application-groups/);
   });
 });
 
