@@ -58,6 +58,29 @@ interface ClipboardPlan {
   write: ClipboardCommand;
 }
 
+function runClipboardWrite(
+  command: string,
+  args: readonly string[],
+  input?: string,
+): void {
+  const result = spawnSync(command, [...args], {
+    ...(input === undefined ? {} : { input }),
+    timeout: clipboardTimeoutMs(),
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    // encoding: "utf-8" forces stderr to string when present.
+    const stderr = result.stderr ?? "";
+    throw new Error(
+      `Clipboard write failed (${command} exit ${result.status}): ${stderr.trim()}`,
+    );
+  }
+}
+
 function pickPlan(): ClipboardPlan {
   const os = currentPlatform();
   if (os === "darwin") {
@@ -144,10 +167,27 @@ export async function writeClipboard(text: string): Promise<void> {
   // the command (no stdin pipe needed), then decoded host-side, so it round-trips
   // any UTF-8 text safely. Falls back to the one-shot stdin-piped spawn.
   //
-  // Empty string is routed to the fallback path deliberately: `Set-Clipboard
-  // -Value ''` rejects an empty value, and base64('') would otherwise let the
-  // host "succeed" where the one-shot spawn fails — a non-transparent
-  // divergence. Routing both through the same path keeps the behavior identical.
+  // PowerShell rejects `Set-Clipboard -Value` when an empty stdin stream is
+  // materialized as null. Clearing is the exact Windows representation of an
+  // empty text clipboard, so use the same command in warm and one-shot paths.
+  if (currentPlatform() === "win32" && text.length === 0) {
+    if (psHostAvailable()) {
+      try {
+        await runPsHost("Clear-Clipboard", clipboardTimeoutMs());
+        return;
+      } catch {
+        // error-policy:J4 designed two-tier execution — the one-shot command
+        // below performs the same clear, and its failure throws to the caller.
+      }
+    }
+    runClipboardWrite("powershell", [
+      "-NoProfile",
+      "-Command",
+      "Clear-Clipboard",
+    ]);
+    return;
+  }
+
   if (psHostAvailable() && text.length > 0) {
     try {
       const b64 = Buffer.from(text, "utf-8").toString("base64");
@@ -162,22 +202,7 @@ export async function writeClipboard(text: string): Promise<void> {
     }
   }
   const plan = pickPlan();
-  const result = spawnSync(plan.write.command, [...plan.write.args], {
-    input: text,
-    timeout: clipboardTimeoutMs(),
-    encoding: "utf-8",
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    // encoding: "utf-8" forces stderr to string when present.
-    const stderr = result.stderr ?? "";
-    throw new Error(
-      `Clipboard write failed (${plan.write.command} exit ${result.status}): ${stderr.trim()}`,
-    );
-  }
+  runClipboardWrite(plan.write.command, plan.write.args, text);
 }
 
 /** Internal hook for unit tests — re-exported for parity with helpers.ts. */
