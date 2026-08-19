@@ -17,6 +17,7 @@ import {
   FormSubmitReceipt,
   SensitiveRequestBlock,
 } from "../chat/MessageContent";
+import { findChoiceRegions } from "../chat/message-choice-parser";
 import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
 import { ChatMessage } from "../composites/chat/chat-message";
 import type {
@@ -41,6 +42,28 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
       {slash.rest}
     </>
   );
+}
+
+/**
+ * The Home overlay is ambient conversation, not an action-widget dashboard.
+ * Keep first-run choices because they are the only setup path, but remove every
+ * other CHOICE block from assistant display text. The full ChatView continues
+ * to render the canonical widgets; this is overlay-only presentation policy.
+ */
+function withoutAmbientChoices(content: string): string {
+  const removable = findChoiceRegions(content).filter(
+    ({ scope }) => scope !== "first-run" && !scope.startsWith("first-run"),
+  );
+  if (removable.length === 0) return content;
+
+  let cursor = 0;
+  let result = "";
+  for (const region of removable) {
+    result += content.slice(cursor, region.start);
+    cursor = region.end;
+  }
+  result += content.slice(cursor);
+  return result.replace(/\n{3,}/g, "\n\n").trimEnd();
 }
 
 /**
@@ -74,7 +97,7 @@ function OverlayAssistantTurnBody({
         </div>
       ) : (
         <div className="col-start-1 row-start-1 min-h-[1.4375rem] min-w-0">
-          <InlineWidgetText content={message.text} />
+          <InlineWidgetText content={withoutAmbientChoices(message.text)} />
           {attachmentsNode}
           {message.secretRequest ? (
             <div className="pointer-events-auto">

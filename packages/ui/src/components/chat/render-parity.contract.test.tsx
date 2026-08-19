@@ -198,15 +198,15 @@ const CORPUS: Array<{ name: string; message: ConversationMessage }> = [
     ),
   },
   {
-    name: "ordinary approval choice widget",
+    name: "required first-run choice widget",
     message: assistant(
-      "Approve this?\n[CHOICE:approval]\napprove=Approve\nreject=Reject\n[/CHOICE]",
+      "Pick a setup path:\n[CHOICE:first-run id=runtime]\ncloud=Eliza Cloud\nlocal=Local\n[/CHOICE]",
     ),
   },
   {
-    name: "prose + code + choice together",
+    name: "prose + code + required choice together",
     message: assistant(
-      "Run this:\n```sh\nbun run dev\n```\nThen choose:\n[CHOICE:env]\nlocal=Local\ncloud=Cloud\n[/CHOICE]",
+      "Run this:\n```sh\nbun run dev\n```\nThen choose:\n[CHOICE:first-run id=provider]\nlocal=Local\ncloud=Cloud\n[/CHOICE]",
     ),
   },
   {
@@ -278,30 +278,11 @@ describe("chat render parity (ThreadLine vs MessageContent) — #9954", () => {
       ["choice", "code", "no-provider", "secret"].sort(),
     );
   });
-
-  it("keeps reminder controls actionable on both chat surfaces", () => {
-    const { viewPrint, overlayPrint } = renderBoth(
-      assistant(
-        "Time to stretch.\n\n[CHOICE:lifeops-reminder id=reminder-123]\ndone=Done\n10 minutes=Snooze 10m\nskip=Skip\n[/CHOICE]",
-      ),
-    );
-
-    for (const fingerprint of [viewPrint, overlayPrint]) {
-      expect(fingerprint.hasChoiceWidget).toBe(true);
-      expect(fingerprint.choiceOptionValues).toEqual(
-        expect.arrayContaining([
-          "choice-done",
-          "choice-10 minutes",
-          "choice-skip",
-        ]),
-      );
-    }
-  });
 });
 
 // ── PINNED divergences ──────────────────────────────────────────────────────
 //
-// The two surfaces DO legitimately diverge in two structural ways today. These
+// The two surfaces DO legitimately diverge in four structural ways today. These
 // are pinned (not "fixed" here) so each is a CONSCIOUS contract: the only way to
 // reconcile a surface is to flip the assertion in this file, never a silent edit
 // to one switch statement. Mirrors how parser-parity.contract.test.ts pins the
@@ -314,6 +295,40 @@ describe("chat render parity — PINNED divergences (intended/tracked) — #9954
     cleanup();
     __setAppValueForTests(null);
     vi.clearAllMocks();
+  });
+
+  // Home is an always-present conversational overlay, not a second action
+  // dashboard. Ordinary CHOICE blocks remain fully interactive in ChatView,
+  // but the overlay keeps only their surrounding prose. First-run choices are
+  // covered by the parity corpus above because they are the only setup path.
+  it("PIN: ambient choices stay in ChatView and are absent from the Home overlay", () => {
+    const { viewPrint, overlayPrint } = renderBoth(
+      assistant(
+        "What next?\n[CHOICE:plan]\nship=Ship it\nwait=Wait\n[/CHOICE]",
+      ),
+    );
+    expect(viewPrint.hasChoiceWidget).toBe(true);
+    expect(viewPrint.choiceOptionValues).toContain("choice-ship");
+    expect(viewPrint.choiceOptionValues).toContain("choice-wait");
+    expect(overlayPrint.hasChoiceWidget).toBe(false);
+    expect(overlayPrint.choiceOptionValues).toEqual([]);
+  });
+
+  it("PIN: reminder actions do not become stacked boxes in the Home overlay", () => {
+    const message = assistant(
+      "Time to stretch.\n\n[CHOICE:lifeops-reminder id=reminder-123]\ndone=Done\n10 minutes=Snooze 10m\nskip=Skip\n[/CHOICE]",
+    );
+    const view = withApp(<MessageContent message={message} />);
+    expect(view.getByText("Time to stretch.")).not.toBeNull();
+    expect(view.getByTestId("choice-done")).not.toBeNull();
+    cleanup();
+
+    const overlay = withApp(
+      __renderThreadLineForParity(toShellMessage(message)),
+    );
+    expect(overlay.getByText("Time to stretch.")).not.toBeNull();
+    expect(overlay.queryByText("Snooze 10m")).toBeNull();
+    expect(overlay.queryByTestId("choice-done")).toBeNull();
   });
 
   // (1) Inline `` `code` ``. ChatView's MessageTextBody lifts each backtick span
