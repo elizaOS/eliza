@@ -43,6 +43,7 @@ function makeRuntime(args: {
 	roomFacts?: Memory[];
 	entityFacts?: Memory[];
 	recentMessages?: Memory[];
+	canonicalEmbeddingsDisabled?: boolean;
 }): IAgentRuntime & {
 	getMemories: ReturnType<typeof vi.fn>;
 	useModel: ReturnType<typeof vi.fn>;
@@ -67,6 +68,12 @@ function makeRuntime(args: {
 				}
 				return [];
 			},
+		),
+		getSetting: vi.fn((key: string) =>
+			key === "ELIZA_CANONICAL_EMBEDDINGS_ENABLED" &&
+			args.canonicalEmbeddingsDisabled
+				? false
+				: undefined,
 		),
 		useModel: vi.fn(async () => {
 			throw new Error("FACTS provider must not request embeddings");
@@ -127,6 +134,29 @@ describe("factsProvider keyword retrieval", () => {
 			section.startsWith("Standing preferences"),
 		);
 		expect(preferenceSection).toContain("Tokyo hotels");
+	});
+
+	it("stays on bounded keyword recall when no embedding capability is registered", async () => {
+		const runtime = makeRuntime({
+			canonicalEmbeddingsDisabled: true,
+			recentMessages: [],
+			facts: [
+				memory("fact-1", "the user prefers concise replies", {
+					kind: "durable",
+					category: "preference",
+					confidence: 0.9,
+					keywords: ["concise", "replies"],
+				}),
+			],
+		});
+
+		await factsProvider.get(
+			runtime,
+			memory("msg-current", "What is next?", { source: "test" }),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(runtime.useModel).not.toHaveBeenCalled();
 	});
 
 	it("uses stored keywords even when the exact query word is not in fact text", async () => {
