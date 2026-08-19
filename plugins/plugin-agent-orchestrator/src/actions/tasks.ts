@@ -3272,7 +3272,10 @@ async function runStopAgent(
         userFacingText: text,
         verifiedUserFacing: true,
         turnComplete: true,
-        data: { stoppedCount: sessions.length },
+        data: {
+          stoppedCount: sessions.length,
+          stoppedSessions: sessions.map((session) => session.id),
+        },
       };
     }
 
@@ -5755,6 +5758,13 @@ function tasksNoopReason(
     return "A near-duplicate of in-flight work was detected; no new agent was started.";
   }
   if (
+    (operation === "stop_agent" || operation === "cancel") &&
+    result.success &&
+    (data.stoppedCount === 0 || data.status === "already_finished")
+  ) {
+    return "Nothing was running; there was nothing to stop.";
+  }
+  if (
     operation === "submit_workspace" &&
     result.success &&
     !effectString(data.commitHash)
@@ -5901,6 +5911,33 @@ function tasksEffectProof(
       };
     }
     return undefined;
+  }
+  if (operation === "stop_agent" || operation === "cancel") {
+    // Stops and cancels ARE the effect: the stopped session ids are the
+    // receipt. Without this branch every stop verdicted "failed" and the
+    // honest "Stopped N task agents." was replaced by the hedged "may have
+    // gone through" line on every sweep (live 2026-08-19).
+    const stopped = [
+      ...effectRecords(data.stoppedSessions).map((row) =>
+        effectString(row.id),
+      ),
+      ...(Array.isArray(data.stoppedSessions)
+        ? (data.stoppedSessions as unknown[]).map((row) =>
+            typeof row === "string" ? row : undefined,
+          )
+        : []),
+      effectString(data.sessionId),
+    ].filter((id): id is string => Boolean(id));
+    const unique = [...new Set(stopped)];
+    if (unique.length === 0) return undefined;
+    return {
+      commitId: unique[0],
+      commitKind: "provider_accepted",
+      resource: { kind: "acp.session", id: unique[0] },
+      artifacts: unique
+        .slice(1)
+        .map((id) => ({ kind: "acp.session", id })),
+    };
   }
   if (operation === "spawn_agent") {
     const sessionId = effectString(data.sessionId);

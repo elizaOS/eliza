@@ -34,6 +34,7 @@ import {
 } from "@elizaos/core";
 import { AGENT_VOICED_METADATA } from "../voice/phrase-for-user.js";
 import type { AcpService } from "./acp-service.js";
+import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
 import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import {
   collectFsObservedFiles,
@@ -2689,6 +2690,17 @@ export class SubAgentRouter extends Service {
     if (!Number.isFinite(maxRetries) || maxRetries <= 0) return false;
 
     const meta = (session.metadata ?? {}) as Record<string, unknown>;
+    // A session the USER stopped is not an incomplete build to repair —
+    // retrying it resurrects cancelled work (live 2026-08-19: "cancel all ur
+    // running coding tasks" hard-stopped the child and the retry rebuilt and
+    // delivered the page anyway).
+    if (typeof meta[ADMIN_STOP_META_KEY] === "string") {
+      this.log("info", "verify-retry skipped: session was stopped by the user", {
+        sessionId: session.id,
+        reason: meta[ADMIN_STOP_META_KEY],
+      });
+      return false;
+    }
     // One typed read of the canonical retry counter (the router's respawn
     // lineage and the durable OrchestratorTaskSession.retryCount share this
     // field), rather than a bare untyped `meta.buildVerifyRetryCount`.
