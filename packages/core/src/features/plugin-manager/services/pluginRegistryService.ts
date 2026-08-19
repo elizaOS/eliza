@@ -22,7 +22,7 @@ import type { PluginMetadata } from "../types.ts";
 
 const GENERATED_REGISTRY_URL =
 	"https://plugins.eliza.app/generated-registry.json";
-export const DEFAULT_PLUGIN_REGISTRY_FETCH_TIMEOUT_MS = 10_000;
+const PLUGIN_REGISTRY_FETCH_TIMEOUT_MS = 10_000;
 const CACHE_DURATION = 3_600_000; // 1 hour
 
 // ---------------------------------------------------------------------------
@@ -371,44 +371,66 @@ function isTimeoutError(err: unknown): boolean {
 	return false;
 }
 
-export async function fetchGeneratedRegistry(
-	options: {
-		fetchImpl?: typeof fetch;
-		signal?: AbortSignal;
-		timeoutMs?: number;
-	} = {},
-): Promise<Map<string, RegistryPlugin>> {
-	const {
-		fetchImpl = fetch,
-		signal: callerSignal,
-		timeoutMs = DEFAULT_PLUGIN_REGISTRY_FETCH_TIMEOUT_MS,
-	} = options;
-	const signal = callerSignal
-		? AbortSignal.any([callerSignal, AbortSignal.timeout(timeoutMs)])
-		: AbortSignal.timeout(timeoutMs);
+async function fetchGeneratedRegistry(): Promise<Map<string, RegistryPlugin>> {
+	const signal = AbortSignal.timeout(PLUGIN_REGISTRY_FETCH_TIMEOUT_MS);
 	let response: Response;
-	let data: GeneratedRegistryFile;
 	try {
-		response = await fetchImpl(GENERATED_REGISTRY_URL, { signal });
-		if (!response.ok) {
-			throw new Error(
-				`generated-registry.json: ${response.status} ${response.statusText}`,
-			);
-		}
-		data = (await response.json()) as GeneratedRegistryFile; // same signal still active
+		response = await fetch(GENERATED_REGISTRY_URL, { signal });
 	} catch (err) {
-		if (isTimeoutError(err)) {
+		// error-policy:J2 translate the internal deadline and preserve other causes
+		if (isTimeoutError(signal.reason) || isTimeoutError(err)) {
 			throw new ElizaError(
-				`Plugin registry fetch timed out after ${timeoutMs}ms`,
+				`Plugin registry fetch timed out after ${PLUGIN_REGISTRY_FETCH_TIMEOUT_MS}ms`,
 				{
 					code: "PLUGIN_REGISTRY_FETCH_TIMEOUT",
 					cause: err,
-					context: { timeoutMs, url: GENERATED_REGISTRY_URL },
+					context: {
+						timeoutMs: PLUGIN_REGISTRY_FETCH_TIMEOUT_MS,
+						url: GENERATED_REGISTRY_URL,
+					},
 					severity: "ephemeral",
 				},
 			);
 		}
 		throw err;
+	}
+
+	if (!response.ok) {
+		throw new ElizaError("Plugin registry request failed", {
+			code: "PLUGIN_REGISTRY_FETCH_HTTP_ERROR",
+			context: {
+				status: response.status,
+				statusText: response.statusText,
+				url: GENERATED_REGISTRY_URL,
+			},
+			severity: "ephemeral",
+		});
+	}
+
+	let data: GeneratedRegistryFile;
+	try {
+		data = (await response.json()) as GeneratedRegistryFile;
+	} catch (err) {
+		// error-policy:J2 distinguish the internal deadline from malformed data
+		if (isTimeoutError(signal.reason) || isTimeoutError(err)) {
+			throw new ElizaError(
+				`Plugin registry fetch timed out after ${PLUGIN_REGISTRY_FETCH_TIMEOUT_MS}ms`,
+				{
+					code: "PLUGIN_REGISTRY_FETCH_TIMEOUT",
+					cause: err,
+					context: {
+						timeoutMs: PLUGIN_REGISTRY_FETCH_TIMEOUT_MS,
+						url: GENERATED_REGISTRY_URL,
+					},
+					severity: "ephemeral",
+				},
+			);
+		}
+		throw new ElizaError("Plugin registry response was not valid JSON", {
+			code: "PLUGIN_REGISTRY_RESPONSE_INVALID",
+			cause: err,
+			context: { url: GENERATED_REGISTRY_URL },
+		});
 	}
 	const plugins = new Map<string, RegistryPlugin>();
 	for (const [name, entry] of Object.entries(data.registry)) {
