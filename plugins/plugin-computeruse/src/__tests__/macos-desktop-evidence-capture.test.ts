@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cleanupMacosBrowserEvidence,
   isMacosAccessibilityEvidenceBlocker,
+  resolveMacosEvidenceGitHead,
   runBrowserCheck,
   startMacosBrowserEvidenceServer,
 } from "../../scripts/capture-macos-desktop-evidence.mjs";
@@ -14,6 +15,17 @@ import {
 describe("macOS desktop evidence capture", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("binds evidence to the full immutable Git revision", () => {
+    const fullSha = "a".repeat(40);
+    const command = vi.fn(() => fullSha);
+
+    expect(resolveMacosEvidenceGitHead(command)).toBe(fullSha);
+    expect(command).toHaveBeenCalledWith("git", ["rev-parse", "HEAD"]);
+    expect(() => resolveMacosEvidenceGitHead(() => "abc1234")).toThrow(
+      "requires a full Git commit SHA",
+    );
   });
 
   it("classifies known Accessibility/TCC blockers as missing device evidence", () => {

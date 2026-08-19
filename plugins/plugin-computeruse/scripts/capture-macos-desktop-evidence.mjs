@@ -167,6 +167,15 @@ function commandText(command, args, fallback = "unknown") {
   }
 }
 
+/** Resolves the full immutable revision bound into every evidence artifact. */
+export function resolveMacosEvidenceGitHead(runCommand = commandText) {
+  const gitHead = runCommand("git", ["rev-parse", "HEAD"]);
+  if (!/^[0-9a-f]{40,64}$/i.test(gitHead)) {
+    throw new Error("macOS desktop evidence requires a full Git commit SHA");
+  }
+  return gitHead;
+}
+
 function createRuntime(settings = {}) {
   return {
     character: {},
@@ -753,7 +762,7 @@ async function main() {
   const machineModel = commandText("sysctl", ["-n", "hw.model"]);
   const macosVersion = commandText("sw_vers", ["-productVersion"]);
   const buildId = commandText("sw_vers", ["-buildVersion"]);
-  const gitHead = commandText("git", ["rev-parse", "--short", "HEAD"]);
+  const gitHead = resolveMacosEvidenceGitHead();
   const artifacts = [];
   const details = {};
   const checks = new Map(CHECK_ORDER.map((id) => [id, newCheck(id)]));
