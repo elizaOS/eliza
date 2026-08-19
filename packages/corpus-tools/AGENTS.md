@@ -19,5 +19,8 @@ source-archive collectors consumed by later PII and LifeOps mock-loader work.
 - Collector output must be idempotent and resumable: re-running against the
   same input reuses byte-identical shards and rewrites only missing or changed
   ones.
+- Reviewed deletion is two-phase and derived-output-only. Never mutate raw
+  shards; bind every owner decision to the exact queue/rules/source hashes and
+  keep review contents local while exposing only sanitized counts and digests.
 
 Repo-wide rules and evidence standards are in the root `CLAUDE.md`.
