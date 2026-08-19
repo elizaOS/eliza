@@ -316,12 +316,13 @@ function briefRewardMarkerId(agentId: string, engagementId: string): string {
 }
 
 /**
- * Owner-identity scope for definition reads and mutations. When supplied,
- * every predicate binds `subject_type + subject_id` alongside `agent_id` so
- * one subject can never read or mutate another subject's definitions under
- * the same agent.
+ * Domain and owner-identity scope for definition reads and mutations. When
+ * supplied, every predicate binds `domain + subject_type + subject_id`
+ * alongside `agent_id` so neither a cross-domain nor cross-subject row can be
+ * read or mutated under the same agent.
  */
 export type LifeOpsDefinitionScope = {
+  domain: LifeOpsTaskDefinition["domain"];
   subjectType: LifeOpsTaskDefinition["subjectType"];
   subjectId: string;
 };
@@ -329,6 +330,7 @@ export type LifeOpsDefinitionScope = {
 function definitionScopePredicate(scope?: LifeOpsDefinitionScope): string {
   if (!scope) return "";
   return `
+          AND domain = ${sqlQuote(scope.domain)}
           AND subject_type = ${sqlQuote(scope.subjectType)}
           AND subject_id = ${sqlQuote(scope.subjectId)}`;
 }
@@ -3438,6 +3440,7 @@ export class LifeOpsRepository {
              updated_at = ${sqlQuote(definition.updatedAt)}
        WHERE id = ${sqlQuote(definition.id)}
          AND agent_id = ${sqlQuote(definition.agentId)}
+         AND domain = ${sqlQuote(definition.domain)}
          AND subject_type = ${sqlQuote(definition.subjectType)}
          AND subject_id = ${sqlQuote(definition.subjectId)}${revisionPredicate}
        RETURNING id`,
@@ -3450,6 +3453,7 @@ export class LifeOpsRepository {
           context: {
             definitionId: definition.id,
             agentId: definition.agentId,
+            domain: definition.domain,
             subjectType: definition.subjectType,
             expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
           },
@@ -3506,11 +3510,11 @@ export class LifeOpsRepository {
 
   /**
    * Destructive removal of a definition and its dependents. The definition
-   * row is deleted first under the subject-scope and optional revision
+   * row is deleted first under the domain/subject scope and optional revision
    * predicates; when it does not match exactly one row the whole operation
    * aborts with a typed `LIFEOPS_DEFINITION_CONFLICT` before any dependent
    * (reminder plans, goal links, occurrences) is touched, so a stale or
-   * cross-subject delete can never cascade.
+   * cross-domain or cross-subject delete can never cascade.
    */
   async deleteDefinition(
     agentId: string,
@@ -3539,6 +3543,7 @@ export class LifeOpsRepository {
           context: {
             definitionId,
             agentId,
+            domain: options?.scope?.domain ?? null,
             subjectType: options?.scope?.subjectType ?? null,
             expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
           },
