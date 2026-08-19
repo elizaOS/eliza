@@ -435,8 +435,26 @@ function normalizeAgentKnowledge(knowledge: AgentRow["knowledge"]): AgentKnowled
     if (typeof item === "string") {
       return [{ item: { case: "path", value: item } }];
     }
-    if (item && typeof item === "object" && typeof item.path === "string") {
+    if (item && typeof item === "object" && "path" in item && typeof item.path === "string") {
       return [{ item: { case: "path", value: item.path } }];
+    }
+    if (
+      item &&
+      typeof item === "object" &&
+      "directory" in item &&
+      typeof item.directory === "string"
+    ) {
+      return [
+        {
+          item: {
+            case: "directory",
+            value: {
+              directory: item.directory,
+              shared: typeof item.shared === "boolean" ? item.shared : undefined,
+            },
+          },
+        },
+      ];
     }
     return [];
   });
