@@ -38,6 +38,27 @@ describe("classifyDestructiveCommand — fires", () => {
     expect(v.reason).toBe("forced glob delete");
     expect(v.targets).toContain("/var/log/*.log");
   });
+  it("recognizes GNU's unambiguous long-option abbreviations", () => {
+    expect(classifyDestructiveCommand("rm --rec build")).toMatchObject({
+      destructive: true,
+      reason: "recursive delete",
+      targets: ["build"],
+    });
+    expect(classifyDestructiveCommand("rm --f *.log")).toMatchObject({
+      destructive: true,
+      reason: "forced glob delete",
+      targets: ["*.log"],
+    });
+  });
+  it("reports a dash-prefixed target after the option terminator", () => {
+    expect(
+      classifyDestructiveCommand("rm --recursive -- -old-cache"),
+    ).toMatchObject({
+      destructive: true,
+      reason: "recursive delete",
+      targets: ["-old-cache"],
+    });
+  });
   it.each([
     ["Remove-Item -LiteralPath C:\\temp\\old -Recurse -Force"],
     ["remove-item C:\\temp\\old -Rec -Force"],
@@ -90,6 +111,8 @@ describe("classifyDestructiveCommand — must NOT fire", () => {
     ["rm single-file.txt"],
     ["rm -f one-exact-file.log"],
     ["rm --force one-exact-file.log"],
+    ["rm -- --recursive"],
+    ["rm -- --force"],
     ["git rm --recursive old-module"],
     ["Remove-Item one-exact-file.log"],
     ["git rm old.ts"],

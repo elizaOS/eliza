@@ -3160,6 +3160,30 @@ describe("destructive-bulk confirm gate", () => {
     }
   });
 
+  it.runIf(process.platform !== "win32")(
+    "blocks GNU long-form recursive delete before shell execution",
+    async () => {
+      const { command, target } = await createRecursiveDeleteCommand();
+      const { runtime } = await makeRuntime();
+      try {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(undefined, "clean up the old projects"),
+          undefined,
+          { command: command.replace("rm -rf", "rm --recursive --force") },
+        );
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("needs_confirmation");
+        expect(result.data).toMatchObject({
+          destructive_reason: "recursive delete",
+        });
+        expect(await pathExists(target)).toBe(true);
+      } finally {
+        await fs.rm(target, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("runs the same command when confirm=true", async () => {
     const { command, target } = await createRecursiveDeleteCommand();
     const { runtime } = await makeRuntime();
