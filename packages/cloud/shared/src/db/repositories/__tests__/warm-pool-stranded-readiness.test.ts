@@ -190,6 +190,79 @@ describe("one claimable-capacity predicate", () => {
     },
     PGLITE_TIMEOUT,
   );
+
+  test(
+    "a null persisted digest is neither counted nor claimable",
+    async () => {
+      await seedPoolEntry({ image_digest: null });
+      expect(await repository.countUnclaimedPool({ image: IMAGE })).toBe(0);
+      expect(await repository.listClaimablePool({ image: IMAGE })).toEqual([]);
+
+      const userAgentId = await seedUserAgent();
+      const claimed = await repository.claimWarmContainer({
+        userAgentId,
+        organizationId: USER_ORG_ID,
+        image: IMAGE,
+        agentName: "must-fall-cold",
+      });
+      expect(claimed).toBeNull();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "rollout reservation fences the exact stale generation before a later claim",
+    async () => {
+      const stale = await seedPoolEntry({
+        image_digest: `sha256:${"b".repeat(64)}`,
+      });
+      const targetDigest = `sha256:${"a".repeat(64)}`;
+
+      const reserved = await repository.reserveStalePoolEntryForRollout(stale, targetDigest);
+      expect(reserved?.status).toBe("deletion_failed");
+
+      const userAgentId = await seedUserAgent();
+      const claimed = await repository.claimWarmContainer({
+        userAgentId,
+        organizationId: USER_ORG_ID,
+        image: IMAGE,
+        agentName: "cannot-claim-known-stale",
+      });
+      expect(claimed).toBeNull();
+      expect(await repository.countUnclaimedPool({ image: IMAGE })).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "concurrent claim versus stale-generation reservation has exactly one owner",
+    async () => {
+      const stale = await seedPoolEntry({
+        image_digest: `sha256:${"b".repeat(64)}`,
+      });
+      const userAgentId = await seedUserAgent();
+
+      const [reserved, claimed] = await Promise.all([
+        repository.reserveStalePoolEntryForRollout(stale, `sha256:${"a".repeat(64)}`),
+        repository.claimWarmContainer({
+          userAgentId,
+          organizationId: USER_ORG_ID,
+          image: IMAGE,
+          agentName: "claim-race",
+        }),
+      ]);
+
+      expect(Number(Boolean(reserved)) + Number(Boolean(claimed))).toBe(1);
+      if (reserved) {
+        expect(claimed).toBeNull();
+        expect((await repository.findById(stale.id))?.status).toBe("deletion_failed");
+      } else {
+        expect(claimed?.warm_pool_row_id).toBe(stale.id);
+        expect(await repository.findById(stale.id)).toBeUndefined();
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
 });
 
 describe("atomic readiness transition", () => {
