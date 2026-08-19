@@ -27,6 +27,7 @@ export async function telegramBotApiRequest<T>(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: params ? JSON.stringify(params) : undefined,
+    signal: AbortSignal.timeout(10_000),
   });
 
   const data = (await response.json()) as TelegramApiResponse<T>;
@@ -56,7 +57,9 @@ export async function telegramBotApiGet<T>(
     });
   }
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), {
+    signal: AbortSignal.timeout(10_000),
+  });
   const data = (await response.json()) as TelegramApiResponse<T>;
 
   if (!data.ok) {

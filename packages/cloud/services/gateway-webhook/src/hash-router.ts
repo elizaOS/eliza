@@ -64,6 +64,7 @@ async function resolvePodIPs(
     const res = await fetch(apiUrl, {
       headers: { Authorization: `Bearer ${token}` },
       tls: { ca: readServiceAccountCaCert() ?? undefined },
+      signal: AbortSignal.timeout(10_000),
     } as RequestInit);
 
     if (!res.ok) return [];

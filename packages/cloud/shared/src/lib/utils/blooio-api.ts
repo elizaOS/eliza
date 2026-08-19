@@ -155,6 +155,7 @@ export async function blooioApiRequest<T>(
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(10_000),
   });
 
   const responseText = await response.text();
