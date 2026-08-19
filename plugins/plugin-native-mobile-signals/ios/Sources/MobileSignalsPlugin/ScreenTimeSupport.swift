@@ -43,8 +43,16 @@ enum ScreenTimeSupport {
         let extensionInspection = inspectBundledExtensions()
         let familyControlsEnabled = entitlementInspection.familyControls
         let authorizationEntitlementAvailable = entitlementInspection.canAttemptAuthorization
-        let authorizationStatus = authorizationStatusString()
         let provisioningSatisfied = entitlementInspection.satisfied
+        let environment = ScreenTimeCapabilityPolicy.hostEnvironment
+        let authorizationStatus = environment == .simulator
+            ? "unavailable"
+            : authorizationStatusString()
+        let availability = ScreenTimeCapabilityPolicy.availability(
+            environment: environment,
+            provisioningSatisfied: provisioningSatisfied,
+            provisioningInspected: entitlementInspection.inspected != "not-inspectable"
+        )
 
         let reason = derivedReason(
             familyControlsEnabled: authorizationEntitlementAvailable,
@@ -59,7 +67,12 @@ enum ScreenTimeSupport {
             provisioningReason = NSNull()
         }
         return [
-            "supported": provisioningSatisfied || entitlementInspection.inspected == "not-inspectable",
+            "supported": ScreenTimeCapabilityPolicy.platformSupported(
+                environment: environment,
+                provisioningSatisfied: provisioningSatisfied
+            ),
+            "hostEnvironment": environment.rawValue,
+            "availability": availability,
             "requirements": [
                 "entitlements": [
                     "familyControls": familyControlsEntitlement,

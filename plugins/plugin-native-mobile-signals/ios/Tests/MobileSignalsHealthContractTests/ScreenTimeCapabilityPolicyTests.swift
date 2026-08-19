@@ -15,4 +15,31 @@ final class ScreenTimeCapabilityPolicyTests: XCTestCase {
         XCTAssertFalse(ScreenTimeCapabilityPolicy.thresholdEventsAvailable)
         XCTAssertFalse(ScreenTimeCapabilityPolicy.rawUsageExportAvailable)
     }
+
+    func testSimulatorAndProvisioningStatesFailClosed() {
+        XCTAssertEqual(
+            ScreenTimeCapabilityPolicy.availability(
+                environment: .simulator,
+                provisioningSatisfied: false,
+                provisioningInspected: false
+            ),
+            "simulator-unavailable"
+        )
+        XCTAssertFalse(ScreenTimeCapabilityPolicy.platformSupported(
+            environment: .simulator,
+            provisioningSatisfied: true
+        ))
+        XCTAssertEqual(
+            ScreenTimeCapabilityPolicy.availability(
+                environment: .device,
+                provisioningSatisfied: false,
+                provisioningInspected: false
+            ),
+            "provisioning-unknown"
+        )
+        XCTAssertFalse(ScreenTimeCapabilityPolicy.platformSupported(
+            environment: .device,
+            provisioningSatisfied: false
+        ))
+    }
 }
