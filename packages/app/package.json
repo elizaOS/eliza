@@ -156,7 +156,7 @@
   "dependencies": {
     "@capacitor-community/bluetooth-le": "8.2.0",
     "@capacitor/android": "8.5.0",
-    "@capacitor/app": "8.1.0",
+    "@capacitor/app": "8.1.1",
     "@capacitor/background-runner": "^3.0.0",
     "@capacitor/barcode-scanner": "3.0.2",
     "@capacitor/browser": "8.0.4",
