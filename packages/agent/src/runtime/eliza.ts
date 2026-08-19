@@ -5336,6 +5336,18 @@ export async function startEliza(
   const startEmbeddingWarmup = async (
     abortSignal: AbortSignal,
   ): Promise<void> => {
+    const canonicalEmbeddings = runtime.getSetting(
+      "ELIZA_CANONICAL_EMBEDDINGS_ENABLED",
+    );
+    if (
+      canonicalEmbeddings === false ||
+      String(canonicalEmbeddings).trim().toLowerCase() === "false"
+    ) {
+      logger.info(
+        "[eliza] Skipping local embedding warmup — canonical service routing omits embeddings.",
+      );
+      return;
+    }
     try {
       await warmEmbeddingModel(abortSignal);
       abortSignal.throwIfAborted();
