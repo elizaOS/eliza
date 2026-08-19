@@ -6405,10 +6405,18 @@ async function settleTasksOperation(args: {
   // envelope to chat word-for-word OVER the evaluator's correct human line
   // (live tj-f1e0716132eb14). Receipt binding follows the license: a failed
   // receipt proves nothing the exact text is entitled to claim.
+  // A canonical that already reached the user out-of-band (recordOnly ack
+  // posted via sendMessageToTarget) must not be re-granted userFacingText /
+  // verifiedUserFacing here: the turn never delivered it through a callback,
+  // so re-binding it re-arms every turn-end delivery floor with text the user
+  // already has (live 2026-08-19: settle re-bound the "On it" ack as verified
+  // text on the create result after the runner deliberately omitted it).
+  const canonicalAlreadyDelivered =
+    (canonical as { delivered?: boolean } | undefined)?.delivered === true;
   const effectResult: ActionResult = {
     ...result,
     effectReceipts: [receipt],
-    ...(canonical?.response.text
+    ...(canonical?.response.text && !canonicalAlreadyDelivered
       ? result.success !== false
         ? {
             userFacingText: canonical.response.text,

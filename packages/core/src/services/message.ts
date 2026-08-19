@@ -7327,7 +7327,17 @@ function collectPreviousActionResults(
 								step.result.userFacingEffectReceiptIds,
 						}
 					: {}),
-				data: { actionName },
+				// Clipboard suppression drops the planner-facing data payload, but
+				// suppressPlannerReply is a turn-delivery contract, not clipboard
+				// content — dropping it here re-enabled the evaluator's mimicked
+				// ack on out-of-band-acked TASKS_CREATE turns (live 2026-08-19,
+				// trajectory data reduced to {actionName} with the flag gone).
+				data: {
+					actionName,
+					...(step.result.data?.suppressPlannerReply === true
+						? { suppressPlannerReply: true }
+						: {}),
+				},
 				...(step.result.turnComplete !== undefined
 					? { turnComplete: step.result.turnComplete }
 					: {}),

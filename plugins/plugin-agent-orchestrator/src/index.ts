@@ -1644,7 +1644,7 @@ export function registerProgressHook(runtime: IAgentRuntime): () => void {
       // at spawn; every emit path (including the delayed-timer one, which
       // bypasses the event-time branch) must honor it or the ack duplicates
       // ~15s later (live 2026-08-19, four placements of this suppression).
-      if (!state && progressPolicy.mode === "ack") {
+      if (!state && acp && progressPolicy.mode === "ack") {
         try {
           const liveSession = await acp.getSession(sessionId);
           if (
