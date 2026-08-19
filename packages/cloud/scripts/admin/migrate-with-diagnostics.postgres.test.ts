@@ -121,6 +121,13 @@ async function expectedPendingBanner(): Promise<string> {
  */
 async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
   await client.query(`
+    CREATE TYPE earnings_source AS ENUM (
+      'miniapp', 'agent', 'mcp', 'affiliate',
+      'app_owner_revenue_share', 'creator_revenue_share'
+    );
+    CREATE TYPE ledger_entry_type AS ENUM (
+      'earning', 'redemption', 'adjustment', 'refund', 'credit_conversion'
+    );
     CREATE TABLE jobs (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       type text NOT NULL DEFAULT 'checkpoint_fixture',
@@ -230,7 +237,17 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
       description text,
       metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
       stripe_payment_intent_id text,
-      created_at timestamp with time zone NOT NULL DEFAULT now()
+      created_at timestamp with time zone NOT NULL DEFAULT now(),
+      settled_at timestamp without time zone
+    );
+    CREATE TABLE redeemable_earnings_ledger (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      entry_type ledger_entry_type NOT NULL,
+      amount numeric(18, 4) NOT NULL,
+      earnings_source earnings_source,
+      source_id uuid,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
     );
     CREATE TABLE containers (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -364,6 +381,14 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
     CREATE TABLE apps (
       id uuid PRIMARY KEY,
       organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE
+    );
+    CREATE TABLE app_earnings_transactions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+      user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+      type text NOT NULL,
+      amount numeric(10, 6) NOT NULL,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
     );
     CREATE TABLE managed_domains (
       id uuid PRIMARY KEY,
@@ -741,6 +766,124 @@ async function expectPreCheckpointComputeBillingAuthority(
   });
 }
 
+async function expectPreCheckpointAppReservationSettlementAuthority(
+  client: pg.Client,
+): Promise<void> {
+  const authority = await client.query<{
+    settled_at: string;
+    creator_projection_columns: string[];
+    app_projection_columns: string[];
+    settlement_table: string | null;
+    quarantine_table: string | null;
+    quarantine_uuid_function: string | null;
+    settlement_trigger: string | null;
+    creator_user_fk: string;
+    app_fk: string;
+    app_user_fk: string;
+    ledger_entry_type_labels: string[];
+    earnings_source_labels: string[];
+  }>(`
+    SELECT
+      (SELECT format('%s:%s:%s', format_type(a.atttypid, a.atttypmod),
+          CASE WHEN a.attnotnull THEN 'required' ELSE 'nullable' END,
+          COALESCE(pg_get_expr(d.adbin, d.adrelid), 'none'))
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'credit_transactions'::regclass
+          AND a.attname = 'settled_at' AND NOT a.attisdropped) AS settled_at,
+      (SELECT to_json(array_agg(format('%s:%s:%s:%s', a.attname,
+          format_type(a.atttypid, a.atttypmod),
+          CASE WHEN a.attnotnull THEN 'required' ELSE 'nullable' END,
+          COALESCE(pg_get_expr(d.adbin, d.adrelid), 'none'))
+        ORDER BY a.attnum))
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'redeemable_earnings_ledger'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped) AS creator_projection_columns,
+      (SELECT to_json(array_agg(format('%s:%s:%s:%s', a.attname,
+          format_type(a.atttypid, a.atttypmod),
+          CASE WHEN a.attnotnull THEN 'required' ELSE 'nullable' END,
+          COALESCE(pg_get_expr(d.adbin, d.adrelid), 'none'))
+        ORDER BY a.attnum))
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'app_earnings_transactions'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped) AS app_projection_columns,
+      to_regclass('public.app_reservation_settlements')::text AS settlement_table,
+      to_regclass('public.app_reservation_settlement_quarantines')::text
+        AS quarantine_table,
+      to_regprocedure('public.app_reservation_quarantine_uuid(text)')::text
+        AS quarantine_uuid_function,
+      (SELECT tgname FROM pg_trigger
+        WHERE tgrelid = 'credit_transactions'::regclass
+          AND tgname = 'credit_transactions_legacy_app_settlement_quarantine_guard'
+          AND NOT tgisinternal) AS settlement_trigger,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'redeemable_earnings_ledger'::regclass
+          AND contype = 'f') AS creator_user_fk,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'app_earnings_transactions'::regclass
+          AND contype = 'f' AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid = 'app_earnings_transactions'::regclass
+              AND attname = 'app_id')]::smallint[]) AS app_fk,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'app_earnings_transactions'::regclass
+          AND contype = 'f' AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid = 'app_earnings_transactions'::regclass
+              AND attname = 'user_id')]::smallint[]) AS app_user_fk,
+      (SELECT to_json(array_agg(e.enumlabel ORDER BY e.enumsortorder))
+        FROM pg_enum e
+        WHERE e.enumtypid = 'ledger_entry_type'::regtype) AS ledger_entry_type_labels,
+      (SELECT to_json(array_agg(e.enumlabel ORDER BY e.enumsortorder))
+        FROM pg_enum e
+        WHERE e.enumtypid = 'earnings_source'::regtype) AS earnings_source_labels
+  `);
+  expect(authority.rows[0]).toEqual({
+    settled_at: "timestamp without time zone:nullable:none",
+    creator_projection_columns: [
+      "id:uuid:required:gen_random_uuid()",
+      "user_id:uuid:required:none",
+      "entry_type:ledger_entry_type:required:none",
+      "amount:numeric(18,4):required:none",
+      "earnings_source:earnings_source:nullable:none",
+      "source_id:uuid:nullable:none",
+      "metadata:jsonb:required:'{}'::jsonb",
+    ],
+    app_projection_columns: [
+      "id:uuid:required:gen_random_uuid()",
+      "app_id:uuid:required:none",
+      "user_id:uuid:nullable:none",
+      "type:text:required:none",
+      "amount:numeric(10,6):required:none",
+      "metadata:jsonb:required:'{}'::jsonb",
+    ],
+    settlement_table: null,
+    quarantine_table: null,
+    quarantine_uuid_function: null,
+    settlement_trigger: null,
+    creator_user_fk:
+      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+    app_fk: "FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE",
+    app_user_fk:
+      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL",
+    ledger_entry_type_labels: [
+      "earning",
+      "redemption",
+      "adjustment",
+      "refund",
+      "credit_conversion",
+    ],
+    earnings_source_labels: [
+      "miniapp",
+      "agent",
+      "mcp",
+      "affiliate",
+      "app_owner_revenue_share",
+      "creator_revenue_share",
+    ],
+  });
+}
+
 describe.skipIf(!ENABLED)(
   "migrate-with-diagnostics real PostgreSQL safety",
   () => {
@@ -825,6 +968,9 @@ describe.skipIf(!ENABLED)(
       await expectPreCheckpointPaymentRequestAuthority(database.client);
       await expectPreCheckpointOrganizationBillingAuthority(database.client);
       await expectPreCheckpointComputeBillingAuthority(database.client);
+      await expectPreCheckpointAppReservationSettlementAuthority(
+        database.client,
+      );
       await database.client.query(`
         INSERT INTO jobs (
           status,
