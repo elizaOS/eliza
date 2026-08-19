@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:t
 
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import * as realDbSchemas from "../../db/schemas";
+import * as realElizaAgentConfig from "./eliza-agent-config";
 import { elizaSandboxService } from "./eliza-sandbox";
 
 const findByPhoneNumberWithOrganization = mock();
@@ -150,6 +151,7 @@ const bridgeSpy = spyOn(elizaSandboxService, "bridge").mockImplementation(
 );
 
 mock.module("./eliza-agent-config", () => ({
+  ...realElizaAgentConfig,
   readManagedAgentDiscordBinding,
   readManagedAgentDiscordGateway,
 }));

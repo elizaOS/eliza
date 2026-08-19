@@ -100,10 +100,10 @@ mock.module(`${sharedRoot}/lib/auth/workers-hono-auth.ts`, () => ({
 // provisioning-jobs-delete-enqueue.test.ts) still resolve them.
 const cloudWorkerErrorsStub = () => ({
   ...realCloudWorkerErrorsExports,
-  ApiError: realCloudWorkerErrors.ApiError,
-  AuthenticationError: realCloudWorkerErrors.AuthenticationError,
-  ForbiddenError: realCloudWorkerErrors.ForbiddenError,
-  ValidationError: realCloudWorkerErrors.ValidationError,
+  ApiError: realCloudWorkerErrorsExports.ApiError,
+  AuthenticationError: realCloudWorkerErrorsExports.AuthenticationError,
+  ForbiddenError: realCloudWorkerErrorsExports.ForbiddenError,
+  ValidationError: realCloudWorkerErrorsExports.ValidationError,
   jsonError: (
     c: { json: (body: unknown, status: number) => Response },
     status: number,

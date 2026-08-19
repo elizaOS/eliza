@@ -754,10 +754,10 @@ describe("SharedRuntimeChatService", () => {
       funding: "platform",
     });
 
-      expect(lastTurnInput?.execution).toEqual({
-        agentKey: agent.id,
-        channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
-        transport: "web",
+    expect(lastTurnInput?.execution).toEqual({
+      agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      transport: "web",
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
@@ -789,10 +789,10 @@ describe("SharedRuntimeChatService", () => {
       funding: "platform",
     });
 
-      expect(lastTurnInput?.execution).toEqual({
-        agentKey: forgedAgent.id,
-        channel: { type: ChannelType.DM, source: "shared-runtime" },
-        transport: "web",
+    expect(lastTurnInput?.execution).toEqual({
+      agentKey: forgedAgent.id,
+      channel: { type: ChannelType.DM, source: "shared-runtime" },
+      transport: "web",
       todos: expectedTodoExecution,
     });
   });
@@ -818,10 +818,10 @@ describe("SharedRuntimeChatService", () => {
     expect(await response.text()).toContain(
       JSON.stringify({ actionResults: [expectedTodoActionResult] }).slice(1, -1),
     );
-      expect(lastStreamTurnInput?.execution).toEqual({
-        agentKey: agent.id,
-        channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
-        transport: "web",
+    expect(lastStreamTurnInput?.execution).toEqual({
+      agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      transport: "web",
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
@@ -888,10 +888,10 @@ describe("SharedRuntimeChatService", () => {
       ...harness(),
       funding: "platform",
     });
-      expect(lastTurnInput?.execution).toEqual({
-        agentKey: agent.id,
-        channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
-        transport: "telegram",
+    expect(lastTurnInput?.execution).toEqual({
+      agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      transport: "telegram",
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
       reminders: {
@@ -908,10 +908,10 @@ describe("SharedRuntimeChatService", () => {
       ...harness(),
       funding: "organization-credits",
     });
-      expect(lastTurnInput?.execution).toEqual({
-        agentKey: agent.id,
-        channel: { type: ChannelType.DM, source: "shared-runtime" },
-        transport: "web",
+    expect(lastTurnInput?.execution).toEqual({
+      agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: "shared-runtime" },
+      transport: "web",
       todos: expectedTodoExecution,
     });
 

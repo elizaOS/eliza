@@ -51,7 +51,7 @@ const findByIdInOrganization = mock(async () => linkedCharacter);
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   PRE_DELETE_BACKUP_RETENTION_MS: 0,
   agentSandboxesRepository: { findByIdAndOrg },
-  prepareAgentBackupInsertData: mock(),
+  prepareAgentBackupInsertData: mock(async (value: unknown) => value),
 }));
 mock.module("@/db/repositories/characters", () => ({
   userCharactersRepository: { findByIdInOrganization },
@@ -61,10 +61,10 @@ mock.module("@/db/client", () => ({
 }));
 const warmInferenceAdmissionSnapshot = mock(async () => undefined);
 mock.module("@/lib/services/inference-admission-snapshot", () => ({
-  getInferenceAdmissionSnapshotCacheOnly: mock(),
   InferenceAdmissionSnapshotCacheWarmingError: class extends Error {},
-  inferenceRateLimitConfig: mock(),
-  loadInferenceAdmissionSnapshot: mock(),
+  getInferenceAdmissionSnapshotCacheOnly: mock(async () => null),
+  inferenceRateLimitConfig: mock(() => undefined),
+  loadInferenceAdmissionSnapshot: mock(async () => null),
   warmInferenceAdmissionSnapshot,
 }));
 const warmInferenceAdmissionGate = mock(async () => undefined);

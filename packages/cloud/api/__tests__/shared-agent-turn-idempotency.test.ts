@@ -40,6 +40,9 @@ mock.module("@/db/client", () => ({
   runWithDbCacheAsync: async <T>(fn: () => Promise<T>) => await fn(),
 }));
 mock.module("@/lib/runtime/cloud-bindings", () => ({
+  getCloudAwareEnv: () => process.env,
+  getCloudBinding: () => undefined,
+  hasCloudBindingsContext: () => false,
   runWithCloudBindingsAsync: async <T>(_env: unknown, fn: () => Promise<T>) =>
     await fn(),
 }));
@@ -132,8 +135,15 @@ mock.module("@/lib/services/inference-billing-fast-path", () => ({
   InferenceBalanceCacheWarmingError: class extends Error {},
 }));
 mock.module("@/lib/services/shared-runtime/run-shared-agent-turn", () => ({
-  appendSharedInput: mock(),
-  appendSharedTurn: mock(),
+  appendSharedInput: (history: unknown[], message: string) => [
+    ...history,
+    { role: "user", content: message },
+  ],
+  appendSharedTurn: (history: unknown[], message: string, reply: string) => [
+    ...history,
+    { role: "user", content: message },
+    { role: "assistant", content: reply },
+  ],
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
   runSharedAgentTurn: async (input: {
     message: string;

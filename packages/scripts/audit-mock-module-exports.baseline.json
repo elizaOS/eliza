@@ -44,10 +44,6 @@
     "count": 1
   },
   {
-    "finding": "[missing-export] packages/cloud/api/__tests__/shared-agent-turn-idempotency.test.ts mock \"@/lib/runtime/cloud-bindings\" is missing bound export(s): getCloudAwareEnv, getCloudBinding",
-    "count": 1
-  },
-  {
     "finding": "[missing-export] packages/cloud/api/__tests__/shared-agent-turn-idempotency.test.ts mock \"@/lib/services/ai-billing\" is missing bound export(s): reserveCredits",
     "count": 1
   },
@@ -241,10 +237,6 @@
   },
   {
     "finding": "[missing-export] packages/cloud/shared/src/lib/services/agent-env-crypto.test.ts mock \"../../db/helpers\" is missing bound export(s): writeTransaction",
-    "count": 1
-  },
-  {
-    "finding": "[missing-export] packages/cloud/shared/src/lib/services/agent-gateway-router.test.ts mock \"./eliza-agent-config\" is missing bound export(s): AGENT_MANAGED_DISCORD_KEY, AGENT_PERSONAL_CUTOVER_KEY, AGENT_UPGRADED_FROM_KEY, readPersonalElizaCutover, readUpgradedFromAgentId, reusesExistingElizaCharacter, stripReservedElizaConfigKeys, withReusedElizaCharacterOwnership",
     "count": 1
   },
   {

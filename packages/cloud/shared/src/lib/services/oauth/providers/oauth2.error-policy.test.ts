@@ -47,6 +47,8 @@ mock.module("../../../cache/client", () => ({
 
 mock.module("../../../runtime/cloud-bindings", () => ({
   getCloudAwareEnv: () => ({ NEXT_PUBLIC_APP_URL: "https://test.example" }),
+  getCloudBinding: () => undefined,
+  hasCloudBindingsContext: () => false,
 }));
 
 mock.module("../provider-registry", () => ({
@@ -82,6 +84,8 @@ mock.module("../../../../db/client", () => ({
 }));
 
 mock.module("../../../../db/helpers", () => ({
+  dbRead: {},
+  dbWrite: {},
   writeTransaction: async (fn: (tx: unknown) => Promise<unknown>) =>
     fn({
       insert: () => ({

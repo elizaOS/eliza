@@ -54,7 +54,7 @@ mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
 mock.module("@/lib/services/shared-runtime/personal-shared-agent", () => ({
   isPersonalSharedAgentId: () => false,
   personalSharedAgent: () => null,
-  personalSharedAgentId: () => "personal-agent",
+  personalSharedAgentId: () => "personal:mock",
 }));
 
 const { createInternalElizaConversationFetch } = await import(
