@@ -89,6 +89,23 @@ describePosixShell("shell plugin real local integration", () => {
     expect(provider.values?.currentWorkingDirectory).toBe(allowedDirectory);
   });
 
+  it("captures multibyte stdout without corruption across pipe chunk boundaries", async () => {
+    // Emit ~150 KB of a 3-byte UTF-8 code point so the subprocess stdout is
+    // delivered as several `data` chunks and code points straddle the
+    // boundaries. Per-chunk `Buffer.toString()` would replace the split bytes
+    // with U+FFFD; a UTF-8 stream decode keeps them intact.
+    const count = 50_000;
+    const result = await service.executeCommand(
+      `node -e 'process.stdout.write("\u4f60".repeat(${count}))'`,
+      "room-utf8",
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.stdout).not.toContain("\uFFFD");
+    expect(result.stdout.length).toBe(count);
+    expect(result.stdout).toBe("\u4f60".repeat(count));
+  });
+
   it("stores and provides only redacted configured bare secrets", async () => {
     const secret = "marigold9";
     await service.stop();
