@@ -42,7 +42,7 @@ function walkSchema(node: unknown, depth: number, acc: { nodes: number }): strin
   return undefined;
 }
 
-function getMcpJsonSchemaBudgetError(schema: unknown): string | undefined {
+export function getMcpJsonSchemaBudgetError(schema: unknown): string | undefined {
   let serialized: string | undefined;
   try {
     serialized = JSON.stringify(schema);

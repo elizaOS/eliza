@@ -4,6 +4,10 @@
  * existing tool/resource, and tool arguments must satisfy the tool's own input
  * schema; an explicit noTool/noResourceAvailable signal is accepted as valid.
  */
+
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
+import { Worker } from "node:worker_threads";
 import type { State } from "@elizaos/core";
 import {
   type McpProviderData,
@@ -11,7 +15,7 @@ import {
   ResourceSelectionSchema,
   type ValidationResult,
 } from "../types";
-import { validateJsonSchema } from "./json";
+import { getMcpJsonSchemaBudgetError, validateJsonSchema } from "./json";
 import {
   type ResourceSelection,
   type ToolSelectionArgument,
@@ -28,6 +32,146 @@ export interface ToolSelection {
   readonly arguments: Readonly<Record<string, unknown>>;
   readonly reasoning?: string;
   readonly noToolAvailable?: boolean;
+}
+
+const MAX_TOOL_ARGUMENTS_JSON_BYTES = 1024 * 1024;
+const TOOL_SCHEMA_VALIDATION_TIMEOUT_MS = 250;
+
+const applicationEntry = process.argv[1] ?? resolve(process.cwd(), "package.json");
+const applicationRequire = createRequire(resolve(applicationEntry));
+const pluginManifestPath = applicationRequire.resolve("@elizaos/plugin-mcp/package.json");
+const AJV_WORKER_MODULE_PATH = createRequire(pluginManifestPath).resolve("ajv");
+
+interface SchemaWorkerResult {
+  readonly success: boolean;
+  readonly error?: string;
+}
+
+const SCHEMA_WORKER_SOURCE = `
+  const { parentPort, workerData } = require("node:worker_threads");
+  const AjvImport = require(workerData.ajvModulePath);
+  const Ajv = AjvImport.default ?? AjvImport;
+
+  try {
+    const schema = JSON.parse(workerData.schemaJson);
+    const data = JSON.parse(workerData.dataJson);
+    const validate = new Ajv({ allErrors: true }).compile(schema);
+    const valid = validate(data);
+    parentPort.postMessage({ success: Boolean(valid), errors: validate.errors ?? [] });
+  } catch (error) {
+    parentPort.postMessage({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+`;
+
+function serializeToolArguments(
+  data: unknown
+): { success: true; json: string } | { success: false; error: string } {
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(data);
+  } catch {
+    // error-policy:J3 model-produced tool arguments must be finite JSON
+    return { success: false, error: "Tool arguments are not JSON-serializable" };
+  }
+
+  if (json === undefined) {
+    return { success: false, error: "Tool arguments are not JSON-serializable" };
+  }
+  const bytes = Buffer.byteLength(json);
+  if (bytes > MAX_TOOL_ARGUMENTS_JSON_BYTES) {
+    return {
+      success: false,
+      error: `Tool arguments serialized size ${bytes} exceeds ${MAX_TOOL_ARGUMENTS_JSON_BYTES}`,
+    };
+  }
+  return { success: true, json };
+}
+
+function formatWorkerErrors(errors: unknown): string {
+  if (!Array.isArray(errors)) return "validation failed";
+  return errors
+    .map((entry) => {
+      if (typeof entry !== "object" || entry === null) return "validation failed";
+      const error = entry as { instancePath?: unknown; dataPath?: unknown; message?: unknown };
+      const rawPath =
+        typeof error.instancePath === "string"
+          ? error.instancePath
+          : typeof error.dataPath === "string"
+            ? error.dataPath
+            : "";
+      const path = rawPath ? rawPath.replace(/^\//, "") : "value";
+      const message = typeof error.message === "string" ? error.message : "validation failed";
+      return `${path}: ${message}`;
+    })
+    .join(", ");
+}
+
+async function validateUntrustedToolArguments(
+  data: unknown,
+  schema: Readonly<Record<string, unknown>>
+): Promise<ValidationResult<unknown>> {
+  const schemaBudgetError = getMcpJsonSchemaBudgetError(schema);
+  if (schemaBudgetError) return { success: false, error: schemaBudgetError };
+
+  let schemaJson: string;
+  try {
+    schemaJson = JSON.stringify(schema);
+  } catch {
+    // error-policy:J3 schema serialization can fail if a mutable input changes after preflight
+    return { success: false, error: "MCP JSON schema is not JSON-serializable" };
+  }
+  const serialized = serializeToolArguments(data);
+  if (!serialized.success) return serialized;
+
+  return await new Promise<ValidationResult<unknown>>((resolve) => {
+    const worker = new Worker(SCHEMA_WORKER_SOURCE, {
+      eval: true,
+      workerData: {
+        schemaJson,
+        dataJson: serialized.json,
+        ajvModulePath: AJV_WORKER_MODULE_PATH,
+      },
+    });
+    let settled = false;
+
+    const finish = (result: ValidationResult<unknown>): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      worker.removeAllListeners();
+      void worker.terminate();
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => {
+      finish({
+        success: false,
+        error: `MCP JSON schema validation exceeded ${TOOL_SCHEMA_VALIDATION_TIMEOUT_MS}ms`,
+      });
+    }, TOOL_SCHEMA_VALIDATION_TIMEOUT_MS);
+
+    worker.once("message", (message: SchemaWorkerResult & { errors?: unknown }) => {
+      if (message.success) {
+        finish({ success: true, data });
+      } else if (message.error) {
+        finish({ success: false, error: `schema validation failed: ${message.error}` });
+      } else {
+        finish({ success: false, error: formatWorkerErrors(message.errors) });
+      }
+    });
+    worker.once("error", (error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      finish({ success: false, error: `schema validation failed: ${message}` });
+    });
+    worker.once("exit", (code) => {
+      if (!settled) {
+        finish({ success: false, error: `schema validation worker exited with code ${code}` });
+      }
+    });
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -81,10 +225,10 @@ export function validateToolSelectionName(
   return { success: true, data };
 }
 
-export function validateToolSelectionArgument(
+export async function validateToolSelectionArgument(
   parsed: unknown,
   toolInputSchema: Readonly<Record<string, unknown>>
-): ValidationResult<ToolSelectionArgument> {
+): Promise<ValidationResult<ToolSelectionArgument>> {
   const normalizedParsed =
     isRecord(parsed) &&
     typeof parsed.toolArguments === "string" &&
@@ -101,7 +245,10 @@ export function validateToolSelectionArgument(
   }
 
   const data = basicResult.data;
-  const validationResult = validateJsonSchema(data.toolArguments, toolInputSchema);
+  const validationResult = await validateUntrustedToolArguments(
+    data.toolArguments,
+    toolInputSchema
+  );
 
   if (validationResult.success === false) {
     return {
