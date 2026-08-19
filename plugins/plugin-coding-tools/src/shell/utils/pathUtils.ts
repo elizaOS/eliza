@@ -1,14 +1,49 @@
 /**
  * Path and command-safety guards: validatePath() confines a resolved path to the
- * allowed directory, while isForbiddenCommand/isSafeCommand/extractBaseCommand
- * gate which commands the shell will run (the command-injection boundary).
- * isSafeCommand still allows one data pipe (cat | grep). It rejects active
- * shell syntax outside quoted data and a pipe into an interpreter or command
- * dispatcher because ShellService then runs the string as `shell -c`.
+ * allowed directory by realpath, while isForbiddenCommand/isSafeCommand/
+ * extractBaseCommand gate which commands the shell will run (the
+ * command-injection boundary). isSafeCommand still allows one data pipe
+ * (`cat | grep`). It rejects active shell syntax outside quoted data and a
+ * pipe into an interpreter or command dispatcher because ShellService then
+ * runs the string as `shell -c`.
+ *
+ * Lexical `path.resolve` + `path.relative` is not enough for workdir/`cd`:
+ * a symlink inside the allowed tree whose target is outside still looks
+ * contained, and spawning with that cwd follows the link.
  */
+import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { analyzeShellCommand } from "../approvals/analysis.js";
+
+/**
+ * Realpath `p`, walking up to the longest existing parent when the leaf is
+ * missing so a symlink directory cannot hide behind a not-yet-created name.
+ */
+function resolveRealPathSync(p: string): string {
+  const absolute = path.resolve(p);
+  try {
+    return fs.realpathSync(absolute);
+  } catch {
+    // error-policy:J3 missing leaf or ancestor — walk up rather than treating
+    // the lexical path as contained.
+  }
+  const tail: string[] = [];
+  let current = absolute;
+  for (;;) {
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return absolute;
+    }
+    tail.unshift(path.basename(current));
+    try {
+      return path.join(fs.realpathSync(parent), ...tail);
+    } catch {
+      // error-policy:J3 this ancestor is also missing; keep walking.
+      current = parent;
+    }
+  }
+}
 
 export function validatePath(
   commandPath: string,
@@ -16,18 +51,18 @@ export function validatePath(
   currentDir: string,
 ): string | null {
   const resolvedPath = path.resolve(currentDir, commandPath);
-  const normalizedPath = path.normalize(resolvedPath);
-  const normalizedAllowed = path.normalize(allowedDir);
-  const relative = path.relative(normalizedAllowed, normalizedPath);
+  const realPath = resolveRealPathSync(resolvedPath);
+  const realAllowed = resolveRealPathSync(allowedDir);
+  const relative = path.relative(realAllowed, realPath);
 
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
     logger.warn(
-      `Path validation failed: ${normalizedPath} is outside allowed directory ${normalizedAllowed}`,
+      `Path validation failed: ${resolvedPath} is outside allowed directory ${allowedDir}`,
     );
     return null;
   }
 
-  return normalizedPath;
+  return realPath;
 }
 
 const PIPE_INTERPRETERS = new Set([
