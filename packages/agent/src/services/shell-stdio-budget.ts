@@ -23,35 +23,41 @@ export function createShellStdioState(): ShellStdioState {
 }
 
 /**
- * Append one child-stdio chunk. When the write would exceed `maxBytes`, keep
- * the leading slice that fills the cap exactly, then return `overflow`.
+ * Append one child-stdio chunk. `chunk` must already be a decoded string
+ * (the caller puts the stream in "utf8" mode via `setEncoding`) so a
+ * multi-byte code point split across two OS pipe chunks is reassembled by
+ * Node's StringDecoder before it ever reaches here, instead of each half
+ * being decoded independently and replaced with U+FFFD. When the write
+ * would exceed `maxBytes`, keep the leading slice that fills the cap
+ * exactly, then return `overflow`.
  */
 export function appendShellStdio(
   state: ShellStdioState,
   target: "stdout" | "stderr",
-  chunk: Buffer,
+  chunk: string,
   maxBytes = MAX_SHELL_STDIO_BYTES,
 ): "ok" | "overflow" {
+  const chunkBytes = Buffer.byteLength(chunk, "utf8");
   const remaining = maxBytes - state.bytes;
-  if (chunk.byteLength > remaining) {
+  if (chunkBytes > remaining) {
     if (remaining > 0) {
-      const head = chunk.subarray(0, remaining);
-      state.bytes += head.byteLength;
-      const text = head.toString("utf8");
+      const head = Buffer.from(chunk, "utf8")
+        .subarray(0, remaining)
+        .toString("utf8");
+      state.bytes += remaining;
       if (target === "stdout") {
-        state.stdout += text;
+        state.stdout += head;
       } else {
-        state.stderr += text;
+        state.stderr += head;
       }
     }
     return "overflow";
   }
-  state.bytes += chunk.byteLength;
-  const text = chunk.toString("utf8");
+  state.bytes += chunkBytes;
   if (target === "stdout") {
-    state.stdout += text;
+    state.stdout += chunk;
   } else {
-    state.stderr += text;
+    state.stderr += chunk;
   }
   return "ok";
 }
