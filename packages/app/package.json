@@ -161,7 +161,7 @@
     "@capacitor/barcode-scanner": "3.0.2",
     "@capacitor/browser": "8.0.4",
     "@capacitor/core": "8.5.0",
-    "@capacitor/device": "8.0.2",
+    "@capacitor/device": "8.0.3",
     "@capacitor/filesystem": "^8.0.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/ios": "8.5.0",
