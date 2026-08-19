@@ -476,6 +476,33 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.values).not.toHaveProperty("completedActionDelivered");
 		});
 
+		it("does not misclassify a receipt body transport failure as malformed JSON", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue({
+				ok: true,
+				status: 200,
+				text: async () => "",
+				json: async () => {
+					throw new Error("receipt body stream failed");
+				},
+			} as Response);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				message("open calendar") as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			expect(result?.success).toBe(false);
+			expect(result?.text).toContain("shell did not confirm");
+		});
+
 		it("resolves an explicit view option without verb parsing", async () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(REGISTRY, "do it", {

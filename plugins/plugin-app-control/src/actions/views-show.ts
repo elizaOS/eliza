@@ -434,11 +434,15 @@ async function navigateToView(
 		const sectionSuffix = resolvedSubview ? ` — ${resolvedSubview}` : "";
 		const openedText = `Opened ${navigationLabel}${sectionSuffix}.`;
 		if (resp.ok) {
-			const responseBody = (await resp.json().catch(() => {
-				// error-policy:J3 an optional delivery receipt is untrusted transport
-				// input; malformed JSON keeps the terminal navigation fallback enabled.
-				return null;
-			})) as Record<string, unknown> | null;
+			let responseBody: Record<string, unknown> | null;
+			try {
+				responseBody = (await resp.json()) as Record<string, unknown>;
+			} catch (error) {
+				// error-policy:J3 malformed optional receipt JSON keeps the terminal
+				// navigation fallback enabled; transport/body failures remain failures.
+				if (!(error instanceof SyntaxError)) throw error;
+				responseBody = null;
+			}
 			return {
 				ok: true,
 				text: openedText,
