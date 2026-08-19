@@ -76,10 +76,10 @@ const YTD_PREFIX = /^\s*window\.YTD\.[\w-]+\.part\d+\s*=\s*/;
 export const MAX_X_ARCHIVE_ZIP_BYTES = 1 * 1024 * 1024 * 1024;
 
 /**
- * Sum of central-directory uncompressed sizes. `unzipSync` materializes every
- * matching entry at its declared size, so this is the peak allocation.
+ * Sum of the central-directory sizes for JavaScript data files selected by the
+ * extractor. Media and other unselected archive entries are never materialized.
  */
-export const MAX_X_ARCHIVE_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024;
+export const MAX_X_ARCHIVE_UNCOMPRESSED_BYTES = 512 * 1024 * 1024;
 
 function stripYtdPrefix(fileName: string, raw: string): string {
   if (!YTD_PREFIX.test(raw)) {
@@ -221,8 +221,11 @@ export function assertXArchiveZipUncompressedSize(zipBuffer: Uint8Array): void {
       data[i + 2] === 0x05 &&
       data[i + 3] === 0x06
     ) {
-      eocd = i;
-      break;
+      const commentLength = view.getUint16(i + 20, true);
+      if (i + 22 + commentLength === data.length) {
+        eocd = i;
+        break;
+      }
     }
   }
   if (eocd < 0) {
@@ -232,12 +235,32 @@ export function assertXArchiveZipUncompressedSize(zipBuffer: Uint8Array): void {
     });
   }
 
+  const diskNumber = view.getUint16(eocd + 4, true);
+  const centralDirectoryDisk = view.getUint16(eocd + 6, true);
+  const entriesOnDisk = view.getUint16(eocd + 8, true);
   const entryCount = view.getUint16(eocd + 10, true);
+  const cdSize = view.getUint32(eocd + 12, true);
   const cdOffset = view.getUint32(eocd + 16, true);
-  if (entryCount === 0xffff || cdOffset === 0xffffffff) {
+  if (
+    entryCount === 0xffff ||
+    entriesOnDisk === 0xffff ||
+    cdSize === 0xffffffff ||
+    cdOffset === 0xffffffff
+  ) {
     throw new ElizaError("X archive ZIP uses zip64, which is not supported", {
       code: "X_ARCHIVE_ZIP_INVALID",
       context: { reason: "zip64 central directory" },
+    });
+  }
+  if (
+    diskNumber !== 0 ||
+    centralDirectoryDisk !== 0 ||
+    entriesOnDisk !== entryCount ||
+    cdOffset + cdSize !== eocd
+  ) {
+    throw new ElizaError("X archive ZIP is not a valid archive", {
+      code: "X_ARCHIVE_ZIP_INVALID",
+      context: { reason: "inconsistent central directory" },
     });
   }
 
@@ -260,23 +283,44 @@ export function assertXArchiveZipUncompressedSize(zipBuffer: Uint8Array): void {
         context: { reason: "zip64 uncompressed size", entryIndex: i },
       });
     }
-    totalUncompressed += declared;
-    if (totalUncompressed > MAX_X_ARCHIVE_UNCOMPRESSED_BYTES) {
-      throw new ElizaError(
-        "X archive ZIP expands beyond the uncompressed size limit",
-        {
-          code: "X_ARCHIVE_ZIP_TOO_LARGE",
-          context: {
-            declaredBytes: totalUncompressed,
-            maxBytes: MAX_X_ARCHIVE_UNCOMPRESSED_BYTES,
-          },
-        },
-      );
-    }
     const nameLen = view.getUint16(offset + 28, true);
     const extraLen = view.getUint16(offset + 30, true);
     const commentLen = view.getUint16(offset + 32, true);
-    offset += 46 + nameLen + extraLen + commentLen;
+    const nextOffset = offset + 46 + nameLen + extraLen + commentLen;
+    if (nextOffset > eocd) {
+      throw new ElizaError("X archive ZIP is not a valid archive", {
+        code: "X_ARCHIVE_ZIP_INVALID",
+        context: {
+          reason: "central directory entry exceeds bounds",
+          entryIndex: i,
+        },
+      });
+    }
+    const name = new TextDecoder().decode(
+      data.subarray(offset + 46, offset + 46 + nameLen),
+    );
+    if (name.startsWith("data/") && name.endsWith(".js")) {
+      totalUncompressed += declared;
+      if (totalUncompressed > MAX_X_ARCHIVE_UNCOMPRESSED_BYTES) {
+        throw new ElizaError(
+          "X archive data files expand beyond the uncompressed size limit",
+          {
+            code: "X_ARCHIVE_ZIP_TOO_LARGE",
+            context: {
+              declaredBytes: totalUncompressed,
+              maxBytes: MAX_X_ARCHIVE_UNCOMPRESSED_BYTES,
+            },
+          },
+        );
+      }
+    }
+    offset = nextOffset;
+  }
+  if (offset !== eocd) {
+    throw new ElizaError("X archive ZIP is not a valid archive", {
+      code: "X_ARCHIVE_ZIP_INVALID",
+      context: { reason: "central directory size mismatch" },
+    });
   }
 }
 

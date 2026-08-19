@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { validateCorpusTarget } from "../validator.ts";
 import {
   assertXArchiveZipFileSize,
+  assertXArchiveZipUncompressedSize,
   collectXArchive,
   MAX_X_ARCHIVE_UNCOMPRESSED_BYTES,
   MAX_X_ARCHIVE_ZIP_BYTES,
@@ -263,6 +264,31 @@ describe("collectXArchive", () => {
     ).rejects.toMatchObject({ code: "X_ARCHIVE_ZIP_TOO_LARGE" });
   });
 
+  it("does not count media entries that the extractor skips", () => {
+    const zip = zipSync({
+      "data/tweets.js": new TextEncoder().encode(
+        "window.YTD.tweets.part0 = []",
+      ),
+      "data/tweet_media/large.mp4": new Uint8Array([1]),
+    });
+    const forged = forgeEntryUncompressedSize(
+      zip,
+      "data/tweet_media/large.mp4",
+      MAX_X_ARCHIVE_UNCOMPRESSED_BYTES + 1,
+    );
+    expect(() => assertXArchiveZipUncompressedSize(forged)).not.toThrow();
+  });
+
+  it("rejects inconsistent central-directory metadata", () => {
+    const zip = new Uint8Array(zipSync({ "data/tweets.js": new Uint8Array() }));
+    const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    const eocd = findEocd(zip);
+    view.setUint16(eocd + 8, view.getUint16(eocd + 8, true) + 1, true);
+    expect(() => assertXArchiveZipUncompressedSize(zip)).toThrowError(
+      expect.objectContaining({ code: "X_ARCHIVE_ZIP_INVALID" }),
+    );
+  });
+
   it("rejects a buffer that is not a ZIP archive", async () => {
     const zipPath = path.join(await makeTempDir(), "not.zip");
     await fs.writeFile(zipPath, "this is not a zip file at all");
@@ -327,6 +353,39 @@ function forgeUncompressedSizes(zip: Uint8Array, size: number): Uint8Array {
       view.getUint16(offset + 32, true);
   }
   return out;
+}
+
+function forgeEntryUncompressedSize(
+  zip: Uint8Array,
+  wantedName: string,
+  size: number,
+): Uint8Array {
+  const out = new Uint8Array(zip);
+  const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+  const eocd = findEocd(out);
+  const entryCount = view.getUint16(eocd + 10, true);
+  let offset = view.getUint32(eocd + 16, true);
+  for (let i = 0; i < entryCount; i++) {
+    const nameLen = view.getUint16(offset + 28, true);
+    const name = new TextDecoder().decode(
+      out.subarray(offset + 46, offset + 46 + nameLen),
+    );
+    if (name === wantedName) view.setUint32(offset + 24, size, true);
+    offset +=
+      46 +
+      nameLen +
+      view.getUint16(offset + 30, true) +
+      view.getUint16(offset + 32, true);
+  }
+  return out;
+}
+
+function findEocd(zip: Uint8Array): number {
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  for (let i = zip.length - 22; i >= 0; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) return i;
+  }
+  throw new Error("test ZIP lacks EOCD");
 }
 
 async function zipFixtureBytes(): Promise<Uint8Array> {
