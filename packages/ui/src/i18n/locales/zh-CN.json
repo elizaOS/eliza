@@ -5251,6 +5251,7 @@
   "memoryviewer.loadOlder": "加载更早",
   "memoryviewer.searchMemoryText": "搜索记忆内容…",
   "memoryviewer.pageRange": "{{start}}–{{end}} / {{total}}",
+  "memoryviewer.pageRangeIncomplete": "{{start}}–{{end}} / 至少 {{total}}",
   "memoryviewer.prev": "上一页",
   "memoryviewer.next": "下一页",
   "memoryviewer.total": "总计",

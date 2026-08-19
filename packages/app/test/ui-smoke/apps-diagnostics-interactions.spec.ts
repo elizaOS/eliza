@@ -1,13 +1,12 @@
-// Real interaction coverage for the built-in diagnostic page-views (logs,
-// memories). all-pages-clicksafe only proves these routes *render* without a
-// crash; the view-interaction ratchet only covers plugin-manifest views, so
-// their actual controls were never clicked or asserted. This spec drives the
-// controls and asserts they DO something — search filters, refresh re-queries —
-// against the deterministic stub, closing the "diagnostic buttons never clicked"
-// gap in the keyless lane.
+/**
+ * Real interaction coverage for the built-in logs and memories pages. The
+ * deterministic browser harness verifies that their controls query, filter,
+ * paginate, and expose truthful result counts rather than merely rendering.
+ */
 
 import { expect, test } from "@playwright/test";
 import {
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -68,8 +67,39 @@ test("logs page re-queries the log source on a poll", async ({ page }) => {
 
 test("memory viewer queries memory data and the Browse toggle switches the surface", async ({
   page,
-}) => {
+}, testInfo) => {
   const memoryRequests: string[] = [];
+
+  // This test owns the memory surface itself. Hide the shell's independent
+  // chat overlay so pointer interception cannot turn the pagination contract
+  // into a test of chat-overlay geometry.
+  await hideChatOverlay(page);
+
+  await page.route("**/api/memories/browse**", async (route) => {
+    const memories = Array.from({ length: 50 }, (_, index) => ({
+      id: `memory-browse-${index}`,
+      type: "messages",
+      text: `Bounded memory result ${index + 1}`,
+      entityId: "entity-smoke-memory",
+      roomId: "room-smoke-memory",
+      agentId: "agent-smoke-memory",
+      createdAt: Date.parse("2026-01-01T00:00:00.000Z") - index,
+      metadata: null,
+      source: "ui-smoke",
+    }));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        memories,
+        total: 51,
+        totalIsExact: false,
+        hasMore: true,
+        limit: 50,
+        offset: 0,
+      }),
+    });
+  });
   page.on("request", (req) => {
     if (/\/api\/memories\//.test(req.url())) memoryRequests.push(req.url());
   });
@@ -97,4 +127,13 @@ test("memory viewer queries memory data and the Browse toggle switches the surfa
           .length,
     )
     .toBeGreaterThan(browseBefore);
+  await expect(page.getByText("1–50 of at least 51")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next" })).toBeEnabled();
+
+  if (process.env.E2E_RECORD === "1") {
+    await page.screenshot({
+      path: testInfo.outputPath("memory-browse-incomplete-total.png"),
+      fullPage: true,
+    });
+  }
 });

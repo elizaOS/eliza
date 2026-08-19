@@ -2315,6 +2315,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     limit?: number;
     count?: number;
     offset?: number;
+    cursor?: { createdAt: number; id: UUID };
     unique?: boolean;
     tableName: string;
     start?: number;
@@ -2333,7 +2334,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     includeEmbedding?: boolean;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
-    const { entityId, agentId, roomId, worldId, unique, start, end, offset } = params;
+    const { entityId, agentId, roomId, worldId, unique, start, end, offset, cursor } = params;
     const includeEmbedding = params.includeEmbedding !== false;
     const tableName = params.tableName;
     // tableName is required by the IDatabaseAdapter contract (there is no
@@ -2348,13 +2349,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const effectiveLimit = params.limit ?? params.count;
     // Default newest-first; `orderDirection: "asc"` powers around-message paging
     // (load the messages immediately *after* an anchor, not the newest tail).
+    // `Memory.createdAt` is a JavaScript millisecond timestamp. PostgreSQL
+    // stores microseconds, so keyset ordering must truncate to the precision
+    // represented by the cursor; comparing the raw column to a reconstructed
+    // Date would skip rows later in the same millisecond.
+    const cursorCreatedAt = sql`date_trunc('milliseconds', ${memoryTable.createdAt})`;
     const order =
       params.orderDirection === "asc"
-        ? [asc(memoryTable.createdAt), asc(memoryTable.id)]
-        : [desc(memoryTable.createdAt), desc(memoryTable.id)];
+        ? [asc(cursorCreatedAt), asc(memoryTable.id)]
+        : [desc(cursorCreatedAt), desc(memoryTable.id)];
 
     if (offset !== undefined && offset < 0) {
       throw new Error("offset must be a non-negative number");
+    }
+    if (cursor && offset !== undefined) {
+      throw new Error("getMemories cursor and offset are mutually exclusive");
     }
 
     return this.withEntityContext(entityId ?? null, async (tx) => {
@@ -2377,6 +2386,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       if (end !== undefined) {
         conditions.push(lte(memoryTable.createdAt, new Date(end)));
+      }
+
+      if (cursor) {
+        const cursorTimestamp = sql`(
+          timestamp 'epoch' + ${cursor.createdAt} * interval '1 millisecond'
+        )`;
+        conditions.push(
+          params.orderDirection === "asc"
+            ? sql`(
+                ${cursorCreatedAt} > ${cursorTimestamp}
+                OR (${cursorCreatedAt} = ${cursorTimestamp} AND ${memoryTable.id} > ${cursor.id}::uuid)
+              )`
+            : sql`(
+                ${cursorCreatedAt} < ${cursorTimestamp}
+                OR (${cursorCreatedAt} = ${cursorTimestamp} AND ${memoryTable.id} < ${cursor.id}::uuid)
+              )`
+        );
       }
 
       if (unique) {

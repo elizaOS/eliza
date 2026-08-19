@@ -5251,6 +5251,7 @@
   "memoryviewer.loadOlder": "이전 항목 불러오기",
   "memoryviewer.searchMemoryText": "메모리 텍스트 검색…",
   "memoryviewer.pageRange": "{{total}}개 중 {{start}}–{{end}}",
+  "memoryviewer.pageRangeIncomplete": "최소 {{total}}개 중 {{start}}–{{end}}",
   "memoryviewer.prev": "이전",
   "memoryviewer.next": "다음",
   "memoryviewer.total": "전체",
