@@ -11,7 +11,6 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
@@ -49,9 +48,17 @@ describe("merge candidate Biome workflow", () => {
   });
 
   test("the pinned Biome rejects a planted deliberately misformatted candidate", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "merge-candidate-biome-"));
-    const sourceDir = path.join(root, "packages", "fixture", "src");
-    mkdirSync(sourceDir, { recursive: true });
+    const fixtureRoot = path.join(
+      REPO_ROOT,
+      "packages",
+      "scripts",
+      "__tests__",
+      "merge-candidate-biome-",
+    );
+    mkdirSync(path.dirname(fixtureRoot), { recursive: true });
+    const root = mkdtempSync(fixtureRoot);
+    const sourceDir = path.join(root, "src");
+    mkdirSync(sourceDir);
     const planted = path.join(sourceDir, "planted.ts");
     writeFileSync(planted, "export const candidate={nested:{value:1}}\n");
 
@@ -63,6 +70,7 @@ describe("merge candidate Biome workflow", () => {
         "format",
         "--config-path",
         path.join(REPO_ROOT, "biome.json"),
+        "--vcs-enabled=false",
         planted,
       ]);
 
@@ -70,6 +78,7 @@ describe("merge candidate Biome workflow", () => {
       expect(result.stderr.toString()).toContain(
         "Formatter would have printed",
       );
+      expect(result.stderr.toString()).not.toContain("No files were processed");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
