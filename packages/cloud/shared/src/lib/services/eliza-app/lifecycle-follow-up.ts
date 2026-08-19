@@ -46,6 +46,13 @@ export function parseStoredLifecycleCapabilityContinuation(
   value: unknown,
   now: () => number = Date.now,
 ): LifecycleCapabilityContinuation | null {
+  return readStoredLifecycleCapabilityContinuation(value, now)?.continuation ?? null;
+}
+
+export function readStoredLifecycleCapabilityContinuation(
+  value: unknown,
+  now: () => number = Date.now,
+): StoredLifecycleCapabilityContinuation | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const stored = value as Record<string, unknown>;
   if (
@@ -55,7 +62,8 @@ export function parseStoredLifecycleCapabilityContinuation(
   ) {
     return null;
   }
-  return parseLifecycleCapabilityContinuation(stored.continuation);
+  const continuation = parseLifecycleCapabilityContinuation(stored.continuation);
+  return continuation ? { expiresAt: stored.expiresAt, continuation } : null;
 }
 
 const CAPABILITY_IDS = new Set<AgentCapabilityId>([

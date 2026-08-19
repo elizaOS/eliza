@@ -64,6 +64,22 @@ function isDeliverable(
   );
 }
 
+async function isTerminalRejection(response: Response): Promise<boolean> {
+  try {
+    const body: unknown = await response.clone().json();
+    return Boolean(
+      body &&
+        typeof body === "object" &&
+        (body as Record<string, unknown>).acceptance === "not_accepted" &&
+        (body as Record<string, unknown>).retryable === false,
+    );
+  } catch {
+    // error-policy:J3 an invalid internal response is not treated as a safe
+    // terminal result, so its queue lease remains available for retry.
+    return false;
+  }
+}
+
 /** Runs one bounded claim/deliver/ack pass for every webhook-owned platform. */
 export async function drainAndDeliverWebhookGreetings(options: {
   redis: GatewayRedis;
@@ -124,8 +140,12 @@ export async function drainAndDeliverWebhookGreetings(options: {
       );
       // A completed receipt or indeterminate acceptance must never be retried;
       // retrying an acceptance-unknown Telegram/Twilio send can duplicate it.
-      if (response.ok || response.status === 202) {
-        report.delivered += 1;
+      const terminalRejection =
+        !response.ok && response.status !== 202
+          ? await isTerminalRejection(response)
+          : false;
+      if (response.ok || response.status === 202 || terminalRejection) {
+        if (!terminalRejection) report.delivered += 1;
         acknowledgements.push({
           sessionId: entry.sessionId,
           leaseId: entry.leaseId,

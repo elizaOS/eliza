@@ -88,6 +88,7 @@ export async function twilioApiRequest<T>(
   method: string,
   endpoint: string,
   body?: URLSearchParams,
+  additionalHeaders?: Readonly<Record<string, string>>,
 ): Promise<T> {
   const url = `${TWILIO_API_BASE}/Accounts/${accountSid}${endpoint}`;
 
@@ -96,6 +97,7 @@ export async function twilioApiRequest<T>(
   const response = await fetch(url, {
     method,
     headers: {
+      ...additionalHeaders,
       Authorization: `Basic ${auth}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },

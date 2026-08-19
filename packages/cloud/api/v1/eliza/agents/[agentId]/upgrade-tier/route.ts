@@ -581,6 +581,17 @@ async function __hono_POST(
     // Race loser: another request committed the target (and its job) while
     // this one was in flight — reattach to that durable state.
     if (!result.created) {
+      if (capabilityContinuation) {
+        await persistTierUpgradeCapabilityContinuation({
+          organizationId: user.organization_id,
+          userId: user.id,
+          sourceAgentId: source.id,
+          dedicatedAgentId: result.agent.id,
+          capabilityContinuation: createStoredLifecycleCapabilityContinuation(
+            capabilityContinuation,
+          ),
+        });
+      }
       return await respondToLiveTarget(
         result.agent,
         source.id,

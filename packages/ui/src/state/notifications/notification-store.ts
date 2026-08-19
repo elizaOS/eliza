@@ -44,7 +44,10 @@ import {
   isElizaCloudControlPlaneAgentlessBase,
   isManagedCloudSharedAgentBase,
 } from "../../utils/cloud-agent-base";
-import { consumeCloudLifecycleFollowUps } from "./lifecycle-follow-up-consumer";
+import {
+  consumeCloudLifecycleFollowUps,
+  dismissAcceptedCloudLifecycleFollowUps,
+} from "./lifecycle-follow-up-consumer";
 
 /**
  * Notification center store.
@@ -83,6 +86,7 @@ let state: NotificationState = {
 
 const listeners = new Set<() => void>();
 const ephemeralNotificationIds = new Set<string>();
+const acceptedLifecycleNotificationIds = new Set<string>();
 let initialized = false;
 const HYDRATION_MAX_ATTEMPTS = 5;
 const HYDRATION_BASE_DELAY_MS = 500;
@@ -284,6 +288,7 @@ export function acceptInAppLifecycleNotification(
   notification: AgentNotification,
 ): void {
   ephemeralNotificationIds.add(notification.id);
+  acceptedLifecycleNotificationIds.add(notification.id);
   ingest(notification, undefined, { deliver: false });
 }
 
@@ -479,6 +484,7 @@ function clearForAuthorityChange(): void {
     hydrationError: null,
   });
   ephemeralNotificationIds.clear();
+  acceptedLifecycleNotificationIds.clear();
 }
 
 /**
@@ -952,7 +958,24 @@ export async function removeNotification(id: string): Promise<void> {
   const snapshot = snapshotForMutation([id]);
   const notifications = state.notifications.filter((n) => n.id !== id);
   setState({ notifications, unreadCount: countUnread(notifications) });
-  if (ephemeralNotificationIds.delete(id)) return;
+  if (ephemeralNotificationIds.has(id)) {
+    if (acceptedLifecycleNotificationIds.has(id)) {
+      if (
+        !currentAuthorityKey ||
+        !dismissAcceptedCloudLifecycleFollowUps(currentAuthorityKey, [id])
+      ) {
+        revertMutation(
+          snapshot,
+          "removeLifecycleNotification",
+          new Error("durable dismissal failed"),
+        );
+        return;
+      }
+      acceptedLifecycleNotificationIds.delete(id);
+    }
+    ephemeralNotificationIds.delete(id);
+    return;
+  }
   try {
     await client.removeNotification(id);
   } catch (err) {
@@ -969,7 +992,30 @@ export async function removeNotifications(
   const snapshot = snapshotForMutation(ids);
   const notifications = state.notifications.filter((n) => !idSet.has(n.id));
   setState({ notifications, unreadCount: countUnread(notifications) });
-  const ephemeralIds = ids.filter((id) => ephemeralNotificationIds.delete(id));
+  const ephemeralIds = ids.filter((id) => ephemeralNotificationIds.has(id));
+  const lifecycleIds = ephemeralIds.filter((id) =>
+    acceptedLifecycleNotificationIds.has(id),
+  );
+  if (
+    lifecycleIds.length > 0 &&
+    (!currentAuthorityKey ||
+      !dismissAcceptedCloudLifecycleFollowUps(
+        currentAuthorityKey,
+        lifecycleIds,
+      ))
+  ) {
+    revertMutation(
+      snapshot,
+      "removeLifecycleNotifications",
+      new Error("durable dismissal failed"),
+      ephemeralIds,
+    );
+    return;
+  }
+  for (const id of ephemeralIds) {
+    ephemeralNotificationIds.delete(id);
+    acceptedLifecycleNotificationIds.delete(id);
+  }
   const ephemeralIdSet = new Set(ephemeralIds);
   const persistedIds = ids.filter((id) => !ephemeralIdSet.has(id));
   if (persistedIds.length === 0) return;
@@ -993,15 +1039,29 @@ export async function removeNotifications(
 export async function clearNotifications(): Promise<void> {
   const snapshot = snapshotForMutation(state.notifications.map((n) => n.id));
   const previousEphemeralIds = [...ephemeralNotificationIds];
+  const lifecycleIds = previousEphemeralIds.filter((id) =>
+    acceptedLifecycleNotificationIds.has(id),
+  );
+  if (
+    lifecycleIds.length > 0 &&
+    (!currentAuthorityKey ||
+      !dismissAcceptedCloudLifecycleFollowUps(
+        currentAuthorityKey,
+        lifecycleIds,
+      ))
+  ) {
+    return;
+  }
   setState({ notifications: [], unreadCount: 0 });
   ephemeralNotificationIds.clear();
+  acceptedLifecycleNotificationIds.clear();
   try {
     await client.clearNotifications();
   } catch (err) {
-    if (snapshot.authorityKey === currentAuthorityKey) {
-      for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
-    }
-    revertMutation(snapshot, "clearNotifications", err);
+    const persistedIds = [...snapshot.originals.keys()].filter(
+      (id) => !previousEphemeralIds.includes(id),
+    );
+    revertMutation(snapshot, "clearNotifications", err, persistedIds);
   }
 }
 
@@ -1048,6 +1108,7 @@ export function __resetNotificationStoreForTests(): void {
   initialized = false;
   devSeedAttempted = false;
   ephemeralNotificationIds.clear();
+  acceptedLifecycleNotificationIds.clear();
   listeners.clear();
 }
 
@@ -1064,7 +1125,8 @@ export function __ingestEphemeralNotificationForTests(
   notification: AgentNotification,
   unreadCount?: number,
 ): void {
-  acceptInAppLifecycleNotification(notification);
+  ephemeralNotificationIds.add(notification.id);
+  ingest(notification, undefined, { deliver: false });
   if (typeof unreadCount === "number") {
     setState({ unreadCount });
   }

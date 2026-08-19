@@ -58,7 +58,10 @@ import {
   readPersonalElizaCutover,
   readUpgradedFromAgentId,
 } from "./eliza-agent-config";
-import type { StoredLifecycleCapabilityContinuation } from "./eliza-app/lifecycle-follow-up";
+import {
+  parseStoredLifecycleCapabilityContinuation,
+  type StoredLifecycleCapabilityContinuation,
+} from "./eliza-app/lifecycle-follow-up";
 import {
   configureElizaLifecycleTransaction,
   elizaAgentCreateAdvisoryLockSql,
@@ -144,6 +147,58 @@ export async function persistTierUpgradeCapabilityContinuation(params: {
         updated_at: new Date(),
       })
       .where(eq(agentSandboxes.id, target.id));
+  });
+}
+
+/** Clears only the exact continuation that was durably queued. */
+export async function clearTierUpgradeCapabilityContinuation(params: {
+  organizationId: string;
+  userId: string;
+  sourceAgentId: string;
+  dedicatedAgentId: string;
+  expected: StoredLifecycleCapabilityContinuation;
+}): Promise<boolean> {
+  return dbWrite.transaction(async (tx) => {
+    await configureElizaLifecycleTransaction(tx);
+    await tx.execute(
+      elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
+    );
+    const [target] = await tx
+      .select()
+      .from(agentSandboxes)
+      .where(
+        and(
+          liveTargetWhere(params.organizationId, params.sourceAgentId),
+          eq(agentSandboxes.id, params.dedicatedAgentId),
+          eq(agentSandboxes.user_id, params.userId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!target) return false;
+    const config = (target.agent_config as Record<string, unknown> | null) ?? {};
+    const currentRaw = config[AGENT_UPGRADE_CONTINUATION_KEY];
+    const current = parseStoredLifecycleCapabilityContinuation(
+      currentRaw,
+      () => Number.NEGATIVE_INFINITY,
+    );
+    const expected = params.expected.continuation;
+    if (
+      !current ||
+      (currentRaw as { expiresAt?: unknown }).expiresAt !== params.expected.expiresAt ||
+      current.originalIntent !== expected.originalIntent ||
+      current.capabilityId !== expected.capabilityId ||
+      current.clientMessageId !== expected.clientMessageId ||
+      current.requiresConfirmation !== expected.requiresConfirmation
+    ) {
+      return false;
+    }
+    const { [AGENT_UPGRADE_CONTINUATION_KEY]: _removed, ...settled } = config;
+    await tx
+      .update(agentSandboxes)
+      .set({ agent_config: settled, updated_at: new Date() })
+      .where(eq(agentSandboxes.id, target.id));
+    return true;
   });
 }
 
@@ -284,8 +339,6 @@ export async function finalizePersonalTierUpgradeCutover(params: {
       target.agent_config as Record<string, unknown> | null,
     );
     const targetConfig = (target.agent_config as Record<string, unknown> | null) ?? {};
-    const { [AGENT_UPGRADE_CONTINUATION_KEY]: pendingContinuation, ...settledTargetConfig } =
-      targetConfig;
     const sameCutover =
       existing?.sourceAgentId === params.sourceAgentId &&
       existing.cutoverToken === params.cutoverToken;
@@ -297,14 +350,9 @@ export async function finalizePersonalTierUpgradeCutover(params: {
       existing.sharedTodoMutationCount === params.sharedTodoMutationCount &&
       existing.sharedTodoDigest === params.sharedTodoDigest
     ) {
-      if (pendingContinuation !== undefined) {
-        const [cleared] = await tx
-          .update(agentSandboxes)
-          .set({ agent_config: settledTargetConfig, updated_at: new Date() })
-          .where(eq(agentSandboxes.id, target.id))
-          .returning();
-        return cleared ?? target;
-      }
+      // Keep the pending continuation until the lifecycle queue confirms a
+      // durable enqueue. Clearing it at marker commit loses the exact request
+      // whenever the independent notification store is temporarily down.
       return target;
     }
 
@@ -312,7 +360,7 @@ export async function finalizePersonalTierUpgradeCutover(params: {
       .update(agentSandboxes)
       .set({
         agent_config: {
-          ...settledTargetConfig,
+          ...targetConfig,
           [AGENT_PERSONAL_CUTOVER_KEY]: {
             mode: "dedicated",
             sourceAgentId: params.sourceAgentId,

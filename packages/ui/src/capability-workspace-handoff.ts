@@ -15,6 +15,23 @@ const CAPABILITY_WORKSPACE_HANDOFF_TTL_MS = 30 * 60 * 1_000;
 const CONNECTION_CAPABILITIES = new Set<
   CapabilityHandoffRequest["capabilityId"]
 >(["calendar", "communications", "cloud-apps"]);
+const HANDOFF_CAPABILITIES = new Set<CapabilityHandoffRequest["capabilityId"]>([
+  "calendar",
+  "reminders",
+  "todos",
+  "bookings",
+  "communications",
+  "purchases",
+  "notes",
+  "cloud-apps",
+  "coding-runtime",
+  "shell",
+  "filesystem",
+  "browser-control",
+  "profile-memory",
+]);
+const MAX_CONTINUATION_INTENT_LENGTH = 4_000;
+const MAX_CLIENT_MESSAGE_ID_LENGTH = 128;
 
 export interface CapabilityConnectorContinuation {
   version: 1;
@@ -70,7 +87,9 @@ export function findCapabilityWorkspaceHandoff(
       candidate.version !== 1 ||
       candidate.kind !== "capability_handoff" ||
       typeof candidate.capabilityId !== "string" ||
-      !candidate.capabilityId ||
+      !HANDOFF_CAPABILITIES.has(
+        candidate.capabilityId as CapabilityHandoffRequest["capabilityId"],
+      ) ||
       typeof candidate.label !== "string" ||
       !candidate.label ||
       typeof candidate.reason !== "string" ||
@@ -92,15 +111,19 @@ export function findCapabilityWorkspaceHandoff(
     const originalIntent =
       isRecord(continuation) &&
       typeof continuation.originalIntent === "string" &&
-      continuation.originalIntent.trim()
+      continuation.originalIntent.trim() &&
+      continuation.originalIntent.trim().length <=
+        MAX_CONTINUATION_INTENT_LENGTH
         ? continuation.originalIntent
-        : fallbackIntent?.trim()
+        : fallbackIntent?.trim() &&
+            fallbackIntent.trim().length <= MAX_CONTINUATION_INTENT_LENGTH
           ? fallbackIntent
           : undefined;
     const clientMessageId =
       isRecord(continuation) &&
       typeof continuation.clientMessageId === "string" &&
-      continuation.clientMessageId.trim()
+      continuation.clientMessageId.trim() &&
+      continuation.clientMessageId.trim().length <= MAX_CLIENT_MESSAGE_ID_LENGTH
         ? continuation.clientMessageId
         : undefined;
 
@@ -297,9 +320,13 @@ function readConnectorContinuation(
     ) ||
     typeof candidate.originalIntent !== "string" ||
     !candidate.originalIntent.trim() ||
+    candidate.originalIntent.trim().length > MAX_CONTINUATION_INTENT_LENGTH ||
     typeof candidate.requiresConfirmation !== "boolean" ||
     (candidate.clientMessageId !== undefined &&
-      typeof candidate.clientMessageId !== "string") ||
+      (typeof candidate.clientMessageId !== "string" ||
+        !candidate.clientMessageId.trim() ||
+        candidate.clientMessageId.trim().length >
+          MAX_CLIENT_MESSAGE_ID_LENGTH)) ||
     (candidate.connectorId !== undefined &&
       typeof candidate.connectorId !== "string")
   ) {

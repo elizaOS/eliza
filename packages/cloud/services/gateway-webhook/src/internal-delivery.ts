@@ -300,12 +300,12 @@ export async function deliverInternalMessage(
         error instanceof TelegramApiResponseError
           ? error.errorCode
           : error.status;
+      const retryable =
+        providerStatus === 408 ||
+        providerStatus === 429 ||
+        providerStatus >= 500;
       const status =
-        providerStatus === 401 ||
-        providerStatus === 403 ||
-        providerStatus === 429
-          ? providerStatus
-          : 422;
+        providerStatus >= 400 && providerStatus <= 599 ? providerStatus : 422;
       logger.warn("Provider explicitly rejected Shared reminder delivery", {
         project: delivery.project,
         platform: delivery.platform,
@@ -316,7 +316,7 @@ export async function deliverInternalMessage(
         {
           success: false,
           error: "provider rejected delivery",
-          retryable: true,
+          retryable,
           acceptance: "not_accepted",
           claimReleased,
           idempotencyKey: delivery.idempotencyKey,

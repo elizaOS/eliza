@@ -12,7 +12,9 @@ import {
 
 const DEFAULT_HANDOFF_BODY =
   "Eliza here — reply to this text to keep going after the call.";
-const MAX_DICTATED_BODY_CHARS = 600;
+const HANDOFF_LEDGER_TTL_SECONDS = 7 * 24 * 60 * 60;
+const HANDOFF_HISTORY_CONTENT =
+  "Voice action completed: sent the standard continuation SMS to the authenticated caller.";
 
 export type CallerSmsHandoffResult =
   | { handled: false }
@@ -21,42 +23,118 @@ export type CallerSmsHandoffResult =
 export interface CallerSmsHandoffConfig {
   accountSid: string;
   authToken: string;
+  callSid: string;
   fromNumber: string;
   callerNumber: string;
+  store?: CallerSmsHandoffStore;
+  recordSuccess: (event: {
+    id: string;
+    content: string;
+    createdAt: number;
+  }) => Promise<void>;
+  now?: () => number;
   send?: (
     accountSid: string,
     authToken: string,
     body: URLSearchParams,
+    idempotencyToken: string,
   ) => Promise<void>;
 }
 
-function requestedSmsBody(transcript: string): string | null {
+export interface CallerSmsHandoffStore {
+  get(key: string): Promise<unknown>;
+  set(
+    key: string,
+    value: string,
+    options?: { nx?: boolean; ex?: number },
+  ): Promise<unknown>;
+}
+
+type HandoffLedgerEntry =
+  | { status: "pending" }
+  | { status: "sent" | "completed"; createdAt: number };
+
+function parseLedgerEntry(value: unknown): HandoffLedgerEntry | null {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object") return null;
+    const record = parsed as Record<string, unknown>;
+    if (record.status === "pending") return { status: "pending" };
+    if (
+      (record.status === "sent" || record.status === "completed") &&
+      typeof record.createdAt === "number" &&
+      Number.isFinite(record.createdAt) &&
+      record.createdAt > 0
+    ) {
+      return { status: record.status, createdAt: record.createdAt };
+    }
+  } catch {
+    // error-policy:J3 malformed durable state fails closed below.
+  }
+  return null;
+}
+
+async function handoffIdentity(
+  accountSid: string,
+  callSid: string,
+): Promise<{ key: string; providerToken: string }> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(`${accountSid}\0${callSid}`),
+    ),
+  );
+  const encoded = Array.from(digest, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return {
+    key: `twilio:caller-sms-handoff:${encoded}`,
+    providerToken: encoded,
+  };
+}
+
+function requestedSmsBody(
+  transcript: string,
+): "continuation" | "unsupported_dictation" | null {
   const normalized = transcript.trim();
   if (
     /^(?:please\s+)?(?:text|sms)\s+me(?:\s+(?:a\s+)?(?:text|message|link))?[.!?]*$/i.test(
       normalized,
     )
   ) {
-    return DEFAULT_HANDOFF_BODY;
+    return "continuation";
   }
   const dictated = normalized.match(
     /^(?:please\s+)?(?:(?:text|sms)\s+me|send\s+me\s+(?:a\s+)?text)\s+(?:saying|with|this:)\s+(.+)$/i,
   )?.[1];
-  return dictated?.trim() || null;
+  return dictated?.trim() ? "unsupported_dictation" : null;
 }
 
 async function sendTwilioSms(
   accountSid: string,
   authToken: string,
   body: URLSearchParams,
+  idempotencyToken: string,
 ): Promise<void> {
-  await twilioApiRequest<TwilioSendMessageResponse>(
+  const response = await twilioApiRequest<TwilioSendMessageResponse>(
     accountSid,
     authToken,
     "POST",
     "/Messages.json",
     body,
+    { "I-Twilio-Idempotency-Token": idempotencyToken },
   );
+  if (
+    !response ||
+    typeof response !== "object" ||
+    typeof response.sid !== "string" ||
+    response.sid.trim().length === 0 ||
+    typeof response.status !== "string" ||
+    response.status.trim().length === 0
+  ) {
+    throw new Error("Twilio did not return a valid message receipt");
+  }
 }
 
 /** Build one call-scoped handler; successful duplicate requests send once. */
@@ -64,62 +142,158 @@ export function createCallerSmsHandoff(
   config: CallerSmsHandoffConfig,
 ): (transcript: string) => Promise<CallerSmsHandoffResult> {
   const send = config.send ?? sendTwilioSms;
-  const completedBodies = new Set<string>();
-  const sendsInFlight = new Map<string, Promise<boolean>>();
+  const now = config.now ?? Date.now;
   const numbersAreVerified =
     isE164PhoneNumber(config.fromNumber) &&
     isE164PhoneNumber(config.callerNumber);
 
+  const recordSuccess = async (createdAt: number): Promise<boolean> => {
+    try {
+      await config.recordSuccess({
+        id: `twilio-call:${config.callSid}:caller-sms-handoff`,
+        content: HANDOFF_HISTORY_CONTENT,
+        createdAt,
+      });
+      return true;
+    } catch (error) {
+      // error-policy:J4 the transport succeeded, but canonical history remains
+      // visibly pending and a later reconnect can repair it idempotently.
+      logger.warn("[twilio-voice] caller SMS history persistence failed", {
+        callSid: config.callSid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  };
+
+  const writeLedger = async (
+    store: CallerSmsHandoffStore,
+    key: string,
+    entry: Exclude<HandoffLedgerEntry, { status: "pending" }>,
+  ): Promise<boolean> => {
+    try {
+      await store.set(key, JSON.stringify(entry), {
+        ex: HANDOFF_LEDGER_TTL_SECONDS,
+      });
+      return true;
+    } catch (error) {
+      // error-policy:J7 the original pending claim remains the fail-closed
+      // duplicate fence; history persistence is still attempted separately.
+      logger.warn("[twilio-voice] caller SMS ledger update failed", {
+        callSid: config.callSid,
+        status: entry.status,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  };
+
   return async (transcript) => {
-    const body = requestedSmsBody(transcript);
-    if (body === null) return { handled: false };
+    const request = requestedSmsBody(transcript);
+    if (request === null) return { handled: false };
+    if (request === "unsupported_dictation") {
+      return {
+        handled: true,
+        response:
+          "I can only send the standard continuation text during a call. Say text me.",
+      };
+    }
     if (!numbersAreVerified) {
       return {
         handled: true,
         response: "I can't safely text this call. We can keep going here.",
       };
     }
-    if (body.length > MAX_DICTATED_BODY_CHARS) {
+    const store = config.store;
+    if (!store) {
       return {
         handled: true,
-        response: "That text is too long. Give me a shorter version.",
+        response:
+          "I can't safely text this call right now. We can keep going here.",
       };
     }
-    if (completedBodies.has(body)) {
-      return { handled: true, response: "That text is already sent." };
+    const { key, providerToken } = await handoffIdentity(
+      config.accountSid,
+      config.callSid,
+    );
+    let claimed: unknown;
+    try {
+      claimed = await store.set(key, JSON.stringify({ status: "pending" }), {
+        nx: true,
+        ex: HANDOFF_LEDGER_TTL_SECONDS,
+      });
+    } catch (error) {
+      // error-policy:J4 without a durable claim, sending could duplicate a
+      // provider side effect after an isolate crash or stream reconnect.
+      logger.warn("[twilio-voice] caller SMS claim unavailable", {
+        callSid: config.callSid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        handled: true,
+        response:
+          "I can't safely text this call right now. We can keep going here.",
+      };
     }
 
-    let pending = sendsInFlight.get(body);
-    if (!pending) {
-      const params = new URLSearchParams({
-        To: config.callerNumber,
-        From: config.fromNumber,
-        Body: body,
-      });
-      pending = send(config.accountSid, config.authToken, params)
-        .then(() => {
-          completedBodies.add(body);
-          return true;
-        })
-        .catch((error) => {
-          // error-policy:J4 Twilio rejection becomes an explicit spoken
-          // failure; the call continues without claiming the SMS was sent.
-          logger.warn("[twilio-voice] caller SMS handoff failed", {
-            error: error instanceof Error ? error.message : String(error),
+    if (claimed === null || claimed === undefined) {
+      let existing: HandoffLedgerEntry | null = null;
+      try {
+        existing = parseLedgerEntry(await store.get(key));
+      } catch (error) {
+        // error-policy:J4 unreadable durable state cannot authorize another send.
+        logger.warn("[twilio-voice] caller SMS claim unreadable", {
+          callSid: config.callSid,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      if (existing?.status === "completed") {
+        return { handled: true, response: "That text is already sent." };
+      }
+      if (existing?.status === "sent") {
+        if (await recordSuccess(existing.createdAt)) {
+          await writeLedger(store, key, {
+            status: "completed",
+            createdAt: existing.createdAt,
           });
-          return false;
-        })
-        .finally(() => sendsInFlight.delete(body));
-      sendsInFlight.set(body, pending);
-    }
-    return (await pending)
-      ? {
-          handled: true,
-          response: "Sent it to the number you're calling from.",
         }
-      : {
-          handled: true,
-          response: "I couldn't send that text. We can keep going here.",
-        };
+        return { handled: true, response: "That text is already sent." };
+      }
+      return {
+        handled: true,
+        response: "I'm already handling that text.",
+      };
+    }
+
+    const params = new URLSearchParams({
+      To: config.callerNumber,
+      From: config.fromNumber,
+      Body: DEFAULT_HANDOFF_BODY,
+    });
+    try {
+      await send(config.accountSid, config.authToken, params, providerToken);
+    } catch (error) {
+      // error-policy:J4 Twilio rejection becomes an explicit spoken failure;
+      // The provider may have accepted the request before the transport threw.
+      // Retain the durable claim; a reconnect must not authorize another send.
+      logger.warn("[twilio-voice] caller SMS handoff failed", {
+        callSid: config.callSid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        handled: true,
+        response: "I couldn't send that text. We can keep going here.",
+      };
+    }
+
+    const createdAt = now();
+    await writeLedger(store, key, { status: "sent", createdAt });
+    if (await recordSuccess(createdAt)) {
+      await writeLedger(store, key, { status: "completed", createdAt });
+    }
+    return {
+      handled: true,
+      response: "Sent it to the number you're calling from.",
+    };
   };
 }

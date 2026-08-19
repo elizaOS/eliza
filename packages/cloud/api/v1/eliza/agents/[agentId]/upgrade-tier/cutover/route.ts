@@ -15,6 +15,7 @@ import { usersRepository } from "@/db/repositories/users";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
+  clearTierUpgradeCapabilityContinuation,
   finalizePersonalTierUpgradeCutover,
   findActivePersonalDedicatedTarget,
   findLiveTierUpgradeTarget,
@@ -27,7 +28,8 @@ import {
   enqueueUserLifecycleFollowUps,
   type LifecycleCapabilityContinuation,
   parseLifecycleCapabilityContinuation,
-  parseStoredLifecycleCapabilityContinuation,
+  readStoredLifecycleCapabilityContinuation,
+  type StoredLifecycleCapabilityContinuation,
 } from "@/lib/services/eliza-app/lifecycle-follow-up";
 import { invalidatePersonalDeliveryProjection } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
@@ -69,33 +71,82 @@ async function enqueueCompletedCutoverFollowUp(input: {
   dedicatedAgentId: string;
   cutoverToken: string;
   continuation?: LifecycleCapabilityContinuation;
-}): Promise<void> {
-  await enqueueUserLifecycleFollowUps([
-    {
-      kind: "workspace_ready",
-      idempotencyKey: `workspace-ready:${input.cutoverToken}`,
-      userId: input.userId,
-      organizationId: input.organizationId,
-      resourceId: input.dedicatedAgentId,
-      origin: "web",
-      agentId: input.dedicatedAgentId,
-      ...(input.continuation ? { continuation: input.continuation } : {}),
-    },
-    {
-      kind: "subscription_upgraded",
-      idempotencyKey: `subscription-upgraded:${input.cutoverToken}`,
-      userId: input.userId,
-      organizationId: input.organizationId,
-      resourceId: input.sourceAgentId,
-      origin: "web",
-      agentId: input.dedicatedAgentId,
-      ...(input.continuation ? { continuation: input.continuation } : {}),
-    },
-  ]).catch((error) => {
+}): Promise<boolean> {
+  try {
+    await enqueueUserLifecycleFollowUps([
+      {
+        kind: "workspace_ready",
+        idempotencyKey: `workspace-ready:${input.cutoverToken}`,
+        userId: input.userId,
+        organizationId: input.organizationId,
+        resourceId: input.dedicatedAgentId,
+        origin: "web",
+        agentId: input.dedicatedAgentId,
+        ...(input.continuation ? { continuation: input.continuation } : {}),
+      },
+      {
+        kind: "subscription_upgraded",
+        idempotencyKey: `subscription-upgraded:${input.cutoverToken}`,
+        userId: input.userId,
+        organizationId: input.organizationId,
+        resourceId: input.sourceAgentId,
+        origin: "web",
+        agentId: input.dedicatedAgentId,
+        ...(input.continuation ? { continuation: input.continuation } : {}),
+      },
+    ]);
+    return true;
+  } catch (error) {
     // error-policy:J7 cutover is already authoritative; report a notification
     // outage without claiming that the completed workspace activation failed.
     logger.error("[personal-cutover] durable lifecycle follow-up failed", {
       sourceAgentId: input.sourceAgentId,
+      dedicatedAgentId: input.dedicatedAgentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+function continuationMatchesStored(
+  continuation: LifecycleCapabilityContinuation | undefined,
+  stored: StoredLifecycleCapabilityContinuation | null,
+): stored is StoredLifecycleCapabilityContinuation {
+  if (!continuation || !stored) return false;
+  return (
+    continuation.originalIntent === stored.continuation.originalIntent &&
+    continuation.capabilityId === stored.continuation.capabilityId &&
+    continuation.clientMessageId === stored.continuation.clientMessageId &&
+    continuation.requiresConfirmation ===
+      stored.continuation.requiresConfirmation
+  );
+}
+
+async function clearQueuedContinuation(input: {
+  userId: string;
+  organizationId: string;
+  sourceAgentId: string;
+  dedicatedAgentId: string;
+  continuation?: LifecycleCapabilityContinuation;
+  stored: StoredLifecycleCapabilityContinuation | null;
+  queued: boolean;
+}): Promise<void> {
+  if (
+    !input.queued ||
+    !continuationMatchesStored(input.continuation, input.stored)
+  ) {
+    return;
+  }
+  await clearTierUpgradeCapabilityContinuation({
+    userId: input.userId,
+    organizationId: input.organizationId,
+    sourceAgentId: input.sourceAgentId,
+    dedicatedAgentId: input.dedicatedAgentId,
+    expected: input.stored,
+  }).catch((error) => {
+    // error-policy:J7 expiry still prevents replay; cleanup failure is reported
+    // without rewriting the authoritative cutover or queued notice as failed.
+    logger.error("[personal-cutover] continuation cleanup failed", {
       dedicatedAgentId: input.dedicatedAgentId,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -365,14 +416,12 @@ app.post("/", async (c) => {
       user.organization_id,
       sourceAgentId,
     );
-    let continuation =
-      requestContinuation ??
-      parseStoredLifecycleCapabilityContinuation(
-        (active?.agent_config as Record<string, unknown> | null)?.[
-          AGENT_UPGRADE_CONTINUATION_KEY
-        ],
-      ) ??
-      undefined;
+    let storedContinuation = readStoredLifecycleCapabilityContinuation(
+      (active?.agent_config as Record<string, unknown> | null)?.[
+        AGENT_UPGRADE_CONTINUATION_KEY
+      ],
+    );
+    let continuation = requestContinuation ?? storedContinuation?.continuation;
     if (
       active?.id === parsed.data.dedicatedAgentId &&
       active.user_id === user.id
@@ -444,13 +493,22 @@ app.post("/", async (c) => {
             holderToken: reminderReservationToken,
             expectedTaskCount: marker.sharedScheduledTaskCount,
           });
-          await enqueueCompletedCutoverFollowUp({
+          const queued = await enqueueCompletedCutoverFollowUp({
             userId: user.id,
             organizationId: user.organization_id,
             sourceAgentId,
             dedicatedAgentId: active.id,
             cutoverToken: sealToken,
             ...(continuation ? { continuation } : {}),
+          });
+          await clearQueuedContinuation({
+            userId: user.id,
+            organizationId: user.organization_id,
+            sourceAgentId,
+            dedicatedAgentId: active.id,
+            continuation,
+            stored: storedContinuation,
+            queued,
           });
           return json({
             success: true,
@@ -491,12 +549,12 @@ app.post("/", async (c) => {
         409,
       );
     }
-    continuation ??=
-      parseStoredLifecycleCapabilityContinuation(
-        (target.agent_config as Record<string, unknown> | null)?.[
-          AGENT_UPGRADE_CONTINUATION_KEY
-        ],
-      ) ?? undefined;
+    storedContinuation ??= readStoredLifecycleCapabilityContinuation(
+      (target.agent_config as Record<string, unknown> | null)?.[
+        AGENT_UPGRADE_CONTINUATION_KEY
+      ],
+    );
+    continuation ??= storedContinuation?.continuation;
 
     const base = personalDedicatedAgentApiBase(
       target,
@@ -707,13 +765,22 @@ app.post("/", async (c) => {
         holderToken: reminderReservationToken,
         expectedTaskCount: scheduledTasks.length,
       });
-      await enqueueCompletedCutoverFollowUp({
+      const queued = await enqueueCompletedCutoverFollowUp({
         userId: user.id,
         organizationId: user.organization_id,
         sourceAgentId,
         dedicatedAgentId: activeTarget.id,
         cutoverToken: sealToken,
         ...(continuation ? { continuation } : {}),
+      });
+      await clearQueuedContinuation({
+        userId: user.id,
+        organizationId: user.organization_id,
+        sourceAgentId,
+        dedicatedAgentId: activeTarget.id,
+        continuation,
+        stored: storedContinuation,
+        queued,
       });
       return json({
         success: true,

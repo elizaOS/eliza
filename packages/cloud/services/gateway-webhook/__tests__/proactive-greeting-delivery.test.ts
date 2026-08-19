@@ -103,6 +103,59 @@ describe("webhook proactive greeting delivery", () => {
     expect(report.retainedForRetry).toBe(1);
   });
 
+  test("acks terminal recipient rejection but retains transient provider failure", async () => {
+    let delivery = 0;
+    const acknowledged: string[] = [];
+    const report = await drainAndDeliverWebhookGreetings({
+      redis,
+      claim: mock(async (platform) =>
+        platform === "twilio"
+          ? Response.json({
+              greetings: [
+                {
+                  sessionId: "lifecycle:terminal",
+                  platformUserId: "+14155550100",
+                  message: "Ready.",
+                  leaseId: "lease-terminal",
+                  deliveryNonce: "terminal",
+                },
+                {
+                  sessionId: "lifecycle:transient",
+                  platformUserId: "+14155550101",
+                  message: "Ready.",
+                  leaseId: "lease-transient",
+                  deliveryNonce: "transient",
+                },
+              ],
+            })
+          : Response.json({ greetings: [] }),
+      ),
+      deliver: mock(async () => {
+        delivery += 1;
+        return delivery === 1
+          ? Response.json(
+              { acceptance: "not_accepted", retryable: false },
+              { status: 403 },
+            )
+          : Response.json(
+              { acceptance: "not_accepted", retryable: true },
+              { status: 503 },
+            );
+      }),
+      acknowledge: mock(async (_platform, entries) => {
+        acknowledged.push(...entries.map((entry) => entry.sessionId));
+        return Response.json({ acknowledged: entries.length });
+      }),
+    });
+
+    expect(acknowledged).toEqual(["lifecycle:terminal"]);
+    expect(report).toMatchObject({
+      delivered: 0,
+      retainedForRetry: 1,
+      acknowledged: 1,
+    });
+  });
+
   test("does not claim delivery when cloud authentication needs refresh", async () => {
     const deliver = mock(async () => Response.json({ success: true }));
     const report = await drainAndDeliverWebhookGreetings({

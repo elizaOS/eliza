@@ -89,6 +89,8 @@ function publicLifecycleNotice(value: unknown): Record<string, unknown> | null {
     notice.message.length > 2000 ||
     typeof notice.createdAt !== "string" ||
     !Number.isFinite(Date.parse(notice.createdAt)) ||
+    typeof notice.expiresAt !== "string" ||
+    !Number.isFinite(Date.parse(notice.expiresAt)) ||
     !Array.isArray(notice.lifecycleEvents) ||
     notice.lifecycleEvents.length === 0 ||
     notice.lifecycleEvents.length > 10
@@ -97,17 +99,12 @@ function publicLifecycleNotice(value: unknown): Record<string, unknown> | null {
   }
   const lifecycleEvents = notice.lifecycleEvents.map(publicLifecycleEvent);
   if (lifecycleEvents.some((event) => event === null)) return null;
-  const expiresAt =
-    typeof notice.expiresAt === "string" &&
-    Number.isFinite(Date.parse(notice.expiresAt))
-      ? notice.expiresAt
-      : undefined;
   return {
     sessionId: notice.sessionId,
     leaseId: notice.leaseId,
     message: notice.message,
     createdAt: notice.createdAt,
-    ...(expiresAt ? { expiresAt } : {}),
+    expiresAt: notice.expiresAt,
     lifecycleEvents,
   };
 }

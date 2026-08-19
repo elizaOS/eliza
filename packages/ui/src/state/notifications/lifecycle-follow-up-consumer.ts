@@ -6,6 +6,7 @@
 import type { AgentNotification } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import { type CloudLifecycleFollowUpNotice, client } from "../../api/client";
+import { loadPersistedActiveServer } from "../persistence";
 
 const STORAGE_KEY_PREFIX = "elizaos:accepted-lifecycle-follow-ups:v2:";
 const MAX_ACCEPTED_NOTICES = 50;
@@ -55,6 +56,8 @@ function isLifecycleNotice(
     record.message.length <= 2000 &&
     typeof record.createdAt === "string" &&
     Number.isFinite(Date.parse(record.createdAt)) &&
+    typeof record.expiresAt === "string" &&
+    Number.isFinite(Date.parse(record.expiresAt)) &&
     Array.isArray(record.lifecycleEvents) &&
     record.lifecycleEvents.length > 0 &&
     record.lifecycleEvents.length <= 10 &&
@@ -133,13 +136,14 @@ function readAccepted(
       .filter((entry): entry is AcceptedNotice => {
         if (!entry || typeof entry !== "object") return false;
         const candidate = entry as Partial<AcceptedNotice>;
-        const expiresAt = candidate.notice?.expiresAt
+        const expiresAt = candidate.notice
           ? Date.parse(candidate.notice.expiresAt)
           : Number.NaN;
         return (
           typeof candidate.acceptedAt === "number" &&
           isLifecycleNotice(candidate.notice) &&
-          (!Number.isFinite(expiresAt) || expiresAt > now)
+          Number.isFinite(expiresAt) &&
+          expiresAt > now
         );
       })
       .slice(0, MAX_ACCEPTED_NOTICES);
@@ -172,6 +176,22 @@ function notificationId(sessionId: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+/** Permanently remove accepted lifecycle notices from one authenticated authority. */
+export function dismissAcceptedCloudLifecycleFollowUps(
+  authorityKey: string,
+  notificationIds: readonly string[],
+): boolean {
+  if (notificationIds.length === 0) return true;
+  const ids = new Set(notificationIds);
+  const accepted = readAccepted(authorityKey);
+  const retained = accepted.filter(
+    (entry) => !ids.has(notificationId(entry.notice.sessionId)),
+  );
+  return (
+    retained.length === accepted.length || writeAccepted(authorityKey, retained)
+  );
+}
+
 function notificationTitle(notice: CloudLifecycleFollowUpNotice): string {
   const kinds = new Set(notice.lifecycleEvents.map((event) => event.kind));
   if (kinds.has("connector_connected")) return "Connection ready";
@@ -182,8 +202,12 @@ function notificationTitle(notice: CloudLifecycleFollowUpNotice): string {
 function toNotification(
   notice: CloudLifecycleFollowUpNotice,
 ): AgentNotification {
+  const activeAgentId = loadPersistedActiveServer()?.cloudRuntimeAgentId;
   const resumableIntent = notice.lifecycleEvents.find(
-    (event) => event.continuation && event.agentId,
+    (event) =>
+      event.continuation &&
+      event.agentId !== undefined &&
+      event.agentId === activeAgentId,
   )?.continuation?.originalIntent;
   return {
     id: notificationId(notice.sessionId),

@@ -140,6 +140,7 @@ describe("internal proactive delivery", () => {
     await expect(response.json()).resolves.toMatchObject({
       acceptance: "not_accepted",
       claimReleased: false,
+      retryable: false,
     });
   });
 
@@ -414,6 +415,7 @@ describe("internal proactive delivery", () => {
     await expect(first.json()).resolves.toMatchObject({
       success: false,
       acceptance: "not_accepted",
+      retryable: true,
     });
     expect(retry.status).toBe(429);
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
@@ -450,6 +452,7 @@ describe("internal proactive delivery", () => {
     await expect(response.json()).resolves.toMatchObject({
       success: false,
       acceptance: "not_accepted",
+      retryable: false,
     });
     expect(bodies).toHaveLength(2);
     expect(redis.store).toEqual(new Map());

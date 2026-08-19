@@ -65,6 +65,9 @@ const consumeCloudLifecycleFollowUps = vi.fn<
     accept: (notification: AgentNotification) => void,
   ) => Promise<void>
 >(async () => {});
+const dismissAcceptedCloudLifecycleFollowUps = vi.fn(
+  (..._args: unknown[]): boolean => true,
+);
 function latestLifecycleConsumeCall(): [
   string,
   (notification: AgentNotification) => void,
@@ -78,6 +81,8 @@ vi.mock("./lifecycle-follow-up-consumer", () => ({
     authorityKey: string,
     accept: (notification: AgentNotification) => void,
   ) => consumeCloudLifecycleFollowUps(authorityKey, accept),
+  dismissAcceptedCloudLifecycleFollowUps: (...args: unknown[]) =>
+    dismissAcceptedCloudLifecycleFollowUps(...args),
 }));
 
 const invokeDesktopBridgeRequest = vi.fn();
@@ -155,6 +160,7 @@ describe("notification-store", () => {
   beforeEach(() => {
     __resetNotificationStoreForTests();
     consumeCloudLifecycleFollowUps.mockClear();
+    dismissAcceptedCloudLifecycleFollowUps.mockReset().mockReturnValue(true);
     listNotifications.mockReset().mockResolvedValue({
       notifications: [],
       unreadCount: 0,
@@ -803,6 +809,7 @@ describe("notification-store", () => {
     await flushDelivery();
     expect(__getStateForTests().notifications).toHaveLength(0);
     expect(removeNotificationApi).not.toHaveBeenCalled();
+    expect(dismissAcceptedCloudLifecycleFollowUps).not.toHaveBeenCalled();
   });
 
   it("reverts the optimistic read when the write rejects (no silent divergence)", async () => {
@@ -1154,6 +1161,45 @@ describe("notification-store — authority isolation (#18391)", () => {
     expect(__getStateForTests().notifications[0]?.id).toBe("lifecycle-b");
     expect(authorityA).toContain("user-a::session-a");
     expect(authorityB).toContain("user-b::session-b");
+  });
+
+  it("durably dismisses a lifecycle row under its authenticated authority", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(consumeCloudLifecycleFollowUps).toHaveBeenCalled(),
+    );
+    const [authority, accept] = latestLifecycleConsumeCall();
+    accept(makeNotification({ id: "lifecycle-dismiss" }));
+
+    await removeNotification("lifecycle-dismiss");
+
+    expect(dismissAcceptedCloudLifecycleFollowUps).toHaveBeenCalledWith(
+      authority,
+      ["lifecycle-dismiss"],
+    );
+    expect(__getStateForTests().notifications).toHaveLength(0);
+    expect(removeNotificationApi).not.toHaveBeenCalled();
+  });
+
+  it("restores a lifecycle row when durable dismissal fails", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(consumeCloudLifecycleFollowUps).toHaveBeenCalled(),
+    );
+    const accept = latestLifecycleConsumeCall()[1];
+    accept(makeNotification({ id: "lifecycle-retry" }));
+    dismissAcceptedCloudLifecycleFollowUps.mockReturnValueOnce(false);
+
+    await removeNotification("lifecycle-retry");
+
+    expect(
+      __getStateForTests().notifications.some(
+        (notification) => notification.id === "lifecycle-retry",
+      ),
+    ).toBe(true);
+    expect(removeNotificationApi).not.toHaveBeenCalled();
   });
 
   it("does not consume on logout or accept a pre-logout lifecycle callback after login", async () => {

@@ -119,6 +119,16 @@ describe("in-app lifecycle follow-up route", () => {
     expect((await response.json()) as unknown).toEqual({ notices: [] });
   });
 
+  test("drops a notice without a valid expiry instead of creating an immortal client notice", async () => {
+    drain.mockImplementation(async () => [
+      { ...INTERNAL_NOTICE, expiresAt: undefined },
+      { ...INTERNAL_NOTICE, expiresAt: "not-a-date" },
+    ]);
+
+    const response = await app.request(request({ action: "claim" }));
+    expect((await response.json()) as unknown).toEqual({ notices: [] });
+  });
+
   test("preserves a target-bound 4000-character continuation", async () => {
     const agentId = "22222222-2222-4222-8222-222222222222";
     const originalIntent = "x".repeat(4000);

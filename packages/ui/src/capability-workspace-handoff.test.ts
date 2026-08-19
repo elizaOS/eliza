@@ -100,6 +100,27 @@ describe("findCapabilityWorkspaceHandoff", () => {
     ).toBeNull();
   });
 
+  it("rejects unknown capabilities and oversized continuation metadata", () => {
+    const invalidCapability = result();
+    const invalidPayload = invalidCapability.values
+      ?.capabilityHandoff as Record<string, unknown>;
+    invalidPayload.capabilityId = "admin-shell";
+    expect(findCapabilityWorkspaceHandoff([invalidCapability])).toBeNull();
+
+    const oversized = result();
+    const oversizedPayload = oversized.values?.capabilityHandoff as Record<
+      string,
+      unknown
+    >;
+    oversizedPayload.continuation = {
+      originalIntent: "x".repeat(4_001),
+      clientMessageId: "y".repeat(129),
+    };
+    expect(
+      findCapabilityWorkspaceHandoff([oversized])?.continuation,
+    ).toBeUndefined();
+  });
+
   it("consumes a preserved intent only for its completed workspace", () => {
     const handoff = findCapabilityWorkspaceHandoff(
       [result()],

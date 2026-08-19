@@ -7,6 +7,7 @@ import { client } from "../../api/client";
 import {
   __resetLifecycleFollowUpConsumerForTests,
   consumeCloudLifecycleFollowUps,
+  dismissAcceptedCloudLifecycleFollowUps,
 } from "./lifecycle-follow-up-consumer";
 
 const STORAGE_KEY_PREFIX = "elizaos:accepted-lifecycle-follow-ups:v2:";
@@ -97,6 +98,38 @@ describe("lifecycle follow-up consumer", () => {
     expect(restored).toHaveLength(1);
     expect(restored[0]?.id).toBe(first[0]?.id);
     expect(restored[0]?.groupKey).toBe(SESSION_ID);
+  });
+
+  it("durably dismisses only the selected authority's accepted notice", async () => {
+    vi.spyOn(client, "claimCloudLifecycleFollowUps")
+      .mockResolvedValueOnce({ notices: [notice()] })
+      .mockResolvedValueOnce({
+        notices: [notice({ sessionId: `lifecycle:${"b".repeat(48)}` })],
+      });
+    vi.spyOn(client, "acknowledgeCloudLifecycleFollowUps").mockResolvedValue({
+      acknowledged: 1,
+    });
+    const acceptedA: AgentNotification[] = [];
+    const acceptedB: AgentNotification[] = [];
+    await consumeCloudLifecycleFollowUps(AUTHORITY_A, (value) =>
+      acceptedA.push(value),
+    );
+    await consumeCloudLifecycleFollowUps(AUTHORITY_B, (value) =>
+      acceptedB.push(value),
+    );
+
+    const notificationA = acceptedA[0];
+    const notificationB = acceptedB[0];
+    if (!notificationA || !notificationB) {
+      throw new Error("Expected both lifecycle notices to be accepted");
+    }
+    expect(
+      dismissAcceptedCloudLifecycleFollowUps(AUTHORITY_A, [notificationA.id]),
+    ).toBe(true);
+    expect(localStorage.getItem(storageKey(AUTHORITY_A))).toBe("[]");
+    expect(localStorage.getItem(storageKey(AUTHORITY_B))).toContain(
+      notificationB.groupKey,
+    );
   });
 
   it("leaves the server lease unacked when durable client storage fails", async () => {
@@ -230,6 +263,16 @@ describe("lifecycle follow-up consumer", () => {
 
   it("accepts a 4000-character continuation only when bound to its target agent", async () => {
     const agentId = "22222222-2222-4222-8222-222222222222";
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "cloud:personal-agent",
+        kind: "cloud",
+        label: "Eliza",
+        cloudRuntimeAgentId: agentId,
+        cloudRuntime: "dedicated",
+      }),
+    );
     const originalIntent = "x".repeat(4000);
     vi.spyOn(client, "claimCloudLifecycleFollowUps").mockResolvedValue({
       notices: [
@@ -263,6 +306,54 @@ describe("lifecycle follow-up consumer", () => {
         lifecycleEvents: [{ agentId }],
         continuations: [{ originalIntent, agentId }],
         continuationPolicy: "offer_only_never_auto_execute",
+      },
+    });
+  });
+
+  it("never prefills an intent into a different active agent", async () => {
+    const targetAgentId = "22222222-2222-4222-8222-222222222222";
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "cloud:another-agent",
+        kind: "cloud",
+        label: "Another agent",
+        cloudRuntimeAgentId: "33333333-3333-4333-8333-333333333333",
+        cloudRuntime: "dedicated",
+      }),
+    );
+    vi.spyOn(client, "claimCloudLifecycleFollowUps").mockResolvedValue({
+      notices: [
+        notice({
+          lifecycleEvents: [
+            {
+              kind: "connector_connected",
+              idempotencyKey: "connector-connected:1",
+              resourceId: "connection-1",
+              agentId: targetAgentId,
+              continuation: {
+                originalIntent: "email Maya the report",
+                capabilityId: "communications",
+                requiresConfirmation: true,
+              },
+            },
+          ],
+        }),
+      ],
+    });
+    vi.spyOn(client, "acknowledgeCloudLifecycleFollowUps").mockResolvedValue({
+      acknowledged: 1,
+    });
+    const accept = vi.fn();
+
+    await consumeCloudLifecycleFollowUps(AUTHORITY_A, accept);
+
+    expect(accept.mock.calls[0]?.[0]).toMatchObject({
+      deepLink: "/chat",
+      data: {
+        continuations: [
+          { originalIntent: "email Maya the report", agentId: targetAgentId },
+        ],
       },
     });
   });

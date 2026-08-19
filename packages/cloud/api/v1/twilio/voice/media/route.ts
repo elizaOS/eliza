@@ -431,8 +431,11 @@ app.get("/", async (c) => {
       handleTranscriptAction: createCallerSmsHandoff({
         accountSid: claims.accountSid,
         authToken: streamSigningSecret,
+        callSid: claims.callSid,
         fromNumber: claims.calledNumber,
         callerNumber: claims.callerNumber ?? "",
+        store: rawRedis ?? undefined,
+        recordSuccess: elizaFetch.recordLifecycleEvent,
       }),
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),

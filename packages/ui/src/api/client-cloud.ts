@@ -150,7 +150,7 @@ export interface CloudLifecycleFollowUpNotice {
   leaseId: string;
   message: string;
   createdAt: string;
-  expiresAt?: string;
+  expiresAt: string;
   lifecycleEvents: Array<{
     kind: "workspace_ready" | "subscription_upgraded" | "connector_connected";
     idempotencyKey: string;
