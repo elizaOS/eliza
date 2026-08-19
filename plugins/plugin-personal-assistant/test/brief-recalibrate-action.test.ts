@@ -987,6 +987,49 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     ).toEqual([newer]);
   });
 
+  it("rotates by the agent watermark when different claims have skewed clocks", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const record = (suffix: string) =>
+      repository.recordBriefItemEngagement({
+        agentId: runtime.agentId,
+        briefingId: `brief-retry-skew-${suffix}`,
+        itemId: `${item.itemId}:${suffix}`,
+        source: item.source,
+        kind: item.kind,
+        sourceId: `${item.sourceId}:${suffix}`,
+        itemClass: item.itemClass,
+        eventType: "kept",
+        eventAt: "2025-01-01T00:00:00.000Z",
+        weight: 0.5,
+        metadata: { trajectoryId: `${suffix}-trajectory` },
+      });
+    const firstReleased = await record("first-released");
+    const lastReleased = await record("last-released");
+    const firstToken = await repository.claimBriefEngagementReward(
+      firstReleased,
+      { nowIso: "2099-01-01T00:00:00.000Z" },
+    );
+    const lastToken = await repository.claimBriefEngagementReward(
+      lastReleased,
+      { nowIso: "2098-01-01T00:00:00.000Z" },
+    );
+    if (!firstToken || !lastToken) throw new Error("claim fixture failed");
+
+    await repository.releaseBriefEngagementRewardClaim(
+      firstReleased,
+      firstToken,
+    );
+    await repository.releaseBriefEngagementRewardClaim(lastReleased, lastToken);
+
+    expect(
+      await repository.listPendingBriefEngagementRewards(runtime.agentId, {
+        limit: 1,
+        nowIso: "2100-01-01T00:00:00.000Z",
+      }),
+    ).toEqual([firstReleased]);
+  });
+
   it("rejects invalid pending-reward limits, scan times, and leases", async () => {
     const rewardIndexes = await executeRawSql(
       runtime,
@@ -995,13 +1038,15 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
         WHERE schemaname = 'app_lifeops'
           AND indexname IN (
             'idx_life_brief_item_engagements_reward_queue',
-            'idx_life_brief_item_engagements_reward_receipt'
+            'idx_life_brief_item_engagements_reward_receipt',
+            'idx_life_brief_item_engagements_reward_retry_order'
           )
         ORDER BY indexname`,
     );
     expect(rewardIndexes.map((row) => row.indexname)).toEqual([
       "idx_life_brief_item_engagements_reward_queue",
       "idx_life_brief_item_engagements_reward_receipt",
+      "idx_life_brief_item_engagements_reward_retry_order",
     ]);
     for (const limit of [0, 1.5, 1_001, Number.NaN]) {
       await expect(
@@ -1042,6 +1087,11 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     ).rejects.toMatchObject({ code: "LIFEOPS_BRIEF_REWARD_LEASE_INVALID" });
     await expect(
       repository.claimBriefEngagementReward(engagement, { leaseSeconds: 0 }),
+    ).rejects.toMatchObject({ code: "LIFEOPS_BRIEF_REWARD_LEASE_INVALID" });
+    await expect(
+      repository.claimBriefEngagementReward(engagement, {
+        nowIso: "+275760-09-13T00:00:00.000Z",
+      }),
     ).rejects.toMatchObject({ code: "LIFEOPS_BRIEF_REWARD_LEASE_INVALID" });
   });
 

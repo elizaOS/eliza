@@ -3239,11 +3239,13 @@ export class LifeOpsRepository {
     const requestedNowIso = options.nowIso ?? isoNow();
     const parsedNow = Date.parse(requestedNowIso);
     const leaseSeconds = options.leaseSeconds ?? 60;
+    const leaseExpiresMs = parsedNow + leaseSeconds * 1_000;
     if (
       !Number.isFinite(parsedNow) ||
       !Number.isInteger(leaseSeconds) ||
       leaseSeconds <= 0 ||
-      leaseSeconds > 3_600
+      leaseSeconds > 3_600 ||
+      !Number.isFinite(new Date(leaseExpiresMs).getTime())
     ) {
       throw new ElizaError("[LifeOpsRepository] Invalid reward lease", {
         code: "LIFEOPS_BRIEF_REWARD_LEASE_INVALID",
@@ -3251,9 +3253,7 @@ export class LifeOpsRepository {
       });
     }
     const nowIso = new Date(parsedNow).toISOString();
-    const leaseExpiresAt = new Date(
-      parsedNow + leaseSeconds * 1_000,
-    ).toISOString();
+    const leaseExpiresAt = new Date(leaseExpiresMs).toISOString();
     const claimToken = crypto.randomUUID();
     const claimMetadata = {
       engagementEventId: engagement.id,
@@ -3317,13 +3317,22 @@ export class LifeOpsRepository {
     const releasedAt = isoNow();
     await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_brief_item_engagements
+      `UPDATE app_lifeops.life_brief_item_engagements AS reward
           SET event_at = ${sqlQuote(releasedAt)},
-              created_at = CASE
-                WHEN created_at::timestamptz >= ${sqlQuote(releasedAt)}::timestamptz
-                  THEN (created_at::timestamptz + INTERVAL '1 microsecond')::text
-                ELSE ${sqlQuote(releasedAt)}
-              END,
+              created_at = GREATEST(
+                ${sqlQuote(releasedAt)}::timestamptz,
+                reward.created_at::timestamptz + INTERVAL '1 microsecond',
+                COALESCE(
+                  (
+                    SELECT MAX(peer.created_at::timestamptz) + INTERVAL '1 microsecond'
+                      FROM app_lifeops.life_brief_item_engagements peer
+                     WHERE peer.agent_id = reward.agent_id
+                       AND peer.event_type = 'rewarded'
+                       AND peer.id <> reward.id
+                  ),
+                  '-infinity'::timestamptz
+                )
+              )::text,
               metadata_json = ${sqlJson({
                 engagementEventId: engagement.id,
                 rewardState: "released",

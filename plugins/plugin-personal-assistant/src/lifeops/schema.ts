@@ -1950,6 +1950,11 @@ export const lifeBriefItemEngagements = appLifeopsPgSchema.table(
         t.createdAt,
       )
       .where(sql`${t.eventType} = 'rewarded'`),
+    index("idx_life_brief_item_engagements_reward_retry_order").on(
+      t.agentId,
+      t.eventType,
+      t.createdAt,
+    ),
   ],
 );
 
