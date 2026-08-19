@@ -64,9 +64,12 @@ bun run ios:device:e2e -- --device <id> # full app+appexes + freshly graft-signe
 
 Provisioning enables capabilities exposed by the public App Store Connect API,
 then decodes every minted profile and verifies the complete target entitlement
-set. Family Controls approval and exact App Group registration/assignment must
-already be completed by an Apple Account Holder/Admin; missing grants fail the
-lane rather than silently installing a reduced app. Capability changes can
+set. Before installation, the decoded profile must also match the requested
+App Store Connect UUID, target bundle identifier, device UDID, expiration, and
+development signing mode (`get-task-allow=true`). Family Controls approval and
+exact App Group registration/assignment must already be completed by an Apple
+Account Holder/Admin; missing grants fail the lane rather than silently
+installing a reduced app. Capability changes can
 invalidate immutable profiles, so the provisioner preserves the prior profile
 and creates a uniquely named replacement; rerun it after an administrator fixes
 a missing managed grant. Later runs reuse the first replacement whose decoded

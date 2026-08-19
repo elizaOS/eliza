@@ -50,8 +50,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   entitlementSourceForTarget,
+  normalizeProvisioningProfile,
   parsePlist,
   profileEntitlementAuthorizes,
+  profileMatchesTarget,
 } from "./ios-device-lib.mjs";
 
 export const ASC_API_BASE = "https://api.appstoreconnect.apple.com";
@@ -637,6 +639,8 @@ export function validateAndInstallProfile(
     dir = profilesDir(),
     requiredEntitlements = {},
     bundleIdentifier,
+    deviceUdid = null,
+    now = new Date(),
     decodeProfile = decodeMobileProvision,
     install = true,
   },
@@ -657,11 +661,33 @@ export function validateAndInstallProfile(
         { cause: error },
       );
     }
+    const expectedUuid = profileData?.attributes?.uuid ?? profileData?.id;
+    if (
+      typeof decoded?.UUID !== "string" ||
+      decoded.UUID.toUpperCase() !== expectedUuid.toUpperCase()
+    ) {
+      throw new ProvisioningProfileValidationError(
+        `Provisioning profile content UUID ${JSON.stringify(decoded?.UUID)} does not match App Store Connect UUID ${expectedUuid}.`,
+      );
+    }
     validateProvisioningEntitlements(
       requiredEntitlements,
       decoded?.Entitlements ?? {},
       bundleIdentifier,
     );
+    const normalized = normalizeProvisioningProfile(decoded, quarantinedFile);
+    const coverage = profileMatchesTarget(normalized, {
+      bundleId: bundleIdentifier,
+      deviceUdid,
+      now,
+      requireGetTaskAllow: true,
+      requiredEntitlements,
+    });
+    if (!coverage.ok) {
+      throw new ProvisioningProfileValidationError(
+        `Provisioning profile for ${bundleIdentifier} is not a usable development profile: ${coverage.reasons.join("; ")}.`,
+      );
+    }
     if (!install) return null;
     const installedFile = path.join(dir, profileFilename(profileData));
     fs.renameSync(quarantinedFile, installedFile);
@@ -810,6 +836,7 @@ export async function provision({
           dir,
           requiredEntitlements: bid.entitlements ?? {},
           bundleIdentifier: bid.identifier,
+          deviceUdid: udid,
           decodeProfile,
         });
         profile = candidate;
@@ -843,6 +870,7 @@ export async function provision({
         dir,
         requiredEntitlements: bid.entitlements ?? {},
         bundleIdentifier: bid.identifier,
+        deviceUdid: udid,
         decodeProfile,
       });
     }

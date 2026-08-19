@@ -366,10 +366,32 @@ describe("selectProvisioningProfile", () => {
         selectProvisioningProfile([profile], {
           bundleId: targetBundleId,
           deviceUdid: DEVICE_UDID,
+          requireGetTaskAllow: true,
           requiredEntitlements,
         }).selected,
       ).toBe(profile);
     }
+  });
+
+  it("does not let a newer exact distribution profile beat a development profile", () => {
+    const distribution = normalized({
+      expiration: new Date("2099-01-01T00:00:00.000Z"),
+      getTaskAllow: false,
+    });
+    const development = normalized({
+      appIdentifier: `${TEAM}.*`,
+      expiration: new Date("2027-01-01T00:00:00.000Z"),
+      getTaskAllow: true,
+    });
+    const result = selectProvisioningProfile([distribution, development], {
+      bundleId: "ai.elizaos.app",
+      deviceUdid: DEVICE_UDID,
+      requireGetTaskAllow: true,
+    });
+    expect(result.selected).toBe(development);
+    expect(result.rejected[0].reasons).toContain(
+      "profile is not a development/debug profile (get-task-allow is not true)",
+    );
   });
 });
 

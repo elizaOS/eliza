@@ -11,7 +11,7 @@
  *      .mobileprovision files inside prior signed builds in DerivedData;
  *      keep only profiles whose application-identifier covers the bundle id,
  *      whose ProvisionedDevices includes this device's UDID, and which are
- *      unexpired.
+ *      unexpired development profiles (`get-task-allow=true`).
  *   3. Graft the app profile + one per appex, validate each profile against
  *      the maintained target entitlements, sign only those target claims plus
  *      required identity/debug keys, then codesign inner→outer: frameworks → EVERY
@@ -295,6 +295,7 @@ function signApp({
   const target = {
     bundleId,
     deviceUdid,
+    requireGetTaskAllow: true,
     requiredEntitlements: appRequiredEntitlements,
   };
   const { selected: appProfile, rejected } = selectProvisioningProfile(
@@ -367,6 +368,7 @@ function signApp({
       selectProvisioningProfile(profiles, {
         bundleId: appexBundleId,
         deviceUdid,
+        requireGetTaskAllow: true,
         requiredEntitlements,
       });
     if (!appexProfile) {

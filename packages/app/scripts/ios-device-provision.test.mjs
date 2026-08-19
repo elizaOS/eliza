@@ -92,6 +92,31 @@ afterEach(() => {
     fs.rmSync(d, { recursive: true, force: true });
 });
 
+function decodedDevelopmentProfile({
+  bundleIdentifier = "ai.elizaos.app",
+  udid = "UDID",
+  uuid = "UUID",
+  expirationDate = new Date("2099-01-01T00:00:00.000Z"),
+  getTaskAllow = true,
+  entitlements = {},
+} = {}) {
+  const team = "TEAM123456";
+  return {
+    UUID: uuid,
+    TeamIdentifier: [team],
+    ApplicationIdentifierPrefix: [team],
+    ExpirationDate: expirationDate,
+    ProvisionedDevices: [udid],
+    Entitlements: {
+      "application-identifier": `${team}.${bundleIdentifier}`,
+      "com.apple.developer.team-identifier": team,
+      "get-task-allow": getTaskAllow,
+      "keychain-access-groups": [`${team}.*`],
+      ...entitlements,
+    },
+  };
+}
+
 describe("resolveAscCredentials", () => {
   it("throws naming every missing credential", () => {
     expect(() => resolveAscCredentials({})).toThrow(
@@ -647,7 +672,8 @@ describe("validateAndInstallProfile", () => {
         requiredEntitlements: {
           "com.apple.security.application-groups": ["group.ai.elizaos.app"],
         },
-        decodeProfile: () => ({ Entitlements: {} }),
+        decodeProfile: () =>
+          decodedDevelopmentProfile({ uuid: "REJECTED", entitlements: {} }),
       }),
     ).toThrow(/does not grant target entitlements/);
     expect(fs.existsSync(path.join(dir, "REJECTED.mobileprovision"))).toBe(
@@ -674,7 +700,7 @@ describe("validateAndInstallProfile", () => {
         {
           dir,
           bundleIdentifier: "ai.elizaos.app",
-          decodeProfile: () => ({ Entitlements: {} }),
+          decodeProfile: () => decodedDevelopmentProfile({ uuid: "COLLIDE" }),
         },
       );
     } catch (error) {
@@ -682,6 +708,48 @@ describe("validateAndInstallProfile", () => {
     }
     expect(failure).toBeInstanceOf(Error);
     expect(failure).not.toBeInstanceOf(ProvisioningProfileValidationError);
+    expect(
+      fs.readdirSync(dir).filter((name) => name.includes("quarantine")),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [
+      "another bundle",
+      { bundleIdentifier: "com.attacker.other", uuid: "PROFILE" },
+    ],
+    ["another device", { udid: "OTHER-DEVICE", uuid: "PROFILE" }],
+    [
+      "an expired profile",
+      {
+        expirationDate: new Date("2020-01-01T00:00:00.000Z"),
+        uuid: "PROFILE",
+      },
+    ],
+    ["a non-development profile", { getTaskAllow: false, uuid: "PROFILE" }],
+    ["a mismatched content UUID", { uuid: "OTHER-UUID" }],
+  ])("does not install decoded content for %s", (_label, decodedOverrides) => {
+    const dir = tmpDir();
+    expect(() =>
+      validateAndInstallProfile(
+        {
+          id: "P",
+          attributes: {
+            uuid: "PROFILE",
+            profileContent: Buffer.from("untrusted").toString("base64"),
+          },
+        },
+        {
+          dir,
+          bundleIdentifier: "ai.elizaos.app",
+          deviceUdid: "UDID",
+          decodeProfile: () => decodedDevelopmentProfile(decodedOverrides),
+        },
+      ),
+    ).toThrow(ProvisioningProfileValidationError);
+    expect(fs.existsSync(path.join(dir, "PROFILE.mobileprovision"))).toBe(
+      false,
+    );
     expect(
       fs.readdirSync(dir).filter((name) => name.includes("quarantine")),
     ).toEqual([]);
@@ -774,7 +842,7 @@ describe("provision — full idempotent flow", () => {
       fetchImpl,
       dir,
       now: 1_700_000_000,
-      decodeProfile: () => ({ Entitlements: {} }),
+      decodeProfile: () => decodedDevelopmentProfile(),
     });
     expect(result.device).toEqual({ id: "DEV", created: true });
     expect(result.certificateIds).toEqual(["CERT"]);
@@ -877,13 +945,17 @@ describe("provision — full idempotent flow", () => {
       fetchImpl,
       dir,
       now: 1_700_000_000,
-      decodeProfile: (file) => ({
-        Entitlements: fs.readFileSync(file, "utf8").includes("good-grants")
-          ? {
-              "com.apple.security.application-groups": ["group.ai.elizaos.app"],
-            }
-          : {},
-      }),
+      decodeProfile: (file) =>
+        decodedDevelopmentProfile({
+          uuid: path.basename(file, ".mobileprovision"),
+          entitlements: fs.readFileSync(file, "utf8").includes("good-grants")
+            ? {
+                "com.apple.security.application-groups": [
+                  "group.ai.elizaos.app",
+                ],
+              }
+            : {},
+        }),
       replacementNameFactory: () => "11111111-2222-3333-4444-555555555555",
     });
 
@@ -1012,13 +1084,17 @@ describe("provision — full idempotent flow", () => {
       fetchImpl,
       dir,
       now: 1_700_000_000,
-      decodeProfile: (file) => ({
-        Entitlements: fs.readFileSync(file, "utf8").includes("good-grants")
-          ? {
-              "com.apple.security.application-groups": ["group.ai.elizaos.app"],
-            }
-          : {},
-      }),
+      decodeProfile: (file) =>
+        decodedDevelopmentProfile({
+          uuid: path.basename(file, ".mobileprovision"),
+          entitlements: fs.readFileSync(file, "utf8").includes("good-grants")
+            ? {
+                "com.apple.security.application-groups": [
+                  "group.ai.elizaos.app",
+                ],
+              }
+            : {},
+        }),
       replacementNameFactory: () => replacementUuids.shift(),
     };
 
