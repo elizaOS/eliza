@@ -17,12 +17,16 @@ import {
   computeAgentDeadlineExtensions,
   getAgentReadyTimeoutMs,
 } from "./agent-startup-timing";
+import { isTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
 import {
   asApiLikeError,
   formatStartupErrorDetail,
   type StartupErrorState,
 } from "./internal";
-import { loadPersistedActiveServer } from "./persistence";
+import {
+  clearPersistedActiveServer,
+  loadPersistedActiveServer,
+} from "./persistence";
 import type { RuntimeTarget, StartupEvent } from "./startup-coordinator";
 import { runStartupProbe } from "./startup-probe";
 import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
@@ -43,6 +47,7 @@ export interface StartingRuntimeDeps {
   setConnected: (v: boolean) => void;
   setStartupError: (v: StartupErrorState | null) => void;
   setFirstRunLoading: (v: boolean) => void;
+  setFirstRunComplete: (v: boolean) => void;
   setAuthRequired: (v: boolean) => void;
   setPairingEnabled: (v: boolean) => void;
   setPairingExpiresAt: (v: number | null) => void;
@@ -193,6 +198,7 @@ type PassthroughProbe =
   | { kind: "serving" }
   | { kind: "warming" }
   | { kind: "auth-required"; status: 401 | 429 }
+  | { kind: "terminal-agent-error" }
   | { kind: "errored"; status: number };
 
 async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
@@ -200,7 +206,18 @@ async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
     await client.listConversations();
     return { kind: "serving" };
   } catch (err) {
-    const status = asApiLikeError(err)?.status;
+    const apiError = asApiLikeError(err);
+    const status = apiError?.status;
+    if (
+      isTerminalDedicatedCloudAgentErrorState({
+        status,
+        code: apiError?.code,
+        message: apiError?.message,
+        clientBaseUrl: client.getBaseUrl(),
+      })
+    ) {
+      return { kind: "terminal-agent-error" };
+    }
     if ((status === 401 || status === 429) && client.hasToken()) {
       return { kind: "auth-required", status };
     }
@@ -719,6 +736,20 @@ async function runCloudManagedWarmup(
       deps.setConnected(false);
       deps.setFirstRunLoading(false);
       dispatch({ type: "AGENT_RUNNING" });
+      return;
+    }
+
+    if (probe.kind === "terminal-agent-error") {
+      // The selected sandbox cannot recover through polling or Retry. Remove
+      // the poisoned persisted target and return to the Cloud agent picker,
+      // which keeps the switcher reachable without rebinding to another host.
+      clearPersistedActiveServer();
+      client.setBaseUrl(null);
+      client.setToken(null);
+      deps.setConnected(false);
+      deps.setFirstRunComplete(false);
+      deps.setFirstRunLoading(false);
+      dispatch({ type: "CLOUD_AGENT_SELECTION_REQUIRED" });
       return;
     }
 

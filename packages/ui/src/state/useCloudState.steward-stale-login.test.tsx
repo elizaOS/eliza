@@ -238,6 +238,65 @@ describe("useCloudState — handleCloudLogin with a stale Steward token and no l
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(valid);
   });
 
+  it("reauthenticates on the same click when Cloud rejects a reused opaque token", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, "revoked-opaque-token");
+    getCloudStatusSpy
+      .mockImplementationOnce(async () => {
+        localStorage.removeItem(STEWARD_TOKEN_KEY);
+        return {
+          connected: false,
+          enabled: false,
+          reason: "auth-rejected",
+        } as Awaited<ReturnType<typeof client.getCloudStatus>>;
+      })
+      .mockResolvedValueOnce({
+        connected: true,
+        enabled: true,
+      } as Awaited<ReturnType<typeof client.getCloudStatus>>);
+    vi.spyOn(client, "getCloudCredits").mockResolvedValue({
+      balance: 10,
+      low: false,
+      critical: false,
+    } as Awaited<ReturnType<typeof client.getCloudCredits>>);
+    const launcher = vi.fn(async () => ({ token: makeJwt(3600) }));
+    const unregister = registerStewardLoginLauncher(launcher);
+    try {
+      const { result } = renderHook(() => useCloudState(makeParams()));
+      await act(async () => {
+        await result.current.handleCloudLogin();
+      });
+
+      expect(launcher).toHaveBeenCalledTimes(1);
+      expect(getCloudStatusSpy).toHaveBeenCalledTimes(2);
+      expect(result.current.elizaCloudConnected).toBe(true);
+      expect(result.current.elizaCloudLoginError).toBeNull();
+      expect(deviceCodeCalls()).toBe(0);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("falls through to device-code on the same click when no Steward launcher is mounted", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, "revoked-opaque-token");
+    getCloudStatusSpy.mockImplementationOnce(async () => {
+      localStorage.removeItem(STEWARD_TOKEN_KEY);
+      return {
+        connected: false,
+        enabled: false,
+        reason: "auth-rejected",
+      } as Awaited<ReturnType<typeof client.getCloudStatus>>;
+    });
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+
+    expect(deviceCodeCalls()).toBe(1);
+    expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+    expect(result.current.elizaCloudLoginBusy).toBe(false);
+  });
+
   it("a mounted launcher still owns the stale-token re-auth (no device-code call)", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));
     const launcher = vi.fn(async () => ({ token: makeJwt(3600) }));

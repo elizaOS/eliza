@@ -943,7 +943,6 @@ async function directCloudRequest<T>(
   const apiBase = resolveDirectCloudClientApiBase(client);
   if (!apiBase) return null;
 
-  const isDedicatedRequest = isDedicatedCloudAgentClient(client);
   const token = readDirectCloudToken(client);
   if (!token) return null;
 
@@ -972,7 +971,7 @@ async function directCloudRequest<T>(
       }),
       { method, url },
     );
-    if (res.status === 401 && isDedicatedRequest) {
+    if (res.status === 401) {
       clearStoredStewardTokenIfCurrent(token);
     }
     const parsed = parseDirectCloudJson(res.data) as T;
@@ -996,7 +995,7 @@ async function directCloudRequest<T>(
     { ...init, method, headers },
     { method, url },
   );
-  if (res.status === 401 && isDedicatedRequest) {
+  if (res.status === 401) {
     clearStoredStewardTokenIfCurrent(token);
   }
   const data = await res.json().catch(async () => ({
