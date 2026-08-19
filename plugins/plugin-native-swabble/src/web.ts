@@ -397,6 +397,9 @@ export class SwabbleWeb extends WebPlugin {
       if (this.isActive) {
         this.recognition?.start();
       } else {
+        // Terminal end (stop() or a fatal error already cleared isActive):
+        // release the level-meter mic so no capture outlives the idle state.
+        this.stopAudioLevelMonitoring();
         this.notifyListeners("stateChange", { state: "idle" });
       }
     };
@@ -410,7 +413,12 @@ export class SwabbleWeb extends WebPlugin {
         recoverable,
       });
       if (!recoverable) {
+        // A non-recoverable error ends capture without a consumer stop():
+        // tear the recognizer and level meter down here so the microphone
+        // track and the 100 ms interval do not outlive the error state.
         this.isActive = false;
+        this.stopAudioLevelMonitoring();
+        this.recognition = null;
         this.notifyListeners("stateChange", {
           state: "error",
           reason: event.error,
