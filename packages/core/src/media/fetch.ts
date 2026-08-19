@@ -17,7 +17,11 @@ export type FetchMediaResult = {
 	fileName?: string;
 };
 
-export type MediaFetchErrorCode = "max_bytes" | "http_error" | "fetch_failed";
+export type MediaFetchErrorCode =
+	| "max_bytes"
+	| "http_error"
+	| "fetch_failed"
+	| "invalid_response";
 
 export class MediaFetchError extends Error {
 	readonly code: MediaFetchErrorCode;
@@ -41,6 +45,10 @@ export type FetchMediaOptions = {
 	maxBytes?: number;
 	maxRedirects?: number;
 	timeoutMs?: number;
+	/** Require the declared response MIME type to start with this prefix. */
+	requiredContentTypePrefix?: string;
+	/** Reject Content-Encoding other than identity when callers need raw media bytes. */
+	rejectContentEncoding?: boolean;
 	ssrfPolicy?: SsrfPolicy;
 	lookupFn?: LookupFn;
 	pinnedFetchImpl?: PinnedLookupFetchLike;
@@ -96,7 +104,9 @@ async function readErrorBodySnippet(
 	maxChars = 200,
 ): Promise<string | undefined> {
 	try {
-		const text = await res.text();
+		// Bound diagnostics too: an error response is still an untrusted body and
+		// must not bypass the caller's successful-response byte limit.
+		const text = (await readResponseWithLimit(res, maxChars)).toString("utf8");
 		if (!text) {
 			return undefined;
 		}
@@ -112,6 +122,35 @@ async function readErrorBodySnippet(
 		// error-policy:J7 The HTTP status remains authoritative when its optional
 		// diagnostic body snippet cannot be read.
 		return undefined;
+	}
+}
+
+function enforceResponsePolicy(
+	res: Response,
+	url: string,
+	options: FetchMediaOptions,
+): void {
+	const requiredPrefix = options.requiredContentTypePrefix
+		?.trim()
+		.toLowerCase();
+	if (requiredPrefix) {
+		const declared = res.headers.get("content-type")?.trim().toLowerCase();
+		if (!declared?.startsWith(requiredPrefix)) {
+			throw new MediaFetchError(
+				"invalid_response",
+				`Failed to fetch media from ${url}: expected Content-Type starting with ${requiredPrefix}`,
+			);
+		}
+	}
+
+	if (options.rejectContentEncoding) {
+		const encoding = res.headers.get("content-encoding")?.trim().toLowerCase();
+		if (encoding && encoding !== "identity") {
+			throw new MediaFetchError(
+				"invalid_response",
+				`Failed to fetch media from ${url}: encoded response bodies are not accepted`,
+			);
+		}
 	}
 }
 
@@ -248,6 +287,7 @@ export async function fetchRemoteMedia(
 
 	try {
 		await throwIfHttpError(res, options.url, finalUrl);
+		enforceResponsePolicy(res, options.url, options);
 		enforceContentLengthLimit(res, options.url, options.maxBytes);
 
 		const buffer =
@@ -266,6 +306,12 @@ export async function fetchRemoteMedia(
 			...metadata,
 		};
 	} finally {
+		try {
+			await res.body?.cancel();
+		} catch {
+			// error-policy:J6 The result or primary fetch failure is authoritative;
+			// cancelling a rejected or already-consumed body is best-effort teardown.
+		}
 		await release();
 	}
 }

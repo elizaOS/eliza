@@ -21,6 +21,12 @@ describe("pinned fetch through a real local HTTP server", () => {
 	beforeAll(async () => {
 		server = createServer((req, res) => {
 			seenRequests.push({ host: req.headers.host, url: req.url ?? "" });
+			if (req.url === "/stall-body") {
+				res.statusCode = 200;
+				res.setHeader("content-type", "image/png");
+				res.write(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+				return;
+			}
 			if (req.url === "/redirect-to-rebound") {
 				res.statusCode = 302;
 				res.setHeader("location", `http://rebound.example.test:${port}/steal`);
@@ -138,5 +144,21 @@ describe("pinned fetch through a real local HTTP server", () => {
 		);
 		expect(firstHop.length).toBe(1);
 		expect(seenRequests.some((entry) => entry.url === "/steal")).toBe(false);
+	});
+
+	it("aborts a real response body that stalls after headers", async () => {
+		const guarded = await fetchWithSsrfGuard({
+			url: `http://pinned.example.test:${port}/stall-body`,
+			lookupFn: async () => [{ address: "127.0.0.1", family: 4 }],
+			pinnedFetchImpl: nodePinnedFetch,
+			policy: { allowedHostnames: ["pinned.example.test"] },
+			timeoutMs: 100,
+		});
+
+		try {
+			await expect(guarded.response.arrayBuffer()).rejects.toThrow();
+		} finally {
+			await guarded.release();
+		}
 	});
 });

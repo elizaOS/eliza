@@ -153,4 +153,122 @@ describe("Discord profile avatar resolution diagnostics", () => {
 		);
 		expect(setAvatar).not.toHaveBeenCalled();
 	});
+
+	it("rejects remote avatar exceeding MAX_PROFILE_AVATAR_BYTES via Content-Length", async () => {
+		const remoteUrl = "https://example.com/huge-avatar.png";
+		const fetchImpl = vi.fn(async () => {
+			return new Response(new Uint8Array(10), {
+				status: 200,
+				headers: {
+					"Content-Type": "image/png",
+					"Content-Length": String(10 * 1024 * 1024), // 10MB > 8MB cap
+				},
+			});
+		});
+		const runtime = fakeRuntime(remoteUrl);
+
+		const error = await syncDiscordClientProfile(
+			runtime,
+			clientUser,
+			{
+				syncProfile: true,
+			} as DiscordSettings,
+			{
+				fetchImpl: fetchImpl as unknown as typeof fetch,
+			},
+		).then(
+			() => null,
+			(value: unknown) => value,
+		);
+
+		expect(error).toBeInstanceOf(Error);
+		expect(error).toMatchObject({ code: "max_bytes" });
+	});
+
+	it("aborts remote avatar stream exceeding MAX_PROFILE_AVATAR_BYTES", async () => {
+		const remoteUrl = "https://example.com/stream-bomb-avatar.png";
+		const chunkSize = 2 * 1024 * 1024; // 2MB
+		let chunkCount = 0;
+		const stream = new ReadableStream({
+			pull(controller) {
+				chunkCount++;
+				controller.enqueue(new Uint8Array(chunkSize));
+				if (chunkCount > 5) {
+					controller.close();
+				}
+			},
+		});
+
+		const fetchImpl = vi.fn(async () => {
+			return new Response(stream, {
+				status: 200,
+				headers: { "Content-Type": "image/png" },
+			});
+		});
+		const runtime = fakeRuntime(remoteUrl);
+
+		const error = await syncDiscordClientProfile(
+			runtime,
+			clientUser,
+			{
+				syncProfile: true,
+			} as DiscordSettings,
+			{
+				fetchImpl: fetchImpl as unknown as typeof fetch,
+			},
+		).then(
+			() => null,
+			(value: unknown) => value,
+		);
+
+		expect(error).toBeInstanceOf(Error);
+		expect(error).toMatchObject({ code: "max_bytes" });
+	});
+
+	it("blocks private remote avatars before transport", async () => {
+		const remoteUrl = "http://127.0.0.1/private-avatar.png";
+		const fetchImpl = vi.fn(
+			async () =>
+				new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+					headers: { "Content-Type": "image/png" },
+				}),
+		);
+
+		const error = await syncDiscordClientProfile(
+			fakeRuntime(remoteUrl),
+			clientUser,
+			{ syncProfile: true } as DiscordSettings,
+			{ fetchImpl: fetchImpl as unknown as typeof fetch },
+		).then(
+			() => null,
+			(value: unknown) => value,
+		);
+
+		expect(error).toBeInstanceOf(Error);
+		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+
+	it("revalidates redirect targets and blocks a private second hop", async () => {
+		const remoteUrl = "https://example.com/avatar.png";
+		const fetchImpl = vi.fn(
+			async () =>
+				new Response(null, {
+					status: 302,
+					headers: { Location: "http://127.0.0.1/private-avatar.png" },
+				}),
+		);
+
+		const error = await syncDiscordClientProfile(
+			fakeRuntime(remoteUrl),
+			clientUser,
+			{ syncProfile: true } as DiscordSettings,
+			{ fetchImpl: fetchImpl as unknown as typeof fetch },
+		).then(
+			() => null,
+			(value: unknown) => value,
+		);
+
+		expect(error).toBeInstanceOf(Error);
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+	});
 });
