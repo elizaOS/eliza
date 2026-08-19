@@ -9,6 +9,7 @@ import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { readConfigEnvKey } from "./config-env.js";
+import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 
 export const KNOWN_ADAPTER_TYPES = new Set([
   "elizaos",
@@ -147,6 +148,25 @@ export function resolveSpawnWorkdir(
     return withContainedRoute({ workdir: expandedExplicit });
   }
   if (expandedExplicit) {
+    // A nonexistent explicit workdir directly under the configured published-
+    // apps dir is the PLANNER DOING THE RIGHT THING — naming the fresh slug
+    // dir for a new app. Rejecting it dropped the build into a scratch
+    // workspace with no served URL and verification parked a working page
+    // (live 2026-08-19: …/data/apps/moon-phase-page). Create and use it.
+    const deploy = resolveAppDeployConfig();
+    if (
+      deploy.target === "custom" &&
+      deploy.customAppsDir &&
+      path.dirname(path.resolve(expandedExplicit)) ===
+        path.resolve(deploy.customAppsDir)
+    ) {
+      try {
+        fs.mkdirSync(expandedExplicit, { recursive: true });
+        return withContainedRoute({ workdir: expandedExplicit });
+      } catch {
+        // error-policy:J4 mkdir failure falls through to the scratch fallback.
+      }
+    }
     logger.warn(
       `[workdir-routes] Planner workdir does not exist, ignoring it: ${expandedExplicit} — falling back to ${fallback.workdir}`,
     );
