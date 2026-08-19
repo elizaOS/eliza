@@ -1615,6 +1615,25 @@ async function runCreateLegacy(
 
   setCurrentSessions(state, sessions);
   const failed = results.filter((result) => result.status === "failed");
+  // A launch killed by the user's own cancel is a cancellation, not a
+  // failure: without this the cancel produced "No task agents could be
+  // started — the launch failed" alongside the stop confirmation (live
+  // 2026-08-19). The turn signal is this turn's own controller.
+  const turnAborted =
+    typeof message.roomId === "string" &&
+    runtime.turnControllers?.signalFor?.(message.roomId)?.aborted === true;
+  if (failed.length > 0 && turnAborted) {
+    const text = "stopped the launch — you cancelled it before it got going.";
+    await callbackText(callback, text);
+    return {
+      success: true,
+      text,
+      userFacingText: text,
+      verifiedUserFacing: true,
+      turnComplete: true,
+      data: { cancelled: true, failedLabels: failed.map((f) => f.label) },
+    };
+  }
   if (failed.length > 0) {
     // ONE model-phrased message from structured facts. The raw error.message
     // joins stay in logs (above) and in data.agents alongside the per-lane

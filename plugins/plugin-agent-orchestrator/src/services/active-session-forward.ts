@@ -24,6 +24,7 @@ import { sessionBoundRoomIds } from "./session-room-binding.js";
 import type { SubAgentInbox } from "./sub-agent-inbox.js";
 import { requireTaskAgentAccess } from "./task-policy.js";
 import { type SessionInfo, TERMINAL_SESSION_STATUSES } from "./types.js";
+import { markSessionAdministrativelyStopped } from "./admin-stop-marker.js";
 
 // Skip forwarding our own posts back into `acp.sendPrompt` — would echo-loop.
 // `entityId === runtime.agentId` is not enough: the router uses a synthetic
@@ -352,6 +353,15 @@ export function createActiveSessionForwardHandler(
             // planner pipeline runs on this same MESSAGE_RECEIVED and routes
             // the user's redirect; we do not re-deliver to the dead session.
             subAgentInbox.clear(active.id);
+            // Stamp FIRST: the terminal relay and the verify-retry gate both
+            // read this to keep a user-initiated stop from narrating as a
+            // task failure ("coin-flip — stopped before completion", live
+            // 2026-08-19) or being auto-retried.
+            await markSessionAdministrativelyStopped(
+              acp,
+              active.id,
+              "user_interrupt",
+            ).catch(() => undefined);
             // Cooperative cancel first; the eliza-code ACP server often never
             // confirms `session/cancel`, and giving up there let a cancelled
             // build run to completion and post its result after the user's
