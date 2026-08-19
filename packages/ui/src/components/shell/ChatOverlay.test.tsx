@@ -1247,6 +1247,27 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("settles an orphaned drag when pointerup bypasses the captured grabber", async () => {
+    render(<ChatOverlay controller={makeController()} initialMode="input" />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 7 });
+    fireEvent.pointerMove(grabber, { clientY: 340, pointerId: 7 });
+    await waitFor(() => {
+      expect(sheet.getAttribute("data-revealed")).toBe("true");
+    });
+
+    // Simulate WebView/HMR retargeting: the document gets the terminal event,
+    // but the original captured element's React pointerup handler never does.
+    fireEvent.pointerUp(document, { clientY: 340, pointerId: 7 });
+
+    await waitFor(() => {
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+      expect(sheet.getAttribute("data-revealed")).toBe("false");
+    });
+  });
+
   // Regression guard for #9142: the grabber bar was hardcoded `opacity-0`
   // unconditionally, so on desktop/web (no OS home indicator) the handle was
   // grabbable but the bar never painted. It must be visible off-iOS.
@@ -2069,13 +2090,11 @@ describe("ChatOverlay", () => {
     // bubble, where it would steal clicks from the underlying desktop app.
     expect(grabber.className).not.toContain("before:");
     expect(grabber.className).toContain("top-0.5");
-    // Input mode keeps a compact centered drag lane entirely above the text
-    // field instead of stretching a broad invisible strip across the composer.
-    expect(grabber.className).toContain("left-1/2");
+    // Input mode keeps the forgiving wide drag lane, but makes it shallow
+    // enough to remain entirely above the text field.
+    expect(grabber.className).toContain("inset-x-[4.5rem]");
     expect(grabber.className).toContain("h-2");
-    expect(grabber.className).toContain("w-32");
     expect(grabber.className).toContain("p-0");
-    expect(grabber.className).not.toContain("inset-x-[4.5rem]");
     expect(grabber.className).not.toContain("inset-x-6");
   });
 

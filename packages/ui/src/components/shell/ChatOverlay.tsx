@@ -1027,7 +1027,7 @@ function SheetGrabber({
         // its right, so a tiny miss opened/flung the sheet instead of opening
         // chat actions. Once the sheet is open, those controls are far below
         // this top handle and the generous full-width drag lane is safe again.
-        open ? "inset-x-6 py-2" : "left-1/2 h-2 w-32 -translate-x-1/2 p-0",
+        open ? "inset-x-6 py-2" : "inset-x-[4.5rem] h-2 p-0",
         // Keep the complete target inside the painted panel. A pseudo-element
         // used to extend above the visible bubble, which made transparent
         // desktop pixels steal clicks from the app underneath.
@@ -1797,6 +1797,12 @@ export function ChatOverlay({
   // secondary finger's up can never unlatch a still-held primary drag.
   const grabberPressRef = React.useRef<number | null>(null);
   const restorePressRef = React.useRef<number | null>(null);
+  // Document-level pointer ownership is a final safety net for development HMR
+  // and native/WebView retargeting. Either can replace the captured grabber
+  // before its terminal event reaches the original React handler. Keeping the
+  // active ids independently lets us distinguish a genuinely held drag from an
+  // orphaned one without imposing a timeout on a deliberate long press.
+  const activePointerIdsRef = React.useRef(new Set<number>());
   // Peak visible panel height reached during the current upward drag. The
   // release path reads the same 90%-of-viewport threshold as the live crossing,
   // so releasing on either side of the line cannot disagree with what the user
@@ -3553,6 +3559,53 @@ export function ChatOverlay({
   // Keep the ref the (earlier-declared) viewport-resize effect calls pointing at
   // the latest settleDrag, so a rotation re-settles with current geometry.
   settleDragRef.current = settleDrag;
+
+  // Drain a gesture whose terminal event was retargeted away from the captured
+  // grabber (or whose handler was replaced by Vite HMR). The ordinary target
+  // handler runs before this deferred check and clears `draggingRef`, making the
+  // normal path a no-op. If it did not run, settle the live motion values and
+  // clear the stale preview instead of leaving a painted-but-inert transcript
+  // behind a `pill` detent.
+  React.useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    let recoveryFrame: number | null = null;
+    const scheduleRecovery = () => {
+      if (recoveryFrame !== null) window.cancelAnimationFrame(recoveryFrame);
+      recoveryFrame = window.requestAnimationFrame(() => {
+        recoveryFrame = null;
+        if (activePointerIdsRef.current.size > 0) return;
+        const stalePillPreview =
+          modeRef.current === "pill" &&
+          dragPreviewVisibleRef.current &&
+          threadAnimationRef.current === null;
+        if (!draggingRef.current && !stalePillPreview) return;
+        grabberPressRef.current = null;
+        restorePressRef.current = null;
+        restoreGestureRef.current = false;
+        setRestoreDragging(false);
+        settleDrag();
+      });
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      activePointerIdsRef.current.add(event.pointerId);
+    };
+    const onPointerEnd = (event: PointerEvent) => {
+      activePointerIdsRef.current.delete(event.pointerId);
+      scheduleRecovery();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointerup", onPointerEnd, true);
+    document.addEventListener("pointercancel", onPointerEnd, true);
+    // This also repairs a state preserved across a hot replacement after its
+    // pointer already ended—the exact dead preview reproduced in browser QA.
+    scheduleRecovery();
+    return () => {
+      if (recoveryFrame !== null) window.cancelAnimationFrame(recoveryFrame);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointerup", onPointerEnd, true);
+      document.removeEventListener("pointercancel", onPointerEnd, true);
+    };
+  }, [settleDrag]);
 
   // Drive openProgress from the pilled flag for NON-drag transitions (tap the
   // pill, programmatic open/close): a live finger drag owns openProgress itself
