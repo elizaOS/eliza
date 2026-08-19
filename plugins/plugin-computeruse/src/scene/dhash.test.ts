@@ -21,8 +21,8 @@
  * constructible.
  */
 
-import { deflateSync } from "node:zlib";
-import { describe, expect, it } from "vitest";
+import { deflateSync, inflateSync } from "node:zlib";
+import { describe, expect, it, vi } from "vitest";
 import {
   type BlockGrid,
   blockGrid,
@@ -33,7 +33,9 @@ import {
   diffBlocks,
   frameDhash,
   hamming,
+  MAX_DECODE_PNG_PIXELS,
   pngDimensions,
+  pngRasterExceedsDecodeBudget,
 } from "./dhash.js";
 
 // ── parameterized PNG synthesizer ────────────────────────────────────────────
@@ -145,6 +147,41 @@ describe("decodePng", () => {
         `${label} must decode to null without throwing`,
       ).toBeNull();
     }
+  });
+
+  it("rejects an over-budget IHDR before inflate via the dimension helper", () => {
+    expect(pngRasterExceedsDecodeBudget(65535, 65535)).toBe(true);
+    expect(pngRasterExceedsDecodeBudget(7680, 4320)).toBe(false);
+    expect(pngRasterExceedsDecodeBudget(0, 1)).toBe(true);
+    const expectedScanlineBytes = (65535 * 3 + 1) * 65535;
+    expect(expectedScanlineBytes).toBeGreaterThan(MAX_DECODE_PNG_PIXELS);
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(65535, 0);
+    ihdr.writeUInt32BE(65535, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    const bomb = Buffer.concat([
+      SIGNATURE,
+      pngChunk("IHDR", ihdr),
+      pngChunk("IDAT", deflateSync(Buffer.from([0, 1, 2, 3]))),
+      pngChunk("IEND", Buffer.alloc(0)),
+    ]);
+    const inflate = vi.fn(() => {
+      throw new Error("inflate must not run for over-budget IHDR");
+    });
+    expect(decodePng(bomb, inflate)).toBeNull();
+    expect(inflate).not.toHaveBeenCalled();
+    expect(bomb.length).toBeLessThan(128);
+  });
+
+  it("still decodes a last-fit screenshot-sized frame", () => {
+    expect(7680 * 4320).toBeLessThanOrEqual(MAX_DECODE_PNG_PIXELS);
+    const inflate = vi.fn(inflateSync);
+    const decoded = decodePng(makePng({ width: 64, height: 48 }), inflate);
+    expect(inflate).toHaveBeenCalledTimes(1);
+    expect(decoded).not.toBeNull();
+    expect(decoded?.width).toBe(64);
+    expect(decoded?.height).toBe(48);
   });
 });
 
