@@ -283,21 +283,6 @@ export class MeetingService extends Service {
       maxDurationMs,
     });
 
-    if (billing) {
-      try {
-        await billing.reserveInitial();
-      } catch (err) {
-        if (
-          err instanceof Error &&
-          "code" in err &&
-          err.code === "insufficient_credits"
-        ) {
-          throw new MeetingJoinError("insufficient_credits", err.message);
-        }
-        throw err;
-      }
-    }
-
     const pipeline = this.deps.createPipeline({
       runtime: this.runtime,
       sessionId,
@@ -355,11 +340,12 @@ export class MeetingService extends Service {
     };
     this.sessions.set(sessionId, session);
 
-    // With the reservation held, do the awaited setup. If world/room ensure or
-    // the transcript writer's initial row write throws, release the reservation
-    // so the meeting is joinable again and future joins are not permanently
-    // rejected with `already_joined` by a stranded non-terminal session.
+    // With the reservation held, do every awaited setup step, including the
+    // initial billing hold. If any step throws, release the meeting claim and
+    // reconcile the billing hold so future joins are not permanently rejected
+    // with `already_joined` by a stranded non-terminal session.
     try {
+      if (billing) await billing.reserveInitial();
       const worldId = await this.ensureMeetingsWorld();
       await this.runtime.ensureRoomExists({
         id: roomId,
@@ -382,9 +368,14 @@ export class MeetingService extends Service {
         consentState: "not_required",
       });
     } catch (err) {
+      // error-policy:J2 setup and mandatory billing cleanup failures are
+      // retained together so an uncertain credit hold cannot be reported as a
+      // successfully released reservation.
+      let billingReleaseFailure: unknown;
       try {
         await this.reconcileBillingOnce(session, "error");
       } catch (billingErr) {
+        billingReleaseFailure = billingErr;
         logger.error(
           {
             sessionId,
@@ -406,8 +397,21 @@ export class MeetingService extends Service {
           nativeMeetingId: parsed.nativeMeetingId,
           error: err instanceof Error ? err.message : String(err),
         },
-        "[MeetingService] join setup failed — reservation released",
+        "[MeetingService] join setup failed — meeting reservation released",
       );
+      if (billingReleaseFailure !== undefined) {
+        throw new AggregateError(
+          [err, billingReleaseFailure],
+          "Meeting join setup and billing release both failed",
+        );
+      }
+      if (
+        err instanceof Error &&
+        "code" in err &&
+        err.code === "insufficient_credits"
+      ) {
+        throw new MeetingJoinError("insufficient_credits", err.message);
+      }
       throw err;
     }
 
