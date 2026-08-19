@@ -278,4 +278,202 @@ describe("Stripe Customer durable authority", () => {
     );
     expect(orgBRows).toEqual([{ stripe_customer_id: null }]);
   });
+
+  test("audited no-candidate resolution abandons once and creates one new generation", async () => {
+    const organizationId = await organization();
+    const provider = new MockStripeCustomers();
+    provider.failSearchOnce = true;
+    let now = new Date("2026-08-19T00:00:00Z");
+    const service = new AuthorityService(provider, { now: () => now });
+    await expect(
+      service.ensure({ organizationId, callerIntent: "payment_method" }),
+    ).rejects.toThrow("search unavailable");
+    const [attempt] = await sqlRows<{ id: string }>(
+      dbWrite,
+      sql`SELECT id FROM stripe_customer_attempts WHERE organization_id=${organizationId}`,
+    );
+    if (!attempt) throw new Error("missing attempt");
+    await expect(
+      service.resolve({
+        organizationId,
+        attemptId: attempt.id,
+        actor: "billing-operator@example.test",
+        reason: "provider search found no Customer after bounded recovery",
+        action: "bind_unique_candidate",
+      }),
+    ).rejects.toMatchObject({ code: "STRIPE_CUSTOMER_RESOLUTION_NO_CANDIDATE" });
+    now = new Date("2026-08-20T01:00:00Z");
+    const resolved = await service.resolve({
+      organizationId,
+      attemptId: attempt.id,
+      actor: "billing-operator@example.test",
+      reason: "provider search found no Customer after bounded recovery",
+      action: "abandon_and_retry",
+    });
+    const replay = await service.resolve({
+      organizationId,
+      attemptId: attempt.id,
+      actor: "billing-operator@example.test",
+      reason: "provider search found no Customer after bounded recovery",
+      action: "abandon_and_retry",
+    });
+    expect(replay).toEqual(resolved);
+    await expect(
+      service.resolve({
+        organizationId,
+        attemptId: attempt.id,
+        actor: "different-operator@example.test",
+        reason: "different replay authority",
+        action: "abandon_and_retry",
+      }),
+    ).rejects.toMatchObject({ code: "STRIPE_CUSTOMER_RESOLUTION_NOT_LATEST" });
+    expect(
+      await sqlRows(
+        dbWrite,
+        sql`SELECT generation, status, resolved_by, resolution_reason
+        FROM stripe_customer_attempts WHERE organization_id=${organizationId} ORDER BY generation`,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        generation: 1,
+        status: "abandoned",
+        resolved_by: "billing-operator@example.test",
+      }),
+      expect.objectContaining({ generation: 2, status: "prepared" }),
+    ]);
+  });
+
+  test("audited resolution rejects duplicate verified candidates", async () => {
+    const organizationId = await organization();
+    const provider = new MockStripeCustomers();
+    provider.failSearchOnce = true;
+    const service = new AuthorityService(provider);
+    await expect(
+      service.ensure({ organizationId, callerIntent: "credit_checkout" }),
+    ).rejects.toThrow("search unavailable");
+    const [attempt] = await sqlRows<{
+      id: string;
+      generation: number;
+      request_digest: string;
+    }>(
+      dbWrite,
+      sql`SELECT id, generation, request_digest FROM stripe_customer_attempts
+      WHERE organization_id=${organizationId}`,
+    );
+    if (!attempt) throw new Error("missing attempt");
+    const metadata = {
+      organization_id: organizationId,
+      eliza_organization_id: organizationId,
+      eliza_customer_attempt_id: attempt.id,
+      eliza_customer_generation: String(attempt.generation),
+      eliza_customer_request_digest: attempt.request_digest,
+      eliza_customer_provider: "stripe",
+    };
+    provider.candidates.push(
+      { id: "cus_duplicate_a", metadata, created: 1, livemode: false },
+      { id: "cus_duplicate_b", metadata, created: 2, livemode: false },
+    );
+    await expect(
+      service.resolve({
+        organizationId,
+        attemptId: attempt.id,
+        actor: "billing-operator@example.test",
+        reason: "manual duplicate investigation",
+        action: "bind_unique_candidate",
+      }),
+    ).rejects.toMatchObject({ code: "STRIPE_CUSTOMER_RESOLUTION_DUPLICATE" });
+    expect((await rows(organizationId))[0]).toMatchObject({ status: "provider_ambiguous" });
+  });
+
+  test("audited resolution binds one verified candidate and replays exactly", async () => {
+    const organizationId = await organization();
+    const provider = new MockStripeCustomers();
+    provider.throwAfterCreate = true;
+    const service = new AuthorityService(provider);
+    await expect(
+      service.ensure({ organizationId, callerIntent: "interactive_checkout" }),
+    ).rejects.toThrow("connection lost");
+    const [attempt] = await sqlRows<{ id: string }>(
+      dbWrite,
+      sql`SELECT id FROM stripe_customer_attempts WHERE organization_id=${organizationId}`,
+    );
+    if (!attempt) throw new Error("missing attempt");
+    const input = {
+      organizationId,
+      attemptId: attempt.id,
+      actor: "billing-operator@example.test",
+      reason: "verified the sole provider Customer",
+      action: "bind_unique_candidate" as const,
+    };
+    const resolved = await service.resolve(input);
+    expect(await service.resolve(input)).toEqual(resolved);
+    expect((await rows(organizationId))[0]).toMatchObject({
+      status: "bound",
+      provider_customer_id: resolved.customerId,
+    });
+    expect(
+      await sqlRows(
+        dbWrite,
+        sql`SELECT stripe_customer_id FROM organizations WHERE id=${organizationId}`,
+      ),
+    ).toEqual([{ stripe_customer_id: resolved.customerId }]);
+  });
+
+  test("organization publication rejects out-of-band, null, and divergent mutations", async () => {
+    const unbound = await organization();
+    await expect(
+      Promise.resolve(
+        dbWrite.execute(
+          sql`UPDATE organizations SET stripe_customer_id='cus_out_of_band' WHERE id=${unbound}`,
+        ),
+      ),
+    ).rejects.toThrow();
+    const bound = await organization();
+    const customerId = await new AuthorityService(new MockStripeCustomers()).ensure({
+      organizationId: bound,
+      callerIntent: "payment_method",
+    });
+    await dbWrite.execute(
+      sql`UPDATE organizations SET stripe_customer_id=${customerId} WHERE id=${bound}`,
+    );
+    await expect(
+      Promise.resolve(
+        dbWrite.execute(sql`UPDATE organizations SET stripe_customer_id=NULL WHERE id=${bound}`),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite.execute(
+          sql`UPDATE organizations SET stripe_customer_id='cus_other' WHERE id=${bound}`,
+        ),
+      ),
+    ).rejects.toThrow();
+  });
+
+  test("migration replay preserves bound authority and does not quarantine new receipts", async () => {
+    const organizationId = await organization();
+    const customerId = await new AuthorityService(new MockStripeCustomers()).ensure({
+      organizationId,
+      callerIntent: "payment_method",
+    });
+    const migration = await Bun.file(
+      new URL("../../../db/migrations/0267_stripe_customer_attempts.sql", import.meta.url),
+    ).text();
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await pglite.exec(statement);
+    }
+    expect(
+      await sqlRows(
+        dbWrite,
+        sql`SELECT stripe_customer_id FROM organizations WHERE id=${organizationId}`,
+      ),
+    ).toEqual([{ stripe_customer_id: customerId }]);
+    expect(
+      await sqlRows(
+        dbWrite,
+        sql`SELECT organization_id FROM stripe_customer_legacy_quarantines
+        WHERE organization_id=${organizationId}`,
+      ),
+    ).toEqual([]);
+  });
 });

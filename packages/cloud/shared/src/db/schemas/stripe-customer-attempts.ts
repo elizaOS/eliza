@@ -22,6 +22,7 @@ export const STRIPE_CUSTOMER_ATTEMPT_STATUSES = [
   "provider_ambiguous",
   "bound",
   "quarantined",
+  "abandoned",
 ] as const;
 export type StripeCustomerAttemptStatus = (typeof STRIPE_CUSTOMER_ATTEMPT_STATUSES)[number];
 
@@ -46,6 +47,9 @@ export const stripeCustomerAttempts = pgTable(
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     ambiguous_reason: text("ambiguous_reason"),
     provider_livemode: boolean("provider_livemode"),
+    resolved_by: text("resolved_by"),
+    resolution_reason: text("resolution_reason"),
+    resolved_at: timestamp("resolved_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -85,7 +89,7 @@ export const stripeCustomerAttempts = pgTable(
     ),
     status_check: check(
       "stripe_customer_attempts_status_check",
-      sql`${table.status} IN ('prepared','provider_started','provider_ambiguous','bound','quarantined')`,
+      sql`${table.status} IN ('prepared','provider_started','provider_ambiguous','bound','quarantined','abandoned')`,
     ),
     bound_shape_check: check(
       "stripe_customer_attempts_bound_shape_check",
@@ -94,6 +98,10 @@ export const stripeCustomerAttempts = pgTable(
     progress_shape_check: check(
       "stripe_customer_attempts_progress_shape_check",
       sql`(${table.status} = 'prepared' AND ${table.provider_started_at} IS NULL) OR (${table.status} <> 'prepared' AND ${table.provider_started_at} IS NOT NULL)`,
+    ),
+    resolution_shape_check: check(
+      "stripe_customer_attempts_resolution_shape_check",
+      sql`(${table.status} = 'abandoned' AND ${table.resolved_by} IS NOT NULL AND ${table.resolution_reason} IS NOT NULL AND ${table.resolved_at} IS NOT NULL) OR (${table.status} <> 'abandoned')`,
     ),
   }),
 );

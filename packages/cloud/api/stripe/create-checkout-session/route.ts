@@ -296,25 +296,26 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
           metadata: { return_url: returnUrl },
         })
       : null;
+    const authoritativeCustomerId = await stripeCustomerAuthorityService.ensure(
+      {
+        organizationId,
+        callerIntent: "interactive_checkout",
+      },
+    );
     if (checkoutOrder) {
       if (!checkoutOrder.stripe_customer_id) {
-        const candidateCustomerId =
-          customerId ??
-          (await stripeCustomerAuthorityService.ensure({
-            organizationId,
-            callerIntent: "interactive_checkout",
-          }));
         checkoutOrder = await stripeCheckoutOrdersService.bindCustomer(
           checkoutOrder.id,
-          candidateCustomerId,
+          authoritativeCustomerId,
+        );
+      } else if (checkoutOrder.stripe_customer_id !== authoritativeCustomerId) {
+        throw new Error(
+          "Checkout order customer conflicts with Stripe customer authority",
         );
       }
       customerId = checkoutOrder.stripe_customer_id;
-    } else if (!customerId) {
-      customerId = await stripeCustomerAuthorityService.ensure({
-        organizationId,
-        callerIntent: "interactive_checkout",
-      });
+    } else {
+      customerId = authoritativeCustomerId;
     }
     if (!customerId) {
       throw new Error("Stripe customer authority was not established");

@@ -190,10 +190,6 @@ export class StripeCustomerAuthorityService {
           { organizationId },
         );
       }
-      if (organization.stripe_customer_id) {
-        return { kind: "existing", customerId: organization.stripe_customer_id };
-      }
-
       let [attempt] = await tx
         .select()
         .from(stripeCustomerAttempts)
@@ -201,11 +197,32 @@ export class StripeCustomerAuthorityService {
         .orderBy(desc(stripeCustomerAttempts.generation))
         .for("update")
         .limit(1);
+      if (organization.stripe_customer_id) {
+        if (
+          attempt?.status === "bound" &&
+          attempt.provider_customer_id === organization.stripe_customer_id &&
+          attempt.provider_receipt?.customer_id === organization.stripe_customer_id
+        ) {
+          return { kind: "existing", customerId: organization.stripe_customer_id };
+        }
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_UNVERIFIED_LOCAL_BINDING",
+          "Organization Stripe Customer lacks a matching durable provider receipt",
+          { organizationId, attemptId: attempt?.id },
+        );
+      }
       if (attempt?.status === "quarantined") {
         throw new StripeCustomerAuthorityError(
           "STRIPE_CUSTOMER_QUARANTINED",
           "Stripe Customer attempt requires operator reconciliation",
           { organizationId, attemptId: attempt.id },
+        );
+      }
+      if (attempt?.status === "abandoned" || attempt?.status === "bound") {
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_ATTEMPT_INCONSISTENT",
+          "Latest Stripe Customer attempt does not match organization authority",
+          { organizationId, attemptId: attempt.id, status: attempt.status },
         );
       }
       if (!attempt) {
@@ -380,24 +397,6 @@ export class StripeCustomerAuthorityService {
           "Organization is already bound to another Stripe Customer",
         );
       }
-      if (!organization.stripe_customer_id) {
-        const [updated] = await tx
-          .update(organizations)
-          .set({ stripe_customer_id: candidate.id, updated_at: this.now() })
-          .where(
-            and(
-              eq(organizations.id, claimed.attempt.organization_id),
-              isNull(organizations.stripe_customer_id),
-            ),
-          )
-          .returning({ id: organizations.id });
-        if (!updated) {
-          throw new StripeCustomerAuthorityError(
-            "STRIPE_CUSTOMER_CAS_FAILED",
-            "Organization Stripe Customer compare-and-set failed",
-          );
-        }
-      }
       const receipt = {
         customer_id: candidate.id,
         created: candidate.created,
@@ -418,6 +417,24 @@ export class StripeCustomerAuthorityService {
           updated_at: this.now(),
         })
         .where(eq(stripeCustomerAttempts.id, attempt.id));
+      if (!organization.stripe_customer_id) {
+        const [updated] = await tx
+          .update(organizations)
+          .set({ stripe_customer_id: candidate.id, updated_at: this.now() })
+          .where(
+            and(
+              eq(organizations.id, claimed.attempt.organization_id),
+              isNull(organizations.stripe_customer_id),
+            ),
+          )
+          .returning({ id: organizations.id });
+        if (!updated) {
+          throw new StripeCustomerAuthorityError(
+            "STRIPE_CUSTOMER_CAS_FAILED",
+            "Organization Stripe Customer compare-and-set failed",
+          );
+        }
+      }
       return candidate.id;
     });
   }
@@ -498,6 +515,189 @@ export class StripeCustomerAuthorityService {
         throw error;
       }
     }
+  }
+
+  async resolve(input: {
+    organizationId: string;
+    attemptId: string;
+    actor: string;
+    reason: string;
+    action: "bind_unique_candidate" | "abandon_and_retry";
+  }): Promise<{ customerId?: string; retryAttemptId?: string }> {
+    if (!input.actor.trim() || !input.reason.trim()) {
+      throw new StripeCustomerAuthorityError(
+        "STRIPE_CUSTOMER_RESOLUTION_AUDIT_REQUIRED",
+        "Stripe Customer resolution requires an actor and reason",
+      );
+    }
+    return writeTransaction(async (tx) => {
+      const now = this.now();
+      const [organization] = await tx
+        .select({
+          id: organizations.id,
+          name: organizations.name,
+          billing_email: organizations.billing_email,
+          stripe_customer_id: organizations.stripe_customer_id,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, input.organizationId))
+        .for("update")
+        .limit(1);
+      const [attempt] = await tx
+        .select()
+        .from(stripeCustomerAttempts)
+        .where(eq(stripeCustomerAttempts.id, input.attemptId))
+        .for("update")
+        .limit(1);
+      if (!organization || !attempt || attempt.organization_id !== organization.id) {
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_RESOLUTION_AUTHORITY_MISSING",
+          "Stripe Customer resolution organization or attempt is missing",
+        );
+      }
+      const [latest] = await tx
+        .select({ id: stripeCustomerAttempts.id })
+        .from(stripeCustomerAttempts)
+        .where(eq(stripeCustomerAttempts.organization_id, organization.id))
+        .orderBy(desc(stripeCustomerAttempts.generation))
+        .limit(1);
+      if (latest?.id !== attempt.id) {
+        if (
+          attempt.status === "abandoned" &&
+          input.action === "abandon_and_retry" &&
+          attempt.resolved_by === input.actor.trim() &&
+          attempt.resolution_reason === input.reason.trim()
+        ) {
+          return { retryAttemptId: latest?.id };
+        }
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_RESOLUTION_NOT_LATEST",
+          "Only the latest Stripe Customer attempt can be resolved",
+        );
+      }
+      if (attempt.status === "bound") {
+        if (
+          input.action !== "bind_unique_candidate" ||
+          (attempt.resolved_by !== null &&
+            (attempt.resolved_by !== input.actor.trim() ||
+              attempt.resolution_reason !== input.reason.trim()))
+        ) {
+          throw new StripeCustomerAuthorityError(
+            "STRIPE_CUSTOMER_RESOLUTION_REPLAY_CONFLICT",
+            "Stripe Customer resolution replay does not match durable audit authority",
+          );
+        }
+        return { customerId: attempt.provider_customer_id ?? undefined };
+      }
+      if (attempt.status !== "provider_ambiguous" && attempt.status !== "quarantined") {
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_RESOLUTION_INVALID_STATE",
+          "Stripe Customer attempt is not eligible for audited resolution",
+          { status: attempt.status },
+        );
+      }
+
+      const candidates = (await this.provider.searchByAttemptId(attempt.id)).filter((candidate) =>
+        candidateMatches(attempt, candidate),
+      );
+      if (candidates.length > 1) {
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_RESOLUTION_DUPLICATE",
+          "Audited resolution found multiple verified Stripe Customers",
+        );
+      }
+      if (input.action === "bind_unique_candidate") {
+        const candidate = candidates[0];
+        if (!candidate) {
+          throw new StripeCustomerAuthorityError(
+            "STRIPE_CUSTOMER_RESOLUTION_NO_CANDIDATE",
+            "Audited binding requires exactly one verified Stripe Customer",
+          );
+        }
+        if (organization.stripe_customer_id && organization.stripe_customer_id !== candidate.id) {
+          throw new StripeCustomerAuthorityError(
+            "STRIPE_CUSTOMER_ORGANIZATION_CONFLICT",
+            "Organization is already bound to another Stripe Customer",
+          );
+        }
+        const receipt = {
+          customer_id: candidate.id,
+          created: candidate.created,
+          livemode: candidate.livemode,
+          metadata: authorityMetadata(attempt),
+        };
+        await tx
+          .update(stripeCustomerAttempts)
+          .set({
+            status: "bound",
+            provider_customer_id: candidate.id,
+            provider_receipt: receipt,
+            provider_livemode: candidate.livemode,
+            bound_at: now,
+            lease_token: null,
+            lease_expires_at: null,
+            ambiguous_reason: null,
+            resolved_by: input.actor.trim(),
+            resolution_reason: input.reason.trim(),
+            resolved_at: now,
+            updated_at: now,
+          })
+          .where(eq(stripeCustomerAttempts.id, attempt.id));
+        if (!organization.stripe_customer_id) {
+          await tx
+            .update(organizations)
+            .set({ stripe_customer_id: candidate.id, updated_at: now })
+            .where(
+              and(eq(organizations.id, organization.id), isNull(organizations.stripe_customer_id)),
+            );
+        }
+        return { customerId: candidate.id };
+      }
+      if (candidates[0]) {
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_RESOLUTION_CANDIDATE_EXISTS",
+          "A verified Stripe Customer must be bound instead of abandoned",
+        );
+      }
+      if (
+        !attempt.provider_started_at ||
+        now.getTime() - attempt.provider_started_at.getTime() < PROVIDER_REUSE_WINDOW_MS
+      ) {
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_RESOLUTION_WINDOW_ACTIVE",
+          "Stripe provider recovery window has not expired",
+        );
+      }
+      await tx
+        .update(stripeCustomerAttempts)
+        .set({
+          status: "abandoned",
+          lease_token: null,
+          lease_expires_at: null,
+          resolved_by: input.actor.trim(),
+          resolution_reason: input.reason.trim(),
+          resolved_at: now,
+          updated_at: now,
+        })
+        .where(eq(stripeCustomerAttempts.id, attempt.id));
+      const generation = attempt.generation + 1;
+      const id = randomUUID();
+      const digest = requestDigest({
+        organizationId: organization.id,
+        generation,
+        organizationName: organization.name,
+        billingEmail: organization.billing_email,
+      });
+      await tx.insert(stripeCustomerAttempts).values({
+        id,
+        organization_id: organization.id,
+        generation,
+        request_digest: digest,
+        caller_intent: attempt.caller_intent,
+        idempotency_key: `eliza-customer-attempt:${id}`,
+      });
+      return { retryAttemptId: id };
+    });
   }
 }
 

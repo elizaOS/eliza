@@ -149,16 +149,20 @@ app.post("/", async (c) => {
       stripeCustomerId: null,
       metadata: agent_id ? { agent_id } : {},
     });
+    const authoritativeCustomerId = await stripeCustomerAuthorityService.ensure(
+      {
+        organizationId,
+        callerIntent: "credit_checkout",
+      },
+    );
     if (!order.stripe_customer_id) {
-      const candidateCustomerId =
-        customerId ??
-        (await stripeCustomerAuthorityService.ensure({
-          organizationId,
-          callerIntent: "credit_checkout",
-        }));
       order = await stripeCheckoutOrdersService.bindCustomer(
         order.id,
-        candidateCustomerId,
+        authoritativeCustomerId,
+      );
+    } else if (order.stripe_customer_id !== authoritativeCustomerId) {
+      throw new Error(
+        "Checkout order customer conflicts with Stripe customer authority",
       );
     }
     customerId = order.stripe_customer_id;

@@ -282,16 +282,16 @@ export class StripeCheckoutOrdersService {
           { checkoutOrderId: orderId },
         );
       }
-      const winnerCustomerId = organization.stripeCustomerId ?? candidateCustomerId;
-      if (!organization.stripeCustomerId) {
-        await tx
-          .update(organizations)
-          .set({ stripe_customer_id: winnerCustomerId, updated_at: new Date() })
-          .where(eq(organizations.id, order.organization_id));
+      if (organization.stripeCustomerId !== candidateCustomerId) {
+        throw new StripeCheckoutAuthorityError(
+          "STRIPE_CHECKOUT_CUSTOMER_NOT_AUTHORITATIVE",
+          "Checkout customer must already be published by Stripe Customer authority",
+          { checkoutOrderId: order.id },
+        );
       }
       const [bound] = await tx
         .update(stripeCheckoutOrders)
-        .set({ stripe_customer_id: winnerCustomerId, updated_at: new Date() })
+        .set({ stripe_customer_id: candidateCustomerId, updated_at: new Date() })
         .where(
           and(
             eq(stripeCheckoutOrders.id, order.id),
