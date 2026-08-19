@@ -65,4 +65,35 @@ describe("validateJsonSchema", () => {
     const result = validateJsonSchema({ name: 123 }, schema);
     expect(result.success).toBe(false);
   });
+
+  it("does not throw when an MCP tool inputSchema is the allOf $ref bomb", () => {
+    const bomb = {
+      $id: "http://evil/mcp-schema-bomb",
+      type: "object",
+      allOf: [{ $ref: "#" }, { $ref: "#" }],
+    };
+    const result = validateJsonSchema({}, bomb);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/two \$refs to #/);
+    }
+  });
+
+  it("does not poison a process-wide Ajv cache when two schemas share $id", () => {
+    const first = {
+      $id: "http://example.com/shared-tool",
+      type: "object",
+      properties: { a: { type: "string" } },
+      required: ["a"],
+    };
+    const second = {
+      $id: "http://example.com/shared-tool",
+      type: "object",
+      properties: { b: { type: "number" } },
+      required: ["b"],
+    };
+    expect(validateJsonSchema({ a: "ok" }, first).success).toBe(true);
+    const again = validateJsonSchema({ b: 1 }, second);
+    expect(again.success).toBe(true);
+  });
 });
