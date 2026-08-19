@@ -434,6 +434,36 @@ export function parseJudgeResponse(
  * Pure with respect to filesystem and network state — the only side effect
  * is one `runtime.useModel` call.
  */
+/**
+ * Verifier model call with one bounded retry when the call died to a TURN
+ * ABORT. A user's "cancel my coding tasks" aborts every in-flight turn in the
+ * room — including this background verification of an ALREADY-DELIVERED build
+ * — and the abort then burned a verify attempt and parked a working page
+ * (live 2026-08-19). The abort is transient (the aborting turn ends in
+ * seconds); one delayed retry answers it. Any other failure propagates.
+ */
+async function verifierModelCallWithAbortRetry(
+  runtime: IAgentRuntime,
+  prompt: string,
+): Promise<string> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt,
+        stopSequences: [],
+      });
+      return typeof result === "string" ? result : String(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (attempt === 0 && /\bTurn aborted\b/i.test(message)) {
+        await new Promise((resolve) => setTimeout(resolve, 8_000));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 export async function verifyGoalCompletion(
   runtime: IAgentRuntime,
   input: GoalVerificationInput,
@@ -459,11 +489,7 @@ export async function verifyGoalCompletion(
   const startedAt = Date.now();
   let raw: string;
   try {
-    const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-      stopSequences: [],
-    });
-    raw = typeof result === "string" ? result : String(result);
+    raw = await verifierModelCallWithAbortRetry(runtime, prompt);
   } catch (err) {
     // error-policy:J1 boundary translation — a failed verifier model call
     // becomes a structured fail verdict naming the error, never a fake pass.

@@ -3518,6 +3518,29 @@ async function runCancel(
       },
     };
   } catch (error) {
+    // A session with no attached client or no active prompt already finished
+    // — "cancel" on it is a no-op, not a failure. Relaying the internal error
+    // read as breakage for work that had completed seconds earlier (live
+    // 2026-08-19: "Failed to cancel task: ACP native session has no attached
+    // client" right after the build's own completion message).
+    const code =
+      error instanceof ElizaError ? error.code : undefined;
+    if (
+      code === "ACP_NATIVE_CLIENT_MISSING" ||
+      code === "ACP_CANCEL_NO_ACTIVE_PROMPT"
+    ) {
+      const text =
+        "nothing to cancel — that task already finished before the cancel landed.";
+      await callbackText(callback, text);
+      return {
+        success: true,
+        text,
+        userFacingText: text,
+        verifiedUserFacing: true,
+        turnComplete: true,
+        data: { status: "already_finished" },
+      };
+    }
     // error-policy:J1 cancel action boundary → structured failure to the
     // planner; the evaluator reports the failure in voice.
     const msg = failureMessage(error);

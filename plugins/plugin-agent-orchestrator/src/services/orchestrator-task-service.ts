@@ -3332,7 +3332,7 @@ export class OrchestratorTaskService extends Service {
 
     const hint = this.taskTypeHintFor(input);
     const generated = await generateDefaultAcceptanceCriteria(
-      input.goal,
+      `${input.goal}\n${input.originalRequest ?? ""}`,
       hint,
       this.runtime,
     );
@@ -3365,7 +3365,13 @@ export class OrchestratorTaskService extends Service {
         // 2026-08-19: "make me a lil unit converter page" parked on "the
         // change is summarized in the diff"). Let goal-text detection decide;
         // it returns "coding" anyway for genuine repo work.
-        const detected = detectTaskType(input.goal);
+        // The planner's goal often drops the user's phrasing ("memory match
+        // game" for "make me a lil memory match game page"), so detect on
+        // both texts (live 2026-08-19: coding criteria — typecheck/lint —
+        // parked a served page whose guidance forbids those very checks).
+        const detected = detectTaskType(
+          `${input.goal}\n${input.originalRequest ?? ""}`,
+        );
         return detected === "app-build" ? detected : "coding";
       }
       case "view-create":
