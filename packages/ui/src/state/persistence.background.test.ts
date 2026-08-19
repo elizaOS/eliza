@@ -117,6 +117,26 @@ describe("background config persistence", () => {
         },
       }),
     ).toEqual({ mode: "shader", color: "#123456" });
+    // empty-condition / huge-literal `for` used to pass the while/do gate
+    expect(
+      normalizeBackgroundConfig({
+        mode: "glsl",
+        color: "#123456",
+        shader: {
+          source: "void main(){ for(;;){} gl_FragColor=vec4(1.0);}",
+        },
+      }),
+    ).toEqual({ mode: "shader", color: "#123456" });
+    expect(
+      normalizeBackgroundConfig({
+        mode: "glsl",
+        color: "#123456",
+        shader: {
+          source:
+            "void main(){ for(int i=0;i<200000;i++){} gl_FragColor=vec4(1.0);}",
+        },
+      }),
+    ).toEqual({ mode: "shader", color: "#123456" });
   });
 
   it("round-trips a glsl config through localStorage", () => {

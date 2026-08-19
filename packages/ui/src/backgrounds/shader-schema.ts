@@ -5,8 +5,10 @@
  * Arbitrary GLSL is untrusted GPU code and the uniform values arrive from
  * untrusted places (the agent, persisted localStorage, chat). Everything here
  * coerces those inputs into a safe, finite, clamped shape so a hostile or
- * malformed value can never NaN the render or push the GPU into a hang. This
- * module is deliberately three.js-free so it unit-tests without a WebGL context.
+ * malformed value can never NaN the render or push the GPU into a hang —
+ * including `for(;;)` / huge-literal `for` that used to slip past the
+ * `while`/`do` check. This module is deliberately three.js-free so it
+ * unit-tests without a WebGL context.
  */
 
 /** The tunable uniforms the user/agent can drive. Standard `u_time` /
@@ -116,11 +118,35 @@ export function hexToRgb(hex: string): [number, number, number] {
  * reaches the GPU compiler. */
 export const MAX_SHADER_SOURCE_BYTES = 16 * 1024;
 
+/** Largest literal iteration bound a persisted `for` may carry. Presets use
+ * `for(int i=0;i<5;i++)` only; a 200000-iter bomb compiles and stalls a frame
+ * long before the renderer's 5-slow-frame watchdog. */
+export const MAX_SHADER_LOOP_ITERS = 64;
+
+/** True when a `for` header has an empty/`true`/`1` condition or a numeric
+ * literal above {@link MAX_SHADER_LOOP_ITERS}. */
+function hasUnboundedForLoop(source: string): boolean {
+  const header = /\bfor\s*\(([^;]*);([^;]*);/g;
+  let match = header.exec(source);
+  while (match !== null) {
+    const condition = match[2].replace(/\s+/g, "");
+    if (condition === "" || condition === "true" || condition === "1") {
+      return true;
+    }
+    for (const digits of condition.match(/\d+/g) ?? []) {
+      if (Number(digits) > MAX_SHADER_LOOP_ITERS) return true;
+    }
+    match = header.exec(source);
+  }
+  return false;
+}
+
 /**
  * Cheap static safety gate applied BEFORE the authoritative GL compile-validate
- * in the renderer. Bounds the size and rejects the one construct a hang-prone
- * shader needs (`while` — an unbounded GPU loop). Preset shaders use bounded
- * `for` loops only, so this never rejects a legitimate background.
+ * in the renderer. Bounds the size and rejects hang-prone loops (`while`/`do`,
+ * empty-condition `for`, and `for` with a huge literal bound). Preset shaders
+ * use `for(int i=0;i<5;i++)` only, so this never rejects a legitimate
+ * background. Persistence (`normalizeBackgroundConfig`) is the product sink.
  */
 export function isPlausibleFragmentSource(source: unknown): source is string {
   if (typeof source !== "string") return false;
@@ -134,7 +160,8 @@ export function isPlausibleFragmentSource(source: unknown): source is string {
   ) {
     return false;
   }
-  // `while`/`do` can spin unbounded on the GPU — reject (presets use bounded for).
+  // Unbounded GPU loops hang a frame; presets use a 5-iter `for` only.
   if (/\bwhile\b/.test(source) || /\bdo\b/.test(source)) return false;
+  if (hasUnboundedForLoop(source)) return false;
   return true;
 }

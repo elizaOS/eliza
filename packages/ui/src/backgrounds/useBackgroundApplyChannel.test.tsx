@@ -42,11 +42,10 @@ afterEach(() => {
   __setAppValueForTests(null);
 });
 
-/** A GPU bomb: a bounded `for` loop with a pathological literal bound. It
- * passes the static gate (writes gl_FragColor, no while/do, < 16KB) AND the
- * GL compile — one frame of it can stall the GPU long before the frame-time
- * watchdog's 5-slow-frame threshold. The channel must refuse raw GLSL text
- * outright; presets are the only source of shader code (#11088). */
+/** A GPU bomb: a bounded `for` loop with a pathological literal bound. The
+ * static gate now rejects huge-literal `for` (and empty-condition `for`). The
+ * channel still refuses raw GLSL text outright; presets are the only source
+ * of shader code (#11088). */
 const FOR_BOMB = `precision highp float;
 void main(){
   float acc = 0.0;
@@ -55,8 +54,8 @@ void main(){
 }`;
 
 describe("useBackgroundApplyChannel — raw GLSL source is not a sink (#11088)", () => {
-  it("sanity: the for-bomb slips past the static gate (why the channel must drop it)", () => {
-    expect(isPlausibleFragmentSource(FOR_BOMB)).toBe(true);
+  it("sanity: the for-bomb is rejected by the static gate", () => {
+    expect(isPlausibleFragmentSource(FOR_BOMB)).toBe(false);
   });
 
   it("ignores a payload carrying raw GLSL `source` text (glsl mode)", () => {
