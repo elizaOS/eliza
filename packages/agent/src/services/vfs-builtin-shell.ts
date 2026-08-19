@@ -6,9 +6,16 @@
  * single command. Supported commands: echo, printf, pwd, cat, ls, mkdir, rm, and
  * grep/rg implemented over the VFS export (no host ripgrep). Unknown commands
  * exit 127; all paths stay inside the project root and symlinks are rejected.
+ *
+ * grep/rg compile the caller pattern with `compileVfsSearchPattern` before any
+ * line is tested. JS `RegExp` is synchronous and cannot be aborted, so a
+ * nested-quantifier pattern (`(a+)+$`) against ordinary VFS lines hangs the
+ * agent process — origin replica: 20 × 28-`a` lines took ~9s on Bun and a
+ * single line hung Node past 8s.
  */
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { compileVfsSearchPattern } from "./vfs-search-pattern.ts";
 import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
 
 interface VfsBuiltinShellRequest {
@@ -392,16 +399,15 @@ async function searchTargets(
   options: SearchOptions,
   targets: SearchTarget[],
 ): Promise<VfsBuiltinCommandResult> {
-  let matcher: RegExp;
-  try {
-    matcher = new RegExp(pattern, options.ignoreCase ? "i" : "");
-  } catch (error) {
+  const compiled = compileVfsSearchPattern(pattern, options.ignoreCase);
+  if (!compiled.ok) {
     return {
       exitCode: 2,
       stdout: "",
-      stderr: `${tool}: ${error instanceof Error ? error.message : String(error)}\n`,
+      stderr: `${tool}: ${compiled.error}\n`,
     };
   }
+  const matcher = compiled.matcher;
 
   const lines: string[] = [];
   for (const target of targets) {
