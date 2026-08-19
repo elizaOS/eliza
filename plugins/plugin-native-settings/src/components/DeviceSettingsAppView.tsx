@@ -145,6 +145,17 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       });
       setDeviceSettings(next);
       setBrightness(clampUnit(next.brightness));
+      setVolumes((current) =>
+        Object.fromEntries(
+          next.volumes.map((volume) => [
+            volume.stream,
+            clampVolumeValue(
+              current[volume.stream] ?? volume.current,
+              volume.max,
+            ),
+          ]),
+        ),
+      );
       setNotice("Brightness updated.");
     } catch (err) {
       // error-policy:J4 surface the brightness-save failure into the view's error state

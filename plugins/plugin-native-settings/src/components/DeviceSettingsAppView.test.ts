@@ -710,6 +710,44 @@ describe("DeviceSettingsAppView — concurrent unsaved volume edits", () => {
     );
   });
 
+  it("clamps a preserved edit when brightness returns a lower native stream maximum", async () => {
+    mockBridgeFull();
+    systemBridge.setScreenBrightness.mockResolvedValue({
+      brightness: 0.4,
+      brightnessMode: "automatic",
+      canWriteSettings: true,
+      volumes: fullDeviceSettings().volumes.map((volume) =>
+        volume.stream === "music" ? { ...volume, current: 9, max: 10 } : volume,
+      ),
+    });
+    systemBridge.setVolume.mockResolvedValue({
+      stream: "music",
+      current: 10,
+      max: 10,
+    });
+    renderView();
+
+    const music = (await screen.findByTestId(
+      "device-settings-volume-music",
+    )) as HTMLInputElement;
+    fireEvent.change(music, { target: { value: "13" } });
+    await waitFor(() => expect(music.value).toBe("13"));
+
+    fireEvent.click(screen.getByTestId("device-settings-apply-brightness"));
+
+    await waitFor(() => expect(music.max).toBe("10"));
+    await waitFor(() => expect(music.value).toBe("10"));
+    expect(within(volumeCard("music")).getByText("100%")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("device-settings-apply-volume-music"));
+    await waitFor(() =>
+      expect(systemBridge.setVolume).toHaveBeenCalledWith({
+        stream: "music",
+        volume: 10,
+      }),
+    );
+  });
+
   it("explicit Refresh reloads every slider from the server, discarding pending edits", async () => {
     // Initial load, then Refresh returns music raised to 11/15 server-side.
     systemBridge.getDeviceSettings
