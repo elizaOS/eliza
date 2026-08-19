@@ -44,6 +44,14 @@ describe("detectSuspiciousPatterns", () => {
 		).not.toHaveLength(0);
 	});
 
+	it("preserves legacy detection when exec and command are far apart", () => {
+		expect(
+			detectSuspiciousPatterns(
+				`exec ${"untrusted payload ".repeat(1_000)} command=ls`,
+			),
+		).not.toHaveLength(0);
+	});
+
 	it("does not hang on a 100k-char exec flood", () => {
 		const flood = "exec ".repeat(20_000);
 		const t0 = performance.now();

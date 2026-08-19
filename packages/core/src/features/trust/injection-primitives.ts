@@ -6,8 +6,8 @@
  * detector and the fast deterministic should-respond risk gate
  * (`should-respond-risk-gate.ts`) consume these — there is intentionally NO
  * second pattern set (see issue #9949). The external-content `exec` indicator
- * uses a bounded window: an unbounded `.*` hung the monitor for ~33s on a
- * 100k-token "exec " flood (origin).
+ * stops each `exec` search at the next `exec`: the legacy `.*` retried the
+ * remaining line from every occurrence and hung on a 100k-character flood.
  */
 
 /** Regexes for direct prompt-injection phrasing (multi-language + obfuscation). */
@@ -69,7 +69,7 @@ export const INJECTION_KEYWORDS: readonly string[] = [
  * merely mentions e.g. `rm -rf`. Consumed by the external-content monitor.
  */
 export const EXTERNAL_CONTENT_RISK_PATTERNS: readonly RegExp[] = [
-	/\bexec\b.{0,200}command\s*=/i,
+	/\bexec\b(?:(?!\bexec\b).)*command\s*=/i,
 	/elevated\s*=\s*true/i,
 	/rm\s+-rf/i,
 	/delete\s+all\s+(emails?|files?|data)/i,
