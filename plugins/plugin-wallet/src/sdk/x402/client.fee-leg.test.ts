@@ -3,9 +3,10 @@
  * assets to their on-chain address, exactly like the payment leg. A 402 that
  * names its asset by symbol ("USDC") previously forwarded the raw string to
  * `agentTransferToken`, which ABI-encodes it as an `address` and throws
- * `InvalidAddressError`. This drives the private `executePayment` path through
- * a mocked wallet-core and asserts BOTH transfer legs receive the resolved
- * address, never the symbol.
+ * `InvalidAddressError`. This drives both the private `executePayment` path and
+ * the public `fetch` entry point through a mocked wallet-core, asserting BOTH
+ * transfer legs receive the resolved address and that the recorded transaction
+ * is logged against the resolved address, never the symbol.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentWallet } from "../wallet-core";
@@ -89,5 +90,44 @@ describe("X402Client fee leg asset resolution (#22381)", () => {
     // recorded against what was actually transferred, not the raw symbol.
     expect(result.token).toBe(USDC_BASE);
     expect(result.txHash).toBe(TX_HASH);
+  });
+
+  it("records the resolved address in the transaction log via the public fetch path", async () => {
+    // Drive the real contract boundary — `fetch` consuming a 402 — so the
+    // second half of the fix (the caller using the returned token) is pinned.
+    // A regression that logs `selected.asset` instead of the resolved token
+    // would surface here as a symbol in the recorded transaction.
+    const paymentRequired = {
+      x402Version: 1,
+      resource: {
+        url: "https://api.example.com/resource",
+        description: "",
+        mimeType: "application/json",
+      },
+      accepts: [symbolRequirement()],
+    };
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(paymentRequired), { status: 402 }),
+      )
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+
+    try {
+      const client = new X402Client(createWallet());
+      const response = await client.fetch("https://api.example.com/resource");
+
+      expect(response.status).toBe(200);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+      const log = client.getTransactionLog();
+      expect(log).toHaveLength(1);
+      expect(log[0].token).toBe(USDC_BASE);
+      expect(log[0].token).not.toBe("USDC");
+      expect(log[0].txHash).toBe(TX_HASH);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
