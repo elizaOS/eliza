@@ -14,22 +14,17 @@ import {
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
-  id: "11111111-1111-4111-8111-111111111111",
-  organization_id: "22222222-2222-4222-8222-222222222222",
+  id: userId,
+  organization_id: organizationId,
 }));
-const findByIdAndOrg = mock();
-const create = mock();
+const createPendingForOwnedAgent = mock();
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
 
-mock.module("@/db/repositories/agent-sandboxes", () => ({
-  agentSandboxesRepository: { findByIdAndOrg },
-}));
-
 mock.module("@/db/repositories/remote-sessions", () => ({
-  remoteSessionsRepository: { create },
+  remoteSessionsRepository: { createPendingForOwnedAgent },
 }));
 
 const { default: pairingRoute } = await import("./route");
@@ -38,7 +33,13 @@ const app = new Hono<AppEnv>();
 app.route("/api/v1/remote/pair", pairingRoute);
 
 const secret = "a-dedicated-remote-pairing-secret-with-32-bytes";
+const userId = "11111111-1111-4111-8111-111111111111";
+const organizationId = "22222222-2222-4222-8222-222222222222";
 const agentId = "33333333-3333-4333-8333-333333333333";
+
+function verifierContext(sessionId: string) {
+  return { organizationId, userId, agentId, sessionId };
+}
 
 async function postPair(
   body: string,
@@ -59,13 +60,8 @@ async function postPair(
 describe("remote pairing route", () => {
   beforeEach(() => {
     requireUserOrApiKeyWithOrg.mockClear();
-    findByIdAndOrg.mockReset();
-    create.mockReset();
-    findByIdAndOrg.mockResolvedValue({
-      id: agentId,
-      user_id: "11111111-1111-4111-8111-111111111111",
-    });
-    create.mockImplementation(async (data) => ({
+    createPendingForOwnedAgent.mockReset();
+    createPendingForOwnedAgent.mockImplementation(async (data) => ({
       ...data,
       created_at: new Date(),
       updated_at: new Date(),
@@ -97,8 +93,8 @@ describe("remote pairing route", () => {
       startedAt + 299_000,
     );
 
-    expect(create).toHaveBeenCalledTimes(1);
-    const persisted = create.mock.calls[0]?.[0] as {
+    expect(createPendingForOwnedAgent).toHaveBeenCalledTimes(1);
+    const persisted = createPendingForOwnedAgent.mock.calls[0]?.[0] as {
       id: string;
       requester_identity: string;
       pairing_token_hash: string;
@@ -110,41 +106,57 @@ describe("remote pairing route", () => {
     expect(persisted.pairing_token_hash).toBe(
       await deriveRemotePairingCodeVerifier(
         secret,
-        body.data.sessionId,
+        verifierContext(body.data.sessionId),
         body.data.code,
         new Date(body.data.expiresAt),
       ),
     );
     expect(persisted.pairing_token_hash).toMatch(
-      /^hmac-sha256-v1:\d{13}:[0-9a-f]{64}$/,
+      /^hmac-sha256-v2:\d{13}:[0-9a-f]{64}$/,
     );
     expect(persisted.pairing_token_hash).not.toBe(body.data.code);
   });
 
-  test("binds the verifier to both the session id and dedicated secret", async () => {
+  test("binds the verifier to every authority identity and dedicated secret", async () => {
     const expiry = new Date("2026-08-18T20:00:00.000Z");
+    const context = verifierContext("44444444-4444-4444-8444-444444444444");
     const first = await deriveRemotePairingCodeVerifier(
       secret,
-      "44444444-4444-4444-8444-444444444444",
+      context,
       "123456",
       expiry,
     );
     const otherSession = await deriveRemotePairingCodeVerifier(
       secret,
-      "55555555-5555-4555-8555-555555555555",
+      { ...context, sessionId: "55555555-5555-4555-8555-555555555555" },
       "123456",
       expiry,
     );
     const otherSecret = await deriveRemotePairingCodeVerifier(
       "another-dedicated-remote-pairing-secret-value",
-      "44444444-4444-4444-8444-444444444444",
+      context,
       "123456",
       expiry,
     );
 
-    expect(first).toMatch(/^hmac-sha256-v1:\d{13}:[0-9a-f]{64}$/);
+    expect(first).toMatch(/^hmac-sha256-v2:\d{13}:[0-9a-f]{64}$/);
     expect(otherSession).not.toBe(first);
     expect(otherSecret).not.toBe(first);
+    for (const changedContext of [
+      { ...context, organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+      { ...context, userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
+      { ...context, agentId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" },
+    ]) {
+      expect(
+        await verifyRemotePairingCodeVerifier(
+          secret,
+          changedContext,
+          "123456",
+          first,
+          new Date(expiry.getTime() - 1),
+        ),
+      ).toBe(false);
+    }
     expect(isRemotePairingVerifierCurrent(first, expiry.getTime() - 1)).toBe(
       true,
     );
@@ -168,7 +180,7 @@ describe("remote pairing route", () => {
     expect(
       await verifyRemotePairingCodeVerifier(
         secret,
-        "44444444-4444-4444-8444-444444444444",
+        context,
         "123456",
         first,
         new Date(expiry.getTime() - 1),
@@ -177,7 +189,7 @@ describe("remote pairing route", () => {
     expect(
       await verifyRemotePairingCodeVerifier(
         secret,
-        "44444444-4444-4444-8444-444444444444",
+        context,
         "123457",
         first,
         new Date(expiry.getTime() - 1),
@@ -186,7 +198,7 @@ describe("remote pairing route", () => {
     expect(
       await verifyRemotePairingCodeVerifier(
         secret,
-        "44444444-4444-4444-8444-444444444444",
+        context,
         "123456",
         first,
         expiry,
@@ -195,7 +207,7 @@ describe("remote pairing route", () => {
     expect(
       await verifyRemotePairingCodeVerifier(
         secret,
-        "44444444-4444-4444-8444-444444444444",
+        context,
         "123456",
         first,
         new Date(Number.NaN),
@@ -204,7 +216,7 @@ describe("remote pairing route", () => {
     await expect(
       verifyRemotePairingCodeVerifier(
         "too-short",
-        "44444444-4444-4444-8444-444444444444",
+        context,
         "123456",
         first,
         new Date(expiry.getTime() - 1),
@@ -220,35 +232,42 @@ describe("remote pairing route", () => {
       success: false,
       code: "REMOTE_PAIRING_NOT_CONFIGURED",
     });
-    expect(findByIdAndOrg).not.toHaveBeenCalled();
-    expect(create).not.toHaveBeenCalled();
+    expect(createPendingForOwnedAgent).not.toHaveBeenCalled();
   });
 
   test("rejects malformed JSON without fabricating an empty request", async () => {
     const response = await postPair("{");
 
     expect(response.status).toBe(400);
-    expect(create).not.toHaveBeenCalled();
+    expect(createPendingForOwnedAgent).not.toHaveBeenCalled();
+  });
+
+  test("rejects a malformed agent identifier before deriving or persisting authority", async () => {
+    const response = await postPair(JSON.stringify({ agentId: "not-a-uuid" }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: "agentId must be a UUID",
+    });
+    expect(createPendingForOwnedAgent).not.toHaveBeenCalled();
   });
 
   test("does not create a pairing session for another organization agent", async () => {
-    findByIdAndOrg.mockResolvedValue(undefined);
+    createPendingForOwnedAgent.mockResolvedValue(undefined);
 
     const response = await postPair(JSON.stringify({ agentId }));
 
     expect(response.status).toBe(404);
-    expect(create).not.toHaveBeenCalled();
+    expect(createPendingForOwnedAgent).toHaveBeenCalledTimes(1);
   });
 
   test("does not create a pairing session for another user in the organization", async () => {
-    findByIdAndOrg.mockResolvedValue({
-      id: agentId,
-      user_id: "66666666-6666-4666-8666-666666666666",
-    });
+    createPendingForOwnedAgent.mockResolvedValue(undefined);
 
     const response = await postPair(JSON.stringify({ agentId }));
 
     expect(response.status).toBe(404);
-    expect(create).not.toHaveBeenCalled();
+    expect(createPendingForOwnedAgent).toHaveBeenCalledTimes(1);
   });
 });

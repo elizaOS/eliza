@@ -1,14 +1,28 @@
 /**
  * Defines the versioned keyed verifier stored for human-entered remote
- * pairing codes. The signed payload binds the code to one session and expiry;
- * callers must still atomically consume the corresponding pending row.
+ * pairing codes. The signed payload binds one challenge to its tenant, owner,
+ * agent, session, purpose, and expiry; callers must still atomically consume
+ * the corresponding pending row.
  */
 
-const VERIFIER_PREFIX = "hmac-sha256-v1";
-const VERIFIER_PATTERN = /^hmac-sha256-v1:(\d{13}):([0-9a-f]{64})$/;
-const SESSION_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const VERIFIER_PREFIX = "hmac-sha256-v2";
+const VERIFIER_PATTERN = /^hmac-sha256-v2:(\d{13}):([0-9a-f]{64})$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CODE_PATTERN = /^\d{6}$/;
+const PAIRING_PURPOSE = "remote-control";
+
+/** Authoritative database identities covered by one pairing verifier. */
+export interface RemotePairingVerifierContext {
+  organizationId: string;
+  userId: string;
+  agentId: string;
+  sessionId: string;
+}
+
+/** Reports whether an untrusted pairing identifier is a canonical UUID. */
+export function isRemotePairingUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
+}
 
 function textBuffer(value: string): ArrayBuffer {
   const encoded = new TextEncoder().encode(value);
@@ -25,10 +39,26 @@ function assertSecret(secret: string): ArrayBuffer {
   return secretBytes;
 }
 
-function assertInputs(sessionId: string, code: string, expiresAtMs: number): void {
-  if (!SESSION_ID_PATTERN.test(sessionId)) {
-    throw new TypeError("remote pairing session id must be a canonical UUID");
+function assertContext(context: RemotePairingVerifierContext): void {
+  const entries = [
+    ["organization", context.organizationId],
+    ["user", context.userId],
+    ["agent", context.agentId],
+    ["session", context.sessionId],
+  ] as const;
+  for (const [name, value] of entries) {
+    if (!isRemotePairingUuid(value)) {
+      throw new TypeError(`remote pairing ${name} id must be a canonical UUID`);
+    }
   }
+}
+
+function assertInputs(
+  context: RemotePairingVerifierContext,
+  code: string,
+  expiresAtMs: number,
+): void {
+  assertContext(context);
   if (!CODE_PATTERN.test(code)) {
     throw new TypeError("remote pairing code must contain exactly six digits");
   }
@@ -37,8 +67,23 @@ function assertInputs(sessionId: string, code: string, expiresAtMs: number): voi
   }
 }
 
-function signingPayload(sessionId: string, code: string, expiresAtMs: number): ArrayBuffer {
-  return textBuffer(`eliza.remote-pairing.v1\0${sessionId}\0${expiresAtMs}\0${code}`);
+function signingPayload(
+  context: RemotePairingVerifierContext,
+  code: string,
+  expiresAtMs: number,
+): ArrayBuffer {
+  return textBuffer(
+    [
+      "eliza.remote-pairing.v2",
+      PAIRING_PURPOSE,
+      context.organizationId,
+      context.userId,
+      context.agentId,
+      context.sessionId,
+      String(expiresAtMs),
+      code,
+    ].join("\0"),
+  );
 }
 
 function bytesToHex(bytes: ArrayBuffer): string {
@@ -93,17 +138,17 @@ export function isRemotePairingSessionCurrent(
 /** Derives the versioned verifier persisted instead of the six-digit code. */
 export async function deriveRemotePairingCodeVerifier(
   secret: string,
-  sessionId: string,
+  context: RemotePairingVerifierContext,
   code: string,
   expiresAt: Date,
 ): Promise<string> {
   const expiresAtMs = expiresAt.getTime();
-  assertInputs(sessionId, code, expiresAtMs);
+  assertInputs(context, code, expiresAtMs);
   const key = await importHmacKey(secret, "sign");
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
-    signingPayload(sessionId, code, expiresAtMs),
+    signingPayload(context, code, expiresAtMs),
   );
   return `${VERIFIER_PREFIX}:${expiresAtMs}:${bytesToHex(signature)}`;
 }
@@ -111,7 +156,7 @@ export async function deriveRemotePairingCodeVerifier(
 /** Verifies the code, session binding, signature, and expiry without exposing the code. */
 export async function verifyRemotePairingCodeVerifier(
   secret: string,
-  sessionId: string,
+  context: RemotePairingVerifierContext,
   code: string,
   verifier: string,
   now: Date,
@@ -124,7 +169,7 @@ export async function verifyRemotePairingCodeVerifier(
     return false;
   }
   try {
-    assertInputs(sessionId, code, expiresAtMs);
+    assertInputs(context, code, expiresAtMs);
   } catch {
     // error-policy:J3 untrusted pairing material is an explicit invalid result.
     return false;
@@ -134,6 +179,6 @@ export async function verifyRemotePairingCodeVerifier(
     "HMAC",
     key,
     hexToBuffer(match[2]),
-    signingPayload(sessionId, code, expiresAtMs),
+    signingPayload(context, code, expiresAtMs),
   );
 }
