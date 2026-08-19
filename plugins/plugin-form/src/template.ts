@@ -57,6 +57,13 @@ export function resolveControlTemplates(
   values: TemplateValues,
 ): FormControl {
   assertFormControlGraph(control);
+  return resolveControlTemplatesUnchecked(control, values);
+}
+
+function resolveControlTemplatesUnchecked(
+  control: FormControl,
+  values: TemplateValues,
+): FormControl {
   const resolvedOptions = control.options?.map((option) => ({
     ...option,
     label: renderTemplate(option.label, values) ?? option.label,
@@ -64,7 +71,7 @@ export function resolveControlTemplates(
   }));
 
   const resolvedFields = control.fields?.map((field) =>
-    resolveControlTemplates(field, values),
+    resolveControlTemplatesUnchecked(field, values),
   );
 
   return {

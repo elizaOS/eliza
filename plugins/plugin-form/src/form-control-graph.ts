@@ -6,23 +6,27 @@
  * axis alone still overflows the others.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 export const MAX_FORM_CONTROL_DEPTH = 32;
 export const MAX_FORM_CONTROL_NODES = 2_048;
 
-export class FormControlGraphError extends Error {
-  readonly name = "FormControlGraphError";
+export class FormControlGraphError extends ElizaError {
+  override readonly name = "FormControlGraphError";
 
   constructor(
     message: string,
-    readonly code: "FORM_CONTROL_UNBOUNDED",
-    readonly context?: Record<string, unknown>,
+    code: "FORM_CONTROL_UNBOUNDED",
+    context?: Record<string, unknown>,
   ) {
-    super(message);
+    super(message, { code, context, severity: "fatal" });
   }
 }
 
 type NestedControl = {
   fields?: readonly NestedControl[];
+  options?: readonly unknown[];
+  extractHints?: readonly unknown[];
 };
 
 /**
@@ -30,15 +34,47 @@ type NestedControl = {
  * Call before walking `fields` for template resolution or extraction.
  */
 export function assertFormControlGraph(control: NestedControl): void {
-  walk(control, 0, 0, new WeakSet<object>());
+  walk(control, 0, { visits: 0, visiting: new WeakSet<object>() });
+}
+
+/** Bound a complete form's top-level controls with one shared work budget. */
+export function assertFormControlGraphs(
+  controls: readonly NestedControl[],
+): void {
+  const context: WalkContext = { visits: 0, visiting: new WeakSet<object>() };
+  reserveVisits(context, controls.length);
+  for (let index = 0; index < controls.length; index++) {
+    if (!(index in controls)) continue;
+    walk(controls[index], 0, context, true);
+  }
+}
+
+type WalkContext = {
+  visits: number;
+  visiting: WeakSet<object>;
+};
+
+function reserveVisits(context: WalkContext, count: number): void {
+  if (count > MAX_FORM_CONTROL_NODES - context.visits) {
+    throw new FormControlGraphError(
+      `form control graph exceeds ${MAX_FORM_CONTROL_NODES} nodes`,
+      "FORM_CONTROL_UNBOUNDED",
+      {
+        visits: context.visits + count,
+        maxNodes: MAX_FORM_CONTROL_NODES,
+      },
+    );
+  }
+  context.visits += count;
 }
 
 function walk(
   control: NestedControl,
   depth: number,
-  visits: number,
-  visiting: WeakSet<object>,
-): number {
+  context: WalkContext,
+  visitAlreadyReserved = false,
+): void {
+  if (!visitAlreadyReserved) reserveVisits(context, 1);
   if (depth > MAX_FORM_CONTROL_DEPTH) {
     throw new FormControlGraphError(
       `form control nesting exceeds ${MAX_FORM_CONTROL_DEPTH}`,
@@ -46,35 +82,33 @@ function walk(
       { depth, maxDepth: MAX_FORM_CONTROL_DEPTH },
     );
   }
-  const nextVisits = visits + 1;
-  if (nextVisits > MAX_FORM_CONTROL_NODES) {
-    throw new FormControlGraphError(
-      `form control graph exceeds ${MAX_FORM_CONTROL_NODES} nodes`,
-      "FORM_CONTROL_UNBOUNDED",
-      { visits: nextVisits, maxNodes: MAX_FORM_CONTROL_NODES },
-    );
-  }
   if (typeof control === "object" && control !== null) {
-    if (visiting.has(control)) {
+    if (context.visiting.has(control)) {
       throw new FormControlGraphError(
         "form control graph contains a cycle",
         "FORM_CONTROL_UNBOUNDED",
         { depth },
       );
     }
-    visiting.add(control);
+    context.visiting.add(control);
   }
-  let seen = nextVisits;
   try {
+    // These arrays are mapped by template resolution too. Count their logical
+    // slots so a cheaply allocated sparse array cannot force an unbounded scan.
+    reserveVisits(context, control.options?.length ?? 0);
+    reserveVisits(context, control.extractHints?.length ?? 0);
     const fields = control.fields;
-    if (!fields) return seen;
-    for (const field of fields) {
-      seen = walk(field, depth + 1, seen, visiting);
+    if (!fields) return;
+    // Array transforms still inspect every logical index. Charge the complete
+    // length before iteration so sparse arrays cannot bypass the graph budget.
+    reserveVisits(context, fields.length);
+    for (let index = 0; index < fields.length; index++) {
+      if (!(index in fields)) continue;
+      walk(fields[index], depth + 1, context, true);
     }
-    return seen;
   } finally {
     if (typeof control === "object" && control !== null) {
-      visiting.delete(control);
+      context.visiting.delete(control);
     }
   }
 }

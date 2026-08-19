@@ -4,7 +4,7 @@
  * imports the production helper only.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import {
   assertFormControlGraph,
   FormControlGraphError,
@@ -111,6 +111,69 @@ describe("assertFormControlGraph", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(FormControlGraphError);
       expect((error as FormControlGraphError).message).toMatch(/cycle/);
+    }
+  });
+
+  it("accepts a shared child that is not an ancestor cycle", () => {
+    const shared = { key: "shared", label: "shared", type: "text" };
+    const root = {
+      key: "root",
+      label: "root",
+      type: "text",
+      fields: [
+        { key: "left", label: "left", type: "text", fields: [shared] },
+        { key: "right", label: "right", type: "text", fields: [shared] },
+      ],
+    };
+
+    expect(() => assertFormControlGraph(root)).not.toThrow();
+  });
+
+  it("charges sparse field slots before walking them", () => {
+    const exact = new Array(MAX_FORM_CONTROL_NODES - 1);
+    expect(() =>
+      assertFormControlGraph({
+        key: "root",
+        label: "root",
+        type: "text",
+        fields: exact,
+      }),
+    ).not.toThrow();
+
+    const oversized = new Array(MAX_FORM_CONTROL_NODES);
+    expect(() =>
+      assertFormControlGraph({
+        key: "root",
+        label: "root",
+        type: "text",
+        fields: oversized,
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "FORM_CONTROL_UNBOUNDED",
+        context: expect.objectContaining({
+          visits: MAX_FORM_CONTROL_NODES + 1,
+        }),
+      }),
+    );
+  });
+
+  it("charges sparse option and extraction-hint slots", () => {
+    for (const property of ["options", "extractHints"] as const) {
+      const control = {
+        key: "root",
+        label: "root",
+        type: "text",
+        [property]: new Array(MAX_FORM_CONTROL_NODES),
+      };
+      expect(() => assertFormControlGraph(control)).toThrow(
+        expect.objectContaining({
+          code: "FORM_CONTROL_UNBOUNDED",
+          context: expect.objectContaining({
+            visits: MAX_FORM_CONTROL_NODES + 1,
+          }),
+        }),
+      );
     }
   });
 });

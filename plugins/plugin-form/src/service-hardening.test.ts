@@ -9,6 +9,7 @@ import {
   coerceExtractionsAgainstControls,
   parseFormExtractorOutput,
 } from "./extraction";
+import { MAX_FORM_CONTROL_NODES } from "./form-control-graph";
 import { FormService } from "./service";
 import type { FormDefinition } from "./types";
 import { parseValue, validateField } from "./validation";
@@ -86,6 +87,22 @@ describe("FormService form schema hardening", () => {
         }),
       ),
     ).toThrow("Duplicate control key: name");
+  });
+
+  it("rejects an oversized sparse control list at registration", () => {
+    expect(() =>
+      service.registerForm(
+        validForm({ controls: new Array(MAX_FORM_CONTROL_NODES + 1) }),
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: "FORM_CONTROL_UNBOUNDED",
+        context: expect.objectContaining({
+          visits: MAX_FORM_CONTROL_NODES + 1,
+        }),
+      }),
+    );
+    expect(service.getForm("signup")).toBeUndefined();
   });
 
   it("rejects prototype-polluting control keys and mapped submission keys", () => {
