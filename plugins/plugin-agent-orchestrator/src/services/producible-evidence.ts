@@ -84,7 +84,14 @@ export interface InventedArtifactFilterResult {
  *  (live 2026-08-19: "Browser console shows zero JavaScript errors during a
  *  complete work-to-break cycle" parked a built, served pomodoro page). */
 const UNCOLLECTABLE_EVIDENCE_RE =
-  /\b(?:browser\s+console|devtools|dev\s+tools|console\s+logs?\s+(?:show|prove|confirm)|screenshots?|screen\s+recording|visually\s+(?:verify|confirm|inspect)|manual(?:ly)?\s+(?:test|verify|confirm|inspect)|user\s+confirms?|lighthouse|cross-browser|no\s+(?:js|javascript)\s+(?:errors?|warnings?)\s+in\s+the\s+(?:browser|console))\b/i;
+  /\b(?:browser\s+console|devtools|dev\s+tools|console\s+logs?\s+(?:show|prove|confirm)|screenshots?|screen\s+recording|visually\s+(?:verify|confirm|inspect)|manual(?:ly)?\s+(?:test|verify|confirm|inspect)|user\s+confirms?|lighthouse|cross-browser|no\s+(?:js|javascript)\s+(?:errors?|warnings?)\s+in\s+the\s+(?:browser|console)|(?:interact(?:ion|ing)?|click(?:ing|s)?|tapping|hover(?:ing)?)\s+(?:with\s+)?(?:a\s+|the\s+)?\w*\s*(?:trigger|button|element).{0,40}\b(?:DOM|display|updates?|renders?)|updates?\s+the\s+(?:displayed|rendered)|\bin\s+the\s+DOM\b)/i;
+
+/** Criteria classes unsatisfiable for STATIC APP builds specifically: slug-dir
+ *  pages have no git pipeline, so "summarized in the diff" can never be
+ *  evidenced (live 2026-08-19: quote-generator parked on it), and runtime DOM
+ *  behavior is only provable in a browser the verifier does not have. */
+const APP_BUILD_UNSATISFIABLE_RE =
+  /\b(?:diff\s+summar|summar\w*\s+in\s+the\s+diff|the\s+diff\b|git\s+diff|changeset|commit\s+message)/i;
 
 /**
  * Drop generated criteria whose proof would require evidence the pipeline
@@ -93,13 +100,15 @@ const UNCOLLECTABLE_EVIDENCE_RE =
  */
 export function stripUncollectableEvidenceCriteria(
   criteria: readonly string[],
+  taskType?: string,
 ): InventedArtifactFilterResult {
   const kept: string[] = [];
   const dropped: string[] = [];
   for (const criterion of criteria) {
-    (UNCOLLECTABLE_EVIDENCE_RE.test(criterion) ? dropped : kept).push(
-      criterion,
-    );
+    const uncollectable =
+      UNCOLLECTABLE_EVIDENCE_RE.test(criterion) ||
+      (taskType === "app-build" && APP_BUILD_UNSATISFIABLE_RE.test(criterion));
+    (uncollectable ? dropped : kept).push(criterion);
   }
   return { kept, dropped };
 }

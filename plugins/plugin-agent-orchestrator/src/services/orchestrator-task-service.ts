@@ -27,7 +27,12 @@ import {
   stat,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import {
+  basename,
+  dirname,
+  join,
+  resolve as resolvePath,
+} from "node:path";
 import {
   ElizaError,
   getTrajectoryContext,
@@ -2643,9 +2648,30 @@ export class OrchestratorTaskService extends Service {
                 localPath: string;
               }[])
             : undefined;
-        const probed = await probeMappedUrls(
-          deriveRouteMappedUrls(fsVerifiedFiles, urlMappings),
+        const candidateUrls = deriveRouteMappedUrls(
+          fsVerifiedFiles,
+          urlMappings,
         );
+        // Assigned-slug workdirs carry no route metadata, so the mapped set
+        // is empty and criteria like "a reachable URL renders the page"
+        // starve on a build that IS served (live 2026-08-19: quote-generator
+        // parked for "no reachable URL"). The deploy config alone determines
+        // the URL for a workdir directly under the apps dir.
+        if (candidateUrls.length === 0) {
+          const deploy = resolveAppDeployConfig();
+          if (
+            deploy.target === "custom" &&
+            deploy.customAppsDir &&
+            deploy.customBaseUrl &&
+            dirname(resolvePath(reportingSession.workdir)) ===
+              resolvePath(deploy.customAppsDir)
+          ) {
+            candidateUrls.push(
+              `${deploy.customBaseUrl.replace(/\/+$/, "")}/apps/${basename(reportingSession.workdir)}/`,
+            );
+          }
+        }
+        const probed = await probeMappedUrls(candidateUrls);
         verifiedUrls.push(...probed);
       }
     }
@@ -3657,7 +3683,9 @@ export class OrchestratorTaskService extends Service {
         dirname(workdir) === deploy.customAppsDir.replace(/\/+$/, "")
           ? `${deploy.customBaseUrl.replace(/\/+$/, "")}/apps/${basename(workdir)}/`
           : undefined;
-      const text = `${label} recovered: the earlier failure was retried and every acceptance criterion now verifies.${url ? ` Live at ${url}` : ""}`;
+      const text = sawRetry
+        ? `${label} recovered: the earlier failure was retried and every acceptance criterion now verifies.${url ? ` Live at ${url}` : ""}`
+        : `${label} is verified done — every acceptance criterion passes.${url ? ` Live at ${url}` : ""}`;
       await send(
         { source: origin.source, roomId: origin.roomId },
         { text, source: origin.source },
@@ -4235,7 +4263,10 @@ export class OrchestratorTaskService extends Service {
     if (next === "done" && groundTruth?.status === "verified") {
       await this.harvestCuratedCodingMemory(taskId);
     }
-    if (next === "done") {
+    if (next === "done" && !result.humanOverride) {
+      // Human overrides are operator bookkeeping, not recoveries — notifying
+      // on them flooded the channel with eight false "recovered" lines when a
+      // parked backlog was swept (live 2026-08-19).
       // error-policy:J5 fire-and-forget courtesy notice; failures are reported
       // inside notifyVerifyRecovery itself.
       void this.notifyVerifyRecovery(taskId);

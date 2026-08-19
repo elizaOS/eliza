@@ -97,8 +97,12 @@ const DEPLOY_RE =
 // intervening words so canonical phrasing like "build an app" and
 // "create a checklist app" classifies correctly (a bare `build\s+a\s+app` never
 // matches grammatical English and silently regressed those to coding).
+// The trailing alternative catches verb-less goals that are just a noun
+// phrase ending in page/site ("quote generator page" — the planner's task
+// title became the goal and classified coding, resurrecting the diff-summary
+// criterion on a slug-dir app, live 2026-08-19).
 const APP_BUILD_RE =
-  /\b(website|web\s*site|web\s?page|landing\s+page|web\s+app|webapp|frontend\s+app|(?:build|create|make)\s+(?:me\s+)?an?\s+(?:[\w'-]+[ -]){0,5}(?:site|page|app|application)\b)/i;
+  /\b(website|web\s*site|web\s?page|landing\s+page|web\s+app|webapp|frontend\s+app|(?:build|create|make)\s+(?:me\s+)?an?\s+(?:[\w'-]+[ -]){0,5}(?:site|page|app|application)\b|^[\w'’-]+(?:\s+[\w'’-]+){0,5}\s+(?:page|site|webpage)\s*$)/im;
 
 /**
  * Classify a task from its goal text. Defaults to `coding` — the safest
@@ -243,6 +247,7 @@ export async function generateDefaultAcceptanceCriteria(
     // design (#20794), so it is dropped and the template tops the set back up.
     const producible = stripUncollectableEvidenceCriteria(
       stripInventedArtifactCriteria(candidates, goal).kept,
+      type,
     ).kept;
     const refined = normalizeCriteria(producible, fallback);
     return refined.length >= MIN_CRITERIA ? refined : fallback;
