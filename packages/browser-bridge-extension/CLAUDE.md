@@ -35,8 +35,8 @@ packages/browser-bridge-extension/
     package-safari.mjs        Invokes xcrun to wrap dist/safari into a Safari Web Extension
     package-store-assets.mjs  Packages store asset screenshots/descriptions
     package-release.mjs       Orchestrates all packaging steps
-    extension-smoke.mjs       Node smoke test for Chrome build artifacts
-    extension-smoke-firefox.mjs Firefox manifest, archive, and reproducibility smoke test
+    extension-smoke.mjs       Installed Chrome smoke plus reusable local agent harness
+    extension-smoke-firefox.mjs Firefox artifact and installed-browser WebDriver BiDi smoke
     extension-smoke-safari.mjs  Node smoke test for Safari build artifacts
     release-version.mjs       Version helpers (semver → Chrome 4-part version)
     script-utils.mjs          Shared build script utilities
@@ -105,6 +105,8 @@ bun run --cwd packages/browser-bridge-extension test:smoke:safari
 ```
 
 Output lands in `dist/chrome/`, `dist/firefox/`, or `dist/safari/`. Load the Chrome directory from `chrome://extensions`; load the Firefox directory temporarily from `about:debugging#/runtime/this-firefox`.
+
+The Firefox smoke installs the unpacked build into the system Firefox application and exercises auto-pair, sync, a real DOM action, progress, and completion through WebDriver BiDi. Set `FIREFOX_EXECUTABLE_PATH` when Firefox is not installed in a standard platform location.
 
 ## Agent API endpoints the extension calls
 

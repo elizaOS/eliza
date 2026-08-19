@@ -230,7 +230,7 @@ function createMockCompanion(origin, requestBody) {
   };
 }
 
-async function startMockAgentServer() {
+export async function startMockAgentServer() {
   const requests = [];
   let sessionCompleted = false;
   const server = http.createServer(async (req, res) => {
@@ -633,10 +633,14 @@ async function main() {
   console.log("Agent Browser Bridge extension smoke checks passed.");
 }
 
-if (process.argv.includes("--server-only")) {
-  const mockServer = await startMockAgentServer();
-  console.log(`Browser bridge smoke server listening at ${mockServer.origin}`);
-  await new Promise(() => {});
-} else {
-  await main();
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (process.argv.includes("--server-only")) {
+    const mockServer = await startMockAgentServer();
+    console.log(
+      `Browser bridge smoke server listening at ${mockServer.origin}`,
+    );
+    await new Promise(() => {});
+  } else {
+    await main();
+  }
 }

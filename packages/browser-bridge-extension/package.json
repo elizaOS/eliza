@@ -33,6 +33,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "jsdom": "^29.1.1",
     "@types/jsdom": "^27.0.0",
+    "puppeteer-core": "^24.43.1",
     "typescript": "^6.0.3",
     "web-ext": "^10.6.0",
     "vitest": "^4.0.17"

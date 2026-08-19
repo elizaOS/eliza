@@ -76,12 +76,19 @@ bun run --cwd packages/browser-bridge-extension build:firefox
 
 # Load in Chrome: chrome://extensions → Developer mode → Load unpacked → select dist/chrome/
 
-# Run unit tests
+# Run unit tests plus installed Chrome and Firefox smokes
 bun run --cwd packages/browser-bridge-extension test
 
-# Smoke-check the built artifact
+# Smoke-check an installed Chrome-family extension
 bun run --cwd packages/browser-bridge-extension test:smoke
+
+# Package, install, and exercise the extension in Firefox over WebDriver BiDi
+bun run --cwd packages/browser-bridge-extension test:smoke:firefox
 ```
+
+The Firefox smoke uses the system Firefox application. Set
+`FIREFOX_EXECUTABLE_PATH` when Firefox is not installed in its standard macOS,
+Linux, or Windows location.
 
 ## Packaging for distribution
 
