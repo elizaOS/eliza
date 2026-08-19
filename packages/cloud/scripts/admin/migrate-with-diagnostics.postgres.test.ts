@@ -199,11 +199,18 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
     );
     CREATE TABLE users (
       id uuid PRIMARY KEY,
-      organization_id uuid
+      name text NOT NULL,
+      organization_id uuid,
+      role text NOT NULL,
+      wallet_verified boolean NOT NULL DEFAULT false,
+      is_active boolean NOT NULL DEFAULT true
     );
     CREATE TABLE organizations (
       id uuid PRIMARY KEY,
+      name text NOT NULL,
+      slug text NOT NULL UNIQUE,
       credit_balance numeric(16, 6) NOT NULL DEFAULT '0.000000',
+      is_active boolean NOT NULL DEFAULT true,
       stripe_customer_id text,
       billing_email text,
       stripe_payment_method_id text,
