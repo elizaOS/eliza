@@ -4,6 +4,16 @@
  * cwd confinement, and idle/exit reaping — driven with an injected fake PTY
  * (`makeFakeSpawn`), no OS process.
  */
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionOutputEvent } from "../services/pty-contract";
 import {
@@ -179,6 +189,33 @@ describe("PtySessionStore.start", () => {
     await expect(store.start(spec({ cwd: "/etc" }))).rejects.toThrow(
       /outside the allowed root/i,
     );
+  });
+
+  it("rejects a cwd that is a symlink to a directory outside the allowed root", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "pty-jail-"));
+    const outside = mkdtempSync(path.join(tmpdir(), "pty-outside-"));
+    writeFileSync(path.join(outside, "marker.txt"), "outside-jail");
+    const link = path.join(root, "escape");
+    symlinkSync(outside, link);
+
+    try {
+      const { store, fake } = makeStore({ allowedRoot: root });
+      await expect(store.start(spec({ cwd: link }))).rejects.toThrow(
+        /outside the allowed root/i,
+      );
+      expect(fake.calls).toHaveLength(0);
+
+      const inside = path.join(root, "ok");
+      mkdirSync(inside);
+      const innerLink = path.join(root, "alias");
+      symlinkSync(inside, innerLink);
+      await store.start(spec({ cwd: innerLink }));
+      expect(fake.calls).toHaveLength(1);
+      expect(fake.calls[0].opts.cwd).toBe(realpathSync(inside));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
 

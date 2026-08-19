@@ -1,10 +1,15 @@
 /**
  * PTY session store and console bridge for web-terminal sessions.
- * It confines child process environment/cwd, buffers output for late subscribers, selects Bun or Node PTY backends, and emits the bridge events consumed by the agent server.
+ * It confines child process environment/cwd through symlink parents, buffers
+ * output for late subscribers, selects Bun or Node PTY backends, and emits the
+ * bridge events consumed by the agent server. Lexical `path.resolve` is not
+ * enough: a cwd that is a symlink inside the allowed root must not spawn a
+ * session whose real working directory is outside the jail.
  */
 
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { bunTruePtySpawn, isBunRuntime } from "./bun-pty-spawn";
@@ -92,6 +97,35 @@ function buildPtyEnv(
   env.PWD = cwd;
   env.TERM = specEnv?.TERM ?? process.env.TERM ?? "xterm-256color";
   return env;
+}
+
+/**
+ * Realpath the longest existing prefix and rejoin the missing tail. A cwd
+ * symlink that already exists must resolve to its target; a not-yet-created
+ * basename under a jail symlink must not hide that target.
+ */
+async function resolveThroughSymlinkParents(input: string): Promise<string> {
+  const absolute = path.resolve(input);
+  try {
+    return await fs.realpath(absolute);
+  } catch {
+    // error-policy:J3 missing leaf or ancestor — walk up to the longest
+    // existing prefix and realpath that, then rejoin the tail.
+  }
+  const tail: string[] = [];
+  let current = absolute;
+  while (true) {
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return absolute;
+    }
+    tail.unshift(path.basename(current));
+    try {
+      return path.join(await fs.realpath(parent), ...tail);
+    } catch {
+      current = parent;
+    }
+  }
 }
 
 /** Resolves the node-pty `spawn` implementation lazily (native, optional dep). */
@@ -221,23 +255,25 @@ export class PtySessionStore {
   /**
    * Reject a cwd that escapes the allowed root (defense in depth — the route
    * and spec builder already resolve a safe cwd, but the store is the last gate
-   * before spawning a real process).
+   * before spawning a real process). Compare realpath of the longest existing
+   * prefix so a symlink inside the jail cannot hide an outside directory.
    */
-  private confineCwd(cwd: string): string {
+  private async confineCwd(cwd: string): Promise<string> {
     const resolved = path.resolve(cwd);
     const root = this.opts.allowedRoot
       ? path.resolve(this.opts.allowedRoot)
       : null;
-    if (root) {
-      const rel = path.relative(root, resolved);
-      if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
-        return resolved;
-      }
-      throw new Error(
-        `PTY cwd "${resolved}" is outside the allowed root "${root}".`,
-      );
+    if (!root) return resolved;
+
+    const realCwd = await resolveThroughSymlinkParents(resolved);
+    const realRoot = await resolveThroughSymlinkParents(root);
+    const rel = path.relative(realRoot, realCwd);
+    if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
+      return realCwd;
     }
-    return resolved;
+    throw new Error(
+      `PTY cwd "${resolved}" is outside the allowed root "${root}".`,
+    );
   }
 
   /** Spawn a new interactive session and start streaming its output. */
@@ -247,7 +283,7 @@ export class PtySessionStore {
         `PTY session limit reached (${this.maxSessions}); stop a session before starting another.`,
       );
     }
-    const cwd = this.confineCwd(spec.cwd);
+    const cwd = await this.confineCwd(spec.cwd);
     if (!this.resolvedSpawn) {
       this.resolvedSpawn = await this.resolveSpawn();
     }
