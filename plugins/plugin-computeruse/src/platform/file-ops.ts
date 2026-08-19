@@ -200,10 +200,20 @@ export async function editFile(
           error: "Old text not found in file.",
         };
       }
-      const next = content.replace(oldText, newText);
-      if (Buffer.byteLength(next, "utf8") > MAX_FILE_OP_BYTES) {
+      const matchIndex = content.indexOf(oldText);
+      const prefix = content.slice(0, matchIndex);
+      const suffix = content.slice(matchIndex + oldText.length);
+      const nextBytes =
+        Buffer.byteLength(prefix, "utf8") +
+        Buffer.byteLength(newText, "utf8") +
+        Buffer.byteLength(suffix, "utf8");
+      if (nextBytes > MAX_FILE_OP_BYTES) {
         return budgetExceeded("edit");
       }
+      // Assemble a literal replacement only after its encoded size is known.
+      // String.replace interprets replacement tokens that can amplify a
+      // bounded input into an enormous allocation.
+      const next = `${prefix}${newText}${suffix}`;
       await handle.truncate(0);
       await handle.writeFile(next, "utf8");
       return {

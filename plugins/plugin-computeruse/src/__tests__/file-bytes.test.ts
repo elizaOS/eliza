@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createDirectory,
   directoryExists,
+  editFile,
   getFileSize,
   MAX_FILE_OP_BYTES,
   READ_FILE_CHAR_LIMIT,
@@ -158,6 +159,33 @@ describe("binary file ops (read_bytes / write_bytes)", () => {
     const r = await readFile(file);
     expect(r.success).toBe(true);
     expect(r.content).toHaveLength(READ_FILE_CHAR_LIMIT);
+  });
+
+  it("treats edit replacement tokens literally", async () => {
+    const file = join(dir, "replacement-tokens.txt");
+    await writeBytes(file, Buffer.from("prefix old suffix").toString("base64"));
+
+    const result = await editFile(file, "old", "$`-$&-$'");
+
+    expect(result.success).toBe(true);
+    const read = await readFile(file);
+    expect(read.content).toBe("prefix $`-$&-$' suffix");
+  });
+
+  it("rejects an oversized edit replacement before assembling it", async () => {
+    const file = join(dir, "oversized-edit.txt");
+    await writeBytes(file, Buffer.from("old").toString("base64"));
+
+    const result = await editFile(
+      file,
+      "old",
+      "x".repeat(MAX_FILE_OP_BYTES + 1),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/file-op budget/);
+    const read = await readFile(file);
+    expect(read.content).toBe("old");
   });
 });
 
