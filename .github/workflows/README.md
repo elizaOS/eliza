@@ -46,20 +46,31 @@ Representative examples:
 - `device-e2e.yml` is the exact-head Android-emulator and iOS-simulator
   device-bundle producer (#19640). Canonical `ci.yml` calls it only for PRs
   carrying the `ci:device` label; `workflow_dispatch` is the on-demand route,
-  and a weekly cadence hard-gates the explicit host-safe Android subset.
+  and a weekly cadence hard-gates only the explicit host-safe Android subset;
+  scheduled runs do not allocate the macOS/iOS job. A scheduled Android
+  non-success opens, updates, or reopens one stable failure issue containing
+  exact run-attempt, attempt-scoped artifact, and revision links; the next
+  successful cadence updates and closes it so the issue never remains stale.
+  The notifier has job-scoped read access to Actions and contents plus issue
+  write access; reusable and manually dispatched runs never write issues.
   [![scheduled device e2e](https://github.com/elizaOS/eliza/actions/workflows/device-e2e.yml/badge.svg?branch=develop&event=schedule)](https://github.com/elizaOS/eliza/actions/workflows/device-e2e.yml?query=event%3Aschedule)
-  Both jobs run the bundle-owning runners with `--output` and upload the full
-  bundle (`inline/`, `logs/`, `summary.json`, `junit.xml`) on success and
-  failure, without reading any repository secret.
+  Artifact names include the run ID and attempt so reruns cannot overwrite or
+  link a prior attempt's bundle. Both jobs initialize a revision-bound artifact
+  root after checkout, then run the bundle-owning runners with `--output`. A
+  started runner finalizes the full bundle (`inline/`, `logs/`, `summary.json`,
+  `junit.xml`) on success and failure; an earlier toolchain or device failure
+  retains the bootstrap record plus the Actions log. No job reads a repository
+  secret.
 - `android-arm64-local-e2e.yml` is the separate weekly, schedule-only
   self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
   `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
   contract: the job stays queued until such a runner is online, then fails
   closed unless both the host and attached Android target pass ARM64 and pinned
-  toolchain preflight. It runs local chat plus local-runtime/route WebView
-  probes; on-device voice remains separately qualified. Manual arbitrary-ref
-  dispatch is intentionally unavailable because this runner persists and owns
-  a physical device.
+  toolchain preflight. Preflight output is uploaded even when a prerequisite
+  fails before the bundle runner starts. It runs local chat plus
+  local-runtime/route WebView probes; on-device voice remains separately
+  qualified. Manual arbitrary-ref dispatch is intentionally unavailable
+  because this runner persists and owns a physical device.
 
 ## Manual operations
 
