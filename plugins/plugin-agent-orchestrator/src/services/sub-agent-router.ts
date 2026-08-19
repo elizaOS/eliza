@@ -2693,11 +2693,23 @@ export class SubAgentRouter extends Service {
     // A session the USER stopped is not an incomplete build to repair —
     // retrying it resurrects cancelled work (live 2026-08-19: "cancel all ur
     // running coding tasks" hard-stopped the child and the retry rebuilt and
-    // delivered the page anyway).
-    if (typeof meta[ADMIN_STOP_META_KEY] === "string") {
+    // delivered the page anyway). The stamp races the terminal event, so the
+    // event-time snapshot is not trustworthy — read the LIVE session row
+    // (same fresh-read the swarm coordinator uses for this exact stamp).
+    let freshMeta: Record<string, unknown> = meta;
+    try {
+      const fresh = await this.acp?.getSession(session.id);
+      if (fresh?.metadata) {
+        freshMeta = fresh.metadata as Record<string, unknown>;
+      }
+    } catch {
+      // error-policy:J4 stale-snapshot fallback; the event-time metadata still
+      // gates when the live read fails.
+    }
+    if (typeof freshMeta[ADMIN_STOP_META_KEY] === "string") {
       this.log("info", "verify-retry skipped: session was stopped by the user", {
         sessionId: session.id,
-        reason: meta[ADMIN_STOP_META_KEY],
+        reason: freshMeta[ADMIN_STOP_META_KEY],
       });
       return false;
     }
