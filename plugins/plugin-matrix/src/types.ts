@@ -349,3 +349,11 @@ export class MatrixApiError extends MatrixPluginError {
     this.errcode = errcode;
   }
 }
+
+/** Error when the initial `/sync` never reaches PREPARED. */
+export class MatrixSyncTimeoutError extends MatrixPluginError {
+  constructor(message: string = "Matrix initial sync timed out") {
+    super(message);
+    this.name = "MatrixSyncTimeoutError";
+  }
+}
