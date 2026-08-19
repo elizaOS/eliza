@@ -11,7 +11,7 @@ async function render(configuredOrigin?: string): Promise<string> {
   const response = await app.request(
     "/connection-success?source=eliza-app&platform=github",
     {},
-    { AGENT_APP_ORIGIN: configuredOrigin } as AppEnv["Bindings"],
+    { AGENT_APP_ORIGIN: configuredOrigin } as unknown as AppEnv["Bindings"],
   );
   expect(response.status).toBe(200);
   return response.text();
