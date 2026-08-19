@@ -72,16 +72,16 @@ jobs:
         if: inputs.suite == 'all' || inputs.suite == 'app'
         run: bun run --cwd packages/app test:e2e:walkthrough:live
 
+      # Both the scenario graph and cloud API load the compiled
+      # @elizaos/core/edge export. The lean install above skips lifecycle
+      # scripts, so build that contract before either consumer starts.
+      - name: Build core runtime contract
+        if: inputs.suite == 'all' || inputs.suite == 'scenarios' || inputs.suite == 'cloud'
+        run: bun run build:core
+
       - name: Live scenarios
         if: inputs.suite == 'all' || inputs.suite == 'scenarios'
         run: bun run --cwd packages/scenario-runner test:live:e2e
-
-      # Cloud API e2e loads the compiled Workerd export from
-      # @elizaos/core/edge. The lean install above skips lifecycle scripts, so
-      # this artifact must be built explicitly on a clean runner.
-      - name: Build core runtime contract
-        if: inputs.suite == 'all' || inputs.suite == 'cloud'
-        run: bun run build:core
 
       - name: Cloud end-to-end
         if: inputs.suite == 'all' || inputs.suite == 'cloud'
