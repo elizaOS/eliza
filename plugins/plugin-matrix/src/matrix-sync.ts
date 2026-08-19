@@ -1,10 +1,8 @@
 /**
  * Timed wait for the Matrix client's first PREPARED sync.
  *
- * `connect()` used to `startClient` then wait forever for that event. A
- * hung or accept-and-hold homeserver never emits PREPARED, so service
- * initialize never returns. Origin replica of that waiter stayed pending
- * past 400ms.
+ * The listener is always removed when the wait settles so failed startup does
+ * not leave lifecycle state attached to a client that will be stopped.
  */
 
 import { MatrixSyncTimeoutError } from "./types.js";
@@ -40,7 +38,7 @@ export function waitForMatrixPrepared(
       if (syncState === "PREPARED") finish();
     };
     const timer = setTimeout(() => {
-      finish(new MatrixSyncTimeoutError(`Matrix initial sync timed out after ${timeoutMs}ms`));
+      finish(new MatrixSyncTimeoutError(timeoutMs));
     }, timeoutMs);
     client.on(syncEvent, listener);
   });

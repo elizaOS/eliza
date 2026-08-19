@@ -2,8 +2,6 @@
  * Matrix service implementation for ElizaOS.
  *
  * This service provides Matrix messaging capabilities using matrix-js-sdk.
- * Initial `/sync` waits for PREPARED with a wall-clock budget so a hung
- * homeserver cannot pin `initialize()`.
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
@@ -1425,10 +1423,24 @@ export class MatrixService extends Service implements IMatrixService {
    * Connect to Matrix.
    */
   private async connect(state: MatrixAccountState): Promise<void> {
-    await state.client.startClient({ initialSyncLimit: 10 });
-    state.connected = true;
-
-    await waitForMatrixPrepared(state.client, sdk.ClientEvent.Sync);
+    try {
+      await state.client.startClient({ initialSyncLimit: 10 });
+      await waitForMatrixPrepared(state.client, sdk.ClientEvent.Sync);
+      state.connected = true;
+    } catch (error) {
+      state.connected = false;
+      state.syncing = false;
+      try {
+        state.client.stopClient();
+      } catch (stopError) {
+        // error-policy:J6 failed-startup teardown is best effort; preserve the
+        // original connection failure while making cleanup failure visible.
+        logger.warn(
+          `Matrix client cleanup after failed connection failed: ${stopError instanceof Error ? stopError.message : String(stopError)}`
+        );
+      }
+      throw error;
+    }
 
     // Join configured rooms
     for (const room of state.settings.rooms) {
