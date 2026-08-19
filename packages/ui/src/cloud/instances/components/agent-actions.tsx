@@ -273,11 +273,11 @@ export function ElizaAgentActions({
             defaultValue: "Suspend queued",
           }),
           sleep: t("cloud.containers.agentActions.deactivateQueued", {
-            defaultValue: "Deactivation queued — saving an encrypted backup",
+            defaultValue: "Deactivation queued — retaining your agent data",
           }),
           wake: t("cloud.containers.agentActions.reactivateQueued", {
             defaultValue:
-              "Reactivation queued — restoring from backup (this can take a few minutes)",
+              "Reactivation queued — restoring your agent data (this can take a few minutes)",
           }),
           delete: t("cloud.containers.agentActions.deleteQueued", {
             defaultValue: "Delete queued",
@@ -308,11 +308,11 @@ export function ElizaAgentActions({
         provision: t("cloud.containers.agentActions.provisioningStarted", {
           defaultValue: "Agent provisioning started",
         }),
-        resume: t("cloud.containers.agentActions.resumingSnapshot", {
-          defaultValue: "Agent resuming from snapshot",
+        resume: t("cloud.containers.agentActions.resuming", {
+          defaultValue: "Agent resuming",
         }),
         suspend: t("cloud.containers.agentActions.suspended", {
-          defaultValue: "Agent suspended (snapshot saved)",
+          defaultValue: "Agent suspended",
         }),
         sleep: t("cloud.containers.agentActions.deactivated", {
           defaultValue: "Agent deactivated — hourly billing stopped",
@@ -520,7 +520,7 @@ export function ElizaAgentActions({
             >
               {t("cloud.containers.agentActions.deactivatedPanel", {
                 defaultValue:
-                  "This agent is deactivated. It is not running and is not consuming hourly credits; its data is kept in an encrypted backup. Reactivation restores the backup and requires available credits.",
+                  "This agent is deactivated. It is not running and is not consuming hourly credits; its data is retained. Reactivation can take a few minutes and requires available credits.",
               })}
             </p>
           </div>
@@ -594,7 +594,7 @@ export function ElizaAgentActions({
                 disabled={!!loading || isBusy}
                 title={t("cloud.containers.agentActions.reactivateHint", {
                   defaultValue:
-                    "Restores the agent from its encrypted backup and starts it again. This can take a few minutes.",
+                    "Restores the agent's retained data and starts it again. This can take a few minutes.",
                 })}
               >
                 {loading === "wake" ? (
@@ -636,7 +636,7 @@ export function ElizaAgentActions({
                 disabled={!!loading || isBusy}
                 title={t("cloud.containers.agentActions.deactivateHint", {
                   defaultValue:
-                    "Stops the agent and its hourly billing. Data is kept in an encrypted backup; reactivate anytime.",
+                    "Stops the agent and its hourly billing while retaining its data; reactivate anytime.",
                 })}
               >
                 {loading === "sleep" ? (
@@ -743,14 +743,14 @@ export function ElizaAgentActions({
                 : trackedAction === "sleep"
                   ? t("cloud.containers.agentActions.deactivateProgressHint", {
                       defaultValue:
-                        "Deactivating — saving an encrypted backup and releasing compute. This page will refresh when the job finishes.",
+                        "Deactivating — retaining your agent data and stopping dedicated hosting. This page will refresh when the job finishes.",
                     })
                   : trackedAction === "wake"
                     ? t(
                         "cloud.containers.agentActions.reactivateProgressHint",
                         {
                           defaultValue:
-                            "Reactivating — restoring your agent from its backup. This can take a few minutes; the page will refresh when it finishes.",
+                            "Reactivating — restoring your agent data. This can take a few minutes; the page will refresh when it finishes.",
                         },
                       )
                     : t("cloud.containers.agentActions.provisioningHint", {
@@ -891,13 +891,13 @@ export function ElizaAgentActions({
               <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody2", {
                   defaultValue:
-                    "Before deactivation, Eliza saves an encrypted backup. If the backup cannot be saved, the agent stays running and billing continues.",
+                    "Eliza retains your agent data during deactivation. If deactivation cannot complete, the agent stays running and billing continues.",
                 })}
               </span>
               <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody3", {
                   defaultValue:
-                    "Reactivation restores the backup and can take a few minutes; it requires available credits.",
+                    "Reactivation restores the agent's retained data and can take a few minutes; it requires available credits.",
                 })}
               </span>
             </AlertDialogDescription>

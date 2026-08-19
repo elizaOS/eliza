@@ -157,6 +157,9 @@ describe("Dedicated activation quote", () => {
     expect(screen.getByRole("button", { name: "Delete Agent" })).toBeTruthy();
     expect(screen.queryByText("Agent Actions")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save Snapshot" })).toBeNull();
+    expect(document.body.textContent).not.toMatch(
+      /backup|snapshot|container|runtime|compute/i,
+    );
   });
 
   it("keeps shared agents persistent while offering explicit Dedicated activation", () => {

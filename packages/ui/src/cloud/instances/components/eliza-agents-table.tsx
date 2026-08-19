@@ -320,16 +320,11 @@ function StatusCell({
         </span>
       )}
       {errorMessage && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <p className="text-xs-tight text-destructive/80 truncate max-w-[180px] cursor-help pl-0.5">
-              {errorMessage}
-            </p>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-xs bg-card border-border">
-            <p>{errorMessage}</p>
-          </TooltipContent>
-        </Tooltip>
+        <p className="text-xs-tight text-destructive/80 max-w-[180px] pl-0.5">
+          {t("cloud.elizaAgentsTable.agentNeedsAttention", {
+            defaultValue: "Agent needs attention",
+          })}
+        </p>
       )}
     </div>
   );
@@ -709,8 +704,8 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
         queued: t("cloud.elizaAgentsTable.suspendQueued", {
           defaultValue: "Suspend queued",
         }),
-        alreadyDone: t("cloud.elizaAgentsTable.suspended", {
-          defaultValue: "Agent suspended (snapshot saved)",
+        alreadyDone: t("cloud.elizaAgentsTable.suspendComplete", {
+          defaultValue: "Agent suspended",
         }),
       },
       onError: () => {
@@ -744,7 +739,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
           defaultValue: "Deactivate failed",
         }),
         queued: t("cloud.elizaAgentsTable.deactivateQueued", {
-          defaultValue: "Deactivation queued — saving an encrypted backup",
+          defaultValue: "Deactivation queued — retaining your agent data",
         }),
         alreadyDone: t("cloud.elizaAgentsTable.alreadyDeactivated", {
           defaultValue: "Agent is already deactivated",
@@ -784,7 +779,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
         }),
         queued: t("cloud.elizaAgentsTable.reactivateQueued", {
           defaultValue:
-            "Reactivation queued — restoring from backup (this can take a few minutes)",
+            "Reactivation queued — restoring your agent data (this can take a few minutes)",
         }),
         alreadyDone: t("cloud.elizaAgentsTable.alreadyRunning", {
           defaultValue: "Agent is already running",
@@ -1160,6 +1155,10 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                 <Button
                                   variant="ghost"
                                   type="button"
+                                  aria-label={t(
+                                    "cloud.elizaAgentsTable.openWebUi",
+                                    { defaultValue: "Open Web UI" },
+                                  )}
                                   onClick={() => openWebUIWithPairing(sb.id)}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors"
                                 >
@@ -1180,6 +1179,10 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                 <Button
                                   variant="ghost"
                                   type="button"
+                                  aria-label={t(
+                                    "cloud.elizaAgentsTable.resumeAgent",
+                                    { defaultValue: "Resume agent" },
+                                  )}
                                   onClick={() => handleProvision(sb.id)}
                                   disabled={busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
@@ -1389,6 +1392,9 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                         <Button
                           variant="ghost"
                           type="button"
+                          aria-label={t("cloud.elizaAgentsTable.resumeAgent", {
+                            defaultValue: "Resume agent",
+                          })}
                           onClick={() => handleProvision(sb.id)}
                           disabled={busy}
                           className="min-h-touch rounded-md px-3 text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
@@ -1495,11 +1501,11 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
               ? t("cloud.elizaAgentsTable.deleteManyDesc", {
                   count: deleteIds?.length,
                   defaultValue:
-                    "This will permanently delete {{count}} agents and stop their running containers.",
+                    "This will permanently delete {{count}} agents and stop them if they are running.",
                 })
               : t("cloud.elizaAgentsTable.deleteDesc", {
                   defaultValue:
-                    "This will permanently delete the agent and stop any running container.",
+                    "This will permanently delete the agent and stop it if it is running.",
                 })
         }
         cancelLabel={t("cloud.elizaAgentsTable.cancel", {
@@ -1548,13 +1554,13 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
               <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody2", {
                   defaultValue:
-                    "Before deactivation, Eliza saves an encrypted backup. If the backup cannot be saved, the agent stays running and billing continues.",
+                    "Eliza retains your agent data during deactivation. If deactivation cannot complete, the agent stays running and billing continues.",
                 })}
               </span>
               <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody3", {
                   defaultValue:
-                    "Reactivation restores the backup and can take a few minutes; it requires available credits.",
+                    "Reactivation restores the agent's retained data and can take a few minutes; it requires available credits.",
                 })}
               </span>
             </AlertDialogDescription>

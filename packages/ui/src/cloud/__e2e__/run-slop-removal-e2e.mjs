@@ -417,7 +417,6 @@ const managementPages = [
   ["/cloud/billing?canceled=true", "/cloud/billing?canceled=true"],
   ["/cloud/api-keys", "/cloud/api-keys"],
   ["/cloud/account", "/cloud/account"],
-  ["/cloud/security", "/cloud/security"],
   ["/cloud/security/permissions", "/cloud/security/permissions"],
   ["/cloud/monetization", "/cloud/monetization"],
   ["/cloud/connectors", "/cloud/connectors"],
@@ -431,6 +430,7 @@ for (const [from, expectedPath] of managementPages) {
 //     managed Cloud page (the query string is carried through).
 console.log("== leg 1b: legacy → canonical Cloud redirects ==");
 const redirectCases = [
+  ["/cloud/security", "/cloud/account"],
   ["/cloud/earnings", "/cloud/monetization"],
   ["/cloud/affiliates", "/cloud/monetization"],
   [
