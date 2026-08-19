@@ -113,9 +113,46 @@ describe("desktop hardware capture inputs", () => {
     ).toThrow(/Configured microphone device MV7 is absent/);
   });
 
+  test("rejects duplicate enumerated names instead of selecting the first", () => {
+    expect(() =>
+      assertConfiguredDevicesListed(
+        "win32",
+        {
+          microphone: "USB Microphone",
+          speakerLoopback: "CABLE Output",
+        },
+        [
+          '"USB Microphone" (audio)',
+          '"USB Microphone" (audio)',
+          '"CABLE Output" (audio)',
+        ].join("\n"),
+      ),
+    ).toThrow(/microphone.*ambiguous/);
+  });
+
+  test("rejects duplicate indices inside one macOS media section", () => {
+    expect(() =>
+      assertConfiguredDevicesListed(
+        "darwin",
+        { screen: "0", microphone: "1", speakerLoopback: "2" },
+        [
+          "AVFoundation video devices:",
+          "[0] Capture screen 0",
+          "AVFoundation audio devices:",
+          "[1] First USB Microphone",
+          "[1] Second USB Microphone",
+          "[2] BlackHole 2ch",
+        ].join("\n"),
+      ),
+    ).toThrow(/microphone.*ambiguous/);
+  });
+
   test.each([
     ["darwin", "BlackHole 16ch"],
+    ["darwin", "Black-Hole 16ch"],
+    ["darwin", "bLaCk_HoLe 16ch"],
     ["win32", "VB-Audio Virtual Cable"],
+    ["win32", "VB_Audio Virtual Cable"],
     ["win32", "CABLE Output (VB-Audio Virtual Cable)"],
     ["win32", "Stereo Mix (Realtek Audio)"],
     ["win32", "virtual-audio-capturer"],
@@ -153,7 +190,7 @@ describe("desktop hardware capture inputs", () => {
       device: "2",
       enumeratedLabel: "Shure MV7 USB Microphone",
       classification: "operator-selected-enumerated-nonvirtual-endpoint",
-      classifier: "eliza-voice-physical-microphone-v1",
+      classifier: "eliza-voice-physical-microphone-v2",
       platform: "darwin",
     });
   });

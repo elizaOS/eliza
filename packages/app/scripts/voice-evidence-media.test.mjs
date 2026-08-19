@@ -382,7 +382,7 @@ describe("packaged desktop voice media evidence", () => {
         device: "USB test microphone",
         enumeratedLabel: "USB test microphone",
         classification: "operator-selected-enumerated-nonvirtual-endpoint",
-        classifier: "eliza-voice-physical-microphone-v1",
+        classifier: "eliza-voice-physical-microphone-v2",
         platform: "darwin",
       },
       speakerLoopback: {
@@ -445,6 +445,22 @@ describe("packaged desktop voice media evidence", () => {
       (stage) => stage.stage === "asr",
     ).detail.inputDeviceLabel = "Fake USB test microphone";
     writeJson(report, substringBrowserDevice);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /physical microphone and system-output loopback capture/,
+    );
+    fs.writeFileSync(report, validReport);
+    const punctuationEquivalentDevice = JSON.parse(validReport);
+    punctuationEquivalentDevice.report.stages.find(
+      (stage) => stage.stage === "asr",
+    ).detail.inputDeviceLabel = "microphone, USB TEST";
+    writeJson(report, punctuationEquivalentDevice);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).not.toThrow();
+    fs.writeFileSync(report, validReport);
+    const genericCollisionDevice = JSON.parse(validReport);
+    genericCollisionDevice.report.stages.find(
+      (stage) => stage.stage === "asr",
+    ).detail.inputDeviceLabel = "USB audio device";
+    writeJson(report, genericCollisionDevice);
     expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
       /physical microphone and system-output loopback capture/,
     );

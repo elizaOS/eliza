@@ -13,27 +13,35 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const COMMON_VIRTUAL_MICROPHONE_PATTERNS = [
-  /blackhole/i,
-  /soundflower/i,
-  /vb[ -]?audio/i,
-  /vb[ -]?cable/i,
-  /cable (?:input|output)/i,
-  /stereo mix/i,
-  /what u hear/i,
-  /wave out mix/i,
-  /voice[ -]?meeter/i,
-  /virtual(?:[ -]audio|[ -]microphone|[ -]input|[ -]capturer)/i,
-  /loopback/i,
-  /(?:^|\W)monitor(?:\W|$)/i,
-  /(?:^|\W)null(?:\W|$)/i,
-  /snd[ -]?aloop/i,
-  /pulse(?:audio)?/i,
+  /black ?hole/,
+  /sound ?flower/,
+  /vb ?audio/,
+  /vb ?cable/,
+  /cable (?:input|output)/,
+  /stereo mix/,
+  /what u hear/,
+  /wave out mix/,
+  /voice ?meeter/,
+  /virtual(?: audio| microphone| input| capturer)/,
+  /loopback/,
+  /(?:^| )monitor(?: |$)/,
+  /(?:^| )null(?: |$)/,
+  /snd ?aloop/,
+  /(?:^| )pulse(?: audio)?(?: |$)/,
 ];
 
 const PLATFORM_VIRTUAL_MICROPHONE_PATTERNS = {
-  darwin: [/aggregate device/i, /multi[ -]output/i],
-  win32: [/audio repeater/i],
+  darwin: [/aggregate device/, /multi output/],
+  win32: [/audio repeater/],
 };
+
+function normalizedDeviceIdentity(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
 
 /**
  * Reject known software-routing endpoints before they can be labelled as a
@@ -59,10 +67,15 @@ export function classifyPhysicalMicrophoneEndpoint(
       "Physical microphone classification requires configured and enumerated identities.",
     );
   }
+  const configuredIdentity = normalizedDeviceIdentity(configured);
+  const canonicalIdentity = normalizedDeviceIdentity(canonicalLabel);
   const matched = [
     ...COMMON_VIRTUAL_MICROPHONE_PATTERNS,
     ...platformPatterns,
-  ].find((pattern) => pattern.test(configured) || pattern.test(canonicalLabel));
+  ].find(
+    (pattern) =>
+      pattern.test(configuredIdentity) || pattern.test(canonicalIdentity),
+  );
   if (matched) {
     throw new Error(
       `Configured microphone ${configured} resolves to a virtual, loopback, ` +
@@ -75,7 +88,7 @@ export function classifyPhysicalMicrophoneEndpoint(
     device: configured,
     enumeratedLabel: canonicalLabel,
     classification: "operator-selected-enumerated-nonvirtual-endpoint",
-    classifier: "eliza-voice-physical-microphone-v1",
+    classifier: "eliza-voice-physical-microphone-v2",
     platform,
   };
 }
@@ -905,29 +918,19 @@ function assertPhysicalCaptureProvenance(
   captureFiles,
 ) {
   const provenance = readJson(file, "physical capture provenance");
-  const deviceLabel = (value) =>
-    String(value ?? "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim();
+  const deviceLabel = normalizedDeviceIdentity;
   const sameDeviceLabel = (left, right) => {
-    const generic = new Set([
-      "audio",
-      "default",
-      "device",
-      "input",
-      "microphone",
-    ]);
     const tokens = (value) =>
       deviceLabel(value)
         .split(" ")
-        .filter((token) => token && !generic.has(token));
-    const leftTokens = new Set(tokens(left));
-    const rightTokens = new Set(tokens(right));
-    if (leftTokens.size === 0 || leftTokens.size !== rightTokens.size) {
+        .filter(Boolean)
+        .sort();
+    const leftTokens = tokens(left);
+    const rightTokens = tokens(right);
+    if (leftTokens.length === 0 || leftTokens.length !== rightTokens.length) {
       return false;
     }
-    return [...leftTokens].every((token) => rightTokens.has(token));
+    return leftTokens.every((token, index) => token === rightTokens[index]);
   };
   const reportStartedAt = Date.parse(desktopEvidence.report.startedAt);
   const reportFinishedAt = Date.parse(desktopEvidence.report.finishedAt);
@@ -976,7 +979,7 @@ function assertPhysicalCaptureProvenance(
     provenance.microphone?.classification !==
       "operator-selected-enumerated-nonvirtual-endpoint" ||
     provenance.microphone?.classifier !==
-      "eliza-voice-physical-microphone-v1" ||
+      "eliza-voice-physical-microphone-v2" ||
     typeof provenance.microphone?.device !== "string" ||
     provenance.microphone.device.trim().length === 0 ||
     deviceLabel(asrStage?.detail?.inputDeviceLabel).length === 0 ||

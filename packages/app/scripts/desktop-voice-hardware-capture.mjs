@@ -144,17 +144,23 @@ export function assertConfiguredDevicesListed(platform, inputs, listing) {
       ).trim();
       return [{ line, index: indexed?.[1], enumeratedLabel }];
     });
-    const candidate = candidates.find(
+    const matches = candidates.filter(
       ({ line, index, enumeratedLabel }) =>
         index === String(device) ||
         enumeratedLabel === String(device) ||
         line.includes(`"${device}"`),
     );
-    if (!candidate) {
+    if (matches.length === 0) {
       throw new Error(
         `Configured ${label} device ${device} is absent from ffmpeg enumeration.`,
       );
     }
+    if (matches.length > 1) {
+      throw new Error(
+        `Configured ${label} device ${device} is ambiguous in ffmpeg enumeration; use a unique device identity.`,
+      );
+    }
+    const [candidate] = matches;
     resolved[label] = candidate.enumeratedLabel || String(device);
   }
   if (
