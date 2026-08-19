@@ -12,6 +12,74 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+const COMMON_VIRTUAL_MICROPHONE_PATTERNS = [
+  /blackhole/i,
+  /soundflower/i,
+  /vb[ -]?audio/i,
+  /vb[ -]?cable/i,
+  /cable (?:input|output)/i,
+  /stereo mix/i,
+  /what u hear/i,
+  /wave out mix/i,
+  /voice[ -]?meeter/i,
+  /virtual(?:[ -]audio|[ -]microphone|[ -]input|[ -]capturer)/i,
+  /loopback/i,
+  /(?:^|\W)monitor(?:\W|$)/i,
+  /(?:^|\W)null(?:\W|$)/i,
+  /snd[ -]?aloop/i,
+  /pulse(?:audio)?/i,
+];
+
+const PLATFORM_VIRTUAL_MICROPHONE_PATTERNS = {
+  darwin: [/aggregate device/i, /multi[ -]output/i],
+  win32: [/audio repeater/i],
+};
+
+/**
+ * Reject known software-routing endpoints before they can be labelled as a
+ * physical microphone. The runner still owns the hardware assertion: desktop
+ * audio APIs do not expose a portable cryptographic device attestation, so the
+ * provenance records this classifier rather than pretending it proves more.
+ */
+export function classifyPhysicalMicrophoneEndpoint(
+  platform,
+  configuredDevice,
+  enumeratedLabel,
+) {
+  const platformPatterns = PLATFORM_VIRTUAL_MICROPHONE_PATTERNS[platform];
+  if (!platformPatterns) {
+    throw new Error(
+      `Physical microphone classification supports darwin or win32, not ${platform}.`,
+    );
+  }
+  const configured = configuredDevice?.trim();
+  const canonicalLabel = enumeratedLabel?.trim();
+  if (!configured || !canonicalLabel) {
+    throw new Error(
+      "Physical microphone classification requires configured and enumerated identities.",
+    );
+  }
+  const matched = [
+    ...COMMON_VIRTUAL_MICROPHONE_PATTERNS,
+    ...platformPatterns,
+  ].find((pattern) => pattern.test(configured) || pattern.test(canonicalLabel));
+  if (matched) {
+    throw new Error(
+      `Configured microphone ${configured} resolves to a virtual, loopback, ` +
+        `monitor, or aggregate endpoint (${canonicalLabel}); physical voice ` +
+        "evidence requires a real microphone input.",
+    );
+  }
+  return {
+    kind: "physical-microphone",
+    device: configured,
+    enumeratedLabel: canonicalLabel,
+    classification: "operator-selected-enumerated-nonvirtual-endpoint",
+    classifier: "eliza-voice-physical-microphone-v1",
+    platform,
+  };
+}
+
 const require = createRequire(import.meta.url);
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 
@@ -265,8 +333,7 @@ function audioEnvelope(file, tools, { startSeconds, durationSeconds } = {}) {
 function normalized(values) {
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
   const variance =
-    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
-    values.length;
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
   const deviation = Math.sqrt(variance);
   if (!Number.isFinite(deviation) || deviation < 1e-5) {
     throw new Error("Audio fingerprint has no usable amplitude modulation.");
@@ -629,11 +696,7 @@ export function finalizeWebVoiceEvidence(args) {
   try {
     return finalizeWebVoiceEvidenceSnapshot({
       ...args,
-      resultsDir: snapshotDirectory(
-        args.resultsDir,
-        snapshotRoot,
-        "results",
-      ),
+      resultsDir: snapshotDirectory(args.resultsDir, snapshotRoot, "results"),
       failureResultsDir: snapshotDirectory(
         args.failureResultsDir,
         snapshotRoot,
@@ -882,13 +945,31 @@ function assertPhysicalCaptureProvenance(
   const captureStarts = captureClocks.map((clock) =>
     Date.parse(clock?.startedAt),
   );
+  let microphoneClassified = false;
+  try {
+    classifyPhysicalMicrophoneEndpoint(
+      provenance.microphone?.platform,
+      provenance.microphone?.device,
+      provenance.microphone?.enumeratedLabel,
+    );
+    microphoneClassified = true;
+  } catch {
+    // error-policy:J3 provenance is untrusted input; the shared validation
+    // condition below translates every invalid identity into one failure.
+    microphoneClassified = false;
+  }
   if (
     provenance.kind !== "physical-hardware" ||
     provenance.revision !== head ||
     provenance.sessionId !== desktopEvidence.sessionId ||
     typeof desktopEvidence.sessionId !== "string" ||
     desktopEvidence.sessionId.length < 12 ||
+    !microphoneClassified ||
     provenance.microphone?.kind !== "physical-microphone" ||
+    provenance.microphone?.classification !==
+      "operator-selected-enumerated-nonvirtual-endpoint" ||
+    provenance.microphone?.classifier !==
+      "eliza-voice-physical-microphone-v1" ||
     typeof provenance.microphone?.device !== "string" ||
     provenance.microphone.device.trim().length === 0 ||
     deviceLabel(

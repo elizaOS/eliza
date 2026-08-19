@@ -106,6 +106,13 @@ windows. Missing enumerated devices, equal mic and loopback endpoints, stale
 packaged revisions, unrelated audio, or a backend log that does not grow during
 the session fail the lane.
 
+The capture preflight also rejects microphone identities associated with common
+software loopbacks, monitors, virtual cables, aggregate devices, and multi-output
+devices before recording `physical-microphone` provenance. Desktop media APIs do
+not provide a portable cryptographic hardware attestation: the owner-operated
+runner must therefore pin an actual microphone, and a deliberately renamed
+virtual driver remains outside what this software-only check can establish.
+
 ## Launch surfaces
 
 The native and agent-app launch surfaces remain black `#000000`

@@ -10,9 +10,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import {
+  correlateAudioWindow,
   finalizeDesktopVoiceEvidence,
   finalizeWebVoiceEvidence,
-  correlateAudioWindow,
   inspectAudibleMp4,
   resolveMediaTools,
   snapshotEvidenceFile,
@@ -39,11 +39,7 @@ test("evidence snapshot remains bound when the live source changes", () => {
   fs.mkdirSync(snapshotRoot);
   fs.writeFileSync(source, "validated bytes");
 
-  const snapshot = snapshotEvidenceFile(
-    source,
-    snapshotRoot,
-    "artifact.bin",
-  );
+  const snapshot = snapshotEvidenceFile(source, snapshotRoot, "artifact.bin");
   fs.writeFileSync(source, "bytes changed after capture");
 
   expect(fs.readFileSync(snapshot, "utf8")).toBe("validated bytes");
@@ -107,14 +103,8 @@ function webFixture(root, tools) {
   const attachments = path.join(live, "attachments");
   video(path.join(live, "video.webm"), tools, 3);
   fs.writeFileSync(path.join(live, "trace.zip"), "trace");
-  const micPayload = path.join(
-    attachments,
-    "voice-live-input-deadbeef.wav",
-  );
-  const ttsPayload = path.join(
-    attachments,
-    "voice-live-tts-cafebabe.wav",
-  );
+  const micPayload = path.join(attachments, "voice-live-input-deadbeef.wav");
+  const ttsPayload = path.join(attachments, "voice-live-tts-cafebabe.wav");
   audio(micPayload, tools, 440);
   audio(ttsPayload, tools, 660);
   writeJson(path.join(attachments, "voice-live-trajectory-abc123.json"), {
@@ -391,6 +381,9 @@ describe("packaged desktop voice media evidence", () => {
         kind: "physical-microphone",
         device: "USB test microphone",
         enumeratedLabel: "USB test microphone",
+        classification: "operator-selected-enumerated-nonvirtual-endpoint",
+        classifier: "eliza-voice-physical-microphone-v1",
+        platform: "darwin",
       },
       speakerLoopback: {
         kind: "system-output-loopback",
@@ -447,6 +440,14 @@ describe("packaged desktop voice media evidence", () => {
       ]),
     );
     const validProvenance = fs.readFileSync(captureProvenance, "utf8");
+    const virtualEndpoint = JSON.parse(validProvenance);
+    virtualEndpoint.microphone.enumeratedLabel =
+      "BlackHole USB test microphone";
+    writeJson(captureProvenance, virtualEndpoint);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /physical microphone and system-output loopback capture/,
+    );
+    fs.writeFileSync(captureProvenance, validProvenance);
     const wrongDevice = JSON.parse(validProvenance);
     wrongDevice.microphone.enumeratedLabel = "Unrelated webcam microphone";
     writeJson(captureProvenance, wrongDevice);
@@ -561,16 +562,26 @@ describe("hardware audio fingerprint correlation", () => {
     ]);
     audio(unrelated, tools, 930, 2.35);
     expect(
-      correlateAudioWindow(reference, shifted, {
-        startSeconds: 0,
-        durationSeconds: 2.35,
-      }, tools),
+      correlateAudioWindow(
+        reference,
+        shifted,
+        {
+          startSeconds: 0,
+          durationSeconds: 2.35,
+        },
+        tools,
+      ),
     ).toMatchObject({ correlation: expect.any(Number) });
     expect(() =>
-      correlateAudioWindow(reference, unrelated, {
-        startSeconds: 0,
-        durationSeconds: 2.35,
-      }, tools),
+      correlateAudioWindow(
+        reference,
+        unrelated,
+        {
+          startSeconds: 0,
+          durationSeconds: 2.35,
+        },
+        tools,
+      ),
     ).toThrow(/fingerprint/);
   });
 });

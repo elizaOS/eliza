@@ -14,7 +14,12 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { resolveMediaTools } from "./voice-evidence-media.mjs";
+import {
+  classifyPhysicalMicrophoneEndpoint,
+  resolveMediaTools,
+} from "./voice-evidence-media.mjs";
+
+export { classifyPhysicalMicrophoneEndpoint };
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -45,10 +50,14 @@ export function captureInputs(platform, env = process.env) {
     "ELIZA_VOICE_BROWSER_SPEAKER_DEVICE_ID",
   );
   if (microphone === speakerLoopback) {
-    throw new Error("Physical microphone and speaker loopback must be distinct.");
+    throw new Error(
+      "Physical microphone and speaker loopback must be distinct.",
+    );
   }
   if (browserMicrophone === browserSpeaker) {
-    throw new Error("Browser microphone and speaker device ids must be distinct.");
+    throw new Error(
+      "Browser microphone and speaker device ids must be distinct.",
+    );
   }
   if (platform === "darwin") {
     const screen = required(
@@ -117,18 +126,36 @@ export function assertConfiguredDevicesListed(platform, inputs, listing) {
     ["speaker loopback", inputs.speakerLoopback],
     ...(platform === "darwin" ? [["screen", inputs.screen]] : []),
   ]) {
-    const quoted = `"${device}"`;
-    const escaped = String(device).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const indexed = new RegExp(`\\[${escaped}\\]`);
-    if (!normalized.includes(quoted) && !indexed.test(normalized)) {
+    let section = "";
+    const expectedSection = label === "screen" ? "video" : "audio";
+    const candidates = normalized.split(/\r?\n/).flatMap((line) => {
+      if (/video devices:/i.test(line)) section = "video";
+      if (/audio devices:/i.test(line)) section = "audio";
+      if (platform === "darwin" && section && section !== expectedSection) {
+        return [];
+      }
+      const quotedLabel = line.match(/"([^"]+)"/)?.[1];
+      const indexed = line.match(/\[(\d+)\]\s*(?:"([^"]+)"|(.+?))\s*$/);
+      const enumeratedLabel = (
+        quotedLabel ??
+        indexed?.[2] ??
+        indexed?.[3] ??
+        ""
+      ).trim();
+      return [{ line, index: indexed?.[1], enumeratedLabel }];
+    });
+    const candidate = candidates.find(
+      ({ line, index, enumeratedLabel }) =>
+        index === String(device) ||
+        enumeratedLabel === String(device) ||
+        line.includes(`"${device}"`),
+    );
+    if (!candidate) {
       throw new Error(
         `Configured ${label} device ${device} is absent from ffmpeg enumeration.`,
       );
     }
-    const line = normalized
-      .split(/\r?\n/)
-      .find((candidate) => candidate.includes(quoted) || indexed.test(candidate));
-    resolved[label] = line?.match(/"([^"]+)"/)?.[1] ?? String(device);
+    resolved[label] = candidate.enumeratedLabel || String(device);
   }
   if (
     resolved.microphone.trim().toLowerCase() ===
@@ -244,6 +271,11 @@ async function main() {
     inputs,
     `${deviceProbe.stdout ?? ""}\n${deviceProbe.stderr ?? ""}`,
   );
+  const microphoneProvenance = classifyPhysicalMicrophoneEndpoint(
+    platform,
+    inputs.microphone,
+    enumeratedDevices.microphone,
+  );
 
   fs.mkdirSync(outDir, { recursive: true });
   const archive = path.join(outDir, "synchronized-capture.mkv");
@@ -311,7 +343,9 @@ async function main() {
   }
   const backendEndOffset = fs.statSync(backendSource).size;
   if (backendEndOffset <= backendStartOffset) {
-    throw new Error("Desktop backend log did not grow during the captured run.");
+    throw new Error(
+      "Desktop backend log did not grow during the captured run.",
+    );
   }
   const backendDeltaBytes = backendEndOffset - backendStartOffset;
   if (backendDeltaBytes > 64 * 1024 * 1024) {
@@ -385,11 +419,7 @@ async function main() {
         kind: "physical-hardware",
         revision,
         sessionId,
-        microphone: {
-          kind: "physical-microphone",
-          device: inputs.microphone,
-          enumeratedLabel: enumeratedDevices.microphone,
-        },
+        microphone: microphoneProvenance,
         speakerLoopback: {
           kind: "system-output-loopback",
           device: inputs.speakerLoopback,
