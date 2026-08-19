@@ -195,6 +195,7 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     const stdio = createShellStdioState();
     let timedOut = false;
     let overflowed = false;
+    let settled = false;
 
     const killChildTree = () => {
       try {
@@ -203,16 +204,17 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
           return;
         }
       } catch {
-        // Fall back to killing the direct child below.
+        // error-policy:J6 process-group teardown falls back to the direct child.
       }
       try {
         child.kill("SIGKILL");
       } catch {
-        // child may already have exited
+        // error-policy:J6 the child may already have exited.
       }
     };
 
     const timer = setTimeout(() => {
+      if (settled) return;
       timedOut = true;
       killChildTree();
     }, timeoutMs);
@@ -222,7 +224,7 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
       `${stdio.stderr}${stdio.stderr.endsWith("\n") || stdio.stderr.length === 0 ? "" : "\n"}[shell-router] stdio exceeded ${MAX_SHELL_STDIO_BYTES} bytes`;
 
     const takeChunk = (target: "stdout" | "stderr", chunk: Buffer): void => {
-      if (overflowed) return;
+      if (settled || overflowed) return;
       const before = target === "stdout" ? stdio.stdout : stdio.stderr;
       const verdict = appendShellStdio(stdio, target, chunk);
       const after = target === "stdout" ? stdio.stdout : stdio.stderr;
@@ -243,10 +245,17 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     child.stderr.on("data", (chunk: Buffer) => {
       takeChunk("stderr", chunk);
     });
-    child.on("error", (err) => {
+
+    const finish = (result: ShellResult): void => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      resolve(result);
+    };
+
+    const finishWithError = (err: Error): void => {
       if (overflowed) {
-        resolve({
+        finish({
           exitCode: -1,
           stdout: stdio.stdout,
           stderr: overflowMarker(),
@@ -255,7 +264,7 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
         });
         return;
       }
-      resolve({
+      finish({
         exitCode: -1,
         stdout: stdio.stdout,
         stderr:
@@ -265,13 +274,22 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
         durationMs: Date.now() - start,
         sandbox: "host",
       });
+    };
+
+    child.stdout.once("error", (err) => {
+      killChildTree();
+      finishWithError(err);
     });
+    child.stderr.once("error", (err) => {
+      killChildTree();
+      finishWithError(err);
+    });
+    child.once("error", finishWithError);
     child.on("close", (code) => {
-      clearTimeout(timer);
       // Overflow wins over timeout: a flood that also hits the timer still
       // reports the stdio cap, because that is what killed the child.
       if (overflowed) {
-        resolve({
+        finish({
           exitCode: -1,
           stdout: stdio.stdout,
           stderr: overflowMarker(),
@@ -281,7 +299,7 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
         return;
       }
       const exitCode = timedOut ? 124 : (code ?? -1);
-      resolve({
+      finish({
         exitCode,
         stdout: stdio.stdout,
         stderr: timedOut
