@@ -53,6 +53,7 @@ import {
 } from "./desktop-deep-link-events";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import {
+  hasKnownMacosStatusItemSceneRegression,
   shouldCreateDesktopTray,
   shouldEnableTrayPopover,
   shouldStartTrayFirst,
@@ -2720,8 +2721,18 @@ async function main(): Promise<void> {
   // tray-first behavior we STILL create the pill window at boot — the pill is
   // not a "full window" for Dock purposes, so setTrayFirstMode keeps the Dock
   // icon hidden until a full window (dashboard/surface/settings/app) opens.
-  const dockless = shouldStartTrayFirst();
-  if (dockless) {
+  const docklessRequested = shouldStartTrayFirst();
+  const hasBrokenStatusItemScene = hasKnownMacosStatusItemSceneRegression(
+    process.platform,
+    os.release(),
+  );
+  const dockless = docklessRequested && !hasBrokenStatusItemScene;
+  if (hasBrokenStatusItemScene && docklessRequested) {
+    logger.warn(
+      `[Main] macOS ${os.release()} has the Control Center status-item scene regression; keeping the Dock icon available`,
+    );
+    getDesktopManager().setTrayFirstMode(false);
+  } else if (dockless) {
     logger.info(
       "[Main] Dockless startup requested — verifying the menu-bar icon before hiding the Dock icon",
     );
