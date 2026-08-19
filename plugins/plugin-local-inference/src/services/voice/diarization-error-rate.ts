@@ -47,8 +47,27 @@ export interface DerOptions {
 	maxExactSpeakers?: number;
 }
 
+/** Smallest accepted frame. A sub-millisecond frame with a long timeline
+ * would allocate tens of millions of Sets and hang the scorer. */
+export const MIN_DER_FRAME_MS = 1;
+/** Longest accepted reference/hypothesis timeline. Voice scenarios are
+ * minutes; a hostile `endMs` of 1e8+ was an 8s frameize hang on origin. */
+export const MAX_DER_DURATION_MS = 4 * 60 * 60 * 1000;
+
 function totalDurationMs(segments: readonly DiarizationSegment[]): number {
-	return segments.reduce((max, s) => Math.max(max, s.endMs), 0);
+	let max = 0;
+	for (const s of segments) {
+		if (!Number.isFinite(s.startMs) || !Number.isFinite(s.endMs)) {
+			throw new Error(
+				"Diarization segment startMs/endMs must be finite milliseconds",
+			);
+		}
+		if (s.startMs < 0 || s.endMs < 0) {
+			throw new Error("Diarization segment startMs/endMs must be non-negative");
+		}
+		if (s.endMs > max) max = s.endMs;
+	}
+	return max;
 }
 
 /** Per-frame active-speaker sets. `frames[f]` is the set of speakers whose
@@ -175,12 +194,24 @@ export function computeDiarizationErrorRate(
 	hypothesis: readonly DiarizationSegment[],
 	options: DerOptions = {},
 ): DerResult {
-	const frameMs = options.frameMs && options.frameMs > 0 ? options.frameMs : 10;
+	const requestedFrame = options.frameMs;
+	const frameMs =
+		requestedFrame !== undefined && requestedFrame > 0 ? requestedFrame : 10;
+	if (!Number.isFinite(frameMs) || frameMs < MIN_DER_FRAME_MS) {
+		throw new Error(
+			`Diarization frameMs must be a finite value ≥ ${MIN_DER_FRAME_MS}ms`,
+		);
+	}
 	const maxExact = options.maxExactSpeakers ?? 7;
 	const durationMs = Math.max(
 		totalDurationMs(reference),
 		totalDurationMs(hypothesis),
 	);
+	if (durationMs > MAX_DER_DURATION_MS) {
+		throw new Error(
+			`Diarization timeline ${durationMs}ms exceeds ${MAX_DER_DURATION_MS}ms`,
+		);
+	}
 	const numFrames = Math.ceil(durationMs / frameMs);
 
 	const refSpeakers = uniqueSpeakers(reference);
