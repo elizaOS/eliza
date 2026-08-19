@@ -38,6 +38,7 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 @property(nonatomic) BOOL interactionPinned;
 @property(nonatomic, strong) id globalMonitor;
 @property(nonatomic, strong) id localMonitor;
+@property(nonatomic, strong) NSTimer *pointerPollTimer;
 - (instancetype)initWithWindow:(NSWindow *)window;
 - (void)handleEvent:(NSEvent *)event;
 - (void)setMaterialWidth:(CGFloat)width height:(CGFloat)height;
@@ -65,10 +66,24 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 		[weakSelf handleEvent:event];
 		return event;
 	}];
+	// A global mouse monitor is only a best-effort acceleration path. macOS can
+	// suppress it when the host lacks Input Monitoring permission; if the window
+	// was already ignoring mouse events, relying on that callback alone left the
+	// overlay permanently click-through. Poll the public cursor location on the
+	// main run loop as the permission-independent recovery path. Common modes keep
+	// it alive while a local drag is tracking.
+	_pointerPollTimer = [NSTimer timerWithTimeInterval:(1.0 / 30.0)
+										  repeats:YES
+											block:^(__unused NSTimer *timer) {
+		[weakSelf applyForScreenPoint:[NSEvent mouseLocation]];
+	}];
+	[[NSRunLoop mainRunLoop] addTimer:_pointerPollTimer
+								 forMode:NSRunLoopCommonModes];
 	return self;
 }
 
 - (void)dealloc {
+	[_pointerPollTimer invalidate];
 	if (_globalMonitor != nil) [NSEvent removeMonitor:_globalMonitor];
 	if (_localMonitor != nil) [NSEvent removeMonitor:_localMonitor];
 }

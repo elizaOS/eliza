@@ -365,9 +365,14 @@ function ChatOverlayShell() {
     }
     if (windowSizeClass === "sheet") {
       reportNativeWindowSize(stageSize);
+      // Fail open for the transition frame. The panel's ResizeObserver reports
+      // its exact painted bounds on the next animation frame and narrows this
+      // region, but a missed observer must never leave the detached window
+      // stuck with the resting 64x32 hit target while a full sheet is visible.
+      reportNativeInteractiveSize(stageSize);
       return;
     }
-    reportNativeWindowSize(
+    const compactSize =
       windowSizeClass === "input"
         ? {
             width: Math.max(
@@ -379,14 +384,12 @@ function ChatOverlayShell() {
         : {
             width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
             height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
-          },
-    );
-    if (windowSizeClass === "resting") {
-      reportNativeInteractiveSize({
-        width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
-        height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
-      });
-    }
+          };
+    reportNativeWindowSize(compactSize);
+    // Reset the native hit target synchronously on every compact transition.
+    // The measured composer height may expand it moments later, but stale sheet
+    // geometry must not survive a half->input->pill cycle.
+    reportNativeInteractiveSize(compactSize);
   }, [
     authSize,
     controller?.authGate.gated,
