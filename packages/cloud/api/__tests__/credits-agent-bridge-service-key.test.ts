@@ -43,6 +43,10 @@ const checkoutSessionsCreate = mock(
 );
 const customersCreate = mock(async () => ({ id: "cus_should_not_happen" }));
 const updateOrganization = mock(async () => undefined);
+const createCheckoutOrder = mock(async () => ({
+  id: "order-authority",
+  status: "quoted",
+}));
 const getWithOrganization = mock(async () => ({
   id: "agent-user",
   email: "agent@example.test",
@@ -82,6 +86,14 @@ mock.module("@/lib/services/users", () => ({
 }));
 mock.module("@/lib/services/organizations", () => ({
   organizationsService: { update: updateOrganization },
+}));
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  stripeCheckoutOrdersService: {
+    create: createCheckoutOrder,
+    markProviderStarted: mock(async () => undefined),
+    bindSession: mock(async () => undefined),
+    markProviderAmbiguous: mock(async () => undefined),
+  },
 }));
 mock.module("@/lib/security/redirect-validation", () => ({
   getDefaultPlatformRedirectOrigins: () => ["https://waifu.example.test"],
@@ -203,6 +215,7 @@ describe("credits agent-bridge — real service-key scope (#10852)", () => {
         headers: {
           "content-type": "application/json",
           "X-Service-Key": SERVICE_KEY,
+          "Idempotency-Key": "agent-checkout-authority-1",
         },
         body: checkoutBody(),
       }),
@@ -214,8 +227,8 @@ describe("credits agent-bridge — real service-key scope (#10852)", () => {
       metadata?: Record<string, string>;
     };
     expect(params.metadata).toMatchObject({
-      organization_id: "agent-org",
-      user_id: "agent-user",
+      checkout_order_id: "order-authority",
+      agent_id: AGENT_ID,
     });
   });
 });

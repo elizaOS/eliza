@@ -30,6 +30,7 @@ const retrieveSession = mock(async () => ({
     credits: "5.00",
     type: "custom_amount",
     agent_id: "123e4567-e89b-12d3-a456-426614174000",
+    checkout_order_id: "30000000-0000-4000-8000-000000000001",
   },
 }));
 
@@ -64,6 +65,16 @@ mock.module("@/lib/services/invoices", () => ({
 mock.module("@/lib/services/organizations", () => ({
   organizationsService: {
     getById: mock(async () => ({ credit_balance: "0" })),
+  },
+}));
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  StripeCheckoutAuthorityError: class extends Error {
+    code = "test";
+  },
+  stripeCheckoutOrdersService: {
+    settle: mock(async () => {
+      throw new Error("settlement must not run on denied auth");
+    }),
   },
 }));
 mock.module("@/lib/security/safe-fetch", () => ({ safeFetch: webhookFetch }));

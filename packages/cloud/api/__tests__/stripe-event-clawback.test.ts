@@ -33,6 +33,12 @@ const refundCredits = mock(async () => ({
   },
   newBalance: 70,
 }));
+const getCheckoutOrderByPaymentIntent = mock(
+  async (): Promise<{
+    id: string;
+    charge_amount_cents: bigint;
+  } | null> => null,
+);
 
 class TestInsufficientCreditsError extends Error {
   required: number;
@@ -110,6 +116,11 @@ mock.module("@/lib/services/redeemable-earnings", () => ({
 mock.module("@/lib/services/referrals", () => ({
   referralsService: {},
 }));
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  stripeCheckoutOrdersService: {
+    getByPaymentIntent: getCheckoutOrderByPaymentIntent,
+  },
+}));
 mock.module("@/lib/stripe", () => ({
   requireStripe: () => ({}),
 }));
@@ -143,6 +154,8 @@ describe("stripe queue credit clawbacks", () => {
       },
       newBalance: 70,
     });
+    getCheckoutOrderByPaymentIntent.mockClear();
+    getCheckoutOrderByPaymentIntent.mockResolvedValue(null);
   });
 
   test("charge.refunded claws back only the new cumulative refund delta", async () => {
@@ -229,6 +242,52 @@ describe("stripe queue credit clawbacks", () => {
         reference: "charge ch_taxed",
       },
     });
+  });
+
+  test("credit-pack refunds prorate the exact grant from the authoritative charge", async () => {
+    getTransactionByStripePaymentIntent.mockResolvedValueOnce({
+      id: "tx-pack",
+      organization_id: "org-1",
+      amount: "25",
+      type: "credit",
+    });
+    getCheckoutOrderByPaymentIntent.mockResolvedValueOnce({
+      id: "30000000-0000-4000-8000-000000000001",
+      charge_amount_cents: 500n,
+    });
+
+    const result = await processStripeEvent({
+      attempts: 1,
+      body: {
+        kind: "stripe.event",
+        eventId: "evt_pack_refund",
+        eventType: "charge.refunded",
+        receivedAt: Date.now(),
+        event: {
+          id: "evt_pack_refund",
+          type: "charge.refunded",
+          data: {
+            object: {
+              id: "ch_pack",
+              amount_refunded: 250,
+              payment_intent: "pi_pack",
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof processStripeEvent>[0]);
+
+    expect(result).toBe("ack");
+    expect(clawbackCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 12.5,
+        metadata: expect.objectContaining({
+          checkout_order_id: "30000000-0000-4000-8000-000000000001",
+          original_charge_usd: "5.00",
+          original_credits_granted: "25.000000",
+        }),
+      }),
+    );
   });
 
   test("re-delivered charge.refunded is a no-op once the cumulative amount was clawed", async () => {
