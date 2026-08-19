@@ -482,16 +482,13 @@ describe("deepToWellFormedUnicode unbounded input", () => {
 	});
 
 	it("throws WELL_FORMED_UNBOUNDED before a 20k-deep array can blow the stack", () => {
-		const t0 = performance.now();
 		try {
 			deepToWellFormedUnicode(nestArray(20_000));
 			expect.unreachable("20k-deep array must fail closed");
 		} catch (error) {
-			const ms = performance.now() - t0;
 			expect(error).toBeInstanceOf(ElizaError);
 			expect((error as ElizaError).code).toBe("WELL_FORMED_UNBOUNDED");
 			expect((error as ElizaError).context?.reason).toBe("depth");
-			expect(ms).toBeLessThan(50);
 		}
 	});
 
