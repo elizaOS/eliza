@@ -18,7 +18,15 @@
  * by the registry-to-worker end-to-end test.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -430,6 +438,28 @@ describe("AppWorkerHostService worker bridge", () => {
 			expect(reply.result.read).toBe("from worker");
 		});
 
+		it("fs: creates and round-trips nested directories inside statePath", async () => {
+			await service.spawn({
+				slug: "fixture-fs-nested-ok",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+				statePath: stateRoot,
+				requestedPermissions: { fs: { read: ["**"], write: ["**"] } },
+				grantedNamespaces: ["fs"],
+			});
+			const reply = await service.invoke<{ read: string }>(
+				"fixture-fs-nested-ok",
+				"invokeAction",
+				{
+					actionName: "FS_WRITE_THEN_READ",
+					content: { relPath: "a/b/c.txt", payload: "nested" },
+				},
+			);
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
+			expect(reply.result.read).toBe("nested");
+		});
+
 		it("fs: rejects when grantedNamespaces does not include 'fs'", async () => {
 			await service.spawn({
 				slug: "fixture-fs-not-granted",
@@ -490,6 +520,95 @@ describe("AppWorkerHostService worker bridge", () => {
 			expect(reply.ok).toBe(false);
 			if (reply.ok) return;
 			expect(reply.reason).toContain("escapes the sandbox statePath");
+			expect(reply.code).toBe("APP_WORKER_FS_ESCAPE");
+		});
+
+		it.skipIf(process.platform === "win32")(
+			"fs: rejects final-component symlinks for reads and writes",
+			async () => {
+				const outside = path.join(
+					tmpdir(),
+					`app-worker-fs-outside-${Date.now()}.txt`,
+				);
+				writeFileSync(outside, "SECRET_PAYLOAD_OUTSIDE_SANDBOX");
+				const link = path.join(stateRoot, "escape-link");
+				symlinkSync(outside, link);
+				try {
+					await service.spawn({
+						slug: "fixture-fs-symlink",
+						isolation: "worker",
+						pluginEntryPath: FIXTURE_PLUGIN_PATH,
+						statePath: stateRoot,
+						requestedPermissions: { fs: { read: ["**"], write: ["**"] } },
+						grantedNamespaces: ["fs"],
+					});
+					const readReply = await service.invoke(
+						"fixture-fs-symlink",
+						"invokeAction",
+						{
+							actionName: "FS_ESCAPE_ATTEMPT",
+							content: { absolutePath: link },
+						},
+					);
+					expect(readReply.ok).toBe(false);
+					if (readReply.ok) return;
+					expect(readReply.code).toBe("APP_WORKER_FS_UNSAFE_TARGET");
+
+					const writeReply = await service.invoke(
+						"fixture-fs-symlink",
+						"invokeAction",
+						{
+							actionName: "FS_WRITE_THEN_READ",
+							content: { relPath: "escape-link", payload: "overwrite" },
+						},
+					);
+					expect(writeReply.ok).toBe(false);
+					expect(readFileSync(outside, "utf8")).toBe(
+						"SECRET_PAYLOAD_OUTSIDE_SANDBOX",
+					);
+				} finally {
+					rmSync(outside, { force: true });
+				}
+			},
+		);
+
+		it("fs: rejects a symlink grandparent before creating missing directories", async () => {
+			const outsideRoot = mkdtempSync(
+				path.join(tmpdir(), "app-worker-fs-outside-dir-"),
+			);
+			const link = path.join(stateRoot, "escape-dir");
+			symlinkSync(
+				outsideRoot,
+				link,
+				process.platform === "win32" ? "junction" : "dir",
+			);
+			try {
+				await service.spawn({
+					slug: "fixture-fs-symlink-grandparent",
+					isolation: "worker",
+					pluginEntryPath: FIXTURE_PLUGIN_PATH,
+					statePath: stateRoot,
+					requestedPermissions: { fs: { read: ["**"], write: ["**"] } },
+					grantedNamespaces: ["fs"],
+				});
+				const reply = await service.invoke(
+					"fixture-fs-symlink-grandparent",
+					"invokeAction",
+					{
+						actionName: "FS_WRITE_THEN_READ",
+						content: {
+							relPath: "escape-dir/missing/secret.txt",
+							payload: "overwrite",
+						},
+					},
+				);
+				expect(reply.ok).toBe(false);
+				if (reply.ok) return;
+				expect(reply.code).toBe("APP_WORKER_FS_UNSAFE_COMPONENT");
+				expect(existsSync(path.join(outsideRoot, "missing"))).toBe(false);
+			} finally {
+				rmSync(outsideRoot, { recursive: true, force: true });
+			}
 		});
 	});
 
