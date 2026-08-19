@@ -5,6 +5,7 @@
  * credits and must never run in a keyless PR lane.
  */
 
+import { resolveDirectCloudAuthApiBase } from "@elizaos/ui/api/direct-cloud-endpoints";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { seedCloudLiveBrowserAuth } from "../cloud-live-browser-auth";
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
@@ -132,6 +133,42 @@ test.describe("real cloud login + provisioning + chat", () => {
     await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 60_000,
     });
+
+    // The process-level contract above only pins the spawned runtime's proxy.
+    // The renderer carries its own Cloud base, resolved at BUILD time from
+    // VITE_ELIZA_CLOUD_BASE and otherwise defaulted, and the shared-agent base
+    // for the chat leg is derived from it
+    // (client-cloud.ts buildCloudSharedAgentApiBase). A bundle built for the
+    // wrong deployment therefore talks to the wrong Cloud with this lane's
+    // bearer. Compare through resolveDirectCloudAuthApiBase because the boot
+    // value is a SITE base ("https://eliza.app") while the contract exposes an
+    // API origin ("https://api.eliza.app") -- equivalent, differently spelled.
+    const rendererCloudBase = await page.evaluate(() => {
+      const config = (
+        window as unknown as {
+          __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
+        }
+      ).__ELIZAOS_APP_BOOT_CONFIG__;
+      return config?.cloudApiBase ?? "";
+    });
+    const rendererApiOrigin = (() => {
+      if (!rendererCloudBase) return "";
+      try {
+        return new URL(resolveDirectCloudAuthApiBase(rendererCloudBase)).origin;
+      } catch {
+        // error-policy:J3 a malformed boot value is reported as an explicit
+        // mismatch carrying the offending string, never as a raw TypeError.
+        return `<unparseable: ${rendererCloudBase}>`;
+      }
+    })();
+    test.info().annotations.push({
+      type: "renderer-cloud-origin",
+      description: rendererApiOrigin,
+    });
+    expect(
+      rendererApiOrigin,
+      `renderer bundle resolves ${rendererCloudBase || "<unset>"} -> ${rendererApiOrigin || "<empty>"}; the lane pinned ${originContract.origin}`,
+    ).toBe(originContract.origin);
 
     await chooseCloudRuntime(page);
 
