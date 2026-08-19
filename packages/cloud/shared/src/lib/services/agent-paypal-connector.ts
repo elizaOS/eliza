@@ -134,6 +134,7 @@ async function paypalTokenRequest(
       Accept: "application/json",
     },
     body: body.toString(),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
     let message = `PayPal token request failed with ${response.status}`;
@@ -215,6 +216,7 @@ export async function getPaypalIdentity(args: { accessToken: string }): Promise<
       Authorization: `Bearer ${args.accessToken}`,
       Accept: "application/json",
     },
+    signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
     throw new AgentPaypalConnectorError(
@@ -291,6 +293,7 @@ export async function searchPaypalTransactions(
       Authorization: `Bearer ${request.accessToken}`,
       Accept: "application/json",
     },
+    signal: AbortSignal.timeout(15_000),
   });
   if (response.status === 403) {
     // The most common error: user authorized but they're a personal-tier
