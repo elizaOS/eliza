@@ -1,19 +1,9 @@
 /**
- * Regression coverage for a stale-close race in CloudBridgeService: a socket
- * replaced by a newer establishConnection() call can still deliver its
- * "close" event after the replacement is already connected. Without a
- * same-instance guard, that late close mutates the CURRENT connection entry
- * (looked up fresh by containerId in scheduleReconnect()), moving an active
- * replacement out of "connected" and scheduling an unwanted reconnect on top
- * of it.
+ * Deterministic lifecycle tests for replacement Cloud bridge sockets and their timers.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
 
-// The real @elizaos/core pulls in a generated-codegen dependency
-// (i18n/validation-keywords.ts -> ./generated/validation-keyword-data.ts)
-// that isn't present in a plain checkout and is unrelated to this race --
-// stub the two exports cloud-bridge.ts actually uses.
 vi.mock("@elizaos/core", () => ({
   Service: class {
     protected runtime: unknown;
@@ -29,7 +19,13 @@ vi.mock("@elizaos/core", () => ({
   },
 }));
 
-type Listener = (event: any) => void;
+interface FakeSocketEvent {
+  code?: number;
+  data?: unknown;
+  reason?: string;
+}
+
+type Listener = (event: FakeSocketEvent) => void;
 
 class FakeWebSocket {
   static readonly CONNECTING = 0;
@@ -51,13 +47,13 @@ class FakeWebSocket {
     this.listeners.set(type, set);
   }
 
-  send(_data: string): void {}
+  readonly send = vi.fn((_data: string): void => {});
 
   close(): void {
     this.readyState = FakeWebSocket.CLOSED;
   }
 
-  emit(type: string, event: any = {}): void {
+  emit(type: string, event: FakeSocketEvent = {}): void {
     for (const listener of this.listeners.get(type) ?? []) listener(event);
   }
 }
@@ -70,30 +66,30 @@ describe("CloudBridgeService stale close race", () => {
     vi.useFakeTimers();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it("ignores a stale close event from a socket replaced by a newer establishConnection()", async () => {
     const { CloudBridgeService } = await import("./cloud-bridge");
     const runtime = {} as IAgentRuntime;
     const service = new CloudBridgeService(runtime);
-    // Bypass initialize()'s CLOUD_AUTH dependency -- not relevant to the
-    // connection-replacement race under test.
-    (service as any).authService = {
+    Reflect.set(service, "authService", {
       getApiKey: () => undefined,
       getClient: () => ({ buildWsUrl: (path: string) => `ws://test${path}` }),
-    };
+    });
 
     await service.connect("container-1");
     const firstSocket = FakeWebSocket.instances[0];
     firstSocket.emit("open");
     expect(service.getConnectionState("container-1")).toBe("connected");
 
-    // Simulate the first socket disconnecting uncleanly and a replacement
-    // being established, but the first socket's own "close" event is
-    // delivered late -- after the replacement has already opened.
-    const disconnect = (service as any).establishConnection(
-      "container-1",
-      0,
-    ) as Promise<void>;
-    await disconnect;
+    const establishConnection = Reflect.get(service, "establishConnection") as (
+      containerId: string,
+      attempts: number,
+    ) => Promise<void>;
+    await establishConnection.call(service, "container-1", 0);
     const secondSocket = FakeWebSocket.instances[1];
     secondSocket.emit("open");
     expect(service.getConnectionState("container-1")).toBe("connected");
@@ -101,7 +97,32 @@ describe("CloudBridgeService stale close race", () => {
     firstSocket.emit("close", { code: 1006, reason: "late stale event" });
 
     expect(service.getConnectionState("container-1")).toBe("connected");
-    // No spurious third connection attempt scheduled off the stale close.
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    vi.advanceTimersByTime(30_000);
+    expect(secondSocket.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels a reconnect timer after a manual connection replaces its socket", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { CloudBridgeService } = await import("./cloud-bridge");
+    const service = new CloudBridgeService({} as IAgentRuntime);
+    Reflect.set(service, "authService", {
+      getApiKey: () => undefined,
+      getClient: () => ({ buildWsUrl: (path: string) => `ws://test${path}` }),
+    });
+
+    await service.connect("container-1");
+    const firstSocket = FakeWebSocket.instances[0];
+    firstSocket.emit("open");
+    firstSocket.emit("close", { code: 1006, reason: "network loss" });
+    expect(service.getConnectionState("container-1")).toBe("reconnecting");
+
+    await service.connect("container-1");
+    const replacementSocket = FakeWebSocket.instances[1];
+    replacementSocket.emit("open");
+    vi.advanceTimersByTime(6_000);
+
+    expect(service.getConnectionState("container-1")).toBe("connected");
     expect(FakeWebSocket.instances).toHaveLength(2);
   });
 });

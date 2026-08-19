@@ -138,6 +138,7 @@ export class CloudBridgeService extends Service {
     this.connections.set(containerId, conn);
 
     ws.addEventListener("open", () => {
+      if (this.connections.get(containerId) !== conn) return;
       conn.state = "connected";
       conn.connectedAt = Date.now();
       conn.reconnectAttempts = 0;
@@ -150,6 +151,7 @@ export class CloudBridgeService extends Service {
     });
 
     ws.addEventListener("message", (event) => {
+      if (this.connections.get(containerId) !== conn) return;
       const raw = event.data;
       const data =
         typeof raw === "string" ? raw : raw instanceof Buffer ? raw.toString("utf-8") : String(raw);
@@ -183,14 +185,11 @@ export class CloudBridgeService extends Service {
     });
 
     ws.addEventListener("close", (event) => {
-      // A socket replaced by a newer establishConnection() (see disconnect()'s
-      // ws.close() and the reconnect timer's own establishConnection() call)
-      // can still deliver its "close" event after `this.connections.get(containerId)`
-      // has moved on to the replacement's `conn`. scheduleReconnect() below looks
-      // up that CURRENT entry by containerId, so an unguarded stale close would
-      // mark an already-connected replacement "reconnecting" and schedule an
-      // unnecessary reconnect on top of it.
-      if (this.connections.get(containerId) !== conn) return;
+      // A late close must clean up its own timer without mutating the replacement.
+      if (this.connections.get(containerId) !== conn) {
+        if (conn.heartbeatTimer) clearInterval(conn.heartbeatTimer);
+        return;
+      }
 
       conn.state = "disconnected";
       if (conn.heartbeatTimer) clearInterval(conn.heartbeatTimer);
@@ -208,6 +207,7 @@ export class CloudBridgeService extends Service {
     });
 
     ws.addEventListener("error", () => {
+      if (this.connections.get(containerId) !== conn) return;
       logger.error(`[CloudBridge] WebSocket error for ${containerId}`);
     });
   }
@@ -234,6 +234,7 @@ export class CloudBridgeService extends Service {
     if (conn) {
       conn.state = "reconnecting";
       conn.reconnectTimer = setTimeout(() => {
+        if (this.connections.get(containerId) !== conn) return;
         this.establishConnection(containerId, attempt);
       }, delay + jitter);
     }
