@@ -178,6 +178,7 @@ export class CanvasWeb extends WebPlugin {
   }> = [];
   private webViewIframe: HTMLIFrameElement | null = null;
   private webViewPopup: Window | null = null;
+  private webViewOrigin: string | null = null;
   private messageListenerBound = false;
 
   async create(options: {
@@ -874,6 +875,26 @@ export class CanvasWeb extends WebPlugin {
     const placement = options.placement || "inline";
 
     this.destroyWebView();
+    try {
+      const base =
+        typeof window !== "undefined" && window.location?.href
+          ? window.location.href
+          : undefined;
+      const parsed = new URL(options.url, base);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        this.webViewOrigin = parsed.origin;
+      } else if (options.url === "about:blank") {
+        this.webViewOrigin =
+          typeof window !== "undefined" && window.location?.origin
+            ? window.location.origin
+            : null;
+      } else {
+        this.webViewOrigin = null;
+      }
+    } catch {
+      // error-policy:J3 invalid navigation URL fails closed
+      this.webViewOrigin = null;
+    }
 
     // Intercept eliza:// deep links immediately
     if (options.url.startsWith("eliza://")) {
@@ -1114,7 +1135,7 @@ export class CanvasWeb extends WebPlugin {
           jsonl: options.jsonl || "",
           payload: options.payload || null,
         },
-        "*",
+        this.getWebViewTargetOrigin(),
       );
       return;
     }
@@ -1139,7 +1160,10 @@ export class CanvasWeb extends WebPlugin {
         : null);
 
     if (target) {
-      target.postMessage({ type: "eliza:a2uiReset" }, "*");
+      target.postMessage(
+        { type: "eliza:a2uiReset" },
+        this.getWebViewTargetOrigin(),
+      );
       return;
     }
 
@@ -1157,6 +1181,19 @@ export class CanvasWeb extends WebPlugin {
       this.webViewPopup.close();
     }
     this.webViewPopup = null;
+    this.webViewOrigin = null;
+  }
+
+  private getWebViewTargetOrigin(): string {
+    const origin = this.webViewOrigin;
+    if (
+      origin &&
+      (origin.startsWith("http://") || origin.startsWith("https://"))
+    ) {
+      return origin;
+    }
+    // error-policy:J3 fail closed when origin cannot be proven; never fall back to wildcard "*"
+    throw new Error("Cannot determine web view target origin");
   }
 
   private evalViaPostMessage(
@@ -1164,6 +1201,7 @@ export class CanvasWeb extends WebPlugin {
     script: string,
   ): Promise<EvalResult> {
     return new Promise<EvalResult>((resolve, reject) => {
+      const targetOrigin = this.getWebViewTargetOrigin();
       const timeoutMs = 5000;
       const timeout = setTimeout(() => {
         window.removeEventListener("message", handler);
@@ -1171,9 +1209,9 @@ export class CanvasWeb extends WebPlugin {
       }, timeoutMs);
 
       const handler = (event: MessageEvent) => {
-        // The request is posted with targetOrigin "*". Any same-page window
-        // can therefore emit `eliza:evalResult`; only the web view that
-        // received the script is allowed to complete this eval.
+        // The request is posted with targetOrigin pinned to the web view.
+        // Any same-page window can emit `eliza:evalResult`; only the web view
+        // that received the script is allowed to complete this eval.
         if (event.source !== target) return;
         const data = event.data;
         if (!data || typeof data !== "object") return;
@@ -1186,7 +1224,7 @@ export class CanvasWeb extends WebPlugin {
       };
 
       window.addEventListener("message", handler);
-      target.postMessage({ type: "eliza:eval", script }, "*");
+      target.postMessage({ type: "eliza:eval", script }, targetOrigin);
     });
   }
 
