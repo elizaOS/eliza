@@ -111,9 +111,9 @@ async function expectedPendingBanner(): Promise<string> {
 }
 
 /**
- * Materializes the pre-0185 catalog that the recorded ledger prefix promises.
- * Pending migrations deliberately run against this checkpoint instead of a
- * current schema so missing historical dependencies fail in PostgreSQL.
+ * Materializes the dependency-minimal pre-0185 catalog needed by migrations
+ * after the recorded ledger prefix. Pending migrations deliberately run
+ * against this checkpoint so missing historical dependencies fail in PostgreSQL.
  */
 async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
   await client.query(`
@@ -186,7 +186,7 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
     );
     CREATE TABLE organizations (
       id uuid PRIMARY KEY,
-      credit_balance numeric(16, 6) NOT NULL DEFAULT '100.000000',
+      credit_balance numeric(16, 6) NOT NULL DEFAULT '0.000000',
       CONSTRAINT credit_balance_non_negative CHECK (credit_balance >= 0)
     );
     CREATE TABLE credit_transactions (
