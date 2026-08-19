@@ -465,6 +465,42 @@ describe("view switching — VIEWS action resolver", () => {
 			});
 		});
 
+		it("keeps terminal fallback enabled when an older server does not echo the handoff id", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockImplementation(async () => {
+				return {
+					ok: true,
+					status: 200,
+					text: async () => "",
+					json: async () => ({
+						ok: true,
+						completedActionDelivered: true,
+					}),
+				} as Response;
+			});
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				{
+					...message("open calendar"),
+					content: {
+						text: "open calendar",
+						metadata: { viewClientId: "older-server-client" },
+					},
+				} as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			expect(result?.values).not.toHaveProperty("completedActionDelivered");
+			expect(result?.values).not.toHaveProperty("completedActionHandoffId");
+		});
+
 		it("keeps terminal fallback enabled for a malformed success receipt", async () => {
 			installNavigateCapture();
 			vi.mocked(globalThis.fetch).mockResolvedValue(

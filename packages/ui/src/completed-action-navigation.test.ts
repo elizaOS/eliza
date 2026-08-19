@@ -12,30 +12,60 @@ import {
   resetCompletedActionNavigationForTests,
 } from "./completed-action-navigation";
 import { NAVIGATE_VIEW_EVENT } from "./events";
+import { dispatchViewActionHandoffDirect } from "./view-action-handoff";
+
+function terminalDelivery(
+  completedActionHandoffId: string,
+  viewId = "calendar",
+): boolean {
+  return dispatchViewActionHandoffDirect([
+    {
+      actionName: "VIEWS",
+      success: true,
+      values: {
+        mode: "show",
+        viewId,
+        completedActionHandoffId,
+      },
+    },
+  ]);
+}
+
+function websocketDelivery(
+  completedActionHandoffId: string,
+  viewId = "calendar",
+): boolean {
+  return dispatchCompletedActionNavigation({
+    viewId,
+    completedActionHandoffId,
+  });
+}
 
 describe("completed action navigation", () => {
   beforeEach(() => window.history.replaceState(null, "", "/chat"));
   afterEach(() => resetCompletedActionNavigationForTests());
 
-  it("deduplicates WebSocket-first and terminal-first delivery after shell handling", () => {
-    const seen: string[] = [];
-    const listener = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      seen.push(detail.viewId);
-      markCompletedActionNavigationHandled(event, detail);
-    };
-    window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
+  it.each([
+    ["WebSocket-first", websocketDelivery, terminalDelivery],
+    ["terminal-first", terminalDelivery, websocketDelivery],
+  ] as const)(
+    "deduplicates real %s delivery after shell handling",
+    (_order, firstDelivery, secondDelivery) => {
+      const seen: string[] = [];
+      const listener = (event: Event) => {
+        const detail = (event as CustomEvent).detail;
+        seen.push(detail.viewId);
+        markCompletedActionNavigationHandled(event, detail);
+      };
+      window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
 
-    const detail = {
-      viewId: "calendar",
-      completedActionHandoffId: "handoff-both-orders",
-    };
-    expect(dispatchCompletedActionNavigation(detail)).toBe(true);
-    expect(dispatchCompletedActionNavigation(detail)).toBe(false);
-    expect(seen).toEqual(["calendar"]);
+      expect(firstDelivery("handoff-both-orders")).toBe(true);
+      expect(secondDelivery("handoff-both-orders")).toBe(false);
+      expect(seen).toEqual(["calendar"]);
 
-    window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
-  });
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
+    },
+  );
 
   it("retries at terminal delivery when the early frame had no mounted handler", () => {
     const detail = {
@@ -57,9 +87,12 @@ describe("completed action navigation", () => {
     window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
   });
 
-  it.each(["WebSocket-first", "terminal-first"])(
+  it.each([
+    ["WebSocket-first", websocketDelivery, terminalDelivery],
+    ["terminal-first", terminalDelivery, websocketDelivery],
+  ] as const)(
     "does not pull the renderer back after handled %s delivery and user navigation",
-    (order) => {
+    (order, firstDelivery, secondDelivery) => {
       const seen: string[] = [];
       const listener = (event: Event) => {
         const detail = (event as CustomEvent).detail;
@@ -67,15 +100,11 @@ describe("completed action navigation", () => {
         markCompletedActionNavigationHandled(event, detail);
       };
       window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
-      const detail = {
-        viewId: "calendar",
-        completedActionHandoffId: `handled-${order}`,
-      };
-
-      expect(dispatchCompletedActionNavigation(detail)).toBe(true);
+      const handoffId = `handled-${order}`;
+      expect(firstDelivery(handoffId)).toBe(true);
       window.history.pushState(null, "", "/settings");
       window.dispatchEvent(new PopStateEvent("popstate"));
-      expect(dispatchCompletedActionNavigation(detail)).toBe(false);
+      expect(secondDelivery(handoffId)).toBe(false);
       expect(window.location.pathname).toBe("/settings");
       expect(seen).toEqual(["calendar"]);
       window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
@@ -83,17 +112,19 @@ describe("completed action navigation", () => {
   );
 
   it("lets intervening user navigation win when the early frame was unhandled", () => {
-    const detail = {
-      viewId: "notes",
-      completedActionHandoffId: "unhandled-before-user-navigation",
-    };
-    expect(dispatchCompletedActionNavigation(detail)).toBe(true);
+    expect(websocketDelivery("unhandled-before-user-navigation", "notes")).toBe(
+      true,
+    );
 
     window.history.pushState(null, "", "/settings");
     const listener = vi.fn();
     window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
-    expect(dispatchCompletedActionNavigation(detail)).toBe(false);
-    expect(dispatchCompletedActionNavigation(detail)).toBe(false);
+    expect(terminalDelivery("unhandled-before-user-navigation", "notes")).toBe(
+      false,
+    );
+    expect(websocketDelivery("unhandled-before-user-navigation", "notes")).toBe(
+      false,
+    );
     expect(window.location.pathname).toBe("/settings");
     expect(listener).not.toHaveBeenCalled();
     window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);

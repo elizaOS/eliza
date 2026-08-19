@@ -480,6 +480,17 @@ async function navigateToView(
 				if (!(error instanceof SyntaxError)) throw error;
 				responseBody = null;
 			}
+			const echoedCompletedActionHandoffId =
+				completedActionHandoffId &&
+				typeof responseBody === "object" &&
+				responseBody !== null &&
+				!Array.isArray(responseBody) &&
+				Object.getOwnPropertyDescriptor(
+					responseBody,
+					"completedActionHandoffId",
+				)?.value === completedActionHandoffId
+					? completedActionHandoffId
+					: undefined;
 			return {
 				ok: true,
 				text: navigationEffectReceipt({
@@ -490,11 +501,12 @@ async function navigateToView(
 				}),
 				subview: resolvedSubview,
 				...(delivery === "completed-action" &&
-				confirmsCompletedActionDelivery(responseBody)
+				confirmsCompletedActionDelivery(responseBody) &&
+				(!completedActionHandoffId || echoedCompletedActionHandoffId)
 					? { completedActionDelivered: true as const }
 					: {}),
-				...(responseBody?.completedActionHandoffId === completedActionHandoffId
-					? { completedActionHandoffId }
+				...(echoedCompletedActionHandoffId
+					? { completedActionHandoffId: echoedCompletedActionHandoffId }
 					: {}),
 			};
 		}
