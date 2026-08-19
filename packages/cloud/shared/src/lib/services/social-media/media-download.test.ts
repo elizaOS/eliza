@@ -71,6 +71,30 @@ describe("downloadSocialMediaBytes", () => {
     expect(cancelled).toBe(true);
   });
 
+  test("does not let non-cooperative cancellation mask a non-OK response", async () => {
+    let cancellationStarted = false;
+    const response = new Response(
+      new ReadableStream({
+        cancel() {
+          cancellationStarted = true;
+          return new Promise<void>(() => undefined);
+        },
+      }),
+      { status: 503 },
+    );
+
+    safeFetch.mockResolvedValue(response);
+    const outcome = await Promise.race([
+      downloadSocialMediaBytes("https://media.example/unavailable.bin").catch((cause) => cause),
+      new Promise<"stalled">((resolve) => setTimeout(() => resolve("stalled"), 100)),
+    ]);
+
+    expect(outcome).toBeInstanceOf(ElizaError);
+    expect((outcome as ElizaError).code).toBe("SOCIAL_MEDIA_DOWNLOAD_HTTP_ERROR");
+    expect((outcome as ElizaError).context).toMatchObject({ status: 503 });
+    expect(cancellationStarted).toBe(true);
+  });
+
   test("rejects a declared overflow before reading and cancels the body", async () => {
     let reads = 0;
     let cancelled = false;
