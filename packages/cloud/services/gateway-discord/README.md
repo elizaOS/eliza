@@ -2066,7 +2066,6 @@ elizaAppBot:
 
 **Note**: The gateway uses JWT authentication. The `gateway-bootstrap-secret` is exchanged for a JWT token at startup. The Eliza Cloud API must have the corresponding JWT signing keys configured.
 
-For detailed deployment instructions, see [chart/README.md](./chart/README.md).
 
 ---
 
@@ -2102,4 +2101,3 @@ terraform plan -var-file=production.tfvars -var-file=secrets.tfvars
 terraform apply -var-file=production.tfvars -var-file=secrets.tfvars
 ```
 
-For detailed infrastructure documentation, see [terraform/README.md](./terraform/README.md).

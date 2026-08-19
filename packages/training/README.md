@@ -93,10 +93,10 @@ data/raw/* ──▶ normalize.py ──▶ data/normalized/<slug>.jsonl
 ## Native Tool-Calling Data
 
 The runtime training path uses native JSON records, not alternate harness rows.
-The contract is documented in
-[`docs/dataset/NATIVE_TOOL_CALLING_SPEC.md`](docs/dataset/NATIVE_TOOL_CALLING_SPEC.md).
-Source transform families are summarized in
-[`docs/dataset/NATIVE_SOURCE_TRANSFORMS.md`](docs/dataset/NATIVE_SOURCE_TRANSFORMS.md).
+The record contract (including native tool calls) is documented in
+[`docs/dataset/CANONICAL_RECORD.md`](docs/dataset/CANONICAL_RECORD.md).
+Per-source transform prescriptions are summarized in
+[`docs/dataset/COVERAGE_AUDIT.md`](docs/dataset/COVERAGE_AUDIT.md).
 
 Bootstrap flow:
 
@@ -134,7 +134,7 @@ trajectories, real Eliza recorder-stage comparisons, an `eliza_native_v1`
 export of real local trajectories for smoke training, per-dataset synthesis
 templates for missing components, model-call envelopes for Cerebras and the
 shared AI SDK request boundary, and a composition audit. See
-[`docs/dataset/TRAJECTORY_ALIGNMENT_AUDIT.md`](docs/dataset/TRAJECTORY_ALIGNMENT_AUDIT.md).
+[`docs/dataset/COVERAGE_AUDIT.md`](docs/dataset/COVERAGE_AUDIT.md).
 
 ### Quick reference
 

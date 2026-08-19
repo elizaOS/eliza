@@ -11,8 +11,8 @@
 This is the implementation plan for taking the `verify/` harness from its
 current state (Metal: 5/5 shaders verified on M4 Max; Vulkan: 3/5 turbo*
 shaders verified on Intel ARL + lavapipe; QJL/Polar Vulkan + every other
-backend: unverified) to full coverage of the device matrix declared in
-[`../DEVICE_SUPPORT_GAP_2026-05-10.md`](../DEVICE_SUPPORT_GAP_2026-05-10.md).
+backend: unverified) to full coverage of the device matrix declared in the 2026-05-10 device-support
+gap note (never committed to this repository).
 
 For each unverified backend × kernel combo: the bind-set / fixture /
 host change required, with file-path pointers and effort estimate.
@@ -205,9 +205,7 @@ Exynos-based Galaxy.
 
 **Status:** blocks `2b` Metal claim on iOS
 hardware. **Has a hard prerequisite:** the `ios-arm64-metal` archive
-must actually be linked into the app first (see
-[`../DEVICE_SUPPORT_GAP_2026-05-10.md`](../DEVICE_SUPPORT_GAP_2026-05-10.md)
-blocker #1).
+must actually be linked into the app first (see the uncommitted 2026-05-10 device-support gap note, blocker #1).
 
 **Current state.** `metal_verify.mm` is a CLI binary that links
 `-framework Metal` — it does not run on iOS where there is no shell.
