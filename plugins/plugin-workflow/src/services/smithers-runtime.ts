@@ -27,14 +27,14 @@ const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
 const MAX_TIMEOUT_MS = 2_147_483_647;
 const MAX_STDERR_CHARS = 8_192;
 /** Fail-closed ceiling for one protocol line (complete or incomplete). */
-export const MAX_PROTOCOL_LINE_BYTES = 1_048_576;
+const MAX_PROTOCOL_LINE_BYTES = 1_048_576;
 const WORKER_TERMINATION_GRACE_MS = 1_000;
 const WORKER_STDIO_DRAIN_GRACE_MS = 1_000;
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 type WorkerTerminationCause = 'abort' | 'timeout' | 'overflow';
 
-export function appendSmithersProtocolChunk(
+function appendSmithersProtocolChunk(
   buffer: string,
   chunk: string,
   maxBytes: number = MAX_PROTOCOL_LINE_BYTES
@@ -553,9 +553,14 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       return;
     }
     stdoutBuffer = appended.buffer;
-    for (const line of appended.lines) {
-      lineProcessing = lineProcessing.then(() => consumeLine(line));
-    }
+    worker.stdout?.pause();
+    lineProcessing = lineProcessing
+      .then(async () => {
+        for (const line of appended.lines) await consumeLine(line);
+      })
+      .finally(() => {
+        if (!terminationCause && !processExited) worker.stdout?.resume();
+      });
   });
   worker.stderr?.setEncoding('utf8');
   worker.stderr?.on('data', (chunk: string) => {

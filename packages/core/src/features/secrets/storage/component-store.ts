@@ -28,13 +28,6 @@ function userSecretComponentType(key: string): string {
 	return `${USER_SECRET_COMPONENT_PREFIX}${key}`;
 }
 
-function isUserSecretComponentType(type: string): boolean {
-	return (
-		type === LEGACY_USER_SECRET_COMPONENT_TYPE ||
-		type.startsWith(USER_SECRET_COMPONENT_PREFIX)
-	);
-}
-
 /**
  * Component data structure for secret storage
  * Index signature added for Metadata compatibility
@@ -45,6 +38,35 @@ interface SecretComponentData {
 	config: SecretConfig;
 	updatedAt: number;
 	[key: string]: string | EncryptedSecret | SecretConfig | number | undefined;
+}
+
+function readSecretComponentData(
+	component: Component,
+): SecretComponentData | undefined {
+	const data = component.data;
+	if (!data || typeof data !== "object") return undefined;
+	const candidate = data as Partial<SecretComponentData>;
+	if (
+		typeof candidate.key !== "string" ||
+		(typeof candidate.value !== "string" &&
+			!isEncryptedSecret(candidate.value)) ||
+		!candidate.config ||
+		typeof candidate.config !== "object" ||
+		typeof candidate.updatedAt !== "number"
+	) {
+		return undefined;
+	}
+	return candidate as SecretComponentData;
+}
+
+function isUserSecretComponent(
+	component: Component,
+	data: SecretComponentData,
+): boolean {
+	return (
+		component.type === LEGACY_USER_SECRET_COMPONENT_TYPE ||
+		component.type === userSecretComponentType(data.key)
+	);
 }
 
 /**
@@ -218,12 +240,8 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		const metadata: SecretMetadata = {};
 
 		for (const component of components) {
-			if (!isUserSecretComponentType(component.type)) {
-				continue;
-			}
-
-			const data = component.data as SecretComponentData;
-			if (!data.key || !data.config) {
+			const data = readSecretComponentData(component);
+			if (!data || !isUserSecretComponent(component, data)) {
 				continue;
 			}
 
@@ -305,7 +323,8 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		let legacy: Component | null = null;
 
 		for (const component of components) {
-			const data = component.data as SecretComponentData | undefined;
+			const data = readSecretComponentData(component);
+			if (data?.key !== key) continue;
 			if (component.type === keyedType) {
 				return component;
 			}
@@ -338,11 +357,10 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		const keys: string[] = [];
 
 		for (const component of components) {
-			if (!isUserSecretComponentType(component.type)) {
+			const data = readSecretComponentData(component);
+			if (!data || !isUserSecretComponent(component, data)) {
 				continue;
 			}
-
-			const data = component.data as SecretComponentData;
 			if (data.key) {
 				keys.push(data.key);
 			}
@@ -359,7 +377,8 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		let deleted = 0;
 
 		for (const component of components) {
-			if (!isUserSecretComponentType(component.type)) {
+			const data = readSecretComponentData(component);
+			if (!data || !isUserSecretComponent(component, data)) {
 				continue;
 			}
 
@@ -381,7 +400,8 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		let count = 0;
 
 		for (const component of components) {
-			if (isUserSecretComponentType(component.type)) {
+			const data = readSecretComponentData(component);
+			if (data && isUserSecretComponent(component, data)) {
 				count++;
 			}
 		}

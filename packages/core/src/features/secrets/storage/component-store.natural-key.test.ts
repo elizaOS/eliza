@@ -206,4 +206,45 @@ describe("ComponentSecretStorage SQL natural key", () => {
 			expect.arrayContaining(["LEGACY_KEY", "SIBLING_KEY"]),
 		);
 	});
+
+	it("ignores a keyed type whose stored key does not match", async () => {
+		const { runtime } = makeSqlLikeRuntime();
+		const storage = new ComponentSecretStorage(runtime, keyManager());
+		await storage.initialize();
+		const context = ownerContext();
+		const km = keyManager();
+
+		await runtime.createComponent({
+			id: "00000000-0000-0000-0000-0000000000bb" as UUID,
+			createdAt: Date.now(),
+			entityId: USER_ID as UUID,
+			agentId: AGENT_ID,
+			roomId: AGENT_ID,
+			worldId: AGENT_ID,
+			sourceEntityId: USER_ID as UUID,
+			type: "secret:TARGET_KEY",
+			data: {
+				key: "OTHER_KEY",
+				value: km.encrypt("must-not-leak"),
+				config: {
+					type: "secret",
+					required: false,
+					description: "mismatched row",
+					canGenerate: false,
+					status: "valid",
+					attempts: 0,
+					plugin: "user",
+					level: "user",
+					encrypted: true,
+					ownerId: USER_ID,
+				},
+				updatedAt: Date.now(),
+			},
+		});
+
+		await expect(storage.get("TARGET_KEY", context)).resolves.toBeNull();
+		await expect(storage.listKeys(USER_ID)).resolves.toEqual([]);
+		await expect(storage.countForUser(USER_ID)).resolves.toBe(0);
+		await expect(storage.deleteAllForUser(USER_ID)).resolves.toBe(0);
+	});
 });
