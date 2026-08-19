@@ -183,8 +183,12 @@ function stripeEvent(input?: {
     amountCents: input?.amountCents ?? 2500,
     currency: input?.currency ?? "usd",
     proof: {
+      stripe_event_id: input?.eventId ?? "evt_a",
+      stripe_event_type: "checkout.session.completed",
       stripe_session_id: `cs_${requestId}`,
       stripe_payment_intent_id: txRef,
+      stripe_amount_total: input?.amountCents ?? 2500,
+      stripe_currency: input?.currency ?? "usd",
       stripe_payment_status: disposition === "settled" ? "paid" : "unpaid",
     },
     error: disposition === "failed" ? "card failed" : undefined,
@@ -210,9 +214,12 @@ function oxapayEvent(input?: {
     amountCents: input?.amountCents ?? 4301,
     currency: "usd",
     proof: {
+      provider: "oxapay",
       oxapay_track_id: txRef,
       oxapay_order_id: requestId,
       oxapay_status: "paid",
+      oxapay_amount_cents: input?.amountCents ?? 4301,
+      oxapay_currency: "USD",
     },
   };
 }
@@ -362,7 +369,7 @@ describe("durable payment request settlement", () => {
         ...stripe.proof,
         raw_webhook: "must-not-copy",
         email: "must-not-copy@example.invalid",
-        stripe_event_id: { arbitrary: "nested" },
+        arbitrary: { nested: "must-not-copy" },
       },
     });
     await processPaymentProviderEvent({
@@ -390,6 +397,49 @@ describe("durable payment request settlement", () => {
     expect(JSON.stringify({ requests, receipts: await receiptRows() })).not.toContain(
       "must-not-copy",
     );
+  });
+
+  test("rejects contradictory provider event, provider, amount, and currency proof", async () => {
+    await insertRequest({ txRef: "pi_a" });
+    await insertRequest({
+      id: REQUEST_B,
+      orgId: ORG_B,
+      provider: "oxapay",
+      txRef: "trk_b",
+      amountCents: 4301,
+    });
+    const stripe = stripeEvent();
+    const oxapay = oxapayEvent();
+    const contradictoryEvents = [
+      { ...stripe, proof: { ...stripe.proof, stripe_event_id: "evt_wrong" } },
+      {
+        ...stripe,
+        proof: { ...stripe.proof, stripe_event_type: "payment_intent.succeeded" },
+      },
+      { ...stripe, proof: { ...stripe.proof, stripe_amount_total: 2499 } },
+      { ...stripe, proof: { ...stripe.proof, stripe_currency: "EUR" } },
+      { ...oxapay, proof: { ...oxapay.proof, provider: "stripe" } },
+      { ...oxapay, proof: { ...oxapay.proof, oxapay_amount_cents: 4300 } },
+      { ...oxapay, proof: { ...oxapay.proof, oxapay_currency: "EUR" } },
+    ];
+
+    for (const event of contradictoryEvents) {
+      await expect(processPaymentProviderEvent(event)).rejects.toThrow(
+        "does not match provider settlement authority",
+      );
+    }
+
+    expect(await receiptRows()).toHaveLength(0);
+    const balances = await sqlRows<{ credit_balance: string }>(
+      dbWrite,
+      sql`SELECT credit_balance FROM organizations ORDER BY id`,
+    );
+    expect(balances).toEqual([{ credit_balance: "0.000000" }, { credit_balance: "0.000000" }]);
+    const requests = await sqlRows<{ status: string }>(
+      dbWrite,
+      sql`SELECT status FROM payment_requests ORDER BY id`,
+    );
+    expect(requests).toEqual([{ status: "delivered" }, { status: "delivered" }]);
   });
 
   test("invalidates credit caches only after the settlement transaction commits", async () => {

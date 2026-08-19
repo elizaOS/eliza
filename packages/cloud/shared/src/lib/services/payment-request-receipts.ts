@@ -80,20 +80,30 @@ export async function projectPaymentRequestReceipt(
   input: ProjectPaymentRequestReceiptInput,
 ): Promise<PaymentRequestReceipt> {
   const amountCents = BigInt(input.amountCents);
+  const currency = input.currency.trim().toUpperCase();
   const settlementProof = curatePaymentRequestSettlementProof(
     input.provider,
     input.settlementProof,
   );
   if (
     (input.provider === "stripe" &&
-      (settlementProof.stripe_payment_intent_id !== input.providerTxRef ||
+      (settlementProof.stripe_event_id !== input.providerEventId ||
+        settlementProof.stripe_event_type !== "checkout.session.completed" ||
+        settlementProof.stripe_payment_intent_id !== input.providerTxRef ||
+        settlementProof.stripe_amount_total !== input.amountCents ||
+        typeof settlementProof.stripe_currency !== "string" ||
+        settlementProof.stripe_currency.trim().toUpperCase() !== currency ||
         settlementProof.stripe_payment_status !== "paid" ||
         typeof settlementProof.stripe_session_id !== "string" ||
         !settlementProof.stripe_session_id.trim())) ||
     (input.provider === "oxapay" &&
-      (settlementProof.oxapay_track_id !== input.providerTxRef ||
+      (settlementProof.provider !== input.provider ||
+        settlementProof.oxapay_track_id !== input.providerTxRef ||
         settlementProof.oxapay_order_id !== input.paymentRequestId ||
-        settlementProof.oxapay_status !== "paid"))
+        settlementProof.oxapay_status !== "paid" ||
+        settlementProof.oxapay_amount_cents !== input.amountCents ||
+        typeof settlementProof.oxapay_currency !== "string" ||
+        settlementProof.oxapay_currency.trim().toUpperCase() !== currency))
   ) {
     throw new PaymentRequestReceiptConflictError(
       "Payment receipt proof does not match provider settlement authority",
@@ -109,7 +119,7 @@ export async function projectPaymentRequestReceipt(
       provider_tx_ref: input.providerTxRef,
       provider_event_id: input.providerEventId,
       amount_cents: amountCents,
-      currency: input.currency,
+      currency,
       settled_at: input.settledAt,
       payload_digest: input.payloadDigest,
       settlement_proof: settlementProof,
@@ -130,7 +140,7 @@ export async function projectPaymentRequestReceipt(
         eq(paymentRequestReceipts.provider_tx_ref, input.providerTxRef),
         eq(paymentRequestReceipts.provider_event_id, input.providerEventId),
         eq(paymentRequestReceipts.amount_cents, amountCents),
-        eq(paymentRequestReceipts.currency, input.currency),
+        eq(paymentRequestReceipts.currency, currency),
         eq(paymentRequestReceipts.settled_at, input.settledAt),
         eq(paymentRequestReceipts.payload_digest, input.payloadDigest),
         eq(paymentRequestReceipts.settlement_proof, settlementProof),

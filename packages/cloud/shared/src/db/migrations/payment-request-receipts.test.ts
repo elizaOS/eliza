@@ -34,7 +34,8 @@ async function database(): Promise<PGlite> {
       status text NOT NULL,
       settled_at timestamptz,
       settlement_tx_ref text,
-      settlement_proof jsonb
+      settlement_proof jsonb,
+      provider_intent jsonb NOT NULL DEFAULT '{}'
     );
     CREATE TABLE payment_request_events (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -54,17 +55,35 @@ async function database(): Promise<PGlite> {
 }
 
 async function seedHistoricalRequest(db: PGlite, proof?: string): Promise<void> {
+  const defaultProof = JSON.stringify({
+    stripe_event_id: "evt_a",
+    stripe_event_type: "checkout.session.completed",
+    stripe_session_id: "cs_a",
+    stripe_payment_intent_id: "pi_a",
+    stripe_amount_total: 2500,
+    stripe_currency: "usd",
+    stripe_payment_status: "paid",
+  });
   await db.exec(`
     INSERT INTO payment_requests (
       id, organization_id, provider, amount_cents, currency, status,
-      settled_at, settlement_tx_ref, settlement_proof
+      settled_at, settlement_tx_ref, settlement_proof, provider_intent
     ) VALUES (
       '${REQUEST_A}', '${ORG_A}', 'stripe', 2500, 'usd', 'settled',
       '2026-08-19T08:00:00.000Z', 'pi_a',
-      '${
-        proof ??
-        '{"stripe_session_id":"cs_a","stripe_payment_intent_id":"pi_a","stripe_payment_status":"paid"}'
-      }'
+      '${proof ?? defaultProof}', '{"stripe_session_id":"cs_a","stripe_payment_intent_id":"pi_a"}'
+    );
+  `);
+}
+
+async function seedHistoricalOxapayRequest(db: PGlite, proof: string): Promise<void> {
+  await db.exec(`
+    INSERT INTO payment_requests (
+      id, organization_id, provider, amount_cents, currency, status,
+      settled_at, settlement_tx_ref, settlement_proof, provider_intent
+    ) VALUES (
+      '${REQUEST_A}', '${ORG_A}', 'oxapay', 2500, 'usd', 'settled',
+      '2026-08-19T08:00:00.000Z', 'trk_a', '${proof}', '{"oxapay_track_id":"trk_a"}'
     );
   `);
 }
@@ -89,6 +108,28 @@ async function seedAuthority(db: PGlite, eventId = "evt_a", digest = "a".repeat(
       '${REQUEST_A}', 'webhook.received', '${callback}',
       'stripe', '${eventId}', 'pi_a', 'settled', '${digest}',
       '2026-08-19T08:00:00.000Z'
+    );
+  `);
+}
+
+async function seedOxapayAuthority(db: PGlite): Promise<void> {
+  const callback = JSON.stringify({
+    name: "PaymentSettled",
+    paymentRequestId: REQUEST_A,
+    provider: "oxapay",
+    providerEventId: "trk_a:paid",
+    txRef: "trk_a",
+    amountCents: 2500,
+    currency: "USD",
+    occurredAt: "2026-08-19T08:00:00.000Z",
+  });
+  await db.exec(`
+    INSERT INTO payment_request_events (
+      payment_request_id, event_name, redacted_payload, provider, provider_event_id,
+      provider_tx_ref, provider_disposition, payload_digest, occurred_at
+    ) VALUES (
+      '${REQUEST_A}', 'webhook.received', '${callback}', 'oxapay', 'trk_a:paid',
+      'trk_a', 'settled', '${"b".repeat(64)}', '2026-08-19T08:00:00.000Z'
     );
   `);
 }
@@ -134,8 +175,12 @@ describe("0262-0263 payment request receipts migrations", () => {
         currency: "USD",
         payload_digest: "a".repeat(64),
         settlement_proof: {
+          stripe_event_id: "evt_a",
+          stripe_event_type: "checkout.session.completed",
           stripe_session_id: "cs_a",
           stripe_payment_intent_id: "pi_a",
+          stripe_amount_total: 2500,
+          stripe_currency: "usd",
           stripe_payment_status: "paid",
         },
       },
@@ -203,7 +248,7 @@ describe("0262-0263 payment request receipts migrations", () => {
     const uncurated = await database();
     await seedHistoricalRequest(
       uncurated,
-      '{"stripe_session_id":"cs_a","stripe_payment_intent_id":"pi_a","stripe_payment_status":"paid","raw_webhook":"must-not-copy"}',
+      '{"stripe_event_id":"evt_a","stripe_event_type":"checkout.session.completed","stripe_session_id":"cs_a","stripe_payment_intent_id":"pi_a","stripe_amount_total":2500,"stripe_currency":"usd","stripe_payment_status":"paid","raw_webhook":"must-not-copy"}',
     );
     await seedAuthority(uncurated);
     await uncurated.exec(schemaMigration);
@@ -223,6 +268,54 @@ describe("0262-0263 payment request receipts migrations", () => {
       '{"stripe_session_id":"cs_a","stripe_payment_intent_id":"pi_a","stripe_payment_status":"paid"}'
     )`);
     await expect(conflicting.exec(backfillMigration)).rejects.toThrow(/postcondition failed/i);
+  });
+
+  test("rejects contradictory provider event, provider, amount, and currency proof", async () => {
+    const stripeProof = {
+      stripe_event_id: "evt_a",
+      stripe_event_type: "checkout.session.completed",
+      stripe_session_id: "cs_a",
+      stripe_payment_intent_id: "pi_a",
+      stripe_amount_total: 2500,
+      stripe_currency: "usd",
+      stripe_payment_status: "paid",
+    };
+    const oxapayProof = {
+      provider: "oxapay",
+      oxapay_track_id: "trk_a",
+      oxapay_order_id: REQUEST_A,
+      oxapay_status: "paid",
+      oxapay_amount_cents: 2500,
+      oxapay_currency: "USD",
+    };
+    const cases: Array<{
+      provider: "stripe" | "oxapay";
+      proof: Record<string, unknown>;
+    }> = [
+      { provider: "stripe", proof: { ...stripeProof, stripe_event_id: "evt_wrong" } },
+      { provider: "stripe", proof: { ...stripeProof, stripe_amount_total: 2499 } },
+      { provider: "stripe", proof: { ...stripeProof, stripe_currency: "EUR" } },
+      { provider: "oxapay", proof: { ...oxapayProof, provider: "stripe" } },
+      { provider: "oxapay", proof: { ...oxapayProof, oxapay_amount_cents: 2499 } },
+      { provider: "oxapay", proof: { ...oxapayProof, oxapay_currency: "EUR" } },
+    ];
+
+    for (const input of cases) {
+      const db = await database();
+      if (input.provider === "stripe") {
+        await seedHistoricalRequest(db, JSON.stringify(input.proof));
+        await seedAuthority(db);
+      } else {
+        await seedHistoricalOxapayRequest(db, JSON.stringify(input.proof));
+        await seedOxapayAuthority(db);
+      }
+      await db.exec(schemaMigration);
+      await expect(db.exec(backfillMigration)).rejects.toThrow(/lacks one curated/i);
+      const receipts = await db.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM payment_request_receipts",
+      );
+      expect(receipts.rows).toEqual([{ count: 0 }]);
+    }
   });
 
   test("fails closed instead of accepting a colliding partial table", async () => {

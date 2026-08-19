@@ -6,7 +6,37 @@ BEGIN
     SELECT 1
     FROM "payment_requests" AS request
     LEFT JOIN LATERAL (
-      SELECT count(*) AS authority_count
+      SELECT
+        count(*) AS candidate_count,
+        count(*) FILTER (WHERE
+          (request."provider" = 'stripe'
+            AND request."settlement_proof"->>'stripe_event_id' = event."provider_event_id"
+            AND request."settlement_proof"->>'stripe_event_type' = 'checkout.session.completed'
+            AND request."settlement_proof"->>'stripe_session_id'
+              = request."provider_intent"->>'stripe_session_id'
+            AND request."settlement_proof"->>'stripe_payment_intent_id'
+              = request."settlement_tx_ref"
+            AND jsonb_typeof(request."settlement_proof"->'stripe_amount_total') = 'number'
+            AND request."settlement_proof"->>'stripe_amount_total'
+              = request."amount_cents"::text
+            AND upper(request."settlement_proof"->>'stripe_currency')
+              = upper(request."currency")
+            AND request."settlement_proof"->>'stripe_payment_status' = 'paid')
+          OR
+          (request."provider" = 'oxapay'
+            AND request."settlement_proof"->>'provider' = 'oxapay'
+            AND request."settlement_proof"->>'oxapay_track_id'
+              = request."provider_intent"->>'oxapay_track_id'
+            AND request."settlement_proof"->>'oxapay_track_id'
+              = request."settlement_tx_ref"
+            AND request."settlement_proof"->>'oxapay_order_id' = request."id"::text
+            AND request."settlement_proof"->>'oxapay_status' = 'paid'
+            AND jsonb_typeof(request."settlement_proof"->'oxapay_amount_cents') = 'number'
+            AND request."settlement_proof"->>'oxapay_amount_cents'
+              = request."amount_cents"::text
+            AND upper(request."settlement_proof"->>'oxapay_currency')
+              = upper(request."currency"))
+        ) AS authority_count
       FROM "payment_request_events" AS event
       WHERE event."payment_request_id" = request."id"
         AND event."event_name" = 'webhook.received'
@@ -27,6 +57,7 @@ BEGIN
         request."settled_at" IS NULL
         OR request."settlement_tx_ref" IS NULL
         OR jsonb_typeof(request."settlement_proof") IS DISTINCT FROM 'object'
+        OR authority.candidate_count <> 1
         OR authority.authority_count <> 1
         OR EXISTS (
           SELECT 1
