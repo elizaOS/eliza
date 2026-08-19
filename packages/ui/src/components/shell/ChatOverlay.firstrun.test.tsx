@@ -193,7 +193,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByTestId("chat-first-run-backdrop")).toBeNull();
   });
 
-  it("opens at the shared half detent during onboarding without drag affordances", () => {
+  it("uses the same visible half-height shell as post-onboarding chat", () => {
     const onStateChange = vi.fn();
     render(
       <ChatOverlay
@@ -207,7 +207,11 @@ describe("ChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
     expect(sheet.getAttribute("data-detent")).toBe("half");
     expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
-    expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    expect(grabber.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByTestId("chat-first-run-grabber")).toBeNull();
+    expect(screen.getByTestId("chat-sheet-rim")).toBeTruthy();
+    expect(screen.getByTestId("chat-thread-top-fade")).toBeTruthy();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
 
@@ -255,16 +259,15 @@ describe("ChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-detent")).toBe("half");
   });
 
-  it("renders a non-interactive composer handle at the half detent", () => {
+  it("keeps the normal sheet handle visible but inert at the half detent", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");
-    const composer = screen.getByTestId("chat-composer-row");
-    const decorativeHandle = screen.getByTestId("chat-first-run-grabber");
+    const handle = screen.getByTestId("chat-sheet-grabber");
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
-    expect(composer.contains(decorativeHandle)).toBe(true);
-    expect(decorativeHandle.getAttribute("aria-hidden")).toBe("true");
-    expect(decorativeHandle.tagName).toBe("SPAN");
+    expect(screen.queryByTestId("chat-first-run-grabber")).toBeNull();
+    expect(handle.getAttribute("aria-disabled")).toBe("true");
+    expect(handle.getAttribute("aria-hidden")).toBe("true");
+    expect(handle.getAttribute("tabindex")).toBe("-1");
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("half");
   });

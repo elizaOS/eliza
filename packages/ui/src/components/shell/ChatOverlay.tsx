@@ -932,6 +932,7 @@ function SheetGrabber({
   breathing,
   opacity,
   pilled,
+  locked = false,
 }: {
   open: boolean;
   onOpen: () => void;
@@ -945,8 +946,10 @@ function SheetGrabber({
   // Inert while pilled so the invisible grabber can't steal taps meant for the
   // pill capsule (or pass-through to the home screen) below it.
   pilled: boolean;
+  /** Keeps the normal handle visible while onboarding owns the detent. */
+  locked?: boolean;
 }): React.JSX.Element {
-  const disabled = pilled;
+  const disabled = pilled || locked;
   return (
     <motion.button
       style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
@@ -959,6 +962,7 @@ function SheetGrabber({
       // operable (Enter/Space toggle, Arrow keys nudge) per WCAG 2.1.1.
       type="button"
       aria-expanded={open}
+      aria-disabled={locked || undefined}
       aria-label={open ? "drag down to close chat" : "drag up to open chat"}
       data-testid="chat-sheet-grabber"
       data-open={open ? "true" : "false"}
@@ -5564,9 +5568,7 @@ export function ChatOverlay({
         style={{ maxWidth: wrapperMaxW }}
         className="pointer-events-none relative flex w-full flex-col items-center"
       >
-        {!firstRunOpen &&
-        ((!fullBleed && !restoreDragging) ||
-          grabberPressRef.current != null) ? (
+        {(!fullBleed && !restoreDragging) || grabberPressRef.current != null ? (
           // Suppressed while full-bleed (the restore strip owns the top) and
           // while a restore drag is in flight (the restore strip keeps that
           // pointer capture). A normal grabber remains mounted through its own
@@ -5587,6 +5589,7 @@ export function ChatOverlay({
             breathing={(listening || responding) && !recording}
             opacity={grabberOpacity}
             pilled={pilled}
+            locked={firstRunOpen}
           />
         ) : null}
         <motion.fieldset
@@ -6152,26 +6155,24 @@ export function ChatOverlay({
                     </AnimatePresence>
                   </MessageScroller>
                 </MessageScrollerProvider>
-                {!firstRunOpen ? (
-                  <motion.div
-                    data-testid="chat-thread-top-fade"
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
-                    style={{
-                      opacity: threadContentOpacity,
-                      // A fixed compositor layer lets messages dissolve beneath
-                      // the floating grabber without masking the scrolling
-                      // subtree. WebKit re-rasterizes CSS-masked scrollers while
-                      // their flex basis changes, which makes the pull gesture
-                      // stutter. Hold the panel color through the grabber's
-                      // footprint before beginning the dissolve so no glyph can
-                      // ghost through the antialiased rim or the handle itself.
-                      backgroundImage: fullBleed
-                        ? "linear-gradient(to bottom, var(--bg) 0%, var(--bg) 28%, color-mix(in srgb, var(--bg) 72%, transparent) 64%, transparent 100%)"
-                        : "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
-                    }}
-                  />
-                ) : null}
+                <motion.div
+                  data-testid="chat-thread-top-fade"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
+                  style={{
+                    opacity: threadContentOpacity,
+                    // A fixed compositor layer lets messages dissolve beneath
+                    // the floating grabber without masking the scrolling
+                    // subtree. WebKit re-rasterizes CSS-masked scrollers while
+                    // their flex basis changes, which makes the pull gesture
+                    // stutter. Hold the panel color through the grabber's
+                    // footprint before beginning the dissolve so no glyph can
+                    // ghost through the antialiased rim or the handle itself.
+                    backgroundImage: fullBleed
+                      ? "linear-gradient(to bottom, var(--bg) 0%, var(--bg) 28%, color-mix(in srgb, var(--bg) 72%, transparent) 64%, transparent 100%)"
+                      : "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
+                  }}
+                />
               </motion.div>
             ) : null}
             {/* Cloud-agent provisioning status — rendered IN the chat, just
@@ -6326,13 +6327,6 @@ export function ChatOverlay({
                   : { marginBottom: composerCapsuleMarginBottom }),
               }}
             >
-              {firstRunOpen ? (
-                <span
-                  aria-hidden="true"
-                  data-testid="chat-first-run-grabber"
-                  className="pointer-events-none absolute left-1/2 top-1.5 h-1.5 w-12 -translate-x-1/2 select-none rounded-full bg-white/45"
-                />
-              ) : null}
               {/* Inline slash-command autocomplete, floating just above the
                     input row. */}
               {!transcriptionComposerActive && slashProp && !slashDismissed ? (
@@ -6652,17 +6646,15 @@ export function ChatOverlay({
               </div>
             </motion.div>
           </motion.div>
-          {!firstRunOpen ? (
-            <motion.div
-              data-testid="chat-sheet-rim"
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 z-40 border border-border-strong"
-              style={{
-                opacity: rimOpacity,
-                borderRadius: morphRadius,
-              }}
-            />
-          ) : null}
+          <motion.div
+            data-testid="chat-sheet-rim"
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 z-40 border border-border-strong"
+            style={{
+              opacity: rimOpacity,
+              borderRadius: morphRadius,
+            }}
+          />
           {/* PILL CAPSULE — the collapsed handle, crossfaded out as the input
               forms. Interactive only while pilled; sits over the (faded) input. */}
           <motion.div
