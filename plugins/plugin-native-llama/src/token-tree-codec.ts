@@ -21,7 +21,10 @@
  * The "child_ptrs" entries point into the same flat node array — the sampler
  * walks by index, never by allocation. Pre-order traversal guarantees parent
  * index < child index, so a single forward pass can resolve every pointer
- * without a second materialisation step.
+ * without a second materialisation step. The encoder emits a tree (in-degree
+ * ≤ 1). The decoder rejects a second inbound edge: `collectLeaves` copies the
+ * path at every visit, so a 1.5 KiB complete DAG (every node points at every
+ * later node) expands to tens of millions of paths.
  *
  * Round-trip invariants:
  *   - `deserializeTokenTree(serializeTokenTree(d))` is structurally equal to
@@ -37,6 +40,8 @@ import type { TokenSequence, TokenTreeDescriptor } from "./definitions";
 const MAGIC = 0x544b5452; // "RTKT" (Runtime Token Tree)
 const VERSION = 1;
 const ROOT_TOKEN_ID = -1;
+/** Speculative-decode tries are tiny; a larger count is hostile, not a model. */
+const MAX_TOKEN_TREE_NODES = 65_536;
 
 interface TrieNode {
   tokenId: number;
@@ -192,7 +197,9 @@ function collectLeaves(flat: FlatNode[], rootIdx: number): TokenSequence[] {
  * the native sampler), so callers needing the original names should keep
  * the source-side descriptor around alongside the bytes.
  *
- * Throws on truncated input, unknown magic, or unsupported version.
+ * Throws on truncated input, unknown magic, unsupported version, or a
+ * multi-parent DAG (the encoder never emits one; a second inbound edge is
+ * a hang bomb for `collectLeaves`).
  */
 export function deserializeTokenTree(input: Uint8Array): TokenTreeDescriptor {
   if (input.byteLength < 16) {
@@ -225,6 +232,11 @@ export function deserializeTokenTree(input: Uint8Array): TokenTreeDescriptor {
   offset += pathLen;
   const totalNodes = view.getUint32(offset, true);
   offset += 4;
+  if (totalNodes > MAX_TOKEN_TREE_NODES) {
+    throw new Error(
+      `deserializeTokenTree: node count ${totalNodes} exceeds ${MAX_TOKEN_TREE_NODES}`,
+    );
+  }
 
   const flat: FlatNode[] = [];
   for (let i = 0; i < totalNodes; i++) {
@@ -260,6 +272,18 @@ export function deserializeTokenTree(input: Uint8Array): TokenTreeDescriptor {
     throw new Error(
       "deserializeTokenTree: root node missing or has non-sentinel tokenId",
     );
+  }
+
+  const inbound = new Uint32Array(flat.length);
+  for (let i = 0; i < flat.length; i++) {
+    for (const ptr of flat[i].childPtrs) {
+      inbound[ptr] += 1;
+      if (inbound[ptr] > 1) {
+        throw new Error(
+          `deserializeTokenTree: node ${ptr} has multiple parents`,
+        );
+      }
+    }
   }
 
   const leaves = collectLeaves(flat, 0);
