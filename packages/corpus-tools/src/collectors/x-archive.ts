@@ -10,8 +10,10 @@
  * root within the archive; DMs map per conversation with direction derived from
  * senderId versus the owner id. Likes carry no timestamps in the archive, so
  * they are counted in the summary but never fabricated into message rows.
- * Raw archives belong under the gitignored `data/` tree; only synthetic
- * fixtures are committed.
+ * ZIP archives are rejected from the central directory before `unzipSync`
+ * materializes entries: a compressed zeros bomb otherwise expands to its
+ * declared size in process memory. Raw archives belong under the gitignored
+ * `data/` tree; only synthetic fixtures are committed.
  */
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -66,6 +68,18 @@ interface ArchiveFileSource {
 }
 
 const YTD_PREFIX = /^\s*window\.YTD\.[\w-]+\.part\d+\s*=\s*/;
+
+/**
+ * Compressed ZIP on disk. Official X archives sit well under this; a multi-GiB
+ * file would be allocated by `readFile` before any entry filter runs.
+ */
+export const MAX_X_ARCHIVE_ZIP_BYTES = 1 * 1024 * 1024 * 1024;
+
+/**
+ * Sum of central-directory uncompressed sizes. `unzipSync` materializes every
+ * matching entry at its declared size, so this is the peak allocation.
+ */
+export const MAX_X_ARCHIVE_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024;
 
 function stripYtdPrefix(fileName: string, raw: string): string {
   if (!YTD_PREFIX.test(raw)) {
@@ -133,10 +147,12 @@ async function openArchive(archivePath: string): Promise<ArchiveFileSource> {
       },
     };
   }
-  const bytes = await fs.readFile(archivePath);
+  assertXArchiveZipFileSize(stat.size, archivePath);
+  const zipBytes: Uint8Array = await fs.readFile(archivePath);
+  assertXArchiveZipUncompressedSize(zipBytes);
   let files: Record<string, Uint8Array>;
   try {
-    files = unzipSync(new Uint8Array(bytes), {
+    files = unzipSync(zipBytes, {
       filter: (file) =>
         file.name.startsWith("data/") && file.name.endsWith(".js"),
     });
@@ -162,6 +178,106 @@ async function openArchive(archivePath: string): Promise<ArchiveFileSource> {
 /** Matches `tweets.js`, `tweets-part1.js`, ... for baseName `tweets`. */
 function matchesPart(fileName: string, baseName: string): boolean {
   return new RegExp(`^${baseName}(-part\\d+)?\\.js$`).test(fileName);
+}
+
+/** Reject a ZIP whose on-disk size would be allocated by `readFile`. */
+export function assertXArchiveZipFileSize(
+  size: number,
+  archivePath?: string,
+): void {
+  if (size > MAX_X_ARCHIVE_ZIP_BYTES) {
+    throw new ElizaError(
+      archivePath
+        ? `X archive ZIP ${archivePath} exceeds the compressed size limit`
+        : "X archive ZIP exceeds the compressed size limit",
+      {
+        code: "X_ARCHIVE_ZIP_TOO_LARGE",
+        context: {
+          ...(archivePath ? { archivePath } : {}),
+          declaredBytes: size,
+          maxBytes: MAX_X_ARCHIVE_ZIP_BYTES,
+        },
+      },
+    );
+  }
+}
+
+/**
+ * Sum the uncompressed sizes declared in the ZIP central directory and reject
+ * archives over MAX_X_ARCHIVE_UNCOMPRESSED_BYTES before `unzipSync` runs.
+ * Zip64 is rejected: a corpus archive under the 1 GiB compressed cap never
+ * needs it, and the 32-bit size fields would otherwise under-count a bomb.
+ */
+export function assertXArchiveZipUncompressedSize(zipBuffer: Uint8Array): void {
+  const data = zipBuffer;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+  let eocd = -1;
+  const scanFloor = Math.max(0, data.length - 22 - 0xffff);
+  for (let i = data.length - 22; i >= scanFloor; i--) {
+    if (
+      data[i] === 0x50 &&
+      data[i + 1] === 0x4b &&
+      data[i + 2] === 0x05 &&
+      data[i + 3] === 0x06
+    ) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) {
+    throw new ElizaError("X archive ZIP is not a valid archive", {
+      code: "X_ARCHIVE_ZIP_INVALID",
+      context: { reason: "end of central directory not found" },
+    });
+  }
+
+  const entryCount = view.getUint16(eocd + 10, true);
+  const cdOffset = view.getUint32(eocd + 16, true);
+  if (entryCount === 0xffff || cdOffset === 0xffffffff) {
+    throw new ElizaError("X archive ZIP uses zip64, which is not supported", {
+      code: "X_ARCHIVE_ZIP_INVALID",
+      context: { reason: "zip64 central directory" },
+    });
+  }
+
+  let totalUncompressed = 0;
+  let offset = cdOffset;
+  for (let i = 0; i < entryCount; i++) {
+    if (
+      offset + 46 > data.length ||
+      view.getUint32(offset, true) !== 0x02014b50
+    ) {
+      throw new ElizaError("X archive ZIP is not a valid archive", {
+        code: "X_ARCHIVE_ZIP_INVALID",
+        context: { reason: "malformed central directory entry", entryIndex: i },
+      });
+    }
+    const declared = view.getUint32(offset + 24, true);
+    if (declared === 0xffffffff) {
+      throw new ElizaError("X archive ZIP uses zip64, which is not supported", {
+        code: "X_ARCHIVE_ZIP_INVALID",
+        context: { reason: "zip64 uncompressed size", entryIndex: i },
+      });
+    }
+    totalUncompressed += declared;
+    if (totalUncompressed > MAX_X_ARCHIVE_UNCOMPRESSED_BYTES) {
+      throw new ElizaError(
+        "X archive ZIP expands beyond the uncompressed size limit",
+        {
+          code: "X_ARCHIVE_ZIP_TOO_LARGE",
+          context: {
+            declaredBytes: totalUncompressed,
+            maxBytes: MAX_X_ARCHIVE_UNCOMPRESSED_BYTES,
+          },
+        },
+      );
+    }
+    const nameLen = view.getUint16(offset + 28, true);
+    const extraLen = view.getUint16(offset + 30, true);
+    const commentLen = view.getUint16(offset + 32, true);
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
 }
 
 interface RawTweet {
