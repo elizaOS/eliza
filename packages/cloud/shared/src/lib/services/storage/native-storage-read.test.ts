@@ -252,6 +252,68 @@ describe("executeNativeStorageGetOrHead", () => {
 });
 
 describe("executeNativeStoragePresign", () => {
+  test("renews when the locked settlement fence expires a preflight-valid provider result", async () => {
+    const future = new Date(Date.now() + 300_000);
+    const root = presignOperation(0, "provider_succeeded", future);
+    const digestBytes = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(
+        JSON.stringify([
+          "native-storage-read:v2",
+          ORG,
+          USER,
+          "presign",
+          {
+            logicalKey: "private/voice.ogg",
+            ttlSeconds: 300,
+            capabilityHost: "blob.example.test",
+          },
+          "0.100000",
+        ]),
+      ),
+    );
+    root.request_digest = Array.from(new Uint8Array(digestBytes), (value) =>
+      value.toString(16).padStart(2, "0"),
+    ).join("");
+    const expiredFence = {
+      ...root,
+      state: "failed" as const,
+      response_status: 409,
+      response_json: JSON.stringify({ error: "Capability expired before settlement" }),
+      completed_at: new Date(),
+    };
+    const childPrepared = presignOperation(1, "prepared", new Date(Date.now() + 300_000));
+    const childSucceeded = { ...childPrepared, state: "provider_succeeded" as const };
+    const childCommitted = { ...childSucceeded, state: "committed" as const };
+    childCommitted.response_status = 200;
+    childCommitted.response_json = JSON.stringify({
+      expiresAt: childCommitted.capability_expires_at!.toISOString(),
+      receiptId: childCommitted.id,
+    });
+    findByIdempotency.mockResolvedValue(root);
+    findLatestPresignRenewal.mockResolvedValue(expiredFence);
+    preparePresignRenewal.mockResolvedValue({ operation: childPrepared, created: true });
+    recordProviderSuccess.mockResolvedValue(childSucceeded);
+    commitProviderSuccess
+      .mockResolvedValueOnce({ operation: expiredFence, insufficient: false })
+      .mockResolvedValueOnce({ operation: childCommitted, insufficient: false });
+
+    const result = await executeNativeStoragePresign({
+      bucket: { head: mock(async () => ({ size: 5, etag: "etag-1" })) },
+      organizationId: ORG,
+      userId: USER,
+      logicalKey: "private/voice.ogg",
+      rawIdempotencyKey: "settlement-delay-presign",
+      priceUsd: 0.1,
+      capabilityHost: "blob.example.test",
+      ttlSeconds: 300,
+    });
+
+    expect(result.operation).toMatchObject({ state: "committed", renewal_generation: 1 });
+    expect(commitProviderSuccess).toHaveBeenCalledTimes(2);
+    expect(preparePresignRenewal).toHaveBeenCalledTimes(1);
+  });
+
   test("renews an expired stable root through one durable child before disclosure", async () => {
     const expired = new Date(Date.now() - 60_000);
     const root = presignOperation(0, "committed", expired);

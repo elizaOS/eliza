@@ -441,6 +441,15 @@ export class OrgStorageReadsRepository {
           FOR UPDATE`,
       );
       const operation = normalize(requiredRow(rows, "settlement lock"));
+      // `now()` is fixed at transaction start in PostgreSQL. Sample the wall
+      // clock only after the receipt lock so lock waits cannot settle an
+      // already-expired capability.
+      const clockRows = await sqlRows<{ current_time: Date | string }>(
+        tx,
+        sql`SELECT clock_timestamp() AS current_time`,
+      );
+      const settlementNow = dateValue(requiredRow(clockRows, "settlement clock").current_time);
+      if (!settlementNow) throw new Error("[NativeStorageRead] settlement clock was null");
       if (operation.state === "committed") {
         return { operation, insufficient: false };
       }
@@ -451,15 +460,23 @@ export class OrgStorageReadsRepository {
         throw new StorageReadConflictError("state_conflict");
       }
 
-      if (operation.method === "presign" && operation.capability_revoked_at !== null) {
+      const capabilityUnavailable =
+        operation.method === "presign" &&
+        (operation.capability_revoked_at !== null ||
+          !operation.capability_expires_at ||
+          operation.capability_expires_at <= settlementNow);
+      if (capabilityUnavailable) {
+        const error = operation.capability_revoked_at
+          ? "Capability revoked before settlement"
+          : "Capability expired before settlement";
         const failed = await tx
           .update(orgStorageReadOperations)
           .set({
             state: "failed",
             response_status: 409,
-            response_json: JSON.stringify({ error: "Capability revoked before settlement" }),
-            completed_at: params.now,
-            updated_at: params.now,
+            response_json: JSON.stringify({ error }),
+            completed_at: settlementNow,
+            updated_at: settlementNow,
           })
           .where(eq(orgStorageReadOperations.id, operation.id))
           .returning();
@@ -492,8 +509,8 @@ export class OrgStorageReadsRepository {
               state: "failed",
               response_status: 402,
               response_json: JSON.stringify({ error: "Insufficient credits" }),
-              completed_at: params.now,
-              updated_at: params.now,
+              completed_at: settlementNow,
+              updated_at: settlementNow,
             })
             .where(eq(orgStorageReadOperations.id, operation.id))
             .returning();
@@ -521,7 +538,7 @@ export class OrgStorageReadsRepository {
               ${params.organizationId}, ${operation.user_id},
               -CAST(${String(operation.price_usd)} AS numeric), 'debit',
               ${`API proxy: storage — native ${operation.method}`},
-              ${metadata}::jsonb, ${params.now}, ${params.now}
+              ${metadata}::jsonb, ${settlementNow}, ${settlementNow}
             ) RETURNING id`,
         );
         creditTransactionId = requiredRow(creditRows, "credit insert").id;
@@ -532,8 +549,8 @@ export class OrgStorageReadsRepository {
         .set({
           state: "committed",
           credit_transaction_id: creditTransactionId,
-          completed_at: params.now,
-          updated_at: params.now,
+          completed_at: settlementNow,
+          updated_at: settlementNow,
         })
         .where(eq(orgStorageReadOperations.id, operation.id))
         .returning();
