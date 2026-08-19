@@ -155,6 +155,53 @@ describe("InMemoryDatabaseAdapter — textContains", () => {
 		]);
 	});
 
+	it("uses an exclusive tuple cursor that stays stable across earlier mutations", async () => {
+		const ids = [
+			"00000000-0000-0000-0000-0000000000a1",
+			"00000000-0000-0000-0000-0000000000a2",
+			"00000000-0000-0000-0000-0000000000a3",
+			"00000000-0000-0000-0000-0000000000a4",
+			"00000000-0000-0000-0000-0000000000a5",
+		] as UUID[];
+		const adapter = await seed(
+			ids.map((id, index) => msg(`m${index}`, 1_000, id)),
+		);
+		const first = await adapter.getMemories({
+			roomId,
+			tableName: "messages",
+			limit: 2,
+		});
+		expect(first.map((memory) => memory.id)).toEqual([ids[4], ids[3]]);
+
+		await adapter.deleteMemories([ids[4]]);
+		await adapter.createMemories([
+			{
+				memory: msg(
+					"inserted ahead",
+					2_000,
+					"00000000-0000-0000-0000-0000000000ff",
+				),
+				tableName: "messages",
+			},
+		]);
+		const second = await adapter.getMemories({
+			roomId,
+			tableName: "messages",
+			limit: 2,
+			cursor: { createdAt: 1_000, id: ids[3] },
+		});
+		expect(second.map((memory) => memory.id)).toEqual([ids[2], ids[1]]);
+
+		await expect(
+			adapter.getMemories({
+				roomId,
+				tableName: "messages",
+				offset: 0,
+				cursor: { createdAt: 1_000, id: ids[3] },
+			}),
+		).rejects.toThrow("cursor and offset are mutually exclusive");
+	});
+
 	it("stays bounded: a keyword scan over many messages returns only matches, quickly", async () => {
 		const many: Memory[] = [];
 		for (let i = 0; i < 20000; i++) {

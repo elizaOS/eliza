@@ -790,9 +790,15 @@ const memoryCreatedAt = (memory: { createdAt?: number }): number =>
 
 /** Newest-first comparator shared by the browse/search/feed list routes. */
 const byNewestFirst = (
-  a: { createdAt?: number },
-  b: { createdAt?: number },
-): number => memoryCreatedAt(b) - memoryCreatedAt(a);
+  a: { createdAt?: number; id?: string; _table?: string },
+  b: { createdAt?: number; id?: string; _table?: string },
+): number => {
+  const timestampOrder = memoryCreatedAt(b) - memoryCreatedAt(a);
+  if (timestampOrder !== 0) return timestampOrder;
+  const idOrder = (b.id ?? "").localeCompare(a.id ?? "");
+  if (idOrder !== 0) return idOrder;
+  return (a._table ?? "").localeCompare(b._table ?? "");
+};
 
 function memoryToBrowseItem(memory: TaggedMemory): MemoryBrowseItem {
   const content = memory.content as Record<string, unknown> | undefined;
@@ -843,7 +849,7 @@ async function fetchMemoriesFromTables(
   const tableResults = await Promise.all(
     tables.map(async (tableName) => {
       const eligible: TaggedMemory[] = [];
-      let offset = 0;
+      let cursor: { createdAt: number; id: UUID } | undefined;
       let batchSize = 200;
 
       for (;;) {
@@ -852,12 +858,11 @@ async function fetchMemoriesFromTables(
           roomId: params.roomId,
           tableName,
           limit: batchSize,
-          offset,
+          cursor,
           end: params.before,
           textContains,
           includeEmbedding: false, // browse feed discards embeddings
         });
-        offset += memories.length;
 
         for (const memory of memories) {
           const tagged = { ...memory, _table: tableName };
@@ -892,6 +897,17 @@ async function fetchMemoriesFromTables(
         if (eligible.length >= params.target) {
           return eligible;
         }
+        const last = memories.at(-1);
+        if (!last?.id) {
+          throw new ElizaError(
+            "A paged memory row did not contain the required id",
+            {
+              code: "MEMORY_BROWSE_CURSOR_MISSING_ID",
+              context: { tableName },
+            },
+          );
+        }
+        cursor = { createdAt: memoryCreatedAt(last), id: last.id };
         batchSize = Math.min(batchSize * 2, 5_000);
       }
     }),

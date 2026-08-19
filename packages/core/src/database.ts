@@ -289,6 +289,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		limit?: number;
 		count?: number;
 		offset?: number;
+		cursor?: { createdAt: number; id: UUID };
 		unique?: boolean;
 		tableName: string;
 		start?: number;

@@ -617,6 +617,56 @@ describe("Memory Integration Tests", () => {
       expect(allIds.length).toBe(uniqueIds.size);
     });
 
+    it("should page by an exclusive createdAt/id cursor across earlier mutations", async () => {
+      const createdAt = 1_750_000_000_000;
+      const ids = [
+        "00000000-0000-4000-8000-0000000000a1",
+        "00000000-0000-4000-8000-0000000000a2",
+        "00000000-0000-4000-8000-0000000000a3",
+        "00000000-0000-4000-8000-0000000000a4",
+        "00000000-0000-4000-8000-0000000000a5",
+      ] as UUID[];
+      for (const [index, id] of ids.entries()) {
+        await adapter.createMemory(
+          { ...createTestMemory({ text: `cursor ${index}` }), id, createdAt },
+          "memories"
+        );
+      }
+
+      const first = await adapter.getMemories({
+        roomId: testRoomId,
+        tableName: "memories",
+        limit: 2,
+      });
+      expect(first.map((memory) => memory.id)).toEqual([ids[4], ids[3]]);
+
+      await adapter.deleteMemories([ids[4]]);
+      await adapter.createMemory(
+        {
+          ...createTestMemory({ text: "inserted ahead" }),
+          id: "00000000-0000-4000-8000-0000000000ff" as UUID,
+          createdAt: createdAt + 1,
+        },
+        "memories"
+      );
+      const second = await adapter.getMemories({
+        roomId: testRoomId,
+        tableName: "memories",
+        limit: 2,
+        cursor: { createdAt, id: ids[3] },
+      });
+      expect(second.map((memory) => memory.id)).toEqual([ids[2], ids[1]]);
+
+      await expect(
+        adapter.getMemories({
+          roomId: testRoomId,
+          tableName: "memories",
+          offset: 0,
+          cursor: { createdAt, id: ids[3] },
+        })
+      ).rejects.toThrow("cursor and offset are mutually exclusive");
+    });
+
     it("should handle offset without count parameter", async () => {
       for (let i = 0; i < 5; i++) {
         await adapter.createMemory(createTestMemory({ text: `mem${i}` }), "memories");

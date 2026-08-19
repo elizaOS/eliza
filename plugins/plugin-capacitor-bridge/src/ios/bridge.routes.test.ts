@@ -37,6 +37,7 @@ function createFakeRuntime(): IAgentRuntime {
 			orderBy?: "createdAt";
 			orderDirection?: "asc" | "desc";
 			offset?: number;
+			cursor?: { createdAt: number; id: UUID };
 			end?: number;
 			textContains?: string;
 		}): Promise<Memory[]> {
@@ -56,9 +57,22 @@ function createFakeRuntime(): IAgentRuntime {
 						.includes(needle),
 				);
 			}
-			if (params.orderBy === "createdAt") {
-				const dir = params.orderDirection === "asc" ? 1 : -1;
-				rows.sort((a, b) => dir * ((a.createdAt ?? 0) - (b.createdAt ?? 0)));
+			const dir = params.orderDirection === "asc" ? 1 : -1;
+			rows.sort((a, b) => {
+				const timeOrder = dir * ((a.createdAt ?? 0) - (b.createdAt ?? 0));
+				return timeOrder !== 0
+					? timeOrder
+					: dir * (a.id ?? "").localeCompare(b.id ?? "");
+			});
+			if (params.cursor) {
+				const cursor = params.cursor;
+				rows = rows.filter((row) => {
+					const createdAt = row.createdAt ?? 0;
+					return (
+						createdAt < cursor.createdAt ||
+						(createdAt === cursor.createdAt && (row.id ?? "") < cursor.id)
+					);
+				});
 			}
 			const cap = params.count ?? params.limit;
 			const offset = params.offset ?? 0;

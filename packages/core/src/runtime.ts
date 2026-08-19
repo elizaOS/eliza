@@ -11096,6 +11096,7 @@ ${section_end}`;
 		limit?: number;
 		count?: number;
 		offset?: number;
+		cursor?: { createdAt: number; id: UUID };
 		unique?: boolean;
 		tableName: string;
 		start?: number;
@@ -11145,6 +11146,7 @@ ${section_end}`;
 		limit?: number;
 		count?: number;
 		offset?: number;
+		cursor?: { createdAt: number; id: UUID };
 		unique?: boolean;
 		tableName: string;
 		start?: number;
@@ -11164,6 +11166,7 @@ ${section_end}`;
 			params.worldId !== undefined ||
 			params.unique ||
 			(params.offset !== undefined && params.offset !== 0) ||
+			params.cursor !== undefined ||
 			params.end !== undefined ||
 			params.metadata !== undefined ||
 			params.textContains !== undefined ||

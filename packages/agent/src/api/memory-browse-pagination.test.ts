@@ -35,6 +35,7 @@ type MemoryQuery = {
   tableName: string;
   limit: number;
   offset?: number;
+  cursor?: { createdAt: number; id: UUID };
   roomId?: UUID;
   end?: number;
   textContains?: string;
@@ -58,6 +59,22 @@ function makeRuntime(tables: Record<string, Memory[]>): {
           .toLowerCase()
           .includes(needle),
       );
+    }
+    rows = rows.slice().sort((a, b) => {
+      const timeOrder = (b.createdAt ?? 0) - (a.createdAt ?? 0);
+      return timeOrder !== 0
+        ? timeOrder
+        : (b.id ?? "").localeCompare(a.id ?? "");
+    });
+    if (query.cursor) {
+      const cursor = query.cursor;
+      rows = rows.filter((row) => {
+        const createdAt = row.createdAt ?? 0;
+        return (
+          createdAt < cursor.createdAt ||
+          (createdAt === cursor.createdAt && (row.id ?? "") < cursor.id)
+        );
+      });
     }
     return rows
       .slice(query.offset ?? 0, (query.offset ?? 0) + query.limit)
@@ -131,15 +148,10 @@ describe("memory viewer incremental pagination (#22061)", () => {
       const pageCalls = getMemories.mock.calls
         .slice(firstCall)
         .map(([query]) => query as MemoryQuery);
-      expect(pageCalls[0]?.offset).toBe(0);
+      expect(pageCalls[0]?.cursor).toBeUndefined();
       for (let i = 1; i < pageCalls.length; i++) {
-        expect(pageCalls[i]?.offset).toBe(
-          (pageCalls[i - 1]?.offset ?? 0) +
-            Math.min(
-              pageCalls[i - 1]?.limit ?? 0,
-              1_000 - (pageCalls[i - 1]?.offset ?? 0),
-            ),
-        );
+        expect(pageCalls[i]?.cursor).toBeDefined();
+        expect(pageCalls[i]?.offset).toBeUndefined();
       }
       for (const id of ids(page)) seen.add(id);
       finalTotal = page.total as number;
@@ -224,11 +236,10 @@ describe("memory viewer incremental pagination (#22061)", () => {
     expect(response.total).toBe(20_120);
 
     const calls = getMemories.mock.calls.map(([query]) => query as MemoryQuery);
-    for (let i = 1; i < calls.length; i++) {
-      expect(calls[i]?.offset).toBe(
-        (calls[i - 1]?.offset ?? 0) + (calls[i - 1]?.limit ?? 0),
-      );
-    }
+    expect(calls[0]?.cursor).toBeUndefined();
+    expect(calls.slice(1).every((query) => query.cursor !== undefined)).toBe(
+      true,
+    );
     expect(calls.reduce((sum, query) => sum + query.limit, 0)).toBeLessThan(
       26_000,
     );
@@ -258,5 +269,37 @@ describe("memory viewer incremental pagination (#22061)", () => {
       .slice(250, 270)
       .map((row) => row.id);
     expect(ids(response)).toEqual(expected);
+  });
+
+  test("does not duplicate or skip rows when earlier rows mutate between windows", async () => {
+    const rows = Array.from({ length: 650 }, (_, i) =>
+      makeRow(i, i % 10 === 0 ? `needle ${i}` : `hay ${i}`),
+    );
+    const { runtime, getMemories } = makeRuntime({ messages: rows });
+    getMemories.mockImplementationOnce(async (query: MemoryQuery) => {
+      const first = rows.slice(0, query.limit).map((row) => ({ ...row }));
+      rows.unshift(makeRow(9_000, "newer insertion", OTHER, 3_000_000));
+      rows.splice(20, 1);
+      rows.splice(40, 1);
+      return first;
+    });
+
+    const response = await get(
+      runtime,
+      "/api/memories/browse?type=messages&q=needle%20missing&limit=50",
+    );
+    const resultIds = ids(response);
+    expect(resultIds).toHaveLength(50);
+    expect(new Set(resultIds).size).toBe(50);
+    expect(resultIds).not.toContain(makeRow(9_000, "").id);
+    expect(resultIds).toEqual(
+      Array.from({ length: 50 }, (_, index) => makeRow(index * 10, "").id),
+    );
+    expect(
+      getMemories.mock.calls.slice(1).every(([query]) => {
+        const typed = query as MemoryQuery;
+        return typed.cursor !== undefined && typed.offset === undefined;
+      }),
+    ).toBe(true);
   });
 });

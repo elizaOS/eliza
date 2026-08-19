@@ -316,6 +316,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNotNull,
@@ -2315,6 +2316,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     limit?: number;
     count?: number;
     offset?: number;
+    cursor?: { createdAt: number; id: UUID };
     unique?: boolean;
     tableName: string;
     start?: number;
@@ -2333,7 +2335,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     includeEmbedding?: boolean;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
-    const { entityId, agentId, roomId, worldId, unique, start, end, offset } = params;
+    const { entityId, agentId, roomId, worldId, unique, start, end, offset, cursor } = params;
     const includeEmbedding = params.includeEmbedding !== false;
     const tableName = params.tableName;
     // tableName is required by the IDatabaseAdapter contract (there is no
@@ -2356,6 +2358,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (offset !== undefined && offset < 0) {
       throw new Error("offset must be a non-negative number");
     }
+    if (cursor && offset !== undefined) {
+      throw new Error("getMemories cursor and offset are mutually exclusive");
+    }
 
     return this.withEntityContext(entityId ?? null, async (tx) => {
       const conditions = [eq(memoryTable.type, tableName)];
@@ -2377,6 +2382,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       if (end !== undefined) {
         conditions.push(lte(memoryTable.createdAt, new Date(end)));
+      }
+
+      if (cursor) {
+        const cursorTimestamp = new Date(cursor.createdAt);
+        const cursorCondition =
+          params.orderDirection === "asc"
+            ? or(
+                gt(memoryTable.createdAt, cursorTimestamp),
+                and(eq(memoryTable.createdAt, cursorTimestamp), gt(memoryTable.id, cursor.id))
+              )
+            : or(
+                lt(memoryTable.createdAt, cursorTimestamp),
+                and(eq(memoryTable.createdAt, cursorTimestamp), lt(memoryTable.id, cursor.id))
+              );
+        if (cursorCondition) conditions.push(cursorCondition);
       }
 
       if (unique) {
