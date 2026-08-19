@@ -9709,7 +9709,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		// user delivery — deliver that body instead of the canned line. Every
 		// other failed turn keeps the canned fallback, and the replacement
 		// still flows through the egress/dedupe checks below.
-		if (effectiveReplyText === FAILED_TOOL_FALLBACK_MESSAGE) {
+		if (
+			effectiveReplyText === FAILED_TOOL_FALLBACK_MESSAGE ||
+			// Same rescue for the answerless variant: a relay turn whose planner
+			// misfired into a rejected tool otherwise shipped "ran that, but no
+			// result came back" while the finished result sat in the message body
+			// (live 2026-08-19: maze-runner relay → deterministic MODEL_SWITCH
+			// role-rejected → filler instead of the build result).
+			effectiveReplyText === NO_REPORTABLE_TOOL_OUTCOME_MESSAGE
+		) {
 			const relayBody = subAgentCompletionRelayBody(
 				args.message?.content?.text,
 			);
