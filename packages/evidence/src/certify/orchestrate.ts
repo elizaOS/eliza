@@ -38,7 +38,12 @@ import path from "node:path";
 import { z } from "zod";
 import type { AnalyzerExecutor } from "../analyzers/index.ts";
 import { analyzeArtifacts } from "../analyzers/runner.ts";
-import { createBundle, type EvidenceBundle, verifyBundle } from "../bundle.ts";
+import {
+  createBundle,
+  type EvidenceBundle,
+  verifyBundle,
+  writeOwnedFileAtomic,
+} from "../bundle.ts";
 import { EvidenceError, EvidenceValidationError } from "../errors.ts";
 import { ingestAllSilos } from "../ingest.ts";
 import {
@@ -694,7 +699,7 @@ export async function orchestrateCertify(
   const certPath = path.resolve(
     options.certOut ?? path.join(bundleDir, "certification.json"),
   );
-  fs.writeFileSync(certPath, `${JSON.stringify(certification, null, 2)}\n`);
+  writeOwnedFileAtomic(certPath, `${JSON.stringify(certification, null, 2)}\n`);
   steps.push({
     step: "sign",
     status: "ran",

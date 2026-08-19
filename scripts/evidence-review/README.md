@@ -19,7 +19,9 @@ unlisted files, and symlinks before the dashboard is written.
 
 `--source=<dir>` is an explicit compatibility escape hatch for archived or
 ad-hoc material. It may be repeated and may accompany `--bundle`; no producer
-directory is scanned implicitly.
+directory is scanned implicitly. Compatibility inputs are copied through stable
+descriptors into reviewer-owned leaves before analysis, so dashboard links
+never point back to mutable producer files.
 
 Bundle review renders every manifest entry regardless of the compatibility
 scan limit. Reviewer output must be disjoint from the bundle directory so the

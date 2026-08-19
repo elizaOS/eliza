@@ -11,7 +11,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BundleProvenance } from "./bundle.ts";
-import { createBundle, formatRunId, verifyBundle } from "./bundle.ts";
+import {
+  createBundle,
+  formatRunId,
+  verifyBundle,
+  writeOwnedFileAtomic,
+} from "./bundle.ts";
 import { EvidenceError, EvidenceValidationError } from "./errors.ts";
 
 const COMMIT = "abcdef0123456789abcdef0123456789abcdef01";
@@ -177,6 +182,88 @@ describe("EvidenceBundle", () => {
       .update(fs.readFileSync(metaPath))
       .digest("hex");
     expect(manifest.metaSha256).toBe(metaHash);
+  });
+
+  it("does not follow pre-positioned bundle envelope aliases", async () => {
+    const externalSymlinkTarget = writeFixture(
+      tmpDir(),
+      "external-meta.json",
+      "protected-meta",
+    );
+    const symlinkBundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    fs.symlinkSync(
+      externalSymlinkTarget,
+      path.join(symlinkBundle.dir, "meta.json"),
+    );
+    await expect(symlinkBundle.finalize()).rejects.toMatchObject({
+      code: "BUNDLE_ENVELOPE_UNSAFE",
+    });
+    expect(fs.readFileSync(externalSymlinkTarget, "utf8")).toBe(
+      "protected-meta",
+    );
+
+    const externalHardlinkTarget = writeFixture(
+      tmpDir(),
+      "external-manifest.json",
+      "protected-manifest",
+    );
+    const hardlinkBundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    fs.linkSync(
+      externalHardlinkTarget,
+      path.join(hardlinkBundle.dir, "manifest.json"),
+    );
+    await expect(hardlinkBundle.finalize()).rejects.toMatchObject({
+      code: "BUNDLE_ENVELOPE_UNSAFE",
+    });
+    expect(fs.readFileSync(externalHardlinkTarget, "utf8")).toBe(
+      "protected-manifest",
+    );
+  });
+
+  it.each(["manifest.json", "meta.json", "certification.json"])(
+    "reserves the bundle envelope path %s",
+    async (bundlePath) => {
+      const bundle = createBundle({
+        rootDir: tmpDir(),
+        provenance: PROVENANCE,
+        now: fixedClock(),
+      });
+      await expect(
+        bundle.addArtifact(writeFixture(tmpDir(), "artifact.json", "{}"), {
+          kind: "report",
+          source: "test",
+          producedBy: "test",
+          bundlePath,
+        }),
+      ).rejects.toMatchObject({ code: "ARTIFACT_PATH_RESERVED" });
+    },
+  );
+
+  it("atomically replaces owned symlink and hardlink leaves", () => {
+    const root = tmpDir();
+    const external = writeFixture(root, "external.json", "protected");
+    const symlinkLeaf = path.join(root, "certification.json");
+    const hardlinkLeaf = path.join(root, "review.json");
+    fs.symlinkSync(external, symlinkLeaf);
+    fs.linkSync(external, hardlinkLeaf);
+
+    writeOwnedFileAtomic(symlinkLeaf, "signed");
+    writeOwnedFileAtomic(hardlinkLeaf, "reviewed");
+
+    expect(fs.readFileSync(external, "utf8")).toBe("protected");
+    expect(fs.readFileSync(symlinkLeaf, "utf8")).toBe("signed");
+    expect(fs.readFileSync(hardlinkLeaf, "utf8")).toBe("reviewed");
+    expect(fs.lstatSync(symlinkLeaf).isSymbolicLink()).toBe(false);
+    expect(fs.statSync(symlinkLeaf).nlink).toBe(1);
+    expect(fs.statSync(hardlinkLeaf).nlink).toBe(1);
   });
 
   it("produces byte-identical manifests across two runs with the same inputs", async () => {

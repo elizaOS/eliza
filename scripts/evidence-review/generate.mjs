@@ -9,7 +9,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -228,17 +228,35 @@ export function assertSafeOutputDir(outputDir, bundleDir, sourceDirs = []) {
 
 /** Replace one reviewer-owned leaf without following a stale filesystem alias. */
 export function writeReviewerFile(filePath, contents) {
-  fs.rmSync(filePath, { force: true });
-  const descriptor = fs.openSync(
-    filePath,
-    fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
-    0o600,
-  );
+  const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+  let descriptor;
   try {
+    descriptor = fs.openSync(
+      temporary,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+      0o600,
+    );
     fs.writeFileSync(descriptor, contents);
     fs.fsyncSync(descriptor);
-  } finally {
+    const written = fs.fstatSync(descriptor, { bigint: true });
+    if (!written.isFile() || written.nlink !== 1n) {
+      throw new Error("review output temporary leaf is not a private file");
+    }
     fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporary, filePath);
+    const published = fs.lstatSync(filePath, { bigint: true });
+    if (
+      published.isSymbolicLink() ||
+      published.nlink !== 1n ||
+      published.dev !== written.dev ||
+      published.ino !== written.ino
+    ) {
+      throw new Error("review output leaf changed during publication");
+    }
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    fs.rmSync(temporary, { force: true });
   }
 }
 
@@ -428,34 +446,111 @@ function readBundleManifest(bundleDir, bytes = null) {
   return manifest;
 }
 
-function copyVerifiedArtifact(source, destination, entry) {
+function sameFileIdentity(left, right) {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs &&
+    left.nlink === right.nlink
+  );
+}
+
+/** Copy one stable input descriptor into a private reviewer-owned leaf. */
+export function copyReviewerArtifact(source, destination, entry = null) {
   fs.mkdirSync(path.dirname(destination), { recursive: true });
-  const temporary = `${destination}.tmp-${process.pid}`;
-  fs.rmSync(temporary, { force: true });
+  const temporary = `${destination}.tmp-${process.pid}-${randomUUID()}`;
+  const sourceLstat = fs.lstatSync(source, { bigint: true });
+  if (sourceLstat.isSymbolicLink() || !sourceLstat.isFile()) {
+    throw new Error(
+      `review input is not a regular non-symlink file: ${source}`,
+    );
+  }
+  let sourceDescriptor;
+  let destinationDescriptor;
   try {
-    fs.copyFileSync(source, temporary, fs.constants.COPYFILE_EXCL);
-    const descriptor = fs.openSync(temporary, "r");
+    sourceDescriptor = fs.openSync(
+      source,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+    );
+    const before = fs.fstatSync(sourceDescriptor, { bigint: true });
+    if (!before.isFile() || !sameFileIdentity(sourceLstat, before)) {
+      throw new Error(`review input changed before snapshot: ${source}`);
+    }
+    destinationDescriptor = fs.openSync(
+      temporary,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+      0o600,
+    );
     const hash = createHash("sha256");
     const chunk = Buffer.allocUnsafe(1024 * 1024);
     let total = 0;
-    try {
-      for (;;) {
-        const bytesRead = fs.readSync(descriptor, chunk, 0, chunk.length, null);
-        if (bytesRead === 0) break;
-        hash.update(chunk.subarray(0, bytesRead));
-        total += bytesRead;
+    for (;;) {
+      const bytesRead = fs.readSync(
+        sourceDescriptor,
+        chunk,
+        0,
+        chunk.length,
+        null,
+      );
+      if (bytesRead === 0) break;
+      const bytes = chunk.subarray(0, bytesRead);
+      hash.update(bytes);
+      let offset = 0;
+      while (offset < bytes.length) {
+        const written = fs.writeSync(
+          destinationDescriptor,
+          bytes,
+          offset,
+          bytes.length - offset,
+        );
+        if (written === 0) {
+          throw new Error(`review snapshot stopped accepting bytes: ${source}`);
+        }
+        offset += written;
       }
-    } finally {
-      fs.closeSync(descriptor);
+      total += bytesRead;
     }
+    fs.fsyncSync(destinationDescriptor);
+    const after = fs.fstatSync(sourceDescriptor, { bigint: true });
+    const staged = fs.fstatSync(destinationDescriptor, { bigint: true });
     const sha256 = hash.digest("hex");
-    if (total !== entry.bytes || sha256 !== entry.sha256) {
+    if (
+      !sameFileIdentity(before, after) ||
+      BigInt(total) !== after.size ||
+      !staged.isFile() ||
+      staged.nlink !== 1n ||
+      staged.size !== BigInt(total)
+    ) {
+      throw new Error(`review input changed while snapshotting: ${source}`);
+    }
+    if (entry && (total !== entry.bytes || sha256 !== entry.sha256)) {
       throw new Error(
         `--bundle: artifact changed while copying reviewer snapshot: ${entry.path}`,
       );
     }
+    fs.closeSync(destinationDescriptor);
+    destinationDescriptor = undefined;
+    fs.closeSync(sourceDescriptor);
+    sourceDescriptor = undefined;
     fs.renameSync(temporary, destination);
+    const published = fs.lstatSync(destination, { bigint: true });
+    if (
+      published.isSymbolicLink() ||
+      published.nlink !== 1n ||
+      published.dev !== staged.dev ||
+      published.ino !== staged.ino
+    ) {
+      throw new Error(
+        `review snapshot leaf changed during publication: ${source}`,
+      );
+    }
+    return { bytes: total, sha256 };
   } finally {
+    if (destinationDescriptor !== undefined)
+      fs.closeSync(destinationDescriptor);
+    if (sourceDescriptor !== undefined) fs.closeSync(sourceDescriptor);
     fs.rmSync(temporary, { force: true });
   }
 }
@@ -491,8 +586,13 @@ async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
       );
     }
     seen.add(full);
-    const owned = path.join(options.outputDir, "artifacts", ...rel.split("/"));
-    copyVerifiedArtifact(full, owned, entry);
+    const owned = path.join(
+      options.outputDir,
+      "artifacts",
+      "bundle",
+      ...rel.split("/"),
+    );
+    copyReviewerArtifact(full, owned, entry);
     const type = BUNDLE_KIND_TO_TYPE[entry.kind] ?? classifyArtifactPath(full);
     if (!type) continue;
     const source =
@@ -537,17 +637,30 @@ async function collectArtifacts(options) {
     await collectBundleArtifacts(bundleDir, options, counters, seen, artifacts);
   }
 
-  for (const scanRoot of scanDirs) {
+  for (const [scanIndex, scanRoot] of scanDirs.entries()) {
     if (artifacts.length >= options.maxArtifacts) break;
     const files = walkFiles(scanRoot, options.maxFilesPerDir);
     for (const { full, type } of files) {
       if (artifacts.length >= options.maxArtifacts) break;
       if (seen.has(full)) continue;
       seen.add(full);
+      const relative = path.relative(scanRoot, full);
+      const owned = path.join(
+        options.outputDir,
+        "artifacts",
+        "compatibility",
+        String(scanIndex),
+        ...relative.split(path.sep),
+      );
+      copyReviewerArtifact(full, owned);
       artifacts.push(
         await buildArtifactRecord(
-          full,
-          { type, source: inferSource(REPO_ROOT, full) },
+          owned,
+          {
+            type,
+            source: inferSource(REPO_ROOT, full),
+            displayPath: toPosixPath(path.relative(REPO_ROOT, full)),
+          },
           options,
           counters,
         ),

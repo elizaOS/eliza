@@ -26,7 +26,7 @@
  * external tree) is reported, never silently followed.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { canonicalJsonBytes } from "./canonical.ts";
@@ -158,6 +158,117 @@ function sameFileIdentity(
     left.ctimeNs === right.ctimeNs &&
     left.nlink === right.nlink
   );
+}
+
+function sameInode(left: fs.BigIntStats, right: fs.BigIntStats): boolean {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+/** Create one bundle-owned envelope leaf without following an existing alias. */
+function writeExclusiveEnvelope(filePath: string, bytes: Uint8Array): void {
+  let descriptor: number | undefined;
+  let createdIdentity: fs.BigIntStats | undefined;
+  let completed = false;
+  try {
+    descriptor = fs.openSync(
+      filePath,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+      0o600,
+    );
+    createdIdentity = fs.fstatSync(descriptor, { bigint: true });
+    fs.writeFileSync(descriptor, bytes);
+    fs.fsyncSync(descriptor);
+    const written = fs.fstatSync(descriptor, { bigint: true });
+    const published = fs.lstatSync(filePath, { bigint: true });
+    if (
+      !written.isFile() ||
+      written.nlink !== 1n ||
+      written.size !== BigInt(bytes.byteLength) ||
+      published.isSymbolicLink() ||
+      published.nlink !== 1n ||
+      !sameInode(written, published)
+    ) {
+      throw new EvidenceError(`bundle envelope leaf is unsafe: ${filePath}`, {
+        code: "BUNDLE_ENVELOPE_UNSAFE",
+        context: { filePath },
+      });
+    }
+    completed = true;
+  } catch (error) {
+    throw error instanceof EvidenceError
+      ? error
+      : new EvidenceError(`could not create bundle envelope: ${filePath}`, {
+          code: "BUNDLE_ENVELOPE_UNSAFE",
+          cause: error,
+          context: { filePath },
+        });
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    if (!completed && createdIdentity !== undefined) {
+      try {
+        const current = fs.lstatSync(filePath, { bigint: true });
+        if (sameInode(createdIdentity, current) && current.nlink === 1n) {
+          fs.rmSync(filePath);
+        }
+      } catch (cleanupError) {
+        // error-policy:J6 best-effort cleanup after the envelope failure.
+        void cleanupError;
+      }
+    }
+  }
+}
+
+/** Atomically replace one owned output leaf without following its old inode. */
+export function writeOwnedFileAtomic(
+  filePath: string,
+  bytes: string | Uint8Array,
+): void {
+  const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+  let descriptor: number | undefined;
+  try {
+    descriptor = fs.openSync(
+      temporary,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+      0o600,
+    );
+    fs.writeFileSync(descriptor, bytes);
+    fs.fsyncSync(descriptor);
+    const staged = fs.fstatSync(descriptor, { bigint: true });
+    if (!staged.isFile() || staged.nlink !== 1n) {
+      throw new EvidenceError(
+        `owned output temporary leaf is unsafe: ${filePath}`,
+        {
+          code: "OWNED_OUTPUT_UNSAFE",
+          context: { filePath },
+        },
+      );
+    }
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporary, filePath);
+    const published = fs.lstatSync(filePath, { bigint: true });
+    if (
+      published.isSymbolicLink() ||
+      published.nlink !== 1n ||
+      !sameInode(staged, published)
+    ) {
+      throw new EvidenceError(`owned output leaf changed: ${filePath}`, {
+        code: "OWNED_OUTPUT_UNSAFE",
+        context: { filePath },
+      });
+    }
+  } catch (error) {
+    throw error instanceof EvidenceError
+      ? error
+      : new EvidenceError(`could not publish owned output: ${filePath}`, {
+          code: "OWNED_OUTPUT_UNSAFE",
+          cause: error,
+          context: { filePath },
+        });
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    fs.rmSync(temporary, { force: true });
+  }
 }
 
 /** Copy one single-link regular file through a stable no-follow descriptor. */
@@ -377,6 +488,15 @@ export class EvidenceBundle {
         { code: "ARTIFACT_PATH_INVALID", context: { bundlePath, filePath } },
       );
     }
+    if (ENVELOPE_FILES.has(bundlePath)) {
+      throw new EvidenceError(
+        `artifact bundle path is reserved for bundle metadata: ${bundlePath}`,
+        {
+          code: "ARTIFACT_PATH_RESERVED",
+          context: { bundlePath, filePath },
+        },
+      );
+    }
     if (this.claimedPaths.has(bundlePath)) {
       throw new EvidenceError(
         `artifact bundle path already claimed: ${bundlePath}`,
@@ -431,7 +551,7 @@ export class EvidenceBundle {
     // built, so `metaSha256` binds provenance into the signed envelope.
     const metaBytes = canonicalJsonBytes(meta);
     const metaPath = path.join(this.dir, "meta.json");
-    fs.writeFileSync(metaPath, metaBytes);
+    writeExclusiveEnvelope(metaPath, metaBytes);
     const manifest: BundleManifest = {
       schema: 1,
       runId: this.runId,
@@ -441,7 +561,7 @@ export class EvidenceBundle {
     };
     const manifestBytes = canonicalJsonBytes(manifest);
     const manifestPath = path.join(this.dir, "manifest.json");
-    fs.writeFileSync(manifestPath, manifestBytes);
+    writeExclusiveEnvelope(manifestPath, manifestBytes);
     return {
       manifest,
       meta,

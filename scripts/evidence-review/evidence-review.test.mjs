@@ -23,6 +23,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   assertSafeOutputDir,
+  copyReviewerArtifact,
   parseArgs,
   resolveDefaultBundleDir,
   writeReviewerFile,
@@ -357,6 +358,21 @@ test("reviewer leaf writes replace symlink and hardlink aliases without mutating
     assert.equal(await readFile(external, "utf8"), "protected");
     assert.equal(await readFile(symlinkLeaf, "utf8"), "review manifest");
     assert.equal(await readFile(hardlinkLeaf, "utf8"), "review index");
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("reviewer snapshots raw compatibility inputs into private leaves", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-source-copy-"));
+  try {
+    const source = path.join(tmpDir, "live.log");
+    const owned = path.join(tmpDir, "review", "artifacts", "live.log");
+    await writeFile(source, "reviewed bytes");
+    copyReviewerArtifact(source, owned);
+    await writeFile(source, "changed after review");
+    assert.equal(await readFile(owned, "utf8"), "reviewed bytes");
+    assert.notEqual((await stat(source)).ino, (await stat(owned)).ino);
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }
