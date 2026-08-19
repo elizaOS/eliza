@@ -25,6 +25,7 @@ interface WebArgumentContract {
   label: string;
   requiredTermGroups: readonly (readonly string[])[];
   validateAction?: (action: CapturedAction) => string | undefined;
+  requireReturnedSourceCitation?: boolean;
 }
 
 const inlineWebPlugin: Plugin = {
@@ -97,6 +98,7 @@ function publicHttpsUrlProblem(action: CapturedAction): string | undefined {
 function argumentContractProblem(
   actions: readonly CapturedAction[],
   contract: WebArgumentContract,
+  responseText: string,
 ): string | undefined {
   const successfulActions = actions.filter(
     (action) => action.result?.success === true,
@@ -121,9 +123,47 @@ function argumentContractProblem(
         continue;
       }
     }
+    if (contract.requireReturnedSourceCitation) {
+      const sourceProblem = returnedSourceCitationProblem(action, responseText);
+      if (sourceProblem) {
+        problems.push(sourceProblem);
+        continue;
+      }
+    }
     return;
   }
   return `${contract.label} had no successful action satisfying its complete argument contract: ${problems.join("; ") || "no successful action"}`;
+}
+
+function returnedSourceCitationProblem(
+  action: CapturedAction,
+  responseText: string,
+): string | undefined {
+  const resultData = asRecord(action.result?.data);
+  const evidence = [action.result?.text, resultData?.value]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n");
+  const returnedUrls = [...evidence.matchAll(/https:\/\/[^\s<>"')\]}]+/gi)]
+    .map((match) => match[0]?.replace(/[.,;:!?]+$/, ""))
+    .filter((value): value is string => typeof value === "string")
+    .filter((value) => {
+      try {
+        const parsed = new URL(value);
+        return (
+          parsed.protocol === "https:" &&
+          !isBlockedHostname(parsed.hostname) &&
+          !isPrivateIpAddress(parsed.hostname)
+        );
+      } catch {
+        return false;
+      }
+    });
+  if (returnedUrls.length === 0) {
+    return `${action.actionName} returned no public HTTPS source URL to cite`;
+  }
+  if (!returnedUrls.some((url) => responseText.includes(url))) {
+    return `${action.actionName} response did not cite any URL returned by the successful search`;
+  }
 }
 
 function exactCoinGeckoSimplePriceProblem(
@@ -167,6 +207,7 @@ const bitcoinSpotContract: WebArgumentContract = {
 const elizaNewsContract: WebArgumentContract = {
   label: "elizaOS news",
   requiredTermGroups: [["elizaos"], ["latest", "news", "update"]],
+  requireReturnedSourceCitation: true,
 };
 
 const tokyoRamenContract: WebArgumentContract = {
@@ -176,6 +217,7 @@ const tokyoRamenContract: WebArgumentContract = {
     ["ramen"],
     ["recommend", "review", "best", "rated"],
   ],
+  requireReturnedSourceCitation: true,
 };
 
 const bitcoinHistoryContract: WebArgumentContract = {
@@ -240,7 +282,11 @@ export function assertSuccessfulWebTurn(
     )}`;
   }
   if (argumentContract) {
-    const problem = argumentContractProblem(actions, argumentContract);
+    const problem = argumentContractProblem(
+      actions,
+      argumentContract,
+      turn.responseText ?? "",
+    );
     if (problem) return problem;
   }
   if (!turn.responseText?.trim()) {

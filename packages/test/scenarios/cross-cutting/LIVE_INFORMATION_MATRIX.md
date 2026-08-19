@@ -41,8 +41,9 @@ in native trajectory rows before describing a run.
 The report stages are deliberately separate:
 
 - `expectedActions` records capability selection.
-- `assertTurn` checks action arguments, public HTTPS construction, and explicit
-  success/failure semantics.
+- `assertTurn` checks action arguments, public HTTPS construction, explicit
+  success/failure semantics, and binds news/recommendation citations to public
+  HTTPS URLs returned by the same successful search.
 - `responseJudge` checks grounding and honest failure replies.
 - The final check proves that both capability families and a failed fetch were
   observed.
