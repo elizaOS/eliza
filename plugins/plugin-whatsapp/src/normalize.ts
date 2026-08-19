@@ -6,7 +6,7 @@
  */
 
 import { truncateWellFormed } from "@elizaos/core";
-import { stripWhatsAppTargetPrefixes } from "./whatsapp-target-prefix.ts";
+import { stripWhatsAppTargetPrefixes } from "./whatsapp-target-prefix";
 
 /**
  * WhatsApp text chunk limit

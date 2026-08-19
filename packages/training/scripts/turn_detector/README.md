@@ -15,7 +15,8 @@ This directory hosts the **fine-tune + eval pipeline** for those models:
 
 - `finetune_turn_detector.py` — LoRA / APOLLO finetune entrypoint. Reads a
   YAML config (`configs/turn_detector_<tier>.yaml`), supports either the
-  text-only path (Option A in [R1](../../../../.swarm/research/R1-turn.md))
+  text-only path (Option A in the referenced R1 research note, which was never
+  committed to this repository)
   or the future joint-with-text-LM path (Option B).
 - `eval_turn_detector.py` — Computes F1 + mean detection latency on the
   configured held-out set. Gates a publish at:
@@ -123,12 +124,12 @@ drafter is not loaded (e.g. `llama-server` subprocess builds).
 Turn detection emits a `VoiceTurnSignal` (data); it **never** aborts a
 turn directly. The controller above it (`VoiceTurnController`) consumes
 the signal and decides whether to suppress speculative generation via
-`BargeInCancelToken.signal` with reason `"turn-suppressed"`. See
-[`.swarm/research/R11-cancellation.md`](../../../../.swarm/research/R11-cancellation.md).
+`BargeInCancelToken.signal` with reason `"turn-suppressed"`. The referenced
+R11 cancellation research note was never committed to this repository.
 
 ## See also
 
-- [R1 research report](../../../../.swarm/research/R1-turn.md) — full
+- R1 research report (never committed to this repository) — full
   spec, device-tier mapping, and effort estimates.
 - [`stage_eliza1_bundle_assets.py`](../manifest/stage_eliza1_bundle_assets.py)
   — the staging step that pulls the matching ONNX for each tier

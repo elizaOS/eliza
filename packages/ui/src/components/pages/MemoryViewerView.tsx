@@ -638,12 +638,19 @@ function MemoryBrowserPanel({
         <>
           <div className="flex items-center justify-between gap-3 text-xs-tight text-muted">
             <span className="tabular-nums">
-              {t("memoryviewer.pageRange", {
-                start: offset + 1,
-                end: offset + result.memories.length,
-                total: result.total,
-                defaultValue: "{{start}}–{{end}} of {{total}}",
-              })}
+              {result.totalIsExact === false
+                ? t("memoryviewer.pageRangeIncomplete", {
+                    start: offset + 1,
+                    end: offset + result.memories.length,
+                    total: result.total,
+                    defaultValue: "{{start}}–{{end}} of at least {{total}}",
+                  })
+                : t("memoryviewer.pageRange", {
+                    start: offset + 1,
+                    end: offset + result.memories.length,
+                    total: result.total,
+                    defaultValue: "{{start}}–{{end}} of {{total}}",
+                  })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -664,7 +671,11 @@ function MemoryBrowserPanel({
                 size="sm"
                 variant="ghost"
                 className={MEMORY_FOCUS_CLASS}
-                disabled={offset + BROWSE_PAGE_SIZE >= result.total}
+                disabled={
+                  result.hasMore === undefined
+                    ? offset + BROWSE_PAGE_SIZE >= result.total
+                    : !result.hasMore
+                }
                 onClick={() => handlePage("next")}
                 {...nextControl.agentProps}
               >
@@ -1181,7 +1192,7 @@ export function MemoryViewerView({
               contentHeader={contentHeader}
               data-testid="memory-viewer-view"
             >
-              <div className="flex min-h-0 flex-1 flex-col gap-5">
+              <div className="eliza-chat-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]">
                 <div className="flex w-full flex-col items-start gap-3">
                   <div
                     ref={viewModeControl.ref}

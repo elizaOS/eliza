@@ -15,6 +15,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 
 class InsufficientCreditsError extends Error {}
 
@@ -302,6 +303,7 @@ describe("shared-rest-adapter — messages", () => {
     expect(call[2]).toEqual({
       executionCtx: EXECUTION_CTX,
       namespace: NAMESPACE,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
     });
   });
 
@@ -351,6 +353,59 @@ describe("shared-rest-adapter — messages", () => {
       namespace: NAMESPACE,
       agentKind: "personal",
       trustedUserUtterance: "hello",
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+    });
+  });
+
+  test("projects a trusted managed connector into runtime channel provenance", async () => {
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "discord:update-1",
+      result: { text: "hello" },
+    });
+
+    await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "hello",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+      "discord:update-1",
+      "platform",
+      { platform: "discord", discordUserId: "123456789012345678" },
+    );
+
+    expect(coordinateSharedBridge.mock.calls[0][2].channel).toEqual({
+      type: ChannelType.DM,
+      source: "discord",
+    });
+  });
+
+  test("projects a trusted group transport into runtime should-respond semantics", async () => {
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "discord:guild-message-1",
+      result: { text: "hello" },
+    });
+
+    await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "hello",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+      "discord:guild-message-1",
+      "platform",
+      undefined,
+      "hello",
+      { type: ChannelType.GROUP, source: "discord" },
+    );
+
+    expect(coordinateSharedBridge.mock.calls[0][2].channel).toEqual({
+      type: ChannelType.GROUP,
+      source: "discord",
     });
   });
 

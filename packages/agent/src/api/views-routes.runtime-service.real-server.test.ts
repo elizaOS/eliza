@@ -4,7 +4,7 @@
  * routes, while the planner action uses the same registered stateful view.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -224,6 +224,12 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
       path.join(pluginRoot, "dist", "outside.js"),
       "must not escape the bundle directory\n",
     );
+    if (process.platform !== "win32") {
+      await symlink(
+        path.join(pluginRoot, "dist"),
+        path.join(bundleDir, "escape"),
+      );
+    }
 
     await registerPluginViews(
       {
@@ -274,6 +280,15 @@ describe("runtime-owned view interactions over the real HTTP route", () => {
     expect(await safeDotPrefixedAsset.text()).toBe(
       "export const dotPrefixed = true;\n",
     );
+
+    if (process.platform !== "win32") {
+      const symlinkEscape = await getJson(
+        started.baseUrl,
+        `/api/views/${VIEW_ID}/escape%2Foutside.js`,
+        400,
+      );
+      expect(symlinkEscape.error).toBe("Malformed view asset path");
+    }
 
     const malformedEncoding = await getJson(
       started.baseUrl,

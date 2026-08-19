@@ -60,8 +60,10 @@ Worker doesn't poison subsequent runs.
 
 ## Launch QA fixtures
 
-Fixture-dependent launch QA uses the non-secret contract in
-[`../../../docs/launchdocs/integration-test-fixtures.md`](../../../docs/launchdocs/integration-test-fixtures.md).
+Earlier documentation referred to a non-secret contract at
+`docs/launchdocs/integration-test-fixtures.md`, but that file was never
+committed to this repository. The live launch-QA fixtures are under
+`./fixtures/`.
 The e2e harness can exercise cloud routes, connector contracts, and
 direct-crypto boundaries, but live Codex/Gmail accounts, Eliza Cloud orgs, and
 funded wallets must be provided through the approved secret store and evidenced

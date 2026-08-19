@@ -207,6 +207,13 @@ describe("creative draft owner-voice primitives", () => {
     expect(
       creativeDraftNarrativeViolations("The ART label is misleading.", revised),
     ).toEqual(["vetoed phrase reintroduced: art"]);
+
+    const repeatedFragments = `${"start ".repeat(50_000)}finish`;
+    const startedAt = performance.now();
+    expect(
+      creativeDraftNarrativeViolations(repeatedFragments, revised),
+    ).toEqual([]);
+    expect(performance.now() - startedAt).toBeLessThan(250);
   });
 
   it("replaces a superseded accepted passage instead of requiring both", () => {

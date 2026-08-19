@@ -21,6 +21,8 @@
  */
 
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import { ELIZA_TRACE_ID_HEADER } from "../observability/http-telemetry";
+import { logger } from "../utils/logger";
 
 export const VOICE_TRACE_HEADER = "X-Eliza-Voice-Trace-Id";
 /** Scope headers so the configured endpoint routes the turn to the right agent. */
@@ -63,6 +65,8 @@ export interface ElizaSseBridgeRequest {
 }
 
 export interface ElizaSseBridgeResponseHeaders {
+  /** HTTP result for this attempt, including retryable non-2xx responses. */
+  status: number;
   /** Time from dispatch until the canonical route returned streaming headers. */
   elapsedMs: number;
   /** Sanitized phase timings emitted by the canonical Shared route. */
@@ -131,6 +135,7 @@ export async function streamElizaConversation(
         "X-Service-Key": request.authorization,
         Accept: "text/event-stream",
         [VOICE_TRACE_HEADER]: request.traceId,
+        [ELIZA_TRACE_ID_HEADER]: request.traceId,
         [VOICE_AGENT_HEADER]: request.agentId,
         [VOICE_CONVERSATION_HEADER]: request.conversationId,
         ...(request.organizationId ? { [VOICE_ORGANIZATION_HEADER]: request.organizationId } : {}),
@@ -165,10 +170,20 @@ export async function streamElizaConversation(
     );
   }
 
-  request.onResponseHeaders?.({
-    elapsedMs: Math.round((performance.now() - fetchStartedAt) * 10) / 10,
-    serverTiming: response.headers.get("Server-Timing"),
-  });
+  try {
+    request.onResponseHeaders?.({
+      status: response.status,
+      elapsedMs: Math.round((performance.now() - fetchStartedAt) * 10) / 10,
+      serverTiming: response.headers.get("Server-Timing"),
+    });
+  } catch (error) {
+    // error-policy:J7 diagnostics must not kill the loop — response decoding is
+    // authoritative and an optional header observer cannot reject healthy SSE.
+    logger.warn("[eliza-sse-bridge] response header observer failed", {
+      traceId: request.traceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   if (!response.ok) {
     const upstreamError = await readUpstreamError(response);

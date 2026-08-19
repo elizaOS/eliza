@@ -12,7 +12,12 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+	compareMemoryIds,
+	type IAgentRuntime,
+	type Memory,
+	type UUID,
+} from "@elizaos/core";
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -36,17 +41,50 @@ function createFakeRuntime(): IAgentRuntime {
 			count?: number;
 			orderBy?: "createdAt";
 			orderDirection?: "asc" | "desc";
+			offset?: number;
+			cursor?: { createdAt: number; id: UUID };
+			end?: number;
+			textContains?: string;
 		}): Promise<Memory[]> {
 			let rows = [...(tables.get(params.tableName) ?? [])];
 			if (params.roomId) {
 				rows = rows.filter((m) => m.roomId === params.roomId);
 			}
-			if (params.orderBy === "createdAt") {
-				const dir = params.orderDirection === "asc" ? 1 : -1;
-				rows.sort((a, b) => dir * ((a.createdAt ?? 0) - (b.createdAt ?? 0)));
+			if (params.end !== undefined) {
+				const end = params.end;
+				rows = rows.filter((m) => (m.createdAt ?? 0) <= end);
+			}
+			if (params.textContains) {
+				const needle = params.textContains.toLowerCase();
+				rows = rows.filter((m) =>
+					((m.content as { text?: string }).text ?? "")
+						.toLowerCase()
+						.includes(needle),
+				);
+			}
+			const dir = params.orderDirection === "asc" ? 1 : -1;
+			rows.sort((a, b) => {
+				const timeOrder = dir * ((a.createdAt ?? 0) - (b.createdAt ?? 0));
+				return timeOrder !== 0
+					? timeOrder
+					: dir * compareMemoryIds(a.id ?? "", b.id ?? "");
+			});
+			if (params.cursor) {
+				const cursor = params.cursor;
+				rows = rows.filter((row) => {
+					const createdAt = row.createdAt ?? 0;
+					return (
+						createdAt < cursor.createdAt ||
+						(createdAt === cursor.createdAt &&
+							compareMemoryIds(row.id ?? "", cursor.id) < 0)
+					);
+				});
 			}
 			const cap = params.count ?? params.limit;
-			return typeof cap === "number" ? rows.slice(0, cap) : rows;
+			const offset = params.offset ?? 0;
+			return typeof cap === "number"
+				? rows.slice(offset, offset + cap)
+				: rows.slice(offset);
 		},
 		async getMemoryById(id: UUID): Promise<Memory | null> {
 			for (const rows of tables.values()) {
@@ -234,7 +272,13 @@ describe("iOS bridge — memories view routes", () => {
 		await seedMemory("facts", "alpha echo", 3_000);
 
 		const all = await call(backend, "GET", "/api/memories/browse");
-		expect(all.json).toMatchObject({ total: 3, limit: 50, offset: 0 });
+		expect(all.json).toMatchObject({
+			total: 3,
+			totalIsExact: false,
+			hasMore: false,
+			limit: 50,
+			offset: 0,
+		});
 
 		const search = await call(backend, "GET", "/api/memories/browse?q=alpha");
 		const texts = (search.json.memories as Array<{ text: string }>).map(
@@ -250,6 +294,74 @@ describe("iOS bridge — memories view routes", () => {
 		);
 		expect((page.json.memories as unknown[]).length).toBe(1);
 		expect(page.json).toMatchObject({ total: 3, limit: 1, offset: 1 });
+	});
+
+	it("finds sparse matches beyond the first adapter window", async () => {
+		for (let i = 0; i < 450; i++) {
+			await seedMemory("messages", i < 30 ? `needle ${i}` : `hay ${i}`, i);
+		}
+		const result = await call(
+			backend,
+			"GET",
+			"/api/memories/browse?type=messages&q=needle%20missing&limit=20",
+		);
+		expect((result.json.memories as unknown[]).length).toBe(20);
+		expect(result.json).toMatchObject({
+			totalIsExact: false,
+			hasMore: true,
+		});
+	});
+
+	it("fails closed when an adapter ignores the keyset cursor", async () => {
+		for (let i = 0; i < 450; i++) {
+			await seedMemory("messages", i < 30 ? `needle ${i}` : `hay ${i}`, i);
+		}
+		const cursorAware = runtime.getMemories.bind(runtime);
+		runtime.getMemories = vi.fn((params) =>
+			cursorAware({ ...params, cursor: undefined }),
+		);
+
+		await expect(
+			call(
+				backend,
+				"GET",
+				"/api/memories/browse?type=messages&q=needle%20missing&limit=20",
+			),
+		).rejects.toMatchObject({ code: "MEMORY_BROWSE_CURSOR_NO_PROGRESS" });
+		expect(runtime.getMemories).toHaveBeenCalledTimes(2);
+	});
+
+	it("fails closed at the shared request-wide sparse scan bound", async () => {
+		let sequence = 0;
+		const getMemories = vi.fn(
+			async (params: { limit?: number }): Promise<Memory[]> =>
+				Array.from({ length: params.limit ?? 0 }, () => {
+					const index = sequence++;
+					return {
+						id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}` as UUID,
+						entityId: AGENT_ID,
+						roomId: AGENT_ID,
+						agentId: AGENT_ID,
+						createdAt: 1_000_000 - index,
+						content: { text: `hay ${index}` },
+					} as Memory;
+				}),
+		);
+		runtime.getMemories = getMemories as IAgentRuntime["getMemories"];
+
+		await expect(
+			call(
+				backend,
+				"GET",
+				"/api/memories/browse?type=messages&q=needle%20missing&limit=20",
+			),
+		).rejects.toMatchObject({ code: "MEMORY_BROWSE_SCAN_LIMIT" });
+		expect(
+			getMemories.mock.calls.reduce(
+				(sum, [params]) => sum + (params.limit ?? 0),
+				0,
+			),
+		).toBe(25_000);
 	});
 
 	it("stats totals per table", async () => {

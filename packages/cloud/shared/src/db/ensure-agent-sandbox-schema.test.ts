@@ -12,7 +12,6 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-
 import { runWithCloudBindings } from "../lib/runtime/cloud-bindings";
 import { shouldSkipEnsure } from "./ensure-agent-sandbox-schema";
 

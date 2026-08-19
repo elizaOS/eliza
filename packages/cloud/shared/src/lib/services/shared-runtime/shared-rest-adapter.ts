@@ -16,6 +16,7 @@
  * item, so no conversation index is needed.
  */
 
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import type { SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
@@ -23,6 +24,7 @@ import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
+import type { SharedRuntimeChannel } from "./shared-runtime-channel";
 import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
@@ -541,6 +543,7 @@ export async function sharedRestMessageSend(
   funding: "organization-credits" | "platform" = "organization-credits",
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
+  trustedChannel?: SharedRuntimeChannel,
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -562,6 +565,10 @@ export async function sharedRestMessageSend(
     namespace,
     ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
     ...(trustedUserUtterance ? { trustedUserUtterance } : {}),
+    channel: trustedChannel ?? {
+      type: ChannelType.DM,
+      source: trustedDelivery?.platform ?? MESSAGE_SOURCE_CLIENT_CHAT,
+    },
   });
   if (response.error) {
     // A credit-reserve rejection is a permanent add-credits condition, not a

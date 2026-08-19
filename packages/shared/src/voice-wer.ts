@@ -7,6 +7,10 @@
  * `@elizaos/shared` (which both already depend on) so there is exactly one
  * definition. Pure + browser-safe (no Node deps), so it ships in the UI bundle
  * via the `@elizaos/shared/voice-wer` subpath without pulling the whole barrel.
+ *
+ * The rolling-row Levenshtein implementation uses linear memory but still
+ * performs O(|ref|·|hyp|) comparisons. Input and comparison budgets keep
+ * untrusted transcripts from monopolizing the browser or benchmark process.
  */
 
 /** Lowercase, strip punctuation (keep letters/numbers/apostrophes), collapse WS. */
@@ -18,15 +22,36 @@ export function normalizeWerText(text: string): string {
     .trim();
 }
 
+/** Bounds normalization/tokenization work before allocating transcript copies. */
+export const MAX_WER_INPUT_CHARS = 131_072;
+
+/** Bounds the quadratic work while permitting safe asymmetric comparisons. */
+export const MAX_WER_EDIT_CELLS = 262_144;
+
 /**
  * Levenshtein word-error-rate of `hypothesis` against `reference`
  * (substitutions + insertions + deletions, divided by reference word count).
  * An empty reference scores 0 against an empty hypothesis, else 1.
  */
 export function wordErrorRate(reference: string, hypothesis: string): number {
+  if (
+    reference.length > MAX_WER_INPUT_CHARS ||
+    hypothesis.length > MAX_WER_INPUT_CHARS
+  ) {
+    throw new Error(
+      `[voice-wer] transcript exceeds ${MAX_WER_INPUT_CHARS} UTF-16 code units (ref=${reference.length} hyp=${hypothesis.length})`,
+    );
+  }
+
   const refWords = normalizeWerText(reference).split(" ").filter(Boolean);
   const hypWords = normalizeWerText(hypothesis).split(" ").filter(Boolean);
   if (refWords.length === 0) return hypWords.length === 0 ? 0 : 1;
+  const editCells = refWords.length * hypWords.length;
+  if (editCells > MAX_WER_EDIT_CELLS) {
+    throw new Error(
+      `[voice-wer] comparison exceeds ${MAX_WER_EDIT_CELLS} edit cells (refWords=${refWords.length} hypWords=${hypWords.length})`,
+    );
+  }
 
   const prev = Array.from({ length: hypWords.length + 1 }, (_, i) => i);
   const curr = new Array<number>(hypWords.length + 1).fill(0);

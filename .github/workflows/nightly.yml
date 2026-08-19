@@ -18,6 +18,15 @@ permissions:
 jobs:
   ci:
     name: Full deterministic CI
+    # Must cover everything the called graph requests: ci.yml's device caller
+    # carries actions:read/contents:read/issues:write for device-e2e.yml's
+    # schedule-only notifier, and workflow_call permission validation is
+    # static and transitive — an uncovered nested request startup-fails this
+    # entire nightly run before any job is evaluated.
+    permissions:
+      actions: read
+      contents: read
+      issues: write
     uses: ./.github/workflows/ci.yml
 
   platform-smoke:

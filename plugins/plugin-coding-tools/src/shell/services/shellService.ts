@@ -1397,14 +1397,22 @@ export class ShellService extends Service {
       }, this.shellConfig.timeout);
 
       if (child.stdout) {
-        child.stdout.on("data", (data: Buffer) => {
-          stdout += data.toString();
+        // Decode the pipe as a UTF-8 stream, not per-chunk: a multi-byte code
+        // point split across two `data` Buffers would otherwise decode to
+        // U+FFFD on both sides of the boundary, silently corrupting any
+        // non-ASCII command output the agent reads. setEncoding installs
+        // Node's StringDecoder, which holds a partial code point until the
+        // next chunk completes it.
+        child.stdout.setEncoding("utf8");
+        child.stdout.on("data", (data: string) => {
+          stdout += data;
         });
       }
 
       if (child.stderr) {
-        child.stderr.on("data", (data: Buffer) => {
-          stderr += data.toString();
+        child.stderr.setEncoding("utf8");
+        child.stderr.on("data", (data: string) => {
+          stderr += data;
         });
       }
 
@@ -1679,6 +1687,12 @@ export class ShellService extends Service {
         handleStdout(cleaned);
       });
     } else if (child) {
+      // Same UTF-8 stream decode as the foreground path: without setEncoding,
+      // `handleStdout` receives raw Buffers and its `data.toString()` corrupts
+      // any multi-byte code point straddling a chunk boundary before it is
+      // sanitized and chunked. StringDecoder buffers the partial code point.
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
       child.stdout.on("data", handleStdout);
       child.stderr.on("data", handleStderr);
     }

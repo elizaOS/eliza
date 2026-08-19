@@ -46,6 +46,7 @@ import {
   normalizeProgressionRule,
   normalizeWebsiteAccessPolicy,
 } from "../service-normalize-task.js";
+import { callerDefinitionScopes } from "./definition-authorization.js";
 
 // Routine seeding is a FIRST_RUN customize-path concern — see
 // `src/lifeops/first-run/service.ts`. The migrator at
@@ -116,9 +117,19 @@ export class DefinitionsDomain {
   ) {}
 
   async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
-    const definitions = await this.ctx.repository.listDefinitions(
-      this.ctx.agentId(),
-    );
+    const definitions = (
+      await Promise.all(
+        callerDefinitionScopes(this.ctx).map((scope) =>
+          this.ctx.repository.listDefinitions(this.ctx.agentId(), scope),
+        ),
+      )
+    )
+      .flat()
+      .sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
     const plans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "definition",
@@ -415,23 +426,10 @@ export class DefinitionsDomain {
   }
 
   async deleteDefinition(definitionId: string): Promise<void> {
-    const definition = await this.ctx.repository.getDefinition(
-      this.ctx.agentId(),
-      definitionId,
-    );
-    if (!definition) {
-      fail(404, "life-ops definition not found");
-    }
-    // A definition whose subject is neither this runtime's agent nor its
-    // owner belongs to another identity; report it as absent rather than
-    // disclose or destroy it.
-    const expectedSubjectId =
-      definition.subjectType === "agent"
-        ? this.ctx.agentId()
-        : this.ctx.ownerEntityId();
-    if (definition.subjectId !== expectedSubjectId) {
-      fail(404, "life-ops definition not found");
-    }
+    // Resolve through the caller-scoped record boundary before native or
+    // database side effects. An immutable ID for another domain/owner is
+    // indistinguishable from a missing definition.
+    const { definition } = await this.deps.getDefinitionRecord(definitionId);
     await this.deps.syncNativeAppleReminderForDefinition({
       definition: null,
       previousDefinition: definition,
@@ -441,6 +439,7 @@ export class DefinitionsDomain {
       definitionId,
       {
         scope: {
+          domain: definition.domain,
           subjectType: definition.subjectType,
           subjectId: definition.subjectId,
         },

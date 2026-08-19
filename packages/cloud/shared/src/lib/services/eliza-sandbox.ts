@@ -6,6 +6,7 @@
 import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { ElizaError } from "@elizaos/core";
+import { ChannelType } from "@elizaos/core/edge";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   resolveRetainableAgentBackupBytes,
@@ -4309,6 +4310,10 @@ export class ElizaSandboxService {
         character,
         history,
         message: text,
+        execution: {
+          agentKey: rec.id,
+          channel: { type: ChannelType.DM, source: "shared-runtime" },
+        },
       });
       if (turn.degraded) {
         // A failed/degraded turn isn't persisted or billed — just refund the hold.
@@ -4471,6 +4476,10 @@ export class ElizaSandboxService {
         character,
         history,
         message: text,
+        execution: {
+          agentKey: rec.id,
+          channel: { type: ChannelType.DM, source: "shared-runtime" },
+        },
       });
       if (turn.degraded) {
         await settleReservation(0);

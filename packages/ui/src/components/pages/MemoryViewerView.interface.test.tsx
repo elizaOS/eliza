@@ -106,6 +106,21 @@ afterEach(() => {
 });
 
 describe("MemoryViewerView interface contract", () => {
+  it("keeps memory content scrollable above the persistent chat overlay", async () => {
+    const { container } = render(<MemoryViewerView />);
+
+    await screen.findByTestId("memory-card-mem-1");
+
+    const scroller = container.querySelector(".eliza-chat-scroll");
+    expect(scroller).not.toBeNull();
+    expect(scroller?.className).toContain(
+      "pb-[var(--eliza-chat-clearance,5.25rem)]",
+    );
+    expect(scroller?.className).toContain(
+      "pe-[var(--eliza-chat-side-clearance,0px)]",
+    );
+  });
+
   it("stacks memory cards and exposes expand state", async () => {
     render(<MemoryViewerView />);
 
@@ -153,5 +168,37 @@ describe("MemoryViewerView interface contract", () => {
     ).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Ask Eliza" }));
     expect(dispatchChatOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps pagination enabled while presenting an incomplete total honestly", async () => {
+    clientMock.browseMemories.mockResolvedValue({
+      memories: [
+        {
+          id: "mem-browse-1",
+          type: "messages",
+          text: "bounded browse result",
+          source: "client_chat",
+          createdAt: Date.now(),
+          entityId: "entity-1",
+          roomId: "room-1",
+        },
+      ],
+      total: 51,
+      totalIsExact: false,
+      hasMore: true,
+      limit: 50,
+      offset: 0,
+    });
+
+    const user = userEvent.setup();
+    render(<MemoryViewerView />);
+    await user.click(await screen.findByTestId("memory-view-browse"));
+
+    expect(await screen.findByText("bounded browse result")).not.toBeNull();
+    expect(screen.getByText("1–1 of at least 51")).not.toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Next" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 });

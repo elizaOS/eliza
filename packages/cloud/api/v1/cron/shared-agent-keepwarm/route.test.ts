@@ -33,7 +33,7 @@ const { default: app } = await import("./route");
 const PERSONAL_AGENT_ID = "personal:9610511b-dff2-5ca3-989a-8e1004ff44b1";
 const SANDBOX_AGENT_ID = "9610511b-dff2-4ca3-889a-8e1004ff44b2";
 
-function hitCron(sharedRuntimeEnabled = true) {
+function hitCron() {
   return app.fetch(
     new Request("https://api.example.test/", {
       method: "POST",
@@ -41,7 +41,6 @@ function hitCron(sharedRuntimeEnabled = true) {
     }),
     {
       CRON_SECRET: "cron-secret",
-      SHARED_ELIZA_AGENT_RUNTIME: sharedRuntimeEnabled ? "true" : "false",
       SHARED_RUNTIME_CONVERSATIONS: {},
     },
   );
@@ -121,16 +120,6 @@ describe("shared-agent keepwarm cron", () => {
     });
     expect(prewarmSharedAgentTurnCaches).not.toHaveBeenCalled();
     expect(prewarmSharedElizaRuntime).toHaveBeenCalledTimes(1);
-  });
-
-  test("does not prewarm the process-wide runtime when the feature is disabled", async () => {
-    listRecentlyActiveAgentIds.mockResolvedValueOnce([PERSONAL_AGENT_ID]);
-
-    const response = await hitCron(false);
-
-    expect(response.status).toBe(200);
-    expect(prewarmSharedElizaRuntime).not.toHaveBeenCalled();
-    expect(findById).not.toHaveBeenCalled();
   });
 
   test("rejects an invalid cron secret before querying history", async () => {

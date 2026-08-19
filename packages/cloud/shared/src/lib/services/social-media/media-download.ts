@@ -29,12 +29,26 @@ function downloadError(
   });
 }
 
-async function cancelBody(response: Response, reason?: unknown): Promise<void> {
+function cancelBody(response: Response, reason?: unknown): void {
   try {
-    await response.body?.cancel(reason);
+    void response.body?.cancel(reason).catch(() => {
+      // error-policy:J6 The authoritative download failure is already known;
+      // response cancellation is best-effort connection teardown.
+    });
   } catch {
     // error-policy:J6 The authoritative download failure is already known;
-    // response cancellation is best-effort connection teardown.
+    // synchronous response cancellation is best-effort connection teardown.
+  }
+}
+
+function cancelReader(reader: ReadableStreamDefaultReader<Uint8Array>, reason?: unknown): void {
+  try {
+    void reader.cancel(reason).catch(() => {
+      // error-policy:J6 The authoritative download failure is already known;
+      // reader cancellation is best-effort connection teardown.
+    });
+  } catch {
+    // error-policy:J6 Synchronous reader cancellation is best-effort teardown.
   }
 }
 
@@ -46,7 +60,7 @@ async function readBodyWithLimit(response: Response, signal: AbortSignal): Promi
     Number.isFinite(declaredLength) &&
     declaredLength > SOCIAL_MEDIA_DOWNLOAD_MAX_BYTES
   ) {
-    await cancelBody(response);
+    cancelBody(response);
     throw downloadError(
       "Remote media exceeds the download byte limit",
       "SOCIAL_MEDIA_DOWNLOAD_TOO_LARGE",
@@ -71,10 +85,7 @@ async function readBodyWithLimit(response: Response, signal: AbortSignal): Promi
   const chunks: Uint8Array[] = [];
   let total = 0;
   const onAbort = (): void => {
-    void reader.cancel(signal.reason).catch(() => {
-      // error-policy:J6 The abort reason remains authoritative; reader
-      // cancellation is best-effort connection teardown.
-    });
+    cancelReader(reader, signal.reason);
   };
   signal.addEventListener("abort", onAbort, { once: true });
   if (signal.aborted) onAbort();
@@ -87,12 +98,7 @@ async function readBodyWithLimit(response: Response, signal: AbortSignal): Promi
       if (!value?.byteLength) continue;
       total += value.byteLength;
       if (total > SOCIAL_MEDIA_DOWNLOAD_MAX_BYTES) {
-        try {
-          await reader.cancel();
-        } catch {
-          // error-policy:J6 The byte-limit failure is authoritative; reader
-          // cancellation is best-effort connection teardown.
-        }
+        cancelReader(reader);
         throw downloadError(
           "Remote media exceeds the download byte limit",
           "SOCIAL_MEDIA_DOWNLOAD_TOO_LARGE",
@@ -148,7 +154,7 @@ export async function downloadSocialMediaBytes(
       deadline,
     ]);
     if (!response.ok) {
-      await cancelBody(response);
+      cancelBody(response);
       const message =
         options.httpErrorMessage?.(response.status) ?? `Media fetch failed: ${response.status}`;
       throw downloadError(message, "SOCIAL_MEDIA_DOWNLOAD_HTTP_ERROR", {
