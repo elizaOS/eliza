@@ -118,6 +118,22 @@ describe("runVfsBuiltinShell", () => {
     expect(files.stdout).toContain("src/nested/b.ts");
   });
 
+  it("rejects nested-quantifier grep patterns before testing VFS lines", async () => {
+    const vfs = createVirtualFilesystemService({ projectId: "redos" });
+    await vfs.initialize();
+    await vfs.writeFile("src/bomb.ts", `${"a".repeat(28)}!\n`);
+
+    const startedAt = Date.now();
+    const result = await runVfsBuiltinShell({
+      cwdUri: "vfs://redos/src",
+      command: "grep",
+      args: ["(a+)+$", "."],
+    });
+    expect(Date.now() - startedAt).toBeLessThan(200);
+    expect(result).toMatchObject({ exitCode: 2, stdout: "" });
+    expect(result.stderr).toContain("unsafe regular expression");
+  });
+
   it("keeps command separators inside quoted arguments", async () => {
     const result = await runVfsBuiltinShell({
       cwdUri: "vfs://quoted/",
