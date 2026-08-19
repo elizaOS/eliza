@@ -289,7 +289,7 @@ export class UsersService {
   }
 
   async update(id: string, data: Partial<NewUser>): Promise<User | undefined> {
-    const existing = await usersRepository.findById(id);
+    const existing = await usersRepository.findByIdForWrite(id);
     const movingOrganizations =
       typeof data.organization_id === "string" &&
       data.organization_id !== existing?.organization_id;
@@ -366,7 +366,7 @@ export class UsersService {
     const existingIdentity = await usersRepository.findIdentityByUserIdForWrite(userId);
 
     if (existingIdentity?.steward_user_id === stewardUserId) {
-      const user = await usersRepository.findById(userId);
+      const user = await usersRepository.findByIdForWrite(userId);
       if (user?.organization_id) {
         // The identity row may have committed before a prior attempt failed to
         // clear the durable binding fence. Make the idempotent retry complete
@@ -376,11 +376,12 @@ export class UsersService {
       await Promise.all([
         cache.del(CacheKeys.user.byStewardId(stewardUserId)),
         cache.del(CacheKeys.user.byStewardIdWithOrg(stewardUserId)),
+        invalidateInferenceSessionAuthContexts([stewardUserId]),
       ]);
       return;
     }
 
-    const user = await usersRepository.findById(userId);
+    const user = await usersRepository.findByIdForWrite(userId);
     if (user?.organization_id) {
       if (existingIdentity?.steward_user_id) {
         await setInferenceSessionBindingActive(
@@ -420,7 +421,7 @@ export class UsersService {
   }
 
   async linkStewardId(userId: string, stewardUserId: string): Promise<void> {
-    const existing = await usersRepository.findById(userId);
+    const existing = await usersRepository.findByIdForWrite(userId);
     if (existing?.organization_id && existing.steward_user_id !== stewardUserId) {
       if (existing.steward_user_id) {
         await setInferenceSessionBindingActive(
@@ -465,7 +466,7 @@ export class UsersService {
    * invite→remove cycle must not mint free credit.
    */
   async detachFromOrganization(id: string): Promise<User> {
-    const user = await usersRepository.findById(id);
+    const user = await usersRepository.findByIdForWrite(id);
     if (!user) {
       throw new Error(`User ${id} not found`);
     }
@@ -528,7 +529,7 @@ export class UsersService {
   }
 
   async delete(id: string): Promise<void> {
-    const user = await this.getById(id);
+    const user = await usersRepository.findByIdForWrite(id);
 
     if (!user) {
       throw new Error(`User ${id} not found`);

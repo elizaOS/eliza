@@ -26,6 +26,9 @@ const lifecycleEvents: string[] = [];
 let userApiKeys: Array<{ key_hash: string }> = [];
 let orgApiKeys: Array<{ key_hash: string }> = [];
 let userRecord: Record<string, unknown> | undefined;
+let readUserRecordOverride: Record<string, unknown> | undefined;
+let useReadUserRecordOverride = false;
+let failNextBindingActivation = false;
 let listByOrganizationUsers: unknown[] = [];
 let listByUserError: Error | null = null;
 
@@ -46,6 +49,10 @@ mock.module("./inference-credential-revocation", () => ({
     active: boolean,
   ) => {
     lifecycleEvents.push(`session-binding:${orgId}:${userId}:${stewardUserId}:${active}`);
+    if (active && failNextBindingActivation) {
+      failNextBindingActivation = false;
+      throw new Error("binding activation unavailable");
+    }
   },
   revokeInferenceSessionsThrough: async (orgId: string, userId: string) => {
     lifecycleEvents.push(`session:${orgId}:${userId}`);
@@ -70,22 +77,30 @@ mock.module("../../db/repositories", () => ({
       return userApiKeys;
     },
     listByOrganization: async (_orgId: string) => orgApiKeys,
+    deactivateByUserAndOrganization: async (userId: string, orgId: string) => {
+      lifecycleEvents.push(`api-keys-deactivate:${userId}:${orgId}`);
+    },
   },
   usersRepository: {
-    findById: async (_id: string) => userRecord,
+    findById: async (_id: string) =>
+      useReadUserRecordOverride ? readUserRecordOverride : userRecord,
+    findByIdForWrite: async (_id: string) => userRecord,
     findIdentityByUserIdForWrite: async () =>
       userRecord?.steward_user_id ? { steward_user_id: userRecord.steward_user_id } : undefined,
     upsertStewardIdentity: async (id: string, stewardUserId: string) => {
       lifecycleEvents.push(`identity-upsert:${id}:${stewardUserId}`);
+      if (userRecord) userRecord.steward_user_id = stewardUserId;
       return { user_id: id, steward_user_id: stewardUserId };
     },
     linkStewardId: async (id: string, stewardUserId: string) => {
       lifecycleEvents.push(`identity-link:${id}:${stewardUserId}`);
-      return { ...userRecord, id, steward_user_id: stewardUserId };
+      userRecord = { ...userRecord, id, steward_user_id: stewardUserId };
+      return userRecord;
     },
     update: async (id: string, data: Record<string, unknown>) => {
       lifecycleEvents.push(`user-update:${id}`);
-      return { ...userRecord, ...data, id };
+      userRecord = { ...userRecord, ...data, id };
+      return userRecord;
     },
     delete: async (id: string) => {
       userDeleteCalls.push(id);
@@ -96,6 +111,8 @@ mock.module("../../db/repositories", () => ({
     listByOrganization: async (_orgId: string) => listByOrganizationUsers,
   },
   organizationsRepository: {
+    findBySlug: async () => undefined,
+    create: async (data: Record<string, unknown>) => ({ id: "o2", ...data }),
     update: async (id: string, data: Record<string, unknown>) => ({ id, ...data }),
     findWithUsers: async () => ({
       users: listByOrganizationUsers,
@@ -127,6 +144,9 @@ beforeEach(() => {
   userApiKeys = [];
   orgApiKeys = [];
   userRecord = undefined;
+  readUserRecordOverride = undefined;
+  useReadUserRecordOverride = false;
+  failNextBindingActivation = false;
   listByOrganizationUsers = [];
   listByUserError = null;
   lifecycleEvents.length = 0;
@@ -227,6 +247,27 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     ]);
   });
 
+  test("direct Steward identity update fences the primary binding when the read replica lags", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-old",
+    };
+    useReadUserRecordOverride = true;
+    readUserRecordOverride = undefined;
+
+    const { usersService } = await import("./users");
+    await usersService.update("u1", { steward_user_id: "steward-new" });
+
+    expect(lifecycleEvents).toEqual([
+      "session-binding:o1:u1:steward-old:false",
+      "session:o1:u1",
+      "user-update:u1",
+      "session-binding:o1:u1:steward-new:true",
+    ]);
+  });
+
   test("retrying a committed Steward identity update repairs its active binding", async () => {
     userRecord = {
       id: "u1",
@@ -256,6 +297,46 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     await usersService.upsertStewardIdentity("u1", "steward-new");
 
     expect(lifecycleEvents).toEqual(["session-binding:o1:u1:steward-new:true"]);
+    expect(invalidatedSessionBatches).toEqual([["steward-new"]]);
+  });
+
+  test("Steward identity upsert retry uses the primary user when the read replica lags", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-new",
+    };
+    useReadUserRecordOverride = true;
+    readUserRecordOverride = undefined;
+
+    const { usersService } = await import("./users");
+    await usersService.upsertStewardIdentity("u1", "steward-new");
+
+    expect(lifecycleEvents).toEqual(["session-binding:o1:u1:steward-new:true"]);
+  });
+
+  test("Steward identity upsert retries cache invalidation after a post-write fence failure", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-old",
+    };
+    failNextBindingActivation = true;
+
+    const { usersService } = await import("./users");
+    await expect(usersService.upsertStewardIdentity("u1", "steward-new")).rejects.toThrow(
+      "binding activation unavailable",
+    );
+    expect(userRecord?.steward_user_id).toBe("steward-new");
+    expect(invalidatedSessionBatches).toEqual([]);
+
+    lifecycleEvents.length = 0;
+    await usersService.upsertStewardIdentity("u1", "steward-new");
+
+    expect(lifecycleEvents).toEqual(["session-binding:o1:u1:steward-new:true"]);
+    expect(invalidatedSessionBatches).toEqual([["steward-new"]]);
   });
 
   test("Steward identity link fences the prior session generation before relinking", async () => {
@@ -265,6 +346,27 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       email: null,
       steward_user_id: "steward-old",
     };
+
+    const { usersService } = await import("./users");
+    await usersService.linkStewardId("u1", "steward-new");
+
+    expect(lifecycleEvents).toEqual([
+      "session-binding:o1:u1:steward-old:false",
+      "session:o1:u1",
+      "identity-link:u1:steward-new",
+      "session-binding:o1:u1:steward-new:true",
+    ]);
+  });
+
+  test("Steward identity link fences the primary binding when the read replica lags", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-old",
+    };
+    useReadUserRecordOverride = true;
+    readUserRecordOverride = undefined;
 
     const { usersService } = await import("./users");
     await usersService.linkStewardId("u1", "steward-new");
@@ -294,6 +396,49 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     // The row is wiped on delete; a non-empty batch proves resolution happened first.
     expect(invalidatedHashBatches).toEqual([["uh1"]]);
     expect(invalidatedSessionBatches).toContainEqual(["steward-u1"]);
+  });
+
+  test("delete fences the primary organization when the read replica lags", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-u1",
+    };
+    useReadUserRecordOverride = true;
+    readUserRecordOverride = undefined;
+    listByOrganizationUsers = [{ id: "u2" }];
+
+    const { usersService } = await import("./users");
+    await usersService.delete("u1");
+
+    expect(lifecycleEvents).toContain("subject:o1:u1:false:account");
+    expect(userDeleteCalls).toEqual(["u1"]);
+  });
+
+  test("detach fences the primary organization when the read replica lags", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: "member@example.com",
+      name: "Member",
+      role: "member",
+      steward_user_id: "steward-u1",
+      is_active: true,
+    };
+    useReadUserRecordOverride = true;
+    readUserRecordOverride = undefined;
+
+    const { usersService } = await import("./users");
+    const detached = await usersService.detachFromOrganization("u1");
+
+    expect(detached.organization_id).toBe("o2");
+    expect(detached.role).toBe("owner");
+    expect(lifecycleEvents).toEqual([
+      "subject:o1:u1:false:membership",
+      "user-update:u1",
+      "api-keys-deactivate:u1:o1",
+    ]);
   });
 
   test("delete invalidation is best-effort: a cache/db failure does not throw", async () => {
