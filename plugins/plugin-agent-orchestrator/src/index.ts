@@ -2175,7 +2175,19 @@ export function registerProgressHook(runtime: IAgentRuntime): () => void {
               return true;
             }
           };
-          if (plannerAlreadyAcked) {
+          const requestAckAlreadyPosted =
+            (session?.metadata as { requestAckPosted?: boolean } | undefined)
+              ?.requestAckPosted === true;
+          if (requestAckAlreadyPosted) {
+            // The create posted its own out-of-band ack before this session's
+            // events flowed — stamped at spawn, so no ledger race (2026-08-19).
+            ackedSessions.add(sessionId);
+            if (ackedSessions.size > 512) {
+              const oldest = ackedSessions.values().next().value;
+              if (oldest !== undefined) ackedSessions.delete(oldest);
+            }
+            claimRequestAck();
+          } else if (plannerAlreadyAcked) {
             ackedSessions.add(sessionId);
             if (ackedSessions.size > 512) {
               const oldest = ackedSessions.values().next().value;

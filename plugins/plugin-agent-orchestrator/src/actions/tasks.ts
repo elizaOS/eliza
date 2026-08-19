@@ -1506,6 +1506,10 @@ async function runCreateLegacy(
           initialTask: taskWithRouteHints,
           workdirRouteId: (createSlugRoute ?? route)?.id,
           workdirRoute: createSlugRoute ?? route,
+          // The create already posted its out-of-band ack; the progress hook
+          // reads this stamp structurally (the ledger claim raced the hook's
+          // event-time decision and lost, live 2026-08-19).
+          ...(ackPostedOutOfBand ? { requestAckPosted: true } : {}),
           keepAliveAfterComplete,
           ...(durableRun ? smithersDurableRunMetadata(durableRun) : {}),
         },
