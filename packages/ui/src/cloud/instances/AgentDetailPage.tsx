@@ -22,68 +22,6 @@ import { ElizaConnectButton } from "./components/eliza-connect-button";
 import { getUserFacingAgentType } from "./lib/agent-type";
 import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
-import { statusBadgeColor, statusDotColor } from "./lib/sandbox-status";
-
-export function formatDate(date: string | null): string {
-  if (!date) return "—";
-  const timestamp = new Date(date).getTime();
-  if (!Number.isFinite(timestamp)) return "—";
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-export function formatTime(date: string | null): string {
-  if (!date) return "—";
-  const timestamp = new Date(date).getTime();
-  if (!Number.isFinite(timestamp)) return "—";
-  return new Date(timestamp).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-export function formatRelativeShort(
-  date: string | null,
-  t: ReturnType<typeof useT>,
-): string {
-  if (!date) return t("cloud.agents.detail.never", { defaultValue: "Never" });
-  const d = new Date(date);
-  const timestamp = d.getTime();
-  if (!Number.isFinite(timestamp))
-    return t("cloud.agents.detail.never", { defaultValue: "Never" });
-  const diffMs = Date.now() - timestamp;
-  const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1)
-    return t("cloud.agents.detail.justNow", { defaultValue: "Just now" });
-  if (diffMin < 60)
-    return t("cloud.agents.detail.minutesAgo", {
-      defaultValue: "{{n}}m ago",
-      n: diffMin,
-    });
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24)
-    return t("cloud.agents.detail.hoursAgo", {
-      defaultValue: "{{n}}h ago",
-      n: diffH,
-    });
-  return formatDate(date);
-}
-
-export function formatHeartbeatSecondary(date: string | null): string | null {
-  if (!date) return null;
-  const timestamp = new Date(date).getTime();
-  if (!Number.isFinite(timestamp)) return "—";
-  const diffMs = Date.now() - timestamp;
-  const diffMin = Math.floor(diffMs / 60_000);
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) {
-    return formatDate(date);
-  }
-  return formatTime(date);
-}
 
 export default function AgentDetailPage() {
   const t = useT();
@@ -126,8 +64,6 @@ export default function AgentDetailPage() {
   const agent = query.data;
   if (!agent) return <Navigate to="/cloud/agents" replace />;
 
-  const badgeColor = statusBadgeColor(agent.status);
-  const dotColor = statusDotColor(agent.status);
   const isRunningish =
     agent.status === "running" || agent.status === "provisioning";
   const isIdle = agent.status === "stopped" || agent.status === "disconnected";
@@ -138,7 +74,14 @@ export default function AgentDetailPage() {
   const isShared = agent.executionTier === "shared";
   const showConnect = !!agent.webUiUrl && agent.status === "running";
   const agentType = getUserFacingAgentType(agent.executionTier);
-  const heartbeatPrimary = formatRelativeShort(agent.lastHeartbeatAt, t);
+  const agentName = isShared
+    ? t("cloud.agents.detail.sharedAgentName", {
+        defaultValue: "Eliza Cloud Agent",
+      })
+    : (agent.agentName ??
+      t("cloud.agents.detail.unnamedAgent", {
+        defaultValue: "Unnamed Agent",
+      }));
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -170,20 +113,8 @@ export default function AgentDetailPage() {
           <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="text-2xl font-semibold text-txt-strong truncate font-mono">
-                {agent.agentName ??
-                  t("cloud.agents.detail.unnamedAgent", {
-                    defaultValue: "Unnamed Agent",
-                  })}
+                {agentName}
               </h1>
-              <Badge
-                variant="outline"
-                className={`${badgeColor} text-xs font-medium px-2 py-0.5`}
-              >
-                <span
-                  className={`inline-block size-1.5 rounded-full mr-1.5 ${dotColor}`}
-                />
-                {agent.status}
-              </Badge>
               <Badge
                 variant="outline"
                 className="text-xs font-medium px-2 py-0.5"
@@ -191,42 +122,17 @@ export default function AgentDetailPage() {
                 {agentType}
               </Badge>
             </div>
-            <div className="flex items-center gap-3 text-xs text-muted">
-              <span className="font-mono tabular-nums">{agent.id}</span>
-            </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-px bg-border border border-border">
+      <div className="grid grid-cols-2 gap-px bg-border border border-border">
         <div className="bg-card p-4 space-y-1">
           <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
             {t("cloud.agents.detail.statusLabel", { defaultValue: "Status" })}
           </p>
           <p className="text-lg font-medium text-txt-strong capitalize tabular-nums font-mono">
             {agent.status}
-          </p>
-        </div>
-        <div className="bg-card p-4 space-y-1">
-          <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
-            {t("cloud.agents.detail.databaseLabel", {
-              defaultValue: "Database",
-            })}
-          </p>
-          <p className="text-lg font-medium text-txt-strong tabular-nums font-mono">
-            {agent.databaseStatus === "ready"
-              ? t("cloud.agents.detail.dbConnected", {
-                  defaultValue: "Connected",
-                })
-              : agent.databaseStatus === "provisioning"
-                ? t("cloud.agents.detail.dbSettingUp", {
-                    defaultValue: "Setting up",
-                  })
-                : agent.databaseStatus === "none"
-                  ? t("cloud.agents.detail.dbNone", { defaultValue: "None" })
-                  : t("cloud.agents.detail.dbError", {
-                      defaultValue: "Error",
-                    })}
           </p>
         </div>
         <div className="bg-card p-4 space-y-1">
@@ -256,34 +162,6 @@ export default function AgentDetailPage() {
               {t("cloud.agents.detail.deactivatedNoCost", {
                 defaultValue: "Deactivated — no hourly cost",
               })}
-            </p>
-          )}
-        </div>
-        <div className="bg-card p-4 space-y-1">
-          <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
-            {t("cloud.agents.detail.createdLabel", {
-              defaultValue: "Created",
-            })}
-          </p>
-          <p className="text-lg font-medium text-txt-strong tabular-nums font-mono">
-            {formatDate(agent.createdAt)}
-          </p>
-          <p className="text-2xs text-muted tabular-nums">
-            {formatTime(agent.createdAt)}
-          </p>
-        </div>
-        <div className="col-span-2 bg-card p-4 space-y-1 lg:col-span-1">
-          <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
-            {t("cloud.agents.detail.lastHeartbeatLabel", {
-              defaultValue: "Last Heartbeat",
-            })}
-          </p>
-          <p className="text-lg font-medium text-txt-strong tabular-nums font-mono">
-            {heartbeatPrimary}
-          </p>
-          {agent.lastHeartbeatAt && (
-            <p className="text-2xs text-muted tabular-nums">
-              {formatHeartbeatSecondary(agent.lastHeartbeatAt)}
             </p>
           )}
         </div>

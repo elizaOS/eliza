@@ -3,7 +3,7 @@
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaAgentActions } from "./agent-actions";
 
@@ -70,12 +70,20 @@ const QUOTE = {
 function renderActions() {
   render(
     <MemoryRouter>
-      <ElizaAgentActions
-        agentId={PERSONAL_ID}
-        executionTier="shared"
-        status="running"
-        webUiUrl={null}
-      />
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <ElizaAgentActions
+              agentId={PERSONAL_ID}
+              executionTier="shared"
+              status="running"
+              webUiUrl={null}
+            />
+          }
+        />
+        <Route path="/cloud/billing" element={<p>Billing destination</p>} />
+      </Routes>
     </MemoryRouter>,
   );
 }
@@ -205,9 +213,16 @@ describe("Dedicated activation quote", () => {
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Add credits to activate Dedicated.",
     );
-    expect(screen.getByRole("button", { name: "Add credits" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Add funds to upgrade" }),
+    ).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "Activate Dedicated" }),
     ).toBeNull();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Add funds to upgrade" }),
+    );
+    expect(screen.getByText("Billing destination")).toBeTruthy();
   });
 });
