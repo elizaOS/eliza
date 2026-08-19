@@ -141,7 +141,15 @@ async function request(
     const init: RequestInit = {
       method,
       signal: timeoutSignal(),
-      headers: { ...(opts.headers ?? {}) },
+      headers: {
+        // The cookie-mutation CSRF guard requires a first-party browser
+        // origin on cookie-authenticated mutations. Browsers always attach
+        // Origin on POST; this Node client must send the same-origin value a
+        // real browser would. Listed first so a test that sets its own
+        // Origin (e.g. an adversarial-origin case) still overrides it.
+        Origin: new URL(getBaseUrl()).origin,
+        ...(opts.headers ?? {}),
+      },
     };
     if (opts.body !== undefined) {
       (init.headers as Record<string, string>)["Content-Type"] ??=
