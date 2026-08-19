@@ -175,14 +175,15 @@ export default function AgentDetailPage() {
             <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
             <div className="min-w-0 space-y-0.5">
               <p className="text-sm font-medium text-destructive">
-                {t("cloud.agents.detail.errorWithCount", {
-                  defaultValue: "Error ({{n}} occurrence{{plural}})",
-                  n: agent.errorCount,
-                  plural: agent.errorCount !== 1 ? "s" : "",
+                {t("cloud.agents.detail.agentNeedsAttention", {
+                  defaultValue: "This agent needs attention",
                 })}
               </p>
               <p className="text-sm text-destructive/70">
-                {agent.errorMessage}
+                {t("cloud.agents.detail.agentNeedsAttentionBody", {
+                  defaultValue:
+                    "Try the available lifecycle action again. If the problem continues, contact support.",
+                })}
               </p>
             </div>
           </div>

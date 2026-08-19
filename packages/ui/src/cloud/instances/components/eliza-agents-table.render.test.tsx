@@ -194,6 +194,11 @@ describe("ElizaAgentsTable per-row view model", () => {
     ).toBeTruthy();
     expect(
       within(dedicatedRow as HTMLElement).getByRole("button", {
+        name: "Open Web UI",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(dedicatedRow as HTMLElement).getByRole("button", {
         name: "Delete agent",
       }),
     ).toBeTruthy();
@@ -290,6 +295,9 @@ describe("ElizaAgentsTable per-row view model", () => {
       screen.getAllByRole("button", { name: "Reactivate agent" }).length,
     ).toBeGreaterThanOrEqual(1);
     expect(
+      screen.getAllByRole("button", { name: "Resume agent" }).length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
       screen.queryByRole("button", { name: "Deactivate agent" }),
     ).toBeNull();
     // Billing transparency on the card itself: an explicit $0.00/hr.
@@ -323,12 +331,16 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(
       within(dialog).getByText(/stops consuming hourly credits/),
     ).toBeTruthy();
+    expect(within(dialog).getByText(/retains your agent data/i)).toBeTruthy();
     expect(
-      within(dialog).getByText(/if the backup cannot be saved/i),
+      within(dialog).getByText(/if deactivation cannot complete/i),
     ).toBeTruthy();
     expect(
       within(dialog).getByText(/requires available credits/i),
     ).toBeTruthy();
+    expect(dialog.textContent).not.toMatch(
+      /backup|snapshot|container|runtime|compute/i,
+    );
 
     // Cancel is a real exit: no job fired, dialog gone.
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -368,8 +380,9 @@ describe("ElizaAgentsTable per-row view model", () => {
       expect(screen.getAllByText("Grace").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("error").length).toBeGreaterThanOrEqual(1);
       expect(
-        screen.getAllByText("Runtime image unavailable").length,
+        screen.getAllByText("Agent needs attention").length,
       ).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText("Runtime image unavailable")).toBeNull();
     });
   });
 
