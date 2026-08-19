@@ -206,6 +206,11 @@ function customHostGuidance(
     assignedAppDir
       ? `- To CREATE the app: your assigned app folder is \`${assignedAppDir}/\` — write index.html (plus css/js) directly there and NOWHERE else under \`${dir}/\`; it serves at \`${base}/apps/${assignedAppDir.split("/").pop()}/\` — open that URL to confirm and report it.`
       : `- To CREATE a new app: pick a fresh, short kebab-case \`<slug>\` that is NOT an existing folder under \`${dir}/\`, write the files into \`${dir}/<slug>/\`, then open \`${base}/apps/<slug>/\` to confirm it works and report that URL. Never overwrite an existing app folder you did not create.`,
+    // Children self-imposed `eslint`/`tsc` checks on plain browser scripts;
+    // with no lint/ts config in the app dir those exit 1, the child's planner
+    // ends on a failed tool step, and a finished page reports as a failed
+    // task (live 2026-08-19: every first attempt "failed" this way).
+    "- Verify a static app by reading the files back and fetching its served URL. There is NO build, lint, or typecheck step: do not run eslint, tsc, npm, or bun for these plain static apps — a failing check you invented is not a task failure.",
     `- To EDIT an existing app: the \`<slug>\` is the app's existing folder name under \`${dir}/\` — read its files there, modify them in place, then re-open \`${base}/apps/<slug>/\` to confirm. Do not create a new slug for an edit.`,
     monetizeLine,
   ];

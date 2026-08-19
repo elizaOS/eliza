@@ -3904,6 +3904,17 @@ function composeNarration(
       ? `${header}\n${observedLines.join("\n")}`
       : header;
   }
+  // A child that ends on an incidental failed check narrates the whole task
+  // as failed while the deliverable sits finished on disk (live 2026-08-19:
+  // self-imposed eslint/tsc on a static page). Direct observation outranks
+  // the child's verdict — append what actually exists so the relay reads as
+  // "reported a failure, but these files are on disk", not a bare failure.
+  if (/\b(?:fail(?:ed|ure)?|crash(?:ed)?|could\s*n[o']t|unable\s+to)\b/i.test(cleaned)) {
+    const observedLines = observeWorkdirDeliverable(session);
+    if (observedLines.length > 0) {
+      return `${header}\n${stripRoutingKindBanner(cleaned)}\n${observedLines.join("\n")}`;
+    }
+  }
   return `${header}\n${stripRoutingKindBanner(cleaned)}`;
 }
 
