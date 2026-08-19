@@ -6,6 +6,7 @@
  */
 
 import { truncateWellFormed } from "@elizaos/core";
+import { stripWhatsAppTargetPrefixes } from "./whatsapp-target-prefix.ts";
 
 /**
  * WhatsApp text chunk limit
@@ -21,20 +22,6 @@ const WHATSAPP_USER_JID_RE = /^(\d+)(?::\d+)?@s\.whatsapp\.net$/i;
  * Regex for WhatsApp LID (e.g., "123@lid")
  */
 const WHATSAPP_LID_RE = /^(\d+)@lid$/i;
-
-/**
- * Strips WhatsApp target prefixes from a value
- */
-function stripWhatsAppTargetPrefixes(value: string): string {
-  let candidate = value.trim();
-  for (;;) {
-    const before = candidate;
-    candidate = candidate.replace(/^whatsapp:/i, "").trim();
-    if (candidate === before) {
-      return candidate;
-    }
-  }
-}
 
 /**
  * Normalizes a phone number to E.164 format
