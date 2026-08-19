@@ -3,13 +3,14 @@
  * It maps detector verdicts to timed words, produces a duration-preserving
  * candidate, re-transcribes that candidate, and only then publishes its
  * content-addressed media URL. Unverified bytes never enter the media store.
+ * Timed-word lists are budgeted before sentinel selection so a hostile STT
+ * stream cannot pin the agent event loop on quadratic uniqueness.
  */
 
 import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import {
   assertCompleteAudioRedactionPlan,
   buildAudioRedactionSpans,
-  normalizeSpokenText,
   type PiiTextSpan,
 } from "@elizaos/shared/audio-redaction";
 import {
@@ -28,6 +29,16 @@ import {
   runtimeTranscriptionTranscriber,
 } from "../api/audio-redaction-verify.ts";
 import { mediaFileNameFromUrl } from "../api/media-store.ts";
+import {
+  AudioRedactionWordBudgetError,
+  assertAudioRedactionWordBudget as assertAudioRedactionWordBudgetLinear,
+  selectAudioRedactionSentinels as selectAudioRedactionSentinelsLinear,
+} from "./audio-redaction-word-budget.ts";
+
+export {
+  MAX_AUDIO_REDACTION_WORD_CHARS,
+  MAX_AUDIO_REDACTION_WORDS,
+} from "./audio-redaction-word-budget.ts";
 
 export const AUDIO_REDACTION_SERVICE_TYPE = "audio-redaction";
 export const AUDIO_REDACTION_RULESET_VERSION = "2026-08-06.1";
@@ -51,11 +62,25 @@ export interface VerifiedAudioRedactionResult {
   sentinelTexts: string[];
 }
 
-function intersects(
-  word: TranscriptWord,
-  span: { startMs: number; endMs: number },
-): boolean {
-  return word.startMs < span.endMs && span.startMs < word.endMs;
+function rethrowAudioRedactionBudget(error: unknown): never {
+  if (error instanceof AudioRedactionWordBudgetError) {
+    throw new ElizaError(error.message, {
+      code: error.code,
+      context: error.context,
+    });
+  }
+  throw error;
+}
+
+export function assertAudioRedactionWordBudget(
+  words: readonly TranscriptWord[],
+): void {
+  try {
+    assertAudioRedactionWordBudgetLinear(words);
+  } catch (error) {
+    // error-policy:J2 preserve the budget code for runtime.reportError
+    rethrowAudioRedactionBudget(error);
+  }
 }
 
 /**
@@ -67,34 +92,12 @@ export function selectAudioRedactionSentinels(
   words: readonly TranscriptWord[],
   spans: readonly { startMs: number; endMs: number }[],
 ): string[] {
-  const candidates = words
-    .filter((word) => !spans.some((span) => intersects(word, span)))
-    .map((word) => ({
-      text: word.text.trim(),
-      normalized: normalizeSpokenText(word.text),
-      midpoint: (word.startMs + word.endMs) / 2,
-    }))
-    .filter((word) => word.normalized.length > 0)
-    .sort((a, b) => a.midpoint - b.midpoint);
-  const preferred = candidates.filter((word) => word.normalized.length >= 3);
-  const pool = preferred.length > 0 ? preferred : candidates;
-  const unique = pool.filter(
-    (word, index) =>
-      pool.findIndex(
-        (candidate) => candidate.normalized === word.normalized,
-      ) === index,
-  );
-  if (unique.length === 0) {
-    throw new ElizaError(
-      "audio redaction has no non-PII timed word available as an over-mute sentinel",
-      { code: "AUDIO_REDACTION_SENTINEL_UNAVAILABLE" },
-    );
+  try {
+    return selectAudioRedactionSentinelsLinear(words, spans);
+  } catch (error) {
+    // error-policy:J2 preserve the budget code for runtime.reportError
+    rethrowAudioRedactionBudget(error);
   }
-  const positions =
-    unique.length <= 3
-      ? unique.map((_word, index) => index)
-      : [0, Math.floor((unique.length - 1) / 2), unique.length - 1];
-  return positions.map((index) => unique[index].text);
 }
 
 function independentVerifierFromEnv(): RedactionTranscriber | null {
@@ -158,6 +161,7 @@ export class AudioRedactionService extends Service {
         },
       );
     }
+    assertAudioRedactionWordBudget(request.words);
     const plan = buildAudioRedactionSpans(request.words, request.piiSpans, {
       durationMs: request.durationMs,
     });
