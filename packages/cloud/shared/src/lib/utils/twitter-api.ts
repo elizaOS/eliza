@@ -6,6 +6,7 @@
 
 export const TWITTER_API_BASE = "https://api.twitter.com/2";
 export const TWITTER_UPLOAD_BASE = "https://upload.twitter.com/1.1";
+const TWITTER_REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * Make a Twitter API request
@@ -24,6 +25,7 @@ export async function twitterApiRequest<T>(
       "Content-Type": "application/json",
       ...options.headers,
     },
+    signal: options.signal ?? AbortSignal.timeout(TWITTER_REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {

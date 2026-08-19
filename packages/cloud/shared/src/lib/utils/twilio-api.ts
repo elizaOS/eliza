@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { z } from "zod";
 
 export const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
+const TWILIO_REQUEST_TIMEOUT_MS = 10_000;
 
 export interface TwilioSendMessageRequest {
   to: string;
@@ -100,6 +101,7 @@ export async function twilioApiRequest<T>(
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: body?.toString(),
+    signal: AbortSignal.timeout(TWILIO_REQUEST_TIMEOUT_MS),
   });
 
   const responseText = await response.text();

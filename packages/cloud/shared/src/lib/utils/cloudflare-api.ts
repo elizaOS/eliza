@@ -9,6 +9,7 @@
 import { logger } from "./logger";
 
 const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
+const CLOUDFLARE_REQUEST_TIMEOUT_MS = 10_000;
 
 interface CloudflareErrorEntry {
   code: number;
@@ -62,7 +63,11 @@ export async function cloudflareApiRequest<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, {
+    ...options,
+    headers,
+    signal: options.signal ?? AbortSignal.timeout(CLOUDFLARE_REQUEST_TIMEOUT_MS),
+  });
   const text = await response.text();
 
   let envelope: CloudflareEnvelope<T> | null = null;

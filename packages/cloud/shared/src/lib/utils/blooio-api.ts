@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { z } from "zod";
 
 export const BLOOIO_API_BASE = "https://api.blooio.com/v2/api";
+const BLOOIO_REQUEST_TIMEOUT_MS = 10_000;
 
 export interface BlooioSendMessageRequest {
   text?: string;
@@ -155,6 +156,7 @@ export async function blooioApiRequest<T>(
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(BLOOIO_REQUEST_TIMEOUT_MS),
   });
 
   const responseText = await response.text();
