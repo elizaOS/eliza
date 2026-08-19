@@ -26,11 +26,18 @@ const requireUserOrApiKeyWithOrg = mock(async () => {
   );
 });
 const updateOrganization = mock(async () => undefined);
-const createOrder = mock(async () => ({
-  id: "30000000-0000-4000-8000-000000000001",
-  status: "quoted",
-  stripe_customer_id: null,
-}));
+const createOrder = mock(
+  async (): Promise<{
+    id: string;
+    status: string;
+    stripe_customer_id: string | null;
+    updated_at?: Date;
+  }> => ({
+    id: "30000000-0000-4000-8000-000000000001",
+    status: "quoted",
+    stripe_customer_id: null,
+  }),
+);
 const bindCustomer = mock(async (orderId: string, customerId: string) => ({
   id: orderId,
   status: "quoted",

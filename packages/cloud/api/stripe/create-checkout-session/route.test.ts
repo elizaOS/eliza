@@ -39,14 +39,27 @@ const bindCustomer = mock(async (orderId: string, customerId: string) => ({
 }));
 const markProviderStarted = mock(async () => undefined);
 const bindSession = mock(async () => undefined);
-const customerCreate = mock(async () => ({ id: "cus_a" }));
-const requireUserWithOrg = mock(async () => ({
-  id: "user-a",
-  email: "user@example.test",
-  wallet_address: null,
-  organization_id: "org-a",
-  organization: { stripe_customer_id: "cus_a", name: "Org A" },
-}));
+const customerCreate = mock(
+  async (
+    _params: Record<string, unknown>,
+    _options?: { idempotencyKey?: string },
+  ) => ({ id: "cus_a" }),
+);
+const requireUserWithOrg = mock(
+  async (): Promise<{
+    id: string;
+    email: string;
+    wallet_address: string | null;
+    organization_id: string;
+    organization: { stripe_customer_id: string | null; name: string };
+  }> => ({
+    id: "user-a",
+    email: "user@example.test",
+    wallet_address: null,
+    organization_id: "org-a",
+    organization: { stripe_customer_id: "cus_a", name: "Org A" },
+  }),
+);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserWithOrg,
