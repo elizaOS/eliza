@@ -1,10 +1,11 @@
 /** Verifies app-shell WebSocket origins for dev proxies and native remotes. */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { runInNewContext } from "node:vm";
 import appViteConfig, {
   appDevWsBasePlugin,
   resolveAppShellLocalCspSources,
+  rewriteSameOriginDevProxyOrigin,
 } from "./vite.config";
 
 describe("appDevWsBasePlugin", () => {
@@ -85,5 +86,38 @@ describe("app shell local connection policy", () => {
       localHttpSources: "",
       localConnectSources: "",
     });
+  });
+});
+
+describe("development API proxy origin", () => {
+  test("normalizes only a same-origin Vite request to the local API", () => {
+    const setHeader = mock(() => undefined);
+    expect(
+      rewriteSameOriginDevProxyOrigin(
+        { setHeader },
+        {
+          headers: {
+            host: "127.0.0.1:2563",
+            origin: "http://127.0.0.1:2563",
+          },
+        },
+        "http://127.0.0.1:32637",
+      ),
+    ).toBe(true);
+    expect(setHeader).toHaveBeenCalledWith("Origin", "http://127.0.0.1:32637");
+  });
+
+  test("preserves cross-origin and malformed origins for the API to reject", () => {
+    for (const origin of ["https://attacker.example", "not a URL"]) {
+      const setHeader = mock(() => undefined);
+      expect(
+        rewriteSameOriginDevProxyOrigin(
+          { setHeader },
+          { headers: { host: "127.0.0.1:2563", origin } },
+          "http://127.0.0.1:32637",
+        ),
+      ).toBe(false);
+      expect(setHeader).not.toHaveBeenCalled();
+    }
   });
 });

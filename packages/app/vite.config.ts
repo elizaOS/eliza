@@ -644,6 +644,39 @@ function isExpectedApiProxyConnectError(
   return code === "ECONNREFUSED" || text.includes("ECONNREFUSED");
 }
 
+/**
+ * A browser request to Vite's same-origin `/api` proxy carries the Vite page's
+ * Origin (for example `http://127.0.0.1:2563`), not the upstream API origin.
+ * The API correctly rejects that otherwise-unknown development port. Normalize
+ * only an origin that exactly matches this request's Host; cross-origin callers
+ * keep their original header and remain subject to the API's CORS policy.
+ */
+export function rewriteSameOriginDevProxyOrigin(
+  proxyRequest: { setHeader(name: string, value: string): void },
+  incomingRequest: {
+    headers: { host?: string; origin?: string | string[] };
+  },
+  upstreamOrigin: string,
+): boolean {
+  const origin = incomingRequest.headers.origin;
+  const host = incomingRequest.headers.host?.trim().toLowerCase();
+  if (typeof origin !== "string" || !host) return false;
+
+  try {
+    const parsed = new URL(origin);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.host.toLowerCase() !== host
+    ) {
+      return false;
+    }
+    proxyRequest.setHeader("Origin", upstreamOrigin);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function stringifyBuildLogMessage(message: unknown): string {
   if (!message || typeof message !== "object") {
     return typeof message === "string" ? message : String(message ?? "");
@@ -3329,6 +3362,13 @@ export const INVALID_TRACER_PROVIDER = {};
         changeOrigin: false,
         xfwd: true,
         configure: (proxy) => {
+          proxy.on("proxyReq", (proxyRequest, incomingRequest) => {
+            rewriteSameOriginDevProxyOrigin(
+              proxyRequest,
+              incomingRequest,
+              `http://127.0.0.1:${apiPort}`,
+            );
+          });
           proxy.on("error", (_err, _req, res) => {
             if (!res.headersSent) {
               res.writeHead(502, { "Content-Type": "application/json" });
