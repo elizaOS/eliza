@@ -80,13 +80,6 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json({ error: "Unauthorized" }, 403);
     }
 
-    if (payment.status === "confirmed") {
-      return c.json({
-        success: true,
-        message: "Payment already confirmed",
-        status: payment.status,
-      });
-    }
     if (payment.status === "expired") {
       return c.json({ error: "Payment has expired" }, 400);
     }

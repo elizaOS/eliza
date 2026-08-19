@@ -427,7 +427,7 @@ describe.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
         network: "bsc",
         tokenSymbol: "USDT",
       });
-      const hash = `0x${"a".repeat(64)}`;
+      const hash = `0x${"Ab".repeat(32)}`;
       await trustPayerProof(payment);
       const attached = await service.attachTransaction(env, {
         paymentId: payment.id,
@@ -435,7 +435,7 @@ describe.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
         userId: USER_ID,
       });
       expect(attached.payment.status).toBe("broadcast");
-      expect(attached.payment.transaction_hash).toBe(hash);
+      expect(attached.payment.transaction_hash).toBe(hash.toLowerCase());
       expect(attached.alreadyAttached).toBe(false);
     });
 

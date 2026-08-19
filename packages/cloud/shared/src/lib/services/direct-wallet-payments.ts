@@ -30,6 +30,11 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { base, bsc } from "viem/chains";
 import { dbWrite } from "../../db/client";
+import {
+  canonicalizeCryptoTransactionHash,
+  cryptoTransactionHashesEqual,
+  isHexTransactionHash,
+} from "../../db/crypto-payment-transaction-hash";
 import type { CryptoPayment } from "../../db/repositories/crypto-payments";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
 import type { Bindings } from "../../types/cloud-worker-env";
@@ -1327,17 +1332,25 @@ export class DirectWalletPaymentsService {
         .for("update");
       if (!payment) throw new Error("Payment not found");
       if (payment.user_id !== params.userId) throw new Error("Unauthorized");
+      const canonicalTxHash = canonicalizeCryptoTransactionHash(params.txHash, payment.network);
 
       // Already-confirmed payments don't accept new hashes — the hash is
       // already final.
       if (payment.status === "confirmed") {
+        if (
+          !cryptoTransactionHashesEqual(payment.transaction_hash, canonicalTxHash, payment.network)
+        ) {
+          throw new Error("Payment confirmation replay does not match the committed transaction");
+        }
         return { payment, alreadyAttached: true };
       }
 
-      if (payment.transaction_hash === params.txHash) {
+      if (
+        cryptoTransactionHashesEqual(payment.transaction_hash, canonicalTxHash, payment.network)
+      ) {
         return { payment, alreadyAttached: true };
       }
-      if (payment.transaction_hash && payment.transaction_hash !== params.txHash) {
+      if (payment.transaction_hash) {
         throw new Error("Payment already has a different transaction hash attached");
       }
       if (payment.status !== "pending") {
@@ -1356,7 +1369,11 @@ export class DirectWalletPaymentsService {
       const existingTx = await tx
         .select()
         .from(cryptoPayments)
-        .where(eq(cryptoPayments.transaction_hash, params.txHash))
+        .where(
+          isHexTransactionHash(canonicalTxHash)
+            ? sql`lower(${cryptoPayments.transaction_hash}) = ${canonicalTxHash}`
+            : eq(cryptoPayments.transaction_hash, canonicalTxHash),
+        )
         .for("update");
       if (existingTx.length > 0 && existingTx[0].id !== payment.id) {
         throw new Error("Transaction already attached to another payment");
@@ -1365,7 +1382,7 @@ export class DirectWalletPaymentsService {
       const [updated] = await tx
         .update(cryptoPayments)
         .set({
-          transaction_hash: params.txHash,
+          transaction_hash: canonicalTxHash,
           status: "broadcast",
           ...(payerProofPatch && {
             metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify(
@@ -1458,9 +1475,16 @@ export class DirectWalletPaymentsService {
       if (payment.status === "confirmed") {
         const direct = directMetadata(payment);
         const cfg = directPaymentConfig(env, direct.network);
+        const canonicalTxHash = canonicalizeCryptoTransactionHash(params.txHash, direct.network);
+        if (
+          !cryptoTransactionHashesEqual(payment.transaction_hash, canonicalTxHash, direct.network)
+        ) {
+          throw new Error("Payment confirmation replay does not match the committed transaction");
+        }
         return {
           payment,
           alreadyConfirmed: true,
+          transactionHash: canonicalTxHash,
           direct,
           cfg,
           amountPaid: payment.expected_amount,
@@ -1480,6 +1504,7 @@ export class DirectWalletPaymentsService {
 
       const direct = directMetadata(payment);
       const cfg = directPaymentConfig(env, direct.network);
+      const canonicalTxHash = canonicalizeCryptoTransactionHash(params.txHash, direct.network);
       requireConfigured(cfg);
 
       // Verify the HMAC-signed quote BEFORE the on-chain verify. This
@@ -1517,7 +1542,11 @@ export class DirectWalletPaymentsService {
       const existingTx = await tx
         .select()
         .from(cryptoPayments)
-        .where(eq(cryptoPayments.transaction_hash, params.txHash))
+        .where(
+          isHexTransactionHash(canonicalTxHash)
+            ? sql`lower(${cryptoPayments.transaction_hash}) = ${canonicalTxHash}`
+            : eq(cryptoPayments.transaction_hash, canonicalTxHash),
+        )
         .for("update");
       if (existingTx.length > 0 && existingTx[0].id !== payment.id) {
         throw new Error("Transaction already processed for another payment");
@@ -1528,14 +1557,14 @@ export class DirectWalletPaymentsService {
         verification = await verifySolanaTokenPayment({
           cfg,
           payerAddress: direct.payerAddress,
-          txHash: params.txHash,
+          txHash: canonicalTxHash,
           expectedUnits: direct.expectedTokenUnits,
         });
       } else if (direct.tokenKind === "native") {
         verification = await verifyEvmNativePayment({
           cfg,
           payerAddress: direct.payerAddress,
-          txHash: params.txHash,
+          txHash: canonicalTxHash,
           expectedUnits: direct.expectedTokenUnits,
           slippageBps: direct.slippageBps,
         });
@@ -1547,7 +1576,7 @@ export class DirectWalletPaymentsService {
           cfg,
           tokenAddress: direct.tokenAddress,
           payerAddress: direct.payerAddress,
-          txHash: params.txHash,
+          txHash: canonicalTxHash,
           expectedUnits: direct.expectedTokenUnits,
         });
       }
@@ -1576,7 +1605,7 @@ export class DirectWalletPaymentsService {
         .update(cryptoPayments)
         .set({
           status: "confirmed",
-          transaction_hash: params.txHash,
+          transaction_hash: canonicalTxHash,
           block_number: verification.blockNumber,
           received_amount: amountPaid.toFixed(2),
           confirmed_at: confirmedAt,
@@ -1612,7 +1641,7 @@ export class DirectWalletPaymentsService {
           crypto_payment_id: payment.id,
           payment_method: "crypto",
           provider: "wallet_native",
-          transaction_hash: params.txHash,
+          transaction_hash: canonicalTxHash,
           network: direct.network,
           token: direct.tokenSymbol,
           paid_amount_usd: amountPaid.toFixed(2),
@@ -1629,6 +1658,7 @@ export class DirectWalletPaymentsService {
       return {
         payment: confirmed ?? payment,
         alreadyConfirmed: false,
+        transactionHash: canonicalTxHash,
         direct,
         cfg,
         amountPaid: amountPaid.toFixed(2),
@@ -1646,7 +1676,7 @@ export class DirectWalletPaymentsService {
         organization_id: result.payment.organization_id,
         stripe_invoice_id: invoiceId,
         stripe_customer_id: createCryptoCustomerId(result.payment.organization_id),
-        stripe_payment_intent_id: params.txHash,
+        stripe_payment_intent_id: result.transactionHash,
         amount_due: amountPaid,
         amount_paid: amountPaid,
         currency: "usd",
@@ -1658,7 +1688,7 @@ export class DirectWalletPaymentsService {
           provider: "wallet_native",
           network: direct.network,
           token: direct.tokenSymbol,
-          transaction_hash: params.txHash,
+          transaction_hash: result.transactionHash,
           bonus_credits: direct.bonusCredits,
           sweep,
         },
@@ -1667,7 +1697,7 @@ export class DirectWalletPaymentsService {
 
     logger.info("[DirectWalletPayments] Payment confirmed", {
       paymentId: redact.paymentId(params.paymentId),
-      txHash: redact.txHash(params.txHash),
+      txHash: redact.txHash(result.transactionHash),
     });
 
     return result;

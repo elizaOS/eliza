@@ -1,4 +1,5 @@
 // Coordinates cloud service oxapay behavior behind route handlers.
+import Decimal from "decimal.js";
 import { logger } from "../utils/logger";
 
 export type OxaPayNetwork = "ERC20" | "TRC20" | "BEP20" | "POLYGON" | "SOL" | "BASE" | "ARB" | "OP";
@@ -15,21 +16,21 @@ export interface OxaPayPaymentStatus {
   trackId: string;
   orderId: string;
   status: string;
-  amount: number;
+  amount: string;
   amountText: string;
   currency: string;
   transactions: Array<{
     txHash: string;
     /** The amount to credit (USD value when auto-converted, native value otherwise) */
-    amount: number;
+    amount: string;
     currency: string;
     network: string;
     address: string;
     status: string;
     /** Original amount in native currency (e.g., SOL) before conversion */
-    nativeAmount?: number;
+    nativeAmount?: string;
     /** USD equivalent amount from invoice */
-    usdAmount?: number;
+    usdAmount?: string;
   }>;
 }
 
@@ -92,19 +93,19 @@ export function isOxaPayConfigured(): boolean {
   return Boolean(process.env.OXAPAY_MERCHANT_API_KEY);
 }
 
-function parseOxaPayDecimalAmount(rawAmount: string | undefined): number | null {
+function parseOxaPayDecimalAmount(rawAmount: string | undefined): string | null {
   const trimmedAmount = rawAmount?.trim();
   if (!trimmedAmount || !/^(?:\d+|\d+\.\d+|\.\d+)$/.test(trimmedAmount)) {
     return null;
   }
 
-  const amount = Number(trimmedAmount);
-  return Number.isFinite(amount) ? amount : null;
+  const amount = new Decimal(trimmedAmount);
+  return amount.isFinite() ? amount.toFixed() : null;
 }
 
-function parseOxaPayInvoiceAmount(rawAmount: string | undefined): number {
+function parseOxaPayInvoiceAmount(rawAmount: string | undefined): string {
   const amount = parseOxaPayDecimalAmount(rawAmount);
-  if (amount === null || amount <= 0) {
+  if (amount === null || !new Decimal(amount).gt(0)) {
     throw new OxaPayApiError(
       `OxaPay inquiry returned invalid invoice amount ${JSON.stringify(rawAmount ?? null)}`,
     );
@@ -252,7 +253,7 @@ class OxaPayService {
     // amount, so a result=100 inquiry whose `amount` is missing, malformed, or
     // non-positive is a bad provider response. The parser is deliberately
     // full-string strict; parseFloat would accept corrupt prefixes like "25 USD".
-    let invoiceAmount: number;
+    let invoiceAmount: string;
     try {
       invoiceAmount = parseOxaPayInvoiceAmount(data.amount);
     } catch (error) {

@@ -47,11 +47,23 @@ describe("oxaPayService.getPaymentStatus — invoice amount fail-closed", () => 
   test("valid positive amount resolves and is credited verbatim", async () => {
     stubInquiryResponse({});
     const status = await oxaPayService.getPaymentStatus("trk_1");
-    expect(status.amount).toBe(25);
+    expect(status.amount).toBe("25");
     expect(status.transactions).toHaveLength(1);
-    expect(status.transactions[0].amount).toBe(25);
-    expect(status.transactions[0].usdAmount).toBe(25);
-    expect(status.transactions[0].nativeAmount).toBe(0.5);
+    expect(status.transactions[0].amount).toBe("25");
+    expect(status.transactions[0].usdAmount).toBe("25");
+    expect(status.transactions[0].nativeAmount).toBe("0.5");
+  });
+
+  test("preserves provider decimals without binary floating-point conversion", async () => {
+    stubInquiryResponse({
+      amount: "10.123456789012345678",
+      payAmount: "0.000000010000000001",
+    });
+    const status = await oxaPayService.getPaymentStatus("trk_1");
+    expect(status.amount).toBe("10.123456789012345678");
+    expect(status.transactions[0].amount).toBe("10.123456789012345678");
+    expect(status.transactions[0].usdAmount).toBe("10.123456789012345678");
+    expect(status.transactions[0].nativeAmount).toBe("0.000000010000000001");
   });
 
   test("missing amount throws OxaPayApiError instead of crediting $0", async () => {
@@ -93,21 +105,21 @@ describe("oxaPayService.getPaymentStatus — invoice amount fail-closed", () => 
   test("malformed audit-only payAmount degrades to undefined without failing", async () => {
     stubInquiryResponse({ payAmount: "garbage" });
     const status = await oxaPayService.getPaymentStatus("trk_1");
-    expect(status.amount).toBe(25);
+    expect(status.amount).toBe("25");
     expect(status.transactions[0].nativeAmount).toBeUndefined();
   });
 
   test("partial numeric audit-only payAmount degrades to undefined without failing", async () => {
     stubInquiryResponse({ payAmount: "0.5 SOL" });
     const status = await oxaPayService.getPaymentStatus("trk_1");
-    expect(status.amount).toBe(25);
+    expect(status.amount).toBe("25");
     expect(status.transactions[0].nativeAmount).toBeUndefined();
   });
 
   test("missing payAmount degrades to undefined without failing", async () => {
     stubInquiryResponse({ payAmount: undefined });
     const status = await oxaPayService.getPaymentStatus("trk_1");
-    expect(status.amount).toBe(25);
+    expect(status.amount).toBe("25");
     expect(status.transactions[0].nativeAmount).toBeUndefined();
   });
 });

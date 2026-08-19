@@ -107,12 +107,14 @@ export class ReservationNotFoundError extends ElizaError {
 export class InvalidCreditAmountError extends ElizaError {
   override readonly name = "InvalidCreditAmountError";
 
-  constructor(amount: number, operation: "reserve" | "reserve_and_deduct") {
+  constructor(amount: number, operation: "reserve" | "reserve_and_deduct" | "add_credits") {
     const permitsZero = operation === "reserve";
     super(
       permitsZero
         ? "Credit reservation amount must be a finite, non-negative number"
-        : "Credit deduction amount must be a positive, finite number",
+        : operation === "add_credits"
+          ? "Credit increase amount must be a positive, finite number"
+          : "Credit deduction amount must be a positive, finite number",
       {
         code: "INVALID_CREDIT_AMOUNT",
         context: { amount, operation, permitsZero },
@@ -449,6 +451,11 @@ export class CreditsService {
       stripePaymentIntentId,
       transactionType,
     } = params;
+    const amountDecimal = new Decimal(amount);
+    if (!amountDecimal.isFinite() || !amountDecimal.gt(0)) {
+      throw new InvalidCreditAmountError(Number(amount), "add_credits");
+    }
+    const amountText = amountDecimal.toDecimalPlaces(6).toFixed(6);
     const executor = params.db ?? dbWrite;
     const metadataJson = JSON.stringify(metadata ?? {});
     const stripeId = stripePaymentIntentId ?? null;
@@ -474,7 +481,7 @@ export class CreditsService {
           )
           SELECT
             org.id,
-            ${String(amount)}::numeric,
+            ${amountText}::numeric,
             ${transactionType},
             ${description},
             ${metadataJson}::jsonb,
@@ -525,7 +532,7 @@ export class CreditsService {
         updated AS (
           UPDATE organizations AS o
           SET
-            credit_balance = org.current_balance + ${String(amount)}::numeric,
+            credit_balance = org.current_balance + ${amountText}::numeric,
             settings = CASE
               WHEN ${transactionType} = 'credit'
                 THEN COALESCE(o.settings, '{}'::jsonb) - 'welcomeBonusWithheld'
@@ -568,6 +575,13 @@ export class CreditsService {
         if (!org) {
           throw new Error("Organization not found");
         }
+        if (
+          existingTransaction.organization_id !== organizationId ||
+          existingTransaction.type !== transactionType ||
+          !new Decimal(existingTransaction.amount).equals(amountText)
+        ) {
+          throw new Error("Credit idempotency replay does not match the original settlement");
+        }
         return {
           transaction: existingTransaction,
           newBalance: Number.parseFloat(String(org.credit_balance)),
@@ -575,8 +589,16 @@ export class CreditsService {
       }
     }
 
+    const transaction = toCreditTransaction(row);
+    if (
+      transaction.organization_id !== organizationId ||
+      transaction.type !== transactionType ||
+      !new Decimal(transaction.amount).equals(amountText)
+    ) {
+      throw new Error("Credit idempotency replay does not match the original settlement");
+    }
     return {
-      transaction: toCreditTransaction(row),
+      transaction,
       newBalance: parseNumeric(row.new_balance, "new_balance"),
     };
   }
@@ -657,30 +679,6 @@ export class CreditsService {
       db,
       deferCacheInvalidation = false,
     } = params;
-
-    // IDEMPOTENCY: If stripePaymentIntentId is provided, check for existing transaction
-    // This prevents race conditions when both synchronous and webhook calls try to add credits
-    if (stripePaymentIntentId && !db) {
-      const existingTransaction =
-        await this.getTransactionByStripePaymentIntent(stripePaymentIntentId);
-
-      if (existingTransaction) {
-        logger.info(
-          `[CreditsService] Idempotency: Payment intent ${stripePaymentIntentId} already processed (transaction ${existingTransaction.id})`,
-        );
-
-        // Get current balance to return consistent response
-        const org = await organizationsRepository.findById(organizationId);
-        if (!org) {
-          throw new Error("Organization not found");
-        }
-
-        return {
-          transaction: existingTransaction,
-          newBalance: Number.parseFloat(String(org.credit_balance)),
-        };
-      }
-    }
 
     const result = await this.applyCreditIncrease({
       organizationId,
@@ -1058,7 +1056,8 @@ export class CreditsService {
   }> {
     const { organizationId, amount, description, metadata, stripePaymentIntentId } = params;
 
-    if (new Decimal(String(amount)).lessThanOrEqualTo(0)) {
+    const refundAmount = new Decimal(String(amount));
+    if (!refundAmount.isFinite() || !refundAmount.gt(0)) {
       throw new Error("Refund amount must be positive");
     }
 
