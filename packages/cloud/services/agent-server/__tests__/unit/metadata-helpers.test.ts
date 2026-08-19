@@ -118,6 +118,12 @@ describe("resolveUserName", () => {
     // Backs off before the split pair rather than truncating to a lone surrogate.
     expect(result).toBe("A".repeat(254));
   });
+
+  test("replaces caller-supplied lone surrogates before persistence", () => {
+    expect(
+      resolveUserName("user-001", { senderName: `Alice\ud800\udc00\udfff` }),
+    ).toBe(`Alice\u{10000}\ufffd`);
+  });
 });
 
 describe("buildConnectionMetadata", () => {
@@ -196,6 +202,41 @@ describe("buildConnectionMetadata", () => {
     expect(result).toEqual({
       platformName: "whatsapp",
       chatId: "x".repeat(127),
+    });
+  });
+
+  test("makes every bounded connection field well-formed", () => {
+    const metadata: MessageMetadata = {
+      platformName: "telegram",
+      chatId: `chat\ud800`,
+      accountId: `account\udc00`,
+      platformRecordId: `record\udfff`,
+      chatType: `private\ud800`,
+      senderName: `Alice\udc00`,
+    };
+    expect(buildConnectionMetadata(metadata)).toEqual({
+      platformName: "telegram",
+      chatId: "chat\ufffd",
+    });
+    expect(
+      buildCanonicalMessageMetadata({
+        source: "telegram",
+        userId: "user-001",
+        entityId: "00000000-0000-0000-0000-000000000001",
+        metadata,
+      }),
+    ).toMatchObject({
+      accountId: "account\ufffd",
+      platformMessageId: "record\ufffd",
+      sourceId: "record\ufffd",
+      chatType: "private\ufffd",
+      sender: { id: "user-001", name: "Alice\ufffd" },
+      entityName: "Alice\ufffd",
+      telegram: {
+        accountId: "account\ufffd",
+        messageId: "record\ufffd",
+        name: "Alice\ufffd",
+      },
     });
   });
 
