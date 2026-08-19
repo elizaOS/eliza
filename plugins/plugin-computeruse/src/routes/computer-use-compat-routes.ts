@@ -2,11 +2,16 @@
  * Authenticated compatibility routes for computer-use approvals and approval
  * mode. The handlers resolve the service structurally from the active runtime
  * so the plugin bridge does not require a concrete runtime implementation.
+ * Local-trust is fail-closed: a missing peer address, a proxy client-IP
+ * header, a non-loopback Host, a present Origin that does not match Host
+ * (including port), or browser fetch metadata other than same-origin/none
+ * must not authorize approval routes.
  */
 
 import crypto from "node:crypto";
 import type http from "node:http";
 import { resolveAliasedEnvValue } from "@elizaos/core";
+import { isTrustedComputerUseLocalRequest } from "./computer-use-compat-local-trust.js";
 import { decodePathComponent } from "./route-utils.js";
 
 type CompatRuntimeState = {
@@ -20,38 +25,6 @@ const MAX_BODY_BYTES = 1_048_576;
 function firstHeaderValue(value: string | string[] | undefined): string | null {
   if (typeof value === "string") return value;
   return Array.isArray(value) && typeof value[0] === "string" ? value[0] : null;
-}
-
-function isTrustedLocalRequest(
-  req: Pick<http.IncomingMessage, "headers" | "socket">,
-): boolean {
-  const remoteAddress = req.socket.remoteAddress?.trim().toLowerCase();
-  if (
-    remoteAddress &&
-    remoteAddress !== "127.0.0.1" &&
-    remoteAddress !== "::1" &&
-    remoteAddress !== "0:0:0:0:0:0:0:1" &&
-    remoteAddress !== "::ffff:127.0.0.1" &&
-    remoteAddress !== "::ffff:0:127.0.0.1"
-  ) {
-    return false;
-  }
-
-  const origin = firstHeaderValue(req.headers.origin);
-  if (origin) {
-    try {
-      const parsed = new URL(origin);
-      if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
-        return false;
-      }
-    } catch {
-      // error-policy:J3 untrusted Origin header; an unparseable origin is
-      // rejected (fail-closed), never treated as local.
-      return false;
-    }
-  }
-
-  return true;
 }
 
 function tokenMatches(expected: string, provided: string): boolean {
@@ -111,7 +84,7 @@ function ensureCompatSensitiveRouteAuthorized(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
   res: http.ServerResponse,
 ): boolean {
-  if (isTrustedLocalRequest(req)) return true;
+  if (isTrustedComputerUseLocalRequest(req)) return true;
 
   const expected = getCompatApiToken();
   const provided = getProvidedApiToken(req);
@@ -128,7 +101,7 @@ async function ensureRouteAuthorized(
   res: http.ServerResponse,
   _state?: CompatRuntimeState,
 ): Promise<boolean> {
-  if (isTrustedLocalRequest(req)) return true;
+  if (isTrustedComputerUseLocalRequest(req)) return true;
 
   const expected = getCompatApiToken();
   const provided = getProvidedApiToken(req);
