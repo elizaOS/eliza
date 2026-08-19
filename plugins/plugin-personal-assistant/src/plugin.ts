@@ -116,6 +116,7 @@ import {
 import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.js";
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import { createTrackedWorkRecapDirectRoutingRule } from "./lifeops/briefing/direct-routing.js";
+import { handleBriefMessageMutation } from "./lifeops/briefing/message-engagement-handler.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import { OwnerCalendarMutationGatewayService } from "./lifeops/calendar-mutations/index.js";
 import {
@@ -804,6 +805,7 @@ const rawPersonalAssistantPlugin: Plugin = {
   // overview"). Domain views live in the per-domain plugins; the personal
   // assistant is the chat itself (PERSONAL_ASSISTANT action).
   events: {
+    [EventType.MESSAGE_MUTATED]: [handleBriefMessageMutation],
     // Deterministic completion for fired scheduled tasks awaiting an owner
     // reply — no LLM verb required. Two passes with distinct coverage:
     // `handleScheduledTaskInboundMessage` walks the pending-prompts store for

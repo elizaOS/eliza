@@ -36,7 +36,9 @@ export type LifeOpsBriefEngagementEventType =
   | "kept"
   | "dismissed"
   | "ignored"
-  | "demoted";
+  | "demoted"
+  | "restored"
+  | "rewarded";
 
 export interface LifeOpsBriefStructuredItem {
   readonly itemId: string;
@@ -57,8 +59,8 @@ export interface LifeOpsBriefItemEngagementSummary {
   readonly lastEventAt: string | null;
   /** Newest explicit owner `demoted` marker for this class, if any. */
   readonly lastDemotedAt: string | null;
-  /** Newest explicit owner `kept` marker for this class, if any. */
-  readonly lastKeptAt: string | null;
+  /** Newest explicit owner restore marker for this class, if any. */
+  readonly lastRestoredAt: string | null;
 }
 
 export interface LifeOpsBriefEditorialDecision {
@@ -238,7 +240,7 @@ export function summarizeBriefEngagementRows(
         actedOnCount: 0,
         lastEventAt: null,
         lastDemotedAt: null,
-        lastKeptAt: null,
+        lastRestoredAt: null,
       } satisfies LifeOpsBriefItemEngagementSummary);
     summaries.set(row.itemClass, {
       itemClass: row.itemClass,
@@ -257,11 +259,11 @@ export function summarizeBriefEngagementRows(
         (!current.lastDemotedAt || row.eventAt > current.lastDemotedAt)
           ? row.eventAt
           : current.lastDemotedAt,
-      lastKeptAt:
-        row.eventType === "kept" &&
-        (!current.lastKeptAt || row.eventAt > current.lastKeptAt)
+      lastRestoredAt:
+        row.eventType === "restored" &&
+        (!current.lastRestoredAt || row.eventAt > current.lastRestoredAt)
           ? row.eventAt
-          : current.lastKeptAt,
+          : current.lastRestoredAt,
     });
   }
   return [...summaries.values()].sort((a, b) =>
@@ -279,15 +281,19 @@ function isExplicitlyDemoted(
 ): boolean {
   return Boolean(
     summary.lastDemotedAt &&
-      (!summary.lastKeptAt || summary.lastDemotedAt > summary.lastKeptAt),
+      (!summary.lastRestoredAt ||
+        summary.lastDemotedAt > summary.lastRestoredAt),
   );
 }
 
-/** True when the owner's newest explicit marker for a class is `kept`. */
-function isExplicitlyKept(summary: LifeOpsBriefItemEngagementSummary): boolean {
+/** True when the owner's newest explicit marker restores the class. */
+function isExplicitlyRestored(
+  summary: LifeOpsBriefItemEngagementSummary,
+): boolean {
   return Boolean(
-    summary.lastKeptAt &&
-      (!summary.lastDemotedAt || summary.lastKeptAt >= summary.lastDemotedAt),
+    summary.lastRestoredAt &&
+      (!summary.lastDemotedAt ||
+        summary.lastRestoredAt >= summary.lastDemotedAt),
   );
 }
 
@@ -299,10 +305,10 @@ export function recalibrateBriefItemClasses(
   return summaries
     .filter((summary) => {
       // Explicit owner markers take precedence over inferred ignore history:
-      // a `demoted` marker demotes regardless of counts, and a newer `kept`
+      // a `demoted` marker demotes regardless of counts, and a newer `restored`
       // marker restores the class regardless of counts.
       if (isExplicitlyDemoted(summary)) return true;
-      if (isExplicitlyKept(summary)) return false;
+      if (isExplicitlyRestored(summary)) return false;
       return (
         summary.ignoredCount >= ignoredThreshold &&
         summary.actedOnCount === 0 &&

@@ -223,6 +223,43 @@ per-agent. The `entityId === "self"` row is bootstrapped on first use.
   `HandoffStore.status(roomId).active` and gates further agent
   contributions.
 
+## Brief engagement feedback
+
+`BRIEF` persists impressions only for structured item titles that actually
+appear in a successfully delivered narrative; a JSON action result or a failed
+callback is not treated as owner visibility. Rows retain the producing
+trajectory identity. Authoritative same-day domain mutations can attribute
+`opened`, `replied`, `completed`, `rescheduled`, or `kept` outcomes through
+`LifeOpsRepository.attributeBriefItemEngagement`; occurrence completion is the
+first production bridge. Shipped authoritative bridges also cover occurrence
+snooze and calendar time updates (`rescheduled`), Gmail mark-read (`opened`),
+and provider-confirmed Gmail replies (`replied`). A real `kept` meeting remains
+reserved for a future explicit attendance/outcome contract; elapsed wall-clock
+time alone is not fabricated as engagement. Attribution uses the rolling 24-hour delivery window,
+so an owner-local day crossing UTC midnight remains linked without making UTC
+midnight a behavioral boundary. Expired unacted delivery windows finalize
+idempotently as `ignored` when the brief path next runs.
+
+Provider retries carrying the same domain event ID collapse to one row. Two
+distinct provider event IDs remain distinct even when item, engagement type,
+and timestamp are identical, so neither authoritative mutation is overwritten.
+
+Editorial recalibration reads a rolling 30-day window. Explicit `demoted` and
+`restored` markers control ranking without conflating a restore command with a
+real kept meeting. Non-zero engagement rewards settle onto the original
+morning-brief trajectory through the trajectory service's idempotent delayed
+reward API, without reopening or rewriting a completed step.
+Settlement uses a durable lease marker plus the trajectory's idempotent reward
+receipt: an abandoned claim can be taken after its lease, and a crash after the
+trajectory update is recovered by observing the already-applied receipt.
+Recovery scans a bounded pending-outcome batch independently of the editorial
+30-day window, so a long outage cannot strand an old reward. Completed receipts,
+zero-weight outcomes, trajectory-less legacy rows, and outcomes with active
+leases are excluded from that batch; an expired lease re-enters in chronological
+order. A failed or missing trajectory retains a released marker and rotates by
+last-attempt time, so one poisoned oldest row cannot starve newer pending
+rewards. Operational markers are also excluded from editorial history reads.
+
 ## Plugin dependencies
 
 LifeOps consumes `@elizaos/plugin-health` for sleep/circadian/health metrics,

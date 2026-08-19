@@ -21,6 +21,7 @@ import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
 } from "../../contracts/index.js";
+import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { createLifeOpsTaskDefinition } from "../repository.js";
 import {
@@ -529,6 +530,39 @@ export class DefinitionsDomain {
     if (!view) {
       fail(404, "life-ops occurrence not found after completion");
     }
+    try {
+      const engagement = await this.ctx.repository.attributeBriefItemEngagement(
+        {
+          agentId: this.ctx.agentId(),
+          source: "life",
+          sourceId: updatedOccurrence.id,
+          eventType: "completed",
+          eventAt: updatedOccurrence.completionPayload.completedAt,
+          domainEventId: `occurrence_completed:${updatedOccurrence.id}:${updatedOccurrence.completionPayload.completedAt}`,
+          weight: 1,
+          metadata: {
+            definitionId: updatedOccurrence.definitionId,
+            occurrenceKey: updatedOccurrence.occurrenceKey,
+          },
+        },
+      );
+      if (engagement) {
+        await settleBriefEngagementReward({
+          runtime: this.ctx.runtime,
+          repository: this.ctx.repository,
+          engagement,
+        });
+      }
+    } catch (error) {
+      // error-policy:J7 engagement attribution is diagnostic learning state;
+      // it must not turn an already-committed occurrence completion into a
+      // failed owner action. The gap remains visible through RECENT_ERRORS.
+      this.ctx.runtime.reportError(
+        "LifeOpsDefinitions.attributeBriefCompletion",
+        error,
+        { occurrenceId: updatedOccurrence.id },
+      );
+    }
     return view;
   }
 
@@ -646,6 +680,35 @@ export class DefinitionsDomain {
     );
     if (!view) {
       fail(404, "life-ops occurrence not found after snooze");
+    }
+    try {
+      const engagement = await this.ctx.repository.attributeBriefItemEngagement(
+        {
+          agentId: this.ctx.agentId(),
+          source: "life",
+          sourceId: updatedOccurrence.id,
+          eventType: "rescheduled",
+          eventAt: updatedOccurrence.updatedAt,
+          domainEventId: `occurrence_snoozed:${updatedOccurrence.id}:${updatedOccurrence.updatedAt}`,
+          weight: 1,
+          metadata: { snoozedUntil: updatedOccurrence.snoozedUntil },
+        },
+      );
+      if (engagement) {
+        await settleBriefEngagementReward({
+          runtime: this.ctx.runtime,
+          repository: this.ctx.repository,
+          engagement,
+        });
+      }
+    } catch (error) {
+      // error-policy:J7 snooze already committed; learning telemetry cannot
+      // rewrite the authoritative occurrence result.
+      this.ctx.runtime.reportError(
+        "LifeOpsDefinitions.attributeBriefReschedule",
+        error,
+        { occurrenceId: updatedOccurrence.id },
+      );
     }
     return view;
   }
