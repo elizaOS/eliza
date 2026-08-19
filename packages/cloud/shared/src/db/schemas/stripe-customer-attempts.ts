@@ -5,6 +5,7 @@ import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -58,6 +59,10 @@ export const stripeCustomerAttempts = pgTable(
       table.organization_id,
       table.generation,
     ),
+    id_organization_unique: uniqueIndex("stripe_customer_attempts_id_org_idx").on(
+      table.id,
+      table.organization_id,
+    ),
     idempotency_key_unique: uniqueIndex("stripe_customer_attempts_idempotency_key_idx").on(
       table.idempotency_key,
     ),
@@ -108,3 +113,36 @@ export const stripeCustomerAttempts = pgTable(
 
 export type StripeCustomerAttempt = InferSelectModel<typeof stripeCustomerAttempts>;
 export type NewStripeCustomerAttempt = InferInsertModel<typeof stripeCustomerAttempts>;
+
+export const stripeCustomerLegacyQuarantines = pgTable(
+  "stripe_customer_legacy_quarantines",
+  {
+    organization_id: uuid("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    stripe_customer_id: text("stripe_customer_id").notNull().unique(),
+    reason: text("reason")
+      .notNull()
+      .default("pre-authority Stripe Customer requires provider verification"),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolved_attempt_id: uuid("resolved_attempt_id"),
+    resolved_by: text("resolved_by"),
+    resolution_reason: text("resolution_reason"),
+    resolved_at: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => ({
+    resolved_attempt_tenant_fk: foreignKey({
+      columns: [table.resolved_attempt_id, table.organization_id],
+      foreignColumns: [stripeCustomerAttempts.id, stripeCustomerAttempts.organization_id],
+      name: "stripe_customer_legacy_quarantine_attempt_tenant_fk",
+    }).onDelete("restrict"),
+    resolution_shape: check(
+      "stripe_customer_legacy_quarantine_resolution_shape",
+      sql`(${table.resolved_attempt_id} IS NULL AND ${table.resolved_by} IS NULL AND ${table.resolution_reason} IS NULL AND ${table.resolved_at} IS NULL) OR (${table.resolved_attempt_id} IS NOT NULL AND ${table.resolved_by} IS NOT NULL AND ${table.resolution_reason} IS NOT NULL AND ${table.resolved_at} IS NOT NULL)`,
+    ),
+  }),
+);
+
+export type StripeCustomerLegacyQuarantine = InferSelectModel<
+  typeof stripeCustomerLegacyQuarantines
+>;

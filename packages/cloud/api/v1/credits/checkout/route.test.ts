@@ -168,6 +168,7 @@ describe("credits checkout service-key agent bridge", () => {
     requireUserOrApiKeyWithOrg.mockClear();
     updateOrganization.mockClear();
     ensureStripeCustomer.mockClear();
+    ensureStripeCustomer.mockImplementation(async () => "cus_agent");
     getWithOrganization.mockClear();
     dbRead.select.mockClear();
   });
@@ -231,6 +232,7 @@ describe("credits checkout service-key agent bridge", () => {
       stripe_customer_id: "cus_order_winner",
       updated_at: new Date(),
     }));
+    ensureStripeCustomer.mockResolvedValueOnce("cus_order_winner");
     checkoutList.mockImplementationOnce(async () => ({
       data: [
         {
@@ -273,6 +275,7 @@ describe("credits checkout service-key agent bridge", () => {
   });
 
   test("uses shared durable customer authority when the organization is unbound", async () => {
+    ensureStripeCustomer.mockResolvedValueOnce("cus_created");
     getWithOrganization.mockImplementationOnce(async () => ({
       id: "agent-user",
       email: "agent@example.test",

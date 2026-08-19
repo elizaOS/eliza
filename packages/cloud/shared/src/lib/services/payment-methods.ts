@@ -18,9 +18,6 @@ export class PaymentMethodsService {
    * @throws Error if customer creation fails
    */
   private async ensureStripeCustomer(org: Organization): Promise<string> {
-    if (org.stripe_customer_id) {
-      return org.stripe_customer_id;
-    }
     return stripeCustomerAuthorityService.ensure({
       organizationId: org.id,
       callerIntent: "payment_method",
@@ -89,11 +86,12 @@ export class PaymentMethodsService {
     if (!org.stripe_customer_id) {
       throw new Error("Organization does not have a Stripe customer. Please contact support.");
     }
+    const customerId = await this.ensureStripeCustomer(org);
 
     // Verify the payment method belongs to this customer
     try {
       const paymentMethod = await requireStripe().paymentMethods.retrieve(paymentMethodId);
-      if (paymentMethod.customer !== org.stripe_customer_id) {
+      if (paymentMethod.customer !== customerId) {
         throw new Error("Payment method does not belong to this customer");
       }
     } catch (error) {
@@ -105,7 +103,7 @@ export class PaymentMethodsService {
 
     // Update customer's default payment method in Stripe
     try {
-      await requireStripe().customers.update(org.stripe_customer_id, {
+      await requireStripe().customers.update(customerId, {
         invoice_settings: {
           default_payment_method: paymentMethodId,
         },
@@ -139,6 +137,15 @@ export class PaymentMethodsService {
 
     if (!org) {
       throw new Error("Organization not found");
+    }
+
+    if (!org.stripe_customer_id) {
+      throw new Error("Organization does not have a Stripe customer. Please contact support.");
+    }
+    const customerId = await this.ensureStripeCustomer(org);
+    const paymentMethod = await requireStripe().paymentMethods.retrieve(paymentMethodId);
+    if (paymentMethod.customer !== customerId) {
+      throw new Error("Payment method does not belong to this customer");
     }
 
     // SECURITY: If auto-top-up is enabled, prevent removing the last payment method
@@ -212,8 +219,9 @@ export class PaymentMethodsService {
       return [];
     }
 
+    const customerId = await this.ensureStripeCustomer(org);
     const paymentMethods = await requireStripe().paymentMethods.list({
-      customer: org.stripe_customer_id,
+      customer: customerId,
       type: "card",
     });
 
@@ -238,10 +246,11 @@ export class PaymentMethodsService {
       return null;
     }
 
+    const customerId = await this.ensureStripeCustomer(org);
     const paymentMethod = await requireStripe().paymentMethods.retrieve(paymentMethodId);
 
     // Verify it belongs to this customer
-    if (paymentMethod.customer !== org.stripe_customer_id) {
+    if (paymentMethod.customer !== customerId) {
       return null;
     }
 

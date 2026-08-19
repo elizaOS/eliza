@@ -11,6 +11,7 @@ import { organizations } from "../../db/schemas/organizations";
 import {
   type StripeCustomerAttempt,
   stripeCustomerAttempts,
+  stripeCustomerLegacyQuarantines,
 } from "../../db/schemas/stripe-customer-attempts";
 import { requireStripe } from "../stripe";
 
@@ -33,6 +34,7 @@ export interface StripeCustomerCandidate {
 
 export interface StripeCustomerProvider {
   searchByAttemptId(attemptId: string): Promise<StripeCustomerCandidate[]>;
+  retrieve(customerId: string): Promise<StripeCustomerCandidate | null>;
   create(
     params: Stripe.CustomerCreateParams,
     idempotencyKey: string,
@@ -81,6 +83,17 @@ class LiveStripeCustomerProvider implements StripeCustomerProvider {
     );
   }
 
+  async retrieve(customerId: string): Promise<StripeCustomerCandidate | null> {
+    const customer = await requireStripe().customers.retrieve(customerId);
+    if (customer.deleted) return null;
+    return {
+      id: customer.id,
+      metadata: customer.metadata,
+      created: customer.created,
+      livemode: customer.livemode,
+    };
+  }
+
   async create(
     params: Stripe.CustomerCreateParams,
     idempotencyKey: string,
@@ -101,6 +114,7 @@ interface ClaimedAttempt {
   leaseToken: string;
   organizationName: string;
   billingEmail: string | null;
+  legacyCustomerId?: string;
 }
 
 interface BusyAttempt {
@@ -147,6 +161,19 @@ function authorityMetadata(attempt: StripeCustomerAttempt): Record<string, strin
 function candidateMatches(attempt: StripeCustomerAttempt, candidate: StripeCustomerCandidate) {
   const expected = authorityMetadata(attempt);
   return Object.entries(expected).every(([key, value]) => candidate.metadata[key] === value);
+}
+
+function legacyCandidateMatches(
+  organizationId: string,
+  expectedCustomerId: string,
+  candidate: StripeCustomerCandidate,
+) {
+  return (
+    candidate.id === expectedCustomerId &&
+    candidate.metadata.organization_id === organizationId &&
+    (!candidate.metadata.eliza_organization_id ||
+      candidate.metadata.eliza_organization_id === organizationId)
+  );
 }
 
 export class StripeCustomerAuthorityService {
@@ -197,6 +224,7 @@ export class StripeCustomerAuthorityService {
         .orderBy(desc(stripeCustomerAttempts.generation))
         .for("update")
         .limit(1);
+      let legacyCustomerId: string | undefined;
       if (organization.stripe_customer_id) {
         if (
           attempt?.status === "bound" &&
@@ -205,11 +233,24 @@ export class StripeCustomerAuthorityService {
         ) {
           return { kind: "existing", customerId: organization.stripe_customer_id };
         }
-        throw new StripeCustomerAuthorityError(
-          "STRIPE_CUSTOMER_UNVERIFIED_LOCAL_BINDING",
-          "Organization Stripe Customer lacks a matching durable provider receipt",
-          { organizationId, attemptId: attempt?.id },
-        );
+        const [legacyQuarantine] = await tx
+          .select()
+          .from(stripeCustomerLegacyQuarantines)
+          .where(eq(stripeCustomerLegacyQuarantines.organization_id, organizationId))
+          .for("update")
+          .limit(1);
+        if (
+          !legacyQuarantine ||
+          legacyQuarantine.stripe_customer_id !== organization.stripe_customer_id ||
+          legacyQuarantine.resolved_attempt_id
+        ) {
+          throw new StripeCustomerAuthorityError(
+            "STRIPE_CUSTOMER_UNVERIFIED_LOCAL_BINDING",
+            "Organization Stripe Customer lacks unresolved legacy verification authority",
+            { organizationId, attemptId: attempt?.id },
+          );
+        }
+        legacyCustomerId = organization.stripe_customer_id;
       }
       if (attempt?.status === "quarantined") {
         throw new StripeCustomerAuthorityError(
@@ -243,6 +284,7 @@ export class StripeCustomerAuthorityService {
             request_digest: digest,
             caller_intent: callerIntent,
             idempotency_key: `eliza-customer-attempt:${id}`,
+            status: "prepared",
           })
           .returning();
       }
@@ -296,6 +338,7 @@ export class StripeCustomerAuthorityService {
         leaseToken,
         organizationName: organization.name,
         billingEmail: organization.billing_email,
+        ...(legacyCustomerId ? { legacyCustomerId } : {}),
       };
     });
   }
@@ -310,6 +353,29 @@ export class StripeCustomerAuthorityService {
         .update(stripeCustomerAttempts)
         .set({
           status: "provider_ambiguous",
+          ambiguous_reason: reason.slice(0, 500),
+          lease_token: null,
+          lease_expires_at: null,
+          updated_at: this.now(),
+        })
+        .where(
+          and(
+            eq(stripeCustomerAttempts.id, attemptId),
+            eq(stripeCustomerAttempts.lease_token, leaseToken),
+          ),
+        );
+    });
+  }
+
+  private async releaseResolutionLease(
+    attemptId: string,
+    leaseToken: string,
+    reason: string,
+  ): Promise<void> {
+    await writeTransaction(async (tx) => {
+      await tx
+        .update(stripeCustomerAttempts)
+        .set({
           ambiguous_reason: reason.slice(0, 500),
           lease_token: null,
           lease_expires_at: null,
@@ -350,7 +416,10 @@ export class StripeCustomerAuthorityService {
   }
 
   private async bind(claimed: ClaimedAttempt, candidate: StripeCustomerCandidate): Promise<string> {
-    if (!candidateMatches(claimed.attempt, candidate)) {
+    const matches = claimed.legacyCustomerId
+      ? legacyCandidateMatches(claimed.attempt.organization_id, claimed.legacyCustomerId, candidate)
+      : candidateMatches(claimed.attempt, candidate);
+    if (!matches) {
       return this.quarantine(
         claimed.attempt.id,
         claimed.leaseToken,
@@ -401,7 +470,10 @@ export class StripeCustomerAuthorityService {
         customer_id: candidate.id,
         created: candidate.created,
         livemode: candidate.livemode,
-        metadata: authorityMetadata(attempt),
+        binding_kind: claimed.legacyCustomerId ? "legacy_verified" : "attempt_created",
+        metadata: claimed.legacyCustomerId
+          ? { organization_id: attempt.organization_id }
+          : authorityMetadata(attempt),
       };
       await tx
         .update(stripeCustomerAttempts)
@@ -434,6 +506,29 @@ export class StripeCustomerAuthorityService {
             "Organization Stripe Customer compare-and-set failed",
           );
         }
+      } else if (claimed.legacyCustomerId) {
+        const [resolved] = await tx
+          .update(stripeCustomerLegacyQuarantines)
+          .set({
+            resolved_attempt_id: attempt.id,
+            resolved_by: "system:stripe-customer-authority",
+            resolution_reason: "provider-verified legacy Customer tenant metadata",
+            resolved_at: this.now(),
+          })
+          .where(
+            and(
+              eq(stripeCustomerLegacyQuarantines.organization_id, attempt.organization_id),
+              eq(stripeCustomerLegacyQuarantines.stripe_customer_id, candidate.id),
+              isNull(stripeCustomerLegacyQuarantines.resolved_attempt_id),
+            ),
+          )
+          .returning({ organizationId: stripeCustomerLegacyQuarantines.organization_id });
+        if (!resolved) {
+          throw new StripeCustomerAuthorityError(
+            "STRIPE_CUSTOMER_LEGACY_CAS_FAILED",
+            "Legacy Stripe Customer quarantine resolution compare-and-set failed",
+          );
+        }
       }
       return candidate.id;
     });
@@ -463,7 +558,12 @@ export class StripeCustomerAuthorityService {
 
       let candidates: StripeCustomerCandidate[];
       try {
-        candidates = await this.provider.searchByAttemptId(claim.attempt.id);
+        if (claim.legacyCustomerId) {
+          const candidate = await this.provider.retrieve(claim.legacyCustomerId);
+          candidates = candidate ? [candidate] : [];
+        } else {
+          candidates = await this.provider.searchByAttemptId(claim.attempt.id);
+        }
       } catch (error) {
         await this.markAmbiguous(
           claim.attempt.id,
@@ -480,6 +580,14 @@ export class StripeCustomerAuthorityService {
         );
       }
       if (candidates[0]) return this.bind(claim, candidates[0]);
+
+      if (claim.legacyCustomerId) {
+        return this.quarantine(
+          claim.attempt.id,
+          claim.leaseToken,
+          "published legacy Customer was not retrievable from Stripe",
+        );
+      }
 
       const startedAt = claim.attempt.provider_started_at ?? this.now();
       if (this.now().getTime() - startedAt.getTime() >= PROVIDER_REUSE_WINDOW_MS) {
@@ -530,7 +638,10 @@ export class StripeCustomerAuthorityService {
         "Stripe Customer resolution requires an actor and reason",
       );
     }
-    return writeTransaction(async (tx) => {
+    const actor = input.actor.trim();
+    const reason = input.reason.trim();
+    const leaseToken = randomUUID();
+    const claim = await writeTransaction(async (tx) => {
       const now = this.now();
       const [organization] = await tx
         .select({
@@ -565,10 +676,13 @@ export class StripeCustomerAuthorityService {
         if (
           attempt.status === "abandoned" &&
           input.action === "abandon_and_retry" &&
-          attempt.resolved_by === input.actor.trim() &&
-          attempt.resolution_reason === input.reason.trim()
+          attempt.resolved_by === actor &&
+          attempt.resolution_reason === reason
         ) {
-          return { retryAttemptId: latest?.id };
+          return {
+            kind: "replay" as const,
+            result: { retryAttemptId: latest?.id },
+          };
         }
         throw new StripeCustomerAuthorityError(
           "STRIPE_CUSTOMER_RESOLUTION_NOT_LATEST",
@@ -579,15 +693,17 @@ export class StripeCustomerAuthorityService {
         if (
           input.action !== "bind_unique_candidate" ||
           (attempt.resolved_by !== null &&
-            (attempt.resolved_by !== input.actor.trim() ||
-              attempt.resolution_reason !== input.reason.trim()))
+            (attempt.resolved_by !== actor || attempt.resolution_reason !== reason))
         ) {
           throw new StripeCustomerAuthorityError(
             "STRIPE_CUSTOMER_RESOLUTION_REPLAY_CONFLICT",
             "Stripe Customer resolution replay does not match durable audit authority",
           );
         }
-        return { customerId: attempt.provider_customer_id ?? undefined };
+        return {
+          kind: "replay" as const,
+          result: { customerId: attempt.provider_customer_id ?? undefined },
+        };
       }
       if (attempt.status !== "provider_ambiguous" && attempt.status !== "quarantined") {
         throw new StripeCustomerAuthorityError(
@@ -596,108 +712,207 @@ export class StripeCustomerAuthorityService {
           { status: attempt.status },
         );
       }
-
-      const candidates = (await this.provider.searchByAttemptId(attempt.id)).filter((candidate) =>
-        candidateMatches(attempt, candidate),
-      );
-      if (candidates.length > 1) {
+      if (
+        attempt.lease_token &&
+        attempt.lease_expires_at &&
+        attempt.lease_expires_at.getTime() > now.getTime()
+      ) {
         throw new StripeCustomerAuthorityError(
-          "STRIPE_CUSTOMER_RESOLUTION_DUPLICATE",
-          "Audited resolution found multiple verified Stripe Customers",
+          "STRIPE_CUSTOMER_RESOLUTION_BUSY",
+          "Stripe Customer resolution is already in progress",
         );
       }
-      if (input.action === "bind_unique_candidate") {
-        const candidate = candidates[0];
-        if (!candidate) {
+      const leaseExpiresAt = new Date(now.getTime() + (this.options.leaseMs ?? DEFAULT_LEASE_MS));
+      const [leased] = await tx
+        .update(stripeCustomerAttempts)
+        .set({ lease_token: leaseToken, lease_expires_at: leaseExpiresAt, updated_at: now })
+        .where(eq(stripeCustomerAttempts.id, attempt.id))
+        .returning();
+      if (!leased) {
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_RESOLUTION_LEASE_RACE",
+          "Stripe Customer resolution lease could not be acquired",
+        );
+      }
+      return { kind: "claimed" as const, attempt: leased };
+    });
+    if (claim.kind === "replay") return claim.result;
+
+    let candidates: StripeCustomerCandidate[];
+    try {
+      candidates = (await this.provider.searchByAttemptId(claim.attempt.id)).filter((candidate) =>
+        candidateMatches(claim.attempt, candidate),
+      );
+    } catch (error) {
+      await this.releaseResolutionLease(
+        claim.attempt.id,
+        leaseToken,
+        error instanceof Error ? error.message : "provider search failed during resolution",
+      );
+      throw error;
+    }
+
+    try {
+      return await writeTransaction(async (tx) => {
+        const now = this.now();
+        const [organization] = await tx
+          .select({
+            id: organizations.id,
+            name: organizations.name,
+            billing_email: organizations.billing_email,
+            stripe_customer_id: organizations.stripe_customer_id,
+          })
+          .from(organizations)
+          .where(eq(organizations.id, input.organizationId))
+          .for("update")
+          .limit(1);
+        const [attempt] = await tx
+          .select()
+          .from(stripeCustomerAttempts)
+          .where(eq(stripeCustomerAttempts.id, input.attemptId))
+          .for("update")
+          .limit(1);
+        if (
+          !organization ||
+          !attempt ||
+          attempt.organization_id !== organization.id ||
+          attempt.lease_token !== leaseToken
+        ) {
           throw new StripeCustomerAuthorityError(
-            "STRIPE_CUSTOMER_RESOLUTION_NO_CANDIDATE",
-            "Audited binding requires exactly one verified Stripe Customer",
+            "STRIPE_CUSTOMER_RESOLUTION_LEASE_LOST",
+            "Stripe Customer resolution authority changed during provider lookup",
           );
         }
-        if (organization.stripe_customer_id && organization.stripe_customer_id !== candidate.id) {
+        const [latest] = await tx
+          .select({ id: stripeCustomerAttempts.id })
+          .from(stripeCustomerAttempts)
+          .where(eq(stripeCustomerAttempts.organization_id, organization.id))
+          .orderBy(desc(stripeCustomerAttempts.generation))
+          .limit(1);
+        if (latest?.id !== attempt.id) {
           throw new StripeCustomerAuthorityError(
-            "STRIPE_CUSTOMER_ORGANIZATION_CONFLICT",
-            "Organization is already bound to another Stripe Customer",
+            "STRIPE_CUSTOMER_RESOLUTION_NOT_LATEST",
+            "Only the latest Stripe Customer attempt can be resolved",
           );
         }
-        const receipt = {
-          customer_id: candidate.id,
-          created: candidate.created,
-          livemode: candidate.livemode,
-          metadata: authorityMetadata(attempt),
-        };
+        if (candidates.length > 1) {
+          throw new StripeCustomerAuthorityError(
+            "STRIPE_CUSTOMER_RESOLUTION_DUPLICATE",
+            "Audited resolution found multiple verified Stripe Customers",
+          );
+        }
+        if (input.action === "bind_unique_candidate") {
+          const candidate = candidates[0];
+          if (!candidate) {
+            throw new StripeCustomerAuthorityError(
+              "STRIPE_CUSTOMER_RESOLUTION_NO_CANDIDATE",
+              "Audited binding requires exactly one verified Stripe Customer",
+            );
+          }
+          if (organization.stripe_customer_id && organization.stripe_customer_id !== candidate.id) {
+            throw new StripeCustomerAuthorityError(
+              "STRIPE_CUSTOMER_ORGANIZATION_CONFLICT",
+              "Organization is already bound to another Stripe Customer",
+            );
+          }
+          const receipt = {
+            customer_id: candidate.id,
+            created: candidate.created,
+            livemode: candidate.livemode,
+            binding_kind: "attempt_created",
+            metadata: authorityMetadata(attempt),
+          };
+          await tx
+            .update(stripeCustomerAttempts)
+            .set({
+              status: "bound",
+              provider_customer_id: candidate.id,
+              provider_receipt: receipt,
+              provider_livemode: candidate.livemode,
+              bound_at: now,
+              lease_token: null,
+              lease_expires_at: null,
+              ambiguous_reason: null,
+              resolved_by: actor,
+              resolution_reason: reason,
+              resolved_at: now,
+              updated_at: now,
+            })
+            .where(eq(stripeCustomerAttempts.id, attempt.id));
+          if (!organization.stripe_customer_id) {
+            const [updated] = await tx
+              .update(organizations)
+              .set({ stripe_customer_id: candidate.id, updated_at: now })
+              .where(
+                and(
+                  eq(organizations.id, organization.id),
+                  isNull(organizations.stripe_customer_id),
+                ),
+              )
+              .returning({ id: organizations.id });
+            if (!updated) {
+              throw new StripeCustomerAuthorityError(
+                "STRIPE_CUSTOMER_CAS_FAILED",
+                "Organization Stripe Customer compare-and-set failed during resolution",
+              );
+            }
+          }
+          return { customerId: candidate.id };
+        }
+        if (candidates[0]) {
+          throw new StripeCustomerAuthorityError(
+            "STRIPE_CUSTOMER_RESOLUTION_CANDIDATE_EXISTS",
+            "A verified Stripe Customer must be bound instead of abandoned",
+          );
+        }
+        if (
+          !attempt.provider_started_at ||
+          now.getTime() - attempt.provider_started_at.getTime() < PROVIDER_REUSE_WINDOW_MS
+        ) {
+          throw new StripeCustomerAuthorityError(
+            "STRIPE_CUSTOMER_RESOLUTION_WINDOW_ACTIVE",
+            "Stripe provider recovery window has not expired",
+          );
+        }
         await tx
           .update(stripeCustomerAttempts)
           .set({
-            status: "bound",
-            provider_customer_id: candidate.id,
-            provider_receipt: receipt,
-            provider_livemode: candidate.livemode,
-            bound_at: now,
+            status: "abandoned",
             lease_token: null,
             lease_expires_at: null,
-            ambiguous_reason: null,
-            resolved_by: input.actor.trim(),
-            resolution_reason: input.reason.trim(),
+            resolved_by: actor,
+            resolution_reason: reason,
             resolved_at: now,
             updated_at: now,
           })
           .where(eq(stripeCustomerAttempts.id, attempt.id));
-        if (!organization.stripe_customer_id) {
-          await tx
-            .update(organizations)
-            .set({ stripe_customer_id: candidate.id, updated_at: now })
-            .where(
-              and(eq(organizations.id, organization.id), isNull(organizations.stripe_customer_id)),
-            );
-        }
-        return { customerId: candidate.id };
-      }
-      if (candidates[0]) {
-        throw new StripeCustomerAuthorityError(
-          "STRIPE_CUSTOMER_RESOLUTION_CANDIDATE_EXISTS",
-          "A verified Stripe Customer must be bound instead of abandoned",
-        );
-      }
-      if (
-        !attempt.provider_started_at ||
-        now.getTime() - attempt.provider_started_at.getTime() < PROVIDER_REUSE_WINDOW_MS
-      ) {
-        throw new StripeCustomerAuthorityError(
-          "STRIPE_CUSTOMER_RESOLUTION_WINDOW_ACTIVE",
-          "Stripe provider recovery window has not expired",
-        );
-      }
-      await tx
-        .update(stripeCustomerAttempts)
-        .set({
-          status: "abandoned",
-          lease_token: null,
-          lease_expires_at: null,
-          resolved_by: input.actor.trim(),
-          resolution_reason: input.reason.trim(),
-          resolved_at: now,
-          updated_at: now,
-        })
-        .where(eq(stripeCustomerAttempts.id, attempt.id));
-      const generation = attempt.generation + 1;
-      const id = randomUUID();
-      const digest = requestDigest({
-        organizationId: organization.id,
-        generation,
-        organizationName: organization.name,
-        billingEmail: organization.billing_email,
+        const generation = attempt.generation + 1;
+        const id = randomUUID();
+        const digest = requestDigest({
+          organizationId: organization.id,
+          generation,
+          organizationName: organization.name,
+          billingEmail: organization.billing_email,
+        });
+        await tx.insert(stripeCustomerAttempts).values({
+          id,
+          organization_id: organization.id,
+          generation,
+          request_digest: digest,
+          caller_intent: attempt.caller_intent,
+          idempotency_key: `eliza-customer-attempt:${id}`,
+          status: "prepared",
+        });
+        return { retryAttemptId: id };
       });
-      await tx.insert(stripeCustomerAttempts).values({
-        id,
-        organization_id: organization.id,
-        generation,
-        request_digest: digest,
-        caller_intent: attempt.caller_intent,
-        idempotency_key: `eliza-customer-attempt:${id}`,
-      });
-      return { retryAttemptId: id };
-    });
+    } catch (error) {
+      await this.releaseResolutionLease(
+        claim.attempt.id,
+        leaseToken,
+        error instanceof Error ? error.message : "resolution commit failed",
+      );
+      throw error;
+    }
   }
 }
 
