@@ -118,8 +118,13 @@ async function expectedPendingBanner(): Promise<string> {
 async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
   await client.query(`
     CREATE TABLE jobs (
-      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      type text NOT NULL DEFAULT 'checkpoint_fixture',
       status text NOT NULL DEFAULT 'pending',
+      data jsonb NOT NULL DEFAULT '{}'::jsonb,
+      data_storage text NOT NULL DEFAULT 'inline',
+      agent_id text,
+      organization_id uuid,
       execution_quiesced_at timestamp with time zone,
       started_at timestamp with time zone,
       completed_at timestamp with time zone,
@@ -140,6 +145,7 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
       bridge_url text,
       health_url text,
       headscale_ip text,
+      last_backup_at timestamp with time zone,
       billing_status text NOT NULL DEFAULT 'active',
       last_billed_at timestamp with time zone,
       hourly_rate numeric(10, 4) DEFAULT '0.0200',
@@ -221,6 +227,38 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
       metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
       stripe_payment_intent_id text,
       created_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE containers (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      status text NOT NULL DEFAULT 'pending',
+      image_tag text,
+      environment_vars jsonb NOT NULL DEFAULT '{}'::jsonb,
+      desired_count integer NOT NULL DEFAULT 1,
+      cpu integer NOT NULL DEFAULT 1792,
+      memory integer NOT NULL DEFAULT 1792,
+      node_id text,
+      volume_path text,
+      last_billed_at timestamp without time zone,
+      total_billed numeric(10, 2) NOT NULL DEFAULT '0.00'
+    );
+    CREATE TABLE container_billing_records (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      container_id uuid NOT NULL,
+      organization_id uuid NOT NULL,
+      amount numeric(10, 2) NOT NULL,
+      billing_period_start timestamp without time zone NOT NULL,
+      billing_period_end timestamp without time zone NOT NULL,
+      status text NOT NULL DEFAULT 'success',
+      credit_transaction_id uuid,
+      error_message text,
+      created_at timestamp without time zone NOT NULL DEFAULT now(),
+      CONSTRAINT container_billing_records_container_id_containers_id_fk
+        FOREIGN KEY (container_id) REFERENCES containers(id) ON DELETE CASCADE,
+      CONSTRAINT container_billing_records_organization_id_organizations_id_fk
+        FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+      CONSTRAINT container_billing_records_credit_transaction_id_credit_transactions_id_fk
+        FOREIGN KEY (credit_transaction_id) REFERENCES credit_transactions(id) ON DELETE SET NULL
     );
     CREATE TABLE credit_packs (
       id uuid PRIMARY KEY
@@ -609,6 +647,96 @@ async function expectPreCheckpointOrganizationBillingAuthority(
   });
 }
 
+async function expectPreCheckpointComputeBillingAuthority(
+  client: pg.Client,
+): Promise<void> {
+  const authority = await client.query<{
+    container_columns: string[];
+    receipt_columns: string[];
+    jobs_id_type: string;
+    last_backup_type: string;
+    container_lifecycle_revision: string | null;
+    receipt_rate_segments: string | null;
+    container_tenant_index: string | null;
+    agent_receipts: string | null;
+    container_stop_intents: string | null;
+    agent_stop_intents: string | null;
+    rate_segments: string | null;
+  }>(`
+    SELECT
+      (SELECT array_agg(format('%s:%s:%s:%s', a.attname,
+          format_type(a.atttypid, a.atttypmod),
+          CASE WHEN a.attnotnull THEN 'required' ELSE 'nullable' END,
+          COALESCE(pg_get_expr(d.adbin, d.adrelid), 'none')) ORDER BY a.attnum)
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'containers'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped) AS container_columns,
+      (SELECT array_agg(format('%s:%s:%s:%s', a.attname,
+          format_type(a.atttypid, a.atttypmod),
+          CASE WHEN a.attnotnull THEN 'required' ELSE 'nullable' END,
+          COALESCE(pg_get_expr(d.adbin, d.adrelid), 'none')) ORDER BY a.attnum)
+        FROM pg_attribute a
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'container_billing_records'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped) AS receipt_columns,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'id')
+        AS jobs_id_type,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'agent_sandboxes'
+          AND column_name = 'last_backup_at') AS last_backup_type,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'containers'
+          AND column_name = 'lifecycle_revision') AS container_lifecycle_revision,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'container_billing_records'
+          AND column_name = 'rate_segments') AS receipt_rate_segments,
+      to_regclass('public.containers_id_organization_unique')::text AS container_tenant_index,
+      to_regclass('public.agent_billing_records')::text AS agent_receipts,
+      to_regclass('public.container_compute_stop_intents')::text AS container_stop_intents,
+      to_regclass('public.agent_compute_stop_intents')::text AS agent_stop_intents,
+      to_regclass('public.compute_billing_rate_segments')::text AS rate_segments
+  `);
+  expect(authority.rows[0]).toEqual({
+    container_columns: [
+      "id:uuid:required:gen_random_uuid()",
+      "organization_id:uuid:required:none",
+      "status:text:required:'pending'::text",
+      "image_tag:text:nullable:none",
+      "environment_vars:jsonb:required:'{}'::jsonb",
+      "desired_count:integer:required:1",
+      "cpu:integer:required:1792",
+      "memory:integer:required:1792",
+      "node_id:text:nullable:none",
+      "volume_path:text:nullable:none",
+      "last_billed_at:timestamp without time zone:nullable:none",
+      "total_billed:numeric(10,2):required:0.00",
+    ],
+    receipt_columns: [
+      "id:uuid:required:gen_random_uuid()",
+      "container_id:uuid:required:none",
+      "organization_id:uuid:required:none",
+      "amount:numeric(10,2):required:none",
+      "billing_period_start:timestamp without time zone:required:none",
+      "billing_period_end:timestamp without time zone:required:none",
+      "status:text:required:'success'::text",
+      "credit_transaction_id:uuid:nullable:none",
+      "error_message:text:nullable:none",
+      "created_at:timestamp without time zone:required:now()",
+    ],
+    jobs_id_type: "uuid",
+    last_backup_type: "timestamp with time zone",
+    container_lifecycle_revision: null,
+    receipt_rate_segments: null,
+    container_tenant_index: null,
+    agent_receipts: null,
+    container_stop_intents: null,
+    agent_stop_intents: null,
+    rate_segments: null,
+  });
+}
+
 describe.skipIf(!ENABLED)(
   "migrate-with-diagnostics real PostgreSQL safety",
   () => {
@@ -631,6 +759,7 @@ describe.skipIf(!ENABLED)(
       await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
       await expectPreCheckpointPaymentRequestAuthority(database.client);
       await expectPreCheckpointOrganizationBillingAuthority(database.client);
+      await expectPreCheckpointComputeBillingAuthority(database.client);
       await database.client.query(`
         INSERT INTO jobs (
           status,
