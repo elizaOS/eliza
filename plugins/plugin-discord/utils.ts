@@ -19,6 +19,7 @@ import {
 	type ReplyToMode,
 	type SsrfPolicy,
 	trimTokens,
+	truncateWellFormed,
 } from "@elizaos/core";
 import {
 	ActionRowBuilder,
@@ -924,8 +925,19 @@ export function splitMessage(
 				splitIdx = lastSpace;
 			}
 
-			chunks.push(line.slice(0, splitIdx));
-			line = line.slice(splitIdx).trimStart();
+			// A raw slice() can land between the two UTF-16 code units of a
+			// surrogate pair (most emoji), leaving a lone surrogate at the
+			// chunk boundary that corrupts the character in the delivered
+			// message. truncateWellFormed backs the cut off by one unit
+			// instead.
+			const head = truncateWellFormed(line, splitIdx);
+			if (head.length === 0) {
+				throw new RangeError(
+					"Discord message chunk limit made no UTF-16 progress",
+				);
+			}
+			chunks.push(head);
+			line = line.slice(head.length).trimStart();
 		}
 		chunks.push(line);
 		return chunks;
