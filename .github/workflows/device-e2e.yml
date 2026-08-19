@@ -338,6 +338,9 @@ jobs:
       - name: Install workspace
         run: bun install --frozen-lockfile --ignore-scripts
 
+      - name: Build computer-use workspace dependencies
+        run: bun run --cwd packages/core build
+
       - name: Start disposable X11 desktop
         run: |
           Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp >"$RUNNER_TEMP/xvfb.log" 2>&1 &
