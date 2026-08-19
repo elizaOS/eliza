@@ -3054,7 +3054,11 @@ export class HouseholdCoordinationRuntimeService extends Service {
       // this service at every boot on the live box. Poll registration for a
       // bounded window, then take the load promise.
       (async () => {
-        const deadline = Date.now() + 30_000;
+        // 120s: heavy boots (cold caches, many workspace plugins) register
+        // the deferred scheduling plugin after the old 30s window and this
+        // service — plus family-communications above it — failed for the
+        // whole process lifetime (live 2026-08-19, 2 of ~15 boots).
+        const deadline = Date.now() + 120_000;
         while (
           !runtime.hasService(ScheduledTaskRunnerService.serviceType) &&
           Date.now() < deadline
