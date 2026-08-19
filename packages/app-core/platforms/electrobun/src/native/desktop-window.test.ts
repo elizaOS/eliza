@@ -648,7 +648,7 @@ describe("DesktopManager main window controls", () => {
     expect(electrobunMock.Utils.quit).not.toHaveBeenCalled();
   });
 
-  it("attaches a native Windows and Quit fallback menu at tray creation", async () => {
+  it("attaches a minimal native fallback menu at tray creation", async () => {
     const manager = new DesktopManager();
 
     await manager.createTray({ icon: "/tmp/appIcon.png" });
@@ -658,19 +658,13 @@ describe("DesktopManager main window controls", () => {
     expect(tray.setMenu).toHaveBeenCalledWith([
       expect.objectContaining({
         type: "normal",
-        label: "Windows",
-        submenu: [
-          expect.objectContaining({
-            type: "normal",
-            label: "Open Eliza",
-            action: "tray-show-window",
-          }),
-        ],
+        label: "Open Eliza",
+        action: "tray-show-window",
       }),
       { type: "separator" },
       expect.objectContaining({
         type: "normal",
-        label: "Quit",
+        label: "Quit Eliza",
         action: "quit",
       }),
     ]);

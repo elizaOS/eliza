@@ -2786,13 +2786,14 @@ extern "C" bool disableWindowBackForwardNavigationGestures(void *windowPtr) {
 }
 
 // ============================================================================
-// Fn-key hold monitor (push-to-talk quasimode, #20483)
+// Modifier-key monitor (fn push-to-talk + two-Option Eliza summon)
 // ============================================================================
 
 /*
- * Listen-only CGEventTap on flagsChanged that reports fn (Globe) key DOWN and
- * UP transitions, giving the renderer the held quasimode that trigger-only
- * GlobalShortcut cannot express. The tap runs on a dedicated thread with its
+ * Listen-only CGEventTap on flagsChanged that reports fn (Globe) key DOWN/UP
+ * transitions and the simultaneous left+right Option chord. This gives the
+ * renderer modifier-only gestures that trigger-only GlobalShortcut cannot
+ * express. The tap runs on a dedicated thread with its
  * own CFRunLoop; transitions land in a small lock-free ring buffer drained by
  * the Bun host over FFI (elizaFnMonitorPoll), matching the poll-based
  * delivery the dylib already uses for notification choices.
@@ -2809,7 +2810,7 @@ extern "C" bool disableWindowBackForwardNavigationGestures(void *windowPtr) {
 static const int kElizaFnEventQueueCapacity = 64;
 
 // Ring buffer: single producer (tap thread) / single consumer (FFI poll).
-// Values: 1 = fn down, 2 = fn up.
+// Values: 1 = fn down, 2 = fn up, 4 = both physical Option keys down.
 static std::atomic<int> elizaFnEventQueue[kElizaFnEventQueueCapacity];
 static std::atomic<unsigned> elizaFnEventHead{0};
 static std::atomic<unsigned> elizaFnEventTail{0};
@@ -2817,6 +2818,9 @@ static std::atomic<unsigned> elizaFnEventTail{0};
 static std::atomic<bool> elizaFnMonitorRunning{false};
 static std::atomic<bool> elizaFnKeyIsDown{false};
 static std::atomic<bool> elizaFnSawOtherKeyDuringHold{false};
+static std::atomic<bool> elizaLeftOptionIsDown{false};
+static std::atomic<bool> elizaRightOptionIsDown{false};
+static std::atomic<bool> elizaBothOptionsLatched{false};
 static CFMachPortRef elizaFnEventTap = nullptr;
 static CFRunLoopRef elizaFnTapRunLoop = nullptr;
 static NSThread *elizaFnTapThread = nil;
@@ -2848,6 +2852,24 @@ static CGEventRef elizaFnTapCallback(CGEventTapProxy proxy, CGEventType type,
 	if (type == kCGEventFlagsChanged) {
 		int64_t keycode =
 			CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+		// Physical Option keycodes are distinct (left 58, right 61), while the
+		// aggregate Alternate flag is not. Query combined-session key state on
+		// either transition so the chord fires exactly once when the second key
+		// goes down, then rearms only after either key is released.
+		if (keycode == 58 || keycode == 61) {
+			bool leftDown = CGEventSourceKeyState(
+				kCGEventSourceStateCombinedSessionState, (CGKeyCode)58);
+			bool rightDown = CGEventSourceKeyState(
+				kCGEventSourceStateCombinedSessionState, (CGKeyCode)61);
+			elizaLeftOptionIsDown.store(leftDown);
+			elizaRightOptionIsDown.store(rightDown);
+			bool bothDown = leftDown && rightDown;
+			bool wasLatched = elizaBothOptionsLatched.exchange(bothDown);
+			if (bothDown && !wasLatched) {
+				elizaFnEventPush(4);
+			}
+			return event;
+		}
 		// kVK_Function == 63. Other modifiers also arrive as flagsChanged;
 		// they must not disturb an in-flight fn hold.
 		if (keycode == 63) {
@@ -2886,6 +2908,9 @@ extern "C" int elizaFnMonitorStart(void) {
 	if (elizaFnMonitorRunning.load()) {
 		return 0;
 	}
+	elizaLeftOptionIsDown.store(false);
+	elizaRightOptionIsDown.store(false);
+	elizaBothOptionsLatched.store(false);
 
 	__block int result = 2;
 	dispatch_semaphore_t ready = dispatch_semaphore_create(0);
@@ -2952,6 +2977,9 @@ extern "C" void elizaFnMonitorStop(void) {
 	}
 	elizaFnTapThread = nil;
 	elizaFnKeyIsDown.store(false);
+	elizaLeftOptionIsDown.store(false);
+	elizaRightOptionIsDown.store(false);
+	elizaBothOptionsLatched.store(false);
 	// Drain the queue so a later start begins clean.
 	elizaFnEventTail.store(elizaFnEventHead.load());
 }
@@ -2960,7 +2988,7 @@ extern "C" void elizaFnMonitorStop(void) {
  * Drain one queued fn transition.
  * Returns 0 = none pending, 1 = fn down, 2 = fn up,
  * 3 = fn up after a chord (another key was pressed during the hold — the
- * host should cancel rather than send).
+ * host should cancel rather than send), 4 = both physical Option keys down.
  */
 extern "C" int elizaFnMonitorPoll(void) {
 	unsigned tail = elizaFnEventTail.load(std::memory_order_relaxed);

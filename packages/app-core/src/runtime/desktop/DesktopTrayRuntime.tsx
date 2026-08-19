@@ -2,10 +2,8 @@
  * Headless desktop runtime (renders null) that binds the Electrobun tray/menu to
  * app actions. Publishes the tray-popover launcher catalog from
  * DESKTOP_VIEW_WINDOWS to the renderer store, subscribes to desktopTrayMenuClick
- * to drive the App-menu "Reset App…" flow, and handles TRAY_ACTION_EVENT items:
- * opening views in their own desktop windows, navigating chat/plugins/
- * notifications, toggling agent lifecycle, firing a test notification, and window
- * show/hide/quit — all through the electrobun-rpc bridge. Only active under
+ * to drive the App-menu "Reset App…" flow, and handles the deliberately small
+ * native tray surface plus detached-view launchers. Only active under
  * isElectrobunRuntime(); polls with backoff until the RPC bridge attaches.
  */
 import {
@@ -15,11 +13,7 @@ import {
   subscribeDesktopBridgeEvent,
 } from "@elizaos/ui/bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge/electrobun-runtime";
-import {
-  dispatchChatOpen,
-  dispatchOpenNotificationCenter,
-  TRAY_ACTION_EVENT,
-} from "@elizaos/ui/events";
+import { TRAY_ACTION_EVENT } from "@elizaos/ui/events";
 import {
   type DesktopLauncherEntry,
   type DesktopLauncherIconId,
@@ -52,27 +46,8 @@ interface TrayActionDetail {
   itemId?: string;
 }
 
-function isAgentActive(state: string | null | undefined): boolean {
-  return !(
-    state === null ||
-    state === undefined ||
-    state === "stopped" ||
-    state === "not_started"
-  );
-}
-
 export function DesktopTrayRuntime() {
-  const {
-    agentStatus,
-    handleRestart,
-    handleReset,
-    handleResetAppliedFromMain,
-    handleStart,
-    handleStop,
-    setTab,
-    switchShellView,
-    t,
-  } = useApp();
+  const { handleReset, handleResetAppliedFromMain, t } = useApp();
 
   // Publish the tray-popover launcher catalog to the renderer store the popover
   // shell reads (#12184). Single source of truth stays `DESKTOP_VIEW_WINDOWS`;
@@ -205,67 +180,14 @@ export function DesktopTrayRuntime() {
         }
 
         switch (itemId) {
-          case "tray-open-chat":
-            // Messages belongs to the floating shared composer, not the
-            // desktop dashboard tab. The host listener opens and focuses the
-            // same half-height surface used by the pill.
-            dispatchChatOpen();
-            await showAndFocusWindow();
-            return;
-          case "tray-open-plugins":
-            switchShellView("desktop");
-            setTab("plugins");
-            await showAndFocusWindow();
-            return;
-          case "tray-open-notifications":
-            // Desktop-native entry (#10706): the notification center is the
-            // dashboard widget on the home surface, so the always-mounted
-            // headless NotificationsShellBoot answers this event by
-            // navigating there.
-            switchShellView("desktop");
-            dispatchOpenNotificationCenter();
-            await showAndFocusWindow();
-            return;
           case "tray-open-desktop-workspace":
             await openDesktopSettingsWindow("desktop");
             return;
-          case "tray-open-voice-controls":
-            await openDesktopSettingsWindow("voice");
-            return;
-          case "tray-toggle-lifecycle":
-            if (isAgentActive(agentStatus?.state)) {
-              await handleStop();
-            } else {
-              await handleStart();
-            }
-            return;
-          case "tray-restart":
-            await handleRestart();
-            return;
-          case "tray-notify":
-            await invokeDesktopBridgeRequest<{ id: string }>({
-              rpcMethod: "desktopShowNotification",
-              ipcChannel: "desktop:showNotification",
-              params: {
-                title: t("desktop.tray.testNotification.title", {
-                  defaultValue: "Desktop",
-                }),
-                body: t("desktop.tray.testNotification.body", {
-                  defaultValue:
-                    "Renderer tray actions are wired and responding.",
-                }),
-                urgency: "normal",
-              },
-            });
+          case "tray-open-settings":
+            await openDesktopSettingsWindow();
             return;
           case "tray-show-window":
             await showAndFocusWindow();
-            return;
-          case "tray-hide-window":
-            await invokeDesktopBridgeRequest<void>({
-              rpcMethod: "desktopHideWindow",
-              ipcChannel: "desktop:hideWindow",
-            });
             return;
           case "quit":
             await invokeDesktopBridgeRequest<void>({
@@ -288,15 +210,7 @@ export function DesktopTrayRuntime() {
     return () => {
       document.removeEventListener(TRAY_ACTION_EVENT, handleTrayAction);
     };
-  }, [
-    agentStatus?.state,
-    handleRestart,
-    handleStart,
-    handleStop,
-    setTab,
-    switchShellView,
-    t,
-  ]);
+  }, [t]);
 
   return null;
 }

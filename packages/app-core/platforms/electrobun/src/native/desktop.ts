@@ -167,13 +167,9 @@ interface ShowItemInFolderOptions {
 }
 
 const FALLBACK_TRAY_MENU_ITEMS: TrayMenuItem[] = [
-  {
-    id: "tray-windows",
-    label: "Windows",
-    submenu: [{ id: "tray-show-window", label: "Open Eliza" }],
-  },
+  { id: "tray-show-window", label: "Open Eliza" },
   { id: "tray-fallback-separator", type: "separator" },
-  { id: "quit", label: "Quit" },
+  { id: "quit", label: "Quit Eliza" },
 ];
 
 type ElectrobunEventHandler = (...args: unknown[]) => void;
@@ -1002,7 +998,7 @@ export class DesktopManager {
     return true;
   }
 
-  // MARK: - Fn-hold push-to-talk (#20483)
+  // MARK: - Modifier-key gestures (fn push-to-talk + Option chord)
 
   /**
    * Start the native fn (Globe) key monitor and forward hold transitions to
@@ -1054,7 +1050,12 @@ export class DesktopManager {
     for (;;) {
       const event = pollFnMonitor();
       if (event === null) break;
-      if (event === "down" && !this.fnHoldDownReported) {
+      if (event === "both-options") {
+        this.send("desktopShortcutPressed", {
+          id: "chat-overlay",
+          accelerator: "LeftOption+RightOption",
+        });
+      } else if (event === "down" && !this.fnHoldDownReported) {
         this.fnHoldDownReported = true;
         this.send("desktopFnHoldChanged", { held: true, cancelled: false });
       } else if (

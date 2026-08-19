@@ -2415,27 +2415,28 @@ async function initializeDesktopShell(): Promise<void> {
     );
   }
 
-  // Programmable chat-overlay summon hotkey (#10716). The command palette keeps
-  // CommandOrControl+K; this is a distinct, user-configurable global shortcut
-  // (default CommandOrControl+Shift+C) that brings the floating chat surface —
-  // which on desktop is the main window — to the foreground. Registered only
-  // when enabled in Desktop settings.
-  const chatOverlayHotkey = getChatOverlayHotkey();
-  if (chatOverlayHotkey.enabled) {
-    const chatOverlayRegistration = await invokeDesktopBridgeRequest<{
-      success: boolean;
-    }>({
-      rpcMethod: "desktopRegisterShortcut",
-      ipcChannel: "desktop:registerShortcut",
-      params: {
-        id: "chat-overlay",
-        accelerator: chatOverlayHotkey.accelerator,
-      },
-    });
-    if (chatOverlayRegistration?.success !== true) {
-      throw new Error(
-        `[desktop-shell] Operating system rejected the chat-overlay shortcut ${chatOverlayHotkey.accelerator}`,
-      );
+  // macOS uses the native simultaneous left+right Option gesture below. Keep
+  // the configurable GlobalShortcut only on Windows/Linux, where the native
+  // modifier monitor is unavailable.
+  const isMacDesktop = /mac/i.test(navigator.platform || navigator.userAgent);
+  if (!isMacDesktop) {
+    const chatOverlayHotkey = getChatOverlayHotkey();
+    if (chatOverlayHotkey.enabled) {
+      const chatOverlayRegistration = await invokeDesktopBridgeRequest<{
+        success: boolean;
+      }>({
+        rpcMethod: "desktopRegisterShortcut",
+        ipcChannel: "desktop:registerShortcut",
+        params: {
+          id: "chat-overlay",
+          accelerator: chatOverlayHotkey.accelerator,
+        },
+      });
+      if (chatOverlayRegistration?.success !== true) {
+        throw new Error(
+          `[desktop-shell] Operating system rejected the chat-overlay shortcut ${chatOverlayHotkey.accelerator}`,
+        );
+      }
     }
   }
 
@@ -2461,11 +2462,10 @@ async function initializeDesktopShell(): Promise<void> {
     );
   }
 
-  // Fn-hold push-to-talk quasimode (#20483, Wispr parity): the native fn key
-  // monitor delivers true down/up, so holding fn anywhere drives the same
-  // capture as holding the pill. Best-effort: `permission-missing` (no
-  // Accessibility trust yet) and `unavailable` (non-mac, sandboxed store
-  // build) degrade silently to the toggle hotkey above.
+  // Native modifier monitor: holding fn drives push-to-talk, and pressing both
+  // physical Option keys summons Eliza. Modifier-only chords cannot be expressed
+  // by Electrobun's trigger-only GlobalShortcut API. Best-effort permission
+  // handling is shared by both gestures.
   subscribeDesktopBridgeEvent({
     rpcMessage: "desktopFnHoldChanged",
     ipcChannel: "desktop:fnHoldChanged",
@@ -2497,7 +2497,7 @@ async function initializeDesktopShell(): Promise<void> {
     }
   } else if (fnHoldStart?.status === "permission-missing") {
     console.warn(
-      "[desktop-shell] fn-hold push-to-talk needs Accessibility permission (System Settings → Privacy & Security → Accessibility); falling back to the toggle hotkey",
+      "[desktop-shell] fn-hold push-to-talk and the two-Option Eliza shortcut need Accessibility permission (System Settings → Privacy & Security → Accessibility); voice falls back to the toggle hotkey",
     );
   }
 

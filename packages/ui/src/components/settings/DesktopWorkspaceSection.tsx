@@ -2,8 +2,8 @@
  * Desktop-only workspace section: loads the DesktopWorkspaceSnapshot (displays,
  * power/idle, clipboard, paths) from the desktop bridge, exposes actions to open
  * companion surface windows, relaunch the shell / restart the backend, and read
- * the clipboard, and embeds the chat-overlay hotkey control and the diagnostics
- * card. Only active under the Electrobun runtime; renders nothing meaningful in
+ * the clipboard and exposes the diagnostics card. Only active under the
+ * Electrobun runtime; renders nothing meaningful in
  * the browser.
  */
 
@@ -163,6 +163,9 @@ export function DesktopWorkspaceSection({
 } = {}) {
   useRenderGuard("DesktopWorkspaceSection");
   const desktopRuntime = isElectrobunRuntime();
+  const isMacDesktop =
+    typeof navigator !== "undefined" &&
+    /mac/i.test(navigator.platform || navigator.userAgent);
   const relaunchDesktop = useAppSelector((s) => s.relaunchDesktop);
   const restartBackend = useAppSelector((s) => s.restartBackend);
   const t = useAppSelector((s) => s.t);
@@ -540,7 +543,7 @@ export function DesktopWorkspaceSection({
           </SettingsGroup>
         </div>
 
-        <ChatHotkeySettingsGroup />
+        {!isMacDesktop && <ChatHotkeySettingsGroup />}
 
         <SettingsGroup
           title={t("desktopworkspacesection.console.title", {

@@ -1,8 +1,9 @@
 /**
  * Static catalog + label localization for the desktop (Electrobun) system-tray
- * menu. Declares the tray item tree (DESKTOP_TRAY_MENU_ITEMS), the
- * desktop-eligible builtin views surfaced under the "Windows" submenu
- * (DESKTOP_VIEW_WINDOWS), the `tray-open-view-<id>` item-id codec, and the
+ * menu. Declares the deliberately small native tray tree
+ * (DESKTOP_TRAY_MENU_ITEMS), the desktop-eligible builtin views used by the
+ * separate tray launcher popover (DESKTOP_VIEW_WINDOWS), the
+ * `tray-open-view-<id>` item-id codec, and the
  * click-audit table (DESKTOP_TRAY_CLICK_AUDIT) that pins each tray id to its
  * expected renderer action. `buildLocalizedTrayMenu()` resolves labelKeys
  * through a translator at desktop boot. Everything here is pure so the tray
@@ -24,7 +25,7 @@ interface DesktopTrayMenuItem {
 }
 
 /**
- * Curated desktop-eligible view windows for the tray "Windows" submenu (#10716).
+ * Curated desktop-eligible view windows for the tray launcher popover (#10716).
  *
  * Mirror of the `desktopTabEnabled: true` entries in
  * `packages/agent/src/api/builtin-views.ts` (`BUILTIN_VIEWS`) that also run on
@@ -105,9 +106,9 @@ export function parseTrayOpenViewItemId(itemId: string): string | null {
 }
 
 /**
- * Build the tray "Windows" submenu items from {@link DESKTOP_VIEW_WINDOWS}. Each
- * item id is `tray-open-view-<viewId>`; the renderer opens the matching view in
- * its own desktop window. Pure so the menu shape is unit-testable.
+ * Build tray launcher items from {@link DESKTOP_VIEW_WINDOWS}. Each item id is
+ * `tray-open-view-<viewId>`; the renderer opens the matching view in its own
+ * desktop window. Pure so the launcher shape is unit-testable.
  */
 export function buildTrayViewItems(): DesktopTrayMenuItem[] {
   return DESKTOP_VIEW_WINDOWS.map((view) => ({
@@ -119,70 +120,20 @@ export function buildTrayViewItems(): DesktopTrayMenuItem[] {
 
 export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
   {
-    id: "tray-open-chat",
-    label: "Open Messages",
-    labelKey: "desktop.tray.openChat",
-  },
-  {
-    id: "tray-open-plugins",
-    label: "Open Plugins",
-    labelKey: "desktop.tray.openPlugins",
+    id: "tray-show-window",
+    label: "Open Eliza",
+    labelKey: "desktop.tray.openEliza",
   },
   {
     id: "tray-open-desktop-workspace",
-    label: "Open Desktop Workspace",
-    labelKey: "desktop.tray.openDesktopWorkspace",
+    label: "Open Workspace",
   },
   {
-    id: "tray-open-voice-controls",
-    label: "Open Voice Controls",
-    labelKey: "desktop.tray.openVoiceControls",
-  },
-  // "Windows" submenu (#10716): open any desktop-eligible builtin view in its own
-  // window from the tray, not just switch the main-window tab.
-  {
-    id: "tray-views",
-    label: "Windows",
-    labelKey: "desktop.tray.views",
-    submenu: buildTrayViewItems(),
-  },
-  // Desktop-native notification-center entry (#10706): the tray counterpart of
-  // the Desktop → Notifications app-menu item. Opens the center in place
-  // (dispatchOpenNotificationCenter) — the floating bell is hidden on desktop.
-  {
-    id: "tray-open-notifications",
-    label: "Notifications",
-    labelKey: "desktop.tray.notifications",
+    id: "tray-open-settings",
+    label: "Settings…",
   },
   { id: "tray-sep-0", type: "separator" },
-  {
-    id: "tray-toggle-lifecycle",
-    label: "Start/Stop Agent",
-    labelKey: "desktop.tray.toggleLifecycle",
-  },
-  {
-    id: "tray-restart",
-    label: "Restart Agent",
-    labelKey: "desktop.tray.restartAgent",
-  },
-  {
-    id: "tray-notify",
-    label: "Send Test Notification",
-    labelKey: "desktop.tray.sendTestNotification",
-  },
-  { id: "tray-sep-1", type: "separator" },
-  {
-    id: "tray-show-window",
-    label: "Show Window",
-    labelKey: "desktop.tray.showWindow",
-  },
-  {
-    id: "tray-hide-window",
-    label: "Hide Window",
-    labelKey: "desktop.tray.hideWindow",
-  },
-  { id: "tray-sep-2", type: "separator" },
-  { id: "quit", label: "Quit", labelKey: "desktop.tray.quit" },
+  { id: "quit", label: "Quit Eliza" },
 ] as const;
 
 /**
@@ -207,92 +158,34 @@ export function buildLocalizedTrayMenu(
 
 export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
   {
-    id: "tray-open-chat",
+    id: "tray-show-window",
     entryPoint: "tray",
-    label: "Open Messages",
-    expectedAction: "Show and focus the main window, then switch to chat.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "tray-open-plugins",
-    entryPoint: "tray",
-    label: "Open Plugins",
-    expectedAction: "Show and focus the main window, then switch to plugins.",
+    label: "Open Eliza",
+    expectedAction: "Show and focus the main Eliza surface.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
   {
     id: "tray-open-desktop-workspace",
     entryPoint: "tray",
-    label: "Open Desktop Workspace",
+    label: "Open Workspace",
     expectedAction:
       "Open a detached settings window focused on the desktop workspace section.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
   {
-    id: "tray-open-voice-controls",
+    id: "tray-open-settings",
     entryPoint: "tray",
-    label: "Open Voice Controls",
-    expectedAction:
-      "Open a detached settings window focused on the voice controls section.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "tray-open-notifications",
-    entryPoint: "tray",
-    label: "Notifications",
-    expectedAction:
-      "Show and focus the main window, then open the notification center in place.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "tray-toggle-lifecycle",
-    entryPoint: "tray",
-    label: "Start/Stop Agent",
-    expectedAction: "Start a stopped agent or stop a running agent.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "tray-restart",
-    entryPoint: "tray",
-    label: "Restart Agent",
-    expectedAction: "Restart the desktop agent runtime.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "tray-notify",
-    entryPoint: "tray",
-    label: "Send Test Notification",
-    expectedAction: "Emit a desktop notification from the renderer.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "tray-show-window",
-    entryPoint: "tray",
-    label: "Show Window",
-    expectedAction: "Show and focus the main desktop window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "tray-hide-window",
-    entryPoint: "tray",
-    label: "Hide Window",
-    expectedAction: "Hide the main desktop window.",
+    label: "Settings…",
+    expectedAction: "Open the standard Eliza settings window.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
   {
     id: "quit",
     entryPoint: "tray",
-    label: "Quit",
+    label: "Quit Eliza",
     expectedAction: "Quit the desktop application.",
     runtimeRequirement: "desktop",
     coverage: "manual",

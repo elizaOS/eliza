@@ -87,7 +87,9 @@ function createManager() {
   });
   const fnPushes = () =>
     pushes.filter((entry) => entry.message === "desktopFnHoldChanged");
-  return { manager, fnPushes };
+  const shortcutPushes = () =>
+    pushes.filter((entry) => entry.message === "desktopShortcutPressed");
+  return { manager, fnPushes, shortcutPushes };
 }
 
 beforeEach(() => {
@@ -178,6 +180,26 @@ darwinOnly("DesktopManager fn-hold push-to-talk bridge", () => {
     vi.advanceTimersByTime(20);
     expect(fnPushes()).toHaveLength(1);
     expect(fnPushes()[0]?.payload).toEqual({ held: true, cancelled: false });
+    await manager.stopFnHoldMonitor();
+  });
+
+  it("forwards the simultaneous Option-key chord as the Eliza summon shortcut", async () => {
+    const { manager, fnPushes, shortcutPushes } = createManager();
+    await manager.startFnHoldMonitor();
+
+    fnMock.queue = ["both-options"];
+    vi.advanceTimersByTime(20);
+
+    expect(shortcutPushes()).toEqual([
+      {
+        message: "desktopShortcutPressed",
+        payload: {
+          id: "chat-overlay",
+          accelerator: "LeftOption+RightOption",
+        },
+      },
+    ]);
+    expect(fnPushes()).toHaveLength(0);
     await manager.stopFnHoldMonitor();
   });
 

@@ -327,9 +327,10 @@ export type FnMonitorStartResult =
   | "failed"
   | "unavailable";
 
-/** One drained fn-key transition. `up-chord` is a release where another key
- *  was pressed mid-hold (fn+arrow etc.) — treat as cancel, not send. */
-export type FnMonitorEvent = "down" | "up" | "up-chord";
+/** One drained modifier-key transition. `up-chord` is a release where another
+ *  key was pressed mid-fn-hold (fn+arrow etc.); `both-options` is a one-shot
+ *  event when both physical Option keys become held. */
+export type FnMonitorEvent = "down" | "up" | "up-chord" | "both-options";
 
 export function startFnMonitor(): FnMonitorStartResult {
   const lib = getLib();
@@ -359,6 +360,8 @@ export function pollFnMonitor(): FnMonitorEvent | null {
       return "up";
     case 3:
       return "up-chord";
+    case 4:
+      return "both-options";
     default:
       return null;
   }
