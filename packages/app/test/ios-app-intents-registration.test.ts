@@ -273,23 +273,24 @@ describe("native assistant entry contracts", () => {
   });
 
   it("exposes the expected iOS Siri and Shortcuts launch surfaces", () => {
-    for (const intentName of [
-      "AskElizaIntent",
-      "StartElizaVoiceIntent",
+    for (const intentName of ["AskElizaIntent", "StartElizaVoiceIntent"]) {
+      expect(appIntentsSwift).toContain(`struct ${intentName}: AppIntent`);
+    }
+
+    for (const removedIntentName of [
       "OpenElizaDailyBriefIntent",
       "CreateElizaTaskIntent",
       "DraftElizaSmartReplyIntent",
     ]) {
-      expect(appIntentsSwift).toContain(`struct ${intentName}: AppIntent`);
+      expect(appIntentsSwift).not.toContain(
+        `struct ${removedIntentName}: AppIntent`,
+      );
     }
 
     expect(appIntentsSwift).toContain("ios-app-intents");
     expect(appIntentsSwift).toContain("Ask \\(.applicationName)");
-    expect(appIntentsSwift).toContain("Start \\(.applicationName) voice");
-    expect(appIntentsSwift).toContain("Open \\(.applicationName) daily brief");
-    expect(appIntentsSwift).toContain(
-      "Draft a reply with \\(.applicationName)",
-    );
+    expect(appIntentsSwift).toContain("Talk to \\(.applicationName)");
+    expect(appIntentsSwift.match(/AppShortcut\(/g)).toHaveLength(2);
   });
 
   it("ships Spanish App Intent, widget, control, and Live Activity copy", () => {
@@ -298,13 +299,9 @@ describe("native assistant entry contracts", () => {
       "Ask Eliza a question or hand off a request to chat.",
       "Prompt",
       "What would you like to ask Eliza?",
-      "Start Voice Chat",
-      "Open Daily Brief",
-      "Create LifeOps Task",
-      "Draft Smart Reply",
+      "Talk to Eliza",
       "Eliza Quick Actions",
-      "Ask, talk, and plan with Eliza from your Home and Lock Screen.",
-      "Eliza Voice",
+      "Ask or talk to Eliza from your Home and Lock Screen.",
       "Keyboard dictation",
       "Recording",
       "Ready",
@@ -347,12 +344,7 @@ describe("native assistant entry contracts", () => {
   it("ships localized App Shortcut phrases with the required app-name token", () => {
     const expectedKeys = [
       `Ask ${appNamePlaceholder}`,
-      `Start voice with ${appNamePlaceholder}`,
-      `Start ${appNamePlaceholder} voice`,
-      `Open ${appNamePlaceholder} daily brief`,
-      `Show my daily brief in ${appNamePlaceholder}`,
-      `Create a task in ${appNamePlaceholder}`,
-      `Draft a reply with ${appNamePlaceholder}`,
+      `Talk to ${appNamePlaceholder}`,
     ];
     expect([...englishAppShortcuts.keys()]).toEqual(expectedKeys);
     expect([...spanishAppShortcuts.keys()]).toEqual(expectedKeys);
@@ -408,16 +400,12 @@ describe("native assistant entry contracts", () => {
     expect(widgetsSwift).toContain("ios-widget");
     expect(widgetsSwift).toContain(".accessoryCircular");
     expect(widgetsSwift).toContain(".accessoryRectangular");
-    // The five quick actions mirror the app-target App Intents.
+    // The two quick actions mirror the app-target App Intents.
     expect(widgetsSwift).toContain('path: "assistant", action: "ask"');
     expect(widgetsSwift).toContain('path: "voice"');
-    expect(widgetsSwift).toContain(
-      'path: "lifeops/daily-brief", action: "lifeops.daily-brief"',
-    );
-    expect(widgetsSwift).toContain(
-      'path: "lifeops/task/new", action: "lifeops.create"',
-    );
-    expect(widgetsSwift).toContain('path: "chat", action: "smart-reply"');
+    expect(widgetsSwift).not.toContain("lifeops/daily-brief");
+    expect(widgetsSwift).not.toContain("lifeops/task/new");
+    expect(widgetsSwift).not.toContain("smart-reply");
   });
 
   it("exposes iOS 18 controls (Control Center / Lock Screen / Action button)", () => {
@@ -433,6 +421,9 @@ describe("native assistant entry contracts", () => {
     expect(widgetControlsSwift).toContain("static var openAppWhenRun = true");
     expect(widgetControlsSwift).toContain("OpenURLIntent");
     expect(widgetControlsSwift).toContain("@available(iOS 18.0, *)");
+    expect(
+      widgetControlsSwift.match(/static var isDiscoverable = false/g),
+    ).toHaveLength(2);
   });
 
   it("adds a dictation Live Activity to the ElizaWidgets extension target", () => {
@@ -526,7 +517,7 @@ describe("native assistant entry contracts", () => {
       "testHomeScreenWidgetTapForegroundsApp",
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain("Ask Eliza");
-    expect(deviceExtensionSurfaceUITestsSwift).toContain("Eliza Voice");
+    expect(deviceExtensionSurfaceUITestsSwift).toContain("Talk to Eliza");
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "elizaos://assistant?source=ios-widget&action=ask",
     );

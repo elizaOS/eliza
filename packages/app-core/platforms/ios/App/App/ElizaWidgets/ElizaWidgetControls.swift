@@ -17,6 +17,7 @@ import WidgetKit
 struct AskElizaControlIntent: AppIntent {
     static var title: LocalizedStringResource = "Ask Eliza"
     static var description = IntentDescription("Open Eliza chat to ask a question.")
+    static var isDiscoverable = false
     static var openAppWhenRun = true
 
     @MainActor
@@ -27,8 +28,9 @@ struct AskElizaControlIntent: AppIntent {
 
 @available(iOS 18.0, *)
 struct StartElizaVoiceControlIntent: AppIntent {
-    static var title: LocalizedStringResource = "Eliza Voice"
+    static var title: LocalizedStringResource = "Talk to Eliza"
     static var description = IntentDescription("Open Eliza directly into voice chat.")
+    static var isDiscoverable = false
     static var openAppWhenRun = true
 
     @MainActor
@@ -59,10 +61,10 @@ struct ElizaVoiceControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: Self.kind) {
             ControlWidgetButton(action: StartElizaVoiceControlIntent()) {
-                Label("Eliza Voice", systemImage: "waveform")
+                Label("Talk to Eliza", systemImage: "waveform")
             }
         }
-        .displayName("Eliza Voice")
+        .displayName("Talk to Eliza")
         .description("Start a voice chat with Eliza from Control Center, the Lock Screen, or the Action button.")
     }
 }
