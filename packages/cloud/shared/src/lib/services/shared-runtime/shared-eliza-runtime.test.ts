@@ -1133,6 +1133,7 @@ describe("Shared Eliza Workerd runtime", () => {
   });
 
   test("hydrates a contradicted follow-up with the latest successful public result", async () => {
+    const observedAt = Date.now();
     const modelRequests: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
       modelRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
@@ -1186,19 +1187,27 @@ describe("Shared Eliza Workerd runtime", () => {
           id: "6c5f17a6-d83c-4489-8742-a0309cac2f0b",
           role: "assistant",
           content: "Tessera is a generic scraper.",
-          createdAt: 1,
+          createdAt: observedAt - 2,
+          grounding: {
+            kind: "web_search",
+            query: "NubsCarson Tessera GitHub",
+            provider: "exa",
+            text: "OBSOLETE: Tessera is a generic scraper.",
+            observedAt: observedAt - 2,
+            truncated: false,
+          },
         },
         {
           id: "456b9f08-2e34-48db-bd92-5410c9464895",
           role: "assistant",
           content: "That was wrong. The repository is an ARC resource proxy.",
-          createdAt: 2,
+          createdAt: observedAt - 1,
           grounding: {
             kind: "web_search",
             query: "NubsCarson Tessera GitHub",
             provider: "parallel",
             text: "Tessera validates ARC resources through an origin guard and credential relay.",
-            observedAt: 2,
+            observedAt: observedAt - 1,
             truncated: false,
           },
         },
@@ -1219,7 +1228,97 @@ describe("Shared Eliza Workerd runtime", () => {
     const encodedRequest = JSON.stringify(modelRequests[0]);
     expect(encodedRequest).toContain("untrusted_public_web_search_result");
     expect(encodedRequest).toContain("origin guard and credential relay");
+    expect(encodedRequest).not.toContain("OBSOLETE");
     expect(encodedRequest).toContain('"role":"tool"');
+  });
+
+  test("does not hydrate superseded grounding after the latest search is unavailable", async () => {
+    const observedAt = Date.now();
+    const modelRequests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      modelRequests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({
+        id: "chatcmpl-shared-search-unavailable-follow-up",
+        object: "chat.completion",
+        created: 0,
+        model: "gemma-4-31b",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "shared-search-unavailable-response",
+                  type: "function",
+                  function: {
+                    name: "HANDLE_RESPONSE",
+                    arguments: JSON.stringify({
+                      shouldRespond: "RESPOND",
+                      thought:
+                        "The latest search was unavailable, so old claims are not authority.",
+                      contexts: ["simple"],
+                      intents: [],
+                      candidateActionNames: [],
+                      requiresTool: false,
+                      replyText:
+                        "The latest web search was unavailable, so I cannot verify that yet.",
+                      replyEffectStatus: "none",
+                      facts: [],
+                      relationships: [],
+                      addressedTo: [],
+                    }),
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+        usage: { prompt_tokens: 41, completion_tokens: 17, total_tokens: 58 },
+      });
+    }) as typeof fetch;
+
+    const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+    const result = await runSharedAgentTurn({
+      character: { name: "Shared Eliza", system: "You are Eliza.", model: "gemma-4-31b" },
+      history: [
+        {
+          role: "assistant",
+          content: "Old claim.",
+          grounding: {
+            kind: "web_search",
+            query: "NubsCarson Tessera GitHub",
+            provider: "exa",
+            text: "OBSOLETE: Tessera is a scraper.",
+            observedAt: observedAt - 2,
+            truncated: false,
+          },
+        },
+        {
+          role: "assistant",
+          content: "Web search is temporarily unavailable.",
+          grounding: {
+            kind: "web_search_unavailable",
+            query: "NubsCarson Tessera GitHub",
+            observedAt: observedAt - 1,
+          },
+        },
+      ],
+      message: "How does the corrected Tessera project work?",
+      execution: {
+        engine: "eliza-runtime",
+        agentKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
+      },
+    });
+
+    expect(result.reply).toContain("cannot verify");
+    expect(modelRequests).toHaveLength(1);
+    const encodedRequest = JSON.stringify(modelRequests[0]);
+    expect(encodedRequest).not.toContain("untrusted_public_web_search_result");
+    expect(encodedRequest).not.toContain("OBSOLETE");
+    expect(encodedRequest).toContain("temporarily unavailable");
   });
 
   test("plans GENERATE_MEDIA through the genuine runtime and lands a channel-safe artifact", async () => {

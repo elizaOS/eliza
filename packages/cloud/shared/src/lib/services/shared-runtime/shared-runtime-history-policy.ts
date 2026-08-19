@@ -15,6 +15,8 @@ export const MAX_HISTORY_MESSAGES = 40;
 export const MAX_PUBLIC_WEB_GROUNDING_QUERY_BYTES = 512;
 export const MAX_PUBLIC_WEB_GROUNDING_RESULT_BYTES = 4_000;
 export const MAX_PUBLIC_WEB_GROUNDING_ENCODED_BYTES = 6_000;
+export const MAX_PUBLIC_WEB_GROUNDING_AGE_MS = 24 * 60 * 60 * 1_000;
+export const MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS = 5 * 60 * 1_000;
 
 const RECENT_CONTEXT_MESSAGES = 24;
 const MEMORY_HINT =
@@ -105,6 +107,18 @@ export function parseSharedPublicWebGrounding(
   if (!value || typeof value !== "object") return undefined;
   const candidate = value as Record<string, unknown>;
   if (
+    candidate.kind === "web_search_unavailable" &&
+    typeof candidate.query === "string" &&
+    typeof candidate.observedAt === "number" &&
+    Number.isSafeInteger(candidate.observedAt) &&
+    candidate.observedAt >= 0
+  ) {
+    const query = truncateUtf8(candidate.query, MAX_PUBLIC_WEB_GROUNDING_QUERY_BYTES);
+    return query.value
+      ? { kind: "web_search_unavailable", query: query.value, observedAt: candidate.observedAt }
+      : undefined;
+  }
+  if (
     candidate.kind !== "web_search" ||
     typeof candidate.query !== "string" ||
     (candidate.provider !== "parallel" && candidate.provider !== "exa") ||
@@ -132,7 +146,9 @@ export function parseSharedPublicWebGrounding(
 /** Encodes untrusted evidence as JSON so result text cannot forge envelope boundaries. */
 export function encodeSharedPublicWebGrounding(value: SharedRuntimePublicGrounding): string {
   const parsed = parseSharedPublicWebGrounding(value);
-  if (!parsed) throw new TypeError("Invalid Shared public web grounding");
+  if (!parsed || parsed.kind !== "web_search") {
+    throw new TypeError("Invalid Shared public web grounding");
+  }
   let text = parsed.text;
   for (;;) {
     const encoded = JSON.stringify({
@@ -157,15 +173,23 @@ export function sharedPublicWebGrounding(
     const candidate = actionResults?.[index];
     if (!candidate || typeof candidate !== "object") continue;
     const record = candidate as { success?: unknown; text?: unknown; data?: unknown };
-    if (record.success !== true || !record.data || typeof record.data !== "object") continue;
+    if (!record.data || typeof record.data !== "object") continue;
     const data = record.data as Record<string, unknown>;
     if (data.actionName !== "WEB_SEARCH") continue;
+    const observedAt = Date.now();
+    if (record.success !== true) {
+      return parseSharedPublicWebGrounding({
+        kind: "web_search_unavailable",
+        query: data.query,
+        observedAt,
+      });
+    }
     return parseSharedPublicWebGrounding({
       kind: "web_search",
       query: data.query,
       provider: data.provider,
       text: record.text,
-      observedAt: Date.now(),
+      observedAt,
       truncated: data.truncated === true,
     });
   }
@@ -191,12 +215,19 @@ function groundingWords(value: string): Set<string> {
 function selectedGroundingIndices(
   history: SharedRuntimeHistoryMessageLike[],
   queryText: string,
+  now: number,
 ): Set<number> {
   const query = groundingWords(queryText);
   const ranked = history.flatMap((message, index) => {
     const grounding =
       message.role === "assistant" ? parseSharedPublicWebGrounding(message.grounding) : undefined;
     if (!grounding) return [];
+    if (
+      grounding.observedAt < now - MAX_PUBLIC_WEB_GROUNDING_AGE_MS ||
+      grounding.observedAt > now + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS
+    ) {
+      return [];
+    }
     let precedingUserQuery = "";
     for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
       if (history[cursor].role !== "user") continue;
@@ -210,29 +241,29 @@ function selectedGroundingIndices(
     for (const word of query) if (trustedWords.has(word)) overlap += 1;
     const immediate = index === history.length - 1;
     return overlap > 0 || (immediate && DEICTIC_GROUNDING_FOLLOW_UP.test(queryText))
-      ? [{ index, overlap }]
+      ? [{ index, overlap, grounding }]
       : [];
   });
-  return new Set(
-    ranked
-      .sort((left, right) => right.overlap - left.overlap || right.index - left.index)
-      .slice(0, 2)
-      .map(({ index }) => index),
-  );
+  const latest = ranked.sort(
+    (left, right) =>
+      right.grounding.observedAt - left.grounding.observedAt || right.index - left.index,
+  )[0];
+  return latest?.grounding.kind === "web_search" ? new Set([latest.index]) : new Set();
 }
 
 /** Projects selected evidence as native tool results while keeping assistant prose separate. */
 export function sharedRuntimeModelHistoryMessages(
   history: SharedRuntimeHistoryMessageLike[],
   queryText: string,
+  now = Date.now(),
 ): ModelMessage[] {
-  const selected = selectedGroundingIndices(history, queryText);
+  const selected = selectedGroundingIndices(history, queryText, now);
   const messages: ModelMessage[] = [];
   for (const [index, message] of history.entries()) {
     const grounding = selected.has(index)
       ? parseSharedPublicWebGrounding(message.grounding)
       : undefined;
-    if (grounding) {
+    if (grounding?.kind === "web_search") {
       const toolCallId = `persisted-web-${stringToUuid(`shared:${messageIdentity(message)}`)}`;
       messages.push({
         role: "assistant",
@@ -391,8 +422,7 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
   const grounding =
     incomingGrounding.observedAt > currentGrounding.observedAt ||
     (incomingGrounding.observedAt === currentGrounding.observedAt &&
-      encodeSharedPublicWebGrounding(incomingGrounding) >
-        encodeSharedPublicWebGrounding(currentGrounding))
+      JSON.stringify(incomingGrounding) > JSON.stringify(currentGrounding))
       ? incomingGrounding
       : currentGrounding;
   return { ...chosen, grounding };

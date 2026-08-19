@@ -44,4 +44,26 @@ describe("webSearchEdgePlugin", () => {
             },
         });
     });
+
+    it("retains the attempted query when public search is unavailable", async () => {
+        globalThis.fetch = vi.fn(
+            async () => new Response("unavailable", { status: 503 })
+        ) as typeof fetch;
+
+        const result = await webSearchEdgeAction.handler(
+            {} as IAgentRuntime,
+            {} as Memory,
+            undefined,
+            { parameters: { query: "Tessera architecture" } }
+        );
+
+        expect(result).toMatchObject({
+            success: false,
+            text: "Web search is temporarily unavailable.",
+            data: {
+                actionName: "WEB_SEARCH",
+                query: "Tessera architecture",
+            },
+        });
+    });
 });

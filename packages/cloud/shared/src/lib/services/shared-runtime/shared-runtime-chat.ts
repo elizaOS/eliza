@@ -86,7 +86,11 @@ import {
 } from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
-import { MAX_HISTORY_MESSAGES, sharedPublicWebGrounding } from "./shared-runtime-history-policy";
+import {
+  MAX_HISTORY_MESSAGES,
+  sharedPublicWebGrounding,
+  sharedRuntimeModelHistoryMessages,
+} from "./shared-runtime-history-policy";
 import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
@@ -897,10 +901,13 @@ function billingPrompt(
   history: SharedTurnMessage[],
   message: string,
 ): Array<{ content: string }> {
+  const projectedHistory = sharedRuntimeModelHistoryMessages(history, message).map((turn) => ({
+    content: typeof turn.content === "string" ? turn.content : JSON.stringify(turn.content),
+  }));
   return [
     { content: character.system },
     ...(character.bio ?? []).map((content) => ({ content })),
-    ...history.map((turn) => ({ content: turn.content })),
+    ...projectedHistory,
     { content: message },
   ].filter((entry) => entry.content.trim());
 }

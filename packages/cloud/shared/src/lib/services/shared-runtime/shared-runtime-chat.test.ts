@@ -32,6 +32,10 @@ let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 const tokenEstimateInputs: Array<Array<{ content: string }>> = [];
 const streamTurnInputs: Array<Record<string, unknown>> = [];
+const estimateInputTokens = mock((messages: Array<{ content: string }>) => {
+  tokenEstimateInputs.push(messages);
+  return 12;
+});
 let characterReads = 0;
 const loggerWarn = mock(() => undefined);
 const traceRows: Array<Record<string, unknown>> = [];
@@ -146,6 +150,7 @@ mock.module("../inference-admission-snapshot", () => ({
 const admitOrganizationInference = mock(
   async (params: {
     context?: { metadata?: Record<string, unknown> };
+    estimatedInputTokens?: number;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   }) => {
     if (admissionError) throw admissionError;
@@ -168,10 +173,7 @@ mock.module("../organization-inference-admission", () => ({
   admitOrganizationInference,
 }));
 mock.module("../ai-billing", () => ({
-  estimateInputTokens: (input: Array<{ content: string }>) => {
-    tokenEstimateInputs.push(input);
-    return 12;
-  },
+  estimateInputTokens,
   reserveCredits: async () => {
     throw new Error("synchronous reserve must not run");
   },
@@ -415,18 +417,24 @@ type TestMessage = {
   content: string;
   createdAt?: number;
   interrupted?: boolean;
-  grounding?: {
-    kind: "web_search";
-    query: string;
-    provider: "parallel" | "exa";
-    text: string;
-    observedAt: number;
-    truncated: boolean;
-  };
+  grounding?:
+    | {
+        kind: "web_search";
+        query: string;
+        provider: "parallel" | "exa";
+        text: string;
+        observedAt: number;
+        truncated: boolean;
+      }
+    | {
+        kind: "web_search_unavailable";
+        query: string;
+        observedAt: number;
+      };
 };
 
-function harness() {
-  let history: TestMessage[] = [{ role: "assistant", content: "prior" }];
+function harness(initialHistory?: TestMessage[]) {
+  let history: TestMessage[] = initialHistory ?? [{ role: "assistant", content: "prior" }];
   const background: Promise<unknown>[] = [];
   const merge = (messages: TestMessage[]): TestMessage[] => {
     const byId = new Map<string, TestMessage>();
@@ -464,6 +472,7 @@ beforeEach(() => {
   billCalls.length = 0;
   tokenEstimateInputs.length = 0;
   streamTurnInputs.length = 0;
+  estimateInputTokens.mockClear();
   admissionError = null;
   billError = null;
   turnError = null;
@@ -678,6 +687,36 @@ describe("SharedRuntimeChatService", () => {
     } finally {
       now.mockRestore();
     }
+  });
+
+  test("prices the exact projected grounding replay before admission", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness([
+      { role: "user", content: "Search for Tessera architecture." },
+      {
+        role: "assistant",
+        content: "Tessera is an ARC resource proxy.",
+        grounding: {
+          kind: "web_search",
+          query: "Tessera architecture",
+          provider: "parallel",
+          text: "Tessera validates ARC resources through an origin guard.",
+          observedAt: Date.now(),
+          truncated: false,
+        },
+      },
+    ]);
+
+    await service.bridge(
+      agent,
+      { ...rpc, params: { ...rpc.params, text: "How does Tessera architecture work?" } },
+      h,
+    );
+
+    const estimatedMessages = estimateInputTokens.mock.calls[0]?.[0];
+    expect(JSON.stringify(estimatedMessages)).toContain("untrusted_public_web_search_result");
+    expect(JSON.stringify(estimatedMessages)).toContain("origin guard");
+    expect(admitOrganizationInference.mock.calls[0]?.[0].estimatedInputTokens).toBe(12);
   });
 
   test("platform-funded personal Shared rate-limits without touching account credits", async () => {

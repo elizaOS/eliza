@@ -1,15 +1,21 @@
 // Defines the shared runtime history Drizzle table shape used by cloud repositories and services.
 import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
-/** Bounded successful public-read output retained so a follow-up can stay grounded. */
-export type SharedRuntimePublicGrounding = {
-  kind: "web_search";
-  query: string;
-  provider: "parallel" | "exa";
-  text: string;
-  observedAt: number;
-  truncated: boolean;
-};
+/** Bounded public-read authority retained so a follow-up honors success or unavailability. */
+export type SharedRuntimePublicGrounding =
+  | {
+      kind: "web_search";
+      query: string;
+      provider: "parallel" | "exa";
+      text: string;
+      observedAt: number;
+      truncated: boolean;
+    }
+  | {
+      kind: "web_search_unavailable";
+      query: string;
+      observedAt: number;
+    };
 
 /** One persisted turn in a shared-runtime conversation. Mirrors `SharedTurnMessage`. */
 export type SharedRuntimeHistoryMessage = {

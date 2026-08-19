@@ -8,7 +8,9 @@ import {
   encodeSharedPublicWebGrounding,
   insertSharedRuntimeGroundingMessages,
   MAX_HISTORY_MESSAGES,
+  MAX_PUBLIC_WEB_GROUNDING_AGE_MS,
   MAX_PUBLIC_WEB_GROUNDING_ENCODED_BYTES,
+  MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS,
   mergeSharedRuntimeHistoryMessages,
   parseSharedPublicWebGrounding,
   selectSharedRuntimeContext,
@@ -116,12 +118,26 @@ describe("shared runtime long-term transcript context", () => {
     ]);
 
     expect(grounding).toBeDefined();
-    if (!grounding) throw new Error("grounding was rejected");
+    if (!grounding || grounding.kind !== "web_search") {
+      throw new Error("grounding was rejected");
+    }
     expect(grounding.truncated).toBe(true);
     expect(
       new TextEncoder().encode(encodeSharedPublicWebGrounding(grounding)).byteLength,
     ).toBeLessThanOrEqual(MAX_PUBLIC_WEB_GROUNDING_ENCODED_BYTES);
     expect(sharedPublicWebGrounding([{ success: false }])).toBeUndefined();
+    expect(
+      sharedPublicWebGrounding([
+        {
+          success: false,
+          text: "Web search is temporarily unavailable.",
+          data: { actionName: "WEB_SEARCH", query: "Tessera architecture" },
+        },
+      ]),
+    ).toMatchObject({
+      kind: "web_search_unavailable",
+      query: "Tessera architecture",
+    });
     expect(
       sharedPublicWebGrounding([
         {
@@ -245,7 +261,7 @@ describe("shared runtime long-term transcript context", () => {
       },
     ];
 
-    const projected = sharedRuntimeModelHistoryMessages(history, "How does Tessera work?");
+    const projected = sharedRuntimeModelHistoryMessages(history, "How does Tessera work?", 2);
     const encoded = JSON.stringify(projected);
     expect(encoded).toContain("untrusted_public_web_search_result");
     expect(encoded).toContain("origin guard and credential relay");
@@ -270,6 +286,7 @@ describe("shared runtime long-term transcript context", () => {
         },
       ],
       "Explain Tessera origin validation",
+      1,
     );
 
     expect(projected.some((message) => message.role === "tool")).toBe(false);
@@ -298,6 +315,7 @@ describe("shared runtime long-term transcript context", () => {
         },
       ],
       "What about Bitcoin markets?",
+      1,
     );
 
     expect(projected.some((message) => message.role === "tool")).toBe(false);
@@ -326,10 +344,115 @@ describe("shared runtime long-term transcript context", () => {
         },
       ],
       "How does the ARC resource proxy validate requests?",
+      1,
     );
 
     expect(projected.filter((message) => message.role === "tool")).toHaveLength(1);
     expect(JSON.stringify(projected)).toContain("origin guard");
+  });
+
+  test("the newest matching search supersedes older contradictory results", () => {
+    const projected = sharedRuntimeModelHistoryMessages(
+      [
+        { role: "user", content: "Search for Tessera architecture." },
+        {
+          role: "assistant",
+          content: "The first result says scraper.",
+          grounding: {
+            kind: "web_search",
+            query: "Tessera architecture",
+            provider: "exa",
+            text: "Tessera is a scraper.",
+            observedAt: 100,
+            truncated: false,
+          },
+        },
+        { role: "user", content: "That is wrong. Search for Tessera architecture again." },
+        {
+          role: "assistant",
+          content: "The corrected result says ARC proxy.",
+          grounding: {
+            kind: "web_search",
+            query: "Tessera architecture",
+            provider: "parallel",
+            text: "Tessera is an ARC resource proxy.",
+            observedAt: 200,
+            truncated: false,
+          },
+        },
+      ],
+      "How does Tessera architecture work?",
+      200,
+    );
+
+    expect(projected.filter((message) => message.role === "tool")).toHaveLength(1);
+    expect(JSON.stringify(projected)).toContain("ARC resource proxy");
+    expect(JSON.stringify(projected)).not.toContain('"text":"Tessera is a scraper.');
+  });
+
+  test("a newer unavailable search suppresses older matching authority", () => {
+    const projected = sharedRuntimeModelHistoryMessages(
+      [
+        { role: "user", content: "Search for Tessera architecture." },
+        {
+          role: "assistant",
+          content: "Old result.",
+          grounding: {
+            kind: "web_search",
+            query: "Tessera architecture",
+            provider: "exa",
+            text: "Tessera is a scraper.",
+            observedAt: 100,
+            truncated: false,
+          },
+        },
+        { role: "user", content: "That is wrong. Search for Tessera architecture again." },
+        {
+          role: "assistant",
+          content: "Web search is temporarily unavailable.",
+          grounding: {
+            kind: "web_search_unavailable",
+            query: "Tessera architecture",
+            observedAt: 200,
+          },
+        },
+      ],
+      "How does Tessera architecture work?",
+      200,
+    );
+
+    expect(projected.some((message) => message.role === "tool")).toBe(false);
+    expect(JSON.stringify(projected)).toContain("temporarily unavailable");
+  });
+
+  test("stale and impossible-future search artifacts cannot ground a turn", () => {
+    const now = 10 * MAX_PUBLIC_WEB_GROUNDING_AGE_MS;
+    const grounding = (observedAt: number) => ({
+      kind: "web_search" as const,
+      query: "Tessera architecture",
+      provider: "parallel" as const,
+      text: "Untrusted old evidence.",
+      observedAt,
+      truncated: false,
+    });
+    const history = [
+      {
+        role: "assistant" as const,
+        content: "Old evidence.",
+        grounding: grounding(now - MAX_PUBLIC_WEB_GROUNDING_AGE_MS - 1),
+      },
+      {
+        role: "assistant" as const,
+        content: "Future evidence.",
+        grounding: grounding(now + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS + 1),
+      },
+    ];
+
+    expect(
+      sharedRuntimeModelHistoryMessages(history, "How does Tessera architecture work?", now).some(
+        (message) => message.role === "tool",
+      ),
+    ).toBe(false);
   });
 
   test("keeps recent turns and recalls an older preference with its reply", () => {
