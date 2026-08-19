@@ -3,8 +3,9 @@
  * with deterministic fetch boundaries.
  */
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { Attachment } from "discord.js";
+import { logger } from "../src/logger";
 import { VoiceMessageHandler } from "../src/voice-message-handler";
 
 // Store original env
@@ -45,6 +46,7 @@ describe("VoiceMessageHandler storage integration", () => {
   });
 
   test("uploads voice audio through the storage proxy and returns a presigned URL", async () => {
+    const infoLog = spyOn(logger, "info");
     process.env.BLOB_READ_WRITE_TOKEN = "storage-token";
     process.env.ELIZA_CLOUD_URL = "https://cloud.example.test/";
     const fetchMock = mock(
@@ -100,6 +102,11 @@ describe("VoiceMessageHandler storage integration", () => {
     expect(uploadHeaders.get("Idempotency-Key")).toMatch(
       /^discord-voice:put:[0-9a-f]{64}$/,
     );
+    const capturedLogs = JSON.stringify(infoLog.mock.calls);
+    expect(capturedLogs).not.toContain("voice/connection-1");
+    expect(capturedLogs).not.toContain("storage-token");
+    expect(capturedLogs).not.toContain("Authorization");
+    expect(capturedLogs).not.toContain("X-Storage-Object-Key");
   });
 
   test("replays one stable presign lineage key across arbitrarily many renewals", async () => {

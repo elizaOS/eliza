@@ -5,6 +5,7 @@
 import type { InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   check,
   foreignKey,
@@ -74,6 +75,11 @@ export const orgStorageReadOperations = pgTable(
       name: "org_storage_read_operations_credit_fkey",
       columns: [table.credit_transaction_id],
       foreignColumns: [creditTransactions.id],
+    }).onDelete("restrict"),
+    renewal_root: foreignKey({
+      name: "org_storage_read_operations_renewal_root_fkey",
+      columns: [table.renewal_root_id],
+      foreignColumns: [table.id as AnyPgColumn],
     }).onDelete("restrict"),
     idempotency: uniqueIndex("org_storage_read_operations_idempotency_uidx").on(
       table.organization_id,

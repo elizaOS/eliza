@@ -150,9 +150,9 @@ async function presignVoiceObject(
         ...storageHeaders(config),
         "Content-Type": "application/json",
         "Idempotency-Key": idempotencyKey,
+        "X-Storage-Object-Key": key,
       },
       body: JSON.stringify({
-        key,
         operation: "get",
         expiresIn: VOICE_AUDIO_TTL_SECONDS,
       }),

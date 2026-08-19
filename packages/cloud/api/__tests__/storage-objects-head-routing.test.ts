@@ -305,6 +305,29 @@ test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", a
 });
 
 describe("storage object HEAD routing", () => {
+  test("does not place logical keys or sensitive headers in API logs", async () => {
+    const response = await app.request(
+      `${ROUTE_PREFIX}/_`,
+      {
+        method: "PUT",
+        headers: {
+          "X-Storage-Object-Key": "private/do-not-log.ogg",
+          "Idempotency-Key": "private-idempotency-key",
+          Authorization: "Bearer private-token",
+        },
+        body: "private-object-bytes",
+      },
+      {},
+    );
+    expect(response.status).toBe(503);
+    expect(loggerError).toHaveBeenCalled();
+    const capturedLogs = JSON.stringify(loggerError.mock.calls);
+    expect(capturedLogs).not.toContain("do-not-log");
+    expect(capturedLogs).not.toContain("private-idempotency-key");
+    expect(capturedLogs).not.toContain("private-token");
+    expect(capturedLogs).not.toContain("Authorization");
+  });
+
   test("rejects logical object keys in read URLs before pricing or provider authority", async () => {
     const response = await app.request(
       `${ROUTE_PREFIX}/${OBJECT_PATH}`,

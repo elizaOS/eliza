@@ -14,8 +14,18 @@ const USER = "00000000-0000-4000-8000-000000021047";
 const OTHER_USER = "00000000-0000-4000-8000-000000021048";
 const OBJECT = "00000000-0000-4000-8000-000000021049";
 const databases: PGlite[] = [];
+const migrationSource = readFileSync(
+  join(import.meta.dir, "migrations/0266_org_storage_read_operations.sql"),
+  "utf8",
+);
 
-async function database(): Promise<PGlite> {
+async function applyMigration(db: PGlite): Promise<void> {
+  for (const statement of migrationSource.split("--> statement-breakpoint")) {
+    if (statement.trim()) await db.exec(statement);
+  }
+}
+
+async function database(apply = true): Promise<PGlite> {
   const db = new PGlite();
   databases.push(db);
   for (const statement of [
@@ -58,13 +68,7 @@ async function database(): Promise<PGlite> {
     OBJECT,
     ORG,
   ]);
-  const source = readFileSync(
-    join(import.meta.dir, "migrations/0266_org_storage_read_operations.sql"),
-    "utf8",
-  );
-  for (const statement of source.split("--> statement-breakpoint")) {
-    if (statement.trim()) await db.exec(statement);
-  }
+  if (apply) await applyMigration(db);
   return db;
 }
 
@@ -82,6 +86,36 @@ function insertPrepared(db: PGlite, params: { method: string; price: string; use
 }
 
 describe("0266 durable storage read authority", () => {
+  test("fails closed on replay or a partial table collision", async () => {
+    const migrated = await database();
+    const renewalConstraint = await migrated.query<{
+      conname: string;
+      definition: string;
+    }>(
+      `SELECT conname, pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint
+       WHERE conrelid = 'org_storage_read_operations'::regclass
+         AND conname = 'org_storage_read_operations_renewal_root_fkey'`,
+    );
+    expect(renewalConstraint.rows).toEqual([
+      {
+        conname: "org_storage_read_operations_renewal_root_fkey",
+        definition:
+          "FOREIGN KEY (renewal_root_id) REFERENCES org_storage_read_operations(id) ON DELETE RESTRICT",
+      },
+    ]);
+    await expect(applyMigration(migrated)).rejects.toThrow(/already exists/i);
+    const partial = await database(false);
+    await partial.exec(`CREATE TABLE org_storage_read_operations (
+      id uuid PRIMARY KEY, collision_marker text NOT NULL
+    )`);
+    await expect(applyMigration(partial)).rejects.toThrow(/already exists/i);
+    const columns = await partial.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'org_storage_read_operations' ORDER BY column_name`,
+    );
+    expect(columns.rows).toEqual([{ column_name: "collision_marker" }, { column_name: "id" }]);
+  });
   test("rejects cross-tenant actors and invalid state skips", async () => {
     const db = await database();
     await expect(

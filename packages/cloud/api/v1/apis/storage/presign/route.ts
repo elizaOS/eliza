@@ -20,7 +20,6 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const requestSchema = z.object({
-  key: z.string().min(1).max(1024),
   operation: z.literal("get"),
   expiresIn: z.number().int().min(60).max(3600).optional().default(3600),
 });
@@ -56,7 +55,9 @@ app.post("/", async (c) => {
         400,
       );
     }
-    const logicalKey = validLogicalKey(parsed.data.key);
+    const logicalKey = validLogicalKey(
+      c.req.header("X-Storage-Object-Key") ?? "",
+    );
     if (!logicalKey) return c.json({ error: "Invalid object key" }, 400);
     if (!c.env.BLOB?.head) {
       return c.json({ error: "Attachment storage proxy not available" }, 503);

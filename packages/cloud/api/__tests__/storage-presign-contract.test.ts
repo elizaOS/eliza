@@ -91,9 +91,9 @@ test("settles the exact server quote before minting an opaque capability", async
       headers: {
         "content-type": "application/json",
         "Idempotency-Key": "presign-1",
+        "X-Storage-Object-Key": "private/voice.ogg",
       },
       body: JSON.stringify({
-        key: "private/voice.ogg",
         operation: "get",
         expiresIn: 300,
       }),
@@ -147,8 +147,9 @@ test("missing signer authority stops before pricing, provider, or settlement", a
       headers: {
         "content-type": "application/json",
         "Idempotency-Key": "presign-no-signer",
+        "X-Storage-Object-Key": "private/voice.ogg",
       },
-      body: JSON.stringify({ key: "private/voice.ogg", operation: "get" }),
+      body: JSON.stringify({ operation: "get" }),
     },
     { BLOB: { head: mock() }, R2_PUBLIC_HOST: "https://blob.example" },
   );
