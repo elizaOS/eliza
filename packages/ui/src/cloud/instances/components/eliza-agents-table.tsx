@@ -240,7 +240,8 @@ export function deriveAgentRow(
     canStart:
       ["stopped", "error", "pending", "disconnected"].includes(displayStatus) &&
       !busy,
-    canStop: displayStatus === "running" && !busy,
+    canStop:
+      displayStatus === "running" && agent.executionTier !== "shared" && !busy,
     canSleep:
       displayStatus === "running" && agent.executionTier !== "shared" && !busy,
     canWake: displayStatus === "sleeping" && !busy,
@@ -946,7 +947,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
   }
 
   const selectableIds = filtered
-    .filter((sb) => !poller.isActive(sb.id))
+    .filter((sb) => sb.executionTier !== "shared" && !poller.isActive(sb.id))
     .map((sb) => sb.id);
   const allSelected =
     selectableIds.length > 0 &&
@@ -969,7 +970,10 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
           onDelete={() =>
             setDeleteIds(
               [...selectedIds].filter((id) =>
-                localAgents.some((agent) => agent.id === id),
+                localAgents.some(
+                  (agent) =>
+                    agent.id === id && agent.executionTier !== "shared",
+                ),
               ),
             )
           }
@@ -1185,7 +1189,10 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             defaultValue: "Select agent",
                           })}
                           checked={selectedIds.has(sb.id)}
-                          disabled={isProvisioningActive}
+                          disabled={
+                            isProvisioningActive ||
+                            sb.executionTier === "shared"
+                          }
                           onCheckedChange={(checked) =>
                             toggleSelected(sb.id, checked === true)
                           }
@@ -1203,7 +1210,10 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                   defaultValue: "Unnamed Agent",
                                 })}
                             </a>
-                            <AgentCostBadge status={displayStatus} />
+                            <AgentCostBadge
+                              status={displayStatus}
+                              executionTier={sb.executionTier}
+                            />
                           </div>
                           <RowBackingMeta vm={vm} />
                         </div>
@@ -1328,6 +1338,10 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                                 <Button
                                   variant="ghost"
                                   type="button"
+                                  aria-label={t(
+                                    "cloud.elizaAgentsTable.suspendAgent",
+                                    { defaultValue: "Suspend agent" },
+                                  )}
                                   onClick={() => handleSuspend(sb.id)}
                                   disabled={busy}
                                   className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
@@ -1395,24 +1409,30 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                             </Tooltip>
                           )}
 
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                type="button"
-                                onClick={() => !busy && setDeleteIds([sb.id])}
-                                disabled={isDeleting || busy}
-                                className="inline-flex size-touch items-center justify-center text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent className="bg-card border-border">
-                              {t("cloud.elizaAgentsTable.deleteAgent", {
-                                defaultValue: "Delete agent",
-                              })}
-                            </TooltipContent>
-                          </Tooltip>
+                          {sb.executionTier !== "shared" && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  type="button"
+                                  aria-label={t(
+                                    "cloud.elizaAgentsTable.deleteAgent",
+                                    { defaultValue: "Delete agent" },
+                                  )}
+                                  onClick={() => !busy && setDeleteIds([sb.id])}
+                                  disabled={isDeleting || busy}
+                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-card border-border">
+                                {t("cloud.elizaAgentsTable.deleteAgent", {
+                                  defaultValue: "Delete agent",
+                                })}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1464,7 +1484,10 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                           })}
                       </a>
                       <div className="flex flex-wrap items-center gap-2">
-                        <AgentCostBadge status={displayStatus} />
+                        <AgentCostBadge
+                          status={displayStatus}
+                          executionTier={sb.executionTier}
+                        />
                         <AgentTypeLabel executionTier={sb.executionTier} />
                       </div>
                       <div className="block">
@@ -1534,6 +1557,9 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                       <Button
                         variant="ghost"
                         type="button"
+                        aria-label={t("cloud.elizaAgentsTable.suspendAgent", {
+                          defaultValue: "Suspend agent",
+                        })}
                         onClick={() => handleSuspend(sb.id)}
                         disabled={busy}
                         className="min-h-touch px-3 text-accent hover:bg-bg-hover transition-colors disabled:opacity-30"
@@ -1578,15 +1604,20 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                       </Button>
                     )}
 
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() => !busy && setDeleteIds([sb.id])}
-                      disabled={isDeleting || busy}
-                      className="min-h-touch px-3 text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {sb.executionTier !== "shared" && (
+                      <Button
+                        variant="ghost"
+                        type="button"
+                        aria-label={t("cloud.elizaAgentsTable.deleteAgent", {
+                          defaultValue: "Delete agent",
+                        })}
+                        onClick={() => !busy && setDeleteIds([sb.id])}
+                        disabled={isDeleting || busy}
+                        className="min-h-touch px-3 text-muted hover:text-destructive hover:bg-destructive-subtle transition-colors disabled:opacity-30"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               );

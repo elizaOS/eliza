@@ -18,7 +18,6 @@ import { ApiError } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { ElizaAgentActions } from "./components/agent-actions";
-import { ElizaAgentTabs } from "./components/eliza-agent-tabs";
 import { ElizaConnectButton } from "./components/eliza-connect-button";
 import { getUserFacingAgentType } from "./lib/agent-type";
 import { useAgent } from "./lib/data/eliza-agents";
@@ -136,6 +135,7 @@ export default function AgentDetailPage() {
   // entirely — show an explicit $0.00/hr instead of a blank so the "stop the
   // burn" promise of deactivation is visible where the burn was shown.
   const isSleeping = agent.status === "sleeping";
+  const isShared = agent.executionTier === "shared";
   const showConnect = !!agent.webUiUrl && agent.status === "running";
   const agentType = getUserFacingAgentType(agent.executionTier);
   const heartbeatPrimary = formatRelativeShort(agent.lastHeartbeatAt, t);
@@ -234,22 +234,24 @@ export default function AgentDetailPage() {
             {t("cloud.agents.detail.costLabel", { defaultValue: "Cost" })}
           </p>
           <p className="text-lg font-medium text-txt-strong tabular-nums font-mono">
-            {isRunningish
-              ? formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE)
-              : isIdle
-                ? formatHourlyRate(AGENT_PRICING.IDLE_HOURLY_RATE)
-                : isSleeping
-                  ? formatHourlyRate(0)
-                  : "—"}
+            {isShared
+              ? t("cloud.agents.detail.sharedFree", { defaultValue: "Free" })
+              : isRunningish
+                ? formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE)
+                : isIdle
+                  ? formatHourlyRate(AGENT_PRICING.IDLE_HOURLY_RATE)
+                  : isSleeping
+                    ? formatHourlyRate(0)
+                    : "—"}
           </p>
-          {(isRunningish || isIdle) && (
+          {!isShared && (isRunningish || isIdle) && (
             <p className="text-2xs text-muted tabular-nums">
               {isRunningish
                 ? formatMonthlyEstimate(AGENT_PRICING.RUNNING_HOURLY_RATE)
                 : formatMonthlyEstimate(AGENT_PRICING.IDLE_HOURLY_RATE)}
             </p>
           )}
-          {isSleeping && (
+          {!isShared && isSleeping && (
             <p className="text-2xs text-muted">
               {t("cloud.agents.detail.deactivatedNoCost", {
                 defaultValue: "Deactivated — no hourly cost",
@@ -270,7 +272,7 @@ export default function AgentDetailPage() {
             {formatTime(agent.createdAt)}
           </p>
         </div>
-        <div className="bg-card p-4 space-y-1">
+        <div className="col-span-2 bg-card p-4 space-y-1 lg:col-span-1">
           <p className="text-xs-tight uppercase tracking-[0.2em] text-muted">
             {t("cloud.agents.detail.lastHeartbeatLabel", {
               defaultValue: "Last Heartbeat",
@@ -287,7 +289,7 @@ export default function AgentDetailPage() {
         </div>
       </div>
 
-      <ElizaAgentTabs agentId={agent.id}>
+      <div className="space-y-6">
         {agent.errorMessage && (
           <div className="flex items-start gap-3 p-4 bg-destructive-subtle border border-destructive/20">
             <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
@@ -339,7 +341,7 @@ export default function AgentDetailPage() {
           status={agent.status}
           webUiUrl={agent.webUiUrl}
         />
-      </ElizaAgentTabs>
+      </div>
     </div>
   );
 }
