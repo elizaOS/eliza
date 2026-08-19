@@ -9,7 +9,12 @@ import path from "node:path";
 import { zipSync } from "fflate";
 import { afterEach, describe, expect, it } from "vitest";
 import { validateCorpusTarget } from "../validator.ts";
-import { collectXArchive } from "./x-archive.ts";
+import {
+  assertXArchiveZipFileSize,
+  collectXArchive,
+  MAX_X_ARCHIVE_UNCOMPRESSED_BYTES,
+  MAX_X_ARCHIVE_ZIP_BYTES,
+} from "./x-archive.ts";
 
 const FIXTURE_DIR = path.join(import.meta.dirname, "../../fixtures/x-archive");
 const OWNER = "7777";
@@ -227,4 +232,110 @@ describe("collectXArchive", () => {
       collectXArchive({ archivePath: badJson, ownerAccountId: OWNER, outDir }),
     ).rejects.toMatchObject({ code: "X_ARCHIVE_BAD_JSON" });
   });
+
+  it("rejects a ZIP whose forged central directory declares a huge entry", async () => {
+    const zipPath = path.join(await makeTempDir(), "bomb.zip");
+    const forged = forgeUncompressedSizes(
+      await zipFixtureBytes(),
+      MAX_X_ARCHIVE_UNCOMPRESSED_BYTES + 1,
+    );
+    await fs.writeFile(zipPath, forged);
+    await expect(
+      collectXArchive({
+        archivePath: zipPath,
+        ownerAccountId: OWNER,
+        outDir: await makeTempDir(),
+      }),
+    ).rejects.toMatchObject({ code: "X_ARCHIVE_ZIP_TOO_LARGE" });
+  });
+
+  it("rejects when the sum of declared entry sizes exceeds the cap", async () => {
+    const zipPath = path.join(await makeTempDir(), "sum-bomb.zip");
+    const perEntry = Math.floor(MAX_X_ARCHIVE_UNCOMPRESSED_BYTES / 2) + 1;
+    const forged = forgeUncompressedSizes(await zipFixtureBytes(), perEntry);
+    await fs.writeFile(zipPath, forged);
+    await expect(
+      collectXArchive({
+        archivePath: zipPath,
+        ownerAccountId: OWNER,
+        outDir: await makeTempDir(),
+      }),
+    ).rejects.toMatchObject({ code: "X_ARCHIVE_ZIP_TOO_LARGE" });
+  });
+
+  it("rejects a buffer that is not a ZIP archive", async () => {
+    const zipPath = path.join(await makeTempDir(), "not.zip");
+    await fs.writeFile(zipPath, "this is not a zip file at all");
+    await expect(
+      collectXArchive({
+        archivePath: zipPath,
+        ownerAccountId: OWNER,
+        outDir: await makeTempDir(),
+      }),
+    ).rejects.toMatchObject({ code: "X_ARCHIVE_ZIP_INVALID" });
+  });
+
+  it("rejects a ZIP whose on-disk size exceeds the compressed cap", () => {
+    try {
+      assertXArchiveZipFileSize(MAX_X_ARCHIVE_ZIP_BYTES + 1, "huge.zip");
+      expect.fail("expected compressed-size rejection");
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "X_ARCHIVE_ZIP_TOO_LARGE",
+        context: {
+          archivePath: "huge.zip",
+          declaredBytes: MAX_X_ARCHIVE_ZIP_BYTES + 1,
+          maxBytes: MAX_X_ARCHIVE_ZIP_BYTES,
+        },
+      });
+    }
+    expect(() =>
+      assertXArchiveZipFileSize(MAX_X_ARCHIVE_ZIP_BYTES, "ok.zip"),
+    ).not.toThrow();
+  });
 });
+
+/**
+ * Overwrite the uncompressed-size field of every central-directory entry,
+ * simulating a zip whose declared sizes do not match its real payload.
+ */
+function forgeUncompressedSizes(zip: Uint8Array, size: number): Uint8Array {
+  const out = new Uint8Array(zip);
+  const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+  let eocd = -1;
+  for (let i = out.length - 22; i >= 0; i--) {
+    if (
+      out[i] === 0x50 &&
+      out[i + 1] === 0x4b &&
+      out[i + 2] === 0x05 &&
+      out[i + 3] === 0x06
+    ) {
+      eocd = i;
+      break;
+    }
+  }
+  expect(eocd).toBeGreaterThanOrEqual(0);
+  const entryCount = view.getUint16(eocd + 10, true);
+  let offset = view.getUint32(eocd + 16, true);
+  for (let i = 0; i < entryCount; i++) {
+    expect(view.getUint32(offset, true)).toBe(0x02014b50);
+    view.setUint32(offset + 24, size, true);
+    offset +=
+      46 +
+      view.getUint16(offset + 28, true) +
+      view.getUint16(offset + 30, true) +
+      view.getUint16(offset + 32, true);
+  }
+  return out;
+}
+
+async function zipFixtureBytes(): Promise<Uint8Array> {
+  const dataDir = path.join(FIXTURE_DIR, "data");
+  const entries: Record<string, Uint8Array> = {};
+  for (const name of await fs.readdir(dataDir)) {
+    entries[`data/${name}`] = new Uint8Array(
+      await fs.readFile(path.join(dataDir, name)),
+    );
+  }
+  return zipSync(entries);
+}
