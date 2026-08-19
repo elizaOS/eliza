@@ -13,6 +13,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "@/db/schemas/payment-requests";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -26,7 +27,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 // Stripe + OxaPay are the wired credit-top-up rails on this surface (#10732).
 const CreateProviderSchema = z.enum(["stripe", "oxapay"]);
 const ProviderSchema = z.enum(["stripe", "oxapay", "x402", "wallet_native"]);
-const PaymentContextSchema = z.enum(["verified_payer", "any_payer"]);
+const PaymentContextSchema = z.literal("any_payer");
 const StatusSchema = z.enum([
   "pending",
   "delivered",
@@ -38,8 +39,13 @@ const StatusSchema = z.enum([
 
 const CreatePaymentRequestSchema = z.object({
   provider: CreateProviderSchema,
-  amountCents: z.number().int().min(1).max(100_000_000),
-  currency: z.string().min(3).max(8).optional(),
+  amountCents: z.number().int().min(1).max(MAX_PAYMENT_REQUEST_LEDGER_CENTS),
+  currency: z
+    .string()
+    .trim()
+    .refine((value) => value.toUpperCase() === "USD", "currency must be USD")
+    .transform(() => "USD")
+    .optional(),
   paymentContext: PaymentContextSchema,
   reason: z.string().max(500).optional(),
   expiresInMs: z
@@ -74,9 +80,7 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 function paymentContext(value: z.infer<typeof PaymentContextSchema>) {
-  return value === "verified_payer"
-    ? ({ kind: "verified_payer", scope: "owner_or_linked_identity" } as const)
-    : ({ kind: "any_payer" } as const);
+  return { kind: value } as const;
 }
 
 function paymentMetadata(input: z.infer<typeof CreatePaymentRequestSchema>) {

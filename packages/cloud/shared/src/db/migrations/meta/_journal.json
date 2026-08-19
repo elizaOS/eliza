@@ -1772,6 +1772,13 @@
       "when": 1790971200000,
       "tag": "0253_job_retryable_requeues",
       "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1791403200000,
+      "tag": "0254_payment_request_provider_settlement",
+      "breakpoints": true
     }
   ]
 }
