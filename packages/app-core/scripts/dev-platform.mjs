@@ -78,8 +78,12 @@ import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./lib/desktop-startup-embedding-warmup-policy.mjs";
 import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
-import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
+import {
+  isSpawnedProcessGroupAlive,
+  signalSpawnedProcessGroup,
+} from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
+import { stopMacApplicationAtPath } from "./lib/macos-launch-services-lifecycle.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-dev-banner.mjs";
@@ -649,6 +653,8 @@ async function warmApiRoutes(port) {
 const children = [];
 // Human names for shutdown logging; keyed weakly so tracking stays an array.
 const childNames = new WeakMap();
+// Exact canonical bundle path for the LaunchServices fallback we started.
+let launchServicesAppPath = null;
 // Same bounded window as dev-ui.mjs (#18435): covers the longest bounded
 // child-side teardown (Discord 10 s drain + 2 s reconcile) with margin.
 const SHUTDOWN_DRAIN_WINDOW_MS = resolveShutdownDrainWindowMs(process.env);
@@ -988,20 +994,14 @@ async function launch() {
       force: viteDepForce,
       port: uiDevPort,
     });
-    pushChild(
-      "vite",
-      viteCommand.command,
-      viteCommand.args,
-      appDir,
-      {
-        NODE_ENV: "development",
-        ELIZA_VITE_LOOPBACK_ORIGIN: "1",
-        ELIZA_PORT: String(uiDevPort),
-        ELIZA_UI_PORT: String(uiDevPort),
-        ELIZA_API_PORT: apiPort,
-        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-      },
-    );
+    pushChild("vite", viteCommand.command, viteCommand.args, appDir, {
+      NODE_ENV: "development",
+      ELIZA_VITE_LOOPBACK_ORIGIN: "1",
+      ELIZA_PORT: String(uiDevPort),
+      ELIZA_UI_PORT: String(uiDevPort),
+      ELIZA_API_PORT: apiPort,
+      ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
+    });
     await waitForPort(uiDevPort);
     console.log(`[eliza] Vite ready on ${rendererUrlForShell}\n`);
   }
@@ -1011,15 +1011,9 @@ async function launch() {
       appDir,
       viteArgs: ["build", "--watch"],
     });
-    pushChild(
-      "vite",
-      viteWatchCommand.command,
-      viteWatchCommand.args,
-      appDir,
-      {
-        ELIZA_DESKTOP_VITE_FAST_DIST: "1",
-      },
-    );
+    pushChild("vite", viteWatchCommand.command, viteWatchCommand.args, appDir, {
+      ELIZA_DESKTOP_VITE_FAST_DIST: "1",
+    });
   }
 
   const electrobunChild = pushChild(
@@ -1105,18 +1099,20 @@ async function launch() {
         return;
       }
       try {
-        const opener = spawn("open", [macAppPath], {
-          stdio: "ignore",
-          detached: true,
-        });
-        opener.unref();
+        launchServicesAppPath = realpathSync(macAppPath);
+        const opener = pushChild(
+          "launchservices-open",
+          "open",
+          ["-W", launchServicesAppPath],
+          electrobunDir,
+        );
         opener.on("error", (err) => {
           console.log(
             `[eliza] LaunchServices auto-open failed: ${err.message}`,
           );
         });
         console.log(
-          `[eliza] LaunchServices auto-open (${reason}): open ${path.basename(macAppPath)}`,
+          `[eliza] LaunchServices auto-open (${reason}): open -W ${path.basename(macAppPath)}`,
         );
       } catch (err) {
         console.log(
@@ -1192,18 +1188,35 @@ function shutdownDesktopDev({
   // the window is escalated (loudly, per child), and a bounded kill grace
   // keeps exit from racing the escalation. Already-exited children are
   // skipped inside the drain, preserving the no-stale-tree-signal behavior.
-  void drainSpawnedChildren({
-    children: children.map((child, index) => ({
-      name: childNames.get(child) ?? `child-${index + 1}`,
-      child,
-    })),
-    drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
-    signalTree: signalSpawnedProcessTree,
-    log: (line) => console.log(line),
-    warn: (line) => console.error(line),
-  }).then(() => {
-    process.exit(exitCode);
-  });
+  const stopLaunchServicesApp = launchServicesAppPath
+    ? stopMacApplicationAtPath(launchServicesAppPath).then((result) => {
+        for (const attempt of [result.graceful, result.forced]) {
+          if (!attempt.ok) {
+            console.error(
+              `[eliza] LaunchServices app shutdown failed: ${attempt.error}`,
+            );
+          }
+        }
+      })
+    : Promise.resolve();
+
+  void stopLaunchServicesApp
+    .then(() =>
+      drainSpawnedChildren({
+        children: children.map((child, index) => ({
+          name: childNames.get(child) ?? `child-${index + 1}`,
+          child,
+        })),
+        drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
+        signalTree: signalSpawnedProcessGroup,
+        isTargetAlive: isSpawnedProcessGroupAlive,
+        log: (line) => console.log(line),
+        warn: (line) => console.error(line),
+      }),
+    )
+    .then(() => {
+      process.exit(exitCode);
+    });
 }
 
 function cleanup() {
@@ -1227,7 +1240,7 @@ if (process.platform !== "win32") {
 launch().catch((err) => {
   console.error("[eliza] dev-platform failed:", err);
   for (const child of children) {
-    signalSpawnedProcessTree(child, "SIGKILL");
+    signalSpawnedProcessGroup(child, "SIGKILL");
   }
   process.exit(1);
 });

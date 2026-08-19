@@ -2,12 +2,20 @@ diff --git a/src/cli/package.json b/src/cli/package.json
 index c1a5327280b3c88ab6b14e7629838116b93066a0..68486adbaceb35b75f60ddc7da8a966daed5054a 100644
 --- a/src/cli/package.json
 +++ b/src/cli/package.json
-@@ -4,7 +4,7 @@
+@@ -4,5 +4,5 @@
  	"type": "module",
  	"devDependencies": {},
  	"peerDependencies": {
 -		"typescript": "^5.0.0"
 +		"typescript": ">=5.0.0"
  	},
- 	"dependencies": {},
- 	"trustedDependencies": []
+diff --git a/dist/api/bun/core/Socket.ts b/dist/api/bun/core/Socket.ts
+index cdaa2bca0f..21d07ba246 100644
+--- a/dist/api/bun/core/Socket.ts
++++ b/dist/api/bun/core/Socket.ts
+@@ -56,4 +56,4 @@ export const removeSocketForWebview = (webviewId: number) => {
+ };
+ 
+ const startRPCServer = () => {
+-	const startPort = 50000;
++	const startPort = 50001;

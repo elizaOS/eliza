@@ -106,6 +106,7 @@ import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
+import { focusChatComposerWhenReady } from "./components/shell/focus-chat-composer";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
@@ -174,6 +175,7 @@ import {
   type AppShellMode,
   resolveAppShellMode,
 } from "./platform/app-shell-mode";
+import { shouldUseClickOnlyChatOverlayPill } from "./platform/desktop-pill-policy";
 import { isIOS, isNative } from "./platform/init";
 import { RetainedLazyComponent } from "./retained-lazy";
 import {
@@ -322,6 +324,10 @@ function ChatOverlayShell() {
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
   const overlayOpen = controller?.isOpen ?? false;
+  const clickOnlyPill = shouldUseClickOnlyChatOverlayPill(
+    isElectrobunRuntime(),
+    typeof navigator === "undefined" ? "" : navigator.platform,
+  );
   // Escape collapses the overlay first — while it is open, AssistantOverlay's
   // own Escape handler closes it. Once already collapsed, Escape hides the
   // desktop window entirely (#12184) so the pill dismisses to the background
@@ -347,7 +353,7 @@ function ChatOverlayShell() {
         data-testid="chat-overlay-shell"
         className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
       >
-        <ShellFoundationMount useWebChatPanel />
+        <ShellFoundationMount useWebChatPanel clickOnlyPill={clickOnlyPill} />
       </div>
     </>
   );
@@ -1838,14 +1844,16 @@ function SecretsManagerModalMount(): ReactNode {
 
 function ShellFoundationMount({
   useWebChatPanel = false,
+  clickOnlyPill = false,
 }: {
   /** Desktop opens the same draggable chat surface as web, not a separate drawer. */
   useWebChatPanel?: boolean;
+  /** macOS detached hosts require every voice start to use a visible control. */
+  clickOnlyPill?: boolean;
 } = {}) {
   const controller = useShellControllerContext();
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
-  const shellPhase = controller?.phase;
   const firstRunComplete = useAppSelector((state) => state.firstRunComplete);
   const firstRunPinnedOpen = firstRunComplete === false;
   // Completion updates the store before the half-height overlay can release
@@ -1867,7 +1875,6 @@ function ShellFoundationMount({
       firstRunPinnedOpen ||
       firstRunJustCompleted ||
       keepChatOpenAfterFirstRun);
-  const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
   const [shellHostDetent, setShellHostDetent] = useState<
     "pill" | "input" | "half" | "full"
   >(shellIsOpen ? "input" : "pill");
@@ -1913,7 +1920,9 @@ function ShellFoundationMount({
   const controllerRef = useRef(controller);
   controllerRef.current = controller;
   useEffect(() => {
-    if (typeof document === "undefined") return undefined;
+    // The detached macOS pill is click-only. Voice starts from the canonical
+    // overlay's visible mic control, never from a hidden global/pill gesture.
+    if (typeof document === "undefined" || clickOnlyPill) return undefined;
     const onToggle = () => {
       const shell = controllerRef.current;
       if (!shell) return;
@@ -1933,7 +1942,7 @@ function ShellFoundationMount({
     document.addEventListener(PUSH_TO_TALK_TOGGLE_EVENT, onToggle);
     return () =>
       document.removeEventListener(PUSH_TO_TALK_TOGGLE_EVENT, onToggle);
-  }, []);
+  }, [clickOnlyPill]);
 
   // Fn-hold quasimode (#20483): the native fn monitor delivers true down/up,
   // so this is the same contract as the pill's own press-and-hold — down
@@ -1943,7 +1952,7 @@ function ShellFoundationMount({
   // hotkey or pill started.
   const fnHoldActiveRef = useRef(false);
   useEffect(() => {
-    if (typeof document === "undefined") return undefined;
+    if (typeof document === "undefined" || clickOnlyPill) return undefined;
     const onHold = (event: Event) => {
       const shell = controllerRef.current;
       if (!shell) return;
@@ -1972,16 +1981,14 @@ function ShellFoundationMount({
     };
     document.addEventListener(PUSH_TO_TALK_HOLD_EVENT, onHold);
     return () => document.removeEventListener(PUSH_TO_TALK_HOLD_EVENT, onHold);
-  }, []);
+  }, [clickOnlyPill]);
 
   useEffect(() => {
     if (!hasController) return undefined;
-    // While the shared mobile sheet is open, its five-state callback owns the
-    // exact native frame (including full work-area maximization). The legacy
-    // expanded/hover RPC remains the compatibility path for the resting pill.
+    // While the shared chat sheet is open, its canonical surface-state callback
+    // owns the exact native frame. The closed path always returns to 64x44.
     if (shouldMountWebChatPanel) return undefined;
     let cancelled = false;
-    setShellPreviewHostReady(false);
 
     void (async () => {
       if (cancelled) return;
@@ -1990,50 +1997,22 @@ function ShellFoundationMount({
         ipcChannel: "desktop:setBottomBarExpanded",
         params: {
           expanded: shellIsOpen && shellHostDetent !== "input",
-          hovered:
-            useWebChatPanel &&
-            (shellPhase === "listening" ||
-              (shellIsOpen && shellHostDetent === "input")),
         },
         timeoutMs: 1_000,
       });
-      if (
-        !cancelled &&
-        useWebChatPanel &&
-        shellPhase === "listening" &&
-        !shellIsOpen
-      ) {
-        // Paint hover and Fn-listening lanes only after the native host is
-        // 600px wide. Before this acknowledgement, wide DOM is clipped through
-        // the resting 96px WKWebView and appears as a narrow center slice.
-        setShellPreviewHostReady(true);
-      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [
-    hasController,
-    shouldMountWebChatPanel,
-    shellHostDetent,
-    shellIsOpen,
-    shellPhase,
-    useWebChatPanel,
-  ]);
+  }, [hasController, shouldMountWebChatPanel, shellHostDetent, shellIsOpen]);
   useEffect(() => {
     if (!useWebChatPanel || !shellIsOpen || !focusComposerOnOpenRef.current) {
       return;
     }
-    focusComposerOnOpenRef.current = false;
-    const frame = window.requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLTextAreaElement>(
-          '[data-testid="chat-composer-textarea"]',
-        )
-        ?.focus({ preventScroll: true });
+    return focusChatComposerWhenReady(() => {
+      focusComposerOnOpenRef.current = false;
     });
-    return () => window.cancelAnimationFrame(frame);
   }, [shellIsOpen, useWebChatPanel]);
   const openSharedDesktopComposer = useCallback(() => {
     focusComposerOnOpenRef.current = useWebChatPanel;
@@ -2080,28 +2059,33 @@ function ShellFoundationMount({
         signingIn={controller.signingIn}
         onOpen={openSharedDesktopComposer}
         onClose={controller.close}
-        onHoldStart={() => {
-          if (controller.authGate.gated) {
-            if (controller.authGate.phase === "needs-auth") {
-              controller.requestSignIn();
-            } else {
-              controller.startRecording("ptt");
-            }
-            return;
-          }
-          // Audible mic-open ping BEFORE capture spins up: the cue is the
-          // "start talking" signal, so it must not wait on getUserMedia.
-          playCaptureStartCue();
-          controller.startRecording("ptt");
-        }}
-        onHoldEnd={() => {
-          if (controller.authGate.gated) return;
-          playCaptureSendCue();
-          controller.stopRecording();
-        }}
-        onHoldCancel={controller.cancelRecording}
-        showComposerPreview={!useWebChatPanel}
-        previewHostReady={!useWebChatPanel || shellPreviewHostReady}
+        onHoldStart={
+          clickOnlyPill
+            ? undefined
+            : () => {
+                if (controller.authGate.gated) {
+                  if (controller.authGate.phase === "needs-auth") {
+                    controller.requestSignIn();
+                  } else {
+                    controller.startRecording("ptt");
+                  }
+                  return;
+                }
+                playCaptureStartCue();
+                controller.startRecording("ptt");
+              }
+        }
+        onHoldEnd={
+          clickOnlyPill
+            ? undefined
+            : () => {
+                if (controller.authGate.gated) return;
+                playCaptureSendCue();
+                controller.stopRecording();
+              }
+        }
+        onHoldCancel={clickOnlyPill ? undefined : controller.cancelRecording}
+        tightNativeHitbox={useWebChatPanel}
       />
       {!useWebChatPanel ? (
         <AssistantOverlay

@@ -46,6 +46,14 @@ const conductorMock = vi.hoisted(() => ({
   mount: vi.fn(),
 }));
 
+const shellContextMock = vi.hoisted(() => ({
+  controller: {
+    isOpen: false,
+    phase: "idle",
+    close: vi.fn(),
+  },
+}));
+
 // The key mock: App imports FirstRunConductorMount from this module (its only
 // importer). The spy proves App composed the conductor into the tree the
 // chat-overlay branch actually returns; the marker div (the real component
@@ -68,6 +76,7 @@ vi.mock("@capacitor/keyboard", () => ({
 vi.mock("./bridge/electrobun-rpc", () => ({
   getElectrobunRendererRpc: vi.fn(() => undefined),
   invokeDesktopBridgeRequest: vi.fn(async () => ({ id: "window-1" })),
+  invokeDesktopBridgeRequestWithTimeout: vi.fn(async () => undefined),
   subscribeDesktopBridgeEvent: vi.fn(() => vi.fn()),
   openDesktopAppWindow: vi.fn(async () => ({ id: "window-1" })),
   openDesktopLauncherWindow: vi.fn(async () => ({ id: "launcher-1" })),
@@ -196,7 +205,19 @@ vi.mock("./components/shell/ShellControllerContext", () => ({
   ShellControllerProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="shell-controller-provider">{children}</div>
   ),
-  useShellControllerContext: () => null,
+}));
+
+vi.mock("./components/shell/ShellControllerContext.hooks", () => ({
+  useShellControllerContext: () => shellContextMock.controller,
+}));
+
+vi.mock("./components/shell/ChatOverlay", () => ({
+  ChatOverlay: ({ firstRunOpen }: { firstRunOpen?: boolean }) => (
+    <div
+      data-testid="chat-overlay"
+      data-first-run-open={firstRunOpen ? "true" : "false"}
+    />
+  ),
 }));
 
 vi.mock("./components/shell/StartupScreen", () => ({
@@ -302,6 +323,10 @@ describe("App chat-overlay first-run composition", () => {
     // …and the in-chat onboarding conductor is composed into the SAME tree, so
     // its seed effect (greeting + runtime/provider/tutorial turns) runs.
     expect(conductorMock.mount).toHaveBeenCalled();
+    // The controller starts closed on a fresh launch. Onboarding still owns a
+    // forced-open ChatOverlay, otherwise its messages are clipped inside the
+    // native 64x44 resting pill until the user somehow opens the controller.
+    expect(getByTestId("chat-overlay").dataset.firstRunOpen).toBe("true");
     // The conductor mounts inside the shell-controller subtree, mirroring the
     // full-shell composition at the ChatOverlay mount site.
     expect(

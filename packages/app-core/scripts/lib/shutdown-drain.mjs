@@ -102,6 +102,9 @@ function isLive(child) {
  * @param {number} options.drainWindowMs
  * @param {(child: import("node:child_process").ChildProcess, signal: "SIGTERM" | "SIGKILL") => void} options.signalTree
  *   Tree-aware signal delivery (dev hosts pass `signalSpawnedProcessTree`).
+ * @param {(child: import("node:child_process").ChildProcess) => boolean} [options.isTargetAlive]
+ *   Optional liveness probe for targets that outlive their launcher handle,
+ *   such as a detached Unix process group.
  * @param {number} [options.killGraceMs]
  * @param {(message: string) => void} [options.log]
  * @param {(message: string) => void} [options.warn]
@@ -112,12 +115,15 @@ export function drainSpawnedChildren(options) {
     children,
     drainWindowMs,
     signalTree,
+    isTargetAlive = isLive,
     killGraceMs = DEFAULT_KILL_GRACE_MS,
     log = console.log.bind(console),
     warn = console.error.bind(console),
   } = options;
 
-  const live = children.filter((entry) => isLive(entry.child));
+  const live = children.filter(
+    (entry) => Boolean(entry.child) && isTargetAlive(entry.child),
+  );
   for (const entry of live) {
     signalTree(entry.child, "SIGTERM");
   }
@@ -137,12 +143,21 @@ export function drainSpawnedChildren(options) {
     let settled = false;
     /** @type {ReturnType<typeof setTimeout> | null} */
     let graceTimer = null;
+    /** @type {ReturnType<typeof setInterval> | null} */
+    let livenessPoller = null;
+
+    const refreshRemaining = () => {
+      for (const entry of remaining) {
+        if (!isTargetAlive(entry.child)) remaining.delete(entry);
+      }
+    };
 
     // Deliberately ref'd: children hold the event loop open while they run,
     // and every path below ends in the caller's `process.exit`, so a ref'd
     // timer cannot outlive the process — but an unref'd one could fail to
     // fire if a child closed its stdio without exiting.
     const windowTimer = setTimeout(() => {
+      refreshRemaining();
       for (const entry of remaining) {
         warn(
           `[eliza] ${entry.name} did not exit within ${drainWindowMs} ms — escalating to SIGKILL.`,
@@ -159,14 +174,22 @@ export function drainSpawnedChildren(options) {
       settled = true;
       clearTimeout(windowTimer);
       if (graceTimer) clearTimeout(graceTimer);
+      if (livenessPoller) clearInterval(livenessPoller);
       resolve({ timedOut, killed });
     }
 
     for (const entry of live) {
       entry.child.once("exit", () => {
-        remaining.delete(entry);
+        if (!isTargetAlive(entry.child)) remaining.delete(entry);
         if (remaining.size === 0) finish(killed.length > 0);
       });
     }
+    // A detached launcher can exit before its descendants. Poll the target
+    // itself so cooperative groups finish promptly and stubborn descendants
+    // remain eligible for the bounded SIGKILL escalation.
+    livenessPoller = setInterval(() => {
+      refreshRemaining();
+      if (remaining.size === 0) finish(killed.length > 0);
+    }, 50);
   });
 }

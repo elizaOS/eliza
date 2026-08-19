@@ -1407,7 +1407,14 @@ X-GNOME-Autostart-enabled=true
   }
 
   async focusWindow(): Promise<void> {
-    this.getWindow()?.focus();
+    const win = this.getWindow();
+    if (!win) return;
+    const ptr = (win as { ptr?: unknown }).ptr;
+    if (ptr && process.platform === "darwin") {
+      makeKeyAndOrderFront(ptr as Parameters<typeof makeKeyAndOrderFront>[0]);
+      return;
+    }
+    win.activate();
   }
 
   async isWindowMaximized(): Promise<{ maximized: boolean }> {
@@ -1450,7 +1457,7 @@ X-GNOME-Autostart-enabled=true
       makeKeyAndOrderFront(ptr as Parameters<typeof makeKeyAndOrderFront>[0]);
     } else {
       win.show();
-      win.focus();
+      win.activate();
     }
     this._windowHidden = false;
     this.refreshMainWindowPresence();
@@ -1546,7 +1553,6 @@ X-GNOME-Autostart-enabled=true
   async setBottomBarExpanded(options: {
     expanded: boolean;
     chip?: boolean;
-    hovered?: boolean;
   }): Promise<void> {
     // Record desired presentation before consulting transient native state. A
     // missing window/display must not lose a rest↔hover↔auth↔panel transition.

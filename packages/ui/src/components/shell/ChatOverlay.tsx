@@ -79,6 +79,7 @@ import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,
 } from "../../os-intent/host";
+import { resolveAppShellMode } from "../../platform/app-shell-mode";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
   getPhysicalScreenVerticalExtent,
@@ -159,6 +160,7 @@ import {
 } from "./chat-panel-layout";
 import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
+import { RestingPillButton } from "./RestingPillButton";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
   filterRenderableShellMessages,
@@ -935,15 +937,18 @@ function SheetGrabber({
   open,
   onOpen,
   onClose,
+  onActivate,
   binding,
   breathing,
   opacity,
   pilled,
   locked = false,
+  tightHitbox,
 }: {
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
+  onActivate: () => void;
   binding: PullGestureBinding;
   breathing: boolean;
   // Crossfade opacity (driven by openProgress): 0 while the pill capsule owns the
@@ -955,8 +960,11 @@ function SheetGrabber({
   pilled: boolean;
   /** Keeps the normal handle visible while onboarding owns the detent. */
   locked?: boolean;
+  /** Keep the forgiving target entirely inside the detached painted host. */
+  tightHitbox: boolean;
 }): React.JSX.Element {
   const disabled = pilled || locked;
+  const lastPointerReleaseAt = React.useRef(Number.NEGATIVE_INFINITY);
   return (
     <motion.button
       style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
@@ -976,8 +984,7 @@ function SheetGrabber({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          if (open) onClose();
-          else onOpen();
+          onActivate();
         } else if (e.key === "ArrowUp") {
           e.preventDefault();
           onOpen();
@@ -994,6 +1001,18 @@ function SheetGrabber({
       // touch authority, matching PillHandle's moving-target contract below.
       onTouchEnd={(e) => {
         if (e.cancelable) e.preventDefault();
+      }}
+      // WebKit accessibility activation may emit a compatibility click without
+      // the pointer sequence used by the gesture recognizer. Accept that path,
+      // but suppress the click that follows a real pointer release: the latter
+      // has already run `binding.onTap` and must not step two detents at once.
+      onPointerUpCapture={() => {
+        lastPointerReleaseAt.current = performance.now();
+      }}
+      onClick={() => {
+        if (performance.now() - lastPointerReleaseAt.current > 150) {
+          onActivate();
+        }
       }}
       {...binding}
       onPointerDown={(event) => {
@@ -1012,18 +1031,21 @@ function SheetGrabber({
         // open" affordance) but STAYS ABOVE the input row so it never steals
         // taps meant for the textarea / +/mic controls below it.
         // z-20 keeps it above the input row (z-10) so it always wins the drag.
-        "absolute top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center py-2 active:cursor-grabbing",
-        // In input mode, reserve a real gutter over BOTH edge controls. The
-        // prior full-width band began inside the + button and immediately to
-        // its right, so a tiny miss opened/flung the sheet instead of opening
-        // chat actions. Once the sheet is open, those controls are far below
-        // this top handle and the generous full-width drag lane is safe again.
-        open ? "inset-x-6" : "inset-x-[4.5rem]",
+        tightHitbox
+          ? "absolute inset-x-0 top-0 z-50 flex h-8 cursor-grab touch-none select-none items-center justify-center active:cursor-grabbing"
+          : cn(
+              "absolute top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center py-2 active:cursor-grabbing",
+              // In input mode, reserve a real gutter over BOTH edge controls.
+              // Once open, the controls are below this top handle and the
+              // generous full-width drag lane is safe again.
+              open ? "inset-x-6" : "inset-x-[4.5rem]",
+            ),
         // The invisible hit target reaches a comfortable distance ABOVE the
         // panel (a swipe-up begun in the empty field just over the composer is
         // caught) and STOPS at the handle's own bottom, so it never overlaps the
         // interactive composer row beneath — taps fall through to the input.
-        "before:absolute before:-inset-x-2 before:-top-6 before:bottom-0 before:content-['']",
+        !tightHitbox &&
+          "before:absolute before:-inset-x-2 before:-top-6 before:bottom-0 before:content-['']",
       )}
     >
       <span
@@ -1052,11 +1074,7 @@ function SheetGrabber({
   );
 }
 
-/**
- * The fully-collapsed PILL — the chat reduced to a small glass capsule at the
- * very bottom. Tap or flick/pull it up to bring the input back. Big invisible
- * hit area so it's easy to grab; the visible capsule stays small.
- */
+/** The canonical 64x44 resting pill used by every chat surface. */
 function PillHandle({
   binding,
   counterScale,
@@ -1065,93 +1083,44 @@ function PillHandle({
   pilled,
 }: {
   binding: PullGestureBinding;
-  // Inverse of the panel's pill-morph scale (see pillHandleCounterScale),
-  // applied to the visible BAR only — the button/hit geometry keeps riding the
-  // panel scale (the touch-compat mousedown after a tap must keep landing where
-  // it always did), while the painted bar stays pixel-identical to the
-  // input-mode grabber bar across the whole morph.
+  // Inverse of the panel's pill-morph scale. It wraps the entire painted target
+  // so the visible 64x44 surface and its hit geometry remain identical.
   counterScale: MotionValue<number>;
   onOpen: () => void;
   breathing: boolean;
-  // Interactive ONLY while pilled. The handle's hit zone (`px-16 pt-10`) is tall
-  // and wide and sits directly over the composer textarea; if it kept
-  // `pointer-events-auto` while NOT pilled it would intercept the tap meant for
-  // the input (the parent's `pointer-events:none` can't override a child that
-  // opts back in), so the keyboard would never open. Gate on `pilled` so taps
-  // pass through to the textarea once the input has formed.
   pilled: boolean;
 }): React.JSX.Element {
   return (
-    <Button
-      variant="ghost"
-      data-testid="chat-pill"
-      aria-label="open chat"
-      // No onClick: the pull-gesture binding is the single tap authority (a tap
-      // routes through onPointerUp → onTap → openFromPill), matching the
-      // SheetGrabber. A native onClick would ALSO fire on every tap, opening the
-      // pill twice in one gesture (double haptic + a stale focus-suppress flag
-      // that swallowed the next focus→expand). Keyboard activation still routes
-      // through onKeyDown below.
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      // A touch tap opens the INPUT bar in the pointerup that precedes this
-      // touchend — by the time the browser dispatches its compat mouse events
-      // (mousedown/click), the composer textarea has already formed under the
-      // same coordinates, and the synthetic click would focus it and pop the
-      // keyboard the pill tap deliberately leaves down. preventDefault() on
-      // touchend suppresses the compat sequence; the gesture itself runs on
-      // pointer events and is unaffected. Unconditional: a touchend only
-      // reaches this handle when the touch STARTED on it (touch events retarget
-      // to their touchstart element), i.e. while it was the pilled handle —
-      // the render that formed the input has already flipped `pilled` false by
-      // the time this fires, so the prop cannot gate it.
-      onTouchEnd={(e) => {
-        if (e.cancelable) e.preventDefault();
-      }}
-      {...binding}
-      tabIndex={pilled ? undefined : -1}
-      aria-hidden={pilled ? undefined : true}
-      className={cn(
-        // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
-        // floating mid-air; the tall pt + full width keep a generous upward grab/
-        // flick zone so a swipe-up from anywhere across the bottom opens the chat
-        // (the lock-screen affordance). Flex-center keeps the capsule centred
-        // while the invisible hit area spans wide.
-        "flex h-auto w-full cursor-grab touch-none select-none items-end justify-center rounded-none bg-transparent px-8 pb-1.5 pt-10 hover:bg-transparent active:cursor-grabbing",
-        // Interactive only while pilled. When NOT pilled the (faded) handle must
-        // let taps fall through to the composer textarea below it — otherwise its
-        // tall hit zone steals the tap and the keyboard never opens.
-        pilled ? "pointer-events-auto" : "pointer-events-none",
-      )}
+    <motion.div
+      className="h-11 w-16 origin-bottom"
+      style={{ scale: counterScale }}
     >
-      <motion.span
-        aria-hidden="true"
-        className={cn(
-          // Identical to the SheetGrabber's closed-state bar — same white shape
-          // + color whether the chat is open or collapsed to the pill. Its
-          // show/hide is driven by the WRAPPER's `pillOpacity` crossfade
-          // (anti-phase with the grabber). The bar paints at full opacity — a
-          // prior regression pinned it to `opacity-0`, leaving the pill handle
-          // grabbable but invisible (#9142).
-          "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
-          // Same compositor-only work-state breath as the SheetGrabber bar.
-          breathing && "eliza-chat-handle-breathe",
-        )}
-        // Same explicit color as the grabber bar so the two are pixel-identical
-        // through the crossfade (HANDLE_BAR_COLOR). The counter-scale cancels
-        // the panel's pill-morph shrink for the BAR alone, so the collapsed
-        // handle renders the same size as the input-mode grabber bar.
-        style={{
-          backgroundColor: HANDLE_BAR_COLOR,
-          scale: counterScale,
-          transformOrigin: "bottom center",
+      <RestingPillButton
+        data-testid="chat-pill"
+        aria-label="open chat"
+        breathing={breathing}
+        onKeyDown={(event) => {
+          if (
+            event.key === "Enter" ||
+            event.key === " " ||
+            event.key === "ArrowUp"
+          ) {
+            event.preventDefault();
+            onOpen();
+          }
         }}
+        onTouchEnd={(event) => {
+          if (event.cancelable) event.preventDefault();
+        }}
+        {...binding}
+        tabIndex={pilled ? undefined : -1}
+        aria-hidden={pilled ? undefined : true}
+        className={cn(
+          "cursor-grab touch-none select-none active:cursor-grabbing",
+          pilled ? "pointer-events-auto" : "pointer-events-none",
+        )}
       />
-    </Button>
+    </motion.div>
   );
 }
 
@@ -2974,7 +2943,15 @@ export function ChatOverlay({
   const shortLandscape =
     !fillHostAtHalf &&
     isShortLandscapeViewport(viewport.innerWidth, viewport.innerHeight);
+  const desktopChatOverlay =
+    typeof window !== "undefined" &&
+    resolveAppShellMode(
+      window.location.search,
+      window.location.hash,
+      window.ELIZAOS_SHELL_MODE,
+    ) === "chat-overlay";
   const compactLanding =
+    !desktopChatOverlay &&
     shortLandscape &&
     !sheetOpen &&
     !fullBleed &&
@@ -4671,11 +4648,19 @@ export function ChatOverlay({
 
   // Escape collapses the chat from ANY open state, even a free-drag open with no
   // focused element (the element-level handlers on the textarea/thread only fire
-  // when one of them holds focus). Registered only while open.
+  // when one of them holds focus). The detached desktop shell also accepts a
+  // second Escape from INPUT to the resting pill; web/mobile keep their current
+  // input behavior.
   React.useEffect(() => {
-    if (typeof document === "undefined" || !sheetOpen) return undefined;
+    if (
+      typeof document === "undefined" ||
+      pilled ||
+      (!sheetOpen && !desktopChatOverlay)
+    )
+      return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (e.defaultPrevented) return;
         // An open Radix dialog (data-state="open" — e.g. the command palette)
         // sits above the chat: let ITS Escape handling win — collapsing here
         // too closed both at once (e.g. an invisible palette + the chat).
@@ -4695,12 +4680,13 @@ export function ChatOverlay({
           return;
         }
         e.preventDefault();
-        collapse();
+        if (sheetOpen) collapse();
+        else collapseToPill();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [sheetOpen, collapse]);
+  }, [sheetOpen, pilled, desktopChatOverlay, collapse, collapseToPill]);
 
   // Android hardware/gesture back closes the open chat sheet FIRST — the same
   // "dismiss the open surface" behavior desktop/web get from Escape (#9148).
@@ -5281,6 +5267,10 @@ export function ChatOverlay({
         collapse();
         return;
       }
+      if (desktopChatOverlay) {
+        collapseToPill();
+        return;
+      }
       openFromGrabber();
     },
     // A deliberate (slow) drag: REST exactly where released instead of snapping
@@ -5616,6 +5606,10 @@ export function ChatOverlay({
       // chat low without touching that zone.
       style={{
         zIndex: Z_SHELL_OVERLAY,
+        // The detached native host is itself the expanded surface. Occupy its
+        // complete height so there are no transparent pixels above the panel
+        // that can intercept the application underneath.
+        top: desktopChatOverlay && sheetOpen ? 0 : undefined,
         // At rest, the measured reclaim offset seats the composer at the
         // physical bottom on collapsed iOS standalone/native viewports. Off that
         // surface the custom property is zero. When the keyboard is visible,
@@ -5628,20 +5622,23 @@ export function ChatOverlay({
         // Non-full-bleed keeps the same safe-area clearance above the reclaimed
         // physical bottom, with the wallpaper/app floor owning everything below.
         // Side inset eases with the shape spring (12px inset → 0 at full-bleed).
-        paddingLeft: overlayPadX,
-        paddingRight: overlayPadX,
+        paddingLeft: desktopChatOverlay ? 0 : overlayPadX,
+        paddingRight: desktopChatOverlay ? 0 : overlayPadX,
         // Bottom clearance: the keyboard-lift gap wins when the keyboard is up;
         // else, only WHILE maximizing/restoring does the composer inset ease with
         // the shape spring (its value equals the plain rest inset at the boundary,
         // so the switch is seamless) — at rest it stays the plain calc so the
         // home-indicator clearance contract is exact.
-        paddingBottom: keyboardLiftActive
-          ? `${KEYBOARD_COMPOSER_GAP_PX}px`
-          : fullBleed || restoreDragging || isDragging
-            ? overlayPadBottom
-            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
+        paddingBottom: desktopChatOverlay
+          ? 0
+          : keyboardLiftActive
+            ? `${KEYBOARD_COMPOSER_GAP_PX}px`
+            : fullBleed || restoreDragging || isDragging
+              ? overlayPadBottom
+              : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
       }}
       data-testid="chat-overlay"
+      data-desktop-overlay={desktopChatOverlay ? "true" : undefined}
       data-chat-gesture-surface=""
       data-open={sheetOpen ? "true" : undefined}
     >
@@ -5725,7 +5722,10 @@ export function ChatOverlay({
         // grabber + pill are positioned relative to THIS wrapper, so they
         // shrink and re-corner with it.
         style={{ maxWidth: wrapperMaxW }}
-        className="pointer-events-none relative flex w-full flex-col items-center"
+        className={cn(
+          "pointer-events-none relative flex w-full flex-col items-center",
+          desktopChatOverlay && sheetOpen && "h-full justify-end",
+        )}
       >
         {(!fullBleed && !restoreDragging) || grabberPressRef.current != null ? (
           // Suppressed while full-bleed (the restore strip owns the top) and
@@ -5739,6 +5739,11 @@ export function ChatOverlay({
             open={sheetOpen}
             onOpen={openFromGrabber}
             onClose={collapse}
+            onActivate={() => {
+              if (sheetOpen) collapse();
+              else if (desktopChatOverlay) collapseToPill();
+              else openFromGrabber();
+            }}
             binding={grabberBinding}
             // The handle stays QUIET while the mic is recording — the composer
             // mic/voice glyphs already carry the "capture is hot" pulse right
@@ -5749,6 +5754,7 @@ export function ChatOverlay({
             opacity={grabberOpacity}
             pilled={pilled}
             locked={firstRunOpen}
+            tightHitbox={desktopChatOverlay}
           />
         ) : null}
         <motion.fieldset
@@ -5782,7 +5788,7 @@ export function ChatOverlay({
             // Morph-driven cap: the inset ceiling at rest, growing to the
             // full-bleed ceiling in lock-step with the shape morph (see
             // panelCapH) so an over-pull grows 1:1 under the finger.
-            maxHeight: panelCapH,
+            maxHeight: desktopChatOverlay ? undefined : panelCapH,
             // Resting full-screen needs an explicit height because an intrinsic
             // flexbox can shrink around the composer. During a drag and its
             // release spring, however, the thread/content box is the geometry
@@ -5791,7 +5797,12 @@ export function ChatOverlay({
             // Returning to `auto` for that whole motion keeps surface, transcript,
             // and composer bottom-anchored as one object; the settled full-screen
             // endpoint switches to the same explicit cap only after they match.
-            height: fullBleed && !isDragging ? panelCapH : "auto",
+            height:
+              desktopChatOverlay && sheetOpen && !isDragging
+                ? "100%"
+                : fullBleed && !isDragging
+                  ? panelCapH
+                  : "auto",
             // Full-bleed must be exactly scale 1 — a sub-1 morph scale with a
             // bottom transform-origin would drop the top edge below the status
             // bar (the "gap at the top when maximized" bug). While open (incl. a
@@ -5810,6 +5821,7 @@ export function ChatOverlay({
             // content wrapper instead, so clipping the scroll never clips a hard
             // square edge over the content.
             "relative m-0 flex w-full min-w-0 flex-col overflow-visible border-0 p-0",
+            desktopChatOverlay && sheetOpen && "max-h-full justify-end",
           )}
         >
           {/* SURFACE — absolute fill; the frosted-glass bg/border + the live

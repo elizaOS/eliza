@@ -6,7 +6,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { signalSpawnedProcessTree } from "./kill-process-tree.mjs";
+import {
+  isSpawnedProcessGroupAlive,
+  signalSpawnedProcessGroup,
+  signalSpawnedProcessTree,
+} from "./kill-process-tree.mjs";
 import {
   DEFAULT_SHUTDOWN_DRAIN_WINDOW_MS,
   drainSpawnedChildren,
@@ -26,7 +30,8 @@ function makeChild() {
 
 function exitChild(child, code = 0) {
   child.exitCode = code;
-  child.emit("exit", code, null);
+  child.signalCode = code === null ? "SIGKILL" : null;
+  child.emit("exit", code, child.signalCode);
 }
 
 describe("resolveShutdownDrainWindowMs", () => {
@@ -133,6 +138,28 @@ describe("drainSpawnedChildren (deterministic)", () => {
     expect(result).toEqual({ timedOut: false, killed: [] });
     expect(signalTree).not.toHaveBeenCalledWith(a, "SIGKILL");
     expect(signalTree).not.toHaveBeenCalledWith(b, "SIGKILL");
+  });
+
+  it("drains a target that remains alive after its launcher handle exited", async () => {
+    const child = makeChild();
+    child.exitCode = 0;
+    let targetAlive = true;
+    const signalTree = vi.fn(() => {
+      targetAlive = false;
+    });
+
+    const drain = drainSpawnedChildren({
+      children: [{ name: "detached-group", child }],
+      drainWindowMs: 5_000,
+      signalTree,
+      isTargetAlive: () => targetAlive,
+      log: () => {},
+      warn: () => {},
+    });
+
+    expect(signalTree).toHaveBeenCalledWith(child, "SIGTERM");
+    await vi.advanceTimersByTimeAsync(50);
+    await expect(drain).resolves.toEqual({ timedOut: false, killed: [] });
   });
 
   it("escalates only stragglers when the window elapses, loudly", async () => {
@@ -256,6 +283,39 @@ describe.skipIf(process.platform === "win32")(
       expect(warn).toHaveBeenCalledTimes(1);
       expect(isAlive(child.pid)).toBe(false);
     }, 15_000);
+
+    it("escalates a detached group when its launcher exits but a native descendant ignores SIGTERM", async () => {
+      const child = spawn(
+        process.execPath,
+        [
+          "-e",
+          `const { spawn } = require("node:child_process");
+           const app = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); process.stdout.write('ready'); setInterval(() => {}, 1000)"], { stdio: ["ignore", "pipe", "ignore"] });
+           process.on("SIGTERM", () => process.exit(0));
+           app.stdout.once("data", () => process.stdout.write(String(app.pid)));
+           setInterval(() => {}, 1000);`,
+        ],
+        { detached: true, stdio: ["ignore", "pipe", "ignore"] },
+      );
+      const [chunk] = await once(child.stdout, "data");
+      const descendantPid = Number.parseInt(String(chunk), 10);
+      expect(descendantPid).toBeGreaterThan(0);
+
+      const warn = vi.fn();
+      const result = await drainSpawnedChildren({
+        children: [{ name: "electrobun", child }],
+        drainWindowMs: 300,
+        killGraceMs: 2_000,
+        signalTree: signalSpawnedProcessGroup,
+        isTargetAlive: isSpawnedProcessGroupAlive,
+        log: () => {},
+        warn,
+      });
+
+      expect(result).toEqual({ timedOut: true, killed: ["electrobun"] });
+      expect(warn).toHaveBeenCalledOnce();
+      expect(isAlive(descendantPid)).toBe(false);
+    }, 15_000);
   },
 );
 
@@ -292,13 +352,24 @@ describe("dev-platform supervisor wiring", () => {
   );
 
   it("routes shutdownDesktopDev through the bounded drain", () => {
-    expect(devPlatformSource).toContain("void drainSpawnedChildren({");
+    expect(devPlatformSource).toContain("drainSpawnedChildren({");
     expect(devPlatformSource).toContain(
       "drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,",
     );
     expect(devPlatformSource).toContain(
-      "signalTree: signalSpawnedProcessTree,",
+      "signalTree: signalSpawnedProcessGroup,",
     );
+    expect(devPlatformSource).toContain(
+      "isTargetAlive: isSpawnedProcessGroupAlive,",
+    );
+  });
+
+  it("owns the exact LaunchServices fallback through shutdown", () => {
+    expect(devPlatformSource).toContain('["-W", launchServicesAppPath]');
+    expect(devPlatformSource).toContain(
+      "stopMacApplicationAtPath(launchServicesAppPath)",
+    );
+    expect(devPlatformSource).not.toContain("opener.unref()");
   });
 
   it("no longer SIGKILLs surviving children on a fixed fuse", () => {

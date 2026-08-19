@@ -51,7 +51,9 @@ const CHATVIEW_TSX = readFileSync(
 describe("App standalone chat-overlay wiring", () => {
   it("mounts the chat overlay outside the full chat tab", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
-    expect(APP_TSX).toContain("<ShellFoundationMount useWebChatPanel />");
+    expect(APP_TSX).toContain(
+      "<ShellFoundationMount useWebChatPanel clickOnlyPill={clickOnlyPill} />",
+    );
     expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
     // The floating glass chat remains available in the main shell, including
     // the ambient /chat route.
@@ -76,7 +78,9 @@ describe("App standalone chat-overlay wiring", () => {
     );
 
     expect(overlayShell).toContain("<GlassStyles />");
-    expect(overlayShell).toContain("<ShellFoundationMount useWebChatPanel />");
+    expect(overlayShell).toContain(
+      "<ShellFoundationMount useWebChatPanel clickOnlyPill={clickOnlyPill} />",
+    );
     expect(overlayShell).not.toContain("useChatOverlayWindowBounds");
     expect(overlayShell).not.toContain("<AppBackground");
     expect(foundation).toContain("const firstRunJustCompleted =");
@@ -95,11 +99,11 @@ describe("App standalone chat-overlay wiring", () => {
     expect(foundation).toContain(
       'expanded: shellIsOpen && shellHostDetent !== "input"',
     );
+    expect(foundation).not.toContain("shellPreviewHovered");
+    expect(foundation).not.toContain("hovered:");
     expect(foundation).toContain(
-      '(shellIsOpen && shellHostDetent === "input")',
+      'typeof document === "undefined" || clickOnlyPill',
     );
-    expect(foundation).toContain('shellPhase === "listening"');
-    expect(foundation).toContain("showComposerPreview={!useWebChatPanel}");
     expect(foundation).not.toContain("setShellPreviewHovered");
     expect(foundation).toContain(
       "{!useWebChatPanel ? (\n        <AssistantOverlay",

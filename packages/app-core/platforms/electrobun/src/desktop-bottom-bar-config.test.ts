@@ -10,8 +10,8 @@ import {
   DEFAULT_BOTTOM_BAR_WIDTH,
   EXPANDED_BOTTOM_BAR_HEIGHT,
   EXPANDED_BOTTOM_BAR_WIDTH,
-  HOVER_BOTTOM_BAR_HEIGHT,
-  HOVER_BOTTOM_BAR_WIDTH,
+  INPUT_BOTTOM_BAR_HEIGHT,
+  INPUT_BOTTOM_BAR_WIDTH,
   isBottomBarSurfaceState,
   resolveBottomBarFrameSize,
   resolveDesktopShellWindowPresentation,
@@ -75,6 +75,19 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("computeBottomBarFrame", () => {
+    it("keeps the painted resting control at the minimum interactive height", () => {
+      expect(DEFAULT_BOTTOM_BAR_WIDTH).toBeGreaterThanOrEqual(44);
+      expect(DEFAULT_BOTTOM_BAR_HEIGHT).toBeGreaterThanOrEqual(44);
+      expect(
+        computeBottomBarFrame({ x: 0, y: 0, width: 100, height: 100 }),
+      ).toEqual({
+        x: 18,
+        y: 56,
+        width: 64,
+        height: 44,
+      });
+    });
+
     it("pins a pill-sized hit area to the bottom center of the work area", () => {
       const frame = computeBottomBarFrame({
         x: 0,
@@ -111,24 +124,18 @@ describe("desktop bottom-bar config", () => {
       expect(frame.y).toBe(800 - 100 - 20);
     });
 
-    it("clamps to a sane minimum height", () => {
+    it("allows a native hit box to match a very small painted surface", () => {
       const frame = computeBottomBarFrame(
         { x: 0, y: 0, width: 1000, height: 800 },
         { height: 1 },
       );
-      expect(frame.height).toBe(48);
+      expect(frame.height).toBe(1);
     });
 
-    it("resolves rest, hover preview, sign-in chip, and expanded sizes", () => {
+    it("resolves rest, sign-in chip, and expanded sizes", () => {
       expect(resolveBottomBarFrameSize({ expanded: false })).toEqual({
         width: DEFAULT_BOTTOM_BAR_WIDTH,
         height: DEFAULT_BOTTOM_BAR_HEIGHT,
-      });
-      expect(
-        resolveBottomBarFrameSize({ expanded: false, hovered: true }),
-      ).toEqual({
-        width: HOVER_BOTTOM_BAR_WIDTH,
-        height: HOVER_BOTTOM_BAR_HEIGHT,
       });
       expect(
         resolveBottomBarFrameSize({ expanded: false, chip: true }),
@@ -142,16 +149,6 @@ describe("desktop bottom-bar config", () => {
           height: EXPANDED_BOTTOM_BAR_HEIGHT,
         },
       );
-      expect(
-        resolveBottomBarFrameSize({
-          expanded: false,
-          chip: true,
-          hovered: true,
-        }),
-      ).toEqual({
-        width: AUTH_GATE_BOTTOM_BAR_WIDTH,
-        height: AUTH_GATE_BOTTOM_BAR_HEIGHT,
-      });
     });
 
     it("constrains the expanded chat hit area instead of spanning the display", () => {
@@ -179,8 +176,8 @@ describe("desktop bottom-bar config", () => {
     it("gives input mode a composer-width taskbar strip", () => {
       expect(computeBottomBarSurfaceFrame(workArea, "INPUT")).toEqual(
         computeBottomBarFrame(workArea, {
-          width: HOVER_BOTTOM_BAR_WIDTH,
-          height: HOVER_BOTTOM_BAR_HEIGHT,
+          width: INPUT_BOTTOM_BAR_WIDTH,
+          height: INPUT_BOTTOM_BAR_HEIGHT,
         }),
       );
     });
@@ -224,18 +221,21 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "hidden",
         transparent: true,
         nativeShadow: false,
+        nativeInteractiveChrome: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,
         nativeShadow: false,
+        nativeInteractiveChrome: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,
         nativeShadow: false,
+        nativeInteractiveChrome: false,
       });
     });
 
@@ -251,6 +251,7 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "default",
         transparent: false,
         nativeShadow: true,
+        nativeInteractiveChrome: true,
       });
       expect(
         resolveDesktopShellWindowPresentation(
@@ -263,6 +264,7 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "hiddenInset",
         transparent: false,
         nativeShadow: true,
+        nativeInteractiveChrome: true,
       });
     });
 
@@ -281,6 +283,7 @@ describe("desktop bottom-bar config", () => {
         titleBarStyle: "hidden",
         transparent: false,
         nativeShadow: false,
+        nativeInteractiveChrome: false,
       });
     });
   });

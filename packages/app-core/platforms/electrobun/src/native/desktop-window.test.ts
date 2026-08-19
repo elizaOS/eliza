@@ -47,6 +47,7 @@ const electrobunMock = vi.hoisted(() => {
     };
     on: ReturnType<typeof vi.fn>;
     close: ReturnType<typeof vi.fn>;
+    activate: ReturnType<typeof vi.fn>;
     focus: ReturnType<typeof vi.fn>;
     setAlwaysOnTop: ReturnType<typeof vi.fn>;
     emit: (event: string) => void;
@@ -113,6 +114,7 @@ const electrobunMock = vi.hoisted(() => {
         handler();
       }
     });
+    this.activate = vi.fn();
     this.focus = vi.fn();
     this.setAlwaysOnTop = vi.fn();
     this.emit = (event: string) => {
@@ -272,6 +274,7 @@ class FakeBrowserWindow {
     this.handlers.set(event, handlers);
   });
   readonly show = vi.fn();
+  readonly activate = vi.fn();
   readonly focus = vi.fn();
   readonly close = vi.fn();
   readonly minimize = vi.fn(() => {
@@ -415,10 +418,7 @@ describe("DesktopManager main window controls", () => {
     expect(window.setFrame).toHaveBeenLastCalledWith(250, 50, 600, 700);
 
     await manager.setBottomBarExpanded({ expanded: false });
-    expect(window.setFrame).toHaveBeenLastCalledWith(502, 694, 96, 56);
-
-    await manager.setBottomBarExpanded({ expanded: false, hovered: true });
-    expect(window.setFrame).toHaveBeenLastCalledWith(250, 654, 600, 96);
+    expect(window.setFrame).toHaveBeenLastCalledWith(518, 706, 64, 44);
 
     await manager.setBottomBarExpanded({ expanded: false, chip: true });
     expect(window.setFrame).toHaveBeenLastCalledWith(382, 678, 336, 72);
@@ -521,7 +521,7 @@ describe("DesktopManager main window controls", () => {
     await expect(manager.focusWindow()).resolves.toBe(undefined);
   });
 
-  it("minimizes, restores, maximizes, unmaximizes, focuses, and reports state", async () => {
+  it("minimizes, restores, maximizes, unmaximizes, activates, and reports state", async () => {
     const { manager, window } = createManagerWithWindow();
 
     await manager.minimizeWindow();
@@ -544,7 +544,8 @@ describe("DesktopManager main window controls", () => {
     expect(window.unminimize).toHaveBeenCalledTimes(1);
     expect(window.maximize).toHaveBeenCalledTimes(1);
     expect(window.unmaximize).toHaveBeenCalledTimes(1);
-    expect(window.focus).toHaveBeenCalledTimes(1);
+    expect(window.activate).toHaveBeenCalledTimes(1);
+    expect(window.focus).not.toHaveBeenCalled();
   });
 
   it("tracks focus and blur events through webview notifications", async () => {
@@ -592,7 +593,8 @@ describe("DesktopManager main window controls", () => {
 
     expect(restore).toHaveBeenCalledTimes(1);
     expect(restored.show).toHaveBeenCalledTimes(1);
-    expect(restored.focus).toHaveBeenCalledTimes(1);
+    expect(restored.activate).toHaveBeenCalledTimes(1);
+    expect(restored.focus).not.toHaveBeenCalled();
     await expect(manager.isWindowVisible()).resolves.toEqual({
       visible: true,
     });

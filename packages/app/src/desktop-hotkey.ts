@@ -15,6 +15,29 @@ export interface DesktopWindowState {
 
 export type ChatOverlayToggleAction = "show" | "hide";
 
+export type DesktopHostPlatform = "darwin" | "linux" | "win32" | "unknown";
+
+/** Normalize the renderer's browser-platform string into the native host OS. */
+export function resolveDesktopHostPlatform(
+  navigatorPlatform: string,
+): DesktopHostPlatform {
+  if (/Mac/i.test(navigatorPlatform)) return "darwin";
+  if (/Win/i.test(navigatorPlatform)) return "win32";
+  if (/Linux/i.test(navigatorPlatform)) return "linux";
+  return "unknown";
+}
+
+/**
+ * Only the macOS detached pill is explicit-control-only. Linux kiosk and
+ * Windows/Linux overlay windows retain the established ambient PTT contract.
+ */
+export function shouldEnableDesktopPushToTalk(
+  chatOverlayShell: boolean,
+  hostPlatform: DesktopHostPlatform,
+): boolean {
+  return !(chatOverlayShell && hostPlatform === "darwin");
+}
+
 /**
  * Decide whether a hotkey press should summon or dismiss the chat overlay.
  * Only a window that is BOTH focused and visible is dismissed; anything else

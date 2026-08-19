@@ -180,6 +180,7 @@ import {
   APP_LOG_PREFIX,
   APP_NAMESPACE,
   APP_URL_SCHEME,
+  resolveInjectedAppApiBase,
 } from "./app-config";
 import { cachedDynamicImport } from "./app-module-cache";
 import { renderBootFailure } from "./boot-failure";
@@ -194,7 +195,11 @@ import {
   resolveDeepLinkNavigationIntent,
 } from "./deep-link-routing";
 import { shouldStartFnHoldMonitor } from "./desktop-fn-hold-policy";
-import { decideChatOverlayToggle } from "./desktop-hotkey";
+import {
+  decideChatOverlayToggle,
+  resolveDesktopHostPlatform,
+  shouldEnableDesktopPushToTalk,
+} from "./desktop-hotkey";
 import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
@@ -380,10 +385,11 @@ function getLegacyInjectedAppApiBase(): string | undefined {
     window,
     BRANDED_WINDOW_KEYS.apiBase,
   );
-  return (
-    window.__ELIZA_APP_API_BASE__ ??
-    (typeof brandedApiBase === "string" ? brandedApiBase : undefined)
-  );
+  return resolveInjectedAppApiBase({
+    bootConfigApiBase: getBootConfig().apiBase,
+    legacyApiBase: window.__ELIZA_APP_API_BASE__,
+    brandedApiBase,
+  });
 }
 
 // Resolve the desktop "cloud-only" runtime-mode signal from whichever path is
@@ -2439,66 +2445,75 @@ async function initializeDesktopShell(): Promise<void> {
     }
   }
 
-  // Global push-to-talk toggle (#20483). Electrobun's GlobalShortcut is
-  // trigger-only (no key-up), so the OS-wide voice hotkey is press-to-start /
-  // press-again-to-send rather than a held quasimode — the pill's own
-  // press-and-hold remains the true hold gesture. Best-effort: a rejected
-  // accelerator (another app owns it) logs and moves on; voice stays reachable
-  // via the pill.
-  const pushToTalkRegistration = await invokeDesktopBridgeRequest<{
-    success: boolean;
-  }>({
-    rpcMethod: "desktopRegisterShortcut",
-    ipcChannel: "desktop:registerShortcut",
-    params: {
-      id: "push-to-talk",
-      accelerator: "CommandOrControl+Shift+Space",
-    },
-  });
-  if (pushToTalkRegistration?.success !== true) {
-    console.warn(
-      "[desktop-shell] Operating system rejected the push-to-talk shortcut; the pill hold gesture remains available",
-    );
-  }
-
-  // Fn-hold push-to-talk quasimode (#20483, Wispr parity): the native fn key
-  // monitor delivers true down/up, so holding fn anywhere drives the same
-  // capture as holding the pill. Best-effort: `permission-missing` (no
-  // Accessibility trust yet) and `unavailable` (non-mac, sandboxed store
-  // build) degrade silently to the toggle hotkey above.
-  subscribeDesktopBridgeEvent({
-    rpcMessage: "desktopFnHoldChanged",
-    ipcChannel: "desktop:fnHoldChanged",
-    listener: (payload: unknown) => {
-      const detail = payload as PushToTalkHoldDetail | null | undefined;
-      if (!detail || typeof detail.held !== "boolean") return;
-      dispatchAppEvent(PUSH_TO_TALK_HOLD_EVENT, {
-        held: detail.held,
-        cancelled: detail.cancelled === true,
-      } satisfies PushToTalkHoldDetail);
-    },
-  });
-  const fnHoldStart = shouldStartFnHoldMonitor({
-    cloudOnly: APP_BRANDING.cloudOnly === true,
-  })
-    ? await invokeDesktopBridgeRequest<{
-        status: "started" | "permission-missing" | "failed" | "unavailable";
-        fnSystemUsageType: number;
-      }>({
-        rpcMethod: "desktopStartFnHoldMonitor",
-        ipcChannel: "desktop:startFnHoldMonitor",
-      })
-    : null;
-  if (fnHoldStart?.status === "started") {
-    if (fnHoldStart.fnSystemUsageType !== 0) {
+  // The detached macOS pill is explicit-control-only: no invisible key
+  // listener may start voice behind another app. Other workstation hosts
+  // retain their configurable ambient PTT path.
+  if (
+    shouldEnableDesktopPushToTalk(
+      isChatOverlayWindowShell(windowShellRoute),
+      resolveDesktopHostPlatform(navigator.platform),
+    )
+  ) {
+    // Global push-to-talk toggle (#20483). Electrobun's GlobalShortcut is
+    // trigger-only (no key-up), so the OS-wide voice hotkey is press-to-start /
+    // press-again-to-send rather than a held quasimode. Best-effort: a rejected
+    // accelerator (another app owns it) logs and moves on; voice stays reachable
+    // through the workstation's visible composer controls.
+    const pushToTalkRegistration = await invokeDesktopBridgeRequest<{
+      success: boolean;
+    }>({
+      rpcMethod: "desktopRegisterShortcut",
+      ipcChannel: "desktop:registerShortcut",
+      params: {
+        id: "push-to-talk",
+        accelerator: "CommandOrControl+Shift+Space",
+      },
+    });
+    if (pushToTalkRegistration?.success !== true) {
       console.warn(
-        "[desktop-shell] fn-hold push-to-talk is active but the macOS 'Press 🌐 key to' action is also enabled — a quick fn tap will trigger the system action; set it to 'Do Nothing' in System Settings → Keyboard",
+        "[desktop-shell] Operating system rejected the push-to-talk shortcut; visible composer voice controls remain available",
       );
     }
-  } else if (fnHoldStart?.status === "permission-missing") {
-    console.warn(
-      "[desktop-shell] fn-hold push-to-talk needs Accessibility permission (System Settings → Privacy & Security → Accessibility); falling back to the toggle hotkey",
-    );
+
+    // Fn-hold push-to-talk quasimode (#20483, Wispr parity): the native fn key
+    // monitor delivers true down/up, so holding fn anywhere drives the same
+    // workstation capture. Best-effort: `permission-missing` (no
+    // Accessibility trust yet) and `unavailable` (non-mac, sandboxed store
+    // build) degrade silently to the toggle hotkey above.
+    subscribeDesktopBridgeEvent({
+      rpcMessage: "desktopFnHoldChanged",
+      ipcChannel: "desktop:fnHoldChanged",
+      listener: (payload: unknown) => {
+        const detail = payload as PushToTalkHoldDetail | null | undefined;
+        if (!detail || typeof detail.held !== "boolean") return;
+        dispatchAppEvent(PUSH_TO_TALK_HOLD_EVENT, {
+          held: detail.held,
+          cancelled: detail.cancelled === true,
+        } satisfies PushToTalkHoldDetail);
+      },
+    });
+    const fnHoldStart = shouldStartFnHoldMonitor({
+      cloudOnly: APP_BRANDING.cloudOnly === true,
+    })
+      ? await invokeDesktopBridgeRequest<{
+          status: "started" | "permission-missing" | "failed" | "unavailable";
+          fnSystemUsageType: number;
+        }>({
+          rpcMethod: "desktopStartFnHoldMonitor",
+          ipcChannel: "desktop:startFnHoldMonitor",
+        })
+      : null;
+    if (fnHoldStart?.status === "started") {
+      if (fnHoldStart.fnSystemUsageType !== 0) {
+        console.warn(
+          "[desktop-shell] fn-hold push-to-talk is active but the macOS 'Press 🌐 key to' action is also enabled — a quick fn tap will trigger the system action; set it to 'Do Nothing' in System Settings → Keyboard",
+        );
+      }
+    } else if (fnHoldStart?.status === "permission-missing") {
+      console.warn(
+        "[desktop-shell] fn-hold push-to-talk needs Accessibility permission (System Settings → Privacy & Security → Accessibility); falling back to the toggle hotkey",
+      );
+    }
   }
 
   // Toggle semantics (#12184): a focused + visible overlay is dismissed

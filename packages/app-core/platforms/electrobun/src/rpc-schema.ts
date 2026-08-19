@@ -1460,7 +1460,7 @@ export type ElizaDesktopRPCSchema = {
       desktopGetWindowBounds: { params: undefined; response: WindowBounds };
       desktopSetWindowBounds: { params: WindowBounds; response: undefined };
       desktopSetBottomBarExpanded: {
-        params: { expanded: boolean; chip?: boolean; hovered?: boolean };
+        params: { expanded: boolean; chip?: boolean };
         response: undefined;
       };
       desktopSetBottomBarSurfaceState: {

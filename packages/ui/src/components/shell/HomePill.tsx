@@ -24,6 +24,7 @@ import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { computeWaveBarScales, FLATLINE_SCALE } from "./home-pill-wave";
+import { RestingPillButton } from "./RestingPillButton";
 import type { ShellPhase } from "./shell-state";
 
 export interface HomePillProps {
@@ -64,6 +65,8 @@ export interface HomePillProps {
   /** Whether hovering may render HomePill's lightweight visual preview. Hosts
    *  that mount the real ChatOverlay input detent must disable this duplicate. */
   showComposerPreview?: boolean;
+  /** Constrains the painted target to the detached native host's exact frame. */
+  tightNativeHitbox?: boolean;
 }
 
 /** How long the pointer must stay down before a press becomes a hold. Above
@@ -140,6 +143,7 @@ export function HomePill({
   onPreviewHoverChange,
   previewHostReady = true,
   showComposerPreview = true,
+  tightNativeHitbox = false,
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
   const needsAuth = phase === "needs-auth";
@@ -317,6 +321,33 @@ export function HomePill({
           : isOpen
             ? `Close ${appName}`
             : `Open ${appName}`;
+
+  if (tightNativeHitbox) {
+    return (
+      <RestingPillButton
+        aria-label={label}
+        aria-busy={needsAuth && signingIn ? true : undefined}
+        aria-pressed={needsAuth ? undefined : isOpen}
+        data-phase={phase}
+        data-speaking={speaking || undefined}
+        data-testid="shell-home-pill"
+        markTestId="shell-home-pill-mark"
+        breathing={phase === "booting" || phase === "responding"}
+        markClassName={cn(
+          phase === "booting" && "opacity-65",
+          phase === "responding" &&
+            (speaking
+              ? "shadow-[0_0_14px_rgba(255,138,42,0.85)]"
+              : "shadow-[0_0_10px_rgba(255,138,42,0.6)]"),
+        )}
+        onClick={handleClick}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        style={{ zIndex: Z_SHELL_OVERLAY }}
+      />
+    );
+  }
 
   return (
     <Button

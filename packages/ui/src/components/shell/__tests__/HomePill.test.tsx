@@ -24,6 +24,26 @@ function holdHandlers() {
 }
 
 describe("HomePill", () => {
+  it("uses the exact painted target in a detached native host", () => {
+    render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        tightNativeHitbox
+      />,
+    );
+
+    const button = screen.getByRole("button");
+    expect(button.className).toContain("h-11");
+    expect(button.className).toContain("w-16");
+    expect(button.className).toContain("bg-[#181a20]/95");
+    expect(button.className).not.toContain("w-[36rem]");
+    expect(screen.getByTestId("shell-home-pill-mark").className).toContain(
+      "w-12",
+    );
+  });
+
   it("renders an accessible button with only a compact white visual handle", () => {
     render(<HomePill phase="idle" onOpen={() => {}} onClose={() => {}} />);
     const btn = screen.getByRole("button", { name: /open eliza/i });

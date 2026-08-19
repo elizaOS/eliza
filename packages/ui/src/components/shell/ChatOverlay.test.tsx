@@ -1709,6 +1709,64 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("lets the detached macOS grabber reliably step open to input to pill", () => {
+    const previousUrl = window.location.href;
+    const previousInjectedMode = window.ELIZAOS_SHELL_MODE;
+    window.history.replaceState(null, "", "/?shellMode=chat-overlay");
+    window.ELIZAOS_SHELL_MODE = "chat-overlay";
+    try {
+      render(<ChatOverlay controller={makeController()} />);
+      const sheet = screen.getByTestId("chat-sheet");
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+
+      fireEvent.keyDown(grabber, { key: "ArrowUp" });
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+      expect(screen.getByTestId("chat-overlay").style.top).toBe("0px");
+      expect(sheet.style.height).toBe("100%");
+      expect(sheet.style.maxHeight).toBe("");
+      expect(sheet.className).toContain("max-h-full");
+      expect(sheet.parentElement?.className).toContain("h-full");
+      expect(grabber.className).toContain("h-8");
+      expect(grabber.className).not.toContain("before:-top-6");
+
+      fireEvent.click(grabber, { detail: 0 });
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+      fireEvent.click(grabber, { detail: 0 });
+      expect(sheet.getAttribute("data-detent")).toBe("pill");
+    } finally {
+      window.ELIZAOS_SHELL_MODE = previousInjectedMode;
+      window.history.replaceState(null, "", previousUrl);
+    }
+  });
+
+  it("lets the detached macOS composer Escape step open to input to pill", () => {
+    const previousUrl = window.location.href;
+    const previousInjectedMode = window.ELIZAOS_SHELL_MODE;
+    window.history.replaceState(null, "", "/?shellMode=chat-overlay");
+    window.ELIZAOS_SHELL_MODE = "chat-overlay";
+    try {
+      render(<ChatOverlay controller={makeController()} />);
+      const input = screen.getByLabelText("message");
+      const sheet = screen.getByTestId("chat-sheet");
+      fireEvent.focus(input);
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(sheet.getAttribute("data-detent")).toBe("pill");
+    } finally {
+      window.ELIZAOS_SHELL_MODE = previousInjectedMode;
+      window.history.replaceState(null, "", previousUrl);
+    }
+  });
+
+  it("omits serving-provider branding from the detached overlay", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    expect(screen.queryByTestId("serving-provider-chip")).toBeNull();
+  });
+
   it("closes the sheet and marks the intent handled on an Android back-intent while open", () => {
     render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
@@ -3151,8 +3209,8 @@ describe("ChatOverlay", () => {
 
   it("keeps the collapsed pill handle non-interactive while the input is formed", () => {
     // The pill handle is always mounted over the (faded) composer so it can
-    // crossfade pill→input. Its hit zone (w-full/pt-10) sits over the textarea,
-    // so while NOT pilled it must be pointer-events-none — otherwise it
+    // crossfade pill→input. While NOT pilled it must be pointer-events-none —
+    // otherwise even its exact painted target would intercept the composer,
     // intercepts the tap meant for the composer and the mobile keyboard never
     // opens.
     render(<ChatOverlay controller={makeController()} />);
@@ -3165,9 +3223,11 @@ describe("ChatOverlay", () => {
     // Kept out of the tab order / a11y tree while it's not the active handle.
     expect(pill.getAttribute("tabindex")).toBe("-1");
     expect(pill.getAttribute("aria-hidden")).toBe("true");
-    // The pill's swipe-up grab zone spans the full width (not a narrow centred
-    // px-16 stub) so a swipe-up from anywhere across the bottom opens.
-    expect(pill.className).toContain("w-full");
+    // No transparent padding extends beyond the visible 64x44 surface.
+    expect(pill.className).toContain("w-16");
+    expect(pill.className).toContain("h-11");
+    expect(pill.className).not.toContain("pt-10");
+    expect(pill.className).not.toContain("px-8");
   });
 
   it("makes the pill handle interactive (drag-to-open) once collapsed to the pill", () => {
