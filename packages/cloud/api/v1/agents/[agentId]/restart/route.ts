@@ -19,7 +19,6 @@
  */
 
 import { Hono } from "hono";
-import { agentBillingRepository } from "@/db/repositories/agent-billing";
 import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import {
@@ -124,11 +123,6 @@ app.post("/", async (c) => {
         409,
       );
     }
-
-    await agentBillingRepository.reactivateSandboxBillingAfterFunding(
-      agentId,
-      new Date(),
-    );
 
     return c.json({ success: true });
   } catch (error) {

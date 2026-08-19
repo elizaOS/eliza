@@ -73,7 +73,7 @@ async function __hono_POST(
       });
     }
 
-    const result = await elizaSandboxService.provision(
+    const result = await elizaSandboxService.executeRestart(
       agentId,
       user.organization_id,
     );

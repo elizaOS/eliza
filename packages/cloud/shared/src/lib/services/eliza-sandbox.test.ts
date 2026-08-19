@@ -540,6 +540,10 @@ const reactivateBillingSpy = spyOn(
   agentBillingRepository,
   "reactivateSandboxBillingAfterFunding",
 ).mockResolvedValue(undefined);
+const settleLifecycleBillingSpy = spyOn(
+  agentBillingRepository,
+  "settleAccruedBillingBeforeLifecycle",
+).mockResolvedValue({ status: "already_billed_recently" });
 
 const originalFetch = globalThis.fetch;
 const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
@@ -3250,6 +3254,28 @@ describe("ElizaSandboxService.executeResume", () => {
     }
   });
 
+  test("insufficient accrued debt blocks resume before provider provisioning", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      resumeRow("stopped"),
+    );
+    settleLifecycleBillingSpy.mockResolvedValueOnce({ status: "insufficient_credits" });
+    const provisionSpy = spyOn(svc, "provision");
+    try {
+      const res = await svc.executeResume(RESUME_AGENT, RESUME_ORG);
+      expect(res).toMatchObject({
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: "Insufficient credits to settle accrued agent compute charges",
+      });
+      expect(provisionSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
   test("an unknown agent returns not-found without provisioning", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const svc = new ElizaSandboxService();
@@ -3650,6 +3676,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       executeSuspend(
         agentId: string,
         orgId: string,
+        jobId: string,
       ): Promise<{
         success: boolean;
         containerStopped: boolean;
@@ -3668,16 +3695,45 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
     const activeJob = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
     const writes: unknown[] = [];
-    upgradeTransactionImpl = async (fn) =>
-      fn({
+    let selectCount = 0;
+    upgradeTransactionImpl = async (fn) => {
+      const tx = {
         execute: async (query) => {
           writes.push(query);
           return { rows: [] };
         },
-      });
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              for: () => ({
+                limit: async () => {
+                  selectCount += 1;
+                  if (selectCount === 1) {
+                    return [
+                      {
+                        id: "00000000-0000-0000-0000-000000000098",
+                        organization_id: ORG,
+                        agent_id: AGENT,
+                        lifecycle_revision: rec.lifecycle_revision,
+                        status: "pending",
+                        job_id: "00000000-0000-0000-0000-000000000099",
+                        attempts: 0,
+                      },
+                    ];
+                  }
+                  return [{ credit_balance: "0" }];
+                },
+              }),
+            }),
+          }),
+        }),
+        update: () => ({ set: () => ({ where: async () => [] }) }),
+      };
+      return fn(tx);
+    };
 
     try {
-      const result = await svc.executeSuspend(AGENT, ORG);
+      const result = await svc.executeSuspend(AGENT, ORG, "00000000-0000-0000-0000-000000000099");
       expect(result).toEqual({
         success: false,
         containerStopped: false,

@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -53,6 +54,10 @@ export const creditTransactions = pgTable(
       ),
     stripe_payment_intent_idx: uniqueIndex("credit_transactions_stripe_payment_intent_idx").on(
       table.stripe_payment_intent_id,
+    ),
+    tenant_identity_unique: unique("credit_transactions_id_organization_unique").on(
+      table.id,
+      table.organization_id,
     ),
   }),
 );

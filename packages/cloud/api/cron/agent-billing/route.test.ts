@@ -48,6 +48,10 @@ const getOrganizationCreditBalance = mock(async () => 0);
 const scheduleShutdownWarning = mock(async () => undefined);
 const suspendSandboxForInsufficientCredits = mock(async () => undefined);
 const shutdownSandbox = mock(async () => ({ success: true }));
+const enqueueAgentSuspendOnce = mock(async () => ({
+  job: { id: "stop-job" },
+  created: true,
+}));
 const sendContainerShutdownWarningEmail = mock(async () => undefined);
 const webhookFetch = mock(
   async (_url: string | URL | Request, _init?: RequestInit) =>
@@ -86,6 +90,10 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
   },
 }));
 
+mock.module("@/lib/services/provisioning-jobs", () => ({
+  provisioningJobService: { enqueueAgentSuspendOnce },
+}));
+
 mock.module("@/lib/security/safe-fetch", () => ({
   safeFetch: webhookFetch,
 }));
@@ -109,6 +117,7 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     scheduleShutdownWarning.mockClear();
     suspendSandboxForInsufficientCredits.mockClear();
     shutdownSandbox.mockClear();
+    enqueueAgentSuspendOnce.mockClear();
     sendContainerShutdownWarningEmail.mockClear();
     webhookFetch.mockClear();
     listBillableSandboxes.mockImplementation(async () => ({
@@ -128,6 +137,10 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     }));
     getOrganizationCreditBalance.mockImplementation(async () => 0);
     shutdownSandbox.mockImplementation(async () => ({ success: true }));
+    enqueueAgentSuspendOnce.mockImplementation(async () => ({
+      job: { id: "stop-job" },
+      created: true,
+    }));
   });
 
   test("sends a signed credits.low webhook when an agent runs out of billable balance", async () => {
@@ -182,7 +195,7 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     expectSignedWebhook(init as RequestInit, body.timestamp, bodyText);
   });
 
-  test("suspends and sends credits.depleted webhook after the grace window expires", async () => {
+  test("enqueues suspension and sends credits.depleted webhook after the grace window expires", async () => {
     const scheduledShutdownAt = new Date(Date.now() - 60_000);
     listBillableSandboxes.mockImplementationOnce(async () => ({
       runningSandboxes: [
@@ -217,14 +230,14 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
       },
     });
     expect(recordHourlyBilling).not.toHaveBeenCalled();
-    expect(shutdownSandbox).toHaveBeenCalledWith(
-      runningSandbox.id,
-      "agent-org",
-    );
-    expect(suspendSandboxForInsufficientCredits).toHaveBeenCalledWith(
-      runningSandbox.id,
-      expect.any(Date),
-    );
+    expect(enqueueAgentSuspendOnce).toHaveBeenCalledWith({
+      agentId: runningSandbox.id,
+      organizationId: "agent-org",
+      userId: runningSandbox.user_id,
+      authorization: "billing_request",
+    });
+    expect(shutdownSandbox).not.toHaveBeenCalled();
+    expect(suspendSandboxForInsufficientCredits).not.toHaveBeenCalled();
     expect(webhookFetch).toHaveBeenCalledTimes(1);
 
     const [url, init] = webhookFetch.mock.calls[0] ?? [];
@@ -256,7 +269,7 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     expectSignedWebhook(init as RequestInit, body.timestamp, bodyText);
   });
 
-  test("does not mark credits depleted if the container shutdown fails", async () => {
+  test("does not suspend billing if the durable stop enqueue fails", async () => {
     const scheduledShutdownAt = new Date(Date.now() - 60_000);
     listBillableSandboxes.mockImplementationOnce(async () => ({
       runningSandboxes: [
@@ -269,10 +282,9 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
       ],
       stoppedWithBackups: [],
     }));
-    shutdownSandbox.mockImplementationOnce(async () => ({
-      success: false,
-      error: "provider stop failed",
-    }));
+    enqueueAgentSuspendOnce.mockImplementationOnce(async () => {
+      throw new Error("durable enqueue failed");
+    });
 
     const response = await app.fetch(
       new Request("https://api.example.test/", {
@@ -295,8 +307,7 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
         results: [
           {
             action: "error",
-            error:
-              "Container shutdown failed before credit suspension: provider stop failed",
+            error: "durable enqueue failed",
           },
         ],
       },

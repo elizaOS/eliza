@@ -29,6 +29,7 @@ import {
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
+import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import {
   type AgentBackupStateData,
   type AgentExecutionTier,
@@ -8229,6 +8230,8 @@ export class ElizaSandboxService {
   async executeSuspend(
     agentId: string,
     orgId: string,
+    jobId: string,
+    authorization: "user_request" | "billing_request",
   ): Promise<{ success: boolean; containerStopped: boolean; error?: string }> {
     return await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
@@ -8255,12 +8258,112 @@ export class ElizaSandboxService {
           error: "Agent provisioning is in progress",
         } as const;
       }
-      if (rec.status === "stopped") return { success: true, containerStopped: true } as const;
+      const [stopIntent] =
+        authorization === "billing_request"
+          ? await tx
+              .select()
+              .from(agentComputeStopIntents)
+              .where(
+                and(
+                  eq(agentComputeStopIntents.agent_id, agentId),
+                  eq(agentComputeStopIntents.organization_id, orgId),
+                  inArray(agentComputeStopIntents.status, [
+                    "pending",
+                    "dispatching",
+                    "retry",
+                    "terminal_attention",
+                  ]),
+                ),
+              )
+              .for("update")
+              .limit(1)
+          : [undefined];
+      if (authorization === "billing_request" && (!stopIntent || stopIntent.job_id !== jobId)) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Agent billing stop intent is missing or bound to a different job",
+        } as const;
+      }
+      if (stopIntent && stopIntent.lifecycle_revision !== rec.lifecycle_revision) {
+        const supersededAt = new Date();
+        await tx
+          .update(agentComputeStopIntents)
+          .set({ status: "superseded", superseded_at: supersededAt, updated_at: supersededAt })
+          .where(eq(agentComputeStopIntents.id, stopIntent.id));
+        return { success: true, containerStopped: false } as const;
+      }
+      if (rec.status === "stopped") {
+        if (stopIntent) {
+          const confirmedAt = new Date();
+          await tx
+            .update(agentComputeStopIntents)
+            .set({
+              status: "provider_confirmed",
+              provider_confirmed_at: confirmedAt,
+              updated_at: confirmedAt,
+            })
+            .where(eq(agentComputeStopIntents.id, stopIntent.id));
+        }
+        return { success: true, containerStopped: true } as const;
+      }
+
+      if (authorization === "billing_request") {
+        const fundedAt = new Date();
+        const settlement =
+          await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+            tx,
+            agentId,
+            orgId,
+            fundedAt,
+          );
+        if (settlement.status !== "insufficient_credits") {
+          await tx
+            .update(agentComputeStopIntents)
+            .set({ status: "superseded", superseded_at: fundedAt, updated_at: fundedAt })
+            .where(eq(agentComputeStopIntents.id, stopIntent!.id));
+          await tx
+            .update(agentSandboxes)
+            .set({
+              billing_status: "active",
+              shutdown_warning_sent_at: null,
+              scheduled_shutdown_at: null,
+              updated_at: fundedAt,
+            })
+            .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)));
+          return { success: true, containerStopped: false } as const;
+        }
+      }
 
       let containerStopped = false;
+      const attempt = (stopIntent?.attempts ?? 0) + 1;
+      if (stopIntent) {
+        await tx
+          .update(agentComputeStopIntents)
+          .set({
+            status: "dispatching",
+            attempts: attempt,
+            provider_started_at: new Date(),
+            last_error: null,
+            updated_at: new Date(),
+          })
+          .where(eq(agentComputeStopIntents.id, stopIntent.id));
+      }
       if (rec.sandbox_id) {
         const stop = await this.runBoundedSandboxStopForReplacement(rec.sandbox_id);
         if (stop) {
+          if (stopIntent) {
+            const failedAt = new Date();
+            await tx
+              .update(agentComputeStopIntents)
+              .set({
+                status: attempt >= 3 ? "terminal_attention" : "retry",
+                last_error: stop.error instanceof Error ? stop.error.message : String(stop.error),
+                next_attempt_at: new Date(failedAt.getTime() + 5 * 60 * 1000),
+                updated_at: failedAt,
+              })
+              .where(eq(agentComputeStopIntents.id, stopIntent.id));
+          }
           return {
             success: false,
             containerStopped: false,
@@ -8274,9 +8377,22 @@ export class ElizaSandboxService {
 
       await tx.execute(sql`
         UPDATE ${agentSandboxes}
-        SET status = 'stopped', bridge_url = NULL, health_url = NULL, updated_at = NOW()
+        SET status = 'stopped', billing_status = 'suspended',
+            scheduled_shutdown_at = NULL, shutdown_warning_sent_at = NULL,
+            bridge_url = NULL, health_url = NULL, updated_at = NOW()
         WHERE id = ${rec.id}
       `);
+      if (stopIntent) {
+        const confirmedAt = new Date();
+        await tx
+          .update(agentComputeStopIntents)
+          .set({
+            status: "provider_confirmed",
+            provider_confirmed_at: confirmedAt,
+            updated_at: confirmedAt,
+          })
+          .where(eq(agentComputeStopIntents.id, stopIntent.id));
+      }
       return { success: true, containerStopped } as const;
     });
   }
@@ -8328,6 +8444,20 @@ export class ElizaSandboxService {
       };
     if (rec.status === "running")
       return { success: true, containerStarted: true, reprovisioned: false };
+
+    const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+      agentId,
+      orgId,
+      new Date(),
+    );
+    if (funding.status === "insufficient_credits") {
+      return {
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: "Insufficient credits to settle accrued agent compute charges",
+      };
+    }
 
     const provisionResult = await this.provision(agentId, orgId);
     if (!provisionResult.success) {
@@ -8614,6 +8744,18 @@ export class ElizaSandboxService {
         error: "restoreBackupId and forceFreshBoot are mutually exclusive",
       };
     }
+    const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+      agentId,
+      orgId,
+      new Date(),
+    );
+    if (funding.status === "insufficient_credits") {
+      return {
+        success: false,
+        reprovisioned: false,
+        error: "Insufficient credits to settle accrued agent compute charges",
+      };
+    }
 
     if (opts?.forceFreshBoot) {
       logger.warn("[agent-sandbox] Wake with explicit forceFreshBoot: restore skipped by user", {
@@ -8715,6 +8857,19 @@ export class ElizaSandboxService {
         containerStopped: false,
         containerStarted: false,
         error: "Agent not found",
+      };
+    }
+    const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+      agentId,
+      orgId,
+      new Date(),
+    );
+    if (funding.status === "insufficient_credits") {
+      return {
+        success: false,
+        containerStopped: false,
+        containerStarted: false,
+        error: "Insufficient credits to settle accrued agent compute charges",
       };
     }
     if (rec.claimed_at && rec.warm_claim_credential_state === null) {

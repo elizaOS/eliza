@@ -368,9 +368,11 @@ export const agentSandboxes = pgTable(
     previous_docker_image: text("previous_docker_image"),
     // Billing tracking fields (mirrors containers table pattern)
     billing_status: text("billing_status").$type<AgentBillingStatus>().notNull().default("active"),
-    last_billed_at: timestamp("last_billed_at", { withTimezone: true }),
+    last_billed_at: timestamp("last_billed_at", { withTimezone: true }).defaultNow(),
     hourly_rate: numeric("hourly_rate", { precision: 10, scale: 4 }).default("0.0100"),
-    total_billed: numeric("total_billed", { precision: 10, scale: 2 }).default("0.00").notNull(),
+    total_billed: numeric("total_billed", { precision: 18, scale: 6 })
+      .default("0.000000")
+      .notNull(),
     shutdown_warning_sent_at: timestamp("shutdown_warning_sent_at", {
       withTimezone: true,
     }),

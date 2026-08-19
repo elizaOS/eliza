@@ -67,13 +67,18 @@ async function __hono_POST(
 
     logger.info("[compat] Resume requested", { agentId });
 
-    const result = await elizaSandboxService.provision(
+    const result = await elizaSandboxService.executeResume(
       agentId,
       user.organization_id,
     );
     if (!result.success) {
       const status =
-        result.error === "Agent is already being provisioned" ? 409 : 500;
+        result.error === "Agent is already being provisioned"
+          ? 409
+          : result.error ===
+              "Insufficient credits to settle accrued agent compute charges"
+            ? 402
+            : 500;
       return withCompatCors(
         Response.json(errorEnvelope(result.error ?? "Resume failed"), {
           status,

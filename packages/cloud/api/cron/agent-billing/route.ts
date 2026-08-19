@@ -23,8 +23,8 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { safeFetch } from "@/lib/security/safe-fetch";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { emailService } from "@/lib/services/email";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -87,13 +87,23 @@ async function processSandboxBilling(
   sandbox: AgentBillingSandbox,
   org: AgentBillingOrganization,
   appUrl: string,
+  now: Date,
 ): Promise<BillingResult> {
   const sandboxId = sandbox.id;
   const agentName = sandbox.agent_name ?? sandboxId.slice(0, 8);
   const organizationId = sandbox.organization_id;
-  const hourlyCost = getHourlyRate(sandbox.status);
+  const hourlyRate = getHourlyRate(sandbox.status);
   const currentBalance = Number(org.credit_balance);
-  const now = new Date();
+  const periodStart =
+    sandbox.last_billed_at ??
+    new Date(
+      Math.max(
+        sandbox.created_at?.getTime() ?? now.getTime() - 60 * 60 * 1000,
+        now.getTime() - 60 * 60 * 1000,
+      ),
+    );
+  const amountDue =
+    hourlyRate * ((now.getTime() - periodStart.getTime()) / (60 * 60 * 1000));
 
   async function queueShutdownWarning(): Promise<BillingResult> {
     if (
@@ -110,12 +120,12 @@ async function processSandboxBilling(
     }
 
     const liveBalance = (await getOrgBalance(organizationId)) ?? currentBalance;
-    if (liveBalance >= hourlyCost) {
+    if (liveBalance >= amountDue) {
       logger.info(
         `[Agent Billing] Skipping shutdown warning for ${agentName}; balance recovered before warning`,
         {
           sandboxId,
-          hourlyCost,
+          amountDue,
           liveBalance,
         },
       );
@@ -134,6 +144,7 @@ async function processSandboxBilling(
 
     await agentBillingRepository.scheduleShutdownWarning(
       sandboxId,
+      organizationId,
       now,
       shutdownTime,
     );
@@ -147,11 +158,11 @@ async function processSandboxBilling(
         organizationName: org.name,
         containerName: `Agent Agent: ${agentName}`,
         projectName: "Eliza Cloud",
-        dailyCost: hourlyCost * 24,
-        monthlyCost: hourlyCost * 24 * 30,
+        dailyCost: hourlyRate * 24,
+        monthlyCost: hourlyRate * 24 * 30,
         currentBalance: liveBalance,
-        requiredCredits: hourlyCost,
-        minimumRecommended: hourlyCost * 24 * 7, // 1 week
+        requiredCredits: amountDue,
+        minimumRecommended: hourlyRate * 24 * 7, // 1 week
         shutdownTime: shutdownTime.toLocaleString("en-US", {
           weekday: "long",
           year: "numeric",
@@ -173,7 +184,7 @@ async function processSandboxBilling(
     await notifyWaifuCreditWebhook(sandbox, "credits.low", {
       eventId: `agent-billing:${sandboxId}:credits.low:${now.toISOString()}`,
       creditsRemaining: liveBalance,
-      requiredCredits: hourlyCost,
+      requiredCredits: amountDue,
       scheduledShutdownAt: shutdownTime.toISOString(),
     });
 
@@ -182,13 +193,14 @@ async function processSandboxBilling(
       agentName,
       organizationId,
       action: "warning_sent",
-      amount: hourlyCost,
+      amount: amountDue,
     };
   }
 
   logger.info(`[Agent Billing] Processing ${agentName}`, {
     sandboxId,
-    hourlyCost,
+    hourlyRate,
+    amountDue,
     currentBalance,
     status: sandbox.status,
     billingStatus: sandbox.billing_status,
@@ -204,27 +216,17 @@ async function processSandboxBilling(
       `[Agent Billing] Shutting down agent ${agentName} due to insufficient credits`,
     );
 
-    const shutdown = await elizaSandboxService.shutdown(
-      sandboxId,
+    await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId: sandboxId,
       organizationId,
-    );
-    if (!shutdown.success) {
-      throw new Error(
-        `Container shutdown failed before credit suspension: ${
-          shutdown.error ?? "unknown error"
-        }`,
-      );
-    }
-
-    await agentBillingRepository.suspendSandboxForInsufficientCredits(
-      sandboxId,
-      now,
-    );
+      userId: sandbox.user_id,
+      authorization: "billing_request",
+    });
 
     await notifyWaifuCreditWebhook(sandbox, "credits.depleted", {
       eventId: `agent-billing:${sandboxId}:credits.depleted:${sandbox.scheduled_shutdown_at.toISOString()}`,
       creditsRemaining: 0,
-      requiredCredits: hourlyCost,
+      requiredCredits: amountDue,
       scheduledShutdownAt: sandbox.scheduled_shutdown_at.toISOString(),
     });
 
@@ -241,11 +243,9 @@ async function processSandboxBilling(
     organizationId,
     userId: sandbox.user_id,
     agentName,
-    sandboxStatus: sandbox.status,
-    hourlyCost,
+    hourlyRate,
     billingDescription,
     lowCreditWarningAmount: AGENT_PRICING.LOW_CREDIT_WARNING,
-    rebillCutoff: new Date(now.getTime() - REBILL_GUARD_MINUTES * 60_000),
     now,
   });
 
@@ -270,7 +270,7 @@ async function processSandboxBilling(
   }
 
   logger.info(
-    `[Agent Billing] Billed ${agentName}: $${hourlyCost.toFixed(4)}`,
+    `[Agent Billing] Billed ${agentName}: $${billingResult.amount.toFixed(6)}`,
     {
       sandboxId,
       newBalance: billingResult.newBalance,
@@ -282,7 +282,7 @@ async function processSandboxBilling(
     await notifyWaifuCreditWebhook(sandbox, "credits.low", {
       eventId: `agent-billing:${sandboxId}:credits.low:${billingResult.transactionId}`,
       creditsRemaining: billingResult.newBalance,
-      requiredCredits: hourlyCost,
+      requiredCredits: billingResult.amount,
     });
   }
 
@@ -291,7 +291,7 @@ async function processSandboxBilling(
     agentName,
     organizationId,
     action: "billed",
-    amount: hourlyCost,
+    amount: billingResult.amount,
     newBalance: billingResult.newBalance,
   };
 }
@@ -488,7 +488,7 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
       }
 
       try {
-        const result = await processSandboxBilling(sandbox, org, appUrl);
+        const result = await processSandboxBilling(sandbox, org, appUrl, now);
         results.push(result);
 
         if (result.action === "billed" && result.amount) {

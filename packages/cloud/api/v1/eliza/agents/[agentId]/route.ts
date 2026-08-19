@@ -372,6 +372,7 @@ app.patch("/", async (c) => {
       agentId,
       organizationId: user.organization_id,
       userId: user.id,
+      authorization: "user_request",
     });
 
     void provisioningJobService.triggerImmediate(c.env).catch(() => {
