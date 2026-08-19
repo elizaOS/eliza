@@ -106,7 +106,7 @@ describe("app charge callback outbox", () => {
   test("a partial callback retry does not redeliver the channel that already succeeded", async () => {
     await dbWrite.transaction((tx) => service.enqueue(params, tx));
     const original = service.dispatch.bind(service);
-    const optionsSeen: Array<{ skipRoom?: boolean; skipHttp?: boolean }> = [];
+    const optionsSeen: Array<{ skipRoom?: boolean; skipHttp?: boolean; createdAt?: Date }> = [];
     service.dispatch = async (_params, options = {}) => {
       optionsSeen.push(options);
       return optionsSeen.length === 1
@@ -119,10 +119,14 @@ describe("app charge callback outbox", () => {
         "UPDATE app_charge_callback_outbox SET next_attempt_at=now() - interval '1 second'",
       );
       expect((await service.drain()).delivered).toBe(1);
-      expect(optionsSeen).toEqual([
+      expect(optionsSeen.map(({ skipRoom, skipHttp }) => ({ skipRoom, skipHttp }))).toEqual([
         { skipRoom: false, skipHttp: false },
         { skipRoom: true, skipHttp: false },
       ]);
+      expect(optionsSeen[0]?.createdAt).toBeInstanceOf(Date);
+      expect(optionsSeen[1]?.createdAt?.toISOString()).toBe(
+        optionsSeen[0]?.createdAt?.toISOString(),
+      );
       const row = await dbWrite.execute(
         "SELECT room_delivered_at, http_delivered_at FROM app_charge_callback_outbox",
       );

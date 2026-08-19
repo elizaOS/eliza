@@ -351,6 +351,7 @@ export class AppChargeCallbacksService {
           {
             skipRoom: claimed.room_delivered_at !== null,
             skipHttp: claimed.http_delivered_at !== null,
+            createdAt: claimed.created_at,
           },
         );
         if (deliveryResult.errors.length > 0) {
@@ -414,7 +415,7 @@ export class AppChargeCallbacksService {
 
   async dispatch(
     params: AppChargeCallbackDispatchParams,
-    options: { skipRoom?: boolean; skipHttp?: boolean } = {},
+    options: { skipRoom?: boolean; skipHttp?: boolean; createdAt?: Date } = {},
   ): Promise<CallbackDispatchResult> {
     const result: CallbackDispatchResult = {
       httpPosted: false,
@@ -447,9 +448,11 @@ export class AppChargeCallbacksService {
       params,
       metadata,
       chargeRequest.expected_amount,
-      chargeRequest.created_at instanceof Date
-        ? chargeRequest.created_at.toISOString()
-        : new Date(0).toISOString(),
+      options.createdAt instanceof Date
+        ? options.createdAt.toISOString()
+        : chargeRequest.created_at instanceof Date
+          ? chargeRequest.created_at.toISOString()
+          : new Date(0).toISOString(),
     );
 
     const channel = callbackChannel(metadata);
