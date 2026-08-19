@@ -4,6 +4,12 @@
  * analysis / tool tags, code fences and inline code, markdown links, raw HTML,
  * and URLs, removes parenthetical and bracketed stage directions, normalizes
  * punctuation and unusual glyphs, and collapses whitespace.
+ *
+ * Stage-direction stripping peels one innermost `()` / `[]` / `{}` / `**`
+ * layer per pass. Honest asides nest a handful of delimiters; each miss
+ * rescan is O(remaining), so an uncapped `((((…hello…))))` bomb hangs TTS.
+ * {@link MAX_NON_SPEECH_STRIP_PASSES} fail-closes the peel; leftover
+ * delimiter glyphs are then dropped in a single linear pass.
  */
 
 function collapseWhitespace(input: string): string {
@@ -39,9 +45,13 @@ const NON_SPEECH_SEGMENT_PATTERNS = [
 	/\{[^{}]*\}/g,
 ];
 
+/** Honest stage directions nest a handful of delimiters. Each peel rescan is
+ * O(remaining); uncapped nested `((((…))))` hangs TTS. */
+export const MAX_NON_SPEECH_STRIP_PASSES = 8 as const;
+
 function stripNonSpeechDirections(input: string): string {
 	let text = input;
-	while (true) {
+	for (let pass = 0; pass < MAX_NON_SPEECH_STRIP_PASSES; pass += 1) {
 		const previous = text;
 		for (const pattern of NON_SPEECH_SEGMENT_PATTERNS) {
 			text = text.replace(pattern, " ");

@@ -90,4 +90,19 @@ describe("sanitizeSpeechText", () => {
       sanitizeSpeechText("*whispers* Wait!!! (pause) Are you sure??"),
     ).toBe("Wait! Are you sure?");
   });
+
+  it("keeps speech around a few nested stage-direction layers", () => {
+    expect(
+      sanitizeSpeechText("Hello (aside (whisper) still aside) world."),
+    ).toBe("Hello world.");
+  });
+
+  it("fail-closes a nested-delimiter peel bomb without hanging TTS", () => {
+    const nested = `(${"(".repeat(40_000)}hello${")".repeat(40_000)})`;
+    const started = performance.now();
+    const spoken = sanitizeSpeechText(`Say this. ${nested} Done.`);
+    const elapsedMs = performance.now() - started;
+    expect(elapsedMs).toBeLessThan(50);
+    expect(spoken).toBe("Say this. Done.");
+  });
 });
