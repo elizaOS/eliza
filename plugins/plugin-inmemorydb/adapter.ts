@@ -30,6 +30,7 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentRevisionReplaceParams,
   documentMutationSnapshotMatches,
   ElizaError,
   type EntitiesForRoomsResult,
@@ -64,6 +65,7 @@ import {
   rankMessageSearch,
   type Task,
   type UUID,
+  validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
   type World,
   withinCreatedAtWindow,
@@ -738,6 +740,101 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         metadata: params.replacement.metadata,
       };
       await this.storage.set(COLLECTIONS.MEMORIES, params.documentId, replacement);
+      return { status: "updated", document: toMemory(replacement) };
+    });
+  }
+
+  async replaceDocumentRevision(
+    params: DocumentRevisionReplaceParams
+  ): Promise<DocumentMutationResult> {
+    validateDocumentRevisionReplacement(params);
+    return this.withDocumentMutationLock(async () => {
+      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      if (
+        !stored ||
+        storedMemoryTableName(stored) !== "documents" ||
+        stored.agentId !== params.agentId
+      ) {
+        return { status: "not_found" };
+      }
+      const existing = toMemory(stored);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!isDocumentVisibleToRequester(existing, params)) return { status: "not_found" };
+      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      if (!this.storage.applyBatch) {
+        throw new ElizaError(
+          "The configured in-memory storage cannot atomically replace documents",
+          {
+            code: "DOCUMENT_REVISION_ATOMIC_STORAGE_REQUIRED",
+            context: { documentId: params.documentId },
+          }
+        );
+      }
+      const oldFragments = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          memory.agentId === params.agentId &&
+          memory.metadata?.type === MemoryType.FRAGMENT &&
+          memory.metadata.documentId === params.documentId
+      );
+      const oldIds = oldFragments
+        .map(({ id }) => id)
+        .filter((id): id is string => typeof id === "string");
+      const oldIdSet = new Set(oldIds);
+      for (const fragment of params.fragments) {
+        const collision = await this.storage.get<StoredMemory>(
+          COLLECTIONS.MEMORIES,
+          fragment.id as UUID
+        );
+        if (collision && !oldIdSet.has(fragment.id as UUID)) {
+          throw new ElizaError("Atomic document fragment id already exists", {
+            code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
+            context: { documentId: params.documentId, fragmentId: fragment.id },
+          });
+        }
+      }
+      const replacement: StoredMemory = {
+        ...stored,
+        ...params.replacement,
+        id: params.documentId,
+        tableName: "documents",
+        agentId: params.agentId,
+      };
+      const newFragments: StoredMemory[] = params.fragments.map((fragment) => ({
+        ...fragment,
+        id: fragment.id,
+        tableName: "document_fragments",
+        agentId: params.agentId,
+        createdAt: fragment.createdAt ?? Date.now(),
+      }));
+      const indexedNewIds: string[] = [];
+      try {
+        for (const fragment of newFragments) {
+          if (!fragment.embedding || fragment.embedding.length === 0) continue;
+          await this.vectorIndex.add(fragment.id as string, fragment.embedding);
+          indexedNewIds.push(fragment.id as string);
+        }
+        await this.storage.applyBatch({
+          collection: COLLECTIONS.MEMORIES,
+          deletes: oldIds,
+          sets: [
+            { id: params.documentId, data: replacement },
+            ...newFragments.map((data) => ({ id: data.id as string, data })),
+          ],
+        });
+      } catch (error) {
+        // error-policy:J2 Staged vector entries are not a committed revision;
+        // remove them before surfacing the storage/vector failure.
+        await Promise.all(indexedNewIds.map((id) => this.vectorIndex.remove(id)));
+        throw new ElizaError("Failed to stage an atomic document revision", {
+          code: "DOCUMENT_REVISION_STAGE_FAILED",
+          context: { documentId: params.documentId },
+          cause: error,
+        });
+      }
+      await Promise.all(oldIds.map((id) => this.vectorIndex.remove(id)));
       return { status: "updated", document: toMemory(replacement) };
     });
   }

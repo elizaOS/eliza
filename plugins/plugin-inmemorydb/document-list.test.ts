@@ -294,4 +294,66 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
     ).resolves.toEqual({ status: "conflict" });
     await expect(adapter.getMemoriesByIds([original.id], "documents")).resolves.toHaveLength(1);
   });
+
+  it("atomically replaces a parent and its complete fragment generation", async () => {
+    const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
+    await adapter.initialize();
+    const original = memory(1, ROOM_A, { documentRevision: 0 });
+    const oldFragment = {
+      ...memory(2, ROOM_A),
+      content: { text: "old fragment" },
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: original.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    };
+    await adapter.createMemories([
+      { memory: original, tableName: "documents" },
+      { memory: oldFragment, tableName: "document_fragments" },
+    ]);
+    const expected = readDocumentMutationSnapshot(original);
+    if (!expected) throw new Error("Expected a valid document mutation snapshot");
+    const replacement = {
+      ...original,
+      content: { text: "new body" },
+      metadata: { ...original.metadata, documentRevision: 1 },
+    };
+    const newFragment = {
+      ...oldFragment,
+      id: memory(3, ROOM_A).id,
+      content: { text: "new fragment" },
+      metadata: { ...oldFragment.metadata, documentRevision: 1 },
+    };
+    await expect(
+      adapter.replaceDocumentRevision({
+        agentId: AGENT_ID,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [],
+        requesterRole: "OWNER",
+        documentId: original.id,
+        expected,
+        replacement,
+        fragments: [newFragment],
+      })
+    ).resolves.toMatchObject({ status: "updated" });
+    await expect(adapter.getMemoriesByIds([oldFragment.id], "document_fragments")).resolves.toEqual(
+      []
+    );
+    await expect(adapter.getMemoriesByIds([original.id], "documents")).resolves.toEqual([
+      expect.objectContaining({
+        content: { text: "new body" },
+        metadata: expect.objectContaining({ documentRevision: 1 }),
+      }),
+    ]);
+    await expect(adapter.getMemoriesByIds([newFragment.id], "document_fragments")).resolves.toEqual(
+      [
+        expect.objectContaining({
+          content: { text: "new fragment" },
+          metadata: expect.objectContaining({ documentRevision: 1 }),
+        }),
+      ]
+    );
+  });
 });

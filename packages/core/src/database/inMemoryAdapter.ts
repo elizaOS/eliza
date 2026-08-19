@@ -41,6 +41,7 @@ import type {
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	DocumentMutationResult,
+	DocumentRevisionReplaceParams,
 	EntitiesForRoomsResult,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
@@ -91,6 +92,7 @@ import {
 	isDocumentVisibleToRequester,
 	queryDocumentFragmentsInMemory,
 	queryDocumentsInMemory,
+	validateDocumentRevisionReplacement,
 } from "./document-list-query";
 
 function asUuid(id: string): UUID {
@@ -873,6 +875,66 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return updated
 			? { status: "updated", document: updated }
 			: { status: "conflict" };
+	}
+
+	async replaceDocumentRevision(
+		params: DocumentRevisionReplaceParams,
+	): Promise<DocumentMutationResult> {
+		validateDocumentRevisionReplacement(params);
+		const existing = this.memoriesById.get(String(params.documentId));
+		if (!existing || existing.agentId !== params.agentId) {
+			return { status: "not_found" };
+		}
+		if (!documentMutationSnapshotMatches(existing, params.expected)) {
+			return { status: "conflict" };
+		}
+		if (!canRequesterMutateDocument(existing, params)) {
+			return { status: "forbidden" };
+		}
+		const oldFragmentIds = new Set(
+			Array.from(this.memoriesById.values())
+				.filter(
+					(memory) =>
+						memory.agentId === params.agentId &&
+						memory.metadata?.type === MemoryType.FRAGMENT &&
+						memory.metadata.documentId === params.documentId,
+				)
+				.map((memory) => String(memory.id)),
+		);
+		for (const fragment of params.fragments) {
+			if (
+				this.memoriesById.has(String(fragment.id)) &&
+				!oldFragmentIds.has(String(fragment.id))
+			) {
+				throw new ElizaError("Atomic document fragment id already exists", {
+					code: "DOCUMENT_FRAGMENT_ID_CONFLICT",
+					context: { documentId: params.documentId, fragmentId: fragment.id },
+				});
+			}
+		}
+		for (const id of oldFragmentIds) this.memoriesById.delete(id);
+		for (const [key, list] of this.memoriesByRoom) {
+			this.memoriesByRoom.set(
+				key,
+				list.filter((memory) => !oldFragmentIds.has(String(memory.id))),
+			);
+		}
+		const replacement = { ...params.replacement, id: params.documentId };
+		this.memoriesById.set(String(params.documentId), replacement);
+		for (const [key, list] of this.memoriesByRoom) {
+			const index = list.findIndex((memory) => memory.id === params.documentId);
+			if (index >= 0)
+				this.memoriesByRoom.set(key, list.with(index, replacement));
+		}
+		for (const fragment of params.fragments) {
+			this.memoriesById.set(String(fragment.id), fragment);
+			const key = roomTableKey("document_fragments", fragment.roomId);
+			this.memoriesByRoom.set(key, [
+				...(this.memoriesByRoom.get(key) ?? []),
+				fragment,
+			]);
+		}
+		return { status: "updated", document: replacement };
 	}
 
 	async deleteDocumentWithSnapshot(
