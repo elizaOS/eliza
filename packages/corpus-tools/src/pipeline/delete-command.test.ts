@@ -11,12 +11,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CorpusMessage } from "../schema.ts";
-import { readCorpusShard } from "../validator.ts";
+import { readCorpusShard, validateCorpusTarget } from "../validator.ts";
 import { canonicalDeletionArtifactSha256 } from "./delete.ts";
-import {
-  applyDeletionFiles,
-  type planDeletionFiles,
-} from "./delete-command.ts";
+import { applyDeletionFiles, planDeletionFiles } from "./delete-command.ts";
 
 const temporaryDirectories: string[] = [];
 const REVIEWED_AT = "2026-07-10T05:00:00.000Z";
@@ -98,6 +95,108 @@ afterEach(async () => {
 });
 
 describe("reviewed deletion file orchestration", () => {
+  it("publishes a valid empty manifest when every reviewed message is deleted", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "corpus-delete-all-"));
+    temporaryDirectories.push(root);
+    const corpusPath = path.join(root, "corpus.v1");
+    const shardPath = path.join(corpusPath, "gmail", "work", "2026-06.jsonl");
+    const artifactsPath = path.join(root, "artifacts");
+    const source = message("delete-only", { labels: ["Delete"] });
+    await fs.mkdir(path.dirname(shardPath), { recursive: true });
+    await fs.writeFile(shardPath, `${JSON.stringify(source)}\n`);
+    await fs.mkdir(artifactsPath, { recursive: true });
+    const candidatesPath = path.join(artifactsPath, "candidates.jsonl");
+    const rulesPath = path.join(artifactsPath, "rules.json");
+    const queuePath = path.join(artifactsPath, "queue.json");
+    const normalizedRulesPath = path.join(
+      artifactsPath,
+      "rules.normalized.json",
+    );
+    const decisionsPath = path.join(artifactsPath, "decisions.json");
+    const ledgerPath = path.join(artifactsPath, "ledger.jsonl");
+    const outputPath = path.join(root, "survivors");
+    await fs.writeFile(candidatesPath, "");
+    await writeJson(rulesPath, {
+      schemaVersion: 1,
+      rulesetVersion: RULESET,
+      attachmentPolicy: {
+        embeddedBytes: "drop",
+        retainMetadata: ["filename", "mimeType", "sha256"],
+      },
+      rules: [
+        {
+          id: "delete-label",
+          enabled: true,
+          scope: "message",
+          match: { type: "label", value: "Delete" },
+        },
+      ],
+    });
+    const queue = await planDeletionFiles({
+      targetPath: corpusPath,
+      candidatesPath,
+      rulesPath,
+      queuePath,
+      normalizedRulesPath,
+    });
+    await writeJson(decisionsPath, {
+      schemaVersion: 1,
+      rulesetVersion: queue.rulesetVersion,
+      corpusDigest: queue.corpusDigest,
+      rulesSha256: queue.rulesSha256,
+      reviewedQueueSha256: canonicalDeletionArtifactSha256(queue),
+      approved: true,
+      reviewedBy: "synthetic-owner",
+      reviewedAt: REVIEWED_AT,
+      decisions: queue.groups.map((group) => ({
+        groupId: group.groupId,
+        decision: "delete",
+      })),
+    });
+    const raw = { ...source, scrubState: "raw" } as CorpusMessage;
+    const mined = { ...source, scrubState: "mined" } as CorpusMessage;
+    await fs.writeFile(
+      ledgerPath,
+      `${[
+        ledgerRecord(raw, mined, "mine"),
+        ledgerRecord(mined, source, "secrets"),
+      ]
+        .map((record) => JSON.stringify(record))
+        .join("\n")}\n`,
+    );
+
+    const result = await applyDeletionFiles({
+      targetPath: corpusPath,
+      candidatesPath,
+      normalizedRulesPath,
+      queuePath,
+      decisionsPath,
+      outputPath,
+      ledgerPath,
+      manifestPath: path.join(outputPath, "manifest.json"),
+      approvalPath: path.join(artifactsPath, "approval.json"),
+      reportPath: path.join(artifactsPath, "report.json"),
+    });
+
+    expect(result.approval).toMatchObject({
+      survivorCount: 0,
+      tombstoneCount: 1,
+    });
+    expect(await fs.readdir(outputPath)).toEqual(["manifest.json"]);
+    expect(
+      JSON.parse(
+        await fs.readFile(path.join(outputPath, "manifest.json"), "utf8"),
+      ),
+    ).toMatchObject({ shards: [], totals: { messages: 0 } });
+    await expect(validateCorpusTarget(outputPath)).resolves.toMatchObject({
+      ok: true,
+      issues: [],
+    });
+    expect(await fs.readFile(shardPath, "utf8")).toBe(
+      `${JSON.stringify(source)}\n`,
+    );
+  });
+
   it("plans, applies, and resumes an exact owner-reviewed deletion", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "corpus-delete-"));
     temporaryDirectories.push(root);
@@ -216,7 +315,7 @@ rules:
       decisionsPath,
       outputPath: path.join(root, "survivors"),
       ledgerPath,
-      manifestPath: path.join(artifactsPath, "manifest.json"),
+      manifestPath: path.join(root, "survivors", "manifest.json"),
       approvalPath: path.join(artifactsPath, "approval.json"),
       reportPath: path.join(artifactsPath, "report.json"),
     };
@@ -262,6 +361,10 @@ rules:
     });
     await fs.rm(`${ledgerPath}.lock`);
 
+    const sourceShardBeforeApply = await fs.readFile(shardPath);
+    const predictableTemporaryPath = `${applyOptions.outputPath}.tmp-${process.pid}`;
+    await fs.symlink(corpusPath, predictableTemporaryPath);
+
     const applyArgs = [
       "delete",
       "apply",
@@ -301,6 +404,10 @@ rules:
       tombstoneCount: 1,
       attachmentBytesDropped: 9,
     });
+    expect(await fs.readFile(shardPath)).toEqual(sourceShardBeforeApply);
+    expect((await fs.lstat(predictableTemporaryPath)).isSymbolicLink()).toBe(
+      true,
+    );
     const outputShardPath = path.join(
       applyOptions.outputPath,
       "gmail",

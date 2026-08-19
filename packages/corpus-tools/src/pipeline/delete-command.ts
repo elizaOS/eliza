@@ -131,9 +131,10 @@ async function readJsonLines<T>(
 }
 
 async function loadCorpus(targetPath: string): Promise<LoadedCorpus> {
-  const rootDir = path.extname(targetPath)
-    ? path.dirname(targetPath)
-    : targetPath;
+  const targetStat = await fs.stat(targetPath);
+  const rootDir = targetStat.isDirectory()
+    ? targetPath
+    : path.dirname(targetPath);
   const shardPaths = (await findCorpusShardFiles(targetPath)).filter(
     (filePath) => !filePath.split(path.sep).includes(".state"),
   );
@@ -297,6 +298,25 @@ function assertNoPathOverlap(
         `deletion paths ${parentName} and ${childName} must not overlap`,
       );
     }
+  }
+}
+
+function assertManifestPlacement(paths: ReadonlyMap<string, string>): void {
+  const output = paths.get("output");
+  const manifest = paths.get("manifest");
+  if (!output || !manifest) {
+    throw new Error("missing canonical deletion output or manifest path");
+  }
+  if (pathContains(manifest, output)) {
+    throw new Error("deletion manifest must not contain the output path");
+  }
+  if (
+    pathContains(output, manifest) &&
+    path.relative(output, manifest) !== "manifest.json"
+  ) {
+    throw new Error(
+      "deletion manifest inside the output must be output/manifest.json",
+    );
   }
 }
 
@@ -599,15 +619,14 @@ async function writeSurvivorCorpus(
     }
     return desired;
   }
-  const temporaryPath = `${outputPath}.tmp-${process.pid}`;
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+  const temporaryPath = await fs.mkdtemp(`${outputPath}.tmp-${process.pid}-`);
   try {
-    await fs.mkdir(temporaryPath, { recursive: true });
     for (const [relative, bytes] of desired) {
       const destination = path.join(temporaryPath, relative);
       await fs.mkdir(path.dirname(destination), { recursive: true });
       await fs.writeFile(destination, bytes, { mode: 0o600 });
     }
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
     await fs.rename(temporaryPath, outputPath);
   } finally {
     // error-policy:J6 an interrupted atomic output may leave only this temp tree.
@@ -868,10 +887,10 @@ export async function applyDeletionFiles(
     "queue",
     "decisions",
     "ledger",
-    "manifest",
     "approval",
     "report",
   ]);
+  assertManifestPlacement(paths);
   await fs.mkdir(path.dirname(options.ledgerPath), { recursive: true });
   const lockPath = `${options.ledgerPath}.lock`;
   const lock = await fs.open(lockPath, "wx", 0o600);
