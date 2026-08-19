@@ -1941,163 +1941,25 @@ Kubernetes             Gateway Pod (gw-1)         Redis         Eliza Cloud
 
 ---
 
-## Kubernetes Deployment
+## Deployment
 
-The gateway is deployed to Kubernetes using **Helm charts** (recommended) for better release management and environment-specific configuration.
+The checked-in production path is Railway, not the retired Helm/EKS/Terraform
+layout. The authoritative inputs are:
 
-### Quick Start with Helm
+- [`scripts/deploy-railway.sh`](./scripts/deploy-railway.sh) — builds a
+  self-contained bundle from the monorepo and uploads a staged runtime image;
+- [`railway.toml`](./railway.toml) — readiness healthcheck and restart policy;
+- [`Dockerfile`](./Dockerfile) — local/container build contract.
 
-```bash
-# Deploy to development
-helm upgrade --install gateway-discord ./chart \
-  --namespace gateway-discord \
-  --create-namespace \
-  -f ./chart/values.yaml \
-  -f ./chart/values-development.yaml
-
-# Deploy to production
-helm upgrade --install gateway-discord ./chart \
-  --namespace gateway-discord \
-  --create-namespace \
-  -f ./chart/values.yaml \
-  -f ./chart/values-production.yaml
-
-# Uninstall
-helm uninstall gateway-discord -n gateway-discord
-```
-
-### Release Management
+The Railway service currently has no connected repository source, so a GitHub
+push does not deploy it. An authorized operator must link the intended project,
+service, and environment, then run:
 
 ```bash
-# View release history
-helm history gateway-discord -n gateway-discord
-
-# Rollback to previous version
-helm rollback gateway-discord -n gateway-discord
-
-# View current deployed values
-helm get values gateway-discord -n gateway-discord
+bun run --cwd packages/cloud/services/gateway-discord deploy:railway
 ```
 
-### K8s Resources
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Namespace: gateway-discord (Helm Release: gateway-discord)          │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐ │
-│  │   Deployment    │    │       HPA       │    │       PDB       │ │
-│  │                 │    │                 │    │                 │ │
-│  │ replicas: 2     │◄───│ min: 2, max: 10 │    │ minAvailable: 1 │ │
-│  │ (auto-scaled)   │    │ target CPU: 70% │    │ (HA guarantee)  │ │
-│  └────────┬────────┘    └─────────────────┘    └─────────────────┘ │
-│           │                                                         │
-│           ▼                                                         │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                        Pods                                  │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │   │
-│  │  │  gw-pod-1   │  │  gw-pod-2   │  │  gw-pod-N   │   ...    │   │
-│  │  │  100 bots   │  │  100 bots   │  │  100 bots   │          │   │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘          │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-│  ┌─────────────────┐    ┌─────────────────┐                        │
-│  │ ServiceMonitor  │    │     Alerts      │                        │
-│  │ (Prometheus)    │    │ (PrometheusRule)│                        │
-│  │                 │    │                 │                        │
-│  │ /metrics scrape │    │ - HighErrorRate │                        │
-│  │ every 15s       │    │ - ControlPlane  │                        │
-│  └─────────────────┘    │ - PodCrash      │                        │
-│                         └─────────────────┘                        │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-| Resource | Helm Template | Purpose |
-|----------|---------------|---------|
-| Deployment | `chart/templates/deployment.yaml` | Pod specification with probes |
-| Service | `chart/templates/deployment.yaml` | ClusterIP service |
-| HPA | `chart/templates/hpa.yaml` | Auto-scaling (configurable replicas) |
-| PDB | `chart/templates/pdb.yaml` | Ensures HA during updates |
-| ServiceMonitor | `chart/templates/servicemonitor.yaml` | Prometheus scraping (conditional) |
-| PrometheusRule | `chart/templates/alerts.yaml` | Alerting rules (conditional) |
-
-### Values Files
-
-| File | Description |
-|------|-------------|
-| `chart/values.yaml` | Default values for all environments |
-| `chart/values-development.yaml` | Development overrides (smaller resources) |
-| `chart/values-production.yaml` | Production overrides (more resources, Prometheus enabled) |
-
-### Required Secrets
-
-Create a Kubernetes secret before deploying:
-```bash
-kubectl create namespace gateway-discord
-
-# Base secrets (required)
-kubectl create secret generic gateway-discord-secrets \
-  --namespace gateway-discord \
-  --from-literal=eliza-cloud-url="https://your-eliza-cloud-url.com" \
-  --from-literal=gateway-bootstrap-secret="your-bootstrap-secret" \
-  --from-literal=redis-url="https://your-redis-url" \
-  --from-literal=redis-token="your-redis-token" \
-  --from-literal=blob-token="your-blob-token"
-```
-
-**For Eliza App Discord bot** (optional - only if enabling `elizaAppBot.enabled: true`):
-```bash
-# Add Eliza App Discord bot secrets
-kubectl patch secret gateway-discord-secrets \
-  --namespace gateway-discord \
-  --type='json' \
-  -p='[
-    {"op": "add", "path": "/data/eliza-app-discord-bot-token", "value": "'$(echo -n "your-bot-token" | base64)'"},
-    {"op": "add", "path": "/data/eliza-app-discord-application-id", "value": "'$(echo -n "your-app-id" | base64)'"}
-  ]'
-```
-
-Then enable in your Helm values:
-```yaml
-elizaAppBot:
-  enabled: true
-```
-
-**Note**: The gateway uses JWT authentication. The `gateway-bootstrap-secret` is exchanged for a JWT token at startup. The Eliza Cloud API must have the corresponding JWT signing keys configured.
-
-
----
-
-## Infrastructure (Terraform)
-
-The AWS infrastructure required to run the gateway is managed via **Terraform** in the `terraform/` directory.
-
-**What gets provisioned:**
-- VPC with public/private subnets across 3 AZs
-- EKS cluster for running the gateway pods
-- NAT Instance (cost-effective alternative to NAT Gateway)
-- IAM roles for EKS and GitHub Actions OIDC
-- Kubernetes namespace and secrets
-
-Infrastructure and service changes are operator-run. Terraform operations use
-the manual consolidated `.github/workflows/infra.yml`. The Railway services
-currently have no connected repository source, so a GitHub push does not deploy
-them; an authorized operator must use the package deploy script documented above
-and then verify the exact deployment plus public health endpoint.
-
-```bash
-# Manual deployment (if needed)
-cd terraform
-
-# Development
-terraform init -backend-config=backend-development.hcl
-terraform plan -var-file=development.tfvars -var-file=secrets.tfvars
-terraform apply -var-file=development.tfvars -var-file=secrets.tfvars
-
-# Production
-terraform init -backend-config=backend-production.hcl -reconfigure
-terraform plan -var-file=production.tfvars -var-file=secrets.tfvars
-terraform apply -var-file=production.tfvars -var-file=secrets.tfvars
-```
-
+The deploy script keeps the current deployment live until Railway accepts the
+new image. Afterward, verify the exact deployment and its public `/health` and
+`/ready` responses. Production deployment remains operator-gated under the
+repository contribution and evidence policy.
