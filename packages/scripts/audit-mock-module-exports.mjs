@@ -203,6 +203,8 @@ function createAnalyzer(repoRoot, candidateFiles) {
     if (!value || typeof value !== "object") return undefined;
     if ("eliza-source" in value) return sourceCondition(value["eliza-source"]);
     return (
+      sourceCondition(value.bun) ??
+      sourceCondition(value.development) ??
       sourceCondition(value.types) ??
       sourceCondition(value.import) ??
       sourceCondition(value.default)
@@ -238,13 +240,27 @@ function createAnalyzer(repoRoot, candidateFiles) {
     if (relative) {
       const candidate = path.resolve(packageRoot, relative);
       if (existsSync(candidate)) return candidate;
+      const sourceRelative = relative
+        .replace(/^\.\/dist\//, "")
+        .replace(/(?:\.d)?\.[cm]?[jt]sx?$/, "");
+      for (const sourceCandidate of [
+        path.join(packageRoot, "src", `${sourceRelative}.ts`),
+        path.join(packageRoot, "src", `${sourceRelative}.tsx`),
+        path.join(packageRoot, `${sourceRelative}.ts`),
+        path.join(packageRoot, `${sourceRelative}.tsx`),
+      ]) {
+        if (existsSync(sourceCandidate)) return sourceCandidate;
+      }
     }
     for (const candidate of subpath
       ? [
           path.join(packageRoot, "src", `${subpath}.ts`),
           path.join(packageRoot, "src", subpath, "index.ts"),
         ]
-      : [path.join(packageRoot, "src", "index.ts")]) {
+      : [
+          path.join(packageRoot, "index.ts"),
+          path.join(packageRoot, "src", "index.ts"),
+        ]) {
       if (existsSync(candidate)) return candidate;
     }
     return undefined;

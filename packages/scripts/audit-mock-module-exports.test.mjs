@@ -351,3 +351,70 @@ test("resolves internal workspace exports through their source condition", () =>
   ]);
   assert.match(report.findings[0], /\[missing-export\].*bound/);
 });
+
+test("prefers clean-checkout package sources over absent build output", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "mock-export-audit-"));
+  roots.push(root);
+  const workspace = path.join(root, "packages", "internal");
+  const sourceRoot = path.join(root, "packages", "fixture", "src");
+  mkdirSync(workspace, { recursive: true });
+  mkdirSync(sourceRoot, { recursive: true });
+  writeFileSync(
+    path.join(workspace, "package.json"),
+    JSON.stringify({
+      name: "@elizaos/internal",
+      exports: {
+        ".": {
+          types: "./dist/index.d.ts",
+          import: "./dist/index.js",
+        },
+      },
+    }),
+  );
+  writeFileSync(path.join(workspace, "index.ts"), "export const bound = 1;\n");
+  writeFileSync(
+    path.join(sourceRoot, "consumer.ts"),
+    'import { bound } from "@elizaos/internal"; export { bound };\n',
+  );
+  const testFile = path.join(sourceRoot, "consumer.test.ts");
+  writeFileSync(
+    testFile,
+    'import { mock } from "bun:test";\nmock.module("@elizaos/internal", () => ({}));\nawait import("./consumer");\n',
+  );
+  const report = auditMockModuleExports(root, [
+    testFile,
+    path.join(sourceRoot, "consumer.ts"),
+    path.join(workspace, "index.ts"),
+  ]);
+  assert.match(report.findings[0], /\[missing-export\].*bound/);
+});
+
+test("maps clean-checkout dist subpaths back to source", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "mock-export-audit-"));
+  roots.push(root);
+  const workspace = path.join(root, "packages", "internal");
+  const sourceRoot = path.join(root, "packages", "fixture", "src");
+  mkdirSync(path.join(workspace, "src", "components"), { recursive: true });
+  mkdirSync(sourceRoot, { recursive: true });
+  writeFileSync(
+    path.join(workspace, "package.json"),
+    JSON.stringify({
+      name: "@elizaos/internal",
+      exports: {
+        "./button": {
+          types: "./dist/components/button.d.ts",
+          import: "./dist/components/button.js",
+        },
+      },
+    }),
+  );
+  const button = path.join(workspace, "src", "components", "button.tsx");
+  writeFileSync(button, "export const Button = 1;\n");
+  const testFile = path.join(sourceRoot, "consumer.test.ts");
+  writeFileSync(
+    testFile,
+    'import { mock } from "bun:test";\nmock.module("@elizaos/internal/button", () => ({}));\nconst { Button } = await import("@elizaos/internal/button");\nvoid Button;\n',
+  );
+  const report = auditMockModuleExports(root, [testFile, button]);
+  assert.match(report.findings[0], /\[missing-export\].*Button/);
+});

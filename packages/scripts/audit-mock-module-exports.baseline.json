@@ -12,6 +12,10 @@
     "count": 1
   },
   {
+    "finding": "[missing-export] packages/cloud/api/__tests__/credits-agent-bridge-service-key.test.ts mock \"@/db/helpers\" is missing bound export(s): writeTransaction",
+    "count": 1
+  },
+  {
     "finding": "[missing-export] packages/cloud/api/__tests__/eliza-agents-create-idempotency.test.ts mock \"@/lib/auth/workers-hono-auth\" is missing bound export(s): apiKeyScopeHashPrefix, isStagingSessionScopeCandidate, requireUserOrApiKeyWithOrgLookup, revalidateSessionScope, sessionScopeHashPrefix",
     "count": 1
   },
@@ -44,7 +48,7 @@
     "count": 1
   },
   {
-    "finding": "[missing-export] packages/cloud/api/__tests__/shared-agent-turn-idempotency.test.ts mock \"@/lib/services/ai-billing\" is missing bound export(s): billFlatUsage, reserveCredits",
+    "finding": "[missing-export] packages/cloud/api/__tests__/shared-agent-turn-idempotency.test.ts mock \"@/lib/services/ai-billing\" is missing bound export(s): reserveCredits",
     "count": 1
   },
   {
@@ -64,6 +68,10 @@
     "count": 1
   },
   {
+    "finding": "[missing-export] packages/cloud/api/__tests__/stripe-event-waifu.test.ts mock \"@/db/helpers\" is missing bound export(s): dbWrite, writeTransaction",
+    "count": 1
+  },
+  {
     "finding": "[missing-export] packages/cloud/api/__tests__/stripe-queue-route.test.ts mock \"@/lib/queue/redis-queue\" is missing bound export(s): drain, queueLength",
     "count": 1
   },
@@ -80,7 +88,7 @@
     "count": 1
   },
   {
-    "finding": "[missing-export] packages/cloud/api/cron/agent-billing/route.test.ts mock \"@/lib/services/eliza-sandbox\" is missing bound export(s): AdminCanaryCleanupExpectationError, assertOrgAgentQuota, buildAgentSandboxInsertValues, SNAPSHOT_ENDPOINT_UNSUPPORTED",
+    "finding": "[missing-export] packages/cloud/api/cron/agent-billing/route.test.ts mock \"@/lib/services/eliza-sandbox\" is missing bound export(s): assertOrgAgentQuota, buildAgentSandboxInsertValues",
     "count": 1
   },
   {
@@ -112,11 +120,23 @@
     "count": 1
   },
   {
+    "finding": "[missing-export] packages/cloud/api/src/inference-chat-csrf.test.ts mock \"@/db/schemas\" is missing bound export(s): adminUsers, anonymousSessions, appAnalytics, appRequests, apps, appUsers, elizaRoomCharactersTable, moderationViolations, organizationEncryptionKeys, userCharacters, userIdentities, userModerationStatus, users",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/src/inference-chat-csrf.test.ts mock \"@/db/schemas/eliza\" is missing bound export(s): agentTable, memoryTable, participantTable, roomTable",
+    "count": 1
+  },
+  {
     "finding": "[missing-export] packages/cloud/api/src/shared-runtime-conversation.test.ts mock \"@/db/client\" is missing bound export(s): db, dbRead, dbWrite, getDbConnectionInfo",
     "count": 1
   },
   {
     "finding": "[missing-export] packages/cloud/api/src/shared-runtime-conversation.test.ts mock \"@/lib/runtime/cloud-bindings\" is missing bound export(s): getCloudAwareEnv, getCloudBinding",
+    "count": 1
+  },
+  {
+    "finding": "[missing-export] packages/cloud/api/v1/credits/checkout/route.json.test.ts mock \"@/db/helpers\" is missing bound export(s): dbWrite, writeTransaction",
     "count": 1
   },
   {
@@ -224,7 +244,7 @@
     "count": 1
   },
   {
-    "finding": "[missing-export] packages/cloud/api/v1/voice/tts/__tests__/route-provider-selection.test.ts mock \"@elizaos/core\" is missing bound export(s): isElizaError, redactSensitiveText",
+    "finding": "[missing-export] packages/cloud/api/v1/voice/tts/__tests__/route-provider-selection.test.ts mock \"@elizaos/core\" is missing bound export(s): canRequesterMutateDocument, ChannelType, DatabaseAdapter, decryptedCharacter, DOCUMENT_LIST_QUERY_CAPABILITY_VERSION, documentMutationSnapshotMatches, documentRoleHasGlobalVisibility, encryptedCharacter, isElizaError, logger, normalizePairingPageOptions, redactSensitiveText, Service, validateDocumentFragmentQueryParams, validateDocumentListQueryParams, validateDocumentRequesterContext, validateQueryEntitiesPagination, validateUuid",
     "count": 1
   },
   {
