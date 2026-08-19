@@ -10,6 +10,7 @@ import {
   buildOwnerVoiceStyleCard,
   type CreativeMemoTranscript,
   createCreativeDraftArtifact,
+  creativeDraftNarrativeViolations,
   type OwnerVoiceSource,
   scoreOwnerVoiceFidelity,
 } from "../src/lifeops/creative-draft/index.js";
@@ -130,11 +131,56 @@ describe("creative draft owner-voice primitives", () => {
 
     expect(revised.id).toBe(initial.id);
     expect(revised.acceptedEdits).toEqual(["Sharper opening approved."]);
+    expect(revised.acceptedPassages).toEqual([
+      "Look, the honest version starts by naming the waste.",
+    ]);
     expect(revised.vetoedPhrases).toEqual(["best-in-class"]);
     expect(revised.sections[0]?.text).toBe(
       "Look, the honest version starts by naming the waste.",
     );
     expect(revised.sections[1]).toEqual(initial.sections[1]);
+    expect(revised.narrative).toBeUndefined();
+    expect(
+      creativeDraftNarrativeViolations(
+        "LOOK, the honest version starts by naming the waste. Ship it.",
+        revised,
+      ),
+    ).toEqual([]);
+    expect(
+      creativeDraftNarrativeViolations(
+        "This is a best-in-class rewrite that drops the approved opening.",
+        revised,
+      ),
+    ).toEqual([
+      "vetoed phrase reintroduced: best-in-class",
+      "accepted passage omitted: Look, the honest version starts by naming the waste.",
+    ]);
+  });
+
+  it("rejects a veto that remains in a structured draft section", () => {
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Vetoed copy",
+        targetForm: "memo",
+        ownerAsk: "Draft this.",
+      },
+      memos: [
+        {
+          id: "memo-veto",
+          transcript: "Never call this a game changer again.",
+        },
+      ],
+      styleCard: buildOwnerVoiceStyleCard(ownerSources),
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+
+    expect(() =>
+      applyCreativeDraftRevision(initial, {
+        instruction: "Veto that phrase.",
+        vetoedPhrase: "game changer",
+        revisedAt: "2026-07-06T10:20:00.000Z",
+      }),
+    ).toThrow(/still contains vetoed phrase/u);
   });
 
   it("revises a non-first section by sectionIndex", () => {

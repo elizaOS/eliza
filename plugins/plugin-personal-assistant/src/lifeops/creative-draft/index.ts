@@ -83,6 +83,8 @@ export interface CreativeDraftArtifact {
   readonly sourceMemoIds: readonly string[];
   readonly styleSourceIds: readonly string[];
   readonly acceptedEdits: readonly string[];
+  /** Literal owner-approved prose that subsequent narrative passes must retain. */
+  readonly acceptedPassages?: readonly string[];
   readonly vetoedPhrases: readonly string[];
   readonly sections: readonly CreativeDraftSection[];
   /** Latest composed prose, retained with the standing artifact across turns. */
@@ -269,6 +271,7 @@ export function applyCreativeDraftRevision(
   const acceptedEdits = revision.acceptedEdit
     ? [...draft.acceptedEdits, revision.acceptedEdit]
     : [...draft.acceptedEdits];
+  const acceptedPassages = [...(draft.acceptedPassages ?? [])];
   const vetoedPhrases = revision.vetoedPhrase
     ? [...draft.vetoedPhrases, revision.vetoedPhrase]
     : [...draft.vetoedPhrases];
@@ -283,20 +286,73 @@ export function applyCreativeDraftRevision(
       }, sectionIndex=${revision.sectionIndex ?? "<none>"})`,
     );
   }
+  if (replacementText && revision.acceptedEdit) {
+    acceptedPassages.push(replacementText);
+  }
+  const sections =
+    replacementText && targetIndex !== null
+      ? draft.sections.map((section, index) =>
+          index === targetIndex
+            ? { ...section, text: replacementText }
+            : section,
+        )
+      : draft.sections;
+  for (const vetoedPhrase of vetoedPhrases) {
+    const normalizedVeto = normalizedInvariantText(vetoedPhrase);
+    if (
+      normalizedVeto &&
+      sections.some((section) =>
+        normalizedInvariantText(section.text).includes(normalizedVeto),
+      )
+    ) {
+      throw new Error(
+        `[creative-draft] a draft section still contains vetoed phrase: ${vetoedPhrase}`,
+      );
+    }
+  }
   return {
     ...draft,
     acceptedEdits,
+    acceptedPassages,
     vetoedPhrases,
-    sections:
-      replacementText && targetIndex !== null
-        ? draft.sections.map((section, index) =>
-            index === targetIndex
-              ? { ...section, text: replacementText }
-              : section,
-          )
-        : draft.sections,
+    sections,
+    // A revision changes the structured source of truth. Never retain prose
+    // composed from the prior artifact when the replacement model is absent.
+    narrative: undefined,
     updatedAt: revision.revisedAt,
   };
+}
+
+function normalizedInvariantText(value: string): string {
+  return normalizeWhitespace(value.normalize("NFKC")).toLocaleLowerCase(
+    "en-US",
+  );
+}
+
+/**
+ * Verify that generated prose honors the durable, owner-controlled revision
+ * constraints. Accepted labels are audit notes; only literal replacement
+ * passages are enforceable prose invariants.
+ */
+export function creativeDraftNarrativeViolations(
+  narrative: string,
+  draft: CreativeDraftArtifact,
+): readonly string[] {
+  const normalizedNarrative = normalizedInvariantText(narrative);
+  const violations: string[] = [];
+  for (const phrase of draft.vetoedPhrases) {
+    const normalizedPhrase = normalizedInvariantText(phrase);
+    if (normalizedPhrase && normalizedNarrative.includes(normalizedPhrase)) {
+      violations.push(`vetoed phrase reintroduced: ${phrase}`);
+    }
+  }
+  for (const passage of draft.acceptedPassages ?? []) {
+    const normalizedPassage = normalizedInvariantText(passage);
+    if (normalizedPassage && !normalizedNarrative.includes(normalizedPassage)) {
+      violations.push(`accepted passage omitted: ${passage}`);
+    }
+  }
+  return violations;
 }
 
 /**
