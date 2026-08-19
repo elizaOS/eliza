@@ -18,6 +18,8 @@ function read(path: string): string {
 
 interface WorkflowStep {
   env?: Record<string, string>;
+  id?: string;
+  if?: string;
   name?: string;
   uses?: string;
   run?: string;
@@ -244,6 +246,31 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     );
     expect(prodUpload?.with?.name).toBe("app-live-e2e-cloud");
     expect(stagingUpload?.with?.name).toBe("app-live-e2e-cloud-staging");
+  });
+
+  test("uploads a mandatory exact-SHA, secret-free receipt for every executed smoke", () => {
+    const smoke = stagingStep(
+      "Run real STAGING cloud login + provision + chat",
+    );
+    const receipt = stagingStep("Write secret-free staging receipt");
+    const upload = stagingStep("Upload cloud-live staging artifacts");
+
+    expect(smoke.id).toBe("staging-cloud-smoke");
+    expect(smoke.run).toContain('echo "started_ms=$started_ms"');
+    expect(smoke.run).toContain('echo "completed_ms=$completed_ms"');
+    expect(receipt.if).toContain(
+      "steps.staging-cloud-smoke.outcome != 'skipped'",
+    );
+    expect(receipt.run).toContain("write-staging-cloud-receipt.mjs");
+    expect(receipt.run).toContain('--source-sha "$GITHUB_SHA"');
+    expect(receipt.run).not.toMatch(
+      /ELIZAOS_CLOUD_API_KEY|authorization|bearer/i,
+    );
+    expect(upload.if).toBe(receipt.if);
+    expect(upload.with?.path).toContain(
+      "artifacts/app-live-e2e/cloud-staging-receipt.json",
+    );
+    expect(upload.with?.["if-no-files-found"]).toBe("error");
   });
 });
 
