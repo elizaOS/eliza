@@ -637,6 +637,38 @@ describe("ChatOverlay first-run gating", () => {
     expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
   });
 
+  it("never idle-collapses first-run sign-in recovery into the handle-only pill", () => {
+    vi.useFakeTimers();
+    try {
+      const waitingController = makeController({
+        messages: [
+          {
+            id: "first-run:cloud-login-waiting",
+            role: "assistant",
+            content:
+              "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+            createdAt: 2,
+          },
+        ],
+      } as unknown as Partial<ShellController>);
+      render(
+        <ChatOverlay
+          controller={waitingController}
+          firstRunOpen
+          fillHostAtHalf
+        />,
+      );
+      const sheet = screen.getByTestId("chat-sheet");
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+      expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reopens half when an external sign-in attempt expires with a retry choice", () => {
     const retryController = makeController({
       messages: [

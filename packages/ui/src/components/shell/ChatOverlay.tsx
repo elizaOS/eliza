@@ -361,6 +361,7 @@ const SHEET_DETENT_MAGNET = 64;
 // expand-to-maximize — and dragging back down within the same gesture reverses
 // it. Release commits the maximize once the morph is at least half-complete.
 const COMPOSER_TYPING_PAUSE_MS = 2_000;
+const DESKTOP_INPUT_IDLE_COLLAPSE_MS = 10_000;
 const COMPOSER_ACTIVITY_SURFACE = "chat_overlay";
 
 // A light iOS-style impact on each detent cross. Self-contained + guarded so it
@@ -1198,8 +1199,9 @@ export function ChatOverlay({
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
    * false` upstream). The overlay stays at the shared HALF chat detent while it
    * owns an onboarding choice. Once external Cloud sign-in starts it minimizes
-   * to the pill so the browser is unobstructed; successful authentication opens
-   * the same conversation at FULL. There is never a separate desktop web chat.
+   * to the regular compact composer so the browser is unobstructed and retry is
+   * recoverable; successful authentication opens the same conversation at FULL.
+   * There is never a separate desktop web chat.
    */
   firstRunOpen?: boolean;
   /** Initial resting detent when a host opens this shared chat surface. */
@@ -1607,6 +1609,12 @@ export function ChatOverlay({
   // empty composer settles it back to compact. Elsewhere focus is tracked via
   // refs (composerFocusedAtPressRef) that must not trigger a re-render.
   const [composerFocused, setComposerFocused] = React.useState(false);
+  // Pointer/key activity restarts the desktop input bar's idle timer even when
+  // it does not change the draft (for example, clicking an empty composer).
+  const [inputIdleEpoch, noteInputActivity] = React.useReducer(
+    (epoch: number) => epoch + 1,
+    0,
+  );
   // Whether the sheet was collapsed when the composer last gained focus — so
   // dismissing the keyboard (tap the handle, tap the scrim, tap outside) returns
   // to the prior resting state (collapsed → input) instead of leaving the sheet
@@ -3539,6 +3547,56 @@ export function ChatOverlay({
     inputRef.current?.blur();
     detentHaptic();
   }, [setDragPreviewMounted]);
+
+  // The desktop bottom-bar host should not leave an unused INPUT-width window
+  // floating over the user's work. Once onboarding is complete, the empty and
+  // genuinely idle composer folds through the existing pill transition. This
+  // is deliberately disabled for first-run/auth recovery and any state where
+  // collapsing could hide work or an active interaction.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: inputIdleEpoch is an intentional re-arm trigger for pointer/key activity that does not otherwise change composer state.
+  React.useEffect(() => {
+    const idleInput =
+      fillHostAtHalf &&
+      !firstRunOpen &&
+      effectiveMode === "input" &&
+      !hasDraft &&
+      !hasImages &&
+      !imageError &&
+      !chatReplyTarget &&
+      !chatActionsOpen &&
+      !searchOpen &&
+      !recording &&
+      !listening &&
+      !responding &&
+      !speaking &&
+      !transcriptionComposerActive &&
+      !realtimeVoiceComposerVisible;
+    if (!idleInput) return undefined;
+
+    const timeout = window.setTimeout(
+      collapseToPill,
+      DESKTOP_INPUT_IDLE_COLLAPSE_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [
+    chatActionsOpen,
+    chatReplyTarget,
+    collapseToPill,
+    effectiveMode,
+    fillHostAtHalf,
+    firstRunOpen,
+    hasDraft,
+    hasImages,
+    imageError,
+    inputIdleEpoch,
+    listening,
+    realtimeVoiceComposerVisible,
+    recording,
+    responding,
+    searchOpen,
+    speaking,
+    transcriptionComposerActive,
+  ]);
 
   // Landing for a drag released AT THE BOTTOM (thread height within the detent
   // magnet of 0): PILL when the gesture carried past the bottom into the
@@ -6387,6 +6445,7 @@ export function ChatOverlay({
             row needs no separate entrance — it just sits at the panel base. */}
             <motion.div
               data-testid="chat-composer-row"
+              onPointerDownCapture={noteInputActivity}
               className={cn(
                 // items-center vertically centers a single-line composer with
                 // the round +/mic buttons (the common case); a multi-line draft
@@ -6582,7 +6641,10 @@ export function ChatOverlay({
                     suppressExpandOnFocusRef.current = false;
                   }}
                   onPaste={handleComposerPaste}
-                  onKeyDown={handleComposerKeyDown}
+                  onKeyDown={(event) => {
+                    noteInputActivity();
+                    handleComposerKeyDown(event);
+                  }}
                   // The composer is LOCKED during onboarding: first-run is
                   // sign-in-first, so the input is disabled (see `disabled` above)
                   // until the user signs in.

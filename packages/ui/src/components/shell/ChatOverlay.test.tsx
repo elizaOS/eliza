@@ -3082,6 +3082,43 @@ describe("ChatOverlay", () => {
     expect(content.hasAttribute("inert")).toBe(true);
   });
 
+  it("returns an idle desktop input bar to the existing pill after 10 seconds", () => {
+    vi.useFakeTimers();
+    try {
+      render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
+      const sheet = screen.getByTestId("chat-sheet");
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+      expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+
+      act(() => vi.advanceTimersByTime(9_999));
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+      act(() => vi.advanceTimersByTime(1));
+      expect(sheet.getAttribute("data-detent")).toBe("pill");
+      expect(sheet.getAttribute("data-chat-state")).toBe("CLOSED");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restarts the desktop input idle timer when the user interacts", () => {
+    vi.useFakeTimers();
+    try {
+      render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
+      const sheet = screen.getByTestId("chat-sheet");
+
+      act(() => vi.advanceTimersByTime(9_000));
+      fireEvent.pointerDown(screen.getByTestId("chat-composer-row"));
+      act(() => vi.advanceTimersByTime(9_999));
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+      act(() => vi.advanceTimersByTime(1));
+      expect(sheet.getAttribute("data-detent")).toBe("pill");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the collapsed pill handle non-interactive while the input is formed", () => {
     // The pill handle is always mounted over the (faded) composer so it can
     // crossfade pill→input. Its hit zone (w-full/pt-10) sits over the textarea,
