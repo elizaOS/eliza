@@ -1817,6 +1817,55 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.hasAttribute("data-shade-settling")).toBe(false);
   });
 
+  it("does not let a mouse drag on chat controls pull the notification shade", () => {
+    seedTriage();
+    const surfaceRef = { current: null as HTMLElement | null };
+    render(
+      <div
+        ref={(node) => {
+          surfaceRef.current = node;
+        }}
+        data-testid="home-gesture-surface"
+      >
+        <NotificationsHomeCenter emptyGestureTargetRef={surfaceRef} />
+        <button
+          type="button"
+          data-chat-gesture-surface=""
+          data-testid="chat-pull-handle"
+        >
+          Chat pull handle
+        </button>
+      </div>,
+    );
+    collapseShade();
+    const list = screen.getByTestId("home-notification-list");
+    const chatHandle = screen.getByTestId("chat-pull-handle");
+
+    fireEvent.pointerDown(chatHandle, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 32,
+      clientX: 180,
+      clientY: 300,
+    });
+    fireEvent.pointerMove(chatHandle, {
+      pointerType: "mouse",
+      pointerId: 32,
+      clientX: 180,
+      clientY: 500,
+    });
+    fireEvent.pointerUp(chatHandle, {
+      pointerType: "mouse",
+      pointerId: 32,
+      clientX: 180,
+      clientY: 500,
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(list.hasAttribute("data-shade-settling")).toBe(false);
+  });
+
   it("keeps the priority row mounted while an outside tap fades quiet groups", () => {
     __ingestNotificationForTests(
       makeNotification({

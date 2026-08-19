@@ -995,6 +995,13 @@ function SheetGrabber({
         if (e.cancelable) e.preventDefault();
       }}
       {...binding}
+      onPointerDown={(event) => {
+        // This handle is a complete gesture owner. In the shell it can sit over
+        // a broad home/notification pull surface, whose native listener runs
+        // independently of React; do not let this press seed both systems.
+        event.stopPropagation();
+        binding.onPointerDown(event);
+      }}
       className={cn(
         "appearance-none border-0 bg-transparent text-left",
         // ABSOLUTELY positioned over the panel top (zero layout height — it
@@ -1004,7 +1011,13 @@ function SheetGrabber({
         // open" affordance) but STAYS ABOVE the input row so it never steals
         // taps meant for the textarea / +/mic controls below it.
         // z-20 keeps it above the input row (z-10) so it always wins the drag.
-        "absolute inset-x-6 top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center py-2 active:cursor-grabbing",
+        "absolute top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center py-2 active:cursor-grabbing",
+        // In input mode, reserve a real gutter over BOTH edge controls. The
+        // prior full-width band began inside the + button and immediately to
+        // its right, so a tiny miss opened/flung the sheet instead of opening
+        // chat actions. Once the sheet is open, those controls are far below
+        // this top handle and the generous full-width drag lane is safe again.
+        open ? "inset-x-6" : "inset-x-[4.5rem]",
         // The invisible hit target reaches a comfortable distance ABOVE the
         // panel (a swipe-up begun in the empty field just over the composer is
         // caught) and STOPS at the handle's own bottom, so it never overlaps the
@@ -6514,6 +6527,11 @@ export function ChatOverlay({
                       aria-label="chat actions"
                       disabled={firstRunOpen}
                       data-testid="chat-composer-plus"
+                      onPointerDown={(event) => {
+                        // The action menu owns this press even when the
+                        // composer is mounted over another shell drag surface.
+                        event.stopPropagation();
+                      }}
                       // Same responsive real target and 20px mark as the
                       // SoftButton controls, so the row reads as one family.
                       className="relative grid shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
