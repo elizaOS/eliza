@@ -289,6 +289,18 @@ describe("collectXArchive", () => {
     );
   });
 
+  it("rejects a filename mismatch between local and central headers", () => {
+    const zip = new Uint8Array(zipSync({ "data/tweets.js": new Uint8Array() }));
+    const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+    const eocd = findEocd(zip);
+    const centralOffset = view.getUint32(eocd + 16, true);
+    const localOffset = view.getUint32(centralOffset + 42, true);
+    zip[localOffset + 30] = "x".charCodeAt(0);
+    expect(() => assertXArchiveZipUncompressedSize(zip)).toThrowError(
+      expect.objectContaining({ code: "X_ARCHIVE_ZIP_INVALID" }),
+    );
+  });
+
   it("rejects a buffer that is not a ZIP archive", async () => {
     const zipPath = path.join(await makeTempDir(), "not.zip");
     await fs.writeFile(zipPath, "this is not a zip file at all");

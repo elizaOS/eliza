@@ -286,6 +286,13 @@ export function assertXArchiveZipUncompressedSize(zipBuffer: Uint8Array): void {
     const nameLen = view.getUint16(offset + 28, true);
     const extraLen = view.getUint16(offset + 30, true);
     const commentLen = view.getUint16(offset + 32, true);
+    const localHeaderOffset = view.getUint32(offset + 42, true);
+    if (localHeaderOffset === 0xffffffff) {
+      throw new ElizaError("X archive ZIP uses zip64, which is not supported", {
+        code: "X_ARCHIVE_ZIP_INVALID",
+        context: { reason: "zip64 local header offset", entryIndex: i },
+      });
+    }
     const nextOffset = offset + 46 + nameLen + extraLen + commentLen;
     if (nextOffset > eocd) {
       throw new ElizaError("X archive ZIP is not a valid archive", {
@@ -299,6 +306,37 @@ export function assertXArchiveZipUncompressedSize(zipBuffer: Uint8Array): void {
     const name = new TextDecoder().decode(
       data.subarray(offset + 46, offset + 46 + nameLen),
     );
+    if (
+      localHeaderOffset + 30 > cdOffset ||
+      view.getUint32(localHeaderOffset, true) !== 0x04034b50
+    ) {
+      throw new ElizaError("X archive ZIP is not a valid archive", {
+        code: "X_ARCHIVE_ZIP_INVALID",
+        context: { reason: "malformed local file header", entryIndex: i },
+      });
+    }
+    const localNameLen = view.getUint16(localHeaderOffset + 26, true);
+    const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
+    const localDataOffset =
+      localHeaderOffset + 30 + localNameLen + localExtraLen;
+    if (localDataOffset > cdOffset) {
+      throw new ElizaError("X archive ZIP is not a valid archive", {
+        code: "X_ARCHIVE_ZIP_INVALID",
+        context: { reason: "local file header exceeds bounds", entryIndex: i },
+      });
+    }
+    const localName = new TextDecoder().decode(
+      data.subarray(
+        localHeaderOffset + 30,
+        localHeaderOffset + 30 + localNameLen,
+      ),
+    );
+    if (localName !== name) {
+      throw new ElizaError("X archive ZIP is not a valid archive", {
+        code: "X_ARCHIVE_ZIP_INVALID",
+        context: { reason: "file name differs between headers", entryIndex: i },
+      });
+    }
     if (name.startsWith("data/") && name.endsWith(".js")) {
       totalUncompressed += declared;
       if (totalUncompressed > MAX_X_ARCHIVE_UNCOMPRESSED_BYTES) {
