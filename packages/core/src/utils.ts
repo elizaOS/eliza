@@ -10,7 +10,8 @@
  * `Memory[]` into the transcript the model reads. `parseKeyValueXml` (legacy
  * `<response>` XML), `parseToonKeyValue`, and `parseJSONObjectFromText` recover
  * structured fields from chatty model output, tolerating malformed input by
- * returning null rather than throwing.
+ * returning null rather than throwing. Hostile nested or prefix-extended tags
+ * that used to quadratic-hang `findMatchingXmlClose` fail closed.
  *
  * `stringToUuid` derives a deterministic, RFC-4122-shaped UUID from an arbitrary
  * string via an in-tree pure-JS SHA-1 (with a WebCrypto-backed cache), so the
@@ -792,7 +793,10 @@ function findFirstXmlBlock(
 ): { tag: string; content: string } | null {
 	let i = 0;
 	const length = input.length;
+	let visits = 0;
 	while (i < length) {
+		visits += 1;
+		if (visits > MAX_XML_CLOSE_VISITS) return null;
 		const openIdx = input.indexOf("<", i);
 		if (openIdx === -1) break;
 		if (
@@ -828,7 +832,10 @@ function extractDirectXmlChildren(
 	const pairs: Array<{ key: string; value: string }> = [];
 	let i = 0;
 	const length = input.length;
+	let visits = 0;
 	while (i < length) {
+		visits += 1;
+		if (visits > MAX_XML_CLOSE_VISITS) break;
 		const openIdx = input.indexOf("<", i);
 		if (openIdx === -1) break;
 		if (
@@ -887,6 +894,11 @@ function readXmlStartTag(
 	};
 }
 
+/** Honest key-value XML is a handful of tags. A prefix-extended walk
+ * (`<a>` vs `<aa>`) is O(visits × remaining) and hung the agent loop. */
+const MAX_XML_CLOSE_VISITS = 64;
+const MAX_XML_NEST_DEPTH = 32;
+
 function findMatchingXmlClose(
 	input: string,
 	tag: string,
@@ -895,7 +907,12 @@ function findMatchingXmlClose(
 	const closeSeq = `</${tag}>`;
 	let depth = 1;
 	let cursor = start;
+	let visits = 0;
 	while (depth > 0 && cursor < input.length) {
+		visits += 1;
+		if (visits > MAX_XML_CLOSE_VISITS || depth > MAX_XML_NEST_DEPTH) {
+			return -1;
+		}
 		const nextOpen = input.indexOf(`<${tag}`, cursor);
 		const nextClose = input.indexOf(closeSeq, cursor);
 		if (nextClose === -1) return -1;

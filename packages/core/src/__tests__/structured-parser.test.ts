@@ -32,4 +32,11 @@ describe("parseKeyValueXml", () => {
 			thought: "t",
 		});
 	});
+
+	it("fails closed on a prefix-extension bomb instead of quadratic-hanging", () => {
+		const inner = `<a>${"<aa></aa>".repeat(20_000)}x</a>`;
+		const t0 = performance.now();
+		parseKeyValueXml(`<response>${inner}</response>`);
+		expect(performance.now() - t0).toBeLessThan(50);
+	});
 });
