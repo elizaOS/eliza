@@ -44,9 +44,11 @@ beforeEach(() => {
   adoptLegacyObjects.mockReset();
   listObjects.mockReset();
   deductCredits.mockClear();
-  adoptLegacyObjects.mockImplementation(async (inputs) => {
-    events.push(`adopt:${inputs.map((input) => input.logicalKey).join(",")}`);
-  });
+  adoptLegacyObjects.mockImplementation(
+    async (inputs: Array<{ logicalKey: string }>) => {
+      events.push(`adopt:${inputs.map((input) => input.logicalKey).join(",")}`);
+    },
+  );
   listObjects.mockResolvedValue([
     {
       logical_key: "voice/message.ogg",
