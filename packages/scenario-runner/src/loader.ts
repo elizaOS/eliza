@@ -338,6 +338,7 @@ function assertStaticScenarioMetadataObject(
   objectLiteral: ts.ObjectLiteralExpression,
   file: string,
 ): void {
+  const authoredPropertyNames = new Set<string>();
   for (const property of objectLiteral.properties) {
     if (ts.isSpreadAssignment(property)) {
       throw new Error(
@@ -352,6 +353,15 @@ function assertStaticScenarioMetadataObject(
       throw new Error(
         `[scenario-loader] ${file}: scenario metadata cannot use computed property names because certification fields would not be statically auditable`,
       );
+    }
+    if ("name" in property && property.name) {
+      const name = propertyNameText(property.name);
+      if (name && authoredPropertyNames.has(name)) {
+        throw new Error(
+          `[scenario-loader] ${file}: scenario metadata cannot declare duplicate property "${name}" because static and runtime classification could disagree`,
+        );
+      }
+      if (name) authoredPropertyNames.add(name);
     }
   }
 }

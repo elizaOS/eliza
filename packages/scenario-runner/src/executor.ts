@@ -41,6 +41,8 @@ import {
   type ScenarioLane,
   type ScenarioTurn,
   type ScenarioTurnExecution,
+  scenarioCertificationClass,
+  scenarioEvidenceClass,
   scenarioLane,
 } from "@elizaos/scenario-runner/schema";
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
@@ -2243,6 +2245,9 @@ export async function runScenario(
   const startedAt = Date.now();
   const executionProfile =
     opts.executionProfile ?? DEFAULT_SCENARIO_EXECUTION_PROFILE;
+  const effectiveScenario = { ...scenario, executionProfile };
+  const evidenceClass = scenarioEvidenceClass(effectiveScenario);
+  const certificationClass = scenarioCertificationClass(effectiveScenario);
   let logicalNow = new Date();
   const ctx: RunnerContext = {
     scenarioId: scenario.id,
@@ -2275,6 +2280,8 @@ export async function runScenario(
     failedAssertions: [],
     providerName: opts.providerName,
     executionProfile,
+    evidenceClass,
+    certificationClass,
     evidence:
       executionProfile === "simulated"
         ? {

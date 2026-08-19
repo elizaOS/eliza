@@ -221,6 +221,25 @@ describe("scenario-runner edge expansion", () => {
     );
   });
 
+  it("rejects duplicate metadata whose static and runtime values could disagree", async () => {
+    const dir = await makeTempScenarioDir();
+    await writeScenarioFile(dir, "duplicate.scenario.ts", [
+      "export default {",
+      '  id: "fixture.duplicate",',
+      '  title: "Duplicate metadata",',
+      '  evidenceClass: "runtime-observed",',
+      '  certificationClass: "runtime-contract",',
+      '  evidenceClass: "provider-observed",',
+      '  domain: "fixture",',
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+
+    await expect(validateScenarioCorpus(dir)).rejects.toThrow(
+      'scenario metadata cannot declare duplicate property "evidenceClass"',
+    );
+  });
+
   it("only appends edge context to non-blank message-like turn text", () => {
     const expanded = expandScenarioDefinition("fixture.scenario.ts", {
       id: "fixture.mixed",

@@ -88,6 +88,10 @@ describe("scenario executor wait turns", () => {
     );
 
     expect(report.status).toBe("passed");
+    expect(report).toMatchObject({
+      evidenceClass: "simulated",
+      certificationClass: "none",
+    });
     expect(handleMessage).not.toHaveBeenCalled();
     expect(runtime.useModel).not.toHaveBeenCalled();
     expect(report.turns[0]).toMatchObject({
