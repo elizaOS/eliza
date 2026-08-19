@@ -22,11 +22,18 @@
  *     `gateway-webhook` both speak native TCP Redis).
  * Neither path adds a runtime dependency (this module is also bundled for
  * mobile via the agent): REST uses `fetch`, TCP uses the `node:net` builtin.
+ * TCP replies are byte-capped: a declared bulk string above 1 MiB fails closed
+ * instead of concatenating until the 10s socket timeout.
  */
 
 import net from "node:net";
 
 import { ElizaError, logger } from "@elizaos/core";
+import {
+  appendRegistryTcpBytes,
+  isRegistryTcpBulkLengthAllowed,
+  MAX_REGISTRY_TCP_BYTES,
+} from "./sandbox-registry-tcp-budget.ts";
 
 /** Hard cap on a single TCP register/refresh round-trip. */
 const REGISTRY_TCP_TIMEOUT_MS = 10_000;
@@ -274,7 +281,17 @@ export class SandboxRegistry {
       socket.once(secure ? "secureConnect" : "connect", onConnect);
 
       socket.on("data", (chunk: Buffer) => {
-        buffer = Buffer.concat([buffer, chunk]);
+        const next = appendRegistryTcpBytes(buffer, chunk);
+        if (!next.ok) {
+          finish(
+            new ElizaError(
+              `Sandbox registry TCP reply exceeded ${MAX_REGISTRY_TCP_BYTES} bytes`,
+              { code: "SANDBOX_REGISTRY_TCP_REPLY_TOO_LARGE" },
+            ),
+          );
+          return;
+        }
+        buffer = next.buffer;
         const parsed = parseRespReplies(buffer, all.length);
         if (!parsed) return; // need more bytes
         const firstErr = parsed.replies.find((r) => r instanceof RespError) as
@@ -345,6 +362,14 @@ function parseRespReplies(
         // '$' bulk string
         const len = Number(line);
         if (len === -1) return { value: null, next: afterLine };
+        if (!isRegistryTcpBulkLengthAllowed(len)) {
+          return {
+            value: new RespError(
+              `bulk string length ${line} exceeds TCP budget`,
+            ),
+            next: afterLine,
+          };
+        }
         const end = afterLine + len;
         if (buffer.length < end + 2) return null; // bulk + trailing CRLF
         return {
