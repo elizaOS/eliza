@@ -439,6 +439,25 @@ describe("packaged desktop voice media evidence", () => {
         }),
       ]),
     );
+    const validReport = fs.readFileSync(report, "utf8");
+    const substringBrowserDevice = JSON.parse(validReport);
+    substringBrowserDevice.report.stages.find(
+      (stage) => stage.stage === "asr",
+    ).detail.inputDeviceLabel = "Fake USB test microphone";
+    writeJson(report, substringBrowserDevice);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /physical microphone and system-output loopback capture/,
+    );
+    fs.writeFileSync(report, validReport);
+    const virtualBrowserDevice = JSON.parse(validReport);
+    virtualBrowserDevice.report.stages.find(
+      (stage) => stage.stage === "asr",
+    ).detail.inputDeviceLabel = "BlackHole USB test microphone";
+    writeJson(report, virtualBrowserDevice);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /physical microphone and system-output loopback capture/,
+    );
+    fs.writeFileSync(report, validReport);
     const validProvenance = fs.readFileSync(captureProvenance, "utf8");
     const virtualEndpoint = JSON.parse(validProvenance);
     virtualEndpoint.microphone.enumeratedLabel =

@@ -924,11 +924,10 @@ function assertPhysicalCaptureProvenance(
         .filter((token) => token && !generic.has(token));
     const leftTokens = new Set(tokens(left));
     const rightTokens = new Set(tokens(right));
-    if (leftTokens.size === 0 || rightTokens.size === 0) return false;
-    const smaller =
-      leftTokens.size <= rightTokens.size ? leftTokens : rightTokens;
-    const larger = smaller === leftTokens ? rightTokens : leftTokens;
-    return [...smaller].every((token) => larger.has(token));
+    if (leftTokens.size === 0 || leftTokens.size !== rightTokens.size) {
+      return false;
+    }
+    return [...leftTokens].every((token) => rightTokens.has(token));
   };
   const reportStartedAt = Date.parse(desktopEvidence.report.startedAt);
   const reportFinishedAt = Date.parse(desktopEvidence.report.finishedAt);
@@ -945,12 +944,20 @@ function assertPhysicalCaptureProvenance(
   const captureStarts = captureClocks.map((clock) =>
     Date.parse(clock?.startedAt),
   );
+  const asrStage = desktopEvidence.report.stages.find(
+    (stage) => stage.stage === "asr",
+  );
   let microphoneClassified = false;
   try {
     classifyPhysicalMicrophoneEndpoint(
       provenance.microphone?.platform,
       provenance.microphone?.device,
       provenance.microphone?.enumeratedLabel,
+    );
+    classifyPhysicalMicrophoneEndpoint(
+      provenance.microphone?.platform,
+      asrStage?.detail?.inputDeviceId,
+      asrStage?.detail?.inputDeviceLabel,
     );
     microphoneClassified = true;
   } catch {
@@ -972,22 +979,17 @@ function assertPhysicalCaptureProvenance(
       "eliza-voice-physical-microphone-v1" ||
     typeof provenance.microphone?.device !== "string" ||
     provenance.microphone.device.trim().length === 0 ||
-    deviceLabel(
-      desktopEvidence.report.stages.find((stage) => stage.stage === "asr")
-        ?.detail?.inputDeviceLabel,
-    ).length === 0 ||
+    deviceLabel(asrStage?.detail?.inputDeviceLabel).length === 0 ||
     !sameDeviceLabel(
       provenance.microphone?.enumeratedLabel,
-      desktopEvidence.report.stages.find((stage) => stage.stage === "asr")
-        ?.detail?.inputDeviceLabel,
+      asrStage?.detail?.inputDeviceLabel,
     ) ||
     provenance.speakerLoopback?.kind !== "system-output-loopback" ||
     typeof provenance.speakerLoopback?.device !== "string" ||
     provenance.speakerLoopback.device.trim().length === 0 ||
     provenance.microphone.device === provenance.speakerLoopback.device ||
     provenance.browserDevices?.microphone !==
-      desktopEvidence.report.stages.find((stage) => stage.stage === "asr")
-        ?.detail?.inputDeviceId ||
+      asrStage?.detail?.inputDeviceId ||
     provenance.browserDevices?.speaker !==
       desktopEvidence.report.stages.find((stage) => stage.stage === "tts")
         ?.detail?.outputDeviceId ||

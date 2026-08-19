@@ -109,9 +109,13 @@ the session fail the lane.
 The capture preflight also rejects microphone identities associated with common
 software loopbacks, monitors, virtual cables, aggregate devices, and multi-output
 devices before recording `physical-microphone` provenance. Desktop media APIs do
-not provide a portable cryptographic hardware attestation: the owner-operated
-runner must therefore pin an actual microphone, and a deliberately renamed
-virtual driver remains outside what this software-only check can establish.
+not provide a portable cryptographic hardware attestation. The finalizer reruns
+the classifier against the OS endpoint and browser-selected track label and
+requires their non-generic label tokens to match exactly, so an added substring
+or virtual-device suffix cannot impersonate the captured endpoint. The
+owner-operated runner must still pin an actual microphone; a deliberately
+renamed virtual driver remains outside what this software-only check can
+establish.
 
 ## Launch surfaces
 

@@ -97,6 +97,22 @@ describe("desktop hardware capture inputs", () => {
     });
   });
 
+  test("does not resolve a configured device by a label substring", () => {
+    expect(() =>
+      assertConfiguredDevicesListed(
+        "win32",
+        {
+          microphone: "MV7",
+          speakerLoopback: "CABLE Output (VB-Audio Virtual Cable)",
+        },
+        [
+          '"Shure MV7 USB Microphone" (audio)',
+          '"CABLE Output (VB-Audio Virtual Cable)" (audio)',
+        ].join("\n"),
+      ),
+    ).toThrow(/Configured microphone device MV7 is absent/);
+  });
+
   test.each([
     ["darwin", "BlackHole 16ch"],
     ["win32", "VB-Audio Virtual Cable"],
