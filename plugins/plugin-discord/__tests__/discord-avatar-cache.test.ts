@@ -96,6 +96,43 @@ describe("discord-avatar-cache", () => {
 			expect(result).toBe(avatarUrl);
 		});
 
+		it("does not follow redirects away from the validated Discord URL", async () => {
+			const avatarUrl = "https://cdn.discordapp.com/avatars/1/redirect.png";
+			const fakeFetch = vi.fn(
+				async () =>
+					new Response(null, {
+						status: 302,
+						headers: { Location: "http://127.0.0.1/internal" },
+					}),
+			);
+
+			const result = await cacheDiscordAvatarUrl(avatarUrl, {
+				fetchImpl: fakeFetch as unknown as typeof fetch,
+			});
+
+			expect(result).toBe(avatarUrl);
+			expect(fakeFetch).toHaveBeenCalledTimes(1);
+		});
+
+		it("rejects encoded image bodies instead of caching transport bytes", async () => {
+			const avatarUrl = "https://cdn.discordapp.com/avatars/1/encoded.png";
+			const fakeFetch = vi.fn(
+				async () =>
+					new Response(new Uint8Array([0x1f, 0x8b]), {
+						status: 200,
+						headers: {
+							"Content-Encoding": "gzip",
+							"Content-Type": "image/png",
+						},
+					}),
+			);
+
+			const result = await cacheDiscordAvatarUrl(avatarUrl, {
+				fetchImpl: fakeFetch as unknown as typeof fetch,
+			});
+			expect(result).toBe(avatarUrl);
+		});
+
 		it("rejects responses exceeding MAX_DISCORD_AVATAR_BYTES via Content-Length", async () => {
 			const avatarUrl = "https://cdn.discordapp.com/avatars/1/huge.png";
 			const fakeFetch = vi.fn(async () => {

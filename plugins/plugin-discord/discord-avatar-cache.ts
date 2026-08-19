@@ -6,7 +6,11 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+import {
+	type FetchMediaOptions,
+	fetchRemoteMedia,
+	resolveStateDir,
+} from "@elizaos/core";
 
 const DISCORD_AVATAR_ROUTE_PREFIX = "/api/avatar/discord";
 const MAX_DISCORD_AVATAR_BYTES = 2 * 1024 * 1024;
@@ -102,16 +106,13 @@ export function buildDiscordAvatarCacheFileName(
 export async function cacheDiscordAvatarUrl(
 	url: string | undefined,
 	options: {
-		fetchImpl?: typeof fetch;
+		fetchImpl?: FetchMediaOptions["fetchImpl"];
+		lookupFn?: FetchMediaOptions["lookupFn"];
+		pinnedFetchImpl?: FetchMediaOptions["pinnedFetchImpl"];
 		userId?: string;
 	} = {},
 ): Promise<string | undefined> {
 	if (!url || !isDiscordAvatarUrl(url)) {
-		return url;
-	}
-
-	const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-	if (typeof fetchImpl !== "function") {
 		return url;
 	}
 
@@ -139,73 +140,25 @@ export async function cacheDiscordAvatarUrl(
 		try {
 			await fs.mkdir(getDiscordAvatarCacheDir(), { recursive: true });
 
-			const response = await fetchImpl(url, {
-				headers: { Accept: "image/*" },
-				signal: AbortSignal.timeout(DISCORD_AVATAR_FETCH_TIMEOUT_MS),
+			const fetched = await fetchRemoteMedia({
+				url,
+				maxBytes: MAX_DISCORD_AVATAR_BYTES,
+				maxRedirects: 0,
+				timeoutMs: DISCORD_AVATAR_FETCH_TIMEOUT_MS,
+				requiredContentTypePrefix: "image/",
+				rejectContentEncoding: true,
+				fetchImpl: options.fetchImpl,
+				lookupFn: options.lookupFn,
+				pinnedFetchImpl: options.pinnedFetchImpl,
 			});
-			if (!response.ok) {
+			const bytes = fetched.buffer;
+			if (bytes.length === 0) {
 				return url;
 			}
 
-			const contentType = response.headers.get("content-type");
-			if (!contentType?.toLowerCase().startsWith("image/")) {
-				return url;
-			}
-
-			const rawLength = response.headers.get("content-length");
-			const declaredLength = rawLength === null ? null : Number(rawLength);
-			if (
-				declaredLength !== null &&
-				Number.isFinite(declaredLength) &&
-				declaredLength > MAX_DISCORD_AVATAR_BYTES
-			) {
-				return url;
-			}
-
-			let bytes: Buffer;
-			if (!response.body) {
-				const ab = await response.arrayBuffer();
-				if (ab.byteLength === 0 || ab.byteLength > MAX_DISCORD_AVATAR_BYTES) {
-					return url;
-				}
-				bytes = Buffer.from(ab);
-			} else {
-				const reader = response.body.getReader();
-				const chunks: Uint8Array[] = [];
-				let total = 0;
-				try {
-					for (;;) {
-						const { done, value } = await reader.read();
-						if (done) break;
-						if (!value?.byteLength) continue;
-						total += value.byteLength;
-						if (total > MAX_DISCORD_AVATAR_BYTES) {
-							try {
-								await reader.cancel();
-							} catch {
-								// error-policy:J6 best-effort stream cancellation
-							}
-							return url;
-						}
-						chunks.push(value);
-					}
-				} finally {
-					try {
-						reader.releaseLock();
-					} catch {
-						// error-policy:J6 stream lock release is best-effort teardown
-					}
-				}
-				if (total === 0) {
-					return url;
-				}
-				bytes = Buffer.concat(
-					chunks.map((chunk) => Buffer.from(chunk)),
-					total,
-				);
-			}
-
-			const preferredExtension = extensionFromContentType(contentType);
+			const preferredExtension = extensionFromContentType(
+				fetched.contentType ?? null,
+			);
 			const finalFileName = requestedFileName.endsWith(`.${preferredExtension}`)
 				? requestedFileName
 				: requestedFileName.replace(/\.[^.]+$/, `.${preferredExtension}`);

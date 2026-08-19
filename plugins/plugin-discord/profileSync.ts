@@ -6,8 +6,13 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError, resolveStateDir, resolveUserPath } from "@elizaos/core";
+import type { FetchMediaOptions, IAgentRuntime } from "@elizaos/core";
+import {
+	ElizaError,
+	fetchRemoteMedia,
+	resolveStateDir,
+	resolveUserPath,
+} from "@elizaos/core";
 import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";
 
@@ -20,6 +25,12 @@ type PersistedDiscordProfileSyncState = {
 	avatarHash?: string;
 	username?: string;
 };
+
+/** Deterministic transport seam for profile-sync tests. Production callers omit it. */
+export type DiscordProfileSyncOptions = Pick<
+	FetchMediaOptions,
+	"fetchImpl" | "lookupFn" | "pinnedFetchImpl"
+>;
 
 function resolveProfileSyncStatePath(
 	env: NodeJS.ProcessEnv = process.env,
@@ -219,7 +230,7 @@ async function readAvatarBytesFromLocalCandidates(
 
 async function loadDiscordProfileAvatarBytes(
 	source: string,
-	runtime: IAgentRuntime,
+	fetchOptions: DiscordProfileSyncOptions,
 ): Promise<{ bytes: Buffer; hash: string } | null> {
 	const trimmed = source.trim();
 	if (!trimmed) {
@@ -241,78 +252,15 @@ async function loadDiscordProfileAvatarBytes(
 		}
 
 		if (remoteUrl) {
-			const fetchImpl = runtime.fetch ?? globalThis.fetch;
-			if (typeof fetchImpl !== "function") {
-				return null;
-			}
-			const response = await fetchImpl(trimmed, {
-				headers: { Accept: "image/*" },
-				signal: AbortSignal.timeout(PROFILE_AVATAR_FETCH_TIMEOUT_MS),
+			const fetched = await fetchRemoteMedia({
+				url: trimmed,
+				maxBytes: MAX_PROFILE_AVATAR_BYTES,
+				timeoutMs: PROFILE_AVATAR_FETCH_TIMEOUT_MS,
+				requiredContentTypePrefix: "image/",
+				rejectContentEncoding: true,
+				...fetchOptions,
 			});
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}`);
-			}
-			const contentType = response.headers.get("content-type");
-			if (!contentType?.toLowerCase().startsWith("image/")) {
-				throw new Error(
-					`Expected image content-type, got ${contentType ?? "unknown"}`,
-				);
-			}
-
-			const rawLength = response.headers.get("content-length");
-			const declaredLength = rawLength === null ? null : Number(rawLength);
-			if (
-				declaredLength !== null &&
-				Number.isFinite(declaredLength) &&
-				declaredLength > MAX_PROFILE_AVATAR_BYTES
-			) {
-				throw new Error(
-					`Discord profile avatar exceeds ${MAX_PROFILE_AVATAR_BYTES} bytes`,
-				);
-			}
-
-			if (!response.body) {
-				const ab = await response.arrayBuffer();
-				if (ab.byteLength > MAX_PROFILE_AVATAR_BYTES) {
-					throw new Error(
-						`Discord profile avatar exceeds ${MAX_PROFILE_AVATAR_BYTES} bytes`,
-					);
-				}
-				bytes = Buffer.from(ab);
-			} else {
-				const reader = response.body.getReader();
-				const chunks: Uint8Array[] = [];
-				let total = 0;
-				try {
-					for (;;) {
-						const { done, value } = await reader.read();
-						if (done) break;
-						if (!value?.byteLength) continue;
-						total += value.byteLength;
-						if (total > MAX_PROFILE_AVATAR_BYTES) {
-							try {
-								await reader.cancel();
-							} catch {
-								// error-policy:J6 best-effort stream cancellation
-							}
-							throw new Error(
-								`Discord profile avatar exceeds ${MAX_PROFILE_AVATAR_BYTES} bytes`,
-							);
-						}
-						chunks.push(value);
-					}
-				} finally {
-					try {
-						reader.releaseLock();
-					} catch {
-						// error-policy:J6 stream lock release is best-effort teardown
-					}
-				}
-				bytes = Buffer.concat(
-					chunks.map((chunk) => Buffer.from(chunk)),
-					total,
-				);
-			}
+			bytes = fetched.buffer;
 		} else {
 			bytes = await readAvatarBytesFromLocalCandidates(trimmed);
 		}
@@ -340,6 +288,7 @@ export async function syncDiscordClientProfile(
 		setUsername?: (username: string) => Promise<unknown>;
 	},
 	settings: DiscordSettings,
+	options: DiscordProfileSyncOptions = {},
 ): Promise<void> {
 	if (settings.syncProfile === false) {
 		return;
@@ -381,7 +330,7 @@ export async function syncDiscordClientProfile(
 	if (desiredAvatarSource) {
 		const avatar = await loadDiscordProfileAvatarBytes(
 			desiredAvatarSource,
-			runtime,
+			options,
 		);
 		if (avatar && persisted.avatarHash !== avatar.hash) {
 			if (typeof clientUser.setAvatar === "function") {
