@@ -28,6 +28,9 @@ const write = mock();
 const remove = mock();
 const tryReserveBytes = mock();
 const releaseBytes = mock();
+const findObject = mock();
+const executeNativeStoragePut = mock();
+const executeNativeStorageDelete = mock();
 const loggerError = mock();
 const failureResponse = mock((_context: unknown, error: unknown) =>
   Response.json(
@@ -35,9 +38,16 @@ const failureResponse = mock((_context: unknown, error: unknown) =>
     { status: 500 },
   ),
 );
+class TestStoragePutConflictError extends Error {}
+class TestStorageQuotaExceededError extends Error {}
+class TestInsufficientCreditsError extends Error {}
+class TestNativeStoragePutError extends Error {}
 
 mock.module("@/db/repositories", () => ({
   orgStorageQuotaRepository: { tryReserveBytes, releaseBytes },
+  orgStorageMutationsRepository: { findObject },
+  StoragePutConflictError: TestStoragePutConflictError,
+  StorageQuotaExceededError: TestStorageQuotaExceededError,
 }));
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
@@ -50,6 +60,15 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 
 mock.module("@/lib/services/credits", () => ({
   creditsService: { deductCredits },
+  InsufficientCreditsError: TestInsufficientCreditsError,
+}));
+
+mock.module("@/lib/services/storage/native-storage-put", () => ({
+  calculateStoragePutPrice: (flat: number, perByte: number, bytes: number) =>
+    Number((flat + perByte * bytes).toFixed(6)),
+  executeNativeStoragePut,
+  executeNativeStorageDelete,
+  NativeStoragePutError: TestNativeStoragePutError,
 }));
 
 mock.module("@/lib/services/proxy/pricing", () => ({
@@ -86,6 +105,9 @@ beforeEach(() => {
   remove.mockReset();
   tryReserveBytes.mockReset();
   releaseBytes.mockReset();
+  findObject.mockReset();
+  executeNativeStoragePut.mockReset();
+  executeNativeStorageDelete.mockReset();
   loggerError.mockReset();
   failureResponse.mockClear();
 
@@ -102,9 +124,164 @@ beforeEach(() => {
     etag: "storage-etag",
     modified: MODIFIED_AT,
   });
+  findObject.mockResolvedValue(undefined);
+});
+
+test("PUT uses the authenticated native BLOB path with server-owned pricing", async () => {
+  const bucket = { head: mock(), get: mock(), put: mock(), delete: mock() };
+  getServiceMethodCost.mockResolvedValueOnce(0.25).mockResolvedValueOnce(0.01);
+  executeNativeStoragePut.mockResolvedValue({
+    key: OBJECT_PATH,
+    size: OBJECT_BYTES.byteLength,
+    contentType: "audio/ogg",
+    etag: "native-etag",
+  });
+
+  const response = await app.request(
+    `${ROUTE_PREFIX}/${OBJECT_PATH}`,
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "audio/ogg",
+        "idempotency-key": "logical-upload-1",
+      },
+      body: OBJECT_BYTES,
+    },
+    { BLOB: bucket },
+  );
+
+  expect(response.status).toBe(201);
+  expect(executeNativeStoragePut).toHaveBeenCalledTimes(1);
+  expect(executeNativeStoragePut).toHaveBeenCalledWith({
+    bucket,
+    organizationId: ORGANIZATION_ID,
+    logicalKey: OBJECT_PATH,
+    idempotencyKey: "logical-upload-1",
+    body: expect.any(ArrayBuffer),
+    contentType: "audio/ogg",
+    priceUsd: 0.3,
+  });
+  expect(getR2StorageAdapter).not.toHaveBeenCalled();
+  expect(tryReserveBytes).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
+});
+
+test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", async () => {
+  const uploadedAt = new Date("2026-08-18T19:00:00.000Z");
+  const providerKey = `__eliza_storage_authority/v2/org/${ORGANIZATION_ID}/object/1`;
+  findObject.mockResolvedValue({
+    generation: 1n,
+    provider_key: providerKey,
+    size_bytes: BigInt(OBJECT_BYTES.byteLength),
+    content_type: "audio/ogg",
+    etag: "native-etag",
+    uploaded_at: uploadedAt,
+    deleted_at: null,
+  });
+  getServiceMethodCost.mockResolvedValue(GET_COST);
+  const bucket = {
+    get: mock(async () => ({
+      text: async () => "asset",
+      arrayBuffer: async () => OBJECT_BYTES.buffer,
+    })),
+    head: mock(async () => ({
+      size: OBJECT_BYTES.byteLength,
+      etag: "native-etag",
+      uploaded: uploadedAt,
+    })),
+    put: mock(),
+    delete: mock(),
+  };
+
+  const getResponse = await app.request(
+    `${ROUTE_PREFIX}/${OBJECT_PATH}`,
+    { method: "GET" },
+    { BLOB: bucket },
+  );
+  expect(getResponse.status).toBe(200);
+  expect(new Uint8Array(await getResponse.arrayBuffer())).toEqual(OBJECT_BYTES);
+
+  const headResponse = await app.request(
+    `${ROUTE_PREFIX}/${OBJECT_PATH}`,
+    { method: "HEAD" },
+    { BLOB: bucket },
+  );
+  expect(headResponse.status).toBe(200);
+  expect(headResponse.headers.get("etag")).toBe("native-etag");
+
+  executeNativeStoragePut.mockResolvedValue({
+    key: OBJECT_PATH,
+    size: OBJECT_BYTES.byteLength,
+    contentType: "audio/ogg",
+    etag: "native-etag-2",
+  });
+  const overwriteResponse = await app.request(
+    `${ROUTE_PREFIX}/${OBJECT_PATH}`,
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "audio/ogg",
+        "idempotency-key": "overwrite-2",
+      },
+      body: OBJECT_BYTES,
+    },
+    { BLOB: bucket },
+  );
+  expect(overwriteResponse.status).toBe(201);
+
+  executeNativeStorageDelete.mockResolvedValue(undefined);
+  getServiceMethodCost.mockResolvedValueOnce(0);
+
+  const deleteResponse = await app.request(
+    `${ROUTE_PREFIX}/${OBJECT_PATH}`,
+    { method: "DELETE", headers: { "idempotency-key": "delete-1" } },
+    { BLOB: bucket },
+  );
+  expect(deleteResponse.status).toBe(204);
+  expect(executeNativeStorageDelete).toHaveBeenCalledWith({
+    bucket,
+    organizationId: ORGANIZATION_ID,
+    logicalKey: OBJECT_PATH,
+    idempotencyKey: "delete-1",
+    priceUsd: 0,
+  });
+  expect(getR2StorageAdapter).not.toHaveBeenCalled();
+  expect(bucket.delete).not.toHaveBeenCalled();
 });
 
 describe("storage object HEAD routing", () => {
+  test("does not charge failed native or legacy reads", async () => {
+    findObject.mockResolvedValueOnce({
+      generation: 1n,
+      provider_key: "missing-generation",
+      size_bytes: 5n,
+      content_type: "text/plain",
+      etag: "missing",
+      uploaded_at: MODIFIED_AT,
+      deleted_at: null,
+    });
+    const native = await app.request(
+      `${ROUTE_PREFIX}/${OBJECT_PATH}`,
+      { method: "GET" },
+      {
+        BLOB: {
+          get: mock(async () => null),
+          head: mock(),
+          put: mock(),
+          delete: mock(),
+        },
+      },
+    );
+    expect(native.status).toBe(503);
+    expect(deductCredits).not.toHaveBeenCalled();
+
+    findObject.mockResolvedValueOnce(undefined);
+    exists.mockResolvedValueOnce(false);
+    const legacy = await request("GET");
+    expect(legacy.status).toBe(404);
+    expect(deductCredits).not.toHaveBeenCalled();
+  });
+
   test("uses HEAD pricing and metadata without reading the object body", async () => {
     getServiceMethodCost.mockResolvedValue(HEAD_COST);
 

@@ -31,6 +31,7 @@ export interface RuntimeR2ObjectMetadata {
   version?: string;
   size: number;
   etag: string;
+  uploaded?: Date;
   checksums?: {
     md5?: ArrayBuffer;
     sha1?: ArrayBuffer;

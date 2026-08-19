@@ -7,8 +7,9 @@
  *   HEAD   /api/v1/apis/storage/objects/{key+}                metadata headers, 404 if missing
  *   DELETE /api/v1/apis/storage/objects/{key+}                204 No Content
  *
- * Storage backend: R2 over the S3 API via @brighter/storage-adapter-s3
- * (transparent to clients). Object keys are scoped per organization:
+ * Native Worker R2 writes use immutable generation keys and a durable database
+ * authority; catalog-backed reads and deletes follow the committed generation.
+ * Object keys are scoped per organization:
  * `org/${organization_id}/${userKey}` is the actual storage key. Clients
  * never see the prefix; the route prepends/strips it.
  *
@@ -18,11 +19,25 @@
  */
 
 import { type Context, Hono } from "hono";
-import { orgStorageQuotaRepository } from "@/db/repositories";
+import {
+  orgStorageMutationsRepository,
+  orgStorageQuotaRepository,
+  StoragePutConflictError,
+  StorageQuotaExceededError,
+} from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { creditsService } from "@/lib/services/credits";
+import {
+  creditsService,
+  InsufficientCreditsError,
+} from "@/lib/services/credits";
 import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
+import {
+  calculateStoragePutPrice,
+  executeNativeStorageDelete,
+  executeNativeStoragePut,
+  NativeStoragePutError,
+} from "@/lib/services/storage/native-storage-put";
 import { getR2StorageAdapter } from "@/lib/services/storage/r2-storage-adapter";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -101,9 +116,10 @@ app.put("/*", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
 
-    const adapter = getR2StorageAdapter(c.env);
-    if (!adapter) {
-      logger.error("[storage proxy] R2_* env vars not set; PUT rejected");
+    if (!c.env.BLOB) {
+      logger.error(
+        "[storage proxy] native BLOB binding is missing; PUT rejected",
+      );
       return c.json(R2_NOT_CONFIGURED_BODY, 503);
     }
 
@@ -124,39 +140,24 @@ app.put("/*", async (c) => {
       );
     }
 
-    const reserved = await orgStorageQuotaRepository.tryReserveBytes(
-      organization_id,
-      BigInt(bytes),
-    );
-    if (reserved === null) {
-      return c.json(
-        { error: "Storage quota exceeded for this organization" },
-        413,
-      );
-    }
-
     const flatCost = await getServiceMethodCost(STORAGE_SERVICE_ID, "put");
     const perByteCost = await getServiceMethodCost(
       STORAGE_SERVICE_ID,
       "put_per_byte",
     );
-    const totalCost = flatCost + perByteCost * bytes;
-    const deductResult = await creditsService.deductCredits({
+    const totalCost = calculateStoragePutPrice(flatCost, perByteCost, bytes);
+    const response = await executeNativeStoragePut({
+      bucket: c.env.BLOB,
       organizationId: organization_id,
-      amount: totalCost,
-      description: `API proxy: storage — put (${bytes}B)`,
-      metadata: {
-        type: "proxy_storage",
-        service: "storage",
-        method: "put",
-        bytes,
-      },
+      logicalKey: validated.key,
+      idempotencyKey: c.req.header("idempotency-key") ?? "",
+      body: arrayBuffer,
+      contentType: c.req.header("content-type") ?? "application/octet-stream",
+      priceUsd: totalCost,
     });
-    if (!deductResult.success) {
-      await orgStorageQuotaRepository.releaseBytes(
-        organization_id,
-        BigInt(bytes),
-      );
+    return c.json(response, 201);
+  } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
       return c.json(
         {
           error: "Insufficient credits",
@@ -165,29 +166,22 @@ app.put("/*", async (c) => {
         402,
       );
     }
-
-    const key = scopedKey(organization_id, validated.key);
-    try {
-      await adapter.write(key, Buffer.from(arrayBuffer));
-    } catch (error) {
-      await orgStorageQuotaRepository.releaseBytes(
-        organization_id,
-        BigInt(bytes),
-      );
-      throw error;
+    if (error instanceof StorageQuotaExceededError) {
+      return c.json({ error: error.message }, 413);
     }
-
-    const stat = await adapter.stat(key);
-    return c.json(
-      {
-        key: validated.key,
-        size: stat.size,
-        contentType: stat.contentType,
-        etag: stat.etag,
-      },
-      201,
-    );
-  } catch (error) {
+    if (error instanceof StoragePutConflictError) {
+      return c.json({ error: error.message, reason: error.reason }, 409);
+    }
+    if (error instanceof NativeStoragePutError) {
+      const status =
+        error.code === "OPERATION_IN_PROGRESS"
+          ? 409
+          : error.code === "IDEMPOTENCY_REQUIRED" ||
+              error.code === "IDEMPOTENCY_INVALID"
+            ? 400
+            : 503;
+      return c.json({ error: error.message, code: error.code }, status);
+    }
     return failureResponse(c, error);
   }
 });
@@ -197,23 +191,71 @@ app.get("/*", async (c) => {
   // original request method. Branch here so HEAD never enters the body-read
   // path or uses GET pricing.
   if (c.req.method === "HEAD") {
-    return handleLegacyStorageHead(c);
+    return handleStorageHead(c);
   }
 
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
 
-    const adapter = getR2StorageAdapter(c.env);
-    if (!adapter) {
-      return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    }
-
     const validated = validateUserKey(c.req.param("*"));
     if ("error" in validated) {
       return c.json({ error: validated.error }, 400);
     }
 
+    const nativeObject = await orgStorageMutationsRepository.findObject(
+      organization_id,
+      validated.key,
+    );
+    if (nativeObject?.deleted_at)
+      return c.json({ error: "Object not found" }, 404);
+    if (nativeObject?.provider_key) {
+      if (!c.env.BLOB) return c.json(R2_NOT_CONFIGURED_BODY, 503);
+      const object = await c.env.BLOB.get(nativeObject.provider_key);
+      if (!object) {
+        return c.json(
+          { error: "Storage generation is temporarily unavailable" },
+          503,
+        );
+      }
+      const body = object.body ?? (await object.arrayBuffer?.());
+      if (!body) {
+        return c.json({ error: "Storage generation body is unavailable" }, 503);
+      }
+      const deduct = await deductFlatCost(organization_id, "get", {
+        key: validated.key,
+      });
+      if (!deduct.ok) {
+        return c.json(
+          {
+            error: "Insufficient credits",
+            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+          },
+          402,
+        );
+      }
+      return new Response(body, {
+        status: 200,
+        headers: {
+          "Content-Type": nativeObject.content_type!,
+          "Content-Length": String(nativeObject.size_bytes),
+          ETag: nativeObject.etag!,
+          "Last-Modified": nativeObject.uploaded_at!.toUTCString(),
+        },
+      });
+    }
+
+    const adapter = getR2StorageAdapter(c.env);
+    if (!adapter) return c.json(R2_NOT_CONFIGURED_BODY, 503);
+
+    const key = scopedKey(organization_id, validated.key);
+    if (!(await adapter.exists(key))) {
+      return c.json({ error: "Object not found" }, 404);
+    }
+    const [bytes, stat] = await Promise.all([
+      adapter.read(key),
+      adapter.stat(key),
+    ]);
     const deduct = await deductFlatCost(organization_id, "get", {
       key: validated.key,
     });
@@ -226,15 +268,6 @@ app.get("/*", async (c) => {
         402,
       );
     }
-
-    const key = scopedKey(organization_id, validated.key);
-    if (!(await adapter.exists(key))) {
-      return c.json({ error: "Object not found" }, 404);
-    }
-    const [bytes, stat] = await Promise.all([
-      adapter.read(key),
-      adapter.stat(key),
-    ]);
     const body = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(body).set(bytes);
     return new Response(body, {
@@ -251,21 +284,65 @@ app.get("/*", async (c) => {
   }
 });
 
-async function handleLegacyStorageHead(c: Context<AppEnv>) {
+async function handleStorageHead(c: Context<AppEnv>) {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
-
-    const adapter = getR2StorageAdapter(c.env);
-    if (!adapter) {
-      return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    }
 
     const validated = validateUserKey(c.req.param("*"));
     if ("error" in validated) {
       return c.json({ error: validated.error }, 400);
     }
 
+    const nativeObject = await orgStorageMutationsRepository.findObject(
+      organization_id,
+      validated.key,
+    );
+    if (nativeObject?.deleted_at) return new Response(null, { status: 404 });
+    if (nativeObject?.provider_key) {
+      if (!c.env.BLOB?.head) return c.json(R2_NOT_CONFIGURED_BODY, 503);
+      const observed = await c.env.BLOB.head(nativeObject.provider_key);
+      if (
+        !observed ||
+        observed.size !== Number(nativeObject.size_bytes) ||
+        observed.etag !== nativeObject.etag
+      ) {
+        return c.json(
+          { error: "Storage generation is temporarily unavailable" },
+          503,
+        );
+      }
+      const deduct = await deductFlatCost(organization_id, "head", {
+        key: validated.key,
+      });
+      if (!deduct.ok) {
+        return c.json(
+          {
+            error: "Insufficient credits",
+            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+          },
+          402,
+        );
+      }
+      return new Response(null, {
+        status: 200,
+        headers: {
+          "Content-Type": nativeObject.content_type!,
+          "Content-Length": String(nativeObject.size_bytes),
+          ETag: nativeObject.etag!,
+          "Last-Modified": nativeObject.uploaded_at!.toUTCString(),
+        },
+      });
+    }
+
+    const adapter = getR2StorageAdapter(c.env);
+    if (!adapter) return c.json(R2_NOT_CONFIGURED_BODY, 503);
+
+    const key = scopedKey(organization_id, validated.key);
+    if (!(await adapter.exists(key))) {
+      return new Response(null, { status: 404 });
+    }
+    const stat = await adapter.stat(key);
     const deduct = await deductFlatCost(organization_id, "head", {
       key: validated.key,
     });
@@ -278,12 +355,6 @@ async function handleLegacyStorageHead(c: Context<AppEnv>) {
         402,
       );
     }
-
-    const key = scopedKey(organization_id, validated.key);
-    if (!(await adapter.exists(key))) {
-      return new Response(null, { status: 404 });
-    }
-    const stat = await adapter.stat(key);
     return new Response(null, {
       status: 200,
       headers: {
@@ -303,15 +374,34 @@ app.delete("/*", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
 
-    const adapter = getR2StorageAdapter(c.env);
-    if (!adapter) {
-      return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    }
-
     const validated = validateUserKey(c.req.param("*"));
     if ("error" in validated) {
       return c.json({ error: validated.error }, 400);
     }
+
+    const nativeObject = await orgStorageMutationsRepository.findObject(
+      organization_id,
+      validated.key,
+    );
+    if (nativeObject?.deleted_at) return new Response(null, { status: 204 });
+    if (nativeObject && nativeObject.generation > 0n) {
+      if (!c.env.BLOB) return c.json(R2_NOT_CONFIGURED_BODY, 503);
+      const deleteCost = await getServiceMethodCost(
+        STORAGE_SERVICE_ID,
+        "delete",
+      );
+      await executeNativeStorageDelete({
+        bucket: c.env.BLOB,
+        organizationId: organization_id,
+        logicalKey: validated.key,
+        idempotencyKey: c.req.header("idempotency-key") ?? "",
+        priceUsd: deleteCost,
+      });
+      return new Response(null, { status: 204 });
+    }
+
+    const adapter = getR2StorageAdapter(c.env);
+    if (!adapter) return c.json(R2_NOT_CONFIGURED_BODY, 503);
 
     const key = scopedKey(organization_id, validated.key);
     if (!(await adapter.exists(key))) {
@@ -325,6 +415,19 @@ app.delete("/*", async (c) => {
     );
     return new Response(null, { status: 204 });
   } catch (error) {
+    if (error instanceof StoragePutConflictError) {
+      return c.json({ error: error.message, reason: error.reason }, 409);
+    }
+    if (error instanceof NativeStoragePutError) {
+      const status =
+        error.code === "OPERATION_IN_PROGRESS"
+          ? 409
+          : error.code === "IDEMPOTENCY_REQUIRED" ||
+              error.code === "IDEMPOTENCY_INVALID"
+            ? 400
+            : 503;
+      return c.json({ error: error.message, code: error.code }, status);
+    }
     return failureResponse(c, error);
   }
 });
