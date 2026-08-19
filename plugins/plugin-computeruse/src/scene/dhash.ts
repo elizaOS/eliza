@@ -17,7 +17,9 @@
  *     RGBA, 8-bit depth, non-interlaced). Anything else returns `null` and
  *     the caller falls back to a coarser whole-frame byte hash. IHDR
  *     width×height above {@link MAX_DECODE_PNG_PIXELS} is rejected before
- *     `inflateSync` / `Buffer.alloc` so a 69-byte bomb cannot throw.
+ *     `inflateSync` so a huge IHDR cannot set `maxOutputLength` to the
+ *     declared scanline budget. A tiny IDAT still fails later with
+ *     `inflated.length < expected`; the budget is the pre-inflate gate.
  *   - Pure functions, no I/O. Safe to test deterministically.
  *
  * Block-grid contract:
@@ -37,6 +39,25 @@ const PNG_SIGNATURE = Buffer.from([
 ]);
 /** Fail-closed pixel budget. IHDR is attacker-declared; 8K is 33_177_600. */
 export const MAX_DECODE_PNG_PIXELS = 50_000_000;
+
+/**
+ * True when declared IHDR width×height must not reach inflate / RGBA alloc.
+ * Uses `floor(MAX/height)` so the compare cannot overflow JS number range.
+ */
+export function pngRasterExceedsDecodeBudget(
+  width: number,
+  height: number,
+): boolean {
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return true;
+  }
+  return width > Math.floor(MAX_DECODE_PNG_PIXELS / height);
+}
 
 export interface RawImage {
   width: number;
@@ -89,7 +110,7 @@ export function decodePng(png: Buffer): RawImage | null {
   if (interlace !== 0) return null;
   if (colorType !== 2 && colorType !== 6) return null;
   if (idatChunks.length === 0) return null;
-  if (height > 0 && width > Math.floor(MAX_DECODE_PNG_PIXELS / height)) {
+  if (pngRasterExceedsDecodeBudget(width, height)) {
     return null;
   }
 
@@ -104,6 +125,8 @@ export function decodePng(png: Buffer): RawImage | null {
       maxOutputLength: expected,
     });
   } catch {
+    // error-policy:J3 malformed or over-budget compressed PNG input is
+    // sanitized to explicit null; decodePng never throws on untrusted bytes.
     return null;
   }
   if (inflated.length < expected) return null;

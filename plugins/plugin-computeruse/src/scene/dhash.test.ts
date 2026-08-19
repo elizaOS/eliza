@@ -35,6 +35,7 @@ import {
   hamming,
   MAX_DECODE_PNG_PIXELS,
   pngDimensions,
+  pngRasterExceedsDecodeBudget,
 } from "./dhash.js";
 
 // ── parameterized PNG synthesizer ────────────────────────────────────────────
@@ -148,13 +149,15 @@ describe("decodePng", () => {
     }
   });
 
-  it("returns null without allocating for a last-overflow IHDR pixel bomb", () => {
-    const width = 65535;
-    const height = 65535;
-    expect(width * height).toBeGreaterThan(MAX_DECODE_PNG_PIXELS);
+  it("rejects an over-budget IHDR before inflate via the dimension helper", () => {
+    expect(pngRasterExceedsDecodeBudget(65535, 65535)).toBe(true);
+    expect(pngRasterExceedsDecodeBudget(7680, 4320)).toBe(false);
+    expect(pngRasterExceedsDecodeBudget(0, 1)).toBe(true);
+    const expectedScanlineBytes = (65535 * 3 + 1) * 65535;
+    expect(expectedScanlineBytes).toBeGreaterThan(MAX_DECODE_PNG_PIXELS);
     const ihdr = Buffer.alloc(13);
-    ihdr.writeUInt32BE(width, 0);
-    ihdr.writeUInt32BE(height, 4);
+    ihdr.writeUInt32BE(65535, 0);
+    ihdr.writeUInt32BE(65535, 4);
     ihdr[8] = 8;
     ihdr[9] = 2;
     const bomb = Buffer.concat([
@@ -163,13 +166,7 @@ describe("decodePng", () => {
       pngChunk("IDAT", deflateSync(Buffer.from([0, 1, 2, 3]))),
       pngChunk("IEND", Buffer.alloc(0)),
     ]);
-    let result: ReturnType<typeof decodePng> | "threw";
-    try {
-      result = decodePng(bomb);
-    } catch {
-      result = "threw";
-    }
-    expect(result).toBeNull();
+    expect(decodePng(bomb)).toBeNull();
     expect(bomb.length).toBeLessThan(128);
   });
 
