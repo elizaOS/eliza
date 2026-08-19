@@ -120,7 +120,7 @@ describe("ComputerUseService browser auto-open recovery", () => {
       url: "https://example.com",
     });
     expect(browser.openBrowser).toHaveBeenCalledTimes(1);
-    expect(browser.openBrowser).toHaveBeenCalledWith("https://example.com");
+    expect(browser.openBrowser).toHaveBeenCalledWith("https://example.com/");
     expect(browser.navigateBrowser).toHaveBeenCalledTimes(2);
   });
 
