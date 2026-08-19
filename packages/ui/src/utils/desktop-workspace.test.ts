@@ -42,7 +42,7 @@ afterAll(() => {
 
 describe("openDesktopWorkspaceWindow", () => {
   it("opens the canonical root shell with the stable dedupe slug", async () => {
-    const open = vi.fn(async () => undefined);
+    const open = vi.fn(async () => ({ id: "app_workspace" }));
     desktopWindow.__ELIZA_ELECTROBUN_RPC__ = {
       request: { desktopOpenAppWindow: open },
       onMessage: vi.fn(),
@@ -60,6 +60,18 @@ describe("openDesktopWorkspaceWindow", () => {
   });
 
   it("rejects when the native bridge is unavailable so callers can show an error", async () => {
+    await expect(openDesktopWorkspaceWindow()).rejects.toThrow(
+      "Desktop workspace bridge is unavailable",
+    );
+  });
+
+  it("rejects an empty native response instead of reporting a successful launch", async () => {
+    desktopWindow.__ELIZA_ELECTROBUN_RPC__ = {
+      request: { desktopOpenAppWindow: vi.fn(async () => undefined) },
+      onMessage: vi.fn(),
+      offMessage: vi.fn(),
+    };
+
     await expect(openDesktopWorkspaceWindow()).rejects.toThrow(
       "Desktop workspace bridge is unavailable",
     );

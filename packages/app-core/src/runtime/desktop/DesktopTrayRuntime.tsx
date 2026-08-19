@@ -72,6 +72,7 @@ export function DesktopTrayRuntime() {
     handleResetAppliedFromMain,
     handleStart,
     handleStop,
+    setActionNotice,
     setTab,
     switchShellView,
     t,
@@ -281,10 +282,15 @@ export function DesktopTrayRuntime() {
         }
       };
 
-      // error-policy:J6 best-effort UI dispatch from a DOM event handler; a
-      // failed tray action leaves the window in its current (visible) state,
-      // which the user sees and can retry — nothing to unwind here.
-      void run().catch(() => {});
+      void run().catch(() => {
+        // error-policy:J4 Tray commands terminate at this UI boundary, so an
+        // RPC failure must remain visibly distinct from successful dispatch.
+        setActionNotice(
+          "Unable to complete the desktop action. Please retry.",
+          "error",
+          7_000,
+        );
+      });
     };
 
     document.addEventListener(TRAY_ACTION_EVENT, handleTrayAction);
@@ -296,6 +302,7 @@ export function DesktopTrayRuntime() {
     handleRestart,
     handleStart,
     handleStop,
+    setActionNotice,
     setTab,
     switchShellView,
     t,

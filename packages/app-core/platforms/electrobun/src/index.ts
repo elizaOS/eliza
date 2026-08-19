@@ -2127,7 +2127,19 @@ async function setupUpdater(): Promise<void> {
     const handleSurfaceMenuAction = (action: string | undefined): boolean => {
       const workspaceOptions = resolveDesktopWorkspaceWindowOptions(action);
       if (workspaceOptions) {
-        void getDesktopManager().openAppWindow(workspaceOptions);
+        void getDesktopManager()
+          .openAppWindow(workspaceOptions)
+          .catch((error: unknown) => {
+            // error-policy:J1 The native application-menu boundary translates
+            // launch failure into diagnostics and a visible OS notification.
+            logger.error(
+              `[Main] Desktop workspace launch failed: ${formatError(error)}`,
+            );
+            Utils.showNotification({
+              title: "Desktop Workspace Failed",
+              body: "Unable to open the desktop workspace. Please retry.",
+            });
+          });
         return true;
       }
       // "Views" submenu (#10716): `new-window:view-<id>` opens a builtin view in
