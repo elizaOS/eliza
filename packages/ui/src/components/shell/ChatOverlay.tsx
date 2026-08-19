@@ -2563,6 +2563,12 @@ export function ChatOverlay({
   );
 
   const booting = phase === "booting";
+  // The detached desktop panel can be pulled open while its controller is
+  // still transitioning the logical `isOpen` flag. That brief transition must
+  // not leak the full application's cold-start copy into an already-running
+  // local pill. The standard embedded/full-app composer keeps its honest
+  // waking status; the detached host retains the stable branded placeholder.
+  const showBootingComposerStatus = booting && !desktopOverlayHost;
   const listening = phase === "listening";
   const hasDraft = draft.trim().length > 0;
   const hasImages = pendingImages.length > 0;
@@ -6928,7 +6934,7 @@ export function ChatOverlay({
                             ? modelStatus?.kind === "downloading"
                               ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
                               : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                            : booting
+                            : showBootingComposerStatus
                               ? `Message ${agentName} — waking up…`
                               : (viewChatBinding?.placeholder ??
                                 `Hey ${agentName}...`)
@@ -6936,7 +6942,9 @@ export function ChatOverlay({
                   aria-label="message"
                   data-testid="chat-composer-textarea"
                   aria-describedby={
-                    booting && !noProviderConfigured && !firstRunOpen
+                    showBootingComposerStatus &&
+                    !noProviderConfigured &&
+                    !firstRunOpen
                       ? "cc-booting-hint"
                       : undefined
                   }
@@ -6953,7 +6961,7 @@ export function ChatOverlay({
                 />
               )}
               {!transcriptionComposerActive &&
-              booting &&
+              showBootingComposerStatus &&
               !noProviderConfigured &&
               !firstRunOpen ? (
                 <span id="cc-booting-hint" className="sr-only">

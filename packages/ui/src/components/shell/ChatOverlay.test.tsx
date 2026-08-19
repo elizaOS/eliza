@@ -2248,6 +2248,19 @@ describe("ChatOverlay", () => {
     expect(input.hasAttribute("readonly")).toBe(false);
   });
 
+  it("keeps the detached desktop placeholder stable while opening from booting", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({ phase: "booting", canSend: false })}
+        desktopOverlayHost
+      />,
+    );
+    const input = screen.getByLabelText("message");
+    expect(input.getAttribute("placeholder")).toBe("Hey Eliza...");
+    expect(input.getAttribute("aria-describedby")).toBeNull();
+    expect(screen.queryByText(/is waking up/i)).toBeNull();
+  });
+
   it("uses the pulsing composer glyph instead of rendering interim transcript text", () => {
     render(
       <ChatOverlay
