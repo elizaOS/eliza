@@ -143,7 +143,10 @@ export interface CompletionEvidenceBundle {
 
 /** Total cap for the assembled evidence string. Sits under the verifier's own
  *  {@link trimEvidence} budget so the section structure survives intact. */
-const MAX_EVIDENCE_CHARS = 8_000;
+// Sized so a 3-file static app's full contents + tool output fit un-truncated
+// (≈6k tokens — well inside the verify model's context). At 8k the judge read
+// truncated CSS and failed content criteria on working pages (2026-08-19).
+const MAX_EVIDENCE_CHARS = 24_000;
 const MAX_DIFF_CHARS = 3_000;
 const MAX_DELIVERABLE_CHARS = 1_500;
 const MAX_REPLY_CHARS = 1_500;

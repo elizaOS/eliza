@@ -152,14 +152,16 @@ describe("buildEvidenceStringFromInput (legacy signal-mining assembler)", () => 
       deliverable: "d".repeat(50_000),
       finalReply: "r".repeat(50_000),
       verifiedUrls: ["https://a.example.com", "https://b.example.com"],
-      signals: Array.from({ length: 60 }, (_, i) => ({
+      signals: Array.from({ length: 200 }, (_, i) => ({
         text: `Tests ${i} passed (1) error warning lint build ${"z".repeat(200)}`,
         source: "message",
       })),
       artifacts: [{ artifactType: "screenshot", title: "s", ref: "/x.png" }],
     });
-    expect(evidence.length).toBeLessThanOrEqual(8_100);
-    expect(evidence).toContain("[evidence truncated]");
+    // Per-section clamps keep the legacy assembler's ceiling (~10k) below the
+    // raised total cap, so the truncation marker is unreachable here; the
+    // typed-bundle test above still pins marker behavior at the total cap.
+    expect(evidence.length).toBeLessThanOrEqual(24_100);
   });
 });
 
@@ -232,8 +234,8 @@ describe("buildCompletionEvidenceString (typed bundle, #8894)", () => {
   it("keeps an oversized appended section inside the evidence cap", () => {
     const evidence = appendCompletionEvidenceSection(
       "existing",
-      "x".repeat(20_000),
+      "x".repeat(40_000),
     );
-    expect(evidence.length).toBeLessThanOrEqual(8_000);
+    expect(evidence.length).toBeLessThanOrEqual(24_000);
   });
 });
