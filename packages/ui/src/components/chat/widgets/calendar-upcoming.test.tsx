@@ -25,20 +25,22 @@ vi.mock("../../../hooks/useAuthStatus", () => ({
 
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 
-const { getBaseUrlMock, publishMock, listConnectorAccountsMock } = vi.hoisted(
-  () => ({
+const { getBaseUrlMock, publishMock, listConnectorAccountsMock, fetchMock } =
+  vi.hoisted(() => ({
     getBaseUrlMock: vi.fn(() => "http://localhost"),
     publishMock: vi.fn(),
     listConnectorAccountsMock: vi.fn(),
-  }),
-);
+    fetchMock: vi.fn(),
+  }));
 
 // Mock the client: getBaseUrl resolves without booting the real ElizaClient,
 // and listConnectorAccounts is the connection probe driven per-test.
 vi.mock("../../../api", () => ({
+  ElizaClient: class {},
   client: {
     getBaseUrl: getBaseUrlMock,
     listConnectorAccounts: listConnectorAccountsMock,
+    fetch: fetchMock,
   },
 }));
 
@@ -80,13 +82,7 @@ function event(
 }
 
 function mockFeed(events: ReturnType<typeof event>[]) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ events }),
-    })),
-  );
+  fetchMock.mockResolvedValue({ events });
 }
 
 /** A linked Google account makes the connection probe resolve "connected". */
@@ -123,7 +119,6 @@ const homeProps: Partial<WidgetProps> = {
 
 afterEach(() => {
   cleanup();
-  vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
@@ -132,12 +127,12 @@ beforeEach(() => {
   getBaseUrlMock.mockReturnValue("http://localhost");
   publishMock.mockReset();
   listConnectorAccountsMock.mockReset();
+  fetchMock.mockReset();
 });
 
 describe("CalendarUpcomingWidget", () => {
   it("renders nothing and skips full-shell probes on limited cloud agent bases", async () => {
     getBaseUrlMock.mockReturnValue("https://agent-1.elizacloud.ai");
-    vi.stubGlobal("fetch", vi.fn());
 
     const { container } = render(<CalendarUpcomingWidget {...homeProps} />);
 
@@ -145,7 +140,7 @@ describe("CalendarUpcomingWidget", () => {
       expect(container.firstChild).toBeNull();
     });
     expect(listConnectorAccountsMock).not.toHaveBeenCalled();
-    expect(globalThis.fetch as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("renders NOTHING when no Google account is linked, no connect-CTA tile", async () => {
@@ -253,7 +248,7 @@ describe("CalendarUpcomingWidget", () => {
       expect(listConnectorAccountsMock).toHaveBeenCalled();
     });
     await waitFor(() => {
-      expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalled();
     });
     await waitFor(() => {
       expect(container.firstChild).toBeNull();
@@ -273,7 +268,7 @@ describe("CalendarUpcomingWidget", () => {
     render(<CalendarUpcomingWidget {...homeProps} />);
 
     await waitFor(() => {
-      expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalled();
     });
     // A gated-out card must never float the tile up; every publish call is null.
     await waitFor(() => {
@@ -354,7 +349,7 @@ describe("CalendarUpcomingWidget", () => {
 
     await Promise.resolve();
     expect(listConnectorAccountsMock).not.toHaveBeenCalled();
-    expect(globalThis.fetch as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("starts the probe + feed once the session flips to authenticated", async () => {
@@ -372,6 +367,29 @@ describe("CalendarUpcomingWidget", () => {
     const card = await screen.findByTestId("chat-widget-calendar-upcoming");
     expect(card.textContent).toContain("Standup");
     expect(listConnectorAccountsMock).toHaveBeenCalled();
-    expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("uses bounded client requests and aborts the initial feed on unmount", async () => {
+    connectedGoogle();
+    fetchMock.mockReturnValue(new Promise(() => {}));
+
+    const { unmount } = render(<CalendarUpcomingWidget {...homeProps} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    expect(listConnectorAccountsMock).toHaveBeenCalledWith(
+      "google",
+      undefined,
+      { timeoutMs: 6_000, signal: expect.any(AbortSignal) },
+    );
+    const feedInit = fetchMock.mock.calls[0]?.[1];
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/api\/lifeops\/calendar\/feed\?/),
+      { signal: expect.any(AbortSignal) },
+      { timeoutMs: 8_000 },
+    );
+
+    unmount();
+    expect(feedInit?.signal.aborted).toBe(true);
   });
 });

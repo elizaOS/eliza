@@ -102,6 +102,83 @@ dbRead = {
 
 mock.module("@/db/client", () => ({ dbRead, dbWrite }));
 
+let durableAttempt: Record<string, unknown> | null = null;
+const domainPurchaseAttemptsRepository = {
+  createOrRead: mock(
+    async (input: { requestDigest: string; registrationYears: number }) => {
+      dbWriteInsert();
+      dbWriteValues();
+      dbWriteOnConflictDoNothing();
+      await dbWriteReturning();
+      durableAttempt = {
+        id: "claim-1",
+        key: "domain-buy:org-1:example.com",
+        organization_id: "org-1",
+        app_id: "app-1",
+        domain: "example.com",
+        status: "processing",
+        request_digest: input.requestDigest,
+        registration_years: input.registrationYears,
+        charge_id: null,
+        refund_id: null,
+        charge: null,
+        cloudflare_registration_id: null,
+        managed_domain_id: null,
+        response_body: null,
+        response_status: null,
+        error_code: null,
+        lease_token: null,
+        provider_started_at: null,
+        next_reconcile_at: null,
+        attempt_count: 0,
+        expires_at: new Date(Date.now() + 60_000),
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+      return { attempt: durableAttempt, created: true };
+    },
+  ),
+  storeQuote: mock(async (input: { quote: Record<string, unknown> }) => {
+    durableAttempt = {
+      ...durableAttempt,
+      status: "quoted",
+      charge: input.quote,
+    };
+    return durableAttempt;
+  }),
+  attachCharge: mock(async (input: { chargeId: string }) => {
+    durableAttempt = {
+      ...durableAttempt,
+      status: "charged",
+      charge_id: input.chargeId,
+    };
+    return durableAttempt;
+  }),
+  claimRegistrarStart: mock(async (input: { leaseToken: string }) => {
+    durableAttempt = {
+      ...durableAttempt,
+      status: "provider_started",
+      lease_token: input.leaseToken,
+      attempt_count: 1,
+    };
+    return durableAttempt;
+  }),
+  markRegistered: mock(async (input: { registrationId: string }) => {
+    durableAttempt = {
+      ...durableAttempt,
+      status: "registered",
+      cloudflare_registration_id: input.registrationId,
+    };
+    return durableAttempt;
+  }),
+  complete: mock(async () => durableAttempt),
+  markTerminalFailure: mock(async () => durableAttempt),
+  read: mock(async () => durableAttempt),
+};
+mock.module("@/db/repositories/domain-purchase-attempts", () => ({
+  domainPurchaseAttemptsRepository,
+}));
+
 const getDomainByName = mock(async () => null);
 const upsertCloudflareRegisteredDomain = mock(async () => ({
   id: "managed-domain-1",
@@ -128,6 +205,7 @@ const checkAvailability = mock(async () => ({
   renewalUsdCents: 1_000,
   currency: "USD",
 }));
+const getMinimumRegistrationYears = mock(async () => 1);
 const registerDomain = mock(async () => ({ registrationId: "registration-1" }));
 const getRegisteredDomain = mock(async () => ({
   domain: "example.com",
@@ -139,6 +217,7 @@ const getRegisteredDomain = mock(async () => ({
 mock.module("@/lib/services/cloudflare-registrar", () => ({
   cloudflareRegistrarService: {
     checkAvailability,
+    getMinimumRegistrationYears,
     registerDomain,
     getRegisteredDomain,
   },
@@ -147,7 +226,18 @@ mock.module("@/lib/services/cloudflare-registrar", () => ({
 const deductCredits = mock(async () => ({
   success: true as const,
   newBalance: 85,
-  transaction: { id: "transaction-1" },
+  transaction: {
+    id: "transaction-1",
+    organization_id: "org-1",
+    type: "debit",
+    amount: "-14.950000",
+    metadata: {
+      type: "domain_purchase",
+      domain: "example.com",
+      domainPurchaseKey: "domain-buy:org-1:example.com",
+      totalUsdCents: 1495,
+    },
+  },
 }));
 const refundCredits = mock(async () => ({ success: true }));
 
@@ -324,6 +414,7 @@ const resetMocks = [
 
 beforeEach(() => {
   redisMode = "healthy";
+  durableAttempt = null;
   _resetHonoRateLimitLeases();
   _resetRedisUnavailableFallbackBuckets();
   for (const testMock of resetMocks) testMock.mockClear();

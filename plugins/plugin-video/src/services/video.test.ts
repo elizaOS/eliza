@@ -1,5 +1,8 @@
 /** Exercises VideoService metadata and parsing boundaries with deterministic binary doubles. */
 
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { ElizaError, IAgentRuntime, Media } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { BinaryResolver } from "./binaries";
@@ -295,5 +298,31 @@ describe("VideoService deterministic behavior", () => {
     const { service } = createServiceWithYtDlp([]);
     expect(service.isVideoUrl(null as unknown as string)).toBe(false);
     expect(service.isVideoUrl({} as unknown as string)).toBe(false);
+  });
+
+  it("forwards VideoDownloadOptions (format precedence, subtitles, embedSubs, writeInfoJson) to yt-dlp", async () => {
+    const { service, runYtDlp } = createServiceWithYtDlp([{}]);
+    const outputPath = path.join(
+      tmpdir(),
+      `eliza-video-options-${randomUUID()}.mp4`,
+    );
+
+    await service.downloadVideo("https://youtu.be/options-test", {
+      outputPath,
+      format: "bestvideo",
+      quality: "720p",
+      subtitles: true,
+      embedSubs: true,
+      writeInfoJson: false,
+    });
+
+    expect(runYtDlp).toHaveBeenCalledWith("https://youtu.be/options-test", {
+      verbose: true,
+      output: outputPath,
+      writeInfoJson: false,
+      format: "bestvideo",
+      writeSub: true,
+      embedSubs: true,
+    });
   });
 });

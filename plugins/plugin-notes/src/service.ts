@@ -116,6 +116,9 @@ function resolveNoteIndex(
   value: string,
 ): number {
   const target = normalizedLookup(value);
+  if (!target) {
+    throw lookupError("NOTES_NOT_FOUND", selector, value, []);
+  }
   const exact = notes
     .map((note, index) => ({ index, note }))
     .filter(({ note }) => normalizedLookup(note.title) === target);
@@ -509,11 +512,35 @@ export class NotesService extends Service {
     };
   }
 
-  async clearNotesWithCommit(): Promise<{
+  /**
+   * Clear every note, optionally guarded by `expectedRevision`. The guard is
+   * validated inside the serialized write barrier where `draft.revision` still
+   * equals the committed revision, so a note that commits between a caller's
+   * snapshot and this transaction aborts the clear instead of being wiped. A
+   * dispatch-time check upstream is only a fast path; this is the atomic one.
+   */
+  async clearNotesWithCommit(expectedRevision?: number): Promise<{
     value: number;
     snapshot: NotesSnapshot;
   }> {
     const transaction = await this.store.transact((draft) => {
+      if (
+        expectedRevision !== undefined &&
+        draft.revision !== expectedRevision
+      ) {
+        throw new ElizaError(
+          "clear-notes expectedRevision is stale; refresh the notes snapshot and try again.",
+          {
+            code: "NOTES_VALIDATION_FAILED",
+            context: {
+              field: "expectedRevision",
+              expectedRevision,
+              currentRevision: draft.revision,
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
       const count = draft.notes.length;
       draft.notes = [];
       return count;
@@ -522,8 +549,8 @@ export class NotesService extends Service {
     return transaction;
   }
 
-  async clearNotes(): Promise<number> {
-    return (await this.clearNotesWithCommit()).value;
+  async clearNotes(expectedRevision?: number): Promise<number> {
+    return (await this.clearNotesWithCommit(expectedRevision)).value;
   }
 
   private async emitStateUpdated(

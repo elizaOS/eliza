@@ -33,6 +33,7 @@ import {
   type ResolvedAttachmentBytes,
   resolveAttachmentBytes,
   ServiceType,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -1404,8 +1405,15 @@ export class MessageManager {
         }
 
         if (availableLength > 0) {
-          currentChunk += remaining.slice(0, availableLength);
-          remaining = remaining.slice(availableLength);
+          // A raw slice() can land between the two UTF-16 code units of a
+          // surrogate pair (most emoji), leaving a lone surrogate at the
+          // chunk boundary that corrupts the character on the wire.
+          // truncateWellFormed backs the cut off by one unit instead.
+          const head = truncateWellFormed(remaining, availableLength);
+          if (head.length > 0) {
+            currentChunk += head;
+            remaining = remaining.slice(head.length);
+          }
         }
 
         if (currentChunk) {

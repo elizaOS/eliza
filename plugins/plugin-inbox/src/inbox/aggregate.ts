@@ -160,17 +160,22 @@ export function toInboxMessage(
         : message.channelName
       : null;
 
-  // Gmail triage exposes `likelyReplyNeeded`/`isImportant` but the shared
-  // `InboundMessage` shape does not carry a per-channel read flag yet. Until
-  // the chat fetcher tracks read state per memory, mark chat messages as
-  // unread so the inbox surfaces them for triage.
+  // Gmail triage exposes `likelyReplyNeeded`/`isImportant`. X DMs carry real
+  // read state (the fetcher maps dm.readAt -> lastSeenAt and dm.repliedAt ->
+  // repliedAt), so a read-or-replied DM must not inflate unread counts. Chat
+  // memories still lack a read flag, so they stay unread for triage.
+  const hasSeenState =
+    (typeof message.lastSeenAt === "string" && message.lastSeenAt.length > 0) ||
+    (typeof message.repliedAt === "string" && message.repliedAt.length > 0);
   const unread =
     channel === "gmail"
       ? Boolean(
           message.gmailLikelyReplyNeeded === true ||
             message.gmailIsImportant === true,
         )
-      : true;
+      : channel === "x_dm"
+        ? !hasSeenState
+        : true;
 
   const threadId = deriveThreadId(message, channel, externalId);
   const chatType: InboxChatType =

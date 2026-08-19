@@ -59,6 +59,20 @@ export function shouldStartTrayFirst(
 }
 
 /**
+ * macOS 26.5's Control Center can accept an NSStatusItem while repeatedly
+ * rejecting its NSStatusItemView scene. AppKit still reports non-zero bounds,
+ * so runtime visibility probes cannot distinguish the broken item. Keep a Dock
+ * recovery surface on that specific Darwin release until Apple ships the next
+ * kernel line.
+ */
+export function hasKnownMacosStatusItemSceneRegression(
+  platform: NodeJS.Platform = process.platform,
+  kernelRelease = "",
+): boolean {
+  return platform === "darwin" && /^25\.5(?:\.|$)/.test(kernelRelease);
+}
+
+/**
  * Platforms where the tray popover (a BrowserView attached to a frameless,
  * transparent, always-on-top window anchored at the tray) is implemented today.
  *

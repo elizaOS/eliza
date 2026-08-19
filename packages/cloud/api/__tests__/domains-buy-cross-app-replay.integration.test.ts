@@ -102,6 +102,7 @@ const checkAvailability = mock(async () => ({
   renewalUsdCents: WHOLESALE_USD_CENTS,
   currency: "USD",
 }));
+const getMinimumRegistrationYears = mock(async () => 1);
 const registerDomain = mock(async () => ({ registrationId: "reg-1" }));
 const getRegisteredDomain = mock(async () => ({
   domain: DOMAIN,
@@ -118,6 +119,7 @@ mock.module("@/lib/services/cloudflare-registrar", () => ({
   ...realRegistrar,
   cloudflareRegistrarService: {
     checkAvailability,
+    getMinimumRegistrationYears,
     registerDomain,
     getRegisteredDomain,
   },

@@ -66,9 +66,13 @@ describe("Signal local client", () => {
       httpUrl: "http://signal.test/",
     });
 
-    expect(fetch).toHaveBeenCalledWith("http://signal.test/v1/receive/%2B15550000000", {
-      headers: { Accept: "application/json" },
-    });
+    expect(fetch).toHaveBeenCalledWith(
+      "http://signal.test/v1/receive/%2B15550000000",
+      expect.objectContaining({
+        headers: { Accept: "application/json" },
+        signal: expect.any(AbortSignal),
+      })
+    );
     expect(messages).toHaveLength(2);
     expect(messages[0]).toMatchObject({
       roomId: "signal:+15557654321",
@@ -195,5 +199,99 @@ describe("Signal local client", () => {
         httpUrl: "http://signal.test",
       })
     ).rejects.toThrow("Signal local receive returned an unexpected payload");
+  });
+});
+
+function stallUntilAborted(): typeof fetch {
+  return ((_input, init) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("expected signal local abort signal");
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      signal.addEventListener("abort", () => reject(signal.reason), {
+        once: true,
+      });
+    })) as typeof fetch;
+}
+
+describe("signal local receive request deadline", () => {
+  function installShortDeadline(): number[] {
+    const budgets: number[] = [];
+    const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      budgets.push(milliseconds);
+      return nativeTimeout(10);
+    });
+    return budgets;
+  }
+
+  it("aborts a stalled receive GET at the 15s deadline", async () => {
+    const budgets = installShortDeadline();
+    vi.stubGlobal("fetch", stallUntilAborted());
+    await expect(
+      readSignalInboundMessages(
+        { accountNumber: "+15550000000", httpUrl: "http://signal.test" },
+        10
+      )
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(budgets).toEqual([15_000]);
+  });
+
+  it("still honors a caller abort signal", async () => {
+    const ctrl = new AbortController();
+    ctrl.abort();
+    vi.stubGlobal("fetch", stallUntilAborted());
+    await expect(
+      readSignalInboundMessages(
+        { accountNumber: "+15550000000", httpUrl: "http://signal.test" },
+        10,
+        { signal: ctrl.signal }
+      )
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("surfaces a provider error from a completed receive GET", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("nope", {
+            status: 503,
+            statusText: "Service Unavailable",
+          })
+      )
+    );
+    await expect(
+      readSignalInboundMessages(
+        { accountNumber: "+15550000000", httpUrl: "http://signal.test" },
+        10
+      )
+    ).rejects.toThrow("Signal local receive failed with HTTP 503");
+  });
+
+  it("keeps the deadline armed while the receive body stalls", async () => {
+    installShortDeadline();
+    vi.stubGlobal("fetch", (async (_input, init) => {
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            const signal = init?.signal;
+            if (!signal) throw new Error("expected signal local abort signal");
+            signal.addEventListener("abort", () => controller.error(signal.reason), { once: true });
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }) as typeof fetch);
+
+    await expect(
+      readSignalInboundMessages(
+        { accountNumber: "+15550000000", httpUrl: "http://signal.test" },
+        10
+      )
+    ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 });

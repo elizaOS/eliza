@@ -33,7 +33,7 @@ function rewriteGoogleUrlForMock(url: string): string {
     );
   }
   return url.replace(
-    /^https:\/\/(?:fitness)\.googleapis\.com/,
+    /^https:\/\/(?:www|fitness)\.googleapis\.com/,
     mockUrl.toString().replace(/\/+$/, ""),
   );
 }
@@ -523,14 +523,25 @@ function sumBucketValues(
   return total;
 }
 
+/**
+ * Average the values in a bucket. With `firstValueOnly`, only each point's
+ * first value contributes: Google Fit heart-rate aggregation returns
+ * `com.google.heart_rate.summary` points whose value array is
+ * `[average, max, min]`, so averaging (or summing) all three wholesale
+ * corrupts the result — only value[0] (the average) is a heart-rate reading.
+ */
 function avgBucketValues(
   bucket: NonNullable<GoogleFitAggregateResponse["bucket"]>[number],
+  opts?: { firstValueOnly?: boolean },
 ): number | undefined {
   let total = 0;
   let count = 0;
   for (const ds of bucket.dataset ?? []) {
     for (const point of ds.point ?? []) {
-      for (const v of point.value ?? []) {
+      const values = opts?.firstValueOnly
+        ? (point.value ?? []).slice(0, 1)
+        : (point.value ?? []);
+      for (const v of values) {
         const num =
           typeof v.fpVal === "number"
             ? v.fpVal
@@ -633,7 +644,9 @@ async function googleFitDailySummary(
   summary.calories = sumBucketValues(byType(2) as typeof bucket) || undefined;
   summary.distanceMeters =
     sumBucketValues(byType(3) as typeof bucket) || undefined;
-  summary.heartRateAvg = avgBucketValues(byType(4) as typeof bucket);
+  summary.heartRateAvg = avgBucketValues(byType(4) as typeof bucket, {
+    firstValueOnly: true,
+  });
 
   // Google Fit sleep lives in a separate dataset; fetch it with a dedicated call.
   try {
@@ -745,7 +758,13 @@ async function googleFitDataPoints(
 
   const points: HealthDataPoint[] = [];
   for (const bucket of response.bucket ?? []) {
-    const value = sumBucketValues(bucket);
+    // Heart rate is a rate, not an accumulating quantity: its summary points
+    // carry [average, max, min], so a bucket's data point is the average of
+    // the point averages — never a sum (summing [70,120,50] yields 240 bpm).
+    const value =
+      opts.metric === "heart_rate"
+        ? (avgBucketValues(bucket, { firstValueOnly: true }) ?? 0)
+        : sumBucketValues(bucket);
     if (value === 0) continue;
     const bucketStart = Number(bucket.startTimeMillis ?? "0");
     const bucketEnd = Number(bucket.endTimeMillis ?? "0");

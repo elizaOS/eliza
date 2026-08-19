@@ -183,6 +183,8 @@ export interface PlannerToolResult {
 	 */
 	summary?: string;
 	data?: Record<string, unknown>;
+	/** Model-bound projection of `data`; complete data remains on the result. */
+	promptData?: Record<string, unknown>;
 	error?: unknown;
 	/** Typed boundary provenance retained through planner retry exhaustion. */
 	failureProvenance?: ActionFailureProvenance;

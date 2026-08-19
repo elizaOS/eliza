@@ -1716,6 +1716,139 @@
       "when": 1790280000000,
       "tag": "0245_agent_vault_key_topology_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1790366400000,
+      "tag": "0246_agent_node_incarnation_histories",
+      "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1790452800000,
+      "tag": "0247_agent_activation_publications",
+      "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1790539200000,
+      "tag": "0248_agent_vault_key_seed_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 248,
+      "version": "7",
+      "when": 1790625600000,
+      "tag": "0249_agent_backup_restore_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1790712000000,
+      "tag": "0250_agent_restore_receipt_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1790798400000,
+      "tag": "0251_agent_backup_restore_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 251,
+      "version": "7",
+      "when": 1790884800000,
+      "tag": "0252_agent_backup_restore_operation_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1790971200000,
+      "tag": "0253_job_retryable_requeues",
+      "breakpoints": true
+    },
+    {
+      "idx": 253,
+      "version": "7",
+      "when": 1791403200000,
+      "tag": "0254_payment_request_provider_settlement",
+      "breakpoints": true
+    },
+    {
+      "idx": 254,
+      "version": "7",
+      "when": 1791489600000,
+      "tag": "0255_crypto_settlement_outboxes",
+      "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1791576000000,
+      "tag": "0256_org_storage_native_objects",
+      "breakpoints": true
+    },
+    {
+      "idx": 256,
+      "version": "7",
+      "when": 1791662400000,
+      "tag": "0257_org_storage_native_put_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1791748800000,
+      "tag": "0258_org_storage_generation_gc_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 258,
+      "version": "7",
+      "when": 1791835200000,
+      "tag": "0259_agent_node_incarnation_rearm",
+      "breakpoints": true
+    },
+    {
+      "idx": 259,
+      "version": "7",
+      "when": 1791921600000,
+      "tag": "0260_domain_purchase_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 260,
+      "version": "7",
+      "when": 1792008000000,
+      "tag": "0261_stripe_checkout_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 261,
+      "version": "7",
+      "when": 1792094400000,
+      "tag": "0262_payment_request_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 262,
+      "version": "7",
+      "when": 1792180800000,
+      "tag": "0263_payment_request_receipt_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 263,
+      "version": "7",
+      "when": 1792267200000,
+      "tag": "0264_organization_billing_authority",
+      "breakpoints": true
     }
   ]
 }

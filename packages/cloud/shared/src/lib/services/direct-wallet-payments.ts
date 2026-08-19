@@ -1,20 +1,14 @@
-// Coordinates cloud service direct wallet payments behavior behind route handlers.
+/** Coordinates verified direct-wallet settlement, crediting, invoicing, and durable sweeping. */
 import {
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
   getAccount,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
-import {
-  Connection,
-  Keypair,
-  PublicKey,
-  sendAndConfirmTransaction,
-  Transaction,
-} from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import Decimal from "decimal.js";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, lte, or, sql } from "drizzle-orm";
 import {
   createPublicClient,
   createWalletClient,
@@ -24,14 +18,21 @@ import {
   type Hex,
   http,
   isAddress,
+  keccak256,
   parseAbiItem,
   parseEventLogs,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, bsc } from "viem/chains";
-import { dbWrite } from "../../db/client";
+import { type DbTransaction, dbWrite } from "../../db/client";
+import {
+  canonicalizeCryptoTransactionHash,
+  cryptoTransactionHashesEqual,
+  isHexTransactionHash,
+} from "../../db/crypto-payment-transaction-hash";
 import type { CryptoPayment } from "../../db/repositories/crypto-payments";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
+import { cryptoSweepOutbox } from "../../db/schemas/crypto-settlement-outbox";
 import type { Bindings } from "../../types/cloud-worker-env";
 import { ValidationError } from "../api/cloud-worker-errors";
 import { PAYMENT_EXPIRATION_MS, validatePaymentAmount } from "../config/crypto";
@@ -49,6 +50,7 @@ import {
   verifyDirectWalletPayerProof,
 } from "./direct-wallet-payer-proof";
 import { invoicesService } from "./invoices";
+import { settlementDigest } from "./settlement-digest";
 
 export type DirectWalletNetwork = "base" | "bsc" | "solana";
 
@@ -472,6 +474,7 @@ function publicDirectPaymentConfig(
   try {
     return directPaymentConfig(env, network);
   } catch (error) {
+    // error-policy:J4 public configuration exposes this network as disabled.
     return disabledDirectPaymentConfig(network, error);
   }
 }
@@ -988,14 +991,34 @@ function evmPrivateKey(env: Bindings, network: DirectWalletNetwork): Hex | null 
   return (key.startsWith("0x") ? key : `0x${key}`) as Hex;
 }
 
-async function sweepEvmIfConfigured(params: {
+type PreparedSweepMetadata =
+  | {
+      network: "base" | "bsc";
+      sweepTo: string;
+      nonce: string;
+    }
+  | {
+      network: "solana";
+      sweepTo: string;
+      blockhash: string;
+      lastValidBlockHeight: number;
+    };
+
+interface PreparedSweep {
+  rawTransaction: string;
+  transactionHash: string;
+  metadata: PreparedSweepMetadata;
+}
+
+async function prepareEvmSweep(params: {
   env: Bindings;
   cfg: DirectWalletNetworkConfig;
   tokenAddress: Hex | null;
   tokenDecimals: number;
   units: bigint;
-}): Promise<Record<string, unknown> | null> {
-  if (!params.tokenAddress || !params.cfg.secureAddress) return null;
+  sweepTo: string;
+}): Promise<PreparedSweep | null> {
+  if (!params.tokenAddress) return null;
   const privateKey = evmPrivateKey(params.env, params.cfg.network);
   if (!privateKey) return null;
 
@@ -1011,15 +1034,54 @@ async function sweepEvmIfConfigured(params: {
     chain: params.cfg.network === "base" ? base : bsc,
     transport: http(params.cfg.rpcUrl),
   });
-  const hash = await wallet.sendTransaction({
+  const request = await wallet.prepareTransactionRequest({
     to: params.tokenAddress,
     data: encodeFunctionData({
       abi: erc20Abi,
       functionName: "transfer",
-      args: [getAddress(params.cfg.secureAddress), params.units],
+      args: [getAddress(params.sweepTo), params.units],
     }),
   });
-  return { sweep_transaction_hash: hash, sweep_to: params.cfg.secureAddress };
+  if (request.nonce === undefined) {
+    throw new Error("Prepared EVM sweep is missing its explicit nonce");
+  }
+  const rawTransaction = await account.signTransaction(
+    request as Parameters<typeof account.signTransaction>[0],
+  );
+  return {
+    rawTransaction,
+    transactionHash: keccak256(rawTransaction),
+    metadata: {
+      network: params.cfg.network === "base" ? "base" : "bsc",
+      sweepTo: params.sweepTo,
+      nonce: String(request.nonce),
+    },
+  };
+}
+
+async function submitPreparedEvmSweep(
+  cfg: DirectWalletNetworkConfig,
+  prepared: PreparedSweep,
+): Promise<void> {
+  const client = createPublicClient({
+    chain: cfg.network === "base" ? base : bsc,
+    transport: http(cfg.rpcUrl),
+  });
+  try {
+    const existing = await client.getTransaction({
+      hash: prepared.transactionHash as Hex,
+    });
+    if (existing.hash.toLowerCase() === prepared.transactionHash.toLowerCase()) return;
+  } catch {
+    // error-policy:J4 Absence or a transient lookup error is safe because the
+    // dispatcher resends the exact same signed bytes and therefore the same hash.
+  }
+  const submitted = await client.sendRawTransaction({
+    serializedTransaction: prepared.rawTransaction as Hex,
+  });
+  if (submitted.toLowerCase() !== prepared.transactionHash.toLowerCase()) {
+    throw new Error("EVM provider returned a different sweep transaction hash");
+  }
 }
 
 function solanaKeypairFromEnv(env: Bindings): Keypair | null {
@@ -1031,12 +1093,25 @@ function solanaKeypairFromEnv(env: Bindings): Keypair | null {
   return Keypair.fromSecretKey(bs58.decode(raw));
 }
 
-async function sweepSolanaIfConfigured(params: {
+function bytesToBase64(value: Uint8Array): string {
+  let binary = "";
+  for (const byte of value) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+async function prepareSolanaSweep(params: {
   env: Bindings;
   cfg: DirectWalletNetworkConfig;
   units: bigint;
-}): Promise<Record<string, unknown> | null> {
-  if (!params.cfg.tokenMint || !params.cfg.secureAddress) return null;
+  sweepTo: string;
+  tokenMint: string;
+  tokenDecimals: number;
+}): Promise<PreparedSweep | null> {
   const payer = solanaKeypairFromEnv(params.env);
   if (!payer) return null;
   if (
@@ -1047,9 +1122,9 @@ async function sweepSolanaIfConfigured(params: {
   }
 
   const connection = new Connection(params.cfg.rpcUrl, "confirmed");
-  const mint = new PublicKey(params.cfg.tokenMint);
+  const mint = new PublicKey(params.tokenMint);
   const fromAta = getAssociatedTokenAddressSync(mint, payer.publicKey);
-  const secureOwner = new PublicKey(params.cfg.secureAddress);
+  const secureOwner = new PublicKey(params.sweepTo);
   const toAta = getAssociatedTokenAddressSync(mint, secureOwner);
   const tx = new Transaction();
   const toInfo = await connection.getAccountInfo(toAta);
@@ -1063,13 +1138,247 @@ async function sweepSolanaIfConfigured(params: {
       toAta,
       payer.publicKey,
       params.units,
-      params.cfg.tokenDecimals,
+      params.tokenDecimals,
     ),
   );
-  const hash = await sendAndConfirmTransaction(connection, tx, [payer], {
-    commitment: "confirmed",
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payer.publicKey;
+  tx.sign(payer);
+  if (!tx.signature) throw new Error("Solana sweep transaction has no signature");
+  return {
+    rawTransaction: bytesToBase64(tx.serialize()),
+    transactionHash: bs58.encode(tx.signature),
+    metadata: {
+      network: "solana",
+      sweepTo: params.sweepTo,
+      blockhash,
+      lastValidBlockHeight,
+    },
+  };
+}
+
+export type SolanaSweepRecovery = "landed" | "resend" | "reprepare";
+
+export function classifySolanaSweepRecovery(params: {
+  signatureStatus: { err: unknown } | null;
+  currentBlockHeight: number;
+  lastValidBlockHeight: number;
+}): SolanaSweepRecovery {
+  if (params.signatureStatus) {
+    if (params.signatureStatus.err) {
+      throw new Error("Solana sweep transaction failed on chain");
+    }
+    return "landed";
+  }
+  return params.currentBlockHeight > params.lastValidBlockHeight ? "reprepare" : "resend";
+}
+
+async function submitPreparedSolanaSweep(
+  cfg: DirectWalletNetworkConfig,
+  prepared: PreparedSweep,
+): Promise<"landed" | "reprepare"> {
+  if (prepared.metadata.network !== "solana") {
+    throw new Error("Prepared Solana sweep metadata is invalid");
+  }
+  const connection = new Connection(cfg.rpcUrl, "confirmed");
+  const existing = await connection.getSignatureStatus(prepared.transactionHash, {
+    searchTransactionHistory: true,
   });
-  return { sweep_transaction_hash: hash, sweep_to: params.cfg.secureAddress };
+  if (existing.value) {
+    const recovery = classifySolanaSweepRecovery({
+      signatureStatus: existing.value,
+      currentBlockHeight: 0,
+      lastValidBlockHeight: prepared.metadata.lastValidBlockHeight,
+    });
+    if (recovery !== "landed") throw new Error("Solana signature status is inconsistent");
+    return "landed";
+  }
+  const recovery = classifySolanaSweepRecovery({
+    signatureStatus: null,
+    currentBlockHeight: await connection.getBlockHeight("confirmed"),
+    lastValidBlockHeight: prepared.metadata.lastValidBlockHeight,
+  });
+  if (recovery === "landed") return "landed";
+  if (recovery === "reprepare") return "reprepare";
+  const submitted = await connection.sendRawTransaction(base64ToBytes(prepared.rawTransaction), {
+    maxRetries: 0,
+    skipPreflight: false,
+  });
+  if (submitted !== prepared.transactionHash) {
+    throw new Error("Solana provider returned a different sweep transaction signature");
+  }
+  await connection.confirmTransaction(
+    {
+      signature: submitted,
+      blockhash: prepared.metadata.blockhash,
+      lastValidBlockHeight: prepared.metadata.lastValidBlockHeight,
+    },
+    "confirmed",
+  );
+  return "landed";
+}
+
+interface DirectSweepPayload {
+  paymentId: string;
+  network: DirectWalletNetwork;
+  tokenKind: DirectWalletTokenKind;
+  tokenAddress: Hex | null;
+  tokenMint: string | null;
+  tokenDecimals: number;
+  receivedUnits: string;
+  sweepTo: string | null;
+}
+
+function directSweepPayload(value: unknown): DirectSweepPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Crypto sweep outbox payload is not an object");
+  }
+  const payload = value as Record<string, unknown>;
+  if (
+    typeof payload.paymentId !== "string" ||
+    (payload.network !== "base" && payload.network !== "bsc" && payload.network !== "solana") ||
+    (payload.tokenKind !== "native" &&
+      payload.tokenKind !== "bep20" &&
+      payload.tokenKind !== "erc20" &&
+      payload.tokenKind !== "spl") ||
+    (payload.tokenAddress !== null && typeof payload.tokenAddress !== "string") ||
+    (payload.tokenMint !== null && typeof payload.tokenMint !== "string") ||
+    typeof payload.tokenDecimals !== "number" ||
+    !Number.isInteger(payload.tokenDecimals) ||
+    typeof payload.receivedUnits !== "string" ||
+    !/^\d+$/.test(payload.receivedUnits) ||
+    (payload.sweepTo !== null && typeof payload.sweepTo !== "string")
+  ) {
+    throw new Error("Crypto sweep outbox payload is malformed");
+  }
+  return payload as unknown as DirectSweepPayload;
+}
+
+function preparedSweepFromRow(value: {
+  prepared_transaction: string | null;
+  sweep_transaction_hash: string | null;
+  prepared_metadata: Record<string, unknown> | null;
+}): PreparedSweep | null {
+  if (
+    value.prepared_transaction === null &&
+    value.sweep_transaction_hash === null &&
+    value.prepared_metadata === null
+  ) {
+    return null;
+  }
+  const metadata = value.prepared_metadata;
+  if (
+    !value.prepared_transaction ||
+    !value.sweep_transaction_hash ||
+    !metadata ||
+    typeof metadata.sweepTo !== "string"
+  ) {
+    throw new Error("Prepared crypto sweep row is incomplete");
+  }
+  if (
+    (metadata.network === "base" || metadata.network === "bsc") &&
+    typeof metadata.nonce === "string"
+  ) {
+    return {
+      rawTransaction: value.prepared_transaction,
+      transactionHash: value.sweep_transaction_hash,
+      metadata: {
+        network: metadata.network,
+        sweepTo: metadata.sweepTo,
+        nonce: metadata.nonce,
+      },
+    };
+  }
+  if (
+    metadata.network === "solana" &&
+    typeof metadata.blockhash === "string" &&
+    typeof metadata.lastValidBlockHeight === "number" &&
+    Number.isSafeInteger(metadata.lastValidBlockHeight)
+  ) {
+    return {
+      rawTransaction: value.prepared_transaction,
+      transactionHash: value.sweep_transaction_hash,
+      metadata: {
+        network: "solana",
+        sweepTo: metadata.sweepTo,
+        blockhash: metadata.blockhash,
+        lastValidBlockHeight: metadata.lastValidBlockHeight,
+      },
+    };
+  }
+  throw new Error("Prepared crypto sweep metadata is malformed");
+}
+
+function directPaymentSettlementDigest(payment: CryptoPayment): string {
+  const direct = directMetadata(payment);
+  return settlementDigest({
+    id: payment.id,
+    organizationId: payment.organization_id,
+    userId: payment.user_id,
+    expectedAmount: payment.expected_amount,
+    creditsToAdd: payment.credits_to_add,
+    expiresAt: payment.expires_at,
+    network: direct.network,
+    tokenKind: direct.tokenKind,
+    tokenAddress: direct.tokenAddress,
+    tokenMint: direct.tokenMint,
+    tokenDecimals: direct.tokenDecimals,
+    expectedTokenUnits: direct.expectedTokenUnits.toString(),
+    payerAddress: direct.payerAddress,
+    quoteSignature: direct.metadata.quote_signature,
+  });
+}
+
+async function enqueueDirectSweep(
+  transaction: DbTransaction,
+  payload: DirectSweepPayload,
+): Promise<void> {
+  if (payload.tokenKind === "native") return;
+  const digest = settlementDigest(payload);
+  const [inserted] = await transaction
+    .insert(cryptoSweepOutbox)
+    .values({ payment_id: payload.paymentId, payload: { ...payload }, payload_digest: digest })
+    .onConflictDoNothing({ target: cryptoSweepOutbox.payment_id })
+    .returning();
+  if (inserted) return;
+  const [existing] = await transaction
+    .select()
+    .from(cryptoSweepOutbox)
+    .where(eq(cryptoSweepOutbox.payment_id, payload.paymentId))
+    .limit(1);
+  if (!existing || existing.payload_digest !== digest) {
+    throw new Error("Crypto sweep replay does not match the committed sweep intent");
+  }
+}
+
+function directInvoiceSettlement(
+  payment: CryptoPayment,
+  direct: ReturnType<typeof directMetadata>,
+  transactionHash: string,
+) {
+  const amountPaid = new Decimal(payment.expected_amount).toDecimalPlaces(2).toFixed(2);
+  const creditsAdded = new Decimal(payment.credits_to_add).toDecimalPlaces(2).toFixed(2);
+  return {
+    organization_id: payment.organization_id,
+    stripe_invoice_id: createCryptoInvoiceId(payment.id),
+    stripe_customer_id: createCryptoCustomerId(payment.organization_id),
+    stripe_payment_intent_id: transactionHash,
+    amount_due: amountPaid,
+    amount_paid: amountPaid,
+    currency: "usd",
+    status: "paid",
+    invoice_type: "crypto_payment",
+    credits_added: creditsAdded,
+    metadata: {
+      payment_method: "crypto",
+      provider: "wallet_native",
+      network: direct.network,
+      token: direct.tokenSymbol,
+      transaction_hash: transactionHash,
+      bonus_credits: direct.bonusCredits,
+    },
+  } as const;
 }
 
 export class DirectWalletPaymentsService {
@@ -1327,17 +1636,25 @@ export class DirectWalletPaymentsService {
         .for("update");
       if (!payment) throw new Error("Payment not found");
       if (payment.user_id !== params.userId) throw new Error("Unauthorized");
+      const canonicalTxHash = canonicalizeCryptoTransactionHash(params.txHash, payment.network);
 
       // Already-confirmed payments don't accept new hashes — the hash is
       // already final.
       if (payment.status === "confirmed") {
+        if (
+          !cryptoTransactionHashesEqual(payment.transaction_hash, canonicalTxHash, payment.network)
+        ) {
+          throw new Error("Payment confirmation replay does not match the committed transaction");
+        }
         return { payment, alreadyAttached: true };
       }
 
-      if (payment.transaction_hash === params.txHash) {
+      if (
+        cryptoTransactionHashesEqual(payment.transaction_hash, canonicalTxHash, payment.network)
+      ) {
         return { payment, alreadyAttached: true };
       }
-      if (payment.transaction_hash && payment.transaction_hash !== params.txHash) {
+      if (payment.transaction_hash) {
         throw new Error("Payment already has a different transaction hash attached");
       }
       if (payment.status !== "pending") {
@@ -1356,16 +1673,20 @@ export class DirectWalletPaymentsService {
       const existingTx = await tx
         .select()
         .from(cryptoPayments)
-        .where(eq(cryptoPayments.transaction_hash, params.txHash))
+        .where(
+          isHexTransactionHash(canonicalTxHash)
+            ? sql`lower(${cryptoPayments.transaction_hash}) = ${canonicalTxHash}`
+            : eq(cryptoPayments.transaction_hash, canonicalTxHash),
+        )
         .for("update");
-      if (existingTx.length > 0 && existingTx[0].id !== payment.id) {
+      if (existingTx.some((candidate) => candidate.id !== payment.id)) {
         throw new Error("Transaction already attached to another payment");
       }
 
       const [updated] = await tx
         .update(cryptoPayments)
         .set({
-          transaction_hash: params.txHash,
+          transaction_hash: canonicalTxHash,
           status: "broadcast",
           ...(payerProofPatch && {
             metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify(
@@ -1446,6 +1767,113 @@ export class DirectWalletPaymentsService {
       payerSignature?: string;
     },
   ) {
+    const [observedPayment] = await dbWrite
+      .select()
+      .from(cryptoPayments)
+      .where(eq(cryptoPayments.id, params.paymentId))
+      .limit(1);
+    if (!observedPayment) throw new Error("Payment not found");
+    if (observedPayment.user_id !== params.userId) throw new Error("Unauthorized");
+    const observedDirect = directMetadata(observedPayment);
+    const observedConfig = directPaymentConfig(env, observedDirect.network);
+    const canonicalTxHash = canonicalizeCryptoTransactionHash(
+      params.txHash,
+      observedDirect.network,
+    );
+    requireConfigured(observedConfig);
+
+    let payerProofPatch: Record<string, unknown> | null = null;
+    let verification: { blockNumber: string; receivedUnits: bigint };
+    if (observedPayment.status === "confirmed") {
+      if (
+        !cryptoTransactionHashesEqual(
+          observedPayment.transaction_hash,
+          canonicalTxHash,
+          observedDirect.network,
+        )
+      ) {
+        throw new Error("Payment confirmation replay does not match the committed transaction");
+      }
+      const receivedUnits = metadataOf(observedPayment).received_token_units;
+      if (typeof receivedUnits !== "string" || !/^\d+$/.test(receivedUnits)) {
+        throw new Error("Confirmed payment is missing its verified token units");
+      }
+      verification = {
+        blockNumber: observedPayment.block_number ?? "",
+        receivedUnits: BigInt(receivedUnits),
+      };
+    } else {
+      if (observedPayment.status !== "pending" && observedPayment.status !== "broadcast") {
+        throw new Error(`Payment is ${observedPayment.status}`);
+      }
+      if (observedPayment.expires_at < new Date() && !params.allowExpired) {
+        throw new Error("Payment has expired");
+      }
+      if (
+        observedPayment.transaction_hash &&
+        !cryptoTransactionHashesEqual(
+          observedPayment.transaction_hash,
+          canonicalTxHash,
+          observedDirect.network,
+        )
+      ) {
+        throw new Error("Payment already has a different transaction hash attached");
+      }
+      const persistedSig = observedDirect.metadata.quote_signature;
+      if (typeof persistedSig !== "string" || persistedSig.length === 0) {
+        throw new Error("Quote signature missing — payment may have been tampered with.");
+      }
+      const sigOk = await verifyQuoteSignature(
+        env,
+        {
+          paymentId: observedPayment.id,
+          expectedTokenUnits: observedDirect.expectedTokenUnits,
+          receiveAddress: String(observedDirect.metadata.receive_address ?? ""),
+          chainId: observedConfig.chainId ?? null,
+          tokenAddress: observedDirect.tokenAddress,
+          tokenMint: observedDirect.tokenMint,
+          expiresAt: observedPayment.expires_at,
+        },
+        persistedSig,
+      );
+      if (!sigOk)
+        throw new Error("Quote signature mismatch — payment may have been tampered with.");
+
+      payerProofPatch = await verifyPayerProofOrThrow({
+        paymentId: observedPayment.id,
+        direct: observedDirect,
+        signature: params.payerSignature,
+        cfg: observedConfig,
+      });
+      if (observedDirect.network === "solana") {
+        verification = await verifySolanaTokenPayment({
+          cfg: observedConfig,
+          payerAddress: observedDirect.payerAddress,
+          txHash: canonicalTxHash,
+          expectedUnits: observedDirect.expectedTokenUnits,
+        });
+      } else if (observedDirect.tokenKind === "native") {
+        verification = await verifyEvmNativePayment({
+          cfg: observedConfig,
+          payerAddress: observedDirect.payerAddress,
+          txHash: canonicalTxHash,
+          expectedUnits: observedDirect.expectedTokenUnits,
+          slippageBps: observedDirect.slippageBps,
+        });
+      } else {
+        if (!observedDirect.tokenAddress)
+          throw new Error("Payment metadata is missing token address");
+        verification = await verifyEvmTokenPayment({
+          cfg: observedConfig,
+          tokenAddress: observedDirect.tokenAddress,
+          payerAddress: observedDirect.payerAddress,
+          txHash: canonicalTxHash,
+          expectedUnits: observedDirect.expectedTokenUnits,
+        });
+      }
+    }
+    const observedDigest = directPaymentSettlementDigest(observedPayment);
+
     const result = await dbWrite.transaction(async (tx) => {
       const [payment] = await tx
         .select()
@@ -1458,14 +1886,32 @@ export class DirectWalletPaymentsService {
       if (payment.status === "confirmed") {
         const direct = directMetadata(payment);
         const cfg = directPaymentConfig(env, direct.network);
+        if (
+          !cryptoTransactionHashesEqual(payment.transaction_hash, canonicalTxHash, direct.network)
+        ) {
+          throw new Error("Payment confirmation replay does not match the committed transaction");
+        }
+        const invoiceSettlement = directInvoiceSettlement(payment, direct, canonicalTxHash);
+        await invoicesService.create(invoiceSettlement, tx);
+        await enqueueDirectSweep(tx, {
+          paymentId: payment.id,
+          network: direct.network,
+          tokenKind: direct.tokenKind,
+          tokenAddress: direct.tokenAddress,
+          tokenMint: direct.tokenMint,
+          tokenDecimals: direct.tokenDecimals,
+          receivedUnits: verification.receivedUnits.toString(),
+          sweepTo: cfg.secureAddress,
+        });
         return {
           payment,
           alreadyConfirmed: true,
+          transactionHash: canonicalTxHash,
           direct,
           cfg,
           amountPaid: payment.expected_amount,
           creditsToAdd: payment.credits_to_add,
-          sweep: metadataOf(payment).sweep,
+          sweep: metadataOf(payment).sweep ?? { state: "pending" },
         };
       }
       if (payment.status !== "pending" && payment.status !== "broadcast") {
@@ -1481,102 +1927,37 @@ export class DirectWalletPaymentsService {
       const direct = directMetadata(payment);
       const cfg = directPaymentConfig(env, direct.network);
       requireConfigured(cfg);
-
-      // Verify the HMAC-signed quote BEFORE the on-chain verify. This
-      // short-circuits a tampered client that swapped expectedTokenUnits or
-      // the receive address between createPayment and confirm, so we can
-      // reject before the user's wallet popup hits the chain.
-      const persistedSig = direct.metadata.quote_signature;
-      if (typeof persistedSig !== "string" || persistedSig.length === 0) {
-        throw new Error("Quote signature missing — payment may have been tampered with.");
+      if (directPaymentSettlementDigest(payment) !== observedDigest) {
+        throw new Error("Payment quote changed while on-chain verification was in progress");
       }
-      const sigOk = await verifyQuoteSignature(
-        env,
-        {
-          paymentId: payment.id,
-          expectedTokenUnits: direct.expectedTokenUnits,
-          receiveAddress: String(direct.metadata.receive_address ?? ""),
-          chainId: cfg.chainId ?? null,
-          tokenAddress: direct.tokenAddress,
-          tokenMint: direct.tokenMint,
-          expiresAt: payment.expires_at,
-        },
-        persistedSig,
-      );
-      if (!sigOk) {
-        throw new Error("Quote signature mismatch — payment may have been tampered with.");
+      if (
+        payment.transaction_hash &&
+        !cryptoTransactionHashesEqual(payment.transaction_hash, canonicalTxHash, direct.network)
+      ) {
+        throw new Error("Payment already has a different transaction hash attached");
       }
-
-      const payerProofPatch = await verifyPayerProofOrThrow({
-        paymentId: payment.id,
-        direct,
-        signature: params.payerSignature,
-        cfg,
-      });
 
       const existingTx = await tx
         .select()
         .from(cryptoPayments)
-        .where(eq(cryptoPayments.transaction_hash, params.txHash))
+        .where(
+          isHexTransactionHash(canonicalTxHash)
+            ? sql`lower(${cryptoPayments.transaction_hash}) = ${canonicalTxHash}`
+            : eq(cryptoPayments.transaction_hash, canonicalTxHash),
+        )
         .for("update");
-      if (existingTx.length > 0 && existingTx[0].id !== payment.id) {
+      if (existingTx.some((candidate) => candidate.id !== payment.id)) {
         throw new Error("Transaction already processed for another payment");
-      }
-
-      let verification: { blockNumber: string; receivedUnits: bigint };
-      if (direct.network === "solana") {
-        verification = await verifySolanaTokenPayment({
-          cfg,
-          payerAddress: direct.payerAddress,
-          txHash: params.txHash,
-          expectedUnits: direct.expectedTokenUnits,
-        });
-      } else if (direct.tokenKind === "native") {
-        verification = await verifyEvmNativePayment({
-          cfg,
-          payerAddress: direct.payerAddress,
-          txHash: params.txHash,
-          expectedUnits: direct.expectedTokenUnits,
-          slippageBps: direct.slippageBps,
-        });
-      } else {
-        if (!direct.tokenAddress) {
-          throw new Error("Payment metadata is missing token address");
-        }
-        verification = await verifyEvmTokenPayment({
-          cfg,
-          tokenAddress: direct.tokenAddress,
-          payerAddress: direct.payerAddress,
-          txHash: params.txHash,
-          expectedUnits: direct.expectedTokenUnits,
-        });
       }
 
       const amountPaid = new Decimal(payment.expected_amount);
       const creditsToAdd = new Decimal(payment.credits_to_add);
       const confirmedAt = new Date();
-      const sweep =
-        direct.network === "solana"
-          ? await sweepSolanaIfConfigured({ env, cfg, units: verification.receivedUnits }).catch(
-              (error) => ({ sweep_error: error instanceof Error ? error.message : String(error) }),
-            )
-          : direct.tokenKind === "native"
-            ? null
-            : await sweepEvmIfConfigured({
-                env,
-                cfg,
-                tokenAddress: direct.tokenAddress,
-                tokenDecimals: direct.tokenDecimals,
-                units: verification.receivedUnits,
-              }).catch((error) => ({
-                sweep_error: error instanceof Error ? error.message : String(error),
-              }));
-
       await tx
         .update(cryptoPayments)
         .set({
           status: "confirmed",
-          transaction_hash: params.txHash,
+          transaction_hash: canonicalTxHash,
           block_number: verification.blockNumber,
           received_amount: amountPaid.toFixed(2),
           confirmed_at: confirmedAt,
@@ -1586,7 +1967,7 @@ export class DirectWalletPaymentsService {
             ...(payerProofPatch ?? {}),
             confirmed_at: confirmedAt.toISOString(),
             received_token_units: verification.receivedUnits.toString(),
-            sweep,
+            sweep: { state: direct.tokenKind === "native" ? "not_required" : "pending" },
           },
         })
         .where(eq(cryptoPayments.id, payment.id));
@@ -1601,7 +1982,7 @@ export class DirectWalletPaymentsService {
       // dedupe in addCredits (ON CONFLICT on stripe_payment_intent_id).
       await creditsService.addCredits({
         organizationId: payment.organization_id,
-        amount: Number(creditsToAdd.toFixed(2)),
+        amount: creditsToAdd.toFixed(2),
         description:
           direct.bonusCredits > 0
             ? `Direct crypto payment (${direct.tokenSymbol} on ${cfg.displayName}) + BSC promotion`
@@ -1612,7 +1993,7 @@ export class DirectWalletPaymentsService {
           crypto_payment_id: payment.id,
           payment_method: "crypto",
           provider: "wallet_native",
-          transaction_hash: params.txHash,
+          transaction_hash: canonicalTxHash,
           network: direct.network,
           token: direct.tokenSymbol,
           paid_amount_usd: amountPaid.toFixed(2),
@@ -1622,6 +2003,19 @@ export class DirectWalletPaymentsService {
         },
       });
 
+      const invoiceSettlement = directInvoiceSettlement(payment, direct, canonicalTxHash);
+      await invoicesService.create(invoiceSettlement, tx);
+      await enqueueDirectSweep(tx, {
+        paymentId: payment.id,
+        network: direct.network,
+        tokenKind: direct.tokenKind,
+        tokenAddress: direct.tokenAddress,
+        tokenMint: direct.tokenMint,
+        tokenDecimals: direct.tokenDecimals,
+        receivedUnits: verification.receivedUnits.toString(),
+        sweepTo: cfg.secureAddress,
+      });
+
       const [confirmed] = await tx
         .select()
         .from(cryptoPayments)
@@ -1629,48 +2023,267 @@ export class DirectWalletPaymentsService {
       return {
         payment: confirmed ?? payment,
         alreadyConfirmed: false,
+        transactionHash: canonicalTxHash,
         direct,
         cfg,
         amountPaid: amountPaid.toFixed(2),
         creditsToAdd: creditsToAdd.toFixed(2),
-        sweep,
+        sweep: { state: direct.tokenKind === "native" ? "not_required" : "pending" },
       };
     });
 
-    const { direct, amountPaid, creditsToAdd, sweep } = result;
-
-    const invoiceId = createCryptoInvoiceId(result.payment.id);
-    const existingInvoice = await invoicesService.getByStripeInvoiceId(invoiceId);
-    if (!existingInvoice) {
-      await invoicesService.create({
-        organization_id: result.payment.organization_id,
-        stripe_invoice_id: invoiceId,
-        stripe_customer_id: createCryptoCustomerId(result.payment.organization_id),
-        stripe_payment_intent_id: params.txHash,
-        amount_due: amountPaid,
-        amount_paid: amountPaid,
-        currency: "usd",
-        status: "paid",
-        invoice_type: "crypto_payment",
-        credits_added: creditsToAdd,
-        metadata: {
-          payment_method: "crypto",
-          provider: "wallet_native",
-          network: direct.network,
-          token: direct.tokenSymbol,
-          transaction_hash: params.txHash,
-          bonus_credits: direct.bonusCredits,
-          sweep,
-        },
-      });
+    if (result.direct.tokenKind !== "native") {
+      try {
+        await this.processSweepForPayment(env, result.payment.id);
+      } catch (error) {
+        // error-policy:J4 settlement is durable and explicitly reports a
+        // pending sweep; the active cron dispatcher retries the outbox row.
+        logger.warn("[DirectWalletPayments] Post-settlement sweep deferred", {
+          paymentId: redact.paymentId(result.payment.id),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     logger.info("[DirectWalletPayments] Payment confirmed", {
       paymentId: redact.paymentId(params.paymentId),
-      txHash: redact.txHash(params.txHash),
+      txHash: redact.txHash(result.transactionHash),
     });
 
     return result;
+  }
+
+  private async processSweepForPayment(
+    env: Bindings,
+    paymentId: string,
+    hooks?: { afterExternalSweep?: () => Promise<void> },
+  ): Promise<boolean> {
+    const claimToken = crypto.randomUUID();
+    const now = new Date();
+    const claimed = await dbWrite.transaction(async (tx) => {
+      const [candidate] = await tx
+        .select()
+        .from(cryptoSweepOutbox)
+        .where(eq(cryptoSweepOutbox.payment_id, paymentId))
+        .for("update")
+        .limit(1);
+      if (!candidate || candidate.state === "delivered" || candidate.state === "terminal") {
+        return null;
+      }
+      if (
+        candidate.state === "processing" &&
+        candidate.lease_expires_at &&
+        candidate.lease_expires_at > now
+      ) {
+        return null;
+      }
+      if (candidate.next_attempt_at > now) return null;
+      const [row] = await tx
+        .update(cryptoSweepOutbox)
+        .set({
+          state: "processing",
+          claim_token: claimToken,
+          lease_expires_at: new Date(now.getTime() + 120_000),
+          attempts: candidate.attempts + 1,
+          updated_at: now,
+        })
+        .where(eq(cryptoSweepOutbox.id, candidate.id))
+        .returning();
+      return row ?? null;
+    });
+    if (!claimed) return false;
+
+    let externalSweepReturned = false;
+    try {
+      const payload = directSweepPayload(claimed.payload);
+      if (settlementDigest(payload) !== claimed.payload_digest) {
+        throw new Error("Crypto sweep outbox payload digest mismatch");
+      }
+      const cfg = directPaymentConfig(env, payload.network);
+      requireConfigured(cfg);
+      const units = BigInt(payload.receivedUnits);
+      let prepared = preparedSweepFromRow(claimed);
+      if (
+        prepared &&
+        (prepared.metadata.network !== payload.network ||
+          prepared.metadata.sweepTo !== payload.sweepTo)
+      ) {
+        throw new Error("Prepared crypto sweep does not match the immutable intent");
+      }
+      const prepare = async (): Promise<PreparedSweep | null> => {
+        if (!payload.sweepTo) return null;
+        if (payload.network === "solana") {
+          if (!payload.tokenMint) throw new Error("Solana sweep intent is missing its token mint");
+          return prepareSolanaSweep({
+            env,
+            cfg,
+            units,
+            sweepTo: payload.sweepTo,
+            tokenMint: payload.tokenMint,
+            tokenDecimals: payload.tokenDecimals,
+          });
+        }
+        return prepareEvmSweep({
+          env,
+          cfg,
+          tokenAddress: payload.tokenAddress,
+          tokenDecimals: payload.tokenDecimals,
+          units,
+          sweepTo: payload.sweepTo,
+        });
+      };
+      const persistPrepared = async (
+        next: PreparedSweep,
+        previousHash: string | null,
+      ): Promise<void> => {
+        const [persisted] = await dbWrite
+          .update(cryptoSweepOutbox)
+          .set({
+            prepared_transaction: next.rawTransaction,
+            sweep_transaction_hash: next.transactionHash,
+            prepared_metadata: next.metadata,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(cryptoSweepOutbox.id, claimed.id),
+              eq(cryptoSweepOutbox.claim_token, claimToken),
+              previousHash === null
+                ? sql`${cryptoSweepOutbox.sweep_transaction_hash} IS NULL`
+                : eq(cryptoSweepOutbox.sweep_transaction_hash, previousHash),
+            ),
+          )
+          .returning({ id: cryptoSweepOutbox.id });
+        if (!persisted) {
+          throw new Error("Crypto sweep lease was lost before transaction preparation");
+        }
+      };
+      if (!prepared) {
+        prepared = await prepare();
+        if (prepared) await persistPrepared(prepared, null);
+      }
+      if (prepared) {
+        if (payload.network === "solana") {
+          const outcome = await submitPreparedSolanaSweep(cfg, prepared);
+          if (outcome === "reprepare") {
+            const expiredHash = prepared.transactionHash;
+            const replacement = await prepare();
+            if (!replacement) throw new Error("Solana sweep replacement could not be prepared");
+            await persistPrepared(replacement, expiredHash);
+            prepared = replacement;
+            if ((await submitPreparedSolanaSweep(cfg, prepared)) === "reprepare") {
+              throw new Error("New Solana sweep blockhash expired before submission");
+            }
+          }
+        } else {
+          await submitPreparedEvmSweep(cfg, prepared);
+        }
+      }
+      externalSweepReturned = true;
+      const completedAt = new Date();
+      await hooks?.afterExternalSweep?.();
+      await dbWrite.transaction(async (tx) => {
+        const [owned] = await tx
+          .select()
+          .from(cryptoSweepOutbox)
+          .where(
+            and(
+              eq(cryptoSweepOutbox.id, claimed.id),
+              eq(cryptoSweepOutbox.claim_token, claimToken),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!owned) throw new Error("Crypto sweep lease was lost before acknowledgement");
+        await tx
+          .update(cryptoSweepOutbox)
+          .set({
+            state: "delivered",
+            delivered_at: completedAt,
+            sweep_transaction_hash: prepared?.transactionHash ?? null,
+            claim_token: null,
+            lease_expires_at: null,
+            last_error: null,
+            updated_at: completedAt,
+          })
+          .where(eq(cryptoSweepOutbox.id, claimed.id));
+        await tx
+          .update(cryptoPayments)
+          .set({
+            metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify({
+              sweep: prepared
+                ? {
+                    sweep_transaction_hash: prepared.transactionHash,
+                    sweep_to: prepared.metadata.sweepTo,
+                  }
+                : { state: "not_configured" },
+              sweep_completed_at: completedAt.toISOString(),
+            })}::jsonb`,
+            updated_at: completedAt,
+          })
+          .where(eq(cryptoPayments.id, paymentId));
+      });
+      return true;
+    } catch (error) {
+      // error-policy:J4 the outbox retains the failure and bounded retry state;
+      // the payment and credit settlement remain committed and observable.
+      // Once the provider returned a submission result, an acknowledgement
+      // failure is outcome-unknown. Never submit again automatically: doing so
+      // could sweep a later deposit with the same balance-based transfer.
+      const terminal = externalSweepReturned || claimed.attempts >= 12;
+      await dbWrite
+        .update(cryptoSweepOutbox)
+        .set({
+          state: terminal ? "terminal" : "pending",
+          terminal_at: terminal ? new Date() : null,
+          next_attempt_at: new Date(
+            Date.now() + Math.min(3_600_000, 2 ** claimed.attempts * 1_000),
+          ),
+          claim_token: null,
+          lease_expires_at: null,
+          last_error: error instanceof Error ? error.message : String(error),
+          updated_at: new Date(),
+        })
+        .where(
+          and(eq(cryptoSweepOutbox.id, claimed.id), eq(cryptoSweepOutbox.claim_token, claimToken)),
+        );
+      throw error;
+    }
+  }
+
+  async drainSweepOutbox(
+    env: Bindings,
+    limit = 25,
+    hooks?: { afterExternalSweep?: () => Promise<void> },
+  ): Promise<{ processed: number; delivered: number; deferred: number }> {
+    const due = await dbWrite
+      .select({ paymentId: cryptoSweepOutbox.payment_id })
+      .from(cryptoSweepOutbox)
+      .where(
+        and(
+          lte(cryptoSweepOutbox.next_attempt_at, new Date()),
+          or(
+            eq(cryptoSweepOutbox.state, "pending"),
+            and(
+              eq(cryptoSweepOutbox.state, "processing"),
+              lte(cryptoSweepOutbox.lease_expires_at, new Date()),
+            ),
+          ),
+        ),
+      )
+      .orderBy(cryptoSweepOutbox.next_attempt_at, cryptoSweepOutbox.created_at)
+      .limit(limit);
+    const stats = { processed: 0, delivered: 0, deferred: 0 };
+    for (const row of due) {
+      stats.processed += 1;
+      try {
+        if (await this.processSweepForPayment(env, row.paymentId, hooks)) stats.delivered += 1;
+      } catch {
+        // error-policy:J4 processSweepForPayment persisted retry/terminal state.
+        stats.deferred += 1;
+      }
+    }
+    return stats;
   }
 
   /**
@@ -1770,13 +2383,7 @@ export class DirectWalletPaymentsService {
                 last_verify_at: new Date().toISOString(),
               })}::jsonb`,
             })
-            .where(eq(cryptoPayments.id, payment.id))
-            .catch((e) => {
-              logger.warn("[DirectWalletPayments] failed to bump verify_attempts", {
-                paymentId: redact.paymentId(payment.id),
-                error: String(e),
-              });
-            });
+            .where(eq(cryptoPayments.id, payment.id));
 
         if (!terminal && attempts < MAX_VERIFY_ATTEMPTS) {
           stats.stillPending += 1;

@@ -10,6 +10,7 @@ import {
   marketDataConfig,
   marketDataHandler,
 } from "@/lib/services/proxy/services/market-data";
+import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, OPTIONS";
@@ -68,11 +69,15 @@ async function __hono_GET(
 
   const requestParams: Record<string, string> = { address };
 
-  const limit = searchParams.get("limit");
-  if (limit) requestParams.limit = limit;
+  const rawLimit = searchParams.get("limit");
+  if (rawLimit !== null && rawLimit !== "") {
+    requestParams.limit = String(parseClampedLimit(rawLimit, 50, 100));
+  }
 
-  const offset = searchParams.get("offset");
-  if (offset) requestParams.offset = offset;
+  const rawOffset = searchParams.get("offset");
+  if (rawOffset !== null && rawOffset !== "") {
+    requestParams.offset = String(parseClampedOffset(rawOffset, 0));
+  }
 
   // Token-trade type identity, not leftover tax on market-candles
   // OHLCV type. Unknown tokens (SWAP / buy / 1e2) used to be

@@ -5,6 +5,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { getScreenCapturePlugin } from "../bridge/native-plugins";
+import { fetchWithDeadline } from "../utils/fetch-with-deadline";
 
 /**
  * Renderer side of the Android agent-triggered screen-capture bridge (#9105).
@@ -20,6 +21,8 @@ import { getScreenCapturePlugin } from "../bridge/native-plugins";
  */
 
 const POLL_INTERVAL_MS = 1500;
+
+const SCREEN_CAPTURE_HOP_TIMEOUT_MS = 15_000;
 
 /**
  * Once this many polls fail in a row, stop hammering the route every 1500ms and
@@ -57,6 +60,8 @@ interface CaptureRequest {
 let started = false;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let consecutiveFailures = 0;
+let pollGeneration = 0;
+let activePollController: AbortController | null = null;
 
 /** Frugal screen-understanding defaults: half-res, q70 → tens of KB per frame. */
 function clampScale(scale: number): number {
@@ -87,15 +92,30 @@ function isCaptureRequest(value: unknown): value is CaptureRequest {
   );
 }
 
-async function postScreenFrame(body: Record<string, unknown>): Promise<void> {
-  await fetch("/api/vision/screen-frame", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+async function postScreenFrame(
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<void> {
+  await fetchWithDeadline(
+    "/api/vision/screen-frame",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    async (response) => {
+      if (!response.ok) {
+        throw new Error(`Screen-frame request failed (${response.status})`);
+      }
+    },
+    { signal, timeoutMs: SCREEN_CAPTURE_HOP_TIMEOUT_MS },
+  );
 }
 
-async function serveRequest(request: CaptureRequest): Promise<void> {
+async function serveRequest(
+  request: CaptureRequest,
+  signal: AbortSignal,
+): Promise<void> {
   try {
     // Capture as a scaled JPEG so the resize + encode happen NATIVELY (the
     // VirtualDisplay renders at the target resolution and Skia compresses) —
@@ -111,13 +131,16 @@ async function serveRequest(request: CaptureRequest): Promise<void> {
       quality,
       scale,
     });
-    await postScreenFrame({
-      requestId: request.requestId,
-      base64: shot.base64,
-      format: shot.format,
-      width: shot.width,
-      height: shot.height,
-    });
+    await postScreenFrame(
+      {
+        requestId: request.requestId,
+        base64: shot.base64,
+        format: shot.format,
+        width: shot.width,
+        height: shot.height,
+      },
+      signal,
+    );
   } catch (error) {
     // Report the failure so the agent's pending request settles immediately
     // (as null) instead of waiting out its timeout, and so this poller keeps
@@ -126,35 +149,43 @@ async function serveRequest(request: CaptureRequest): Promise<void> {
     // error-policy:J5 best-effort failure report — if even the error POST
     // fails, the agent still observes the failure via its own 30s capture
     // timeout; the poller must keep running for the next request.
-    await postScreenFrame({
-      requestId: request.requestId,
-      error: reason,
-    }).catch(() => undefined);
+    await postScreenFrame(
+      {
+        requestId: request.requestId,
+        error: reason,
+      },
+      signal,
+    ).catch(() => undefined);
   }
 }
 
-async function poll(): Promise<void> {
+async function poll(signal: AbortSignal): Promise<void> {
   let requests: CaptureRequest[];
   try {
-    const res = await fetch("/api/vision/capture-requests");
-    if (!res.ok) {
-      // 404 = the vision route isn't registered in this config; other non-ok is
-      // transient. Either way, count toward backoff so we don't spin at 1500ms.
-      consecutiveFailures += 1;
-      return;
-    }
+    requests = await fetchWithDeadline(
+      "/api/vision/capture-requests",
+      { method: "GET" },
+      async (response) => {
+        if (!response.ok) {
+          throw new Error(`Capture-request poll failed (${response.status})`);
+        }
+        const data = (await response.json()) as { requests?: unknown };
+        const list = Array.isArray(data.requests) ? data.requests : [];
+        return list.filter(isCaptureRequest);
+      },
+      { signal, timeoutMs: SCREEN_CAPTURE_HOP_TIMEOUT_MS },
+    );
     consecutiveFailures = 0;
-    const data = (await res.json()) as { requests?: unknown };
-    const list = Array.isArray(data.requests) ? data.requests : [];
-    requests = list.filter(isCaptureRequest);
   } catch {
+    if (signal.aborted) return;
     // error-policy:J4 agent not reachable yet (early boot) — count toward the
     // designed exponential backoff; the next tick retries.
     consecutiveFailures += 1;
     return;
   }
   for (const request of requests) {
-    await serveRequest(request);
+    if (signal.aborted) return;
+    await serveRequest(request, signal);
   }
 }
 
@@ -162,12 +193,17 @@ async function poll(): Promise<void> {
  * Idempotent boot: start the capture-request poller on Android/iOS native.
  * No-op on web/desktop and on repeat calls.
  */
-function scheduleNextPoll(delayMs: number): void {
+function scheduleNextPoll(delayMs: number, generation: number): void {
   pollTimer = setTimeout(() => {
-    void poll().finally(() => {
+    const controller = new AbortController();
+    activePollController = controller;
+    void poll(controller.signal).finally(() => {
+      if (activePollController === controller) activePollController = null;
       // Re-arm from the current failure streak so a persistently-404 route backs
       // off instead of polling forever; a success resets the streak to fast.
-      if (started) scheduleNextPoll(computePollDelayMs(consecutiveFailures));
+      if (started && generation === pollGeneration) {
+        scheduleNextPoll(computePollDelayMs(consecutiveFailures), generation);
+      }
     });
   }, delayMs);
 }
@@ -177,11 +213,17 @@ export function initScreenCaptureBridge(): void {
   if (!isNativeMobile()) return;
   started = true;
   consecutiveFailures = 0;
-  scheduleNextPoll(POLL_INTERVAL_MS);
+  pollGeneration += 1;
+  scheduleNextPoll(POLL_INTERVAL_MS, pollGeneration);
 }
 
 /** Test-only reset hook. */
 export function __resetScreenCaptureBridgeForTests(): void {
+  pollGeneration += 1;
+  activePollController?.abort(
+    new DOMException("Screen-capture poll stopped", "AbortError"),
+  );
+  activePollController = null;
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;

@@ -8,16 +8,24 @@ import { getLocalServerUrl, pingServer, waitForServerReady } from "./node.js";
 
 describe("node utilities", () => {
 	const originalServerPort = process.env.SERVER_PORT;
+	const originalElizaApiPort = process.env.ELIZA_API_PORT;
+	const originalElizaPort = process.env.ELIZA_PORT;
 
 	beforeEach(() => {
 		getEnvironment().clearCache();
 		delete process.env.SERVER_PORT;
+		delete process.env.ELIZA_API_PORT;
+		delete process.env.ELIZA_PORT;
 	});
 
 	afterEach(() => {
 		getEnvironment().clearCache();
 		if (originalServerPort === undefined) delete process.env.SERVER_PORT;
 		else process.env.SERVER_PORT = originalServerPort;
+		if (originalElizaApiPort === undefined) delete process.env.ELIZA_API_PORT;
+		else process.env.ELIZA_API_PORT = originalElizaApiPort;
+		if (originalElizaPort === undefined) delete process.env.ELIZA_PORT;
+		else process.env.ELIZA_PORT = originalElizaPort;
 	});
 
 	describe("getLocalServerUrl", () => {
@@ -43,6 +51,17 @@ describe("node utilities", () => {
 			getEnvironment().clearCache();
 
 			expect(getLocalServerUrl("/ready")).toBe("http://localhost:4567/ready");
+		});
+
+		it("prefers the browser runtime API port aliases", () => {
+			process.env.SERVER_PORT = "3001";
+			process.env.ELIZA_PORT = "32336";
+			process.env.ELIZA_API_PORT = "32337";
+			getEnvironment().clearCache();
+
+			expect(getLocalServerUrl("/api/media/example.txt")).toBe(
+				"http://localhost:32337/api/media/example.txt",
+			);
 		});
 	});
 

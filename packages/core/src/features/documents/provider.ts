@@ -8,6 +8,7 @@
  * exact `documents` and `knowledge` contexts and a minimum `USER` role, with
  * per-turn cache scope.
  */
+import { logger } from "../../logger";
 import {
 	type IAgentRuntime,
 	type Memory,
@@ -22,6 +23,10 @@ import { normalizeDocumentSourceValue } from "./utils.ts";
 const MAX_RELEVANT_SNIPPETS = 5;
 const MAX_RECENT_DOCUMENTS = 10;
 const MAX_AVAILABLE_DOCUMENTS = 25;
+export const PINNED_DOCUMENT_TOKEN_BUDGET = 8_000;
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+export const PINNED_DOCUMENT_TRUNCATION_MARKER =
+	"[PINNED KNOWLEDGE TRUNCATED: token budget exceeded]";
 
 function getDocumentTitle(memory: Memory, index: number): string {
 	const metadata = memory.metadata as DocumentMetadataExtended | undefined;
@@ -30,6 +35,44 @@ function getDocumentTitle(memory: Memory, index: number): string {
 	return typeof title === "string" && title.trim().length > 0
 		? title.trim()
 		: `Document ${index + 1}`;
+}
+
+export function renderPinnedDocuments(
+	documents: Memory[],
+	tokenBudget = PINNED_DOCUMENT_TOKEN_BUDGET,
+): { text: string; truncated: boolean; includedIds: Array<Memory["id"]> } {
+	const pinned = documents
+		.filter((document) => {
+			const metadata = document.metadata as
+				| DocumentMetadataExtended
+				| undefined;
+			return metadata?.type === MemoryType.DOCUMENT && metadata.pinned === true;
+		})
+		.sort((a, b) => {
+			const titleOrder = getDocumentTitle(a, 0).localeCompare(
+				getDocumentTitle(b, 0),
+			);
+			return titleOrder || String(a.id ?? "").localeCompare(String(b.id ?? ""));
+		});
+	const maxChars =
+		Math.max(0, Math.floor(tokenBudget)) * CHARS_PER_TOKEN_ESTIMATE;
+	let usedChars = 0;
+	let truncated = false;
+	const includedIds: Array<Memory["id"]> = [];
+	const blocks: string[] = [];
+	for (const [index, document] of pinned.entries()) {
+		const block = `## ${getDocumentTitle(document, index)} (${document.id})\n${document.content.text ?? ""}`;
+		const separatorLength = blocks.length > 0 ? 2 : 0;
+		if (usedChars + separatorLength + block.length > maxChars) {
+			truncated = true;
+			break;
+		}
+		blocks.push(block);
+		includedIds.push(document.id);
+		usedChars += separatorLength + block.length;
+	}
+	if (truncated) blocks.push(PINNED_DOCUMENT_TRUNCATION_MARKER);
+	return { text: blocks.join("\n\n"), truncated, includedIds };
 }
 
 function summarizeDocument(memory: Memory, index: number) {
@@ -77,10 +120,20 @@ export const documentsProvider: Provider = {
 			};
 		}
 
-		const { relevantFragments, documents } =
+		const { relevantFragments, documents, pinnedDocuments } =
 			await service.composeProviderDocuments(message, {
 				limit: MAX_AVAILABLE_DOCUMENTS,
 			});
+		const pinned = renderPinnedDocuments(pinnedDocuments);
+		if (pinned.truncated) {
+			logger.warn(
+				{
+					tokenBudget: PINNED_DOCUMENT_TOKEN_BUDGET,
+					includedIds: pinned.includedIds,
+				},
+				"Pinned knowledge exceeded its provider token budget; prompt content was explicitly truncated",
+			);
+		}
 		const relevantSnippets = relevantFragments
 			.slice(0, MAX_RELEVANT_SNIPPETS)
 			.map((fragment, index) => {
@@ -116,7 +169,13 @@ export const documentsProvider: Provider = {
 			.join("\n");
 		const text = addHeader(
 			"# Documents",
-			[snippetsText, recentText ? `Recent documents:\n${recentText}` : ""]
+			[
+				pinned.text
+					? `Pinned knowledge (always applicable):\n${pinned.text}`
+					: "",
+				snippetsText,
+				recentText ? `Recent documents:\n${recentText}` : "",
+			]
 				.filter(Boolean)
 				.join("\n\n"),
 		);
@@ -127,6 +186,8 @@ export const documentsProvider: Provider = {
 			documentsRelevant: relevantSnippets,
 			recentDocuments,
 			documentsCount: summaries.length,
+			pinnedDocumentIds: pinned.includedIds,
+			pinnedDocumentsTruncated: pinned.truncated,
 		};
 
 		return {

@@ -18,7 +18,7 @@
  *    skip: pause suppresses proactive behavior, and chaining is proactive.
  */
 
-import { stableStringify } from "@elizaos/core/edge";
+import { ElizaError, stableStringify } from "@elizaos/core/edge";
 import { decideDispatchPolicy } from "../dispatch-policy.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
@@ -39,6 +39,7 @@ import {
 import type { TaskGateRegistry } from "./gate-registry.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
+import { projectMinuteOffsetMs } from "./time-range.js";
 import {
   type ActivitySignalBusView,
   APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
@@ -1225,8 +1226,21 @@ export function createScheduledTaskRunner(
     let newFireAtIso: string;
     if (typeof untilIso === "string") {
       newFireAtIso = new Date(untilIso).toISOString();
-    } else if (typeof minutes === "number" && minutes > 0) {
-      newFireAtIso = new Date(now().getTime() + minutes * 60_000).toISOString();
+    } else if (typeof minutes === "number") {
+      if (minutes <= 0) {
+        throw new Error("snooze: provide minutes or untilIso");
+      }
+      const newFireMs = projectMinuteOffsetMs(now().getTime(), minutes);
+      if (newFireMs === null) {
+        throw new ElizaError(
+          "snooze: minutes must be finite and project to a representable Date",
+          {
+            code: "SCHEDULED_TASK_SNOOZE_PROJECTION_INVALID",
+            context: { minutes },
+          },
+        );
+      }
+      newFireAtIso = new Date(newFireMs).toISOString();
     } else {
       throw new Error("snooze: provide minutes or untilIso");
     }
@@ -1948,19 +1962,31 @@ export function createScheduledTaskRunner(
       };
     }
     if (gateOutcome.decision.kind === "defer") {
+      const nowMs = now().getTime();
       const offset =
         "offsetMinutes" in gateOutcome.decision.until
           ? gateOutcome.decision.until.offsetMinutes
           : Math.max(
               1,
               Math.round(
-                (new Date(gateOutcome.decision.until.atIso).getTime() -
-                  now().getTime()) /
+                (new Date(gateOutcome.decision.until.atIso).getTime() - nowMs) /
                   60_000,
               ),
             );
+      const newFireMs = projectMinuteOffsetMs(nowMs, offset);
+      if (newFireMs === null) {
+        throw new ElizaError(
+          "gate defer: offset must be non-negative and project to a representable Date",
+          {
+            code: "SCHEDULED_TASK_GATE_DEFER_PROJECTION_INVALID",
+            context: {
+              gateKind: gateOutcome.gateKind ?? "gate",
+              offsetMinutes: offset,
+            },
+          },
+        );
+      }
       task.state.lastDecisionLog = `${gateOutcome.gateKind ?? "gate"}: deferred ${offset}m (${gateOutcome.decision.reason})`;
-      const newFireMs = now().getTime() + offset * 60_000;
       if (refireClaim) {
         // Park the deferred occurrence as a plain scheduled-override so it
         // fires AT the defer time (`scheduledOverrideDue`), not at the
@@ -2226,9 +2252,18 @@ export function createScheduledTaskRunner(
         await persist(task);
         return { kind: "fired", task };
       case "retry": {
-        const nextAttemptAtIso = new Date(
-          Date.parse(fireAtIso) + decision.retryAfterMinutes * 60_000,
-        ).toISOString();
+        // `retryAfterMinutes` is connector-supplied and schema-unbounded; a
+        // huge value would push the park-back instant past the JS Date range
+        // and make `toISOString()` throw AFTER the row was atomically claimed
+        // to `"fired"`, stranding it. Settle terminally instead of stranding.
+        const nextAttemptMs = projectMinuteOffsetMs(
+          Date.parse(fireAtIso),
+          decision.retryAfterMinutes,
+        );
+        if (nextAttemptMs === null) {
+          return failTerminal(task, decision.reason, failure.message);
+        }
+        const nextAttemptAtIso = new Date(nextAttemptMs).toISOString();
         task.state.status = "scheduled";
         task.state.firedAt = nextAttemptAtIso;
         task.state.lastDecisionLog = `dispatch retry ${attempt + 1}/${MAX_DISPATCH_RETRIES_PER_STEP} in ${decision.retryAfterMinutes}m (${decision.reason})`;
@@ -2264,9 +2299,21 @@ export function createScheduledTaskRunner(
           return failTerminal(task, decision.reason, decision.message);
         }
         const { nextLadderIndex, nextStep } = next;
-        const nextAttemptAtIso = new Date(
-          Date.parse(fireAtIso) + nextStep.delayMinutes * 60_000,
-        ).toISOString();
+        // `delayMinutes` is schema-valid but unbounded (schema.ts had no
+        // upper limit); guard the park-back instant against the Date range so
+        // a claimed row settles terminally instead of throwing while stranded
+        // in `"fired"`.
+        const nextAttemptMs = projectMinuteOffsetMs(
+          Date.parse(fireAtIso),
+          nextStep.delayMinutes,
+        );
+        if (nextAttemptMs === null) {
+          if (decision.kind === "surface_degraded") {
+            recordConnectorDegradation(task, decision, fireAtIso);
+          }
+          return failTerminal(task, decision.reason, decision.message);
+        }
+        const nextAttemptAtIso = new Date(nextAttemptMs).toISOString();
         task.state.status = "scheduled";
         task.state.firedAt = nextAttemptAtIso;
         task.state.lastDecisionLog = `dispatch advanced to ladder step ${nextLadderIndex} (${nextStep.channelKey}) after ${decision.reason}`;

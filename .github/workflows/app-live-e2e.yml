@@ -392,10 +392,49 @@ jobs:
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
 
       - name: Build app renderer bundle
+        # The renderer resolves its Cloud base at BUILD time from
+        # VITE_ELIZA_CLOUD_BASE and otherwise defaults to production
+        # (ui/src/platform/ios-runtime.ts resolveCloudApiBase). The job-level
+        # ELIZAOS_CLOUD_BASE_URL pins the spawned runtime's proxy, which
+        # carries create/provision; it does NOT reach Vite. The chat leg is
+        # what breaks: selectOrProvisionCloudAgent derives the shared-agent
+        # base from the boot value, so a production-defaulted bundle sends a
+        # staging agent id and this lane's staging bearer to api.eliza.app
+        # (#18076).
+        env:
+          VITE_ELIZA_CLOUD_BASE: ${{ env.ELIZAOS_CLOUD_BASE_URL }}
         run: bun run --cwd packages/app build:web
 
       - name: Run real STAGING cloud login + provision + chat
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium
+        id: staging-cloud-smoke
+        shell: bash
+        run: |
+          set -uo pipefail
+          started_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          echo "started_ms=$started_ms" >> "$GITHUB_OUTPUT"
+          set +e
+          bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium
+          test_status=$?
+          set -e
+          completed_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          echo "completed_ms=$completed_ms" >> "$GITHUB_OUTPUT"
+          exit "$test_status"
+
+      - name: Write secret-free staging receipt
+        if: ${{ always() && steps.staging-cloud-smoke.outcome != 'skipped' }}
+        env:
+          TEST_OUTCOME: ${{ steps.staging-cloud-smoke.outcome }}
+          TEST_STARTED_MS: ${{ steps.staging-cloud-smoke.outputs.started_ms }}
+          TEST_COMPLETED_MS: ${{ steps.staging-cloud-smoke.outputs.completed_ms }}
+        run: |
+          node packages/scripts/write-staging-cloud-receipt.mjs \
+            --output artifacts/app-live-e2e/cloud-staging-receipt.json \
+            --source-sha "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --outcome "$TEST_OUTCOME" \
+            --started-ms "$TEST_STARTED_MS" \
+            --completed-ms "$TEST_COMPLETED_MS"
 
       - name: Record what this lane drove
         if: ${{ always() }}
@@ -407,14 +446,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload cloud-live staging artifacts
-        if: ${{ always() }}
+        if: ${{ always() && steps.staging-cloud-smoke.outcome != 'skipped' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: app-live-e2e-cloud-staging
           path: |
+            artifacts/app-live-e2e/cloud-staging-receipt.json
             packages/app/playwright-report/
             packages/app/test-results/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   # Real on-device LOCAL provisioning + chat on Android: boots an emulator, builds

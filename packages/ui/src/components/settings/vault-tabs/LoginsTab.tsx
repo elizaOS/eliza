@@ -164,14 +164,10 @@ export function LoginsTab() {
     setError(null);
     setLogins(null);
     try {
-      const res = await client.rawRequest("/api/secrets/logins", undefined, {
-        allowNonOk: true,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as {
+      const json = await client.fetch<{
         logins: SavedLogin[];
         failures?: SavedLoginsListFailure[];
-      };
+      }>("/api/secrets/logins");
       setLogins(json.logins);
       setFailures(json.failures ?? []);
       const domains = json.logins

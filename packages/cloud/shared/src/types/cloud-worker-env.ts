@@ -304,6 +304,8 @@ export interface Bindings {
   STEWARD_SESSION_SECRET?: string;
   /** Optional dedicated secret for OAuth success-page HMAC proofs; falls back to STEWARD_SESSION_SECRET. */
   OAUTH_SUCCESS_PROOF_SECRET?: string;
+  /** Dedicated HMAC key for short-lived remote pairing-code verifiers. */
+  REMOTE_PAIRING_HMAC_SECRET?: string;
   /** Required managed Google OAuth application credentials. */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;

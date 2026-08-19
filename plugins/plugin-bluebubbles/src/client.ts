@@ -17,11 +17,10 @@ import type {
 	SendMessageResult,
 } from "./types";
 
-/** JSON API hops share the documented 15s sibling budget from GitHub/Google connector OAuth. */
-export const BLUEBUBBLES_REQUEST_TIMEOUT_MS = 15_000;
+const BLUEBUBBLES_REQUEST_TIMEOUT_MS = 15_000;
 
 /** Binary attachment POSTs share the documented 30s blob-upload sibling budget. */
-export const BLUEBUBBLES_ATTACHMENT_TIMEOUT_MS = 30_000;
+const BLUEBUBBLES_ATTACHMENT_TIMEOUT_MS = 30_000;
 
 interface BlueBubblesFetchResponse {
 	ok: boolean;
@@ -30,19 +29,15 @@ interface BlueBubblesFetchResponse {
 	json(): Promise<unknown>;
 }
 
-export async function blueBubblesRequestWithFetch<T>(
+async function blueBubblesRequest<T>(
 	urlWithPassword: string,
 	options: RequestInit = {},
-	fetchImpl: typeof fetch = globalThis.fetch,
-	timeoutMs: number = BLUEBUBBLES_REQUEST_TIMEOUT_MS,
 ): Promise<T> {
-	// The deadline always applies: a caller-supplied signal composes with the
-	// timeout instead of replacing it, so cancellation-aware callers cannot
-	// accidentally opt back into the unbounded-fetch hang this bound removed.
+	const timeoutSignal = AbortSignal.timeout(BLUEBUBBLES_REQUEST_TIMEOUT_MS);
 	const signal = options.signal
-		? AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)])
-		: AbortSignal.timeout(timeoutMs);
-	const response = (await fetchImpl(urlWithPassword, {
+		? AbortSignal.any([options.signal, timeoutSignal])
+		: timeoutSignal;
+	const response = (await fetch(urlWithPassword, {
 		...options,
 		headers: {
 			"Content-Type": "application/json",
@@ -59,16 +54,14 @@ export async function blueBubblesRequestWithFetch<T>(
 	return response.json() as Promise<T>;
 }
 
-export async function blueBubblesSendAttachmentWithFetch(
+async function blueBubblesSendAttachment(
 	url: string,
 	formData: FormData,
-	fetchImpl: typeof fetch = globalThis.fetch,
-	timeoutMs: number = BLUEBUBBLES_ATTACHMENT_TIMEOUT_MS,
 ): Promise<{ data: BlueBubblesMessage }> {
-	const response = (await fetchImpl(url, {
+	const response = (await fetch(url, {
 		method: "POST",
 		body: formData,
-		signal: AbortSignal.timeout(timeoutMs),
+		signal: AbortSignal.timeout(BLUEBUBBLES_ATTACHMENT_TIMEOUT_MS),
 	})) as BlueBubblesFetchResponse;
 
 	if (!response.ok) {
@@ -96,7 +89,7 @@ export class BlueBubblesClient {
 		const separator = endpoint.includes("?") ? "&" : "?";
 		const urlWithPassword = `${url}${separator}password=${encodeURIComponent(this.password)}`;
 
-		return blueBubblesRequestWithFetch<T>(urlWithPassword, options);
+		return blueBubblesRequest<T>(urlWithPassword, options);
 	}
 
 	/**
@@ -198,7 +191,7 @@ export class BlueBubblesClient {
 		}
 
 		const url = `${this.baseUrl}${API_ENDPOINTS.SEND_ATTACHMENT}?password=${encodeURIComponent(this.password)}`;
-		const result = await blueBubblesSendAttachmentWithFetch(url, formData);
+		const result = await blueBubblesSendAttachment(url, formData);
 
 		return {
 			guid: result.data.guid,
@@ -232,7 +225,7 @@ export class BlueBubblesClient {
 		}
 
 		const url = `${this.baseUrl}${API_ENDPOINTS.SEND_ATTACHMENT}?password=${encodeURIComponent(this.password)}`;
-		const result = await blueBubblesSendAttachmentWithFetch(url, formData);
+		const result = await blueBubblesSendAttachment(url, formData);
 
 		return {
 			guid: result.data.guid,

@@ -146,6 +146,10 @@ export function resolveServingInference({
   | "cloudCallsDisabled"
 >): ServingInference {
   if (!activeChatResolved) return "unknown";
+  // The local-only switch disables Eliza Cloud calls; it does not make an
+  // explicitly routed direct provider local. Trust the server's serving fact
+  // before applying that Cloud-only qualification.
+  if (activeChat && activeChat.family !== "ELIZAOS_CLOUD") return "external";
   if (cloudCallsDisabled) return "local";
   if (!activeChat) return "local";
   if (activeChat.family === "ELIZAOS_CLOUD") {

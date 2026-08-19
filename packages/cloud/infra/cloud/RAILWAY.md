@@ -39,11 +39,14 @@ runs on Kubernetes.
 
 ### Database identity activation boundary
 
-The migration job owns a read-only PostgreSQL identity preflight immediately
-before schema mutation. It hashes the physical PostgreSQL system identifier and
-the environment/cluster/role/database tuple; raw connection strings, hosts,
-roles, and database names are never written to logs. Protected environment
-variables control activation:
+The migration runner evaluates a read-only PostgreSQL identity gate on the
+exact session that performs migrations, after acquiring its database-wide
+advisory lock and before its first schema DDL. This session binding prevents a
+separate preflight connection from approving one resolved database while a
+later connection mutates another. The gate hashes the physical PostgreSQL
+system identifier and the environment/cluster/role/database tuple; raw
+connection strings, hosts, roles, and database names are never written to
+logs. Protected environment variables control activation:
 
 - `DATABASE_IDENTITY_GATE_MODE=off` is the default, performs no query, and
   does not parse any prepared expected receipts.
@@ -54,6 +57,17 @@ variables control activation:
 - `enforce` requires both `DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256` and
   `DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256` and fails before migrations on
   any mismatch.
+
+The standalone `preflight-database-identity.ts` command remains a read-only
+receipt preparation tool; it is not the release enforcement boundary. Before
+activation, prove that the protected migration role can execute
+`pg_catalog.pg_control_system()` through `pg_monitor` membership or a narrower
+explicit function grant.
+
+Every protected workflow that invokes the remote migrator forwards this same
+environment-scoped gate configuration: the canonical Cloudflare release, the
+manual legacy migration, and the exact-SHA provisioning-worker predeploy. None
+uses the standalone receipt tool as mutation admission.
 
 This gate proves only the GitHub migration authority. Do not enable `enforce`
 until an operator has provisioned an independent staging Railway PostgreSQL

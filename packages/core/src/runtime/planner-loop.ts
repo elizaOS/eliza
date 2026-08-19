@@ -5827,6 +5827,7 @@ export function actionResultToPlannerToolResult(
 		effectReceipts: result.effectReceipts,
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		data: Object.keys(data).length > 0 ? data : undefined,
+		promptData: result.promptData,
 		error: result.error,
 		failureProvenance: result.failureProvenance,
 		turnComplete: result.turnComplete,

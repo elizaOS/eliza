@@ -407,12 +407,18 @@ describe("view switching — VIEWS action resolver", () => {
 
 		it("targets app-chat navigation to the client that sent the turn", async () => {
 			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue({
+				ok: true,
+				status: 200,
+				text: async () => "",
+				json: async () => ({ ok: true, completedActionDelivered: true }),
+			} as Response);
 			const action = createViewsAction({
 				client: clientFor(REGISTRY),
 				hasOwnerAccess: vi.fn(async () => true),
 			});
 
-			await action.handler(
+			const result = await action.handler(
 				{ agentId: "agent-1" } as never,
 				{
 					...message("open calendar"),
@@ -434,6 +440,139 @@ describe("view switching — VIEWS action resolver", () => {
 				clientId: "seeker-client",
 				delivery: "completed-action",
 			});
+			expect(result?.values).toMatchObject({ completedActionDelivered: true });
+		});
+
+		it("keeps terminal fallback enabled for a malformed success receipt", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue(
+				new Response("{", {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				}),
+			);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				{
+					...message("open calendar"),
+					content: {
+						text: "open calendar",
+						metadata: { viewClientId: "seeker-client" },
+					},
+				} as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).not.toHaveProperty("completedActionDelivered");
+		});
+
+		it("does not misclassify a receipt body transport failure as malformed JSON", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue({
+				ok: true,
+				status: 200,
+				text: async () => "",
+				json: async () => {
+					throw new Error("receipt body stream failed");
+				},
+			} as Response);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				message("open calendar") as never,
+				undefined,
+				{ action: "show", view: "calendar" },
+				vi.fn(),
+			);
+
+			expect(result?.success).toBe(false);
+			expect(result?.text).toContain("shell did not confirm");
+		});
+
+		it("does not accept a prototype-polluted delivery receipt", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue(
+				new Response("{}", {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				}),
+			);
+			const previousDescriptor = Object.getOwnPropertyDescriptor(
+				Object.prototype,
+				"completedActionDelivered",
+			);
+			Object.defineProperty(Object.prototype, "completedActionDelivered", {
+				configurable: true,
+				value: true,
+			});
+
+			try {
+				const action = createViewsAction({
+					client: clientFor(REGISTRY),
+					hasOwnerAccess: vi.fn(async () => true),
+				});
+				const result = await action.handler(
+					{ agentId: "agent-1" } as never,
+					{
+						...message("open calendar"),
+						content: {
+							text: "open calendar",
+							metadata: { viewClientId: "seeker-client" },
+						},
+					} as never,
+					undefined,
+					{ action: "show", view: "calendar" },
+					vi.fn(),
+				);
+
+				expect(result?.success).toBe(true);
+				expect(
+					Object.hasOwn(result?.values ?? {}, "completedActionDelivered"),
+				).toBe(false);
+				// The inherited value demonstrates why own-property validation is required
+				// again when the UI consumes this transport result.
+				expect(result?.values?.completedActionDelivered).toBe(true);
+			} finally {
+				if (previousDescriptor) {
+					Object.defineProperty(
+						Object.prototype,
+						"completedActionDelivered",
+						previousDescriptor,
+					);
+				} else {
+					Reflect.deleteProperty(Object.prototype, "completedActionDelivered");
+				}
+			}
+		});
+
+		it("ignores a delivery marker when completed-action delivery was not requested", async () => {
+			installNavigateCapture();
+			vi.mocked(globalThis.fetch).mockResolvedValue(
+				new Response('{"completedActionDelivered":true}', {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				}),
+			);
+
+			const { result } = await runShow(REGISTRY, "open calendar", {
+				action: "show",
+				view: "calendar",
+			});
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).not.toHaveProperty("completedActionDelivered");
 		});
 
 		it("resolves an explicit view option without verb parsing", async () => {

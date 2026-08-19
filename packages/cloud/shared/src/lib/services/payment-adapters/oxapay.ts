@@ -11,9 +11,10 @@
  * serve existing OxaPay integrations.
  */
 
+import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "../../../db/schemas/payment-requests";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
-import { isOxaPayConfigured, oxaPayService } from "../oxapay";
+import { isOxaPayConfigured, OxaPayApiError, oxaPayService } from "../oxapay";
 import { type PaymentProviderAdapter, type PaymentRequestRow } from "../payment-requests";
 import { IgnoredWebhookEvent } from "../payment-webhook-errors";
 import { oxapayInvoiceLifetimeSeconds } from "./checkout-lifetime";
@@ -48,6 +49,26 @@ function constantTimeEqualHex(a: string, b: string): boolean {
   return diff === 0;
 }
 
+function payloadString(payload: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return undefined;
+}
+
+function amountToCents(value: unknown): number | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const text = String(value);
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!match) return undefined;
+  const fractional = match[2] ?? "";
+  if (fractional.slice(2).replaceAll("0", "").length > 0) return undefined;
+  const cents = Number(match[1]) * 100 + Number(fractional.slice(0, 2).padEnd(2, "0"));
+  return Number.isSafeInteger(cents) && cents > 0 ? cents : undefined;
+}
+
 export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
   return {
     provider: "oxapay",
@@ -61,10 +82,16 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
       if (!isOxaPayConfigured()) {
         throw new Error("OxaPay is not configured (OXAPAY_MERCHANT_API_KEY missing)");
       }
-      const amountUsd = Number(request.amountCents) / 100;
-      if (!(amountUsd > 0)) {
-        throw new Error("OxaPay payment amount must be greater than zero");
+      if (
+        !Number.isSafeInteger(request.amountCents) ||
+        request.amountCents <= 0 ||
+        request.amountCents > MAX_PAYMENT_REQUEST_LEDGER_CENTS
+      ) {
+        throw new Error("OxaPay payment amount is outside the credit ledger range");
       }
+      const amountUsd = `${Math.floor(request.amountCents / 100)}.${String(
+        request.amountCents % 100,
+      ).padStart(2, "0")}`;
 
       // OxaPay → us settlement callback. The unified rail settles via
       // /api/v1/oxapay/webhook (markSettled on payment_requests); without an
@@ -74,12 +101,17 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
       // So resolve it here and fail invoice creation loudly if we cannot.
       const env = getCloudAwareEnv();
       const callbackUrl =
-        readMetaString(request, "callback_url") ??
         env.OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL ??
-        (env.NEXT_PUBLIC_APP_URL ? `${env.NEXT_PUBLIC_APP_URL}/api/v1/oxapay/webhook` : undefined);
+        (env.ELIZA_CLOUD_URL
+          ? `${env.ELIZA_CLOUD_URL}/api/v1/oxapay/webhook`
+          : env.NEXT_PUBLIC_API_URL
+            ? `${env.NEXT_PUBLIC_API_URL}/api/v1/oxapay/webhook`
+            : env.NEXT_PUBLIC_APP_URL
+              ? `${env.NEXT_PUBLIC_APP_URL}/api/v1/oxapay/webhook`
+              : undefined);
       if (!callbackUrl) {
         throw new Error(
-          "OxaPay settlement callback URL unresolved — set NEXT_PUBLIC_APP_URL or OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL so invoices settle via /api/v1/oxapay/webhook",
+          "OxaPay settlement callback URL unresolved — set ELIZA_CLOUD_URL, NEXT_PUBLIC_API_URL, or OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL",
         );
       }
 
@@ -134,15 +166,9 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
         throw new Error("OxaPay webhook body is not valid JSON");
       }
 
-      const orderId =
-        (typeof payload.orderId === "string" && payload.orderId) ||
-        (typeof payload.order_id === "string" && payload.order_id) ||
-        "";
+      const orderId = payloadString(payload, "orderId", "order_id") ?? "";
       const status = String(payload.status ?? "");
-      const trackId =
-        (typeof payload.trackId === "string" && payload.trackId) ||
-        (typeof payload.track_id === "string" && payload.track_id) ||
-        undefined;
+      const trackId = payloadString(payload, "trackId", "track_id");
 
       if (!orderId) {
         // No mappable order id → not one of our unified payment_requests.
@@ -150,19 +176,57 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
       }
 
       if (oxaPayService.isPaymentConfirmed(status)) {
+        if (!trackId) {
+          throw new Error("OxaPay paid webhook is missing track id");
+        }
+        const inquiry = await oxaPayService.getPaymentStatus(trackId);
+        const amountCents = amountToCents(inquiry.amountText);
+        if (
+          inquiry.trackId !== trackId ||
+          inquiry.orderId !== orderId ||
+          !oxaPayService.isPaymentConfirmed(inquiry.status) ||
+          !amountCents ||
+          !inquiry.currency
+        ) {
+          throw new OxaPayApiError(
+            "OxaPay payment inquiry does not match the paid callback identity",
+          );
+        }
         return {
           paymentRequestId: orderId,
           status: "settled",
+          providerEventId: `${trackId}:paid`,
           txRef: trackId,
-          proof: { provider: "oxapay", trackId, status, payload },
+          amountCents,
+          currency: inquiry.currency,
+          proof: {
+            provider: "oxapay",
+            oxapay_track_id: trackId,
+            oxapay_order_id: orderId,
+            oxapay_status: status.toLowerCase(),
+            oxapay_amount_cents: amountCents,
+            oxapay_currency: inquiry.currency.toUpperCase(),
+            oxapay_callback_currency: payloadString(payload, "currency")?.toUpperCase() ?? null,
+            oxapay_type: payloadString(payload, "type"),
+          },
         };
       }
       if (oxaPayService.isPaymentFailed(status) || oxaPayService.isPaymentExpired(status)) {
+        if (!trackId) {
+          throw new Error("OxaPay terminal webhook is missing track id");
+        }
         return {
           paymentRequestId: orderId,
           status: "failed",
+          providerEventId: `${trackId}:${status.toLowerCase()}`,
           txRef: trackId,
-          proof: { provider: "oxapay", trackId, status, payload },
+          proof: {
+            provider: "oxapay",
+            oxapay_track_id: trackId,
+            oxapay_order_id: orderId,
+            oxapay_status: status.toLowerCase(),
+            oxapay_type: payloadString(payload, "type"),
+          },
         };
       }
 

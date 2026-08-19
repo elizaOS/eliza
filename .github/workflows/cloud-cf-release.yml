@@ -326,15 +326,15 @@ jobs:
           # never builds core, so generate the file first (mirrors core's prebuild).
           node packages/shared/scripts/generate-keywords.mjs
           # Recheck inside the mutation step after all preparation. The branch
-          # can advance between workflow steps; only the preflight is eligible
-          # for a neutral supersession. Once this step is running, any mismatch
-          # must fail immediately before the database mutation.
+          # can advance between workflow steps. Once this step is running, any
+          # mismatch must fail immediately before the database mutation.
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
           node packages/cloud/scripts/canonical-deploy-source-guard.mjs "${source_args[@]}"
-          bun --conditions=eliza-source packages/cloud/scripts/admin/preflight-database-identity.ts
+          # The migrator evaluates identity after acquiring its advisory lock,
+          # on the exact PostgreSQL session that performs the schema writes.
           bun run db:cloud:migrate
 
   # ---------------------------------------------------------------------------

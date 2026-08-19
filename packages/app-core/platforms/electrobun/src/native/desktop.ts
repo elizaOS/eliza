@@ -2051,8 +2051,22 @@ X-GNOME-Autostart-enabled=true
    */
   setTrayFirstMode(enabled: boolean): void {
     this.trayFirstMode = enabled;
+    if (!enabled) {
+      // A tray-first app must never become unreachable when macOS accepts an
+      // NSStatusItem object but fails to render its Control Center scene. In
+      // that state the Dock is the native recovery surface.
+      // error-policy:J6 best-effort cosmetic Dock-icon recovery.
+      void this.setDockIconVisibility({ visible: true }).catch(() => {});
+      return;
+    }
     // Start from the current full-window set (empty at boot → Dock hidden).
     this.syncTrayFirstDock();
+  }
+
+  /** Whether the native tray has non-zero screen bounds and is actually visible. */
+  hasVisibleTrayStatusItem(): boolean {
+    const bounds = this.readTrayBounds();
+    return bounds.width > 0 && bounds.height > 0;
   }
 
   /**

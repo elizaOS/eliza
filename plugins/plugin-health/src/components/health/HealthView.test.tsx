@@ -124,13 +124,22 @@ describe("HealthView (fetch-driven)", () => {
   });
 
   it("renders the loading state while the initial fetch is in flight", () => {
+    const signals: AbortSignal[] = [];
     const fetchers: SleepFetchers = {
-      fetchHistory: () => new Promise(() => {}),
+      fetchHistory: (_days, signal) => {
+        if (signal) signals.push(signal);
+        return new Promise(() => {});
+      },
       fetchRegularity: () => new Promise(() => {}),
       fetchBaseline: () => new Promise(() => {}),
     };
-    render(<HealthView fetchers={fetchers} />);
+    const { unmount } = render(<HealthView fetchers={fetchers} />);
     expect(screen.getByText("Loading")).toBeTruthy();
+    expect(signals[0]?.aborted).toBe(false);
+
+    unmount();
+
+    expect(signals[0]?.aborted).toBe(true);
   });
 
   it("renders the error state and refetches when Retry is clicked", async () => {
@@ -222,14 +231,26 @@ describe("HealthView (fetch-driven)", () => {
 
     await screen.findByText("7h 45m");
     expect(fetchers.fetchHistory).toHaveBeenCalledTimes(1);
-    expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(14);
+    expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(
+      14,
+      expect.any(AbortSignal),
+    );
 
     fireEvent.click(agent("window-30"));
 
     await waitFor(() => expect(fetchers.fetchHistory).toHaveBeenCalledTimes(2));
-    expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(30);
-    expect(fetchers.fetchRegularity).toHaveBeenLastCalledWith(30);
-    expect(fetchers.fetchBaseline).toHaveBeenLastCalledWith(30);
+    expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(
+      30,
+      expect.any(AbortSignal),
+    );
+    expect(fetchers.fetchRegularity).toHaveBeenLastCalledWith(
+      30,
+      expect.any(AbortSignal),
+    );
+    expect(fetchers.fetchBaseline).toHaveBeenLastCalledWith(
+      30,
+      expect.any(AbortSignal),
+    );
   });
 
   it("refetches in the background on the quiet poll interval", async () => {
@@ -242,13 +263,19 @@ describe("HealthView (fetch-driven)", () => {
       // poll boundary (advanceTimersByTimeAsync(0) drains microtasks only).
       await vi.advanceTimersByTimeAsync(0);
       expect(fetchers.fetchHistory).toHaveBeenCalledTimes(1);
-      expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(14);
+      expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(
+        14,
+        expect.any(AbortSignal),
+      );
 
       // Advancing exactly one interval triggers the quiet background poll —
       // there is no manual refresh control.
       await vi.advanceTimersByTimeAsync(20_000);
       expect(fetchers.fetchHistory).toHaveBeenCalledTimes(2);
-      expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(14);
+      expect(fetchers.fetchHistory).toHaveBeenLastCalledWith(
+        14,
+        expect.any(AbortSignal),
+      );
     } finally {
       vi.useRealTimers();
     }

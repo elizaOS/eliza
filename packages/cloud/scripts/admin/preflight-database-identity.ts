@@ -1,6 +1,7 @@
 /**
- * Produces a redacted PostgreSQL identity receipt before Cloud migrations.
- * The gate is inert by default and never changes database or provider state.
+ * Produces redacted PostgreSQL identity receipts for preparation and for the
+ * migration runner's same-session enforcement boundary. The standalone entry
+ * is read-only; authoritative release enforcement happens inside the migrator.
  */
 
 import { createHash } from "node:crypto";
@@ -268,7 +269,10 @@ async function clientConfig(databaseUrl: string): Promise<ClientConfig> {
   };
 }
 
-function summary(result: IdentityPreflightResult): string {
+/** Formats a redacted receipt for operator logs and GitHub step summaries. */
+function formatDatabaseIdentitySummary(
+  result: IdentityPreflightResult,
+): string {
   const lines = [
     "### PostgreSQL identity preflight",
     "",
@@ -286,6 +290,34 @@ function summary(result: IdentityPreflightResult): string {
     lines.push(`- Mismatch classes: \`${result.mismatches.join(",")}\``);
   }
   return `${lines.join("\n")}\n`;
+}
+
+/** Publishes only redacted identity results and generic diagnostic classes. */
+export async function publishDatabaseIdentityResult(
+  config: DatabaseIdentityConfig,
+  result: IdentityPreflightResult,
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<void> {
+  const output = formatDatabaseIdentitySummary(result);
+  process.stdout.write(output);
+  if (environment.GITHUB_STEP_SUMMARY) {
+    await appendFile(environment.GITHUB_STEP_SUMMARY, output, "utf8");
+  }
+  if (result.status === "mismatch" && config.mode === "report") {
+    process.stdout.write(
+      "::warning::database identity report differs from the protected authority\n",
+    );
+  }
+  if (result.status === "unavailable") {
+    process.stdout.write(
+      "::warning::database identity report unavailable; inspect protected operator logs\n",
+    );
+  }
+  if (config.ignoredExpectedDigests?.length) {
+    process.stdout.write(
+      "::warning::database identity report ignored malformed protected expected digest(s)\n",
+    );
+  }
 }
 
 async function main(): Promise<void> {
@@ -314,26 +346,7 @@ async function main(): Promise<void> {
     client = new Client(await clientConfig(databaseUrl));
     await client.connect();
     const result = await runDatabaseIdentityPreflight(config, client);
-    const output = summary(result);
-    process.stdout.write(output);
-    if (environment.GITHUB_STEP_SUMMARY) {
-      await appendFile(environment.GITHUB_STEP_SUMMARY, output, "utf8");
-    }
-    if (result.status === "mismatch" && config.mode === "report") {
-      process.stdout.write(
-        "::warning::database identity report differs from the protected authority\n",
-      );
-    }
-    if (result.status === "unavailable") {
-      process.stdout.write(
-        "::warning::database identity report unavailable; inspect protected operator logs\n",
-      );
-    }
-    if (config.ignoredExpectedDigests?.length) {
-      process.stdout.write(
-        "::warning::database identity report ignored malformed protected expected digest(s)\n",
-      );
-    }
+    await publishDatabaseIdentityResult(config, result, environment);
   } catch (error) {
     // error-policy:J1 the CLI boundary emits only a generic class so provider
     // errors cannot leak connection strings, hosts, roles, or database names.

@@ -3,7 +3,6 @@ import { desc, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import type { CreditTransaction } from "../schemas/credit-transactions";
 import { creditTransactions } from "../schemas/credit-transactions";
-import { organizationBilling } from "../schemas/organization-billing";
 import { type NewOrganization, type Organization, organizations } from "../schemas/organizations";
 import { parseOrganizationCreditBalance } from "./organizations-credit-balance-numeric";
 
@@ -39,14 +38,12 @@ export class OrganizationsRepository {
   }
 
   /**
-   * Finds an organization by Stripe customer ID (via billing table).
+   * Finds an organization by its canonical Stripe customer ID.
    */
   async findByStripeCustomerId(stripeCustomerId: string): Promise<Organization | undefined> {
-    const billing = await dbRead.query.organizationBilling.findFirst({
-      where: eq(organizationBilling.stripe_customer_id, stripeCustomerId),
+    return await dbRead.query.organizations.findFirst({
+      where: eq(organizations.stripe_customer_id, stripeCustomerId),
     });
-    if (!billing) return undefined;
-    return this.findById(billing.organization_id);
   }
 
   /**

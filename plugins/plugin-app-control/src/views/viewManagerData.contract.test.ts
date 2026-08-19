@@ -100,6 +100,65 @@ describe("fetchViewEntries contract (/api/views ViewRegistryEntry shape)", () =>
 		expect(fetchMock).toHaveBeenCalledOnce();
 	});
 
+	it("aborts an in-flight list request when its caller is superseded", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+				return new Promise<Response>((_resolve, reject) => {
+					if (init?.signal?.aborted) {
+						reject(init.signal.reason);
+						return;
+					}
+					init?.signal?.addEventListener(
+						"abort",
+						() => reject(init.signal?.reason),
+						{ once: true },
+					);
+				});
+			}),
+		);
+		const controller = new AbortController();
+		const request = fetchViewEntries(undefined, controller.signal);
+		controller.abort();
+		await expect(request).rejects.toMatchObject({ name: "AbortError" });
+	});
+
+	it("cancels the owned response reader when superseded after headers", async () => {
+		let markReadStarted: (() => void) | undefined;
+		const readStarted = new Promise<void>((resolve) => {
+			markReadStarted = resolve;
+		});
+		const cancel = vi.fn(async () => undefined);
+		const encoder = new TextEncoder();
+		let sentPrefix = false;
+		const body = new ReadableStream<Uint8Array>(
+			{
+				pull(controller) {
+					markReadStarted?.();
+					if (!sentPrefix) {
+						sentPrefix = true;
+						controller.enqueue(encoder.encode('{"views":['));
+					}
+				},
+				cancel,
+			},
+			{ highWaterMark: 0 },
+		);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(body, { status: 200 })),
+		);
+		const controller = new AbortController();
+		const reason = new DOMException("view replaced", "AbortError");
+
+		const request = fetchViewEntries(undefined, controller.signal);
+		await readStarted;
+		controller.abort(reason);
+
+		await expect(request).rejects.toBe(reason);
+		expect(cancel).toHaveBeenCalledWith(reason);
+	});
+
 	it("rejects when the payload's views field is not an array", async () => {
 		vi.stubGlobal(
 			"fetch",

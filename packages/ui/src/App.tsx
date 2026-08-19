@@ -94,7 +94,6 @@ import {
   resolveCloudHostedAgentUrl,
 } from "./components/auth/CloudPairRelay";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
-import { ServingProviderChip } from "./components/composites/chat/ServingProviderChip";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
@@ -2013,7 +2012,7 @@ function ShellFoundationMount({
       <ChatOverlayMount
         initialMode="input"
         fillHostAtHalf
-        releaseFirstRunToHalf={false}
+        releaseFirstRunToFull={false}
         onFirstRunReleaseHandled={() => {}}
         onPilledChange={closeWebChatWhenPilled}
         onDetentChange={setShellHostDetent}
@@ -2061,9 +2060,6 @@ function ShellFoundationMount({
           open={controller.isOpen}
         >
           <div className="flex h-full min-h-0 flex-col">
-            <div className="flex min-h-6 shrink-0 items-center justify-end pr-8">
-              <ServingProviderChip className="pointer-events-none text-muted-strong" />
-            </div>
             <div className="min-h-0 flex-1">
               <ChatSurface
                 messages={controller.messages}
@@ -2095,7 +2091,7 @@ function ShellFoundationMount({
 function ChatOverlayMount({
   initialMode,
   fillHostAtHalf = false,
-  releaseFirstRunToHalf,
+  releaseFirstRunToFull,
   onFirstRunReleaseHandled,
   onPilledChange,
   onDetentChange,
@@ -2103,7 +2099,7 @@ function ChatOverlayMount({
 }: {
   initialMode?: "input" | "half";
   fillHostAtHalf?: boolean;
-  releaseFirstRunToHalf: boolean;
+  releaseFirstRunToFull: boolean;
   onFirstRunReleaseHandled: () => void;
   onPilledChange?: (pilled: boolean) => void;
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
@@ -2139,7 +2135,7 @@ function ChatOverlayMount({
       initialMode={initialMode}
       fillHostAtHalf={fillHostAtHalf}
       firstRunOpen={firstRunComplete === false}
-      releaseFirstRunToHalf={releaseFirstRunToHalf}
+      releaseFirstRunToFull={releaseFirstRunToFull}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
       onPilledChange={onPilledChange}
       onDetentChange={onDetentChange}
@@ -2286,7 +2282,7 @@ function AppContent() {
   );
   // Runtime-target adoption can remount the shell on the exact render where
   // first-run completes. Retain that completion edge above the remount and let
-  // the next ChatOverlay acknowledge it after applying the HALF detent.
+  // the next ChatOverlay acknowledge it after applying the FULL detent.
   const firstRunWasIncompleteRef = useRef(firstRunComplete === false);
   const firstRunReleasePendingRef = useRef(false);
   if (firstRunComplete === false) {
@@ -2386,7 +2382,7 @@ function AppContent() {
   });
   // The first-run chat must survive its completion edge. Completion starts an
   // auth probe, but replacing the already-painted shell with StartupScreen
-  // remounts ChatOverlay and loses its FULL -> HALF transition state. Remember
+  // remounts ChatOverlay and loses its first-run -> FULL transition state. Remember
   // only a shell painted while first-run owned the login surface, and forget
   // it as soon as that probe resolves so a later credential refetch still
   // returns to the startup/auth boundary instead of exposing the shell.
@@ -3279,7 +3275,7 @@ function AppContent() {
           behind stays live.
         */}
         <ChatOverlayMount
-          releaseFirstRunToHalf={firstRunReleasePendingRef.current}
+          releaseFirstRunToFull={firstRunReleasePendingRef.current}
           onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
         />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is

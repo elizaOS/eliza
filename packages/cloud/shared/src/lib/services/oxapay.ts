@@ -1,4 +1,6 @@
-// Coordinates cloud service oxapay behavior behind route handlers.
+/** Validates exact OxaPay invoice and inquiry contracts for crypto settlement callers. */
+import { ElizaError } from "@elizaos/core";
+import Decimal from "decimal.js";
 import { logger } from "../utils/logger";
 
 export type OxaPayNetwork = "ERC20" | "TRC20" | "BEP20" | "POLYGON" | "SOL" | "BASE" | "ARB" | "OP";
@@ -6,28 +8,30 @@ export type OxaPayNetwork = "ERC20" | "TRC20" | "BEP20" | "POLYGON" | "SOL" | "B
 export interface OxaPayInvoiceResult {
   trackId: string;
   payLink: string;
-  amount: number;
+  amount: string;
   currency: string;
   expiresAt: Date;
 }
 
 export interface OxaPayPaymentStatus {
   trackId: string;
+  orderId: string;
   status: string;
-  amount: number;
+  amount: string;
+  amountText: string;
   currency: string;
   transactions: Array<{
     txHash: string;
     /** The amount to credit (USD value when auto-converted, native value otherwise) */
-    amount: number;
+    amount: string;
     currency: string;
     network: string;
     address: string;
     status: string;
     /** Original amount in native currency (e.g., SOL) before conversion */
-    nativeAmount?: number;
+    nativeAmount?: string;
     /** USD equivalent amount from invoice */
-    usdAmount?: number;
+    usdAmount?: string;
   }>;
 }
 
@@ -36,14 +40,21 @@ const OXAPAY_API_BASE = "https://api.oxapay.com";
 /**
  * Custom error for OxaPay API failures.
  */
-export class OxaPayApiError extends Error {
+export class OxaPayApiError extends ElizaError {
+  override readonly name = "OxaPayApiError";
+
   constructor(
     message: string,
     public readonly statusCode?: number,
     public readonly apiResult?: number,
+    cause?: unknown,
   ) {
-    super(message);
-    this.name = "OxaPayApiError";
+    super(message, {
+      code: "OXAPAY_API_ERROR",
+      context: { statusCode, apiResult },
+      severity: "fatal",
+      cause,
+    });
   }
 }
 
@@ -56,9 +67,13 @@ async function oxaPayFetch<T>(url: string, options: RequestInit): Promise<T> {
   try {
     response = await fetch(url, options);
   } catch (error) {
+    // error-policy:J2 wrap provider transport failure and preserve its cause.
     logger.error("[OxaPay] Network error", { url, error });
     throw new OxaPayApiError(
       `Network error connecting to OxaPay: ${error instanceof Error ? error.message : "Unknown error"}`,
+      undefined,
+      undefined,
+      error,
     );
   }
 
@@ -71,8 +86,9 @@ async function oxaPayFetch<T>(url: string, options: RequestInit): Promise<T> {
   try {
     data = await response.json();
   } catch (error) {
+    // error-policy:J2 wrap malformed provider transport and preserve its cause.
     logger.error("[OxaPay] Invalid JSON response", { url, error });
-    throw new OxaPayApiError("OxaPay returned invalid JSON response");
+    throw new OxaPayApiError("OxaPay returned invalid JSON response", undefined, undefined, error);
   }
 
   return data;
@@ -90,19 +106,19 @@ export function isOxaPayConfigured(): boolean {
   return Boolean(process.env.OXAPAY_MERCHANT_API_KEY);
 }
 
-function parseOxaPayDecimalAmount(rawAmount: string | undefined): number | null {
+function parseOxaPayDecimalAmount(rawAmount: string | undefined): string | null {
   const trimmedAmount = rawAmount?.trim();
   if (!trimmedAmount || !/^(?:\d+|\d+\.\d+|\.\d+)$/.test(trimmedAmount)) {
     return null;
   }
 
-  const amount = Number(trimmedAmount);
-  return Number.isFinite(amount) ? amount : null;
+  const amount = new Decimal(trimmedAmount);
+  return amount.isFinite() ? amount.toFixed() : null;
 }
 
-function parseOxaPayInvoiceAmount(rawAmount: string | undefined): number {
+function parseOxaPayInvoiceAmount(rawAmount: string | undefined): string {
   const amount = parseOxaPayDecimalAmount(rawAmount);
-  if (amount === null || amount <= 0) {
+  if (amount === null || !new Decimal(amount).gt(0)) {
     throw new OxaPayApiError(
       `OxaPay inquiry returned invalid invoice amount ${JSON.stringify(rawAmount ?? null)}`,
     );
@@ -116,7 +132,7 @@ class OxaPayService {
    * This returns a payLink that redirects users to OxaPay's hosted payment page.
    */
   async createInvoice(params: {
-    amount: number;
+    amount: string;
     currency?: string;
     payCurrency?: string;
     network?: OxaPayNetwork;
@@ -142,8 +158,9 @@ class OxaPayService {
       lifetime = 1800,
     } = params;
 
+    const invoiceAmount = new Decimal(amount).toFixed();
     logger.info("[OxaPay] Creating invoice", {
-      amount,
+      amount: invoiceAmount,
       currency,
       payCurrency,
       network,
@@ -152,7 +169,7 @@ class OxaPayService {
 
     const requestBody: Record<string, unknown> = {
       merchant: merchantKey,
-      amount,
+      amount: invoiceAmount,
       currency,
       lifeTime: lifetime / 60,
       feePaidByPayer: 0,
@@ -194,7 +211,7 @@ class OxaPayService {
     return {
       trackId: data.trackId,
       payLink: data.payLink,
-      amount,
+      amount: invoiceAmount,
       currency,
       expiresAt: new Date(Date.now() + lifetime * 1000),
     };
@@ -212,6 +229,7 @@ class OxaPayService {
       status: string;
       amount: string;
       currency: string;
+      orderId?: string;
       txID?: string;
       payAmount?: string;
       payCurrency?: string;
@@ -238,6 +256,10 @@ class OxaPayService {
       );
     }
 
+    if (data.trackId !== trackId) {
+      throw new OxaPayApiError("OxaPay inquiry track ID does not match the requested invoice");
+    }
+
     // Note: OxaPay doesn't provide blockchain confirmation counts.
     // Confirmation is determined by status ("paid" = confirmed by network).
     //
@@ -249,28 +271,23 @@ class OxaPayService {
     // amount, so a result=100 inquiry whose `amount` is missing, malformed, or
     // non-positive is a bad provider response. The parser is deliberately
     // full-string strict; parseFloat would accept corrupt prefixes like "25 USD".
-    let invoiceAmount: number;
-    try {
-      invoiceAmount = parseOxaPayInvoiceAmount(data.amount);
-    } catch (error) {
-      logger.error("[OxaPay] Invalid invoice amount in inquiry response", {
-        trackId: data.trackId,
-        status: data.status,
-        rawAmount: data.amount,
-        error,
-      });
-      throw error;
-    }
+    const invoiceAmount = parseOxaPayInvoiceAmount(data.amount);
 
     // Native pay amount is audit/debug metadata only (never credited); a
     // malformed value degrades to undefined instead of failing the inquiry.
     const nativePayAmount = parseOxaPayDecimalAmount(data.payAmount) ?? undefined;
+    const invoiceCurrency = data.currency?.trim().toUpperCase();
+    if (!invoiceCurrency) {
+      throw new OxaPayApiError("OxaPay inquiry returned an invalid invoice currency");
+    }
 
     return {
       trackId: data.trackId,
+      orderId: data.orderId ?? "",
       status: data.status,
       amount: invoiceAmount,
-      currency: data.currency,
+      amountText: data.amount.trim(),
+      currency: invoiceCurrency,
       transactions: data.txID
         ? [
             {

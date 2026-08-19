@@ -1854,10 +1854,7 @@ export default function StewardLoginSection() {
             defaultValue: "you@example.com",
           })}
           value={email}
-          onChange={(e) => {
-            setEmail(e.target.value);
-            setShowPasskeyRecovery(false);
-          }}
+          onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               if (showPasskey) {

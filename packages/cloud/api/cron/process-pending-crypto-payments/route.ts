@@ -14,6 +14,7 @@ import { Hono } from "hono";
 
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
+import { appChargeCallbacksService } from "@/lib/services/app-charge-callbacks";
 import { directWalletPaymentsService } from "@/lib/services/direct-wallet-payments";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -27,11 +28,15 @@ app.get("/", (c) =>
 app.post("/", async (c) => {
   try {
     requireCronSecret(c);
-    const stats = await directWalletPaymentsService.processBroadcastBatch(
-      c.env,
-    );
-    return c.json({ success: true, ...stats });
+    const [stats, sweeps, callbacks] = await Promise.all([
+      directWalletPaymentsService.processBroadcastBatch(c.env),
+      directWalletPaymentsService.drainSweepOutbox(c.env),
+      appChargeCallbacksService.drain(),
+    ]);
+    return c.json({ success: true, ...stats, sweeps, callbacks });
   } catch (error) {
+    // error-policy:J1 cron is the transport boundary for durable crypto
+    // verification, sweep, and callback recovery and returns retryable failure.
     logger.error("[Cron process-pending-crypto-payments] failed", {
       error: error instanceof Error ? error.message : String(error),
     });

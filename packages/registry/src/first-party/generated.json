@@ -2488,10 +2488,10 @@
           "type": "string",
           "required": false,
           "sensitive": false,
-          "default": "text-embedding-004",
+          "default": "gemini-embedding-001",
           "label": "Embedding Model",
           "help": "Overrides the default text embedding model used by Google Generative AI.",
-          "placeholder": "e.g., text-embedding-3-small",
+          "placeholder": "e.g., gemini-embedding-001, gemini-embedding-2",
           "advanced": false
         },
         "GOOGLE_IMAGE_MODEL": {
@@ -5664,7 +5664,7 @@
           "type": "string",
           "required": false,
           "sensitive": false,
-          "default": "tweet.read tweet.write users.read offline.access",
+          "default": "tweet.read tweet.write users.read dm.read dm.write offline.access",
           "label": "OAuth Scopes",
           "help": "Space-separated OAuth2 scopes requested by plugin-twitter.",
           "advanced": true,
@@ -5746,6 +5746,41 @@
             "equals": "broker"
           }
         },
+        "TWITTER_BROKER_CONNECTION_ROLE": {
+          "type": "select",
+          "required": false,
+          "sensitive": false,
+          "default": "agent",
+          "label": "Broker X Identity",
+          "help": "Use the agent connection for a shared agent identity, or the owner connection for the user's personal X identity.",
+          "advanced": true,
+          "options": [
+            {
+              "value": "agent",
+              "label": "Agent identity"
+            },
+            {
+              "value": "owner",
+              "label": "Owner identity"
+            }
+          ],
+          "visible": {
+            "key": "TWITTER_AUTH_MODE",
+            "equals": "broker"
+          }
+        },
+        "TWITTER_PERSONAL_DM_ROUTER_URL": {
+          "type": "url",
+          "required": false,
+          "sensitive": false,
+          "label": "Personal DM Router URL",
+          "help": "When set on a shared agent X account, route inbound DMs to each sender's personal Shared or Dedicated Eliza. Public mentions remain on this agent.",
+          "advanced": true,
+          "visible": {
+            "key": "TWITTER_AUTH_MODE",
+            "equals": "broker"
+          }
+        },
         "TWITTER_ENABLE_POST": {
           "type": "boolean",
           "required": false,
@@ -5763,6 +5798,24 @@
           "label": "Enable Replies",
           "help": "Allow the connector to reply to mentions and conversations.",
           "advanced": false
+        },
+        "TWITTER_ENABLE_DMS": {
+          "type": "boolean",
+          "required": false,
+          "sensitive": false,
+          "default": true,
+          "label": "Enable DM Replies",
+          "help": "Poll inbound direct messages and route them through the agent message loop.",
+          "advanced": false
+        },
+        "TWITTER_DM_POLL_INTERVAL_SECONDS": {
+          "type": "number",
+          "required": false,
+          "sensitive": false,
+          "default": 60,
+          "label": "DM Poll Interval",
+          "help": "Seconds between direct-message inbox polls (minimum 15).",
+          "advanced": true
         },
         "TWITTER_ENABLE_ACTIONS": {
           "type": "boolean",

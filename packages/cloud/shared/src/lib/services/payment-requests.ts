@@ -3,6 +3,7 @@ import type {
   PaymentRequestRow,
   PaymentRequestsRepository,
 } from "../../db/repositories/payment-requests";
+import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "../../db/schemas/payment-requests";
 
 export { IgnoredWebhookEvent } from "./payment-webhook-errors";
 
@@ -74,7 +75,10 @@ export interface PaymentProviderAdapter {
   parseWebhook?(args: { rawBody: string; signature: string | null }): Promise<{
     paymentRequestId: string;
     status: "settled" | "failed";
+    providerEventId: string;
     txRef?: string;
+    amountCents?: number;
+    currency?: string;
     proof: Record<string, unknown>;
   }>;
 }
@@ -131,14 +135,21 @@ function validateCreateInput(input: CreatePaymentRequestInput): void {
   if (!SUPPORTED_PROVIDERS.includes(input.provider)) {
     throw new Error(`Unsupported provider: ${input.provider}`);
   }
-  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
-    throw new Error("amountCents must be a positive integer");
+  if (
+    !Number.isSafeInteger(input.amountCents) ||
+    input.amountCents <= 0 ||
+    input.amountCents > MAX_PAYMENT_REQUEST_LEDGER_CENTS
+  ) {
+    throw new Error("amountCents must be a positive safe integer within the credit ledger range");
+  }
+  if ((input.currency ?? "USD").trim().toUpperCase() !== "USD") {
+    throw new Error("Credit top-up payment requests require USD currency");
   }
   if (!input.paymentContext || typeof input.paymentContext.kind !== "string") {
     throw new Error("paymentContext is required");
   }
-  if (input.paymentContext.kind === "specific_payer" && !input.paymentContext.payerIdentityId) {
-    throw new Error("paymentContext.payerIdentityId is required for specific_payer");
+  if (input.paymentContext.kind !== "any_payer") {
+    throw new Error("Only any_payer payment requests are supported until payer verification lands");
   }
   if (input.callbackSecret && !input.callbackUrl) {
     throw new Error("callbackSecret requires callbackUrl");
@@ -220,7 +231,7 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
       appId: input.appId ?? null,
       provider: input.provider,
       amountCents: input.amountCents,
-      currency: input.currency ?? "USD",
+      currency: (input.currency ?? "USD").trim().toUpperCase(),
       reason: input.reason ?? null,
       paymentContext: input.paymentContext,
       payerIdentityId: input.payerIdentityId ?? null,

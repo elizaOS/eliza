@@ -1,7 +1,18 @@
 // Defines the domain purchase idempotency Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { apps } from "./apps";
+import { creditTransactions } from "./credit-transactions";
+import { managedDomains } from "./managed-domains";
 import { organizations } from "./organizations";
 
 /**
@@ -24,12 +35,26 @@ export const domainPurchaseIdempotency = pgTable(
       .references(() => apps.id, { onDelete: "cascade" }),
     domain: text("domain").notNull(),
     status: text("status").notNull().default("processing"),
-    charge_id: uuid("charge_id"),
+    request_digest: text("request_digest"),
+    registration_years: integer("registration_years"),
+    charge_id: uuid("charge_id").references(() => creditTransactions.id, {
+      onDelete: "restrict",
+    }),
+    refund_id: uuid("refund_id").references(() => creditTransactions.id, {
+      onDelete: "restrict",
+    }),
     charge: jsonb("charge").$type<Record<string, unknown>>(),
     cloudflare_registration_id: text("cloudflare_registration_id"),
-    managed_domain_id: uuid("managed_domain_id"),
+    managed_domain_id: uuid("managed_domain_id").references(() => managedDomains.id, {
+      onDelete: "restrict",
+    }),
     response_body: jsonb("response_body").$type<Record<string, unknown>>(),
+    response_status: integer("response_status"),
     error_code: text("error_code"),
+    lease_token: uuid("lease_token"),
+    provider_started_at: timestamp("provider_started_at"),
+    next_reconcile_at: timestamp("next_reconcile_at"),
+    attempt_count: integer("attempt_count").notNull().default(0),
     expires_at: timestamp("expires_at").notNull(),
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
@@ -42,6 +67,10 @@ export const domainPurchaseIdempotency = pgTable(
     ),
     expires_idx: index("domain_purchase_idempotency_expires_idx").on(table.expires_at),
     status_idx: index("domain_purchase_idempotency_status_idx").on(table.status),
+    reconcile_idx: index("domain_purchase_idempotency_reconcile_idx").on(
+      table.status,
+      table.next_reconcile_at,
+    ),
   }),
 );
 

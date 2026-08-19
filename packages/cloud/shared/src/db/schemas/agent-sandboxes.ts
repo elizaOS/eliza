@@ -1063,6 +1063,20 @@ export const agentSandboxBackups = pgTable(
       table.lifecycle_revision,
       table.manifest_digest,
     ),
+    publication_backup_authority_unique: unique(
+      "agent_sandbox_backups_publication_backup_authority_unique",
+    ).on(table.id, table.catalog_organization_id, table.catalog_agent_id, table.manifest_digest),
+    final_restore_authority_unique: unique(
+      "agent_sandbox_backups_final_restore_authority_unique",
+    ).on(
+      table.id,
+      table.catalog_organization_id,
+      table.catalog_agent_id,
+      table.backup_operation_id,
+      table.lifecycle_generation,
+      table.lifecycle_revision,
+      table.manifest_digest,
+    ),
     vault_restore_authority_unique: unique(
       "agent_sandbox_backups_vault_restore_authority_unique",
     ).on(

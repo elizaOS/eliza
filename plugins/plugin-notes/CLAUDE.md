@@ -47,3 +47,6 @@ views or event state to this package.
 - Failures throw typed `ElizaError`s; nothing fabricates a healthy empty state.
 - All chat action and provider exposure is OWNER-gated because storage is
   per-agent rather than per-sender.
+- `clear-notes` validates `expectedRevision` inside the store write barrier, so
+  a note committed between confirmation and commit aborts the clear instead of
+  being wiped. The dispatch-time snapshot check is only a fast path.

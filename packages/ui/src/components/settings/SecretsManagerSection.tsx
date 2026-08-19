@@ -88,20 +88,22 @@ export function SecretsManagerSection() {
   const { isOpen } = useSecretsManagerModalState();
 
   const refreshSummary = useCallback(async () => {
-    const [bRes, pRes] = await Promise.all([
-      client.rawRequest("/api/secrets/manager/backends", undefined, {
-        allowNonOk: true,
-      }),
-      client.rawRequest("/api/secrets/manager/preferences", undefined, {
-        allowNonOk: true,
-      }),
-    ]);
-    if (!bRes.ok || !pRes.ok) return;
-    const bJson = (await bRes.json()) as { backends: BackendStatus[] };
-    const pJson = (await pRes.json()) as { preferences: ManagerPreferences };
-    const primaryId = pJson.preferences.enabled[0] ?? "in-house";
-    setPrimary(bJson.backends.find((b) => b.id === primaryId) ?? null);
-    setEnabledCount(pJson.preferences.enabled.length);
+    try {
+      const [bJson, pJson] = await Promise.all([
+        client.fetch<{ backends: BackendStatus[] }>(
+          "/api/secrets/manager/backends",
+        ),
+        client.fetch<{ preferences: ManagerPreferences }>(
+          "/api/secrets/manager/preferences",
+        ),
+      ]);
+      const primaryId = pJson.preferences.enabled[0] ?? "in-house";
+      setPrimary(bJson.backends.find((b) => b.id === primaryId) ?? null);
+      setEnabledCount(pJson.preferences.enabled.length);
+    } catch {
+      // error-policy:J4 the compact settings row retains its last known summary;
+      // the full vault surface exposes request failures when the user opens it.
+    }
   }, []);
 
   useEffect(() => {

@@ -60,7 +60,10 @@ describe("fetchNearAIModels", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://cloud-api.near.ai/v1/models",
-      { headers: { Authorization: "Bearer near-key" } },
+      expect.objectContaining({
+        headers: { Authorization: "Bearer near-key" },
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -94,7 +97,10 @@ describe("fetchNearAIModels", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://cloud-api.near.ai/v1/models",
-      { headers: {} },
+      expect.objectContaining({
+        headers: {},
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 });

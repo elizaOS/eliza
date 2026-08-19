@@ -211,14 +211,21 @@ function shortArgsDigest(params: Record<string, unknown> | undefined): string {
  * `data`/`error` only when no text projection exists. Strict-grammar
  * providers (Cerebras) and Anthropic both prefer text over a JSON blob in
  * the tool turn, and this preserves byte-stability when text is consistent.
+ *
+ * An action may provide `promptData` when its complete machine payload is not
+ * an appropriate model projection. This keeps projection ownership with the
+ * action and leaves arbitrary chaining data intact by default.
  */
 export function toolMessageContent(result: PlannerToolResult): string {
 	const parts: string[] = [];
-	if (typeof result.text === "string" && result.text.trim().length > 0) {
+	const hasText =
+		typeof result.text === "string" && result.text.trim().length > 0;
+	if (hasText && typeof result.text === "string") {
 		parts.push(`text: ${result.text.trim()}`);
 	}
-	if (result.data && Object.keys(result.data).length > 0) {
-		parts.push(`data: ${stringifyForModel(result.data)}`);
+	const modelData = result.promptData ?? result.data;
+	if (modelData && Object.keys(modelData).length > 0) {
+		parts.push(`data: ${stringifyForModel(modelData)}`);
 	}
 	if (result.error) {
 		const errMsg =

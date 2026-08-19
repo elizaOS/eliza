@@ -122,6 +122,8 @@ const { default: agentRoute } = await import(
 const app = new Hono();
 app.route("/api/v1/eliza/agents/:agentId", agentRoute);
 
+const DEPLOY_COMMIT = "a".repeat(40);
+
 function sharedAgent(overrides: Record<string, unknown> = {}) {
   return {
     id: "agent-1",
@@ -147,7 +149,10 @@ function sharedAgent(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function deleteRequest(body?: Record<string, unknown> | string) {
+async function deleteRequest(
+  body?: Record<string, unknown> | string,
+  deployCommit = DEPLOY_COMMIT,
+) {
   return app.fetch(
     new Request("https://api.example.test/api/v1/eliza/agents/agent-1", {
       method: "DELETE",
@@ -158,6 +163,7 @@ async function deleteRequest(body?: Record<string, unknown> | string) {
           }
         : {}),
     }),
+    { ELIZA_DEPLOY_COMMIT: deployCommit },
   );
 }
 
@@ -386,6 +392,43 @@ describe("agent deletion lifecycle", () => {
       },
     });
     expect(triggerImmediate).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects a conditional delete when the serving deploy changed before deletion", async () => {
+    const response = await deleteRequest({
+      expectedAgentName: "Canary Agent",
+      expectedCreatedAt: "2026-07-07T08:00:00.000Z",
+      expectedExecutionTier: "dedicated-always",
+      expectedDeployCommit: "b".repeat(40),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Conditional delete deploy mismatch",
+    });
+    expect(getAgent).not.toHaveBeenCalled();
+    expect(deleteAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
+  });
+
+  test("accepts a conditional delete bound to the serving deploy", async () => {
+    getAgent.mockResolvedValueOnce(
+      sharedAgent({
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+      }),
+    );
+
+    const response = await deleteRequest({
+      expectedAgentName: "Canary Agent",
+      expectedCreatedAt: "2026-07-07T08:00:00.000Z",
+      expectedExecutionTier: "dedicated-always",
+      expectedDeployCommit: DEPLOY_COMMIT,
+    });
+
+    expect(response.status).toBe(202);
+    expect(enqueueAgentDeleteOnce).toHaveBeenCalledTimes(1);
   });
 
   test("rejects an invalid conditional delete before queueing", async () => {

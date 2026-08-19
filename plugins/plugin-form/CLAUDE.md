@@ -105,7 +105,7 @@ await formService.startSession('onboard', entityId, roomId, { context: { tier: '
 
 ## Conventions / gotchas
 
-- **Storage uses elizaOS Components** (no custom DB tables). Sessions are keyed `form_session:{roomId}`, submissions as `form_submission:{formId}:{submissionId}`. All CRUD is in `storage.ts`.
+- **Storage uses elizaOS Components** (no custom DB tables). Sessions are keyed `form_session:{roomId}:{sessionId}`, submissions as `form_submission:{formId}:{submissionId}`. All CRUD is in `storage.ts`. The session id is part of the natural key so a stashed session survives a new session started in the same room (multiple stashed sessions can coexist).
 - **One active session per user per room.** Calling `startSession` when one already exists throws. Stash or cancel the existing one first.
 - **`restore` intent must go through the FORM action**, not the evaluator, so the provider has fresh context before the agent reply.
 - **Effort-based TTL.** Sessions don't expire at a fixed time; more user interaction extends retention (min 14 days, max 90 days, configurable per form via `FormDefinition.ttl`).

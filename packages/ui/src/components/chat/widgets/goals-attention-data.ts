@@ -24,6 +24,7 @@ import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities"
 
 /** How often a home surface refreshes goals - matches GoalsView's 20s poll. */
 export const GOALS_REFRESH_INTERVAL_MS = 20_000;
+const GOALS_REQUEST_TIMEOUT_MS = 15_000;
 
 export type GoalStatus = "active" | "paused" | "archived" | "satisfied";
 export type GoalReviewState =
@@ -96,14 +97,18 @@ export function parseGoals(payload: unknown): AttentionGoal[] {
   return goals;
 }
 
-/** Goals-attention GET is a short UI read. */
-export const GOALS_ATTENTION_JSON_TIMEOUT_MS = 15_000;
-
-export async function fetchGoals(): Promise<AttentionGoal[]> {
-  const body = await client.fetch<unknown>("/api/lifeops/goals", undefined, {
-    timeoutMs: GOALS_ATTENTION_JSON_TIMEOUT_MS,
+export async function fetchGoals(
+  callerSignal?: AbortSignal,
+): Promise<AttentionGoal[]> {
+  const deadline = AbortSignal.timeout(GOALS_REQUEST_TIMEOUT_MS);
+  const response = await fetch(`${client.getBaseUrl()}/api/lifeops/goals`, {
+    method: "GET",
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
   });
-  return parseGoals(body);
+  if (!response.ok) {
+    throw new Error(`Goals request failed (${response.status})`);
+  }
+  return parseGoals(await response.json());
 }
 
 /** Goals that belong on a glance surface: live (non-archived, non-satisfied). */
@@ -166,12 +171,13 @@ export function goalsEqual(
  */
 export async function loadGoalsForGlance(
   authenticated: boolean,
+  signal?: AbortSignal,
 ): Promise<AttentionGoal[] | null> {
   if (!authenticated || !supportsFullAppShellRoutes(client.getBaseUrl())) {
     return [];
   }
   try {
-    return await fetchGoals();
+    return await fetchGoals(signal);
   } catch {
     // error-policy:J4 glance surface - signal "keep last good" to the caller.
     return null;

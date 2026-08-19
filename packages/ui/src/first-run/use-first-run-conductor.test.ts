@@ -59,6 +59,12 @@ const mocks = vi.hoisted(() => ({
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
     getRestAuthToken: vi.fn(() => null),
+    cloudLoginDirect: vi.fn(async (cloudApiBase: string) => ({
+      ok: true,
+      apiBase: cloudApiBase,
+      browserUrl: "https://eliza.app/auth/cli-login?session=prepared",
+      sessionId: "prepared",
+    })),
     fetch: vi.fn(async () => {
       throw new Error("no network in test");
     }),
@@ -145,7 +151,10 @@ import {
   ConversationMessagesCtx,
   type ConversationMessagesValue,
 } from "../state/ConversationMessagesContext.hooks";
-import { CLOUD_LOGIN_POPUP_NAME } from "../state/cloud-login-launch";
+import {
+  __resetPreparedDesktopCloudLoginSessionForTests,
+  CLOUD_LOGIN_POPUP_NAME,
+} from "../state/cloud-login-launch";
 import type { AppContextValue } from "../state/internal";
 import { classifyDeviceRamTier } from "./device-ram-tier";
 import {
@@ -174,6 +183,9 @@ import {
 const PERSONAL_ELIZA_ID = "personal:11111111-1111-5111-8111-111111111111";
 const PERSONAL_ELIZA_API_BASE =
   "https://eliza.app/api/v1/eliza/agents/personal%3A11111111-1111-5111-8111-111111111111";
+const windowWithElectrobun = window as Window & {
+  __electrobunWindowId?: number;
+};
 
 // This jsdom env exposes `window.localStorage` as an object without methods;
 // install a real in-memory Storage (mirrors `first-run.test.ts`) so the finish
@@ -326,6 +338,12 @@ beforeEach(() => {
     data: [],
   });
   mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
+  mocks.client.cloudLoginDirect.mockResolvedValue({
+    ok: true,
+    apiBase: "https://eliza.app",
+    browserUrl: "https://eliza.app/auth/cli-login?session=prepared",
+    sessionId: "prepared",
+  });
   mocks.refreshCloudStewardSession.mockResolvedValue(null);
   mocks.preOpenCloudLoginWindow.mockReturnValue(null);
   localStorage.setItem("steward_session_token", "cloud-token");
@@ -342,6 +360,8 @@ afterEach(() => {
   cleanup();
   __setAppValueForTests(null);
   resetTutorialState();
+  delete windowWithElectrobun.__electrobunWindowId;
+  __resetPreparedDesktopCloudLoginSessionForTests();
   ensureLocalStorage().clear();
   // Drop the steward-authed marker cookie some cloud-only tests plant — a
   // leaked cookie would flip later mounts into the silent recovery branch.
@@ -360,9 +380,10 @@ describe("useFirstRunConductor", () => {
     seedAppStore({ elizaCloudConnected: false });
     const { turn } = renderConductor({ cloudOnly: true });
 
+    const greeting = await waitForTurn(turn, "first-run:greeting");
     const signIn = await waitForTurn(turn, "first-run:cloud-oauth");
-    expect(turn("first-run:greeting")).toBeUndefined();
-    expect(signIn.text).toContain("Hi, I’m Eliza.");
+    expect(greeting.text).toBe("Hi, I'm Eliza.");
+    expect(signIn.text).toContain("Let's get you signed in.");
     expect(signIn.text).toContain("Sign in to Eliza Cloud");
     expect(signIn.text).not.toContain("runtime:local");
     expect(signIn.text).not.toContain("runtime:remote");
@@ -1415,15 +1436,15 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     localStorage.removeItem("eliza:enable-runtime-chooser");
   });
 
-  it("seeds sign-in as the first ordinary assistant turn — no local/remote options, no backup probe, no unprompted provisioning", async () => {
+  it("seeds the established greeting and sign-in chat bubbles — no local/remote options, backup probe, or unprompted provisioning", async () => {
     localStorage.removeItem("steward_session_token");
     seedAppStore({ elizaCloudConnected: false });
     const { turn, unmount } = renderConductor();
 
+    const greeting = await waitForTurn(turn, "first-run:greeting");
     const signIn = await waitForTurn(turn, "first-run:cloud-oauth");
-    expect(turn("first-run:greeting")).toBeUndefined();
-    expect(signIn.text).toContain("Hi, I’m Eliza.");
-    expect(signIn.text).toContain("Sign in to Eliza Cloud to get started.");
+    expect(greeting.text).toBe("Hi, I'm Eliza.");
+    expect(signIn.text).toContain("Let's get you signed in.");
     expect(signIn.text).toContain("__first_run__:runtime:cloud=");
     expect(signIn.text).not.toContain("__first_run__:runtime:local=");
     expect(signIn.text).not.toContain("__first_run__:runtime:remote=");
@@ -1434,6 +1455,23 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // a sign-in tap.
     await new Promise((resolve) => setTimeout(resolve, 25));
     expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("prepares the desktop login session while the sign-in CTA is visible", async () => {
+    localStorage.removeItem("steward_session_token");
+    windowWithElectrobun.__electrobunWindowId = 1;
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+
+    await waitForTurn(turn, "first-run:cloud-oauth");
+    await waitFor(() => {
+      expect(mocks.client.cloudLoginDirect).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.client.cloudLoginDirect).toHaveBeenCalledWith(
+      "https://eliza.app",
+    );
+    expect(spies.handleInteractiveCloudLogin).not.toHaveBeenCalled();
     unmount();
   });
 
@@ -1682,8 +1720,10 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
 
     // The failed recovery falls back to EXACTLY the unauthenticated flow: the
     // normal first transcript turn, no fabricated session, nothing provisioned.
+    const greeting = await waitForTurn(turn, "first-run:greeting");
     const signIn = await waitForTurn(turn, "first-run:cloud-oauth");
-    expect(signIn.text).toContain("Hi, I’m Eliza.");
+    expect(greeting.text).toBe("Hi, I'm Eliza.");
+    expect(signIn.text).toContain("Let's get you signed in.");
     expect(signIn.text).toContain("Sign in to Eliza Cloud");
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
     expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
@@ -2319,8 +2359,11 @@ describe("bounded cloud sign-in wait (#19255)", () => {
     await act(async () => vi.advanceTimersByTimeAsync(50));
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await act(async () => vi.advanceTimersByTimeAsync(50));
-    expect(turn("first-run:cloud-login-waiting")?.text).toBe(
-      "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue. If nothing opened, tap Sign in again.",
+    expect(turn("first-run:cloud-login-waiting")?.text).toContain(
+      "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+    );
+    expect(turn("first-run:cloud-login-waiting")?.text).toContain(
+      "__first_run__:cloud-login:retry=Open sign-in again",
     );
 
     await act(async () => vi.advanceTimersByTimeAsync(90_000));
@@ -2344,6 +2387,34 @@ describe("bounded cloud sign-in wait (#19255)", () => {
       ),
     ).toBe(false);
     localStorage.removeItem("steward_session_token");
+    unmount();
+  });
+
+  it("lets the waiting turn immediately abandon and retry external sign-in", async () => {
+    vi.useFakeTimers();
+    localStorage.removeItem("steward_session_token");
+    const { handleInteractiveCloudLogin } = pendingLogin();
+    seedAppStore({
+      elizaCloudConnected: false,
+      handleInteractiveCloudLogin,
+    });
+    const { turn, unmount } = renderConductor();
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
+    const firstWaitingText = turn("first-run:cloud-login-waiting")?.text ?? "";
+    expect(firstWaitingText).toContain("cloud-login-retry-");
+
+    expect(tryHandleFirstRunAction("__first_run__:cloud-login:retry")).toBe(
+      true,
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(2);
+    const retriedWaitingText =
+      turn("first-run:cloud-login-waiting")?.text ?? "";
+    expect(retriedWaitingText).toContain("cloud-login-retry-");
+    expect(retriedWaitingText).not.toBe(firstWaitingText);
     unmount();
   });
 

@@ -7,7 +7,8 @@
  * wildcard subdomain router. Routing requires a persisted headscale_ip by default;
  * legacy bridge-host fallback is opt-in because public host + dynamic port
  * metadata is not a reliable ingress target after the Hetzner/control-plane
- * split.
+ * split. Browser CORS on this hop is first-party + credentials only — an
+ * untrusted Origin is not reflected.
  *
  * Usage:
  *   npx tsx packages/cloud/scripts/admin/daemons/agent-router.ts
@@ -23,6 +24,7 @@ import * as path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { isFirstPartyOrigin } from "../../../shared/src/lib/cors/first-party-origin.ts";
 import { loadLocalEnv } from "./shared/load-env";
 
 type Logger = typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
@@ -321,23 +323,41 @@ export function buildProxyHeaders(
 }
 
 /**
+ * True when `origin` may be reflected with `Allow-Credentials: true`.
+ * The shared Cloud policy is authoritative so new production and legacy
+ * origins cannot drift between the edge Worker and its router origin.
+ */
+export function isCredentialedAgentRouterOrigin(origin: string): boolean {
+  return isFirstPartyOrigin(origin);
+}
+
+/**
  * CORS headers for the browser-facing agent-proxy path. nginx forwards the
  * request here verbatim and injects nothing, so an error we return with no
  * `access-control-allow-origin` reaches the browser as an opaque
  * "No 'Access-Control-Allow-Origin'" failure that hides the real status (#15347).
- * The agent's own responses already carry CORS (its `resolveCorsOrigin` reflects
- * any origin when provisioned), so we mirror that by reflecting the caller's
- * Origin — `*` only for a header-less (non-browser) caller, where credentials
- * are moot.
+ *
+ * Credentialed reflection is first-party only. A missing Origin (non-browser)
+ * still gets `*` without credentials. An untrusted Origin gets Vary and the
+ * method/header allow-list but no ACAO — fail closed, no cookie ride.
  */
-function corsHeaders(origin: string | undefined): Record<string, string> {
-  return {
-    "access-control-allow-origin": origin || "*",
+export function corsHeaders(
+  origin: string | undefined,
+): Record<string, string> {
+  const headers: Record<string, string> = {
     vary: "origin",
-    "access-control-allow-credentials": "true",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type,x-api-key",
   };
+  if (!origin) {
+    headers["access-control-allow-origin"] = "*";
+    return headers;
+  }
+  if (isCredentialedAgentRouterOrigin(origin)) {
+    headers["access-control-allow-origin"] = origin;
+    headers["access-control-allow-credentials"] = "true";
+  }
+  return headers;
 }
 
 /**

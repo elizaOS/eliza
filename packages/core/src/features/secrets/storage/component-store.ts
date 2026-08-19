@@ -1,8 +1,10 @@
 /**
- * Component Storage
- *
- * Stores user-level secrets as Components in the ElizaOS database.
- * Each user's secrets are isolated via the component's entityId.
+ * Persists per-user secrets as runtime components.
+ * The SQL adapter uniquely keys components by (entityId, type, worldId,
+ * sourceEntityId), so the secret name must live in `type` (`secret:${key}`).
+ * A type of just `secret` can hold only one row per user and is read as the
+ * pre-keying layout. `getComponents(entityId)` is not agent-scoped, so reads
+ * and deletes keep only rows whose `agentId` is this runtime.
  */
 
 import { createUniqueUuid } from "../../../entities.ts";
@@ -20,7 +22,16 @@ import type {
 import { PermissionDeniedError, StorageError } from "../types.ts";
 import { BaseSecretStorage } from "./interface.ts";
 
-const COMPONENT_TYPE = "secret";
+const LEGACY_USER_SECRET_COMPONENT_TYPE = "secret";
+const USER_SECRET_COMPONENT_PREFIX = "secret:";
+
+function userSecretComponentType(key: string): string {
+	return `${USER_SECRET_COMPONENT_PREFIX}${key}`;
+}
+
+function belongsToRuntimeAgent(component: Component, agentId: UUID): boolean {
+	return component.agentId === agentId;
+}
 
 /**
  * Component data structure for secret storage
@@ -34,11 +45,41 @@ interface SecretComponentData {
 	[key: string]: string | EncryptedSecret | SecretConfig | number | undefined;
 }
 
+function readSecretComponentData(
+	component: Component,
+): SecretComponentData | undefined {
+	const data = component.data;
+	if (!data || typeof data !== "object") return undefined;
+	const candidate = data as Partial<SecretComponentData>;
+	if (
+		typeof candidate.key !== "string" ||
+		(typeof candidate.value !== "string" &&
+			!isEncryptedSecret(candidate.value)) ||
+		!candidate.config ||
+		typeof candidate.config !== "object" ||
+		typeof candidate.updatedAt !== "number"
+	) {
+		return undefined;
+	}
+	return candidate as SecretComponentData;
+}
+
+function isUserSecretComponent(
+	component: Component,
+	data: SecretComponentData,
+): boolean {
+	return (
+		component.type === LEGACY_USER_SECRET_COMPONENT_TYPE ||
+		component.type === userSecretComponentType(data.key)
+	);
+}
+
 /**
- * Component-based storage for user-level secrets
+ * Component-based storage for user-level secrets.
  *
- * Each secret is stored as a Component with type='secret' and entityId
- * set to the user's ID, providing natural isolation per user.
+ * Each secret is a component on the user entity. `type` is `secret:${key}` so
+ * two keys do not share the SQL natural key. Rows still typed `secret` are
+ * the one-key-per-user layout and stay readable.
  */
 export class ComponentSecretStorage extends BaseSecretStorage {
 	readonly storageType: StorageBackend = "component";
@@ -161,7 +202,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 				roomId: this.runtime.agentId,
 				worldId: this.runtime.agentId,
 				sourceEntityId: context.userId as UUID,
-				type: COMPONENT_TYPE,
+				type: userSecretComponentType(key),
 				data: componentData as Component["data"],
 			};
 
@@ -204,12 +245,8 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		const metadata: SecretMetadata = {};
 
 		for (const component of components) {
-			if (component.type !== COMPONENT_TYPE) {
-				continue;
-			}
-
-			const data = component.data as SecretComponentData;
-			if (!data.key || !data.config) {
+			const data = this.readOwnUserSecretComponent(component);
+			if (!data) {
 				continue;
 			}
 
@@ -278,26 +315,46 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 	}
 
 	/**
-	 * Find a secret component for a user by key
+	 * Find a secret component for a user by key.
+	 * Prefer the keyed type so a same-name legacy `secret` row is not chosen
+	 * over `secret:${key}` after a mixed-layout upgrade.
 	 */
 	private async findSecretComponent(
 		userId: string,
 		key: string,
 	): Promise<Component | null> {
 		const components = await this.runtime.getComponents(userId as UUID);
+		const keyedType = userSecretComponentType(key);
+		let legacy: Component | null = null;
 
 		for (const component of components) {
-			if (component.type !== COMPONENT_TYPE) {
+			if (!belongsToRuntimeAgent(component, this.runtime.agentId)) {
 				continue;
 			}
-
-			const data = component.data as SecretComponentData | undefined;
-			if (data?.key === key) {
+			const data = readSecretComponentData(component);
+			if (data?.key !== key) continue;
+			if (component.type === keyedType) {
 				return component;
+			}
+			if (
+				component.type === LEGACY_USER_SECRET_COMPONENT_TYPE &&
+				data?.key === key
+			) {
+				legacy = component;
 			}
 		}
 
-		return null;
+		return legacy;
+	}
+
+	private readOwnUserSecretComponent(
+		component: Component,
+	): SecretComponentData | undefined {
+		if (!belongsToRuntimeAgent(component, this.runtime.agentId)) {
+			return undefined;
+		}
+		const data = readSecretComponentData(component);
+		return data && isUserSecretComponent(component, data) ? data : undefined;
 	}
 
 	private assertUserAccess(
@@ -318,11 +375,10 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		const keys: string[] = [];
 
 		for (const component of components) {
-			if (component.type !== COMPONENT_TYPE) {
+			const data = this.readOwnUserSecretComponent(component);
+			if (!data) {
 				continue;
 			}
-
-			const data = component.data as SecretComponentData;
 			if (data.key) {
 				keys.push(data.key);
 			}
@@ -339,7 +395,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		let deleted = 0;
 
 		for (const component of components) {
-			if (component.type !== COMPONENT_TYPE) {
+			if (!this.readOwnUserSecretComponent(component)) {
 				continue;
 			}
 
@@ -361,7 +417,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		let count = 0;
 
 		for (const component of components) {
-			if (component.type === COMPONENT_TYPE) {
+			if (this.readOwnUserSecretComponent(component)) {
 				count++;
 			}
 		}

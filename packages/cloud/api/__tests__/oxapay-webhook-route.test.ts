@@ -8,24 +8,84 @@ import {
   mock,
   test,
 } from "bun:test";
+import { OxaPayApiError, oxaPayService } from "@/lib/services/oxapay";
 import type { PaymentCallbackEvent } from "@/lib/services/payment-callback-bus";
 // Subscribe on the REAL bus (rather than mock.module'ing it) — a module mock
 // here is process-global and would swap the singleton out from under any later
 // suite that publishes/waits on payment callbacks.
 import { paymentCallbackBus } from "@/lib/services/payment-callback-bus";
-// Spread into the partial logger mock below — mock.module is process-global,
-// so dropping the real `redact` export breaks later suites that import it.
-import * as loggerActual from "@/lib/utils/logger";
+import type { ProcessedPaymentProviderEvent } from "@/lib/services/payment-request-settlement";
 
 const SECRET = "test-oxapay-webhook-secret";
 
-const markSettled = mock(async () => ({ id: "row" }));
-const markFailed = mock(async () => ({ id: "row" }));
-
-mock.module("@/lib/services/payment-requests-default", () => ({
-  getPaymentRequestsService: () => ({ markSettled, markFailed }),
-  paymentRequestsService: { markSettled, markFailed },
+const markSettled = mock(
+  async (
+    _paymentRequestId: string,
+    _providerTxRef: string,
+    _proof: Record<string, unknown>,
+  ) => ({ id: "row" }),
+);
+const markFailed = mock(async (_paymentRequestId: string, _error?: string) => ({
+  id: "row",
 }));
+const dispatchPaymentCallbacks = mock(async () => ({
+  claimed: 1,
+  dispatched: 1,
+  failed: 0,
+}));
+const digest = mock(async () => "a".repeat(64));
+const seenProviderEvents = new Set<string>();
+const processPaymentProviderEvent = mock(
+  async (event: {
+    provider: "oxapay";
+    providerEventId: string;
+    paymentRequestId: string;
+    disposition: "settled" | "failed";
+    providerTxRef: string;
+    amountCents?: number;
+    currency?: string;
+    proof: Record<string, unknown>;
+    error?: string;
+    payloadDigest: string;
+  }): Promise<ProcessedPaymentProviderEvent> => {
+    const replay = seenProviderEvents.has(event.providerEventId);
+    if (event.disposition === "settled") {
+      await markSettled(
+        event.paymentRequestId,
+        event.providerTxRef,
+        event.proof,
+      );
+    } else {
+      await markFailed(event.paymentRequestId, event.error);
+    }
+    seenProviderEvents.add(event.providerEventId);
+    return {
+      replay,
+      callbackState: replay ? "dispatched" : "pending",
+      callback:
+        event.disposition === "settled"
+          ? {
+              name: "PaymentSettled",
+              paymentRequestId: event.paymentRequestId,
+              provider: "oxapay",
+              txRef: event.providerTxRef,
+              providerEventId: event.providerEventId,
+              amountCents: event.amountCents ?? 0,
+              currency: event.currency ?? "USD",
+              settledAt: new Date(),
+            }
+          : {
+              name: "PaymentFailed",
+              paymentRequestId: event.paymentRequestId,
+              provider: "oxapay",
+              txRef: event.providerTxRef,
+              providerEventId: event.providerEventId,
+              error: event.error ?? "OxaPay payment failed",
+              failedAt: new Date(),
+            },
+    };
+  },
+);
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: {
@@ -39,18 +99,16 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   },
 }));
 
-mock.module("@/lib/utils/logger", () => ({
-  ...loggerActual,
-  logger: {
-    ...loggerActual.logger,
-    debug: mock(),
-    error: mock(),
-    info: mock(),
-    warn: mock(),
-  },
-}));
-
-const { default: app } = await import("../v1/oxapay/webhook/route");
+const { createOxaPayWebhookApp } = await import("../v1/oxapay/webhook/route");
+const { createOxaPayPaymentAdapter } = await import(
+  "@/lib/services/payment-adapters/oxapay"
+);
+const app = createOxaPayWebhookApp({
+  adapter: createOxaPayPaymentAdapter(),
+  processProviderEvent: processPaymentProviderEvent,
+  dispatchCallbacks: dispatchPaymentCallbacks,
+  digest,
+});
 
 async function sign(body: string, secret: string = SECRET): Promise<string> {
   const enc = new TextEncoder();
@@ -96,8 +154,21 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  oxaPayService.getPaymentStatus = async (trackId: string) => ({
+    trackId,
+    orderId: trackId.replace("trk_", "pr_"),
+    status: "paid",
+    amount: "25",
+    amountText: "25.00",
+    currency: "USD",
+    transactions: [],
+  });
   markSettled.mockClear();
   markFailed.mockClear();
+  processPaymentProviderEvent.mockClear();
+  dispatchPaymentCallbacks.mockClear();
+  digest.mockClear();
+  seenProviderEvents.clear();
   busEvents = [];
 });
 
@@ -107,6 +178,8 @@ describe("OxaPay payment_requests webhook route", () => {
       orderId: "pr_nohdr",
       trackId: "trk_nohdr",
       status: "paid",
+      amount: "25.00",
+      currency: "USD",
     });
     const response = await app.fetch(oxaPayRequest(body), env);
 
@@ -121,6 +194,8 @@ describe("OxaPay payment_requests webhook route", () => {
       orderId: "pr_badsig",
       trackId: "trk_badsig",
       status: "paid",
+      amount: "25.00",
+      currency: "USD",
     });
     const response = await app.fetch(
       oxaPayRequest(body, { hmac: await sign(body, "wrong-secret") }),
@@ -138,6 +213,8 @@ describe("OxaPay payment_requests webhook route", () => {
       orderId: "pr_tamper",
       trackId: "trk_tamper",
       status: "paid",
+      amount: "25.00",
+      currency: "USD",
     });
     const signature = await sign(original);
     const tampered = JSON.stringify({
@@ -145,6 +222,7 @@ describe("OxaPay payment_requests webhook route", () => {
       trackId: "trk_tamper",
       status: "paid",
       amount: "999999",
+      currency: "USD",
     });
 
     const response = await app.fetch(
@@ -161,6 +239,8 @@ describe("OxaPay payment_requests webhook route", () => {
       orderId: "pr_settle_1",
       trackId: "trk_settle_1",
       status: "paid",
+      amount: "25.00",
+      currency: "USD",
     });
     const headers = { hmac: await sign(body) };
 
@@ -172,7 +252,12 @@ describe("OxaPay payment_requests webhook route", () => {
     expect(markSettled).toHaveBeenCalledWith(
       "pr_settle_1",
       "trk_settle_1",
-      expect.objectContaining({ provider: "oxapay", trackId: "trk_settle_1" }),
+      expect.objectContaining({
+        provider: "oxapay",
+        oxapay_track_id: "trk_settle_1",
+        oxapay_amount_cents: 2500,
+        oxapay_currency: "USD",
+      }),
     );
     expect(markFailed).not.toHaveBeenCalled();
     expect(busEvents).toHaveLength(1);
@@ -191,6 +276,35 @@ describe("OxaPay payment_requests webhook route", () => {
     await expect(replay.text()).resolves.toBe("ok");
     expect(markSettled).toHaveBeenCalledTimes(2);
     expect(busEvents).toHaveLength(1);
+  });
+
+  test("semantically identical OxaPay redeliveries use the same durable digest", async () => {
+    const firstBody = JSON.stringify({
+      orderId: "pr_semantic",
+      trackId: "trk_semantic",
+      status: "paid",
+      amount: "0.5",
+      currency: "POL",
+      audit: "first",
+    });
+    const secondBody = JSON.stringify({
+      audit: "changed",
+      currency: "USDT",
+      amount: "999",
+      status: "paid",
+      trackId: "trk_semantic",
+      orderId: "pr_semantic",
+    });
+    for (const body of [firstBody, secondBody]) {
+      const response = await app.fetch(
+        oxaPayRequest(body, { hmac: await sign(body) }),
+        env,
+      );
+      expect(response.status).toBe(200);
+    }
+    expect(digest).toHaveBeenCalledTimes(2);
+    const digestCalls = digest.mock.calls as unknown as Array<[string]>;
+    expect(digestCalls[0]?.[0]).toBe(digestCalls[1]?.[0]);
   });
 
   test("failed invoice marks the request failed — no credit path touched", async () => {
@@ -274,6 +388,8 @@ describe("OxaPay payment_requests webhook route", () => {
       orderId: "pr_retry_1",
       trackId: "trk_retry_1",
       status: "paid",
+      amount: "25.00",
+      currency: "USD",
     });
     const headers = { hmac: await sign(body) };
 
@@ -291,11 +407,32 @@ describe("OxaPay payment_requests webhook route", () => {
     expect(busEvents[0]?.name).toBe("PaymentSettled");
   });
 
+  test("transient Payment Information inquiry failure returns 500 for OxaPay retry", async () => {
+    oxaPayService.getPaymentStatus = async () => {
+      throw new OxaPayApiError("temporary inquiry outage", 503);
+    };
+    const body = JSON.stringify({
+      orderId: "pr_inquiry_retry",
+      trackId: "trk_inquiry_retry",
+      status: "paid",
+      amount: "0.5",
+      currency: "POL",
+    });
+    const response = await app.fetch(
+      oxaPayRequest(body, { hmac: await sign(body) }),
+      env,
+    );
+    expect(response.status).toBe(500);
+    expect(processPaymentProviderEvent).not.toHaveBeenCalled();
+  });
+
   test("rejects a non-allowlisted source IP when OXAPAY_WEBHOOK_IPS is set", async () => {
     const body = JSON.stringify({
       orderId: "pr_ip_1",
       trackId: "trk_ip_1",
       status: "paid",
+      amount: "25.00",
+      currency: "USD",
     });
     const response = await app.fetch(
       oxaPayRequest(body, {

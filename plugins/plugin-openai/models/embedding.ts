@@ -112,20 +112,15 @@ function createDeterministicEmbedding(text: string, dimension: VectorDimension):
   return vector.map((value) => value / norm);
 }
 
-/** Retrieval embeddings are shorter than image/audio jobs, but still need a hard cap. */
-export const TEXT_EMBEDDING_TIMEOUT_MS = 30_000;
+const TEXT_EMBEDDING_TIMEOUT_MS = 30_000;
 
-export async function handleTextEmbeddingWithFetch(
+export async function handleTextEmbedding(
   runtime: IAgentRuntime,
-  params: TextEmbeddingParams | string | null,
-  fetchImpl: typeof fetch = globalThis.fetch,
-  timeoutMs: number = TEXT_EMBEDDING_TIMEOUT_MS
+  params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
   const embeddingModel = getEmbeddingModel(runtime);
   const embeddingDimension = validateDimension(getEmbeddingDimensions(runtime));
   const callerSignal = extractSignal(params);
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
 
   const text = extractText(params);
   if (text === null) {
@@ -161,11 +156,13 @@ export async function handleTextEmbeddingWithFetch(
 
   const baseURL = getEmbeddingBaseURL(runtime);
   const url = `${baseURL}/embeddings`;
+  const timeoutSignal = AbortSignal.timeout(TEXT_EMBEDDING_TIMEOUT_MS);
+  const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
 
   logger.debug(`[OpenAI] Generating embedding with model: ${embeddingModel}`);
 
   // @trajectory-allow Embeddings return numeric retrieval vectors, not generative LLM text.
-  const response = await fetchImpl(url, {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       ...getAuthHeader(runtime, true),
@@ -218,11 +215,4 @@ export async function handleTextEmbeddingWithFetch(
 
   logger.debug(`[OpenAI] Generated embedding with ${embedding.length} dimensions`);
   return embedding;
-}
-
-export async function handleTextEmbedding(
-  runtime: IAgentRuntime,
-  params: TextEmbeddingParams | string | null
-): Promise<number[]> {
-  return handleTextEmbeddingWithFetch(runtime, params);
 }

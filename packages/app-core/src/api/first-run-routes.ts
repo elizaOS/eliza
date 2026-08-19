@@ -13,7 +13,9 @@
  * boot; cloud/remote targets deliberately leave the process runtime-less.
  *
  * Untrusted request JSON is parsed before any persist: syntax errors and
- * non-object bodies return 400 and never report `{ ok: true }`.
+ * non-object bodies return 400 and never report `{ ok: true }`. Request bodies
+ * are bounded before parsing so oversized onboarding payloads cannot consume
+ * unbounded process memory.
  *
  * A defensive delayed resave (`scheduleCloudApiKeyResave`) re-writes
  * `cloud.apiKey` if a concurrent config write clobbers it — a best-effort
@@ -25,7 +27,7 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent";
-import { logger } from "@elizaos/core";
+import { logger, readRequestBody } from "@elizaos/core";
 import {
   type DeploymentTargetRuntime,
   getCloudSecret,
@@ -51,6 +53,8 @@ import {
   hasDeprecatedFirstRunRequestFields,
   persistFirstRunDefaults,
 } from "./server-first-run-helpers";
+
+export const MAX_FIRST_RUN_BODY_BYTES = 1_048_576;
 
 async function syncFirstRunConfigState(
   req: http.IncomingMessage,
@@ -201,18 +205,25 @@ export async function handleFirstRunRoute(
     return true;
   }
 
-  const chunks: Buffer[] = [];
+  let rawBody: string;
   try {
-    for await (const chunk of req) {
-      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    const body = await readRequestBody(req, {
+      maxBytes: MAX_FIRST_RUN_BODY_BYTES,
+      returnNullOnTooLarge: true,
+    });
+    if (body === null) {
+      sendJsonResponse(res, 413, { error: "Request body too large" });
+      return true;
     }
+    rawBody = body.trim();
   } catch (err) {
+    // error-policy:J1 first-run POST is the transport boundary; a broken
+    // stream becomes a structured 400, never a fabricated onboarding success.
     sendJsonResponse(res, 400, {
       error: `failed to read onboarding request body: ${err instanceof Error ? err.message : String(err)}`,
     });
     return true;
   }
-  const rawBody = Buffer.concat(chunks).toString("utf8").trim();
   let parsed: unknown;
   try {
     parsed = rawBody === "" ? undefined : JSON.parse(rawBody);

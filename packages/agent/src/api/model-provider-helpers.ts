@@ -15,6 +15,8 @@ import {
 import { isMobilePlatform } from "@elizaos/shared/runtime-env";
 import { resolveModelsCacheDir } from "../config/paths.ts";
 
+export const DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS = 10_000;
+
 type ModelOption = {
   id: string;
   name: string;
@@ -357,7 +359,10 @@ export async function fetchModelsREST(
     const url = `${baseUrl.replace(/\/+$/, "")}/models`;
     const headers: Record<string, string> = {};
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-    const res = await fetch(url, { headers });
+    const res = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) return [];
     const data = (await res.json()) as {
       data?: Array<{ id: string; name?: string; type?: string }>;
@@ -370,6 +375,7 @@ export async function fetchModelsREST(
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
+    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
     logger.warn(
       `[model-catalog] Failed to fetch models for ${providerId}: ${e instanceof Error ? e.message : e}`,
     );
@@ -398,6 +404,7 @@ export async function fetchAnthropicModels(
     if (apiKey) headers["x-api-key"] = apiKey;
     const res = await fetch("https://api.anthropic.com/v1/models?limit=100", {
       headers,
+      signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return [];
     const data = (await res.json()) as {
@@ -411,6 +418,7 @@ export async function fetchAnthropicModels(
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
+    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
     logger.warn(
       `[model-catalog] Failed to fetch Anthropic models: ${e instanceof Error ? e.message : e}`,
     );
@@ -425,7 +433,9 @@ export async function fetchGoogleModels(
     const url = apiKey
       ? `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`
       : "https://generativelanguage.googleapis.com/v1beta/models";
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) return [];
     const data = (await res.json()) as {
       models?: Array<{ name: string; displayName?: string }>;
@@ -439,6 +449,7 @@ export async function fetchGoogleModels(
       };
     });
   } catch (e: unknown) {
+    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
     logger.warn(
       `[model-catalog] Failed to fetch Google models: ${e instanceof Error ? e.message : e}`,
     );
@@ -498,6 +509,7 @@ export async function fetchOpenRouterModels(
   const [chatRes, embedRes] = await Promise.all([
     fetch("https://openrouter.ai/api/v1/models?output_modalities=all", {
       headers,
+      signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
     }).catch((error) => {
       // error-policy:J4 the combined catalog can remain partially available.
       logger.warn(
@@ -505,15 +517,16 @@ export async function fetchOpenRouterModels(
       );
       return null;
     }),
-    fetch("https://openrouter.ai/api/v1/embeddings/models", { headers }).catch(
-      (error) => {
-        // error-policy:J4 the combined catalog can remain partially available.
-        logger.warn(
-          `[model-catalog] OpenRouter embedding catalog unavailable: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        return null;
-      },
-    ),
+    fetch("https://openrouter.ai/api/v1/embeddings/models", {
+      headers,
+      signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
+    }).catch((error) => {
+      // error-policy:J4 the combined catalog can remain partially available.
+      logger.warn(
+        `[model-catalog] OpenRouter embedding catalog unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }),
   ]);
 
   const models: CachedModel[] = [];
@@ -593,7 +606,10 @@ export async function fetchNearAIModels(
     const url = `${baseUrl.replace(/\/+$/, "")}/models`;
     const headers: Record<string, string> = {};
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-    const res = await fetch(url, { headers });
+    const res = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) return [];
     const data = (await res.json()) as {
       data?: NearAIModelEntry[];
@@ -626,6 +642,7 @@ export async function fetchNearAIModels(
       .filter((model): model is CachedModel => model !== null)
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
+    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
     logger.warn(
       `[model-catalog] Failed to fetch NEAR AI models: ${e instanceof Error ? e.message : e}`,
     );

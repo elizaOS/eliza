@@ -84,6 +84,7 @@ export function useContentPack(): UseContentPackResult {
   const [loadedPacks, setLoadedPacks] = useState<ResolvedContentPack[]>([]);
   const [error, setError] = useState<string | null>(null);
   const colorSchemeCleanupRef = useRef<(() => void) | null>(null);
+  const urlLoadControllerRef = useRef<AbortController | null>(null);
   const loadedPacksRef = useRef<ResolvedContentPack[]>([]);
   const baselineRef = useRef<{
     selectedVrmIndex: number;
@@ -103,6 +104,8 @@ export function useContentPack(): UseContentPackResult {
 
   useEffect(() => {
     return () => {
+      urlLoadControllerRef.current?.abort();
+      urlLoadControllerRef.current = null;
       for (const pack of loadedPacksRef.current) {
         releaseLoadedContentPack(pack);
       }
@@ -121,23 +124,30 @@ export function useContentPack(): UseContentPackResult {
       return;
     }
 
-    let cancelled = false;
-    void loadContentPackFromUrl(persistedUrl)
+    urlLoadControllerRef.current?.abort();
+    const controller = new AbortController();
+    urlLoadControllerRef.current = controller;
+    void loadContentPackFromUrl(persistedUrl, { signal: controller.signal })
       .then((pack) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setLoadedPacks((prev) => {
           if (prev.some((p) => p.manifest.id === pack.manifest.id)) return prev;
           return [...prev, pack];
         });
       })
       .catch(() => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         savePersistedActivePackUrl(null);
         setState("activePackId", null);
+      })
+      .finally(() => {
+        if (urlLoadControllerRef.current === controller) {
+          urlLoadControllerRef.current = null;
+        }
       });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [activePackId, setState]);
 
@@ -238,17 +248,28 @@ export function useContentPack(): UseContentPackResult {
         return;
       }
 
+      urlLoadControllerRef.current?.abort();
+      const controller = new AbortController();
+      urlLoadControllerRef.current = controller;
       try {
-        const pack = await loadContentPackFromUrl(trimmed);
+        const pack = await loadContentPackFromUrl(trimmed, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
         setLoadedPacks((prev) => {
           if (prev.some((p) => p.manifest.id === pack.manifest.id)) return prev;
           return [...prev, pack];
         });
         activate(pack);
       } catch (err) {
+        if (controller.signal.aborted) return;
         setError(
           `Failed to load pack: ${err instanceof Error ? err.message : "Unknown error"}`,
         );
+      } finally {
+        if (urlLoadControllerRef.current === controller) {
+          urlLoadControllerRef.current = null;
+        }
       }
     },
     [activate],

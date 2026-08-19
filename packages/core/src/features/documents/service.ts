@@ -45,7 +45,7 @@ import {
 	Service,
 	type UUID,
 } from "../../types";
-import { splitChunks } from "../../utils";
+import { splitChunks, validateUuid } from "../../utils";
 import { Semaphore } from "../../utils/prompt-batcher/shared";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
 import { validateModelConfig } from "./config";
@@ -317,6 +317,23 @@ function normalizeDocumentScope(
 		code: "DOCUMENT_SCOPE_INVALID",
 		context: { scope },
 	});
+}
+
+/**
+ * worldId/roomId/entityId are UUID-typed Postgres columns (see
+ * plugins/plugin-sql/src/schema/memory.ts); an explicit "" is not a
+ * representable scope value, only an omitted (undefined) one defaults to
+ * agentId. Reject invalid input at this boundary instead of letting it reach
+ * createMemory, where a real adapter fails opaquely and the in-memory test
+ * adapter accepts an unqueryable row.
+ */
+function requireDocumentScopeUuid(value: UUID, field: string): void {
+	if (validateUuid(value) === null) {
+		throw new ElizaError(`Document ${field} must be a valid UUID`, {
+			code: "DOCUMENT_SCOPE_ID_INVALID",
+			context: { field, value },
+		});
+	}
 }
 
 function resolveWriteDocumentScope({
@@ -653,12 +670,16 @@ export class DocumentService extends Service {
 	async composeProviderDocuments(
 		message: Memory,
 		listOptions: DocumentListOptions,
-	): Promise<{ relevantFragments: StoredDocument[]; documents: Memory[] }> {
+	): Promise<{
+		relevantFragments: StoredDocument[];
+		documents: Memory[];
+		pinnedDocuments: Memory[];
+	}> {
 		const resolveRequester = createDocumentProviderRequesterResolver(
 			this.runtime,
 			message,
 		);
-		const [relevantFragments, listResult] = await Promise.all([
+		const [relevantFragments, listResult, pinnedDocuments] = await Promise.all([
 			this.searchDocumentsWithRequester(
 				message,
 				undefined,
@@ -668,8 +689,53 @@ export class DocumentService extends Service {
 				resolveRequester,
 			),
 			this.listDocumentsDetailedWithRequester(listOptions, resolveRequester),
+			this.listPinnedDocumentsWithRequester(resolveRequester),
 		]);
-		return { relevantFragments, documents: listResult.documents };
+		return {
+			relevantFragments,
+			documents: listResult.documents,
+			pinnedDocuments,
+		};
+	}
+
+	/** Lists every pinned document visible to the provider's requester. */
+	private async listPinnedDocumentsWithRequester(
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<Memory[]> {
+		const pinnedDocuments: Memory[] = [];
+		let cursor: DocumentListCursor | undefined;
+		do {
+			const page = await this.listDocumentsDetailedWithRequester(
+				{
+					limit: DOCUMENT_LIST_MAX_LIMIT,
+					...(cursor ? { cursor } : {}),
+				},
+				resolveRequester,
+			);
+			pinnedDocuments.push(
+				...page.documents.filter((document) => {
+					const metadata = document.metadata as
+						| DocumentMemoryMetadata
+						| undefined;
+					return (
+						metadata?.type === MemoryType.DOCUMENT && metadata.pinned === true
+					);
+				}),
+			);
+			if (!page.hasMore) break;
+			if (!page.nextCursor) {
+				throw new ElizaError(
+					"Document list reported another page without a continuation cursor",
+					{
+						code: "DOCUMENT_LIST_CURSOR_MISSING",
+						context: { returnedDocuments: page.documents.length },
+						severity: "fatal",
+					},
+				);
+			}
+			cursor = page.nextCursor;
+		} while (cursor);
+		return pinnedDocuments;
 	}
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
@@ -894,6 +960,9 @@ export class DocumentService extends Service {
 		fragmentCount: number;
 	}> {
 		const agentId = options.agentId || (this.runtime.agentId as UUID);
+		requireDocumentScopeUuid(options.worldId, "worldId");
+		requireDocumentScopeUuid(options.roomId, "roomId");
+		requireDocumentScopeUuid(options.entityId, "entityId");
 
 		const contentBasedId = generateContentBasedId(options.content, agentId, {
 			includeFilename: options.originalFilename,
@@ -1002,6 +1071,7 @@ export class DocumentService extends Service {
 		addedByRole,
 		addedFrom,
 		metadata,
+		pinned = false,
 		fragments,
 	}: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
@@ -1153,6 +1223,7 @@ export class DocumentService extends Service {
 				addedAt: Date.now(),
 				ingestionAttemptId,
 				ingestionState: "pending" as const,
+				pinned,
 			};
 
 			const documentMemory = createDocumentMemory({
@@ -1173,6 +1244,8 @@ export class DocumentService extends Service {
 				...documentMemory,
 				id: clientDocumentId,
 				agentId: agentId,
+				// requireDocumentScopeUuid above already rejected an explicit "",
+				// so roomId here is always a real UUID or omitted; || vs ?? is moot.
 				roomId: roomId || agentId,
 				entityId: targetEntityId,
 			};
@@ -1227,9 +1300,11 @@ export class DocumentService extends Service {
 						documentId: clientDocumentId,
 						fragments,
 						agentId,
+						// requireDocumentScopeUuid above already validated roomId, so
+						// it's always a real UUID here; || vs ?? is moot.
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,
@@ -1251,7 +1326,7 @@ export class DocumentService extends Service {
 						contentType,
 						roomId: roomId || agentId,
 						entityId: targetEntityId,
-						worldId: worldId || agentId,
+						worldId: worldId ?? agentId,
 						documentTitle: originalFilename,
 						documentMetadata:
 							(documentMemory.metadata as Record<string, unknown>) ?? undefined,

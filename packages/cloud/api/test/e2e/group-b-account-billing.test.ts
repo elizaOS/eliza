@@ -49,6 +49,7 @@ import {
   getApiKey,
   getBaseUrl,
   isServerReachable,
+  sameOriginBrowserHeaders,
 } from "./_helpers/api";
 
 const serverReachable = await isServerReachable();
@@ -139,7 +140,7 @@ afterAll(async () => {
   if (!serverReachable || !sessionCookie) return;
   for (const id of createdApiKeyIds) {
     await api.delete(`/api/v1/api-keys/${id}`, {
-      headers: { Cookie: sessionCookie },
+      headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }),
     });
   }
 });
@@ -199,7 +200,7 @@ describeE2E("POST /api/v1/api-keys/:id/regenerate", () => {
         description: "Group B regen test — revoked in afterAll.",
         rate_limit: 60,
       },
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     expect(createRes.status).toBe(201);
     const created = (await createRes.json()) as {
@@ -212,7 +213,7 @@ describeE2E("POST /api/v1/api-keys/:id/regenerate", () => {
     const regenRes = await api.post(
       `/api/v1/api-keys/${created.apiKey?.id}/regenerate`,
       undefined,
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     expect(regenRes.status).toBe(200);
     const regen = (await regenRes.json()) as {
@@ -231,7 +232,7 @@ describeE2E("POST /api/v1/api-keys/:id/regenerate", () => {
     const res = await api.post(
       "/api/v1/api-keys/00000000-0000-0000-0000-000000000000/regenerate",
       undefined,
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     // Well-formed UUID that misses the lookup → 404.
     expect(res.status).toBe(404);
@@ -261,7 +262,7 @@ describeE2E("PATCH /api/v1/api-keys/:id", () => {
           description: "Group B patch test — revoked in afterAll.",
           rate_limit: 60,
         },
-        { headers: { Cookie: sessionCookie } },
+        { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
       );
       expect(createRes.status).toBe(201);
       const created = (await createRes.json()) as { apiKey?: { id?: string } };
@@ -271,7 +272,7 @@ describeE2E("PATCH /api/v1/api-keys/:id", () => {
       const patchRes = await api.patch(
         `/api/v1/api-keys/${created.apiKey?.id}`,
         { name: "group-b-patched", is_active: false, rate_limit: 30 },
-        { headers: { Cookie: sessionCookie } },
+        { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
       );
       expect(patchRes.status).toBe(200);
       const patched = (await patchRes.json()) as {
@@ -294,7 +295,7 @@ describeE2E("PATCH /api/v1/api-keys/:id", () => {
     const res = await api.patch(
       "/api/v1/api-keys/00000000-0000-0000-0000-000000000000",
       { is_active: false },
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     expect(res.status).toBe(404);
   });
@@ -703,7 +704,12 @@ describeE2E("POST /api/stripe/create-checkout-session", () => {
     const res = await api.post(
       "/api/stripe/create-checkout-session",
       { amount: 5 },
-      { headers: { Cookie: sessionCookie } },
+      {
+        headers: sameOriginBrowserHeaders({
+          Cookie: sessionCookie,
+          "Idempotency-Key": "e2e-keyless-checkout-1",
+        }),
+      },
     );
     expect(res.status).toBe(503);
   });
@@ -719,7 +725,12 @@ describeE2E("POST /api/stripe/create-checkout-session", () => {
     const res = await api.post(
       "/api/stripe/create-checkout-session",
       { amount: 5 },
-      { headers: { Cookie: sessionCookie } },
+      {
+        headers: sameOriginBrowserHeaders({
+          Cookie: sessionCookie,
+          "Idempotency-Key": "e2e-live-checkout-1",
+        }),
+      },
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { sessionId?: string; url?: string };
@@ -734,7 +745,7 @@ describeE2E("POST /api/stripe/create-checkout-session", () => {
       const res = await api.post(
         "/api/stripe/create-checkout-session",
         {},
-        { headers: { Cookie: sessionCookie } },
+        { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
       );
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
@@ -760,7 +771,7 @@ describeE2E("POST /api/signup-code/redeem", () => {
       const res = await api.post(
         "/api/signup-code/redeem",
         { code: `group-b-${Date.now()}` },
-        { headers: { Cookie: sessionCookie } },
+        { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
       );
       expect(res.status).toBe(400);
       const body = (await res.json()) as { success?: boolean; error?: string };
@@ -773,7 +784,7 @@ describeE2E("POST /api/signup-code/redeem", () => {
     const res = await api.post(
       "/api/signup-code/redeem",
       {},
-      { headers: { Cookie: sessionCookie } },
+      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error?: string };

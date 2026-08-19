@@ -2,9 +2,13 @@
  * Path and command-safety guards: validatePath() confines a resolved path to the
  * allowed directory, while isForbiddenCommand/isSafeCommand/extractBaseCommand
  * gate which commands the shell will run (the command-injection boundary).
+ * isSafeCommand still allows one data pipe (cat | grep). It rejects active
+ * shell syntax outside quoted data and a pipe into an interpreter or command
+ * dispatcher because ShellService then runs the string as `shell -c`.
  */
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { analyzeShellCommand } from "../approvals/analysis.js";
 
 export function validatePath(
   commandPath: string,
@@ -26,17 +30,51 @@ export function validatePath(
   return normalizedPath;
 }
 
+const PIPE_INTERPRETERS = new Set([
+  "bash",
+  "cmd",
+  "csh",
+  "dash",
+  "fish",
+  "ksh",
+  "node",
+  "nodejs",
+  "osascript",
+  "perl",
+  "powershell",
+  "pwsh",
+  "python",
+  "python2",
+  "python3",
+  "ruby",
+  "sh",
+  "tcsh",
+  "zsh",
+]);
+
+// These programs can dispatch the piped bytes to a later executable, so
+// accepting them would make the interpreter check trivial to bypass (for
+// example, `printf id | env sh`).
+const PIPE_DISPATCHERS = new Set([
+  "busybox",
+  "command",
+  "env",
+  "exec",
+  "nice",
+  "nohup",
+  "setsid",
+  "stdbuf",
+  "sudo",
+  "timeout",
+  "xargs",
+]);
+
+function executableName(raw: string): string {
+  return path.basename(raw.replace(/\\/g, "/")).toLowerCase();
+}
+
 export function isSafeCommand(command: string): boolean {
   const pathTraversalPatterns = [/\.\.\//g, /\.\.\\/g, /\/\.\./g, /\\\.\./g];
-
-  const dangerousPatterns = [
-    /\$\(/g,
-    /`[^']*`/g,
-    /\|\s*sudo/g,
-    /;\s*sudo/g,
-    /&\s*&/g,
-    /\|\s*\|/g,
-  ];
 
   for (const pattern of pathTraversalPatterns) {
     if (pattern.test(command)) {
@@ -45,17 +83,26 @@ export function isSafeCommand(command: string): boolean {
     }
   }
 
-  for (const pattern of dangerousPatterns) {
-    if (pattern.test(command)) {
-      logger.warn(`Dangerous pattern detected in command: ${command}`);
-      return false;
-    }
+  const analysis = analyzeShellCommand({ command });
+  if (!analysis.ok || analysis.chains) {
+    logger.warn(`Unsupported shell syntax detected in command: ${command}`);
+    return false;
   }
 
-  const pipeCount = (command.match(/\|/g) || []).length;
-  if (pipeCount > 1) {
+  if (analysis.segments.length > 2) {
     logger.warn(`Multiple pipes detected in command: ${command}`);
     return false;
+  }
+
+  const pipeTarget = analysis.segments[1];
+  if (pipeTarget) {
+    const target = executableName(
+      pipeTarget.resolution?.executableName ?? pipeTarget.argv[0] ?? "",
+    );
+    if (PIPE_INTERPRETERS.has(target) || PIPE_DISPATCHERS.has(target)) {
+      logger.warn(`Unsafe pipe target detected in command: ${command}`);
+      return false;
+    }
   }
 
   return true;

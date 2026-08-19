@@ -3,6 +3,10 @@
  * and streams native Smithers progress events back to the owning elizaOS
  * runtime. The child speaks a private stdout protocol; there is no Smithers
  * Gateway, HTTP sidecar, or foreign workflow translation layer.
+ *
+ * Incomplete stdout lines are fail-closed at {@link MAX_PROTOCOL_LINE_BYTES}
+ * before the parent concatenates them. A worker that never emits `\n` used to
+ * grow `stdoutBuffer` without bound for the whole run timeout.
  */
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -22,11 +26,32 @@ const PROTOCOL_PREFIX = '__ELIZA_SMTHRS__';
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
 const MAX_TIMEOUT_MS = 2_147_483_647;
 const MAX_STDERR_CHARS = 8_192;
+/** Fail-closed ceiling for one protocol line (complete or incomplete). */
+const MAX_PROTOCOL_LINE_BYTES = 1_048_576;
 const WORKER_TERMINATION_GRACE_MS = 1_000;
 const WORKER_STDIO_DRAIN_GRACE_MS = 1_000;
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-type WorkerTerminationCause = 'abort' | 'timeout';
+type WorkerTerminationCause = 'abort' | 'timeout' | 'overflow';
+
+function appendSmithersProtocolChunk(
+  buffer: string,
+  chunk: string,
+  maxBytes: number = MAX_PROTOCOL_LINE_BYTES
+): { buffer: string; lines: string[]; overflow: boolean } {
+  const next = `${buffer}${chunk}`;
+  const parts = next.split('\n');
+  const incomplete = parts.pop() ?? '';
+  if (Buffer.byteLength(incomplete, 'utf8') > maxBytes) {
+    return { buffer: '', lines: [], overflow: true };
+  }
+  for (const line of parts) {
+    if (Buffer.byteLength(line, 'utf8') > maxBytes) {
+      return { buffer: '', lines: [], overflow: true };
+    }
+  }
+  return { buffer: incomplete, lines: parts, overflow: false };
+}
 
 interface WorkerEventMessage {
   kind: 'event';
@@ -522,12 +547,20 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
 
   worker.stdout?.setEncoding('utf8');
   worker.stdout?.on('data', (chunk: string) => {
-    stdoutBuffer += chunk;
-    const lines = stdoutBuffer.split('\n');
-    stdoutBuffer = lines.pop() ?? '';
-    for (const line of lines) {
-      lineProcessing = lineProcessing.then(() => consumeLine(line));
+    const appended = appendSmithersProtocolChunk(stdoutBuffer, chunk);
+    if (appended.overflow) {
+      terminate('overflow');
+      return;
     }
+    stdoutBuffer = appended.buffer;
+    worker.stdout?.pause();
+    lineProcessing = lineProcessing
+      .then(async () => {
+        for (const line of appended.lines) await consumeLine(line);
+      })
+      .finally(() => {
+        if (!terminationCause && !processExited) worker.stdout?.resume();
+      });
   });
   worker.stderr?.setEncoding('utf8');
   worker.stderr?.on('data', (chunk: string) => {
@@ -605,7 +638,9 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       // terminal pipe or one whose close event was withheld by inherited child descriptors.
     }
   }
-  if (stdoutBuffer) lineProcessing = lineProcessing.then(() => consumeLine(stdoutBuffer));
+  if (stdoutBuffer && terminationCause !== 'overflow') {
+    lineProcessing = lineProcessing.then(() => consumeLine(stdoutBuffer));
+  }
   let lineProcessingFailed = false;
   let lineProcessingError: unknown;
   const observedLineProcessing = lineProcessing.catch((error) => {
@@ -647,6 +682,16 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       code: 'SMTHRS_WORKFLOW_TIMEOUT',
       context: { timeoutMs, exitCode: outcome.exitCode, workflowId: request.workflow.id },
       severity: 'ephemeral',
+    });
+  }
+  if (terminationCause === 'overflow') {
+    throw new ElizaError('Smithers worker protocol line exceeded the byte budget', {
+      code: 'SMTHRS_PROTOCOL_OVERFLOW',
+      context: {
+        limit: MAX_PROTOCOL_LINE_BYTES,
+        exitCode: outcome.exitCode,
+        workflowId: request.workflow.id,
+      },
     });
   }
   if (workerError) {

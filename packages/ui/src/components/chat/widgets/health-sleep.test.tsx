@@ -16,11 +16,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Auth gate (#11084) — mutable so tests can flip the session state. Default
 // authenticated so the pre-gate behavior tests exercise the live poll path.
-const { authMock } = vi.hoisted(() => ({
+const { authMock, intervalMock } = vi.hoisted(() => ({
   authMock: { authenticated: true },
+  intervalMock: { callback: null as (() => void) | null },
 }));
 vi.mock("../../../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => authMock.authenticated,
+}));
+
+vi.mock("../../../hooks", () => ({
+  useIntervalWhenDocumentVisible: (callback: () => void) => {
+    intervalMock.callback = callback;
+  },
 }));
 
 const { getBaseUrlMock, publishHomeAttentionSpy } = vi.hoisted(() => ({
@@ -102,14 +109,61 @@ function mockSleep(opts: {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 beforeEach(() => {
   authMock.authenticated = true;
+  intervalMock.callback = null;
   publishHomeAttentionSpy.mockClear();
 });
 
 describe("HealthSleepWidget (#9143)", () => {
+  it("aborts its sleep reads when the widget unmounts", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) => {
+        if (!init?.signal) throw new Error("expected sleep request signal");
+        signals.push(init.signal);
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            "abort",
+            () => reject(init.signal?.reason),
+            {
+              once: true,
+            },
+          );
+        });
+      }),
+    );
+
+    const { unmount } = render(<HealthSleepWidget slot="home" />);
+    await waitFor(() => expect(signals).toHaveLength(2));
+    unmount();
+
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+
+  it("keeps the last good card when a background refresh fails", async () => {
+    mockSleep({ episodes: [episode()], classification: "regular" });
+    render(<HealthSleepWidget slot="home" />);
+    await screen.findByTestId("widget-health-sleep");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("no", { status: 503 })),
+    );
+    intervalMock.callback?.();
+
+    await waitFor(() => {
+      expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
+    });
+    expect(screen.getByTestId("widget-health-sleep")).toBeTruthy();
+  });
+
   it("shows ONE high-priority datum — the latest sleep duration — on a clickable card (minimal, icon-first)", async () => {
     mockSleep({
       episodes: [episode({ durationMin: 465 })],

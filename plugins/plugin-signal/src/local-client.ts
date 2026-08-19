@@ -19,6 +19,17 @@ const DEFAULT_SIGNAL_HTTP_URL = "http://127.0.0.1:8080";
 const DEFAULT_RECEIVE_LIMIT = 25;
 const MAX_RECEIVE_LIMIT = 100;
 
+/** Bounds the local receive hop without changing Signal CLI response semantics. */
+const SIGNAL_LOCAL_RECEIVE_FETCH_TIMEOUT_MS = 15_000;
+
+function composeSignalLocalReceiveSignal(
+  caller: AbortSignal | undefined,
+  timeoutMs: number
+): AbortSignal {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return caller ? AbortSignal.any([caller, deadline]) : deadline;
+}
+
 interface SignalCliEnvelope {
   source?: string;
   sourceName?: string;
@@ -61,7 +72,8 @@ export function readSignalLocalClientConfigFromEnv(
 
 export async function readSignalInboundMessages(
   config: SignalLocalClientConfig,
-  limit = DEFAULT_RECEIVE_LIMIT
+  limit = DEFAULT_RECEIVE_LIMIT,
+  options: { signal?: AbortSignal } = {}
 ): Promise<SignalRecentMessage[]> {
   const parsedLimit = Number.isFinite(limit) ? Math.floor(limit) : DEFAULT_RECEIVE_LIMIT;
   const receiveLimit = Math.min(Math.max(1, parsedLimit), MAX_RECEIVE_LIMIT);
@@ -69,6 +81,7 @@ export async function readSignalInboundMessages(
   const account = encodeURIComponent(config.accountNumber);
   const response = await fetch(`${baseUrl}/v1/receive/${account}`, {
     headers: { Accept: "application/json" },
+    signal: composeSignalLocalReceiveSignal(options.signal, SIGNAL_LOCAL_RECEIVE_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`Signal local receive failed with HTTP ${response.status}`);

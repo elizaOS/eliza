@@ -1,9 +1,15 @@
 /** Exercises malformed request input with deterministic route collaborators. */
 import { describe, expect, mock, test } from "bun:test";
 
-const checkAvailability = mock(async () => ({
-  available: false,
-}));
+const checkAvailability = mock<
+  () => Promise<{
+    available: boolean;
+    priceUsdCents?: number;
+    renewalUsdCents?: number;
+    currency?: string;
+  }>
+>(async () => ({ available: false }));
+const getMinimumRegistrationYears = mock(async () => 1);
 
 mock.module("../guards", () => ({
   loadOwnedApp: async () => ({
@@ -14,7 +20,10 @@ mock.module("../guards", () => ({
 }));
 
 mock.module("@/lib/services/cloudflare-registrar", () => ({
-  cloudflareRegistrarService: { checkAvailability },
+  cloudflareRegistrarService: {
+    checkAvailability,
+    getMinimumRegistrationYears,
+  },
 }));
 
 mock.module("@/lib/services/domain-pricing", () => ({
@@ -54,5 +63,26 @@ describe("POST /api/v1/apps/:id/domains/check malformed JSON", () => {
     });
     expect(response.status).toBe(200);
     expect(checkAvailability).toHaveBeenCalled();
+  });
+
+  test("quotes the full two-year registry minimum", async () => {
+    checkAvailability.mockResolvedValueOnce({
+      available: true,
+      priceUsdCents: 1000,
+      renewalUsdCents: 2000,
+      currency: "USD",
+    });
+    getMinimumRegistrationYears.mockResolvedValueOnce(2);
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ domain: "example.ai" }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      years: 2,
+      price: { wholesaleUsdCents: 3000, totalUsdCents: 3000 },
+      renewal: { totalUsdCents: 2000 },
+    });
   });
 });

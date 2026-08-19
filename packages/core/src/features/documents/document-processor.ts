@@ -230,9 +230,12 @@ export async function processFragmentsSynchronously({
 		fullDocumentText,
 		contentType,
 		agentId,
+		// service.ts's addDocument (this function's only caller) already
+		// validates worldId/roomId/entityId via requireDocumentScopeUuid, so
+		// each argument here is always a real UUID and || vs ?? is moot.
 		roomId: roomId || agentId,
 		entityId: entityId || agentId,
-		worldId: worldId || agentId,
+		worldId: worldId ?? agentId,
 		concurrencyLimit: CONCURRENCY_LIMIT,
 		rateLimiter,
 		documentTitle,
@@ -607,7 +610,7 @@ async function processAndSaveFragments({
 					id: uuidv4() as UUID,
 					agentId,
 					roomId: roomId || agentId,
-					worldId: worldId || agentId,
+					worldId: worldId ?? agentId,
 					entityId: entityId || agentId,
 					embedding,
 					content: { text: contextualizedChunkText },

@@ -2,7 +2,7 @@
  * Type definitions for the Google Chat plugin.
  */
 
-import type { Service } from "@elizaos/core";
+import { type Service, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 /** Maximum message length for Google Chat */
 export const MAX_GOOGLE_CHAT_MESSAGE_LENGTH = 4000;
@@ -310,17 +310,26 @@ export function isDirectMessage(space: GoogleChatSpace): boolean {
   return space.type === "DM" || space.singleUserBotDm === true;
 }
 
-/** Split long text into chunks for Google Chat */
+/**
+ * Returns provider-sized, well-formed Unicode chunks for Google Chat.
+ * Budgets below two UTF-16 code units cannot hold an astral character and are
+ * rejected so every iteration has a valid, non-empty prefix.
+ */
 export function splitMessageForGoogleChat(
   text: string,
   maxLength: number = MAX_GOOGLE_CHAT_MESSAGE_LENGTH
 ): string[] {
-  if (text.length <= maxLength) {
-    return [text];
+  if (!Number.isInteger(maxLength) || maxLength < 2) {
+    throw new RangeError("Google Chat message maxLength must be an integer of at least 2");
+  }
+
+  const wellFormedText = toWellFormedUnicode(text);
+  if (wellFormedText.length <= maxLength) {
+    return [wellFormedText];
   }
 
   const chunks: string[] = [];
-  let remaining = text;
+  let remaining = wellFormedText;
 
   while (remaining.length > 0) {
     if (remaining.length <= maxLength) {
@@ -330,18 +339,19 @@ export function splitMessageForGoogleChat(
 
     // Find a good break point
     let breakPoint = maxLength;
-    const newlineIndex = remaining.lastIndexOf("\n", maxLength);
+    const newlineIndex = remaining.lastIndexOf("\n", maxLength - 1);
     if (newlineIndex > maxLength * 0.5) {
       breakPoint = newlineIndex + 1;
     } else {
-      const spaceIndex = remaining.lastIndexOf(" ", maxLength);
+      const spaceIndex = remaining.lastIndexOf(" ", maxLength - 1);
       if (spaceIndex > maxLength * 0.5) {
         breakPoint = spaceIndex + 1;
       }
     }
 
-    chunks.push(remaining.slice(0, breakPoint).trimEnd());
-    remaining = remaining.slice(breakPoint).trimStart();
+    const head = truncateWellFormed(remaining, breakPoint);
+    chunks.push(head.trimEnd());
+    remaining = remaining.slice(head.length).trimStart();
   }
 
   return chunks;

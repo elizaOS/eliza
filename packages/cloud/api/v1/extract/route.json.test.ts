@@ -1,9 +1,6 @@
 /**
- * POST /api/v1/extract untrusted JSON body contract.
- *
- * Hono 4.13 `c.req.json()` is a bare `JSON.parse`. The handler catch maps
- * SyntaxError through `failureResponse` to HTTP 500 instead of a caller 400.
- * Hosted-page extract must not run on client garbage.
+ * Exercises the authenticated extract route's JSON boundary with deterministic
+ * service doubles, including malformed, schema-invalid, and canonical bodies.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";

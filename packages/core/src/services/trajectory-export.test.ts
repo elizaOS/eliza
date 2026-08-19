@@ -32,6 +32,22 @@ const sampleTrajectory: TrajectoryDetailRecord = {
 			stepId: "step-1",
 			timestamp: 1_700_000_000_010,
 			kind: "llm",
+			semanticStages: [
+				{
+					schemaVersion: 1,
+					stageId: "stage-tool-search-1",
+					kind: "toolSearch",
+					startedAt: 1_700_000_000_001,
+					endedAt: 1_700_000_000_009,
+					latencyMs: 8,
+					payload: {
+						toolSearch: {
+							query: { candidateActions: ["OWNER_ROUTINES", "VIEWS"] },
+							results: [{ name: "OWNER_ROUTINES", rank: 1, score: 0.91 }],
+						},
+					},
+				},
+			],
 			llmCalls: [
 				{
 					callId: "call-1",
@@ -97,6 +113,30 @@ describe("trajectory-export", () => {
 				stepsJson: JSON.stringify({ stepId: "not-an-array" }),
 			}),
 		).toThrow("Trajectory steps must be an array");
+		expect(() =>
+			summarizeTrajectoryUsage({
+				...sampleTrajectory,
+				stepsJson: JSON.stringify([
+					{
+						stepId: "corrupt-semantic-stage",
+						timestamp: 1,
+						llmCalls: [],
+						semanticStages: [
+							{
+								schemaVersion: 1,
+								stageId: "self-parent",
+								parentStageId: "self-parent",
+								kind: "planner",
+								startedAt: 1,
+								endedAt: 2,
+								latencyMs: 1,
+								payload: {},
+							},
+						],
+					},
+				]),
+			}),
+		).toThrow("Trajectory semantic stage is invalid");
 	});
 
 	it("summarizes cache usage without double-counting prompt tokens", () => {
@@ -151,6 +191,23 @@ describe("trajectory-export", () => {
 			},
 			response: {
 				text: "Hello there",
+			},
+			metadata: {
+				trajectory_step: {
+					semanticStages: [
+						{
+							stageId: "stage-tool-search-1",
+							payload: {
+								toolSearch: {
+									query: {
+										candidateActions: ["OWNER_ROUTINES", "VIEWS"],
+									},
+									results: [{ name: "OWNER_ROUTINES", rank: 1 }],
+								},
+							},
+						},
+					],
+				},
 			},
 		});
 

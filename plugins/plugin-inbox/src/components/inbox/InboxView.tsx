@@ -96,19 +96,46 @@ interface InboxWire {
 
 export interface InboxFetchers {
   /** Fetch the inbox. `channels` narrows the server query when non-empty. */
-  fetchInbox: (channels: InboxChannel[]) => Promise<InboxWire>;
+  fetchInbox: (
+    channels: InboxChannel[],
+    signal?: AbortSignal,
+  ) => Promise<InboxWire>;
 }
 
-async function getInbox(channels: InboxChannel[]): Promise<InboxWire> {
+/** Maximum time allowed for one inbox request. */
+export const INBOX_VIEW_JSON_TIMEOUT_MS = 15_000;
+
+export async function getInboxJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = INBOX_VIEW_JSON_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+): Promise<T> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const response = await fetchImpl(url, {
+    method: "GET",
+    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
+  });
+  if (!response.ok) {
+    throw new Error(`Inbox request failed (${response.status})`);
+  }
+  return (await response.json()) as T;
+}
+
+async function getInbox(
+  channels: InboxChannel[],
+  signal?: AbortSignal,
+): Promise<InboxWire> {
   const params = new URLSearchParams();
   if (channels.length > 0) params.set("channels", channels.join(","));
   const query = params.toString();
   const path = `/api/lifeops/inbox${query ? `?${query}` : ""}`;
-  const response = await fetch(`${client.getBaseUrl()}${path}`);
-  if (!response.ok) {
-    throw new Error(`Inbox request failed (${response.status})`);
-  }
-  return (await response.json()) as InboxWire;
+  return getInboxJsonWithFetch<InboxWire>(
+    `${client.getBaseUrl()}${path}`,
+    globalThis.fetch,
+    INBOX_VIEW_JSON_TIMEOUT_MS,
+    signal,
+  );
 }
 
 const defaultFetchers: InboxFetchers = {
@@ -262,17 +289,20 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
 
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
+  const activeLoadRef = useRef<AbortController | null>(null);
 
   // `background` skips the loading-state flash so the 20s poll refreshes the
   // already-rendered list in place; user-driven loads (mount, channel toggle,
   // retry) show the spinner.
   const load = useCallback((channels: InboxChannel[], background = false) => {
-    let cancelled = false;
+    activeLoadRef.current?.abort();
+    const controller = new AbortController();
+    activeLoadRef.current = controller;
     if (!background) setState({ kind: "loading" });
     fetchersRef.current
-      .fetchInbox(channels)
+      .fetchInbox(channels, controller.signal)
       .then((wire) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const items = wire.messages
           .map(mapMessage)
           .filter((item): item is InboxItem => item !== null);
@@ -288,16 +318,18 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
         });
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (controller.signal.aborted || background) return;
         setState({
           kind: "error",
           message:
             error instanceof Error ? error.message : "Could not load inbox.",
         });
+      })
+      .finally(() => {
+        if (activeLoadRef.current === controller) {
+          activeLoadRef.current = null;
+        }
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // Re-fetch with the server-side channel filter whenever the selection changes.
@@ -313,11 +345,11 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
   // same load fn against the current channel selection; it's cleared on unmount
   // and re-armed whenever the selection changes.
   useEffect(() => {
-    const cancelLoad = load(activeList);
+    load(activeList);
     const timer = setInterval(() => load(activeList, true), INBOX_POLL_MS);
     return () => {
-      cancelLoad();
       clearInterval(timer);
+      activeLoadRef.current?.abort();
     };
   }, [load, activeList]);
 

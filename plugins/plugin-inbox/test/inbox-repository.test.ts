@@ -251,6 +251,62 @@ describe("InboxRepository", () => {
     );
   });
 
+  describe("LIMIT sanitization (raw-SQL numeric guard)", () => {
+    // Regression for #22011: caller-supplied limits used to be interpolated
+    // verbatim (`LIMIT ${limit}`), so a fractional / negative / non-finite
+    // value emitted malformed SQL such as `LIMIT 1.5`, `LIMIT -5`, or
+    // `LIMIT Infinity` that Postgres rejects as an unhandled 500. Every LIMIT
+    // must now be a truncated, clamped, positive integer.
+    const limitOf = (sql: string): string | undefined =>
+      /LIMIT\s+(\S+)/.exec(sql)?.[1];
+
+    it("truncates a fractional getExamples limit to an integer", async () => {
+      const repo = new InboxRepository(env.runtime);
+      await repo.getExamples(1.5);
+      const sql = env.calls[0]?.sql ?? "";
+      expect(sql).not.toContain("LIMIT 1.5");
+      expect(limitOf(sql)).toBe("1");
+    });
+
+    it("clamps a negative getUnresolved limit up to 1", async () => {
+      const repo = new InboxRepository(env.runtime);
+      await repo.getUnresolved({ limit: -5 });
+      const sql = env.calls[0]?.sql ?? "";
+      expect(sql).not.toContain("LIMIT -5");
+      expect(limitOf(sql)).toBe("1");
+    });
+
+    it("falls back to a default for a non-finite getUnresolved limit", async () => {
+      const repo = new InboxRepository(env.runtime);
+      await repo.getUnresolved({ limit: Number.POSITIVE_INFINITY });
+      const sql = env.calls[0]?.sql ?? "";
+      expect(sql).not.toContain("LIMIT Infinity");
+      expect(limitOf(sql)).toBe("50");
+    });
+
+    it("caps an over-large getByClassification limit at 500", async () => {
+      env = makeRuntime((sql) =>
+        sql.includes("classification = 'urgent'") ? [] : [],
+      );
+      const repo = new InboxRepository(env.runtime);
+      await repo.getByClassification("urgent", { limit: 1_000_000 });
+      expect(limitOf(env.calls[0]?.sql ?? "")).toBe("500");
+    });
+
+    it("sanitizes getUnresolvedForSender and getRecentAutoReplies limits", async () => {
+      const repo = new InboxRepository(env.runtime);
+      await repo.getUnresolvedForSender({
+        sourceEntityId: "entity-1",
+        limit: 2.9,
+      });
+      expect(limitOf(env.calls[0]?.sql ?? "")).toBe("2");
+
+      const repo2 = new InboxRepository(env.runtime);
+      await repo2.getRecentAutoReplies(Number.NaN);
+      expect(limitOf(env.calls[1]?.sql ?? "")).toBe("5");
+    });
+  });
+
   it("throws on an invalid persisted classification rather than silently coercing", async () => {
     env = makeRuntime(() => [triageRow({ classification: "bogus" })]);
     const repo = new InboxRepository(env.runtime);

@@ -7,7 +7,6 @@ import {
   agentSandboxes,
 } from "../schemas/agent-sandboxes";
 import { creditTransactions } from "../schemas/credit-transactions";
-import { organizationBilling } from "../schemas/organization-billing";
 import { organizations } from "../schemas/organizations";
 import { parseOrgCreditBalance } from "./agent-billing-numeric";
 
@@ -130,32 +129,15 @@ export class AgentBillingRepository {
   async listBillingOrganizations(organizationIds: string[]): Promise<AgentBillingOrganization[]> {
     if (organizationIds.length === 0) return [];
 
-    const [orgs, billingData] = await Promise.all([
-      dbRead
-        .select({
-          id: organizations.id,
-          name: organizations.name,
-          credit_balance: organizations.credit_balance,
-        })
-        .from(organizations)
-        .where(inArray(organizations.id, organizationIds)),
-      dbRead
-        .select({
-          organization_id: organizationBilling.organization_id,
-          billing_email: organizationBilling.billing_email,
-        })
-        .from(organizationBilling)
-        .where(inArray(organizationBilling.organization_id, organizationIds)),
-    ]);
-
-    const billingEmailMap = new Map(
-      billingData.map((row) => [row.organization_id, row.billing_email]),
-    );
-
-    return orgs.map((org) => ({
-      ...org,
-      billing_email: billingEmailMap.get(org.id) ?? null,
-    }));
+    return dbRead
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        credit_balance: organizations.credit_balance,
+        billing_email: organizations.billing_email,
+      })
+      .from(organizations)
+      .where(inArray(organizations.id, organizationIds));
   }
 
   async scheduleShutdownWarning(sandboxId: string, now: Date, shutdownTime: Date): Promise<void> {

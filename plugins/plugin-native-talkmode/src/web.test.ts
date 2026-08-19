@@ -1,3 +1,7 @@
+/**
+ * Exercises the TalkMode browser fallback with deterministic Web Speech and
+ * speech-synthesis doubles, including initialization failure recovery.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TalkModeWeb } from "./web";
@@ -18,6 +22,21 @@ class FakeRecognition extends EventTarget {
   constructor() {
     super();
     FakeRecognition.latest = this;
+  }
+}
+
+class ThrowingRecognition extends FakeRecognition {
+  constructor() {
+    super();
+    this.start = vi.fn(() => {
+      throw new Error("recognizer failed to start");
+    });
+  }
+}
+
+class ThrowingConstructorRecognition {
+  constructor() {
+    throw new Error("recognizer construction failed");
   }
 }
 
@@ -65,6 +84,60 @@ describe("TalkModeWeb fallback", () => {
     await expect(new TalkModeWeb().requestPermissions()).resolves.toEqual({
       microphone: "prompt",
       speechRecognition: "not_supported",
+    });
+  });
+
+  it("rolls back state when the recognizer fails to start and recovers on a later start", async () => {
+    const synthesis = { cancel: vi.fn(), speak: vi.fn(), speaking: false };
+    const win: Record<string, unknown> = {
+      SpeechRecognition: ThrowingRecognition,
+      speechSynthesis: synthesis,
+    };
+    setWindow(win);
+    setNavigator({});
+    const plugin = new TalkModeWeb();
+    const states = vi.fn();
+    await plugin.addListener("stateChange", states);
+
+    // A start that reports failure must leave the plugin fully disabled.
+    await expect(plugin.start()).resolves.toEqual({
+      started: false,
+      error: "recognizer failed to start",
+    });
+    await expect(plugin.isEnabled()).resolves.toEqual({ enabled: false });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "idle",
+      statusText: "Off",
+    });
+    expect(states).not.toHaveBeenCalledWith(
+      expect.objectContaining({ state: "listening" }),
+    );
+
+    // The failed start must not wedge the instance: a subsequent working
+    // recognizer should transition cleanly to a listening session.
+    win.SpeechRecognition = FakeRecognition;
+    await expect(plugin.start()).resolves.toEqual({ started: true });
+    expect(FakeRecognition.latest?.start).toHaveBeenCalledTimes(1);
+    await expect(plugin.isEnabled()).resolves.toEqual({ enabled: true });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "listening",
+      statusText: "Listening",
+    });
+  });
+
+  it("returns a structured failure when recognizer construction throws", async () => {
+    setWindow({ SpeechRecognition: ThrowingConstructorRecognition });
+    setNavigator({});
+    const plugin = new TalkModeWeb();
+
+    await expect(plugin.start()).resolves.toEqual({
+      started: false,
+      error: "recognizer construction failed",
+    });
+    await expect(plugin.isEnabled()).resolves.toEqual({ enabled: false });
+    await expect(plugin.getState()).resolves.toEqual({
+      state: "idle",
+      statusText: "Off",
     });
   });
 

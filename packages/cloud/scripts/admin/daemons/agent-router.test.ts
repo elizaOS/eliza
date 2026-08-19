@@ -9,9 +9,11 @@ import { PassThrough } from "node:stream";
 import {
   buildProxyHeaders,
   buildUnresolvedAgentResponse,
+  corsHeaders,
   extractAgentIdFromHost,
   handleRequest,
   isBridgeHostFallbackEnabled,
+  isCredentialedAgentRouterOrigin,
   resolveSandboxRouting,
   selectAgentProxyTarget,
   sendResponse,
@@ -337,6 +339,49 @@ describe("buildUnresolvedAgentResponse — CORS-bearing failure (#15347)", () =>
       undefined,
     );
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+
+  it("does not reflect an untrusted Origin with credentials", () => {
+    const res = buildUnresolvedAgentResponse(
+      { status: "running", headscale_ip: null, web_ui_port: 20001 },
+      "https://evil.example",
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+    expect(res.headers.get("vary")).toBe("origin");
+  });
+});
+
+describe("corsHeaders — credentialed origin allowlist", () => {
+  it("reflects first-party origins with credentials and rejects evil.example", () => {
+    expect(isCredentialedAgentRouterOrigin("https://cloud.eliza.app")).toBe(
+      true,
+    );
+    expect(isCredentialedAgentRouterOrigin("https://evil.example")).toBe(false);
+    const trusted = corsHeaders("https://cloud.eliza.app");
+    expect(trusted["access-control-allow-origin"]).toBe(
+      "https://cloud.eliza.app",
+    );
+    expect(trusted["access-control-allow-credentials"]).toBe("true");
+    const evil = corsHeaders("https://evil.example");
+    expect(evil["access-control-allow-origin"]).toBeUndefined();
+    expect(evil["access-control-allow-credentials"]).toBeUndefined();
+    const none = corsHeaders(undefined);
+    expect(none["access-control-allow-origin"]).toBe("*");
+    expect(none["access-control-allow-credentials"]).toBeUndefined();
+  });
+
+  it("uses the complete shared Cloud first-party origin policy", () => {
+    for (const origin of [
+      "https://www.eliza.app",
+      "https://elizaos.ai",
+      "https://os.eliza.app",
+    ]) {
+      expect(isCredentialedAgentRouterOrigin(origin)).toBe(true);
+      expect(corsHeaders(origin)["access-control-allow-origin"]).toBe(origin);
+    }
   });
 });
 
@@ -390,6 +435,16 @@ describe("handleRequest — agent-host CORS preflight (#15347)", () => {
       fakeReq("GET", "cp-internal.example"),
     );
     expect(res.status).toBe(404);
+  });
+
+  it("OPTIONS from an untrusted Origin does not reflect credentials", async () => {
+    const res = await handleRequest(
+      new URL(`http://${HOST}/api/agents`),
+      fakeReq("OPTIONS", HOST, "https://evil.example"),
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
   });
 
   it("rejects an untrusted forwarded host instead of falling back to an agent Host", async () => {

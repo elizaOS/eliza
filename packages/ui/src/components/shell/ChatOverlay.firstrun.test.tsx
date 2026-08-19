@@ -5,7 +5,8 @@
 // the sheet opens pinned at the shared HALF composer detent, every collapse path
 // (Escape, outside tap, drag/close) is a no-op, the drag handle is hidden, the
 // composer is sign-in-first/locked, transcript CHOICE widgets stay interactive,
-// and completion keeps the same half-height surface ready to dismiss to pill.
+// external sign-in minimizes to the regular compact composer, and completion
+// opens the conversation at FULL.
 
 import {
   act,
@@ -233,6 +234,16 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
 
+  it("keeps first-run onboarding in the overlay's dark color scheme", () => {
+    render(<ChatOverlay controller={makeController()} firstRunOpen />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(sheet.getAttribute("data-theme")).toBe("dark");
+    expect(sheet.style.colorScheme).toBe("dark");
+    expect(surface.style.backgroundColor).toBe("var(--bg)");
+  });
+
   it("fills a desktop bottom-bar host so transparent native pixels cannot block other apps", () => {
     render(
       <ChatOverlay controller={makeController()} firstRunOpen fillHostAtHalf />,
@@ -434,7 +445,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByText("Agent")).toBeNull();
   });
 
-  it("renders one fallback sign-in turn if onboarding opens before the conductor seeds messages", () => {
+  it("renders the established greeting and sign-in bubbles if onboarding opens before the conductor seeds messages", () => {
     vi.useFakeTimers();
     seedAppStoreWithActionSpy();
     try {
@@ -446,13 +457,16 @@ describe("ChatOverlay first-run gating", () => {
         vi.advanceTimersByTime(600);
       });
 
-      expect(screen.getByTestId("thread-line").textContent).toContain(
+      expect(screen.getAllByTestId("thread-line")[0]?.textContent).toContain(
         FIRST_RUN_GREETING,
       );
+      expect(screen.getAllByTestId("thread-line")[1]?.textContent).toContain(
+        FIRST_RUN_SIGN_IN_PROMPT,
+      );
       expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
-      // The first Cloud prompt is one ordinary assistant row: its action is
-      // part of the shared transcript, never a special panel below composer.
-      expect(screen.getAllByTestId("thread-line")).toHaveLength(1);
+      // Both prompts are ordinary assistant rows in the shared transcript,
+      // never a special setup panel below the composer.
+      expect(screen.getAllByTestId("thread-line")).toHaveLength(2);
       expect(
         screen.getByTestId("choice-__first_run__:runtime:cloud"),
       ).toBeTruthy();
@@ -522,8 +536,6 @@ describe("ChatOverlay first-run gating", () => {
           id: "first-run:cloud-oauth",
           role: "assistant",
           content: [
-            FIRST_RUN_GREETING,
-            "",
             FIRST_RUN_SIGN_IN_PROMPT,
             "",
             "[CHOICE:first-run id=runtime]",
@@ -538,8 +550,8 @@ describe("ChatOverlay first-run gating", () => {
     render(<ChatOverlay controller={controller} firstRunOpen />);
 
     const signIn = screen.getByText("Sign in to Eliza Cloud");
-    expect(signIn.closest('[data-chat-message-bubble="true"]')).toBeNull();
-    expect(screen.getAllByTestId("thread-line").at(-1)?.textContent).toContain(
+    expect(signIn.closest('[data-chat-message-bubble="true"]')).toBeTruthy();
+    expect(screen.getAllByTestId("thread-line")[0]?.textContent).toContain(
       FIRST_RUN_GREETING,
     );
     expect(screen.getAllByTestId("thread-line").at(-1)?.textContent).toContain(
@@ -572,7 +584,114 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByTestId("onboarding-state-probe")).toBeNull();
   });
 
-  it("settles to half exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
+  it("uses the regular compact composer during external sign-in, then opens full on authentication", () => {
+    const waitingController = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          content:
+            "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+          createdAt: 2,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    const onStateChange = vi.fn();
+    const { rerender } = render(
+      <ChatOverlay
+        controller={waitingController}
+        firstRunOpen
+        onStateChange={onStateChange}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+    expect(screen.getByTestId("chat-composer-plus")).toBeTruthy();
+    expect(
+      (screen.getByTestId("chat-composer-textarea") as HTMLTextAreaElement)
+        .placeholder,
+    ).toBe("Waiting for sign-in…");
+    expect(screen.getByTestId("chat-pill").getAttribute("aria-hidden")).toBe(
+      "true",
+    );
+
+    // The compact composer is an initial state, not a trap: clicking the
+    // read-only waiting field reopens the shared transcript where the immediate
+    // retry action lives. This must not depend on a fresh focus event because a
+    // read-only field can already own focus when the user clicks it again.
+    fireEvent.click(screen.getByTestId("chat-composer-textarea"));
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
+
+    rerender(
+      <ChatOverlay
+        controller={waitingController}
+        firstRunOpen={false}
+        onStateChange={onStateChange}
+      />,
+    );
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
+  });
+
+  it("never idle-collapses first-run sign-in recovery into the handle-only pill", () => {
+    vi.useFakeTimers();
+    try {
+      const waitingController = makeController({
+        messages: [
+          {
+            id: "first-run:cloud-login-waiting",
+            role: "assistant",
+            content:
+              "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+            createdAt: 2,
+          },
+        ],
+      } as unknown as Partial<ShellController>);
+      render(
+        <ChatOverlay
+          controller={waitingController}
+          firstRunOpen
+          fillHostAtHalf
+        />,
+      );
+      const sheet = screen.getByTestId("chat-sheet");
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+      expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reopens half when an external sign-in attempt expires with a retry choice", () => {
+    const retryController = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          content:
+            "That sign-in window didn't finish. Otherwise, try again: [CHOICE:first-run id=runtime]",
+          createdAt: 3,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={retryController} firstRunOpen />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+  });
+
+  it("opens full exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
     const controller = makeController();
     const { rerender } = render(
       <ChatOverlay controller={controller} firstRunOpen />,
@@ -585,7 +704,7 @@ describe("ChatOverlay first-run gating", () => {
     // Onboarding completes: firstRunOpen falls true → false.
     rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
     expect(overlay.getAttribute("data-open")).toBe("true");
 
     // The composer unlocks.
@@ -599,7 +718,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(controller.send).toHaveBeenCalledWith("What should I do next?");
 
     // A later re-render with onboarding still complete must NOT force another
-    // detent change — the half-settle is a one-shot falling edge.
+    // detent change — the full-open is a one-shot falling edge.
     fireEvent.focus(input);
     expect(sheet.getAttribute("data-variant")).toBe("open");
     rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
@@ -629,13 +748,13 @@ describe("ChatOverlay first-run gating", () => {
       <ChatOverlay
         controller={makeController()}
         firstRunOpen={false}
-        releaseFirstRunToHalf
+        releaseFirstRunToFull
         onFirstRunReleaseHandled={onHandled}
       />,
     );
 
     const sheet = screen.getByTestId("chat-sheet");
-    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(onHandled).toHaveBeenCalledTimes(1);
   });

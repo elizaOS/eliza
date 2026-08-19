@@ -38,6 +38,30 @@ export function url(path: string): string {
 }
 
 /**
+ * Adds what the Eliza browser client sends on a same-origin request: the
+ * Origin header plus the `x-eliza-csrf` non-simple marker the cookie-mutation
+ * guard requires (bodyless mutations like DELETE carry no JSON content-type,
+ * so the marker is what keeps them browser-equivalent).
+ *
+ * This is deliberately opt-in so CSRF tests can continue exercising missing
+ * and hostile origins/markers. Explicit caller headers win, including an
+ * intentional cross-origin Origin used by negative coverage.
+ */
+export function sameOriginBrowserHeaders(
+  headers: Record<string, string> = {},
+): Record<string, string> {
+  const names = new Set(Object.keys(headers).map((name) => name.toLowerCase()));
+  const defaults: Record<string, string> = {};
+  if (!names.has("origin")) {
+    defaults.Origin = new URL(getBaseUrl()).origin;
+  }
+  if (!names.has("x-eliza-csrf")) {
+    defaults["x-eliza-csrf"] = "1";
+  }
+  return { ...defaults, ...headers };
+}
+
+/**
  * True when the e2e target is a LOCAL dev Worker (which shares our `.env`, so
  * INTERNAL_SECRET / test-only routes line up). Against a DEPLOYED target
  * (staging/prod) the Worker's INTERNAL_SECRET is a server-side secret we can't

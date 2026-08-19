@@ -1189,9 +1189,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.ttsStream.cancel(`interrupted:${reason}`);
       this.ttsStream = null;
     }
-    // Context completion and barge-in intentionally keep the call-scoped
-    // Cartesia transport warm; only session teardown closes the shared socket.
-    this.cartesiaAdapter.close(`session:${reason}`);
     // 3. Abort the Eliza SSE fetch — cancels the upstream provider stream.
     if (this.llmAbort) {
       this.llmAbort.abort();
@@ -1324,6 +1321,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
       this.ttsStream = null;
     }
+    // Context completion and barge-in keep the call-scoped Cartesia transport
+    // warm. Session teardown is the sole owner of shared socket closure.
+    this.cartesiaAdapter.close(`session:${reason}`);
     if (this.llmAbort) {
       this.llmAbort.abort();
       this.llmAbort = null;

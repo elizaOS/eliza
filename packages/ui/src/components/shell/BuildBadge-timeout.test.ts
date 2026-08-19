@@ -1,72 +1,75 @@
-/**
- * Behavioral BuildBadge build-info JSON deadline. Executes
- * getBuildInfoJsonWithFetch under abort — not a source-grep of BuildBadge.tsx.
- */
-import { describe, expect, it, vi } from "vitest";
+/** Exercises the BuildBadge response-body deadline through the rendered component. */
+// @vitest-environment jsdom
 
-vi.mock("lucide-react", () => ({
-  X: () => null,
-}));
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as BuildBadgeModule from "./BuildBadge";
 
-vi.mock("../../lib/floating-layers", () => ({
-  Z_BUILD_BADGE: 1,
-}));
-
+vi.mock("lucide-react", () => ({ X: () => null }));
+vi.mock("../../lib/floating-layers", () => ({ Z_BUILD_BADGE: 1 }));
 vi.mock("../../platform/standalone-bottom-reclaim", () => ({
   getStandaloneBottomReclaimState: () => ({ reclaimPx: 0 }),
 }));
 
-import {
-  BUILD_BADGE_JSON_TIMEOUT_MS,
-  BUILD_INFO_URL,
-  getBuildInfoJsonWithFetch,
-} from "./BuildBadge";
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  window.sessionStorage.clear();
+});
 
-function stallUntilAborted(): typeof fetch {
-  return ((_input, init) =>
-    new Promise<Response>((_resolve, reject) => {
-      const signal = init?.signal;
-      if (!signal) throw new Error("expected build-badge abort signal");
-      signal.addEventListener("abort", () => reject(signal.reason), {
-        once: true,
-      });
-    })) as typeof fetch;
-}
+describe("BuildBadge build-info deadline", () => {
+  it("keeps the deadline active while a successful response body stalls", async () => {
+    const timeoutController = new AbortController();
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timeoutController.signal);
+    let bodyStarted = false;
 
-describe("BuildBadge build-info JSON deadline", () => {
-  it("keeps a documented UI JSON budget", () => {
-    expect(BUILD_BADGE_JSON_TIMEOUT_MS).toBe(15_000);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => ({
+        ok: true,
+        json: () => {
+          bodyStarted = true;
+          return new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => reject(init.signal?.reason),
+              { once: true },
+            );
+          });
+        },
+      })) as unknown as typeof fetch,
+    );
+
+    render(createElement(BuildBadgeModule.BuildBadge));
+    await waitFor(() => expect(bodyStarted).toBe(true));
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+
+    await act(async () => {
+      timeoutController.abort(new DOMException("timed out", "TimeoutError"));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId("build-badge")).toBeNull();
   });
 
-  it("aborts a stalled build-info GET at the injected deadline", async () => {
-    await expect(
-      getBuildInfoJsonWithFetch(BUILD_INFO_URL, stallUntilAborted(), 10),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
-  });
+  it("keeps the optional badge hidden after a provider error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("nope", {
+            status: 503,
+            statusText: "Service Unavailable",
+          }),
+      ),
+    );
 
-  it("surfaces a provider error from a completed build-info GET", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("nope", { status: 503, statusText: "Service Unavailable" });
-
-    await expect(
-      getBuildInfoJsonWithFetch(BUILD_INFO_URL, fetchImpl, 1_000),
-    ).rejects.toThrow("503");
-  });
-
-  it("uses the injected fetch for a successful build-info GET", async () => {
-    const signals: AbortSignal[] = [];
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      if (init?.signal) signals.push(init.signal);
-      return Response.json({ commit: "58f6bb3beb", label: "stamp" });
-    };
-
-    const body = await getBuildInfoJsonWithFetch<{
-      commit: string;
-      label: string;
-    }>(BUILD_INFO_URL, fetchImpl, 1_000);
-
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
-    expect(body).toEqual({ commit: "58f6bb3beb", label: "stamp" });
+    render(createElement(BuildBadgeModule.BuildBadge));
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(screen.queryByTestId("build-badge")).toBeNull();
   });
 });

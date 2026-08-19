@@ -78,6 +78,7 @@ beforeAll(async () => {
 				attempts integer NOT NULL DEFAULT 0,
 				max_attempts integer NOT NULL DEFAULT 3,
 				execution_interruptions integer NOT NULL DEFAULT 0,
+				retryable_requeues integer NOT NULL DEFAULT 0,
 				organization_id uuid NOT NULL,
 				user_id uuid,
 				api_key_id uuid,
@@ -281,6 +282,172 @@ describe("completed_at terminal-timestamp contract", () => {
       const job = await getJob(id);
       expect(job?.status).toBe("pending");
       expect(job?.completed_at).toBeNull();
+    });
+
+    test("requires and accepts the fresh row after an intermediate result write", async () => {
+      const id = "00000000-0000-4900-8000-000000000031";
+      const generation = "b0000000-0000-4000-8000-000000000031";
+      const ownerId = "owner-fresh";
+      await seedJob({ id, maxAttempts: 3 });
+      await dbWrite.update(jobs).set({ execution_generation: generation }).where(eq(jobs.id, id));
+      await seedLease(id, generation, ownerId);
+      const claimed = await repo.findById(id);
+      if (!claimed) throw new Error("seeded job not found");
+
+      const fresh = await repo.updateForExecution(
+        claimed,
+        { result: { error: "transport unresolved" } },
+        ownerId,
+      );
+      const staleTransition = await repo.retryLaterWithoutIncrementingAttempts(
+        claimed,
+        "transport unresolved",
+        5000,
+        ownerId,
+        { maxRequeues: 5 },
+      );
+      expect(staleTransition).toBeUndefined();
+
+      const transitioned = await repo.retryLaterWithoutIncrementingAttempts(
+        fresh,
+        "transport unresolved",
+        5000,
+        ownerId,
+        { maxRequeues: 5 },
+      );
+      expect(transitioned).toMatchObject({
+        status: "pending",
+        attempts: 0,
+        retryable_requeues: 1,
+        result: { error: "transport unresolved" },
+      });
+    });
+
+    test("allows the exact bounded requeue before terminal exhaustion", async () => {
+      const id = "00000000-0000-4900-8000-000000000035";
+      const generation = "b0000000-0000-4000-8000-000000000035";
+      const ownerId = "owner-bound-edge";
+      await seedJob({ id, maxAttempts: 3 });
+      await dbWrite
+        .update(jobs)
+        .set({ execution_generation: generation, retryable_requeues: 4 })
+        .where(eq(jobs.id, id));
+      await seedLease(id, generation, ownerId);
+      const claimed = await repo.findById(id);
+      if (!claimed) throw new Error("seeded job not found");
+
+      const transitioned = await repo.retryLaterWithoutIncrementingAttempts(
+        claimed,
+        "last bounded retry",
+        5000,
+        ownerId,
+        { maxRequeues: 5 },
+      );
+
+      expect(transitioned).toMatchObject({
+        status: "pending",
+        retryable_requeues: 5,
+        completed_at: null,
+      });
+    });
+
+    test("settles terminally with its dependent write when the bound is exhausted", async () => {
+      const id = "00000000-0000-4900-8000-000000000032";
+      const generation = "b0000000-0000-4000-8000-000000000032";
+      const ownerId = "owner-bound";
+      await seedJob({ id, maxAttempts: 3 });
+      await dbWrite
+        .update(jobs)
+        .set({ execution_generation: generation, retryable_requeues: 5 })
+        .where(eq(jobs.id, id));
+      await seedLease(id, generation, ownerId);
+      const claimed = await repo.findById(id);
+      if (!claimed) throw new Error("seeded job not found");
+
+      const transitioned = await repo.retryLaterWithoutIncrementingAttempts(
+        claimed,
+        "transport still unresolved",
+        5000,
+        ownerId,
+        {
+          maxRequeues: 5,
+          onExhaustedInTx: async (tx, failedJob) => {
+            expect(failedJob).toMatchObject({ status: "failed", retryable_requeues: 6 });
+            await tx
+              .update(jobs)
+              .set({ webhook_status: "dependent-settled" })
+              .where(eq(jobs.id, failedJob.id));
+          },
+        },
+      );
+
+      expect(transitioned).toMatchObject({ status: "failed", retryable_requeues: 6 });
+      const persisted = await getJob(id);
+      expect(persisted).toMatchObject({
+        status: "failed",
+        attempts: 0,
+        retryable_requeues: 6,
+        webhook_status: "dependent-settled",
+      });
+      expect(persisted?.completed_at).not.toBeNull();
+    });
+
+    test("rolls the terminal transition back when its dependent write fails", async () => {
+      const id = "00000000-0000-4900-8000-000000000034";
+      const generation = "b0000000-0000-4000-8000-000000000034";
+      const ownerId = "owner-bound-rollback";
+      await seedJob({ id, maxAttempts: 3 });
+      await dbWrite
+        .update(jobs)
+        .set({ execution_generation: generation, retryable_requeues: 5 })
+        .where(eq(jobs.id, id));
+      await seedLease(id, generation, ownerId);
+      const claimed = await repo.findById(id);
+      if (!claimed) throw new Error("seeded job not found");
+
+      await expect(
+        repo.retryLaterWithoutIncrementingAttempts(
+          claimed,
+          "transport still unresolved",
+          5000,
+          ownerId,
+          {
+            maxRequeues: 5,
+            onExhaustedInTx: async () => {
+              throw new Error("dependent write rejected");
+            },
+          },
+        ),
+      ).rejects.toThrow("dependent write rejected");
+
+      expect(await getJob(id)).toMatchObject({
+        status: "in_progress",
+        retryable_requeues: 5,
+        completed_at: null,
+      });
+    });
+
+    test("lets only one contender spend a bounded transition", async () => {
+      const id = "00000000-0000-4900-8000-000000000033";
+      const generation = "b0000000-0000-4000-8000-000000000033";
+      const ownerId = "owner-race";
+      await seedJob({ id, maxAttempts: 3 });
+      await dbWrite.update(jobs).set({ execution_generation: generation }).where(eq(jobs.id, id));
+      await seedLease(id, generation, ownerId);
+      const claimed = await repo.findById(id);
+      if (!claimed) throw new Error("seeded job not found");
+
+      const transitions = await Promise.all([
+        repo.retryLaterWithoutIncrementingAttempts(claimed, "retry", 5000, ownerId, {
+          maxRequeues: 5,
+        }),
+        repo.retryLaterWithoutIncrementingAttempts(claimed, "retry", 5000, ownerId, {
+          maxRequeues: 5,
+        }),
+      ]);
+
+      expect(transitions.filter(Boolean)).toHaveLength(1);
+      expect(await getJob(id)).toMatchObject({ status: "pending", retryable_requeues: 1 });
     });
   });
 

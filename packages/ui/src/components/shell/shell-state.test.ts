@@ -203,6 +203,17 @@ describe("selectVisibleShellMessages (#9141 gap 4 windowing)", () => {
 });
 
 describe("filterRenderableShellMessages", () => {
+  it("keeps persisted persona greetings in the canonical transcript", () => {
+    const greeting: ShellMessage = {
+      ...msg("greeting", "assistant", "Welcome back. What should we build?"),
+      source: "agent_greeting",
+    };
+
+    expect(filterRenderableShellMessages([greeting], "idle")).toEqual([
+      greeting,
+    ]);
+  });
+
   it("returns the same renderable set selectVisibleShellMessages keeps, uncapped", () => {
     const thread = Array.from({ length: 300 }, (_, i) =>
       i % 5 === 0

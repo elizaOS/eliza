@@ -5,6 +5,7 @@
  * must reject malformed boundary values; and markdown→mrkdwn must use Slack's
  * *bold* / _italic_ syntax rather than the markdown originals.
  */
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   buildSlackMessagePermalink,
@@ -153,6 +154,46 @@ describe("chunkSlackText", () => {
       expect((c.match(/```/g) || []).length % 2).toBe(0);
     }
   });
+
+  it("never splits an emoji surrogate pair across chunks on a break-free run", () => {
+    // "a" (1 unit) + 150 astral emoji (2 units each, no spaces/newlines) puts
+    // the hardLimit=96 break point (maxChars=100) exactly between the high
+    // and low surrogate of the 47th emoji, forcing the raw-slice fallback.
+    const text = `a${"😀".repeat(150)}`;
+    const chunks = chunkSlackText(text, 100);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((c) => c.isWellFormed())).toBe(true);
+    expect(chunks.every((c) => c.length > 0 && c.length <= 100)).toBe(true);
+    // lossless: no unit dropped or duplicated at the surrogate-adjusted cut
+    expect(chunks.join("")).toBe(text);
+  });
+
+  it("fails closed instead of exceeding maxChars when a surrogate pair can't fit", () => {
+    // Widening past maxChars=1 to fit the pair would silently break the
+    // "never emits more than maxChars" contract every other test here checks.
+    let thrown: unknown;
+    try {
+      chunkSlackText("😀", 1);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(ElizaError);
+    expect((thrown as ElizaError).code).toBe("SLACK_CHUNK_LIMIT_TOO_SMALL");
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])(
+    "rejects an invalid maxChars (%s) instead of silently coercing it",
+    (maxChars) => {
+      let thrown: unknown;
+      try {
+        chunkSlackText("hello", maxChars);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(ElizaError);
+      expect((thrown as ElizaError).code).toBe("SLACK_CHUNK_LIMIT_INVALID");
+    },
+  );
 });
 
 describe("splitSlackText", () => {
@@ -165,6 +206,42 @@ describe("splitSlackText", () => {
       expect(chunks.map((chunk) => chunk.length)).toEqual([4000, 101]);
       expect(chunks.every((chunk) => chunk.length <= 4000)).toBe(true);
       expect(chunks.join("")).toBe(text);
+    },
+  );
+
+  it("never splits an emoji surrogate pair across chunks on a break-free run", () => {
+    // "a" (1 unit) + 150 astral emoji puts the maxChars=100 cut exactly
+    // between the high and low surrogate of the 49th emoji.
+    const text = `a${"😀".repeat(150)}`;
+    const chunks = splitSlackText(text, 100);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((c) => c.isWellFormed())).toBe(true);
+    expect(chunks.every((c) => c.length > 0 && c.length <= 100)).toBe(true);
+    expect(chunks.join("")).toBe(text);
+  });
+
+  it("fails closed instead of exceeding maxChars when a surrogate pair can't fit", () => {
+    let thrown: unknown;
+    try {
+      splitSlackText("😀", 1);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(ElizaError);
+    expect((thrown as ElizaError).code).toBe("SLACK_CHUNK_LIMIT_TOO_SMALL");
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])(
+    "rejects an invalid maxChars (%s) instead of silently coercing it",
+    (maxChars) => {
+      let thrown: unknown;
+      try {
+        splitSlackText("hello", maxChars);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(ElizaError);
+      expect((thrown as ElizaError).code).toBe("SLACK_CHUNK_LIMIT_INVALID");
     },
   );
 });

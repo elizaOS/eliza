@@ -374,6 +374,19 @@ interface NavigateResult {
 	text: string;
 	/** Resolved sub-section the renderer was asked to focus (settings only). */
 	subview?: string;
+	/** The server synchronously accepted delivery to the originating renderer. */
+	completedActionDelivered?: true;
+}
+
+/** Accept only the own, literal confirmation field emitted by the agent route. */
+function confirmsCompletedActionDelivery(body: unknown): boolean {
+	if (typeof body !== "object" || body === null || Array.isArray(body)) {
+		return false;
+	}
+	return (
+		Object.getOwnPropertyDescriptor(body, "completedActionDelivered")?.value ===
+		true
+	);
 }
 
 /**
@@ -431,12 +444,26 @@ async function navigateToView(
 		);
 		const sectionSuffix = resolvedSubview ? ` — ${resolvedSubview}` : "";
 		const openedText = `Opened ${navigationLabel}${sectionSuffix}.`;
-		if (resp.ok)
+		if (resp.ok) {
+			let responseBody: unknown;
+			try {
+				responseBody = await resp.json();
+			} catch (error) {
+				// error-policy:J3 malformed optional receipt JSON keeps the terminal
+				// navigation fallback enabled; transport/body failures remain failures.
+				if (!(error instanceof SyntaxError)) throw error;
+				responseBody = null;
+			}
 			return {
 				ok: true,
 				text: openedText,
 				subview: resolvedSubview,
+				...(delivery === "completed-action" &&
+				confirmsCompletedActionDelivery(responseBody)
+					? { completedActionDelivered: true as const }
+					: {}),
 			};
+		}
 		// 501/404 = navigation route unsupported by this shell; opening succeeds.
 		if (resp.status === 501 || resp.status === 404)
 			return {
@@ -605,6 +632,9 @@ export async function runViewsShow({
 			viewType: view.viewType ?? viewType ?? "gui",
 			label: navigationLabel,
 			...(result.subview ? { subview: result.subview } : {}),
+			...(confirmsCompletedActionDelivery(result)
+				? { completedActionDelivered: true }
+				: {}),
 		},
 		data: { view, ...(result.subview ? { subview: result.subview } : {}) },
 	};

@@ -561,6 +561,28 @@ describe("handleIosLocalAgentRequest", () => {
       hasMore: false,
     });
     await expect(
+      getJson("/api/memories/feed?before=%20"),
+    ).resolves.toMatchObject({ count: 2 });
+    for (const before of [
+      "abc",
+      "0x10",
+      "1e3",
+      "-5",
+      "1.5",
+      "012",
+      "9007199254740993",
+    ]) {
+      const response = await handleIosLocalAgentRequest(
+        new Request(
+          `http://127.0.0.1:31337/api/memories/feed?before=${before}`,
+        ),
+      );
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "before must be a Unix timestamp in milliseconds",
+      });
+    }
+    await expect(
       getJson("/api/memories/feed?limit=junk"),
     ).resolves.toMatchObject({ limit: 50 });
     await expect(

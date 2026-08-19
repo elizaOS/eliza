@@ -869,6 +869,41 @@ describe("useChatSend action handoff", () => {
     window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
   });
 
+  it("does not repeat navigation already delivered to the originating renderer", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Opening Calendar.",
+      completed: true,
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: {
+            mode: "show",
+            viewId: "calendar",
+            completedActionDelivered: true,
+          },
+        },
+      ],
+    });
+    const navigations: CustomEvent[] = [];
+    const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("open calendar", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(navigations).toHaveLength(0);
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+  });
+
   it("invalidates mounted views after a successful REST-streamed action", async () => {
     mocks.client.sendConversationMessageStream.mockResolvedValue({
       text: 'Created sticky note "LP3 Demo Proof".',
@@ -898,6 +933,55 @@ describe("useChatSend action handoff", () => {
 
     expect(refreshEvents).toEqual([{ actionNames: ["CREATE_NOTE"] }]);
     unsubscribe();
+  });
+
+  it("does not restore a duplicate turn after a callback-only action confirms the user message", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "",
+      completed: true,
+      userMessageId: "persisted-upload-user",
+      historyRefreshRequired: true,
+      actionResults: [{ actionName: "ATTACHMENT", success: true }],
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      deps.setConversationMessages([
+        {
+          id: "persisted-upload-user",
+          role: "user",
+          text: "read the upload",
+          timestamp: Date.now(),
+        },
+        {
+          id: "persisted-upload-answer",
+          role: "assistant",
+          text: "NAVIGATOR-7390",
+          timestamp: Date.now() + 1,
+        },
+      ]);
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("read the upload", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.filter(
+        (message) => message.role === "user",
+      ),
+    ).toHaveLength(1);
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (message) => message.text === UNDELIVERED_TURN_NOTICE,
+      ),
+    ).toBe(false);
   });
 
   it("opens a workflow created by a completed chat action", async () => {

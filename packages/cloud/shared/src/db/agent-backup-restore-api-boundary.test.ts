@@ -31,22 +31,17 @@ function productionSources(directory = REPOSITORY_ROOT): string[] {
 }
 
 describe("dormant restore API boundary", () => {
-  test("contains no provisional receipt shape, writer, outcome query, or production callsite", () => {
+  test("keeps restore histories and receipt writers definition-only", () => {
     const sources = productionSources().map((path) => ({
       path,
       source: readFileSync(path, "utf8"),
     }));
     const production = sources.map(({ source }) => source).join("\n");
     for (const forbidden of [
-      "agentBackupRestoreReceipts",
-      "agentVaultKeySeedReceipts",
-      "agent_backup_restore_receipts",
-      "agent_vault_key_seed_receipts",
       "queryAgentBackupRestoreCommitOutcome",
       "markAgentBackupRestoreVerified",
-      "commitAgentBackupRestore",
-      "activation_publication_authority_unique",
-      "docker_nodes_vault_seed_authority_unique",
+      "runAgentBackupRestoreCoordinator",
+      "dispatchAgentBackupRestore",
     ]) {
       expect(production, `Unexpected provisional restore surface: ${forbidden}`).not.toContain(
         forbidden,
@@ -60,6 +55,10 @@ describe("dormant restore API boundary", () => {
       "createOrRotateAgentVaultKeyGeneration",
       "loadCurrentAgentVaultKeyAuthority",
       "bindAgentBackupVaultKeyGeneration",
+      "recordAgentActivationPublication",
+      "authorizeAgentActivationDispatch",
+      "recordAgentVaultKeySeedReceipt",
+      "commitAgentBackupRestore",
     ]) {
       const occurrences = sources.flatMap(({ path, source }) =>
         source.includes(symbol) ? [path] : [],
@@ -73,19 +72,18 @@ describe("dormant restore API boundary", () => {
     );
   });
 
-  test("contains no provision-capacity migration in the restore-foundation ordinal range", () => {
+  test("contains no coordinator, capacity, billing, or probe migration in the dormant range", () => {
     const restoreMigrations = readdirSync(MIGRATIONS_DIR).filter((name) => {
       const ordinal = Number(name.slice(0, 4));
-      return ordinal >= 236 && ordinal <= 245 && name.endsWith(".sql");
+      return ordinal >= 236 && ordinal <= 250 && name.endsWith(".sql");
     });
-    expect(restoreMigrations).toHaveLength(10);
-    expect(restoreMigrations.join("\n")).not.toMatch(/capacity|billing|history|probe/i);
+    expect(restoreMigrations).toHaveLength(15);
+    expect(restoreMigrations.join("\n")).not.toMatch(/capacity|billing|probe|coordinator/i);
     const migrationSource = restoreMigrations
       .map((name) => readFileSync(join(MIGRATIONS_DIR, name), "utf8"))
       .join("\n");
-    expect(migrationSource).not.toMatch(
-      /agent_backup_restore_receipts|agent_vault_key_seed_receipts/,
-    );
+    expect(migrationSource).toContain("agent_backup_restore_receipts");
+    expect(migrationSource).toContain("agent_vault_key_seed_receipts");
   });
 
   test("locks reservation replay before every sandbox and catalogue authority", () => {

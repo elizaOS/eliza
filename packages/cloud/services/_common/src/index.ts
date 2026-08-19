@@ -13,6 +13,11 @@ export {
   identityLinkReply,
 } from "./identity-link-code";
 export {
+  DEFAULT_K8S_WAKE_TIMEOUT_MS,
+  type K8sDeploymentWakeOptions,
+  patchK8sDeploymentScale,
+} from "./k8s-deployment-wake";
+export {
   __resetServiceAccountCacheForTests,
   readServiceAccountCaCert,
   readServiceAccountToken,

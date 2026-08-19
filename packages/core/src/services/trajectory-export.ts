@@ -14,6 +14,7 @@ export {
 	trajectoryToPlaintext,
 } from "../activity-plaintext";
 
+import { parseTrajectorySemanticStages } from "./trajectory-semantic-stage";
 import type {
 	ElizaNativeModelBoundary,
 	ElizaNativeModelRequestRecord,
@@ -143,7 +144,7 @@ function listTrajectorySteps(
 	trajectory: TrajectoryDetailRecord,
 ): TrajectoryStepRecord[] {
 	if (Array.isArray(trajectory.steps)) {
-		return trajectory.steps;
+		return trajectory.steps.map(validateStepSemanticStages);
 	}
 	if (
 		typeof trajectory.stepsJson !== "string" ||
@@ -169,7 +170,19 @@ function listTrajectorySteps(
 			context: { trajectoryId: trajectory.trajectoryId },
 		});
 	}
-	return parsed as TrajectoryStepRecord[];
+	return parsed.map((step) =>
+		validateStepSemanticStages(step as TrajectoryStepRecord),
+	);
+}
+
+function validateStepSemanticStages(
+	step: TrajectoryStepRecord,
+): TrajectoryStepRecord {
+	if (step.semanticStages === undefined) return step;
+	return {
+		...step,
+		semanticStages: parseTrajectorySemanticStages(step.semanticStages),
+	};
 }
 
 function listStepLlmCalls(
@@ -340,6 +353,9 @@ export function iterateTrajectoryLlmCalls(
 						? { skillInvocations: step.skillInvocations }
 						: {}),
 					...(step.evaluatorName ? { evaluatorName: step.evaluatorName } : {}),
+					...(step.semanticStages
+						? { semanticStages: step.semanticStages }
+						: {}),
 				},
 			});
 		}

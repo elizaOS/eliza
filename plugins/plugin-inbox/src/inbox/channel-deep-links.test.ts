@@ -49,6 +49,9 @@ describe("buildDeepLink — Telegram", () => {
     expect(
       buildDeepLink("telegram-account", { roomMeta: { chatId: "-100123" } }),
     ).toBe("https://t.me/c/123");
+    expect(
+      buildDeepLink("telegram-account", { roomMeta: { chatId: "-100" } }),
+    ).toBeNull();
     expect(buildDeepLink("telegram", { roomMeta: {} })).toBeNull();
   });
 });
@@ -82,6 +85,12 @@ describe("buildDeepLink — Signal / iMessage / WhatsApp", () => {
         roomMeta: { jid: "15551234@s.whatsapp.net" },
       }),
     ).toBe("https://wa.me/15551234");
+    expect(
+      buildDeepLink("whatsapp", { roomMeta: { phoneNumber: "non-digits" } }),
+    ).toBeNull();
+    expect(
+      buildDeepLink("whatsapp", { roomMeta: { jid: "@s.whatsapp.net" } }),
+    ).toBeNull();
     expect(buildDeepLink("whatsapp", { roomMeta: {} })).toBeNull();
   });
 });

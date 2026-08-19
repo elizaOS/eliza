@@ -15,7 +15,9 @@
  *   - The PNG decoder here is intentionally minimal — it handles the formats
  *     produced by every screenshot path we ship (color type 2 = RGB, 6 =
  *     RGBA, 8-bit depth, non-interlaced). Anything else returns `null` and
- *     the caller falls back to a coarser whole-frame byte hash.
+ *     the caller falls back to a coarser whole-frame byte hash. IHDR
+ *     width×height above {@link MAX_DECODE_PNG_PIXELS} is rejected before
+ *     `inflateSync` / `Buffer.alloc` so a 69-byte bomb cannot throw.
  *   - Pure functions, no I/O. Safe to test deterministically.
  *
  * Block-grid contract:
@@ -33,6 +35,8 @@ import { inflateSync } from "node:zlib";
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
+/** Fail-closed pixel budget. IHDR is attacker-declared; this admits 8K UHD. */
+export const MAX_DECODE_PNG_PIXELS = 7_680 * 4_320;
 
 export interface RawImage {
   width: number;
@@ -56,41 +60,66 @@ export function decodePng(png: Buffer): RawImage | null {
   let height = 0;
   let bitDepth = 0;
   let colorType = 0;
+  let compression = 0;
+  let filterMethod = 0;
   let interlace = 0;
   const idatChunks: Buffer[] = [];
+  let sawIhdr = false;
+  let sawIend = false;
 
   while (offset + 8 <= png.length) {
     const length = png.readUInt32BE(offset);
     const type = png.subarray(offset + 4, offset + 8).toString("ascii");
     const dataStart = offset + 8;
     const dataEnd = dataStart + length;
-    if (dataEnd > png.length) return null;
+    if (dataEnd + 4 > png.length) return null;
     if (type === "IHDR") {
-      if (length < 13) return null;
+      if (sawIhdr || offset !== PNG_SIGNATURE.length || length !== 13)
+        return null;
+      sawIhdr = true;
       width = png.readUInt32BE(dataStart);
       height = png.readUInt32BE(dataStart + 4);
       bitDepth = png[dataStart + 8] ?? 0;
       colorType = png[dataStart + 9] ?? 0;
+      compression = png[dataStart + 10] ?? 0;
+      filterMethod = png[dataStart + 11] ?? 0;
       interlace = png[dataStart + 12] ?? 0;
     } else if (type === "IDAT") {
+      if (!sawIhdr) return null;
       idatChunks.push(png.subarray(dataStart, dataEnd));
     } else if (type === "IEND") {
+      if (!sawIhdr || length !== 0) return null;
+      sawIend = true;
       break;
     }
     offset = dataEnd + 4; // skip CRC
   }
 
-  if (width === 0 || height === 0) return null;
+  if (!sawIhdr || !sawIend || width === 0 || height === 0) return null;
   if (bitDepth !== 8) return null;
+  if (compression !== 0 || filterMethod !== 0) return null;
   if (interlace !== 0) return null;
   if (colorType !== 2 && colorType !== 6) return null;
   if (idatChunks.length === 0) return null;
+  if (height > 0 && width > Math.floor(MAX_DECODE_PNG_PIXELS / height)) {
+    return null;
+  }
 
-  const inflated = inflateSync(Buffer.concat(idatChunks));
   const bytesPerPixel = colorType === 6 ? 4 : 3;
   const stride = width * bytesPerPixel;
+  if (stride + 1 > Number.MAX_SAFE_INTEGER / height) return null;
   const expected = (stride + 1) * height;
-  if (inflated.length < expected) return null;
+
+  let inflated: Buffer;
+  try {
+    inflated = inflateSync(Buffer.concat(idatChunks), {
+      maxOutputLength: expected,
+    });
+  } catch {
+    // error-policy:J3 Malformed compressed PNG data produces an explicit invalid result.
+    return null;
+  }
+  if (inflated.length !== expected) return null;
 
   const rgba = Buffer.alloc(width * height * 4);
   const prevRow = Buffer.alloc(stride);
@@ -99,6 +128,7 @@ export function decodePng(png: Buffer): RawImage | null {
   for (let y = 0; y < height; y += 1) {
     const rowStart = y * (stride + 1);
     const filter = inflated[rowStart] ?? 0;
+    if (filter > 4) return null;
     const src = inflated.subarray(rowStart + 1, rowStart + 1 + stride);
     applyPngFilter(filter, src, prevRow, curRow, bytesPerPixel);
     const dstRowStart = y * width * 4;

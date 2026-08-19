@@ -178,11 +178,9 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await client.rawRequest("/api/secrets/inventory", undefined, {
-        allowNonOk: true,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = (await res.json()) as { entries: VaultEntryMeta[] };
+      const body = await client.fetch<{ entries: VaultEntryMeta[] }>(
+        "/api/secrets/inventory",
+      );
       setInternalEntries(body.entries);
     } catch (err) {
       // Boundary translation: surface fetch / parse errors to the panel

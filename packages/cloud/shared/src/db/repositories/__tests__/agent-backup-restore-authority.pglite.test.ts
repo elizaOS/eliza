@@ -31,6 +31,12 @@ import {
   agentBackupObjects,
   agentBackupRestoreLeases,
 } from "../../schemas/agent-backup-catalog";
+import {
+  agentActivationPublications,
+  agentBackupRestoreReceipts,
+  agentNodeIncarnationHistories,
+  agentVaultKeySeedReceipts,
+} from "../../schemas/agent-backup-restore-history";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
 import {
   AGENT_VAULT_KEY_AUTHORITY_FORMAT,
@@ -40,6 +46,7 @@ import {
   agentVaultKeyBackupBindings,
   agentVaultKeyGenerations,
 } from "../../schemas/agent-vault-key-authority";
+import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
@@ -48,6 +55,12 @@ import {
   type AgentBackupRestoreSourceV3Input,
   loadAgentBackupRestoreSourceV3,
 } from "../agent-backup-restore";
+import {
+  authorizeAgentActivationDispatch,
+  commitAgentBackupRestore,
+  recordAgentActivationPublication,
+  recordAgentVaultKeySeedReceipt,
+} from "../agent-backup-restore-history";
 import {
   acquireAgentBackupRestoreLease,
   releaseAgentBackupRestoreLease,
@@ -69,6 +82,14 @@ const VAULT_GENERATION = "00000000-0000-4000-8000-00000000d006";
 const ROTATED_VAULT_GENERATION = "00000000-0000-4000-8000-00000000d030";
 const STALE_VAULT_GENERATION = "00000000-0000-4000-8000-00000000d031";
 const USER_ID = "00000000-0000-4000-8000-00000000d032";
+const TARGET_ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000d042";
+const TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000d043";
+const TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000d044";
+const ACTIVATION_PUBLICATION_ID = "00000000-0000-4000-8000-00000000d045";
+const SEED_RECEIPT_ID = "00000000-0000-4000-8000-00000000d046";
+const FINAL_RECEIPT_ID = "00000000-0000-4000-8000-00000000d047";
+const RESTORE_ATTEMPT_ID = "00000000-0000-4000-8000-00000000d048";
+const RESTORE_CONTAINER_ID = "e".repeat(64);
 const SHA = "a".repeat(64);
 const RECEIPT_SHA = "b".repeat(64);
 const CONTENT_SHA = "c".repeat(64);
@@ -565,6 +586,11 @@ beforeAll(async () => {
         agentBackupCatalogAuthorities,
         agentBackupObjects,
         agentBackupRestoreLeases,
+        dockerNodes,
+        agentNodeIncarnationHistories,
+        agentActivationPublications,
+        agentVaultKeySeedReceipts,
+        agentBackupRestoreReceipts,
         agentVaultKeyGenerations,
         agentVaultKeyAuthorities,
         agentVaultKeyBackupBindings,
@@ -579,6 +605,10 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(schemaFailure).toBe("");
+  await dbWrite.delete(agentBackupRestoreReceipts);
+  await dbWrite.delete(agentVaultKeySeedReceipts);
+  await dbWrite.delete(agentActivationPublications);
+  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(agentVaultKeyBackupBindings);
   await dbWrite.delete(agentBackupRestoreLeases);
   await dbWrite.delete(agentBackupObjects);
@@ -587,6 +617,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentVaultKeyGenerations);
   await dbWrite.delete(agentBackupCatalogAuthorities);
   await dbWrite.delete(agentSandboxes);
+  await dbWrite.delete(dockerNodes);
   await dbWrite.delete(userCharacters);
   await dbWrite.delete(users);
   await dbWrite.delete(organizations);
@@ -981,6 +1012,316 @@ describe("strict restore catalogue authority", () => {
     const releaseReplay = await releaseAgentBackupRestoreLease(renewed);
     expect(releaseReplay.id).toBe(released.id);
     expect(releaseReplay.released_at).toEqual(released.released_at);
+  });
+
+  test("replays one immutable seed-to-activation receipt chain and fences boot ABA", async () => {
+    const kms = new MemoryKmsAdapter({ seed: () => new Uint8Array(32).fill(0x94) });
+    const generation = await createOrRotateAgentVaultKeyGeneration(
+      {
+        organizationId: ORG_ID,
+        agentId: AGENT_ID,
+        generationId: VAULT_GENERATION,
+        sourceActivationGeneration: ACTIVATION_GENERATION,
+        expectedCurrentGenerationId: null,
+      },
+      {
+        kmsClient: kms,
+        randomBytes: (size) => new Uint8Array(size).fill(0x44),
+      },
+    );
+    generation.secret.release();
+    const { exact } = await insertExactProtectedSource(generation.authority);
+    await dbWrite.insert(dockerNodes).values({
+      id: TARGET_NODE_RECORD_ID,
+      node_id: "restore-target-node",
+      hostname: "restore-target-node.internal",
+      host_key_fingerprint: `SHA256:${SHA}`,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      node_incarnation: TARGET_NODE_INCARNATION,
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        lifecycle_revision: 8,
+        activation_generation: TARGET_ACTIVATION_GENERATION,
+        activation_previous_generation: ACTIVATION_GENERATION,
+        activation_lifecycle_revision: 8n,
+        activation_purpose: "restore",
+        activation_phase: "restart_attested",
+        activation_backup_id: BACKUP_ID,
+        activation_backup_hash: exact.manifest.integrity.manifestSha256,
+        activation_receipt: {
+          schemaVersion: 1,
+          generation: TARGET_ACTIVATION_GENERATION,
+          purpose: "restore",
+          agentId: AGENT_ID,
+          organizationId: ORG_ID,
+          lifecycleRevision: "8",
+          backupId: BACKUP_ID,
+          backupHash: exact.manifest.integrity.manifestSha256,
+          manifestHash: exact.manifest.integrity.manifestSha256,
+          componentHashes: null,
+          freshAuthorization: null,
+          containerId: RESTORE_CONTAINER_ID,
+          imageDigest: `sha256:${SHA}`,
+          receiptId: "00000000-0000-4000-8000-00000000d049",
+          receiptHash: RECEIPT_SHA,
+          receiptMac: CONTENT_SHA,
+          appliedAt: "2026-08-17T02:00:00.000Z",
+          restored: true,
+          requiresRestart: true,
+        },
+        activation_receipt_hash: RECEIPT_SHA,
+        activation_container_id: RESTORE_CONTAINER_ID,
+        activation_node_id: "restore-target-node",
+        activation_image_digest: `sha256:${SHA}`,
+        activation_token_hash: SHA,
+        activation_token_ciphertext: "sealed-target-restore-token",
+        activation_boot_id: TARGET_NODE_INCARNATION,
+        activation_funding_revision: 2n,
+        activation_authority_published_at: null,
+        activation_dispatched_at: null,
+        activation_completed_at: null,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+
+    const publicationInput = {
+      publicationId: ACTIVATION_PUBLICATION_ID,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      activationGeneration: TARGET_ACTIVATION_GENERATION,
+      expectedActivationReceiptSha256: RECEIPT_SHA,
+      expectedContainerId: RESTORE_CONTAINER_ID,
+      expectedNodeRecordId: TARGET_NODE_RECORD_ID,
+      expectedNodeIncarnation: TARGET_NODE_INCARNATION,
+      expectedTokenSha256: SHA,
+    } as const;
+    const [publicationFirst, publicationReplay] = await Promise.all([
+      recordAgentActivationPublication(publicationInput),
+      recordAgentActivationPublication(publicationInput),
+    ]);
+    expect([publicationFirst.replayed, publicationReplay.replayed].sort()).toEqual([false, true]);
+    expect(publicationFirst.publication.id).toBe(publicationReplay.publication.id);
+    await authorizeAgentActivationDispatch(publicationInput);
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ activation_boot_id: "00000000-0000-4000-8000-00000000d050" })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await expect(authorizeAgentActivationDispatch(publicationInput)).rejects.toThrow(
+      "lost current mutable authority",
+    );
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ activation_boot_id: TARGET_NODE_INCARNATION })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: "00000000-0000-4000-8000-00000000d050" })
+      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+    await expect(authorizeAgentActivationDispatch(publicationInput)).rejects.toThrow(
+      "Target node incarnation is absent",
+    );
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: TARGET_NODE_INCARNATION })
+      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+
+    const acquired = await acquireAgentBackupRestoreLease({
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: exact.manifest.integrity.manifestSha256,
+      copyRole: "primary",
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      ownerId: "immutable-restore-worker",
+      fencingToken: "00000000-0000-4000-8000-00000000d051",
+      leaseMs: 60_000,
+    });
+    const seedInput = {
+      receiptId: SEED_RECEIPT_ID,
+      receiptDigest: CONTENT_SHA,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      backupId: BACKUP_ID,
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      leaseId: acquired.authority.leaseId,
+      leaseOwnerId: acquired.authority.ownerId,
+      leaseFencingToken: acquired.authority.fencingToken,
+      targetActivationGeneration: TARGET_ACTIVATION_GENERATION,
+      targetNodeRecordId: TARGET_NODE_RECORD_ID,
+      targetNodeIncarnation: TARGET_NODE_INCARNATION,
+    } as const;
+    await expect(
+      recordAgentVaultKeySeedReceipt({
+        ...seedInput,
+        receiptId: "00000000-0000-4000-8000-00000000d052",
+        targetNodeIncarnation: "00000000-0000-4000-8000-00000000d050",
+      }),
+    ).rejects.toThrow("unattested, changed, or blocked");
+    // The seed receipt is append-only (0250), so a stale catalogue epoch must be
+    // refused BEFORE the row exists rather than left as an unremovable record.
+    const [epochBefore] = await dbWrite
+      .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
+      .from(agentBackupCatalogAuthorities)
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    if (!epochBefore) throw new Error("Expected vault-created catalogue authority");
+    await dbWrite
+      .update(agentBackupCatalogAuthorities)
+      .set({ catalog_revision: epochBefore.revision + 1n })
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    await expect(recordAgentVaultKeySeedReceipt(seedInput)).rejects.toThrow(
+      "lost its exact live restore lease",
+    );
+    const [seedAfterStaleEpoch] = await dbWrite
+      .select({ id: agentVaultKeySeedReceipts.id })
+      .from(agentVaultKeySeedReceipts)
+      .where(eq(agentVaultKeySeedReceipts.id, SEED_RECEIPT_ID));
+    expect(seedAfterStaleEpoch).toBeUndefined();
+    await dbWrite
+      .update(agentBackupCatalogAuthorities)
+      .set({ catalog_revision: epochBefore.revision })
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+
+    const [seedFirst, seedReplay] = await Promise.all([
+      recordAgentVaultKeySeedReceipt(seedInput),
+      recordAgentVaultKeySeedReceipt(seedInput),
+    ]);
+    expect([seedFirst.replayed, seedReplay.replayed].sort()).toEqual([false, true]);
+    expect(seedFirst.receipt.lease_expires_at).toEqual(acquired.authority.expiresAt);
+
+    const dispatchedAt = new Date(publicationFirst.publication.published_at.getTime() + 1_000);
+    const activatedAt = new Date(dispatchedAt.getTime() + 1_000);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "running",
+        sandbox_id: "restored-provider-handle",
+        node_id: "restore-target-node",
+        image_digest: `sha256:${SHA}`,
+        activation_phase: "active",
+        activation_authority_published_at: publicationFirst.publication.published_at,
+        activation_dispatched_at: dispatchedAt,
+        activation_completed_at: activatedAt,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+
+    const finalInput = {
+      receiptId: FINAL_RECEIPT_ID,
+      receiptDigest: CIPHERTEXT_SHA,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      backupId: BACKUP_ID,
+      restoreAttemptId: RESTORE_ATTEMPT_ID,
+      seedReceiptId: SEED_RECEIPT_ID,
+      seedReceiptDigest: CONTENT_SHA,
+      activationPublicationId: ACTIVATION_PUBLICATION_ID,
+      targetActivationGeneration: TARGET_ACTIVATION_GENERATION,
+      expectedActivationReceiptSha256: RECEIPT_SHA,
+    } as const;
+
+    const originalLeaseExpiry = acquired.authority.expiresAt;
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ expires_at: new Date(acquired.lease.created_at.getTime() + 1) })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+    await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
+      "expired while mutable authorities were revalidated",
+    );
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ expires_at: originalLeaseExpiry })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+
+    // A target that reboots between publication and commit must not earn a
+    // permanent receipt naming an incarnation that no longer exists.
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: "00000000-0000-4000-8000-00000000d055" })
+      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+    await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
+      "Target node incarnation is absent",
+    );
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: TARGET_NODE_INCARNATION })
+      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+
+    await releaseAgentBackupRestoreLease(acquired.authority);
+    await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
+      "lost its exact live restore lease",
+    );
+    const takeover = await acquireAgentBackupRestoreLease({
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: exact.manifest.integrity.manifestSha256,
+      copyRole: "primary",
+      restoreAttemptId: "00000000-0000-4000-8000-00000000d053",
+      ownerId: "takeover-restore-worker",
+      fencingToken: "00000000-0000-4000-8000-00000000d054",
+      leaseMs: 60_000,
+    });
+    await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
+      "lost its exact live restore lease",
+    );
+    expect(takeover.authority.restoreAttemptId).not.toBe(acquired.authority.restoreAttemptId);
+    expect(await dbWrite.select().from(agentBackupRestoreReceipts)).toHaveLength(0);
+    const [uncommittedAuthority] = await dbWrite
+      .select({ generation: agentBackupCatalogAuthorities.restore_generation })
+      .from(agentBackupCatalogAuthorities)
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    expect(uncommittedAuthority?.generation).toBe(0n);
+    const [uncommittedBackup] = await dbWrite
+      .select({
+        state: agentSandboxBackups.catalog_state,
+        generation: agentSandboxBackups.restore_generation,
+        receiptDigest: agentSandboxBackups.restore_receipt_digest,
+      })
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.id, BACKUP_ID));
+    expect(uncommittedBackup).toEqual({
+      state: "protected",
+      generation: null,
+      receiptDigest: null,
+    });
+
+    // Rewind only the adversarial fixture so the original exact-authority happy path remains proven.
+    await dbWrite
+      .delete(agentBackupRestoreLeases)
+      .where(eq(agentBackupRestoreLeases.id, takeover.authority.leaseId));
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ released_at: null })
+      .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+    const [finalFirst, finalReplay] = await Promise.all([
+      commitAgentBackupRestore(finalInput),
+      commitAgentBackupRestore(finalInput),
+    ]);
+    expect([finalFirst.replayed, finalReplay.replayed].sort()).toEqual([false, true]);
+    expect(finalFirst.receipt.restore_generation).toBe(1n);
+    await expect(commitAgentBackupRestore({ ...finalInput, receiptDigest: SHA })).rejects.toThrow(
+      "replay mismatch",
+    );
+    const [restoredBackup] = await dbWrite
+      .select({
+        state: agentSandboxBackups.catalog_state,
+        generation: agentSandboxBackups.restore_generation,
+        receiptDigest: agentSandboxBackups.restore_receipt_digest,
+      })
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.id, BACKUP_ID));
+    expect(restoredBackup).toEqual({
+      state: "restore_verified",
+      generation: 1n,
+      receiptDigest: CIPHERTEXT_SHA,
+    });
   });
 
   test("rechecks the live DB clock after expensive restore-source validation", async () => {

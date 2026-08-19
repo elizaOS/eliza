@@ -65,4 +65,103 @@ describe("validateJsonSchema", () => {
     const result = validateJsonSchema({ name: 123 }, schema);
     expect(result.success).toBe(false);
   });
+
+  it("does not throw when an MCP tool inputSchema is the allOf $ref bomb", () => {
+    const bomb = {
+      $id: "http://evil/mcp-schema-bomb",
+      type: "object",
+      allOf: [{ $ref: "#" }, { $ref: "#" }],
+    };
+    const result = validateJsonSchema({}, bomb);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/schema validation failed:/);
+    }
+  });
+
+  it("does not reject duplicate references to a finite schema", () => {
+    const schemaWithSafeDuplicateRefs = {
+      $defs: { leaf: { type: "string" } },
+      allOf: [{ $ref: "#/$defs/leaf" }, { $ref: "#/$defs/leaf" }],
+    };
+
+    expect(validateJsonSchema("value", schemaWithSafeDuplicateRefs)).toEqual({
+      success: true,
+      data: "value",
+    });
+  });
+
+  it("preserves a recursive tree schema", () => {
+    const recursiveTree = {
+      $defs: {
+        node: {
+          type: "object",
+          properties: { child: { $ref: "#/$defs/node" } },
+        },
+      },
+      $ref: "#/$defs/node",
+    };
+
+    expect(validateJsonSchema({ child: {} }, recursiveTree).success).toBe(true);
+  });
+
+  it("rejects an indirect recursive composition that bypasses duplicate-ref heuristics", () => {
+    const indirectBomb = {
+      $defs: { left: { $ref: "#" }, right: { $ref: "#" } },
+      allOf: [{ $ref: "#/$defs/left" }, { $ref: "#/$defs/right" }],
+    };
+
+    const result = validateJsonSchema({}, indirectBomb);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/schema validation failed:/);
+    }
+  });
+
+  it("rejects asynchronous schemas instead of treating a Promise as valid data", () => {
+    const result = validateJsonSchema("wrong", { $async: true, type: "number" });
+    expect(result).toEqual({
+      success: false,
+      error: "MCP JSON schema uses unsupported asynchronous validation",
+    });
+  });
+
+  it("does not poison a process-wide Ajv cache when two schemas share $id", () => {
+    const first = {
+      $id: "http://example.com/shared-tool",
+      type: "object",
+      properties: { a: { type: "string" } },
+      required: ["a"],
+    };
+    const second = {
+      $id: "http://example.com/shared-tool",
+      type: "object",
+      properties: { b: { type: "number" } },
+      required: ["b"],
+    };
+    expect(validateJsonSchema({ a: "ok" }, first).success).toBe(true);
+    const again = validateJsonSchema({ b: 1 }, second);
+    expect(again.success).toBe(true);
+  });
+
+  it("rejects an oversized schema before compiling it", () => {
+    const huge = { type: "string", description: "x".repeat(256 * 1024) };
+    const result = validateJsonSchema("value", huge);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/serialized size/);
+    }
+  });
+
+  it("rejects an excessively nested schema before compiling it", () => {
+    let deep: Record<string, unknown> = { type: "string" };
+    for (let i = 0; i < 40; i++) {
+      deep = { type: "object", properties: { child: deep } };
+    }
+    const result = validateJsonSchema({}, deep);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toMatch(/nesting depth/);
+    }
+  });
 });

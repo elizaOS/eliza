@@ -27,16 +27,34 @@ export interface RuntimeR2Object {
 
 /** Metadata returned by the native Workers `R2Bucket.head()` operation. */
 export interface RuntimeR2ObjectMetadata {
+  /** Key is populated on list results and omitted on direct HEAD results. */
+  key?: string;
   /** Opaque upload generation assigned by R2. */
   version?: string;
   size: number;
   etag: string;
+  uploaded?: Date;
   checksums?: {
     md5?: ArrayBuffer;
     sha1?: ArrayBuffer;
     sha256?: ArrayBuffer;
   };
   customMetadata?: Record<string, string>;
+  httpMetadata?: { contentType?: string };
+}
+
+export interface RuntimeR2ListOptions {
+  prefix?: string;
+  cursor?: string;
+  delimiter?: string;
+  limit?: number;
+  include?: Array<"httpMetadata" | "customMetadata">;
+}
+
+export interface RuntimeR2Objects {
+  objects: RuntimeR2ObjectMetadata[];
+  truncated: boolean;
+  cursor?: string;
 }
 
 export interface RuntimeR2PutOptions {
@@ -82,6 +100,7 @@ export interface RuntimeR2Bucket {
     options?: RuntimeR2PutOptions,
   ): Promise<unknown>;
   delete(key: string): Promise<unknown>;
+  list?(options?: RuntimeR2ListOptions): Promise<RuntimeR2Objects>;
 }
 
 let runtimeBucket: RuntimeR2Bucket | null = null;

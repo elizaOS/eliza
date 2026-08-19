@@ -963,6 +963,14 @@ export interface ActionResult {
 	 */
 	data?: ProviderDataRecord;
 
+	/**
+	 * Optional model-bound projection of `data`. When present, prompt renderers
+	 * use this object while runtime state and trajectories retain the complete
+	 * `data` payload. Use it when an action's machine result is substantially
+	 * larger than the fields a model needs to continue or evaluate the turn.
+	 */
+	promptData?: ProviderDataRecord;
+
 	/** Error information if the action failed */
 	error?: string | Error;
 

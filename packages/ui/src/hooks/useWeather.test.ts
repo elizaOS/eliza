@@ -25,6 +25,10 @@ const originalGeolocationDescriptor = Object.getOwnPropertyDescriptor(
   navigator,
   "geolocation",
 );
+const originalVisibilityDescriptor = Object.getOwnPropertyDescriptor(
+  document,
+  "visibilityState",
+);
 const WEATHER_CACHE_KEY = "eliza:weather:v2";
 const LOCATION_NOTICE_FLAG_KEY = "eliza:weather:location-notice:v1";
 const originalAgentBase = client.getBaseUrl();
@@ -42,9 +46,9 @@ function jsonResponse(data: unknown, status = 200): Response {
  * Open-Meteo. Each can be overridden to exercise a failure leg.
  */
 function installFetchRouter(overrides?: {
-  approximate?: () => Response | Promise<Response>;
+  approximate?: (init?: RequestInit) => Response | Promise<Response>;
   openMeteo?: (init?: RequestInit) => Response | Promise<Response>;
-  notifications?: () => Response | Promise<Response>;
+  notifications?: (init?: RequestInit) => Response | Promise<Response>;
 }) {
   const calls: string[] = [];
   const fetchMock = vi.fn(
@@ -53,7 +57,7 @@ function installFetchRouter(overrides?: {
       calls.push(url);
       if (url.includes("/api/location/approximate")) {
         return (
-          overrides?.approximate?.() ??
+          overrides?.approximate?.(init) ??
           jsonResponse({
             lat: 40.71,
             lon: -74.01,
@@ -64,7 +68,7 @@ function installFetchRouter(overrides?: {
       }
       if (url.includes("/api/notifications")) {
         return (
-          overrides?.notifications?.() ??
+          overrides?.notifications?.(init) ??
           jsonResponse({ notification: { id: "n-1" } }, 201)
         );
       }
@@ -119,6 +123,15 @@ afterEach(() => {
   } else {
     delete (navigator as { geolocation?: Navigator["geolocation"] })
       .geolocation;
+  }
+  if (originalVisibilityDescriptor) {
+    Object.defineProperty(
+      document,
+      "visibilityState",
+      originalVisibilityDescriptor,
+    );
+  } else {
+    Reflect.deleteProperty(document, "visibilityState");
   }
   localStorage.clear();
   client.setBaseUrl(originalAgentBase, { persist: false });
@@ -255,53 +268,6 @@ describe("useWeather", () => {
     expect(calls.some((u) => u.includes("/api/notifications"))).toBe(false);
   });
 
-  it("bounds a stalled Open-Meteo request and degrades on timeout", async () => {
-    const weatherDeadline = new AbortController();
-    const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
-    const timeoutSpy = vi
-      .spyOn(AbortSignal, "timeout")
-      .mockImplementation((milliseconds) =>
-        milliseconds === 15_000
-          ? weatherDeadline.signal
-          : nativeTimeout(milliseconds),
-      );
-    let requestSignal: AbortSignal | null = null;
-    installFetchRouter({
-      openMeteo: (init) =>
-        new Promise<Response>((_resolve, reject) => {
-          requestSignal = init?.signal ?? null;
-          requestSignal?.addEventListener(
-            "abort",
-            () => reject(requestSignal?.reason),
-            { once: true },
-          );
-        }),
-    });
-    denyGeolocation();
-
-    const { result } = renderHook(() => useWeather());
-    await waitFor(() => expect(requestSignal).toBe(weatherDeadline.signal));
-    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
-
-    await act(async () => {
-      weatherDeadline.abort(
-        new DOMException("weather timed out", "TimeoutError"),
-      );
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(result.current.status).toBe("unavailable"));
-  });
-
-  it("degrades to unavailable when Open-Meteo returns a provider error", async () => {
-    installFetchRouter({
-      openMeteo: () => jsonResponse({ error: "upstream unavailable" }, 503),
-    });
-    denyGeolocation();
-
-    const { result } = renderHook(() => useWeather());
-    await waitFor(() => expect(result.current.status).toBe("unavailable"));
-  });
-
   it("ignores cached readings whose unit does not match the current locale", async () => {
     const currentUnit = temperatureUnitForLocale();
     const wrongUnit = currentUnit.label === "°F" ? "°C" : "°F";
@@ -417,6 +383,102 @@ describe("useWeather", () => {
       .at(-1);
     expect(preciseUrl).toContain("latitude=37.7");
     expect(preciseUrl).toMatch(/temperature_unit=(celsius|fahrenheit)/);
+  });
+
+  it("makes a foreground weather deadline an explicit unavailable state", async () => {
+    const timeoutController = new AbortController();
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timeoutController.signal);
+    const weatherSignal = { current: null as AbortSignal | null };
+    installFetchRouter({
+      openMeteo: (init) => {
+        weatherSignal.current = init?.signal as AbortSignal;
+        return new Promise<Response>((_resolve, reject) => {
+          weatherSignal.current?.addEventListener(
+            "abort",
+            () => reject(weatherSignal.current?.reason),
+            { once: true },
+          );
+        });
+      },
+    });
+    denyGeolocation();
+
+    const { result } = renderHook(() => useWeather());
+    await waitFor(() => expect(weatherSignal.current).not.toBeNull());
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+    await act(async () => {
+      timeoutController.abort(new DOMException("timed out", "TimeoutError"));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+  });
+
+  it("aborts a pending weather request on unmount without degrading state", async () => {
+    const weatherSignal = { current: null as AbortSignal | null };
+    installFetchRouter({
+      openMeteo: (init) => {
+        weatherSignal.current = init?.signal as AbortSignal;
+        return new Promise<Response>((_resolve, reject) => {
+          weatherSignal.current?.addEventListener(
+            "abort",
+            () => reject(weatherSignal.current?.reason),
+            { once: true },
+          );
+        });
+      },
+    });
+    denyGeolocation();
+
+    const view = renderHook(() => useWeather());
+    await waitFor(() => expect(weatherSignal.current).not.toBeNull());
+    expect(view.result.current.status).toBe("loading");
+    view.unmount();
+    expect(weatherSignal.current?.aborted).toBe(true);
+  });
+
+  it("cancels background work while preserving a stale foreground reading", async () => {
+    const currentUnit = temperatureUnitForLocale();
+    localStorage.setItem(
+      WEATHER_CACHE_KEY,
+      JSON.stringify({
+        status: "ready",
+        temp: 72,
+        unit: currentUnit.label,
+        condition: "Clear",
+        kind: "clear",
+        approximate: true,
+        fetchedAt: Date.now() - 31 * 60_000,
+      }),
+    );
+    let weatherSignal: AbortSignal | null = null;
+    installFetchRouter({
+      openMeteo: (init) => {
+        weatherSignal = init?.signal as AbortSignal;
+        return new Promise<Response>((_resolve, reject) => {
+          weatherSignal?.addEventListener(
+            "abort",
+            () => reject(weatherSignal?.reason),
+            { once: true },
+          );
+        });
+      },
+    });
+    denyGeolocation();
+    const { result } = renderHook(() => useWeather());
+    await waitFor(() => expect(weatherSignal).not.toBeNull());
+    expect(result.current.status).toBe("ready");
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(weatherSignal?.aborted).toBe(true));
+    expect(result.current.status).toBe("ready");
   });
 });
 

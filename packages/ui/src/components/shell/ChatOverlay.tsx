@@ -67,6 +67,7 @@ import {
   GLASS_SHEET_FILL,
 } from "../../glass/tokens";
 import { useConversationRenderWindow } from "../../hooks/useConversationRenderWindow";
+import { useDesktopBridgeEvent } from "../../hooks/useDesktopBridgeEvent";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -80,6 +81,7 @@ import {
 } from "../../os-intent/host";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
+  getPhysicalScreenVerticalExtent,
   KEYBOARD_INTRUSION_THRESHOLD_PX,
   STANDALONE_BOTTOM_RECLAIM_OFFSET,
   shouldInstallStandaloneBottomReclaim,
@@ -117,7 +119,6 @@ import type {
   ChatMessageData,
   ChatMessageRenderContext,
 } from "../composites/chat/chat-types";
-import { ServingProviderChip } from "../composites/chat/ServingProviderChip";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -294,6 +295,8 @@ export type ChatState =
   | "OPEN_HALF_OR_OVER"
   | "MAXIMIZED";
 
+export type ChatSurfaceState = ChatState | "INPUT_MENU";
+
 /**
  * The chat's openness as a SINGLE source of truth — one ordered state machine
  * instead of separate `pilled` boolean + `detent` enum that had to be hand-kept
@@ -358,6 +361,7 @@ const SHEET_DETENT_MAGNET = 64;
 // expand-to-maximize — and dragging back down within the same gesture reverses
 // it. Release commits the maximize once the morph is at least half-complete.
 const COMPOSER_TYPING_PAUSE_MS = 2_000;
+const DESKTOP_INPUT_IDLE_COLLAPSE_MS = 10_000;
 const COMPOSER_ACTIVITY_SURFACE = "chat_overlay";
 
 // A light iOS-style impact on each detent cross. Self-contained + guarded so it
@@ -1179,7 +1183,7 @@ export function ChatOverlay({
   slash: slashProp,
   firstRunOpen = false,
   initialMode = "input",
-  releaseFirstRunToHalf = false,
+  releaseFirstRunToFull = false,
   fillHostAtHalf = false,
   onFirstRunReleaseHandled,
   onPilledChange,
@@ -1193,11 +1197,11 @@ export function ChatOverlay({
   slash?: SlashCommandController;
   /**
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
-   * false` upstream). The overlay stays at the shared HALF chat detent: setup
-   * and sign-in are transcript turns in this composer, never a full-window
-   * dashboard or a separate web chat. Collapse and maximize remain unavailable
-   * until setup completes, then the same surface remains at half for the user
-   * to dismiss to the pill.
+   * false` upstream). The overlay stays at the shared HALF chat detent while it
+   * owns an onboarding choice. Once external Cloud sign-in starts it minimizes
+   * to the regular compact composer so the browser is unobstructed and retry is
+   * recoverable; successful authentication opens the same conversation at FULL.
+   * There is never a separate desktop web chat.
    */
   firstRunOpen?: boolean;
   /** Initial resting detent when a host opens this shared chat surface. */
@@ -1206,7 +1210,7 @@ export function ChatOverlay({
    * One-shot completion intent retained by the parent shell when onboarding
    * completion and a runtime-target remount happen in the same transition.
    */
-  releaseFirstRunToHalf?: boolean;
+  releaseFirstRunToFull?: boolean;
   /** Desktop bottom-bar hosts have no page behind their transparent window. */
   fillHostAtHalf?: boolean;
   /** Acknowledges that the retained completion intent reached this overlay. */
@@ -1221,7 +1225,7 @@ export function ChatOverlay({
   /** Reports the settled visible footprint to transparent desktop hosts. */
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   /** Native hosts use this to grow the transparent pill window with the sheet. */
-  onStateChange?: (state: ChatState) => void;
+  onStateChange?: (state: ChatSurfaceState) => void;
 }): React.JSX.Element {
   const [chatActionsOpen, setChatActionsOpen] = React.useState(false);
   const {
@@ -1485,6 +1489,16 @@ export function ChatOverlay({
     React.useState(false);
   const transcriptionComposerActive =
     transcriptionMode || transcriptionFinishing;
+  const cloudLoginWaiting = React.useMemo(
+    () =>
+      firstRunOpen &&
+      messages.some(
+        (message) =>
+          message.id === "first-run:cloud-login-waiting" &&
+          message.content.startsWith("Waiting for sign-in in the browser"),
+      ),
+    [firstRunOpen, messages],
+  );
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
@@ -1511,9 +1525,12 @@ export function ChatOverlay({
   // detent are all DERIVED from it — so the impossible "open but not open" or
   // pilled-and-full combos can't exist and no transition has to hand-sync two
   // separate states (which is what bred the old stuck states).
-  // Onboarding openness pin: while first-run is active the sheet is
-  // structurally HALF and undismissable (see firstRunOpen docs above).
-  const pinnedOpen = firstRunOpen;
+  // Onboarding owns HALF only while the user is acting inside Eliza. External
+  // Cloud auth deliberately releases that pin and minimizes the native host to
+  // the existing compact composer so Safari remains readable and clickable
+  // during sign-in. Do not use the internal handle-only `pill` mode here: that
+  // is a drag affordance, not a user-facing idle surface.
+  const pinnedOpen = firstRunOpen && !cloudLoginWaiting;
   const [mode, setMode] = React.useState<ChatMode>(
     pinnedOpen ? "half" : initialMode,
   );
@@ -1592,6 +1609,12 @@ export function ChatOverlay({
   // empty composer settles it back to compact. Elsewhere focus is tracked via
   // refs (composerFocusedAtPressRef) that must not trigger a re-render.
   const [composerFocused, setComposerFocused] = React.useState(false);
+  // Pointer/key activity restarts the desktop input bar's idle timer even when
+  // it does not change the draft (for example, clicking an empty composer).
+  const [inputIdleEpoch, noteInputActivity] = React.useReducer(
+    (epoch: number) => epoch + 1,
+    0,
+  );
   // Whether the sheet was collapsed when the composer last gained focus — so
   // dismissing the keyboard (tap the handle, tap the scrim, tap outside) returns
   // to the prior resting state (collapsed → input) instead of leaving the sheet
@@ -2376,27 +2399,6 @@ export function ChatOverlay({
   const renderThreadLine = React.useCallback(
     (m: ShellMessage, index: number) => {
       const messageData = shellToChatMessageData(m);
-      const firstRunChoiceRegions =
-        firstRunOpen && isFirstRunShellMessage(m)
-          ? findChoiceRegions(m.content)
-          : [];
-      const detachedChoice =
-        firstRunChoiceRegions.length === 1 &&
-        firstRunChoiceRegions[0].options.length === 1
-          ? firstRunChoiceRegions[0]
-          : null;
-      const bubbleMessage = detachedChoice
-        ? {
-            ...messageData,
-            text: `${m.content.slice(0, detachedChoice.start)}${m.content.slice(detachedChoice.end)}`.trim(),
-          }
-        : messageData;
-      const detachedChoiceMessage = detachedChoice
-        ? {
-            ...messageData,
-            text: m.content.slice(detachedChoice.start, detachedChoice.end),
-          }
-        : null;
       const isLastAssistant =
         index === visibleMessages.length - 1 && m.role === "assistant";
       const isInFlight =
@@ -2421,11 +2423,6 @@ export function ChatOverlay({
           className={cn("w-full", firstRunOpen && index > 0 && "mt-2")}
         >
           <ChatMessage
-            afterBubbleContent={
-              detachedChoiceMessage
-                ? renderRowBody(detachedChoiceMessage, undefined)
-                : undefined
-            }
             actionAccessory={
               m.id === speakingSourceMessageId ? (
                 <SpeakingStatusAccessory />
@@ -2436,7 +2433,7 @@ export function ChatOverlay({
             // optimistic turn. Overlay rows must therefore be visible on their
             // first frame so the handoff never exposes only the prior transcript.
             agentName={agentName}
-            message={bubbleMessage}
+            message={messageData}
             reduceMotion={reduce}
             onCopy={handleCopyMessage}
             onLongPressCopy={handleLongPressCopy}
@@ -2744,10 +2741,7 @@ export function ChatOverlay({
       );
       let screenKeyboard = 0;
       if (SCREEN_KEYBOARD_SIGNAL_ACTIVE) {
-        const screenHeight =
-          typeof window.screen?.height === "number" && window.screen.height > 0
-            ? window.screen.height
-            : 0;
+        const screenHeight = getPhysicalScreenVerticalExtent();
         const insetFromScreen =
           screenHeight > 0
             ? Math.max(0, screenHeight - vv.height - vv.offsetTop)
@@ -3109,12 +3103,11 @@ export function ChatOverlay({
           ? "OPEN_HALF_OR_OVER"
           : "OPEN_UNDER_HALF";
   // The actions menu is portaled above the composer. INPUT's shallow 96px
-  // native desktop host would clip that portal at the window boundary, so use
-  // the existing under-half host footprint only for the menu's lifetime. The
-  // renderer remains in INPUT and returns to its narrow non-blocking host as
-  // soon as the menu closes.
-  const nativeSurfaceState: ChatState =
-    chatActionsOpen && chatState === "INPUT" ? "OPEN_UNDER_HALF" : chatState;
+  // native desktop host would clip that portal at the window boundary. The
+  // dedicated INPUT_MENU host adds height only: it retains INPUT's exact width
+  // and bottom anchor so opening the floating menu cannot resize the composer.
+  const nativeSurfaceState: ChatSurfaceState =
+    chatActionsOpen && chatState === "INPUT" ? "INPUT_MENU" : chatState;
   React.useEffect(() => {
     onStateChange?.(nativeSurfaceState);
   }, [nativeSurfaceState, onStateChange]);
@@ -3555,6 +3548,56 @@ export function ChatOverlay({
     detentHaptic();
   }, [setDragPreviewMounted]);
 
+  // The desktop bottom-bar host should not leave an unused INPUT-width window
+  // floating over the user's work. Once onboarding is complete, the empty and
+  // genuinely idle composer folds through the existing pill transition. This
+  // is deliberately disabled for first-run/auth recovery and any state where
+  // collapsing could hide work or an active interaction.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: inputIdleEpoch is an intentional re-arm trigger for pointer/key activity that does not otherwise change composer state.
+  React.useEffect(() => {
+    const idleInput =
+      fillHostAtHalf &&
+      !firstRunOpen &&
+      effectiveMode === "input" &&
+      !hasDraft &&
+      !hasImages &&
+      !imageError &&
+      !chatReplyTarget &&
+      !chatActionsOpen &&
+      !searchOpen &&
+      !recording &&
+      !listening &&
+      !responding &&
+      !speaking &&
+      !transcriptionComposerActive &&
+      !realtimeVoiceComposerVisible;
+    if (!idleInput) return undefined;
+
+    const timeout = window.setTimeout(
+      collapseToPill,
+      DESKTOP_INPUT_IDLE_COLLAPSE_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [
+    chatActionsOpen,
+    chatReplyTarget,
+    collapseToPill,
+    effectiveMode,
+    fillHostAtHalf,
+    firstRunOpen,
+    hasDraft,
+    hasImages,
+    imageError,
+    inputIdleEpoch,
+    listening,
+    realtimeVoiceComposerVisible,
+    recording,
+    responding,
+    searchOpen,
+    speaking,
+    transcriptionComposerActive,
+  ]);
+
   // Landing for a drag released AT THE BOTTOM (thread height within the detent
   // magnet of 0): PILL when the gesture carried past the bottom into the
   // input→pill morph, OR when it started at/above the half detent (one big yank
@@ -3813,29 +3856,36 @@ export function ChatOverlay({
     ],
   );
 
-  // First-run onboarding pin + release. While onboarding is active the shared
-  // conversation stays at HALF; setup and sign-in turns never expand the native
-  // host into a dashboard. On completion retain HALF so the user can read the
-  // result, then dismiss it to the pill normally.
+  // First-run onboarding pin + release. In-app choices stay at HALF; external
+  // sign-in minimizes to the regular compact composer. Successful
+  // authentication opens the shared conversation at FULL so the continuation
+  // is immediately visible.
   const wasFirstRunOpenRef = React.useRef(firstRunOpen);
   React.useEffect(() => {
     const was = wasFirstRunOpenRef.current;
     wasFirstRunOpenRef.current = firstRunOpen;
+    if (cloudLoginWaiting) {
+      setFreeH(null);
+      setMode("input");
+      setMaximized(false);
+      return;
+    }
     if (firstRunOpen) {
       setFreeH(null);
       setMode("half");
       setMaximized(false);
       return;
     }
-    if (was || releaseFirstRunToHalf) {
-      goToDetent("half");
+    if (was || releaseFirstRunToFull) {
+      goToDetent("full");
       onFirstRunReleaseHandled?.();
     }
   }, [
+    cloudLoginWaiting,
     firstRunOpen,
     goToDetent,
     onFirstRunReleaseHandled,
-    releaseFirstRunToHalf,
+    releaseFirstRunToFull,
   ]);
 
   const openFromGrabber = React.useCallback(() => {
@@ -3870,6 +3920,24 @@ export function ChatOverlay({
     closeSheet();
     inputRef.current?.blur();
   }, [closeSheet, pinnedOpen]);
+
+  // The transparent desktop host only receives pointer events inside its
+  // current native bounds. Clicking another app/window therefore cannot reach
+  // the document-level outside-tap detector above, but the native shell does
+  // report that focus loss (including a macOS key-window polling fallback).
+  // Fold an open conversation to the compact composer, and forcibly close the
+  // controlled actions portal so its temporary tall host bounds are released.
+  // Onboarding stays pinned because collapse() owns that existing guard.
+  useDesktopBridgeEvent(
+    {
+      rpcMessage: "desktopWindowBlur",
+      ipcChannel: "desktop:windowBlur",
+    },
+    () => {
+      setChatActionsOpen(false);
+      if (sheetOpen) collapse();
+    },
+  );
 
   // Dismiss the keyboard and return to the resting state from BEFORE the composer
   // was focused — the single restore path shared by every "drop the keyboard"
@@ -5520,7 +5588,7 @@ export function ChatOverlay({
     <motion.div
       ref={overlayRef}
       className={cn(
-        "pointer-events-none fixed inset-x-0 bottom-0 flex w-full min-w-0 flex-col",
+        "pointer-events-none fixed inset-x-0 bottom-0 isolate flex w-full min-w-0 flex-col",
         // Resting on a landscape phone, the compact composer hugs the trailing
         // (inline-end) bottom corner — the conventional compose slot views leave
         // free — instead of centering a wide band over their controls (#14173).
@@ -5684,6 +5752,7 @@ export function ChatOverlay({
           data-revealed={threadPresented ? "true" : "false"}
           data-chat-state={chatState}
           data-header-shown={headerVisible ? "true" : "false"}
+          data-theme="dark"
           // The active conversation id + its position in the most-recent-first
           // list, surfaced so flows like the tutorial can observe a new-chat or a
           // swipe-between-chats without reaching into controller internals.
@@ -5696,6 +5765,10 @@ export function ChatOverlay({
           // maxHeight keeps it from spilling off the top (thread scrolls instead).
           style={{
             ...CHAT_PANEL_THEME,
+            // The desktop overlay is its own dark product surface. Never let
+            // the host appearance, wallpaper, or a light app theme switch its
+            // native controls and form affordances into a light color scheme.
+            colorScheme: "dark",
             // Morph-driven cap: the inset ceiling at rest, growing to the
             // full-bleed ceiling in lock-step with the shape morph (see
             // panelCapH) so an over-pull grows 1:1 under the finger.
@@ -5731,9 +5804,12 @@ export function ChatOverlay({
         >
           {/* SURFACE — absolute fill; the frosted-glass bg/border + the live
               corner radius. Crossfades in by openProgress (compositor opacity).
-              On the native tier the fill + blur drop and the OS material shows
-              through from below the WebView; border, bevel, and sheen stay —
-              they are the branded edge on every tier (GlassSurface contract). */}
+              An open native-tier conversation keeps an opaque DOM fill above
+              the OS material. Native glass used to replace that fill with
+              transparency, which allowed launcher/view controls to remain
+              visibly legible through the chat on iPad. The overlay already owns
+              the shell's highest application layer; the opaque fill makes that
+              paint-order contract visually true as well. */}
           <motion.div
             ref={glassSurfaceRef}
             aria-hidden="true"
@@ -5758,9 +5834,10 @@ export function ChatOverlay({
               // the orange app theme behind. Full-bleed stays fully opaque (it
               // covers the whole screen — there is nothing to see through, and
               // the blur would be wasted battery).
-              backgroundColor: nativeInsetSheet
-                ? "transparent"
-                : surfaceBackgroundColor,
+              backgroundColor:
+                firstRunOpen || nativeInsetSheet
+                  ? "var(--bg)"
+                  : surfaceBackgroundColor,
               backdropFilter: cssSheetBackdropActive
                 ? GLASS_SHEET_BACKDROP_FILTER
                 : undefined,
@@ -6014,7 +6091,8 @@ export function ChatOverlay({
                 // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
                 // win: a tall detent (or the keyboard) shrinks the thread (it
                 // scrolls) instead of pushing the panel off-screen.
-                // Onboarding (firstRunOpen) mounts locked at the shared HALF detent and
+                // In-app onboarding (`pinnedOpen`) mounts locked at the shared
+                // HALF detent and
                 // never drags, but the `threadHeight` MotionValue that feeds
                 // `threadFlexBasis` starts at 0, so the FIRST paint renders the
                 // thread at 0 height and the composer stacks at the top — then a
@@ -6024,9 +6102,10 @@ export function ChatOverlay({
                 // so pin the flex-basis to the settled open height statically at
                 // render time — first paint already matches the resting layout, no
                 // reflow. Reverts to the live MotionValue the moment onboarding
-                // ends and the sheet becomes interactive.
+                // releases. External browser sign-in is not pinned: it uses the
+                // enforced pill and therefore carries no hidden half-height box.
                 style={{
-                  flexBasis: firstRunOpen ? `${halfH}px` : threadFlexBasis,
+                  flexBasis: pinnedOpen ? `${halfH}px` : threadFlexBasis,
                 }}
               >
                 {/* Message search (#14279): an in-sheet panel that covers the
@@ -6366,6 +6445,7 @@ export function ChatOverlay({
             row needs no separate entrance — it just sits at the panel base. */}
             <motion.div
               data-testid="chat-composer-row"
+              onPointerDownCapture={noteInputActivity}
               className={cn(
                 // items-center vertically centers a single-line composer with
                 // the round +/mic buttons (the common case); a multi-line draft
@@ -6418,18 +6498,15 @@ export function ChatOverlay({
                   onPick={pickSlashItem}
                 />
               ) : null}
-              {/* Who is answering this chat. The overlay is the primary chat
-                  surface, so without it the serving source was only visible in
-                  Settings (#20045 U6). */}
-              {!transcriptionComposerActive ? (
-                <ServingProviderChip className="pointer-events-none order-last shrink-0 self-center pr-1" />
-              ) : null}
               {/* The "+" opens shell navigation plus surface-local Search and
                   Upload actions for this in-app conversation, never connector actions on a
                   Discord/Telegram room. Search is agent-driveable; Upload is a
                   pure client affordance. */}
               {!transcriptionComposerActive ? (
-                <DropdownMenu onOpenChange={setChatActionsOpen}>
+                <DropdownMenu
+                  open={chatActionsOpen}
+                  onOpenChange={setChatActionsOpen}
+                >
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
@@ -6518,9 +6595,12 @@ export function ChatOverlay({
                   ref={inputRef}
                   rows={1}
                   value={draft}
-                  // Onboarding is sign-in-first: lock the composer until the user
-                  // signs in, so they can't type into a chat that isn't ready yet.
-                  disabled={firstRunOpen}
+                  // Onboarding is sign-in-first: before launch the composer is
+                  // disabled. While the external browser owns sign-in it is
+                  // read-only instead, so clicking the familiar compact composer
+                  // can reopen the transcript and its recovery action.
+                  disabled={firstRunOpen && !cloudLoginWaiting}
+                  readOnly={cloudLoginWaiting}
                   onChange={(e) => {
                     const nextDraft = e.target.value;
                     resetMessageHistory();
@@ -6553,6 +6633,14 @@ export function ChatOverlay({
                       expand();
                     }
                   }}
+                  onClick={() => {
+                    // External sign-in deliberately makes the composer
+                    // read-only, but the familiar bar remains the recovery
+                    // affordance. A field that already owns focus will not emit
+                    // another focus event, so the real click must reopen the
+                    // transcript and its retry action explicitly.
+                    if (cloudLoginWaiting) expand();
+                  }}
                   onBlur={() => {
                     setComposerFocused(false);
                     // A suppress-expand flag armed for a focus that never landed
@@ -6561,7 +6649,10 @@ export function ChatOverlay({
                     suppressExpandOnFocusRef.current = false;
                   }}
                   onPaste={handleComposerPaste}
-                  onKeyDown={handleComposerKeyDown}
+                  onKeyDown={(event) => {
+                    noteInputActivity();
+                    handleComposerKeyDown(event);
+                  }}
                   // The composer is LOCKED during onboarding: first-run is
                   // sign-in-first, so the input is disabled (see `disabled` above)
                   // until the user signs in.

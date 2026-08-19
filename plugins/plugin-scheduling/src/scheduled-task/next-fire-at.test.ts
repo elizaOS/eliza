@@ -372,3 +372,93 @@ describe("computeNextFireAt during_window immediate within active window", () =>
     expect(next).toBe("2026-05-11T06:00:00.000Z");
   });
 });
+
+describe("computeNextFireAt with a midnight-wrapping evening window (#22053)", () => {
+  const wrapFacts: OwnerFactsView = {
+    timezone: "UTC",
+    morningWindow: { start: "06:00", end: "11:00" },
+    eveningWindow: { start: "18:00", end: "00:30" },
+  };
+  const evening = {
+    trigger: {
+      kind: "during_window",
+      windowKey: "evening",
+    } as ScheduledTask["trigger"],
+    state: {
+      status: "scheduled",
+      followupCount: 0,
+    } as ScheduledTask["state"],
+    metadata: {},
+  } as Pick<ScheduledTask, "trigger" | "state" | "metadata">;
+
+  it("at 13:00 indexes today's 18:00, not tomorrow (was re-indexed forever)", async () => {
+    const next = await computeNextFireAt(evening, {
+      now: new Date("2026-08-18T13:00:00.000Z"),
+      ownerFacts: wrapFacts,
+      anchors: null,
+    });
+    expect(next).toBe("2026-08-18T18:00:00.000Z");
+  });
+
+  it("inside the post-midnight tail at 00:15 the occurrence is live: indexes now", async () => {
+    const next = await computeNextFireAt(evening, {
+      now: new Date("2026-08-19T00:15:00.000Z"),
+      ownerFacts: wrapFacts,
+      anchors: null,
+    });
+    expect(next).toBe("2026-08-19T00:15:00.000Z");
+  });
+
+  it("post-midnight tail already fired: indexes tonight's 18:00 start", async () => {
+    const next = await computeNextFireAt(
+      {
+        ...evening,
+        metadata: { lastWindowFireKey: "2026-08-18:evening:evening" },
+      },
+      {
+        now: new Date("2026-08-19T00:15:00.000Z"),
+        ownerFacts: wrapFacts,
+        anchors: null,
+      },
+    );
+    expect(next).toBe("2026-08-19T18:00:00.000Z");
+  });
+
+  it("does not index a derived afternoon gap that overlaps explicit owner windows", async () => {
+    const next = await computeNextFireAt(
+      {
+        ...evening,
+        trigger: { kind: "during_window", windowKey: "afternoon" },
+      },
+      {
+        now: new Date("2026-08-18T03:00:00.000Z"),
+        ownerFacts: {
+          timezone: "UTC",
+          morningWindow: { start: "16:00", end: "19:00" },
+          eveningWindow: { start: "18:00", end: "22:00" },
+        },
+        anchors: null,
+      },
+    );
+    expect(next).toBeNull();
+  });
+
+  it("indexes the canonical start of a legitimate wrapping night-shift afternoon", async () => {
+    const next = await computeNextFireAt(
+      {
+        ...evening,
+        trigger: { kind: "during_window", windowKey: "afternoon" },
+      },
+      {
+        now: new Date("2026-08-18T18:00:00.000Z"),
+        ownerFacts: {
+          timezone: "UTC",
+          morningWindow: { start: "16:00", end: "19:00" },
+          eveningWindow: { start: "06:00", end: "08:00" },
+        },
+        anchors: null,
+      },
+    );
+    expect(next).toBe("2026-08-18T19:00:00.000Z");
+  });
+});

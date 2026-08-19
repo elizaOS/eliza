@@ -4,7 +4,7 @@
  * API transport so cookie sessions and native hosts share one security path.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { fetchWithCsrf } from "@elizaos/ui/api/csrf-client";
 
 /**
@@ -15,6 +15,7 @@ import { fetchWithCsrf } from "@elizaos/ui/api/csrf-client";
 export type ViewModality = "gui" | "tui" | "xr";
 
 const MODALITY_ORDER: readonly ViewModality[] = ["gui", "xr", "tui"];
+const VIEW_LIST_TIMEOUT_MS = 15_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -34,6 +35,48 @@ function invalidViewListResponse(
 		context,
 		...(options.cause !== undefined ? { cause: options.cause } : {}),
 	});
+}
+
+async function readJsonWithSignal(
+	response: Response,
+	signal: AbortSignal,
+): Promise<unknown> {
+	const reader = response.body?.getReader();
+	if (!reader) return response.json();
+
+	const decoder = new TextDecoder();
+	let text = "";
+	let rejectOnAbort: (() => void) | undefined;
+	const aborted = new Promise<never>((_, reject) => {
+		rejectOnAbort = () => reject(signal.reason);
+		if (signal.aborted) rejectOnAbort();
+		else signal.addEventListener("abort", rejectOnAbort, { once: true });
+	});
+
+	try {
+		while (true) {
+			const { done, value } = await Promise.race([reader.read(), aborted]);
+			if (done) return JSON.parse(text + decoder.decode()) as unknown;
+			if (value) text += decoder.decode(value, { stream: true });
+		}
+	} catch (error) {
+		if (signal.aborted) {
+			try {
+				await reader.cancel(signal.reason);
+			} catch (cancelError) {
+				// error-policy:J6 cancellation may race a closed response body;
+				// preserve the primary timeout or caller-abort reason.
+				logger.debug(
+					{ error: cancelError },
+					"[ViewManager] failed to cancel interrupted list response body",
+				);
+			}
+		}
+		throw error;
+	} finally {
+		if (rejectOnAbort) signal.removeEventListener("abort", rejectOnAbort);
+		reader.releaseLock();
+	}
 }
 
 /** Order + de-duplicate a modality list as gui, xr, tui (matches core). */
@@ -206,9 +249,18 @@ function parseViewEntry(value: unknown, index: number): ViewEntry {
 
 export async function fetchViewEntries(
 	viewType?: "gui" | "tui" | "xr",
+	callerSignal?: AbortSignal,
 ): Promise<ViewEntry[]> {
 	const qs = viewType ? `?viewType=${viewType}` : "";
-	const res = await fetch(`/api/views${qs}`);
+	const timeoutSignal = AbortSignal.timeout(VIEW_LIST_TIMEOUT_MS);
+	const signal = callerSignal
+		? AbortSignal.any([callerSignal, timeoutSignal])
+		: timeoutSignal;
+	const res = await fetchWithCsrf(
+		`/api/views${qs}`,
+		{ signal },
+		{ timeoutMs: VIEW_LIST_TIMEOUT_MS },
+	);
 	if (!res.ok) {
 		throw new ElizaError(`GET /api/views returned HTTP ${res.status}`, {
 			code: "VIEW_MANAGER_LIST_HTTP_FAILED",
@@ -217,8 +269,9 @@ export async function fetchViewEntries(
 	}
 	let data: unknown;
 	try {
-		data = await res.json();
+		data = await readJsonWithSignal(res, signal);
 	} catch (cause) {
+		if (signal.aborted) throw cause;
 		// error-policy:J2 preserve the JSON parser failure while adding the API
 		// boundary and response status needed to diagnose a broken registry payload.
 		return invalidViewListResponse(

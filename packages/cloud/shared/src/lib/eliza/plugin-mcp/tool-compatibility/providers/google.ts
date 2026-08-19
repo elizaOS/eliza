@@ -31,19 +31,58 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
     constraints: Record<string, unknown>,
   ): string {
     const rules: string[] = [];
-    if (constraints.minLength) rules.push(`at least ${constraints.minLength} chars`);
-    if (constraints.maxLength) rules.push(`at most ${constraints.maxLength} chars`);
-    if (constraints.minimum !== undefined) rules.push(`>= ${constraints.minimum}`);
-    if (constraints.maximum !== undefined) rules.push(`<= ${constraints.maximum}`);
-    if (constraints.format === "email") rules.push(`valid email`);
-    if (constraints.format === "uri" || constraints.format === "url") rules.push(`valid URL`);
-    if (constraints.pattern) rules.push(`matches ${constraints.pattern}`);
-    if (constraints.enum) rules.push(`one of: ${(constraints.enum as string[]).join(", ")}`);
-    if (constraints.minItems) rules.push(`>= ${constraints.minItems} items`);
-    if (constraints.maxItems) rules.push(`<= ${constraints.maxItems} items`);
-    if (constraints.uniqueItems) rules.push(`unique items`);
+    const rendered = new Set<string>();
+    const rule = (key: string, text: string): void => {
+      rules.push(text);
+      rendered.add(key);
+    };
+    const finiteNumber = (value: unknown): value is number =>
+      typeof value === "number" && Number.isFinite(value);
+    const nonNegativeInteger = (value: unknown): value is number =>
+      finiteNumber(value) && Number.isInteger(value) && value >= 0;
+    const positiveNumber = (value: unknown): value is number => finiteNumber(value) && value > 0;
 
-    const text = rules.length > 0 ? `Constraints: ${rules.join("; ")}` : "";
+    if (nonNegativeInteger(constraints.minLength))
+      rule("minLength", `at least ${constraints.minLength} chars`);
+    if (nonNegativeInteger(constraints.maxLength))
+      rule("maxLength", `at most ${constraints.maxLength} chars`);
+    if (finiteNumber(constraints.minimum)) rule("minimum", `>= ${constraints.minimum}`);
+    if (finiteNumber(constraints.maximum)) rule("maximum", `<= ${constraints.maximum}`);
+    if (finiteNumber(constraints.exclusiveMinimum))
+      rule("exclusiveMinimum", `> ${constraints.exclusiveMinimum}`);
+    if (finiteNumber(constraints.exclusiveMaximum))
+      rule("exclusiveMaximum", `< ${constraints.exclusiveMaximum}`);
+    if (positiveNumber(constraints.multipleOf))
+      rule("multipleOf", `multiple of ${constraints.multipleOf}`);
+    if (constraints.format === "email") rule("format", "valid email");
+    if (constraints.format === "uri" || constraints.format === "url") rule("format", "valid URL");
+    if (typeof constraints.pattern === "string") rule("pattern", `matches ${constraints.pattern}`);
+    if (Array.isArray(constraints.enum) && constraints.enum.length > 0)
+      rule("enum", `one of: ${constraints.enum.map((value) => JSON.stringify(value)).join(", ")}`);
+    if (nonNegativeInteger(constraints.minItems))
+      rule("minItems", `>= ${constraints.minItems} items`);
+    if (nonNegativeInteger(constraints.maxItems))
+      rule("maxItems", `<= ${constraints.maxItems} items`);
+    if (constraints.uniqueItems === true) rule("uniqueItems", "unique items");
+    if (nonNegativeInteger(constraints.minProperties))
+      rule("minProperties", `>= ${constraints.minProperties} properties`);
+    if (nonNegativeInteger(constraints.maxProperties))
+      rule("maxProperties", `<= ${constraints.maxProperties} properties`);
+    if (constraints.additionalProperties === false)
+      rule("additionalProperties", "no additional properties");
+
+    const unrendered = Object.keys(constraints).filter((key) => !rendered.has(key));
+    const parts: string[] = [];
+    if (rules.length > 0) parts.push(`Constraints: ${rules.join("; ")}`);
+    if (unrendered.length > 0) {
+      parts.push(
+        this.stringifyConstraints(
+          Object.fromEntries(unrendered.map((key) => [key, constraints[key]])),
+        ),
+      );
+    }
+
+    const text = parts.join(" ");
     return original && text ? `${original}\n\n${text}` : original || text;
   }
 }

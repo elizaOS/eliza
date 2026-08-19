@@ -84,6 +84,7 @@ export interface BottomBarFrame {
 export type BottomBarSurfaceState =
   | "CLOSED"
   | "INPUT"
+  | "INPUT_MENU"
   | "OPEN_UNDER_HALF"
   | "OPEN_HALF_OR_OVER"
   | "MAXIMIZED";
@@ -94,6 +95,7 @@ export function isBottomBarSurfaceState(
   return (
     value === "CLOSED" ||
     value === "INPUT" ||
+    value === "INPUT_MENU" ||
     value === "OPEN_UNDER_HALF" ||
     value === "OPEN_HALF_OR_OVER" ||
     value === "MAXIMIZED"
@@ -152,6 +154,9 @@ export const AUTH_GATE_BOTTOM_BAR_HEIGHT = 72;
 /** Shallow host for the resting pill's composer preview while hovered. */
 export const HOVER_BOTTOM_BAR_WIDTH = 600;
 export const HOVER_BOTTOM_BAR_HEIGHT = 96;
+
+/** Input-width host tall enough for the portaled composer actions menu. */
+export const INPUT_MENU_BOTTOM_BAR_HEIGHT = 320;
 
 /** Expanded native hit area around the 560×640 glass panel and bottom pill. */
 export const EXPANDED_BOTTOM_BAR_WIDTH = 600;
@@ -242,6 +247,12 @@ export function computeBottomBarSurfaceFrame(
     return computeBottomBarFrame(workArea, {
       width: HOVER_BOTTOM_BAR_WIDTH,
       height: HOVER_BOTTOM_BAR_HEIGHT,
+    });
+  }
+  if (state === "INPUT_MENU") {
+    return computeBottomBarFrame(workArea, {
+      width: HOVER_BOTTOM_BAR_WIDTH,
+      height: INPUT_MENU_BOTTOM_BAR_HEIGHT,
     });
   }
   if (state === "MAXIMIZED") {

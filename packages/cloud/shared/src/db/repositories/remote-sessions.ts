@@ -1,5 +1,6 @@
 // Persists remote sessions records for cloud services through the shared DB boundary.
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { isRemotePairingSessionCurrent } from "../crypto/remote-pairing-code";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type NewRemoteSession,
@@ -21,30 +22,49 @@ export class RemoteSessionsRepository {
     return row;
   }
 
-  async findByIdAndOrg(id: string, orgId: string): Promise<RemoteSession | undefined> {
+  async findByIdAndOwner(
+    id: string,
+    orgId: string,
+    userId: string,
+  ): Promise<RemoteSession | undefined> {
     const [row] = await dbRead
       .select()
       .from(remoteSessions)
-      .where(and(eq(remoteSessions.id, id), eq(remoteSessions.organization_id, orgId)))
+      .where(
+        and(
+          eq(remoteSessions.id, id),
+          eq(remoteSessions.organization_id, orgId),
+          eq(remoteSessions.user_id, userId),
+        ),
+      )
       .limit(1);
     return row;
   }
 
-  async listActiveByAgent(agentId: string, orgId: string): Promise<RemoteSession[]> {
-    return dbRead
+  async listActiveByAgent(
+    agentId: string,
+    orgId: string,
+    userId: string,
+  ): Promise<RemoteSession[]> {
+    const rows = await dbRead
       .select()
       .from(remoteSessions)
       .where(
         and(
           eq(remoteSessions.agent_id, agentId),
           eq(remoteSessions.organization_id, orgId),
+          eq(remoteSessions.user_id, userId),
           inArray(remoteSessions.status, ACTIVE_STATUSES),
         ),
       )
       .orderBy(desc(remoteSessions.created_at));
+    const nowMs = Date.now();
+    return rows.filter((row) =>
+      isRemotePairingSessionCurrent(row.status, row.pairing_token_hash, nowMs),
+    );
   }
 
-  async revoke(id: string, orgId: string): Promise<RemoteSession | undefined> {
+  async revoke(id: string, orgId: string, userId: string): Promise<RemoteSession | undefined> {
     const now = new Date();
     const [row] = await dbWrite
       .update(remoteSessions)
@@ -53,6 +73,7 @@ export class RemoteSessionsRepository {
         and(
           eq(remoteSessions.id, id),
           eq(remoteSessions.organization_id, orgId),
+          eq(remoteSessions.user_id, userId),
           inArray(remoteSessions.status, ACTIVE_STATUSES),
         ),
       )

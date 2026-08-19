@@ -1,8 +1,9 @@
-// Persists app earnings records for cloud services through the shared DB boundary.
+/** Persists app earnings records for cloud services through the shared DB boundary. */
 
 import Decimal from "decimal.js";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../../lib/utils/logger";
+import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AppEarnings,
@@ -123,8 +124,9 @@ export class AppEarningsRepository {
   async findTransactionByPaymentIntent(
     appId: string,
     paymentIntentId: string,
+    transaction?: DbTransaction,
   ): Promise<AppEarningsTransaction | undefined> {
-    const result = await dbRead
+    const result = await (transaction ?? dbRead)
       .select()
       .from(appEarningsTransactions)
       .where(
@@ -330,6 +332,7 @@ export class AppEarningsRepository {
    */
   async applyCreatorMovement(
     params: ApplyCreatorMovementParams,
+    transaction?: DbTransaction,
   ): Promise<ApplyCreatorMovementResult> {
     const expectedCreatorAmount = new Decimal(params.creatorAmount);
     const platformRevenueAmount = new Decimal(params.platformRevenueAmount);
@@ -353,7 +356,7 @@ export class AppEarningsRepository {
     }
     const platformRevenueDelta = platformRevenueAmount.toFixed(6);
 
-    return dbWrite.transaction(async (tx) => {
+    const apply = async (tx: DbTransaction): Promise<ApplyCreatorMovementResult> => {
       const [redeemableLedger] = await tx
         .select({
           amount: redeemableEarningsLedger.amount,
@@ -547,7 +550,8 @@ export class AppEarningsRepository {
       }
 
       return { deduplicated: false, transaction: inserted };
-    });
+    };
+    return transaction ? await apply(transaction) : await dbWrite.transaction(apply);
   }
 
   /**
@@ -784,9 +788,15 @@ export class AppEarningsRepository {
   /**
    * Creates a new earnings transaction record.
    */
-  async createTransaction(data: NewAppEarningsTransaction): Promise<AppEarningsTransaction> {
-    const [transaction] = await dbWrite.insert(appEarningsTransactions).values(data).returning();
-    return transaction;
+  async createTransaction(
+    data: NewAppEarningsTransaction,
+    transaction?: DbTransaction,
+  ): Promise<AppEarningsTransaction> {
+    const [created] = await (transaction ?? dbWrite)
+      .insert(appEarningsTransactions)
+      .values(data)
+      .returning();
+    return created;
   }
 }
 

@@ -1,4 +1,4 @@
-// Defines the crypto payments Drizzle table shape used by cloud repositories and services.
+/** Defines the crypto payments Drizzle table shape used by cloud repositories and services. */
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
@@ -56,9 +56,10 @@ export const cryptoPayments = pgTable(
     status_idx: index("crypto_payments_status_idx").on(table.status),
     // Uniqueness on transaction_hash is enforced by a PARTIAL unique index
     // scoped to active statuses ('pending','broadcast','confirmed'), managed
-    // via migration 0131_partial_unique_tx_hash.sql. Drizzle's schema DSL
-    // cannot express the partial WHERE clause cleanly, so we expose a plain
-    // (non-unique) lookup index here and let the migration own the constraint.
+    // via migration 0131_partial_unique_tx_hash.sql. Settlement code stores
+    // hexadecimal hashes in canonical lowercase before this constraint while
+    // preserving case-sensitive chain identifiers. Drizzle's schema DSL cannot
+    // express the partial WHERE clause cleanly, so the migration owns it.
     tx_hash_idx: index("crypto_payments_transaction_hash_idx").on(table.transaction_hash),
     network_idx: index("crypto_payments_network_idx").on(table.network),
     created_idx: index("crypto_payments_created_at_idx").on(table.created_at),

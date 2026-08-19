@@ -473,7 +473,9 @@ export class WebSearchService extends IWebSearchService {
             ...options,
             type: "news",
             topic: "news",
-            days: freshnessToDays(options?.freshness),
+            days:
+                options?.days ??
+                (options?.freshness ? freshnessToDays(options.freshness) : undefined),
         });
     }
 

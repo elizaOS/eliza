@@ -5,6 +5,8 @@
  * by the runtime service, message adapters, and account resolution.
  */
 
+import { truncateWellFormed } from "@elizaos/core";
+
 /**
  * WhatsApp text chunk limit
  */
@@ -277,18 +279,35 @@ function splitAtBreakPoint(text: string, limit: number): { chunk: string; remain
     };
   }
 
-  // Hard break at limit
+  // Hard break at limit -- truncateWellFormed backs off one unit instead of
+  // slicing through a surrogate pair (e.g. a long emoji run with no
+  // whitespace/newline/sentence break inside the search area).
+  const chunk = truncateWellFormed(text, limit);
   return {
-    chunk: text.slice(0, limit),
-    remainder: text.slice(limit),
+    chunk,
+    remainder: text.slice(chunk.length),
   };
 }
+
+// The hard-break fallback backs a cut off by one code unit when it would
+// split a surrogate pair (see truncateWellFormed). At limit 1 that backoff
+// has nowhere to go -- a single code unit can never hold half of an astral
+// character -- so it returns "" and the loop makes no progress. Below this,
+// no limit can guarantee a non-empty well-formed chunk on every text.
+const MIN_CHUNK_LIMIT = 2;
 
 /**
  * Chunks text for WhatsApp messages
  */
 export function chunkWhatsAppText(text: string, opts: ChunkWhatsAppTextOpts = {}): string[] {
   const limit = opts.limit ?? WHATSAPP_TEXT_CHUNK_LIMIT;
+
+  if (!Number.isFinite(limit) || limit < MIN_CHUNK_LIMIT) {
+    throw new Error(
+      `chunkWhatsAppText: limit must be a finite number >= ${MIN_CHUNK_LIMIT} (got ${limit}) -- ` +
+        "a one-code-unit bound cannot both preserve an astral character and satisfy the limit."
+    );
+  }
 
   if (!text.trim()) {
     return [];
@@ -304,6 +323,13 @@ export function chunkWhatsAppText(text: string, opts: ChunkWhatsAppTextOpts = {}
 
   while (remaining.length > 0) {
     const { chunk, remainder } = splitAtBreakPoint(remaining, limit);
+    if (remainder.length >= remaining.length) {
+      // Invariant: every iteration must strictly shrink `remaining`, or this
+      // loop never terminates. limit >= MIN_CHUNK_LIMIT rules this out for
+      // any text reachable above; this is a fail-closed backstop, not an
+      // expected path.
+      throw new Error("chunkWhatsAppText: failed to make progress splitting text.");
+    }
     if (chunk) {
       chunks.push(chunk);
     }
@@ -323,7 +349,7 @@ export function truncateText(text: string, maxLength: number): string {
   if (maxLength <= 3) {
     return "...".slice(0, maxLength);
   }
-  return `${text.slice(0, maxLength - 3)}...`;
+  return `${truncateWellFormed(text, maxLength - 3)}...`;
 }
 
 /**

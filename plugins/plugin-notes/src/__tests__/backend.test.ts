@@ -681,6 +681,72 @@ describe("Notes capabilities", () => {
     expect(service.listNotes()).toEqual([]);
   });
 
+  it("rejects a clear confirmed against a revision a concurrent create advances (issue #22122)", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact("create-note", { content: "A", color: "yellow" }, service);
+    // The user confirmed against this snapshot; a note created before the clear
+    // actually commits must not be wiped without a fresh confirmation.
+    const confirmedRevision = service.snapshot().revision;
+
+    // Dispatch both in the same tick. create-note acquires the store write
+    // barrier first and commits at confirmedRevision + 1 before the clear's
+    // transaction body runs, so the dispatch-time check alone would be defeated.
+    const createB = service.createNote({ title: "B", body: "racing insert" });
+    const clear = interact(
+      "clear-notes",
+      { confirm: true, expectedRevision: confirmedRevision },
+      service,
+    );
+    const [, clearResult] = await Promise.all([createB, clear]);
+
+    expect(clearResult).toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    const remaining = service.listNotes();
+    const titles = remaining.map((note) => note.title);
+    expect(titles).toContain("A");
+    expect(titles).toContain("B");
+    expect(remaining).toHaveLength(2);
+
+    // A clear confirmed against the now-current revision still succeeds.
+    const cleared = await interact(
+      "clear-notes",
+      { confirm: true, expectedRevision: service.snapshot().revision },
+      service,
+    );
+    expect(cleared).toMatchObject({ success: true, data: { cleared: 2 } });
+    expect(service.listNotes()).toEqual([]);
+  });
+
+  it("rejects a clear confirmed against a revision a concurrent update advances (issue #22122)", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const seed = await service.createNote({ title: "Keep", body: "original" });
+    const confirmedRevision = service.snapshot().revision;
+
+    const updateSeed = service.updateNote(seed.id, {
+      title: "Keep",
+      body: "edited in the race window",
+    });
+    const clear = interact(
+      "clear-notes",
+      { confirm: true, expectedRevision: confirmedRevision },
+      service,
+    );
+    const [, clearResult] = await Promise.all([updateSeed, clear]);
+
+    expect(clearResult).toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    const remaining = service.listNotes();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toMatchObject({
+      title: "Keep",
+      body: "edited in the race window",
+    });
+  });
+
   it("persists intentional clear-notes across service restart", async () => {
     const filePath = await temporaryStateFile();
     const first = await serviceFor(filePath);
