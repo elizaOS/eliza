@@ -64,6 +64,10 @@ class FakeWebSocket {
     this.emit("message", { data });
   }
 
+  error(error: unknown): void {
+    this.emit("error", error);
+  }
+
   private emit(eventName: string, event: unknown): void {
     this.listeners.get(eventName)?.forEach((listener) => {
       listener(event);
@@ -94,6 +98,7 @@ describe("GatewayWeb", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -314,12 +319,18 @@ describe("GatewayWeb", () => {
     );
     await first;
 
+    const firstReply = gateway.send({ method: "chat.send" });
+    const firstReplyRejected = expect(firstReply).rejects.toThrow(
+      "Connection replaced",
+    );
+
     // The first socket's close() is called (by the second connect()) but its
     // "close" event doesn't fire until after the replacement is already open
     // and connected -- reproducing the real out-of-order delivery this guards
     // against, not just a same-tick call.
     FakeWebSocket.deferClose = true;
     const second = gateway.connect({ url: "ws://localhost:1234/second" });
+    await firstReplyRejected;
     const secondSocket = FakeWebSocket.instances[1];
     secondSocket.open();
     secondSocket.message(
@@ -356,5 +367,100 @@ describe("GatewayWeb", () => {
     await expect(reply).resolves.toMatchObject({ ok: true });
 
     await gateway.disconnect();
+  });
+
+  it("settles a superseded handshake and ignores every stale socket event", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gateway = new GatewayWeb();
+    const events: unknown[] = [];
+    await gateway.addListener("gatewayEvent", (event) => {
+      events.push(event);
+    });
+
+    FakeWebSocket.deferClose = true;
+    const first = gateway.connect({ url: "ws://localhost:1234/first" });
+    const firstRejected = expect(first).rejects.toThrow("Connection replaced");
+    const firstSocket = FakeWebSocket.instances[0];
+
+    const second = gateway.connect({ url: "ws://localhost:1234/second" });
+    await firstRejected;
+    const secondSocket = FakeWebSocket.instances[1];
+
+    firstSocket.open();
+    firstSocket.message(
+      JSON.stringify({
+        type: "event",
+        event: "chat.delta",
+        payload: { stale: true },
+        seq: 1,
+      }),
+    );
+    firstSocket.error(new Error("stale socket error"));
+
+    expect(firstSocket.sent).toEqual([]);
+    expect(secondSocket.sent).toEqual([]);
+    expect(events).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+
+    secondSocket.open();
+    secondSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(secondSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await expect(second).resolves.toMatchObject({ connected: true });
+
+    await gateway.disconnect();
+  });
+
+  it("cancels a queued automatic reconnect when connect() is called explicitly", async () => {
+    vi.useFakeTimers();
+    const gateway = new GatewayWeb();
+    const first = gateway.connect({ url: "ws://localhost:1234/first" });
+    const firstSocket = FakeWebSocket.instances[0];
+    firstSocket.open();
+    firstSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(firstSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await first;
+
+    firstSocket.close(1006, "network lost");
+    const second = gateway.connect({ url: "ws://localhost:1234/second" });
+    const secondSocket = FakeWebSocket.instances[1];
+    secondSocket.open();
+    secondSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(secondSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await second;
+    await vi.advanceTimersByTimeAsync(800);
+
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(await gateway.isConnected()).toEqual({ connected: true });
+
+    await gateway.disconnect();
+  });
+
+  it("rejects an in-progress handshake when disconnected before open", async () => {
+    const gateway = new GatewayWeb();
+    const connecting = gateway.connect({ url: "ws://localhost:1234" });
+    const rejected = expect(connecting).rejects.toThrow("Client disconnect");
+
+    await gateway.disconnect();
+
+    await rejected;
+    expect(await gateway.isConnected()).toEqual({ connected: false });
   });
 });

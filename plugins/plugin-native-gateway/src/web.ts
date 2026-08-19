@@ -160,15 +160,24 @@ export class GatewayWeb extends WebPlugin {
 
   async connect(options: GatewayConnectOptions): Promise<GatewayConnectResult> {
     const url = assertGatewayUrl(options.url);
-    if (this.ws) {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    const previousSocket = this.ws;
+    if (previousSocket) {
       this.closed = true;
-      this.ws.close();
       this.ws = null;
+      this.rejectPending(new Error("Connection replaced"));
+      previousSocket.close(1000, "Connection replaced");
+    } else if (this.connectReject || this.pending.size > 0) {
+      this.rejectPending(new Error("Connection replaced"));
     }
 
     this.options = { ...options, url };
     this.closed = false;
     this.backoffMs = 800;
+    this.resetSessionState();
 
     return new Promise<GatewayConnectResult>((resolve, reject) => {
       this.connectResolve = resolve;
@@ -188,10 +197,12 @@ export class GatewayWeb extends WebPlugin {
     this.ws = ws;
 
     ws.addEventListener("open", () => {
+      if (this.ws !== ws) return;
       this.sendConnectFrame();
     });
 
     ws.addEventListener("message", (event) => {
+      if (this.ws !== ws) return;
       this.handleMessage(String(event.data));
     });
 
@@ -207,6 +218,7 @@ export class GatewayWeb extends WebPlugin {
     });
 
     ws.addEventListener("error", (event) => {
+      if (this.ws !== ws) return;
       console.warn("[Gateway] WebSocket error:", event);
     });
   }
@@ -249,6 +261,7 @@ export class GatewayWeb extends WebPlugin {
     this.ws.send(JSON.stringify(frame));
 
     const timeout = setTimeout(() => {
+      this.pending.delete(frame.id);
       if (this.connectReject) {
         this.connectReject(new Error("Connection timeout"));
         this.connectReject = null;
@@ -404,12 +417,8 @@ export class GatewayWeb extends WebPlugin {
 
   private handleClose(code: number, reason: string): void {
     this.ws = null;
-
-    for (const [id, pending] of this.pending) {
-      clearTimeout(pending.timeout);
-      pending.reject(new Error(`Connection closed: ${reason}`));
-      this.pending.delete(id);
-    }
+    this.rejectPending(new Error(`Connection closed: ${reason}`));
+    this.resetSessionState();
 
     if (this.closed) {
       this.notifyStateChange("disconnected", reason);
@@ -438,6 +447,29 @@ export class GatewayWeb extends WebPlugin {
     }, this.backoffMs);
   }
 
+  private rejectPending(error: Error): void {
+    const pendingRequests = [...this.pending.values()];
+    this.pending.clear();
+    for (const pending of pendingRequests) {
+      clearTimeout(pending.timeout);
+      pending.reject(error);
+    }
+    const rejectConnect = this.connectReject;
+    this.connectReject = null;
+    this.connectResolve = null;
+    rejectConnect?.(error);
+  }
+
+  private resetSessionState(): void {
+    this.sessionId = null;
+    this.protocol = null;
+    this.role = null;
+    this.scopes = [];
+    this.methods = [];
+    this.events = [];
+    this.lastSeq = null;
+  }
+
   private notifyStateChange(
     state: GatewayStateEvent["state"],
     reason?: string,
@@ -461,12 +493,13 @@ export class GatewayWeb extends WebPlugin {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    if (this.ws) {
-      this.ws.close(1000, "Client disconnect");
-      this.ws = null;
+    const socket = this.ws;
+    this.ws = null;
+    this.rejectPending(new Error("Client disconnect"));
+    if (socket) {
+      socket.close(1000, "Client disconnect");
     }
-    this.sessionId = null;
-    this.protocol = null;
+    this.resetSessionState();
     this.notifyStateChange("disconnected", "Client disconnect");
   }
 
