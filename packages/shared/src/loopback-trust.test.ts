@@ -320,6 +320,134 @@ describe("isTrustedLocalRequest — shared host/origin classification", () => {
           ),
         ).toBe(false);
       });
+
+      it("rejects same-site fetch metadata even when Origin matches Host", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:31337",
+                origin: "http://localhost:31337",
+                "sec-fetch-site": "same-site",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+      });
+
+      it("rejects a loopback Origin on a different port than Host", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:31337",
+                origin: "http://localhost:5173",
+                "sec-fetch-site": "same-site",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+      });
+
+      it("rejects the same hostname on a different port even if fetch metadata claims same-origin", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "127.0.0.1:31337",
+                origin: "http://127.0.0.1:5173",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+      });
+
+      it("rejects a matching-port Origin whose hostname does not match Host", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:31337",
+                origin: "http://127.0.0.1:31337",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+      });
+
+      it("rejects a loopback Referer on a different port when no Origin is present", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:31337",
+                referer: "http://localhost:5173/app",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+      });
+
+      it("admits an Origin that matches Host including port", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:31337",
+                origin: "http://localhost:31337",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
+      });
+
+      it("admits Sec-Fetch-Site none on an originless loopback request", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:31337",
+                "sec-fetch-site": "none",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
+      });
+
+      it("still admits an originless direct loopback client", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: { host: "localhost:31337" },
+            }),
+            options,
+          ),
+        ).toBe(true);
+      });
+
+      it("still admits a matching-port Referer when no Origin is present", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:31337",
+                referer: "http://localhost:31337/dashboard",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
+      });
     });
   }
 });

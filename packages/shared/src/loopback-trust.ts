@@ -24,6 +24,12 @@
  * `127.0.0.1.evil.com`), which the strict parser correctly rejects. The change
  * can only ever turn a previously-trusted request into an untrusted one, never
  * the reverse.
+ *
+ * A loopback Origin hostname is not enough. An http(s) Origin or Referer must
+ * match Host including port; a present `Sec-Fetch-Site` may only be
+ * `same-origin` or `none`. Native app schemes and originless loopback clients
+ * stay admitted. `same-site` on a different local port is a CSRF, not a
+ * dashboard.
  */
 
 import type http from "node:http";
@@ -310,18 +316,68 @@ const LOCAL_APP_PROTOCOLS = new Set([
   "electrobun:",
 ]);
 
-function isTrustedLocalOrigin(raw: string): boolean {
+function parseHostAuthority(host: string): {
+  hostname: string;
+  port: string | null;
+} {
+  const trimmed = host.trim().toLowerCase();
+  if (trimmed.startsWith("[")) {
+    const end = trimmed.indexOf("]");
+    if (end === -1) return { hostname: trimmed, port: null };
+    const hostname = trimmed.slice(1, end);
+    const after = trimmed.slice(end + 1);
+    const port =
+      after.startsWith(":") && after.length > 1 ? after.slice(1) : null;
+    return { hostname, port };
+  }
+  const colon = trimmed.lastIndexOf(":");
+  if (colon === -1) return { hostname: trimmed, port: null };
+  return { hostname: trimmed.slice(0, colon), port: trimmed.slice(colon + 1) };
+}
+
+function parseHttpSiteAuthority(
+  raw: string,
+): { hostname: string; port: string } | null {
+  try {
+    const parsed = new URL(raw.trim());
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    const hostname = parsed.hostname.trim().toLowerCase();
+    if (!hostname) return null;
+    const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
+    return { hostname, port };
+  } catch {
+    // error-policy:J3 untrusted Origin/Referer; unparseable site is invalid.
+    return null;
+  }
+}
+
+function isNativeOrOpaqueOrigin(raw: string): boolean {
   const trimmed = raw.trim();
   if (!trimmed || trimmed === "null") return true;
   try {
-    const parsed = new URL(trimmed);
-    if (LOCAL_APP_PROTOCOLS.has(parsed.protocol)) {
-      return true;
-    }
-    return isLoopbackBindHost(parsed.hostname);
+    return LOCAL_APP_PROTOCOLS.has(new URL(trimmed).protocol);
   } catch {
     return false;
   }
+}
+
+/**
+ * Native / opaque origins stay trusted. An http(s) Origin or Referer must be a
+ * loopback host and must match the request Host including port. A missing Host
+ * cannot prove that bind, so the request fails closed.
+ */
+function isTrustedBrowserSite(raw: string, host: string | null): boolean {
+  if (isNativeOrOpaqueOrigin(raw)) return true;
+  const site = parseHttpSiteAuthority(raw);
+  if (!site || !isLoopbackBindHost(site.hostname)) return false;
+  if (!host) return false;
+  const hostAuth = parseHostAuthority(host);
+  if (!isLoopbackBindHost(hostAuth.hostname)) return false;
+  if (site.hostname !== hostAuth.hostname) return false;
+  const hostPort = hostAuth.port ?? "80";
+  return site.port === hostPort;
 }
 
 function cloudBlocksLocalTrust(cloudCheck: "env" | "container"): boolean {
@@ -343,8 +399,9 @@ function localAuthRequired(options: LoopbackTrustOptions): boolean {
 
 /**
  * Same-machine dashboard access. Intentionally stricter than a bare
- * `remoteAddress` check: the browser must also target a loopback Host and must
- * not present cross-site browser metadata or proxy client-IP headers.
+ * `remoteAddress` check: the browser must also target a loopback Host, an
+ * http(s) Origin/Referer must match that Host including port, and present
+ * fetch metadata may only be `same-origin` or `none`.
  *
  * Each consumer supplies {@link LoopbackTrustOptions} matching its historical
  * policy gates; the host/origin/proxy classification is identical for all.
@@ -376,13 +433,19 @@ export function isTrustedLocalRequest(
   const secFetchSite = firstHeaderValue(
     req.headers["sec-fetch-site"],
   )?.toLowerCase();
-  if (secFetchSite === "cross-site") return false;
+  if (
+    secFetchSite &&
+    secFetchSite !== "same-origin" &&
+    secFetchSite !== "none"
+  ) {
+    return false;
+  }
 
   const origin = firstHeaderValue(req.headers.origin);
-  if (origin && !isTrustedLocalOrigin(origin)) return false;
+  if (origin && !isTrustedBrowserSite(origin, host)) return false;
 
   const referer = firstHeaderValue(req.headers.referer);
-  if (!origin && referer && !isTrustedLocalOrigin(referer)) return false;
+  if (!origin && referer && !isTrustedBrowserSite(referer, host)) return false;
 
   return true;
 }
