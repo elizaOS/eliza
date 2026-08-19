@@ -226,6 +226,22 @@ export function assertSafeOutputDir(outputDir, bundleDir, sourceDirs = []) {
   }
 }
 
+/** Replace one reviewer-owned leaf without following a stale filesystem alias. */
+export function writeReviewerFile(filePath, contents) {
+  fs.rmSync(filePath, { force: true });
+  const descriptor = fs.openSync(
+    filePath,
+    fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+    0o600,
+  );
+  try {
+    fs.writeFileSync(descriptor, contents);
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
 /**
  * Verify bytes, hashes, provenance binding, and the unlisted-file sweep before
  * rendering. The reviewer is a process boundary, so it invokes the canonical
@@ -811,8 +827,8 @@ async function main() {
   const manifest = await collectArtifacts(options);
   const manifestPath = path.join(options.outputDir, "manifest.json");
   const indexPath = path.join(options.outputDir, "index.html");
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
-  fs.writeFileSync(indexPath, buildHtml(manifest), "utf8");
+  writeReviewerFile(manifestPath, JSON.stringify(manifest, null, 2));
+  writeReviewerFile(indexPath, buildHtml(manifest));
 
   const counts = manifest.artifacts.reduce(
     (acc, artifact) => {

@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  link,
   mkdir,
   mkdtemp,
   readFile,
@@ -24,6 +25,7 @@ import {
   assertSafeOutputDir,
   parseArgs,
   resolveDefaultBundleDir,
+  writeReviewerFile,
 } from "./generate.mjs";
 import { analyzeImageFile, classifyArtifactPath, inferSource } from "./lib.mjs";
 
@@ -334,6 +336,27 @@ test("rejects a reviewer output symlink before cleanup can escape", async () => 
       () => assertSafeOutputDir(linkedOutput, null),
       /must not be a symlink/,
     );
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("reviewer leaf writes replace symlink and hardlink aliases without mutating their targets", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-output-leaf-"));
+  try {
+    const external = path.join(tmpDir, "external.json");
+    const symlinkLeaf = path.join(tmpDir, "manifest.json");
+    const hardlinkLeaf = path.join(tmpDir, "index.html");
+    await writeFile(external, "protected");
+    await symlink(external, symlinkLeaf);
+    await link(external, hardlinkLeaf);
+
+    writeReviewerFile(symlinkLeaf, "review manifest");
+    writeReviewerFile(hardlinkLeaf, "review index");
+
+    assert.equal(await readFile(external, "utf8"), "protected");
+    assert.equal(await readFile(symlinkLeaf, "utf8"), "review manifest");
+    assert.equal(await readFile(hardlinkLeaf, "utf8"), "review index");
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }
