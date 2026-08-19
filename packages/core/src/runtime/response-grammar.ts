@@ -29,6 +29,10 @@
  * derived from the field-registry signature + the context-id set + the channel
  * flag + the action set). A small process-wide cache is kept here keyed on that
  * id.
+ *
+ * Simple regex `{n}` / `{n,m}` expansion is fail-closed at
+ * {@link MAX_SIMPLE_REGEX_REPEAT}. Exact `{1000000}` used to pass the span
+ * check (`max-min === 0`) and then allocate n GBNF atoms.
  */
 
 import {
@@ -192,6 +196,9 @@ interface SimpleRegexParserState {
 	index: number;
 	end: number;
 }
+
+/** Exact-repeat and range-span ceiling for simple regex → GBNF expansion. */
+export const MAX_SIMPLE_REGEX_REPEAT = 32;
 
 function compileSimplePatternToGbnf(pattern: string): string | null {
 	if (pattern.length < 2 || pattern[0] !== "^" || pattern.at(-1) !== "$") {
@@ -550,7 +557,11 @@ function parseSimpleRegexBracedQuantifier(
 		state.index = start;
 		return null;
 	}
-	if (max !== null && max - min > 32) {
+	if (min > MAX_SIMPLE_REGEX_REPEAT) {
+		state.index = start;
+		return null;
+	}
+	if (max !== null && max - min > MAX_SIMPLE_REGEX_REPEAT) {
 		state.index = start;
 		return null;
 	}
@@ -563,7 +574,10 @@ function parseSimpleRegexDecimal(state: SimpleRegexParserState): number | null {
 		state.index += 1;
 	}
 	if (state.index === start) return null;
-	return Number.parseInt(state.source.slice(start, state.index), 10);
+	const digits = state.source.slice(start, state.index);
+	const value = Number(digits);
+	if (!Number.isSafeInteger(value)) return null;
+	return value;
 }
 
 function compileSimpleRegexNode(node: SimpleRegexNode): string {
