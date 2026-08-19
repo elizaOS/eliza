@@ -33,6 +33,7 @@ import {
   diffBlocks,
   frameDhash,
   hamming,
+  MAX_DECODE_PNG_PIXELS,
   pngDimensions,
 } from "./dhash.js";
 
@@ -145,6 +146,39 @@ describe("decodePng", () => {
         `${label} must decode to null without throwing`,
       ).toBeNull();
     }
+  });
+
+  it("returns null without allocating for a last-overflow IHDR pixel bomb", () => {
+    const width = 65535;
+    const height = 65535;
+    expect(width * height).toBeGreaterThan(MAX_DECODE_PNG_PIXELS);
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(width, 0);
+    ihdr.writeUInt32BE(height, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    const bomb = Buffer.concat([
+      SIGNATURE,
+      pngChunk("IHDR", ihdr),
+      pngChunk("IDAT", deflateSync(Buffer.from([0, 1, 2, 3]))),
+      pngChunk("IEND", Buffer.alloc(0)),
+    ]);
+    let result: ReturnType<typeof decodePng> | "threw";
+    try {
+      result = decodePng(bomb);
+    } catch {
+      result = "threw";
+    }
+    expect(result).toBeNull();
+    expect(bomb.length).toBeLessThan(128);
+  });
+
+  it("still decodes a last-fit screenshot-sized frame", () => {
+    expect(8000 * 4000).toBeLessThanOrEqual(MAX_DECODE_PNG_PIXELS);
+    const decoded = decodePng(makePng({ width: 64, height: 48 }));
+    expect(decoded).not.toBeNull();
+    expect(decoded?.width).toBe(64);
+    expect(decoded?.height).toBe(48);
   });
 });
 

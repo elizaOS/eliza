@@ -15,7 +15,9 @@
  *   - The PNG decoder here is intentionally minimal — it handles the formats
  *     produced by every screenshot path we ship (color type 2 = RGB, 6 =
  *     RGBA, 8-bit depth, non-interlaced). Anything else returns `null` and
- *     the caller falls back to a coarser whole-frame byte hash.
+ *     the caller falls back to a coarser whole-frame byte hash. IHDR
+ *     width×height above {@link MAX_DECODE_PNG_PIXELS} is rejected before
+ *     `inflateSync` / `Buffer.alloc` so a 69-byte bomb cannot throw.
  *   - Pure functions, no I/O. Safe to test deterministically.
  *
  * Block-grid contract:
@@ -33,6 +35,8 @@ import { inflateSync } from "node:zlib";
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
+/** Fail-closed pixel budget. IHDR is attacker-declared; 8K is ~33e6 pixels. */
+export const MAX_DECODE_PNG_PIXELS = 32_000_000;
 
 export interface RawImage {
   width: number;
@@ -85,11 +89,23 @@ export function decodePng(png: Buffer): RawImage | null {
   if (interlace !== 0) return null;
   if (colorType !== 2 && colorType !== 6) return null;
   if (idatChunks.length === 0) return null;
+  if (height > 0 && width > Math.floor(MAX_DECODE_PNG_PIXELS / height)) {
+    return null;
+  }
 
-  const inflated = inflateSync(Buffer.concat(idatChunks));
   const bytesPerPixel = colorType === 6 ? 4 : 3;
   const stride = width * bytesPerPixel;
+  if (stride + 1 > Number.MAX_SAFE_INTEGER / height) return null;
   const expected = (stride + 1) * height;
+
+  let inflated: Buffer;
+  try {
+    inflated = inflateSync(Buffer.concat(idatChunks), {
+      maxOutputLength: expected,
+    });
+  } catch {
+    return null;
+  }
   if (inflated.length < expected) return null;
 
   const rgba = Buffer.alloc(width * height * 4);
