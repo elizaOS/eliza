@@ -1,10 +1,8 @@
 /**
- * Timed, stdio-capped spawn used by the audio-redaction ffmpeg/ffprobe lane.
+ * Bounds child-process execution for audio redaction's ffmpeg/ffprobe lane.
  *
- * Origin `run()` waited forever on a hung child and concatenated every stdout
- * and stderr byte. A crafted or stuck container (or a replica `sleep`) never
- * returns. The timeout SIGKILLs the child; an oversize pipe fails closed
- * instead of growing for the whole timeout window.
+ * The timeout and combined stdio budget prevent malformed media or a stuck
+ * binary from pinning the agent or growing its memory use without limit.
  */
 
 import { spawn } from "node:child_process";
@@ -70,6 +68,7 @@ export function runAudioRedactionChild(
     };
 
     const append = (target: "stdout" | "stderr", chunk: Buffer) => {
+      if (settled) return;
       stdioBytes += chunk.byteLength;
       if (stdioBytes > maxStdioBytes) {
         fail(
@@ -87,6 +86,8 @@ export function runAudioRedactionChild(
 
     child.stdout.on("data", (chunk: Buffer) => append("stdout", chunk));
     child.stderr.on("data", (chunk: Buffer) => append("stderr", chunk));
+    child.stdout.once("error", fail);
+    child.stderr.once("error", fail);
     child.once("error", fail);
     child.once("close", (code) => {
       if (settled) return;

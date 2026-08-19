@@ -355,9 +355,12 @@ async function run(bin: string, args: readonly string[]): Promise<SpawnResult> {
     // error-policy:J2 wrap the isolated child failure as the typed domain error
     // the redaction lanes already surface to callers.
     if (error instanceof AudioRedactionChildError) {
-      throw new ElizaError(error.message, { code: error.code });
+      throw new ElizaError(error.message, { code: error.code, cause: error });
     }
-    throw error;
+    throw new ElizaError("audio redaction child process failed", {
+      code: "AUDIO_REDACTION_FFMPEG_FAILED",
+      cause: error,
+    });
   }
 }
 

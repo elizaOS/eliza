@@ -1,6 +1,6 @@
 /**
  * Isolated hang/overflow tests for the audio-redaction child runner. Spawns
- * real `sleep` / `node` processes; does not import ffmpeg or the media store.
+ * real runtime children; does not import ffmpeg or the media store.
  */
 import { describe, expect, it } from "vitest";
 import { runAudioRedactionChild } from "./audio-redaction-child.ts";
@@ -9,7 +9,11 @@ describe("runAudioRedactionChild", () => {
   it("kills a hung child at the timeout instead of waiting forever", async () => {
     const startedAt = Date.now();
     await expect(
-      runAudioRedactionChild("sleep", ["8"], { timeoutMs: 200 }),
+      runAudioRedactionChild(
+        process.execPath,
+        ["-e", "setTimeout(() => {}, 8_000)"],
+        { timeoutMs: 200 },
+      ),
     ).rejects.toMatchObject({
       name: "AudioRedactionChildError",
       code: "AUDIO_REDACTION_TIMEOUT",
