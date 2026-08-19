@@ -54,7 +54,6 @@ import {
 	factLexicalSimilarity,
 	readStoredFactKeywords,
 } from "../fact-keywords.ts";
-import { learnUserProfileFromStructuredFields } from "../user-profile.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
 import {
 	type AddCurrentOp,
@@ -664,18 +663,6 @@ async function insertFact(
 		createdAt: Date.now(),
 	};
 	const persistedId = await ctx.runtime.createMemory(memory, "facts", true);
-	if (persistedId && args.category === "identity" && ctx.message.entityId) {
-		// Secondary index: identity-category timezone/location structured fields
-		// also land on the sender's entity profile so deterministic read paths
-		// (the CURRENT_TIME provider) see them on every turn without depending
-		// on BM25 fact retrieval surfacing the right row. Best-effort; explicit
-		// operator-set profile values are never overwritten (see user-profile.ts).
-		await learnUserProfileFromStructuredFields(
-			ctx.runtime,
-			ctx.message.entityId,
-			args.structuredFields,
-		);
-	}
 	return persistedId;
 }
 
