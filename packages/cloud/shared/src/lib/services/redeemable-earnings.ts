@@ -526,6 +526,8 @@ class RedeemableEarningsService {
      * once. Default false preserves the additive reconciliation behavior.
      */
     dedupeBySourceId?: boolean;
+    /** Reuse an owning settlement transaction so every money leg commits together. */
+    transaction?: DbTransaction;
   }): Promise<{
     success: boolean;
     newBalance: number;
@@ -542,6 +544,7 @@ class RedeemableEarningsService {
       metadata = {},
       requireSufficientBalance = false,
       dedupeBySourceId = false,
+      transaction,
     } = params;
 
     if (amount <= 0) {
@@ -561,7 +564,7 @@ class RedeemableEarningsService {
       type: "reconciliation_reduction",
     });
 
-    const result = await dbWrite.transaction(async (tx) => {
+    const apply = async (tx: DbTransaction) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${userId}`}))`,
       );
@@ -687,7 +690,8 @@ class RedeemableEarningsService {
         deduplicated: false,
         currentBalance: 0,
       };
-    });
+    };
+    const result = transaction ? await apply(transaction) : await dbWrite.transaction(apply);
 
     if (result.deduplicated) {
       logger.info("[RedeemableEarnings] reduceEarnings deduplicated by sourceId (retry)", {

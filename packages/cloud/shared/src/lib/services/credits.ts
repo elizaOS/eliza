@@ -334,6 +334,10 @@ export interface DeductCreditsParams {
 export interface ReserveAndDeductParams extends DeductCreditsParams {
   /** Minimum balance required before deduction (prevents race conditions) */
   minimumBalanceRequired?: number;
+  /** Internal: execute this ledger mutation inside an owning transaction. */
+  db?: SqlExecutor;
+  /** Internal: the owner performs post-commit cache and notification work. */
+  deferPostCommitEffects?: boolean;
 }
 
 interface CreditMutationRow {
@@ -737,6 +741,8 @@ export class CreditsService {
       tokens_consumed,
       minimumBalanceRequired = 0,
       stripePaymentIntentId,
+      db,
+      deferPostCommitEffects = false,
     } = params;
 
     // Authoritative money-write guard: `<= 0` alone lets NaN through (the
@@ -775,7 +781,7 @@ export class CreditsService {
     const stripeId = stripePaymentIntentId ?? null;
 
     const metadataJson = JSON.stringify(metadata ?? {});
-    const rows = await writeTransaction(async (tx) => {
+    const applyMutation = async (tx: SqlExecutor) => {
       const mutationRows = await sqlRows<CreditMutationRow>(
         tx,
         sql`
@@ -857,7 +863,8 @@ export class CreditsService {
         throw new Error("[CreditsService] Deduction claim committed without a balance mutation");
       }
       return mutationRows;
-    });
+    };
+    const rows = db ? await applyMutation(db) : await writeTransaction(applyMutation);
 
     const row = rows[0];
     if (!row?.id && stripePaymentIntentId) {
@@ -908,7 +915,7 @@ export class CreditsService {
 
     return await Promise.resolve(result).then(async (result) => {
       // Invalidate organization cache if balance changed
-      if (result.success) {
+      if (result.success && !deferPostCommitEffects) {
         invalidateOrganizationCache(organizationId).catch((error) => {
           logger.error("[CreditsService] Failed to invalidate org cache:", error);
         });
@@ -1054,7 +1061,15 @@ export class CreditsService {
     transaction: CreditTransaction;
     newBalance: number;
   }> {
-    const { organizationId, amount, description, metadata, stripePaymentIntentId } = params;
+    const {
+      organizationId,
+      amount,
+      description,
+      metadata,
+      stripePaymentIntentId,
+      db,
+      deferCacheInvalidation = false,
+    } = params;
 
     const refundAmount = new Decimal(String(amount));
     if (!refundAmount.isFinite() || !refundAmount.gt(0)) {
@@ -1070,11 +1085,13 @@ export class CreditsService {
       // (applyCreditIncrease dedupes on stripe_payment_intent_id via ON
       // CONFLICT DO NOTHING). (#10846)
       stripePaymentIntentId,
+      db,
+      deferCacheInvalidation: true,
       transactionType: "refund",
     }).then(async (result) => {
-      invalidateOrganizationCache(organizationId).catch((error) => {
-        logger.error("[CreditsService] Failed to invalidate org cache:", error);
-      });
+      if (!deferCacheInvalidation) {
+        await this.invalidateCreditCaches(organizationId);
+      }
       return result;
     });
   }
