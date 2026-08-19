@@ -28,6 +28,7 @@ const invoice = {
   status: "paid",
   invoice_type: "crypto_payment",
   credits_added: "10.00",
+  metadata: { provider: "oxapay", token: "USDT", transaction_hash: "0xpayment" },
 };
 
 beforeAll(async () => {
@@ -90,6 +91,12 @@ describe("invoice transaction and unique replay", () => {
     await expect(
       invoicesService.create({ ...invoice, organization_id: OTHER_ORG_ID }),
     ).rejects.toThrow("does not match");
+    await expect(
+      invoicesService.create({
+        ...invoice,
+        metadata: { ...invoice.metadata, token: "BTC" },
+      }),
+    ).rejects.toThrow("does not match");
   });
 
   test("a later failure rolls back an invoice created on the caller transaction", async () => {
@@ -102,6 +109,15 @@ describe("invoice transaction and unique replay", () => {
     ).rejects.toThrow("injected post-invoice failure");
     const rows = await dbWrite.execute("SELECT count(*)::int AS count FROM invoices");
     expect((rows.rows[0] as { count: number }).count).toBe(0);
+  });
+
+  test("a deleted projection is rebuilt from the same canonical settlement", async () => {
+    if (!pgliteReady) return;
+    await invoicesService.create(invoice);
+    await dbWrite.execute("DELETE FROM invoices WHERE stripe_invoice_id='OXAPAY_PAYMENT_1'");
+    const recovered = await invoicesService.create(invoice);
+    expect(recovered.stripe_invoice_id).toBe("OXAPAY_PAYMENT_1");
+    expect((recovered.metadata as Record<string, unknown>).settlement_digest).toBeString();
   });
 });
 

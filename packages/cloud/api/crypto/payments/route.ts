@@ -27,9 +27,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const createPaymentSchema = z.object({
   amount: z
-    .number()
-    .min(1, "Minimum amount is $1")
-    .max(10000, "Maximum amount is $10,000"),
+    .union([z.string().regex(/^(?:\d+|\d+\.\d+)$/), z.number().finite()])
+    .transform((value) => String(value))
+    .refine((value) => Number(value) >= 1, "Minimum amount is $1")
+    .refine((value) => Number(value) <= 10000, "Maximum amount is $10,000"),
   currency: z.string().default("USD"),
   payCurrency: z.enum(SUPPORTED_PAY_CURRENCIES).default("USDT"),
   network: z

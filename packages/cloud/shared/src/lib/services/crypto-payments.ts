@@ -1,4 +1,5 @@
 // Coordinates cloud service crypto payments behavior behind route handlers.
+import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { eq, sql } from "drizzle-orm";
 import { validate as uuidValidate } from "uuid";
@@ -14,12 +15,14 @@ import {
   cryptoPaymentsRepository,
 } from "../../db/repositories/crypto-payments";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
+import type { NewInvoice } from "../../db/schemas/invoices";
 import { PAYMENT_EXPIRATION_SECONDS, validatePaymentAmount } from "../config/crypto";
 import { createCryptoCustomerId, createCryptoInvoiceId } from "../constants/invoice-ids";
 import { logger, redact } from "../utils/logger";
 import {
   type AppChargeCallbackDispatchParams,
   appChargeCallbacksService,
+  parseAppChargeCallbackDispatchParams,
 } from "./app-charge-callbacks";
 import { appCreditsService } from "./app-credits";
 import { creditsService } from "./credits";
@@ -47,20 +50,21 @@ export type CryptoPaymentErrorCode =
  * Custom error class for crypto payment operations.
  * Provides typed error codes for clean API error handling.
  */
-export class CryptoPaymentError extends Error {
+export class CryptoPaymentError extends ElizaError {
+  override readonly name = "CryptoPaymentError";
+
   constructor(
     public readonly code: CryptoPaymentErrorCode,
     message: string,
   ) {
-    super(message);
-    this.name = "CryptoPaymentError";
+    super(message, { code, severity: "fatal" });
   }
 }
 
 export interface CreatePaymentParams {
   organizationId: string;
   userId?: string;
-  amount: number;
+  amount: string | number;
   currency?: string;
   payCurrency?: string;
   network?: OxaPayNetwork;
@@ -91,11 +95,89 @@ const paymentMetadataSchema = z
     oxapay_track_id: z.string().optional(),
     pay_link: z.string().optional(),
     fiat_currency: z.string().optional(),
-    fiat_amount: z.number().optional(),
+    fiat_amount: z.union([z.string(), z.number()]).optional(),
   })
   .passthrough();
 
 type PaymentMetadata = z.infer<typeof paymentMetadataSchema>;
+const storedInvoiceSettlementSchema = z.object({
+  organization_id: z.string().uuid(),
+  stripe_invoice_id: z.string().min(1),
+  stripe_customer_id: z.string().min(1),
+  stripe_payment_intent_id: z.string().min(1),
+  amount_due: z.string().min(1),
+  amount_paid: z.string().min(1),
+  currency: z.string().min(1),
+  status: z.string().min(1),
+  invoice_type: z.string().min(1),
+  credits_added: z.string().min(1),
+  metadata: z.record(z.string(), z.unknown()),
+});
+
+function storedInvoiceSettlement(value: unknown): NewInvoice {
+  const result = storedInvoiceSettlementSchema.safeParse(value);
+  if (!result.success) {
+    throw new ElizaError("Confirmed payment has an invalid canonical invoice settlement", {
+      code: "INVALID_CRYPTO_INVOICE_SETTLEMENT",
+      context: { issues: result.error.issues },
+    });
+  }
+  return result.data;
+}
+
+interface OxaSettlementEvidence {
+  trackId: string;
+  invoiceAmount: string;
+  invoiceCurrency: string;
+  payCurrency: string;
+}
+
+function oxaQuoteForPayment(payment: CryptoPayment): {
+  trackId: string;
+  fiatAmount: string;
+  fiatCurrency: string;
+} {
+  const metadata = extractMetadata(payment.metadata);
+  const trackId = getTrackId(metadata);
+  const rawAmount = metadata.fiat_amount ?? payment.expected_amount;
+  const fiatAmount = new Decimal(rawAmount).toFixed();
+  const fiatCurrency = metadata.fiat_currency?.trim().toUpperCase();
+  if (!fiatCurrency || !new Decimal(fiatAmount).isFinite() || !new Decimal(fiatAmount).gt(0)) {
+    throw new ElizaError("Crypto payment has an invalid stored fiat quote", {
+      code: "INVALID_CRYPTO_PAYMENT_QUOTE",
+      context: { paymentId: payment.id },
+    });
+  }
+  return { trackId, fiatAmount, fiatCurrency };
+}
+
+function validateOxaSettlementEvidence(
+  payment: CryptoPayment,
+  evidence: OxaSettlementEvidence,
+): void {
+  const quote = oxaQuoteForPayment(payment);
+  let invoiceAmount: Decimal;
+  try {
+    invoiceAmount = new Decimal(evidence.invoiceAmount);
+  } catch (cause) {
+    // error-policy:J2 convert malformed provider money into a typed settlement failure.
+    throw new ElizaError("OxaPay returned an invalid invoice amount", {
+      code: "INVALID_OXAPAY_SETTLEMENT",
+      context: { paymentId: payment.id },
+      cause,
+    });
+  }
+  if (
+    evidence.trackId !== quote.trackId ||
+    !invoiceAmount.equals(quote.fiatAmount) ||
+    evidence.invoiceCurrency.trim().toUpperCase() !== quote.fiatCurrency
+  ) {
+    throw new ElizaError("OxaPay settlement does not match the server-stored fiat quote", {
+      code: "OXAPAY_QUOTE_MISMATCH",
+      context: { paymentId: payment.id },
+    });
+  }
+}
 
 /**
  * Safely extract metadata with runtime validation.
@@ -150,14 +232,6 @@ function getAppCreditPurchaseMetadata(
     appId,
     chargeRequestId: getStringMetadata(meta, "charge_request_id"),
   };
-}
-
-async function dispatchAppChargeCallbacks(
-  callbacks: AppChargeCallbackDispatchParams[],
-): Promise<void> {
-  for (const callback of callbacks) {
-    await appChargeCallbacksService.dispatch(callback);
-  }
 }
 
 function appChargeFailureCallbackForPayment(
@@ -264,7 +338,7 @@ class CryptoPaymentsService {
     const orderId = `${organizationId.replace(/-/g, "").slice(0, 12)}_${Date.now()}_${randomSuffix}`;
 
     const oxaInvoice = await oxaPayService.createInvoice({
-      amount,
+      amount: amountDecimal.toFixed(),
       currency,
       payCurrency,
       network,
@@ -279,8 +353,8 @@ class CryptoPaymentsService {
       organization_id: organizationId,
       user_id: userId,
       payment_address: oxaInvoice.trackId,
-      expected_amount: amountDecimal.toFixed(3),
-      credits_to_add: amountDecimal.toFixed(3),
+      expected_amount: amountDecimal.toFixed(),
+      credits_to_add: amountDecimal.toFixed(),
       network: network || "AUTO",
       token: payCurrency || "AUTO",
       token_address: null,
@@ -291,7 +365,7 @@ class CryptoPaymentsService {
         oxapay_track_id: oxaInvoice.trackId,
         pay_link: oxaInvoice.payLink,
         fiat_currency: currency,
-        fiat_amount: amount,
+        fiat_amount: amountDecimal.toFixed(),
       },
     });
 
@@ -307,7 +381,7 @@ class CryptoPaymentsService {
       payLink: oxaInvoice.payLink,
       expiresAt: oxaInvoice.expiresAt,
       trackId: oxaInvoice.trackId,
-      creditsToAdd: amountDecimal.toFixed(3),
+      creditsToAdd: amountDecimal.toFixed(),
     };
   }
 
@@ -329,13 +403,6 @@ class CryptoPaymentsService {
     const payment = await cryptoPaymentsRepository.findById(paymentId);
     if (!payment) {
       throw new Error("Payment not found");
-    }
-
-    if (payment.status === "confirmed") {
-      return {
-        confirmed: true,
-        payment: this.formatPaymentStatus(payment),
-      };
     }
 
     if (payment.status === "expired" || payment.status === "failed") {
@@ -372,7 +439,12 @@ class CryptoPaymentsService {
           network: payment.network,
         });
 
-        await this.confirmPayment(payment.id, tx.txHash, receivedAmount.toString(), tx.currency);
+        await this.confirmPayment(payment.id, tx.txHash, {
+          trackId: oxaStatus.trackId,
+          invoiceAmount: oxaStatus.amount,
+          invoiceCurrency: oxaStatus.currency,
+          payCurrency: tx.currency,
+        });
 
         const confirmedPayment = await cryptoPaymentsRepository.findById(payment.id);
         if (!confirmedPayment) {
@@ -413,12 +485,18 @@ class CryptoPaymentsService {
         };
       }
     } catch (error) {
+      // error-policy:J2 preserve provider/payment context on an inner failure.
       logger.error("[Crypto Payments] Failed to check OxaPay status", {
         paymentId: redact.paymentId(paymentId),
         trackId: redact.trackId(trackId),
         error,
       });
-      throw error;
+      if (error instanceof ElizaError) throw error;
+      throw new ElizaError("Failed to verify OxaPay payment status", {
+        code: "OXAPAY_STATUS_VERIFICATION_FAILED",
+        context: { paymentId, trackId },
+        cause: error,
+      });
     }
 
     return {
@@ -434,11 +512,9 @@ class CryptoPaymentsService {
   async confirmPayment(
     paymentId: string,
     txHash: string,
-    receivedAmount: string,
-    actualPayCurrency?: string,
+    evidence: OxaSettlementEvidence,
   ): Promise<void> {
     validateUuid(paymentId, "payment ID");
-    const appChargeCallbacks: AppChargeCallbackDispatchParams[] = [];
 
     await dbWrite.transaction(async (tx) => {
       const paymentResult = await tx
@@ -452,7 +528,11 @@ class CryptoPaymentsService {
       if (!payment) {
         throw new Error("Payment not found");
       }
+      validateOxaSettlementEvidence(payment, evidence);
       const canonicalTxHash = canonicalizeCryptoTransactionHash(txHash, payment.network);
+      const receivedAmount = evidence.invoiceAmount;
+      const actualPayCurrency = evidence.payCurrency;
+      const quote = oxaQuoteForPayment(payment);
 
       if (payment.status === "confirmed") {
         const settledCurrency =
@@ -463,9 +543,18 @@ class CryptoPaymentsService {
           !cryptoTransactionHashesEqual(payment.transaction_hash, canonicalTxHash) ||
           !payment.received_amount ||
           !new Decimal(payment.received_amount).equals(receivedAmount) ||
-          settledCurrency.toLowerCase() !== (actualPayCurrency || payment.token).toLowerCase()
+          settledCurrency.toLowerCase() !== actualPayCurrency.toLowerCase()
         ) {
           throw new Error("Payment confirmation replay does not match the committed settlement");
+        }
+        const invoiceSettlement = storedInvoiceSettlement(payment.metadata?.invoice_settlement);
+        await invoicesService.create(invoiceSettlement, tx);
+        const callbackSettlement = payment.metadata?.callback_settlement;
+        if (callbackSettlement !== undefined) {
+          await appChargeCallbacksService.enqueue(
+            parseAppChargeCallbackDispatchParams(callbackSettlement),
+            tx,
+          );
         }
         logger.info("[Crypto Payments] Payment already confirmed", {
           paymentId: redact.paymentId(paymentId),
@@ -491,11 +580,12 @@ class CryptoPaymentsService {
         )
         .for("update");
 
-      if (existingTx.length > 0 && existingTx[0].id !== paymentId) {
+      const collision = existingTx.find((candidate) => candidate.id !== paymentId);
+      if (collision) {
         logger.error("[Crypto Payments] Double-spend attempt detected", {
           paymentId: redact.paymentId(paymentId),
           txHash: redact.txHash(canonicalTxHash),
-          existingPaymentId: redact.paymentId(existingTx[0].id),
+          existingPaymentId: redact.paymentId(collision.id),
         });
         throw new Error("Transaction already processed for another payment");
       }
@@ -510,9 +600,10 @@ class CryptoPaymentsService {
       // Invoice columns are intentionally cent-denominated. Keep the provider's
       // exact decimal on the payment and in metadata, while explicitly rounding
       // the invoice projection to its declared database scale.
-      const invoiceAmountDue = new Decimal(payment.expected_amount).toDecimalPlaces(2).toFixed(2);
+      const invoiceAmountDue = new Decimal(quote.fiatAmount).toDecimalPlaces(2).toFixed(2);
       const invoiceAmountPaid = receivedDecimal.toDecimalPlaces(2).toFixed(2);
-      const payCurrency = actualPayCurrency || payment.token;
+      const payCurrency = actualPayCurrency;
+      const invoiceCurrency = quote.fiatCurrency.toLowerCase();
       const appPurchase = getAppCreditPurchaseMetadata(payment.metadata);
       const confirmedAt = new Date();
 
@@ -565,7 +656,7 @@ class CryptoPaymentsService {
           })
           .where(eq(cryptoPayments.id, appPurchase.chargeRequestId));
 
-        appChargeCallbacks.push({
+        const callbackSettlement: AppChargeCallbackDispatchParams = {
           appId: appPurchase.appId,
           chargeRequestId: appPurchase.chargeRequestId,
           status: "paid",
@@ -580,7 +671,9 @@ class CryptoPaymentsService {
             network: payment.network,
             token: payCurrency,
           },
-        });
+        };
+        await appChargeCallbacksService.enqueue(callbackSettlement, tx);
+        return callbackSettlement;
       };
 
       await tx
@@ -614,36 +707,47 @@ class CryptoPaymentsService {
           transaction: tx,
         });
 
-        await markChargeRequestPaid();
+        const callbackSettlement = await markChargeRequestPaid();
 
-        await invoicesService.create(
-          {
-            organization_id: payment.organization_id,
-            stripe_invoice_id: createCryptoInvoiceId(payment.id),
-            stripe_customer_id: createCryptoCustomerId(payment.organization_id),
-            stripe_payment_intent_id: canonicalTxHash,
-            amount_due: invoiceAmountDue,
-            amount_paid: invoiceAmountPaid,
-            currency: payCurrency.toLowerCase(),
-            status: "paid",
-            invoice_type: "app_crypto_payment",
-            credits_added: invoiceAmountPaid,
-            metadata: {
-              payment_method: "crypto",
-              provider: "oxapay",
-              network: payment.network,
-              token: payCurrency,
-              transaction_hash: canonicalTxHash,
-              received_after_fee: receivedAmountExact,
-              oxapay_track_id: getTrackId(payment.metadata),
-              app_id: appPurchase.appId,
-              charge_request_id: appPurchase.chargeRequestId,
-              platform_offset: result.platformOffset,
-              creator_earnings: result.creatorEarnings,
-            },
+        const invoiceSettlement = {
+          organization_id: payment.organization_id,
+          stripe_invoice_id: createCryptoInvoiceId(payment.id),
+          stripe_customer_id: createCryptoCustomerId(payment.organization_id),
+          stripe_payment_intent_id: canonicalTxHash,
+          amount_due: invoiceAmountDue,
+          amount_paid: invoiceAmountPaid,
+          currency: invoiceCurrency,
+          status: "paid",
+          invoice_type: "app_crypto_payment",
+          credits_added: invoiceAmountPaid,
+          metadata: {
+            payment_method: "crypto",
+            provider: "oxapay",
+            network: payment.network,
+            token: payCurrency,
+            transaction_hash: canonicalTxHash,
+            received_after_fee: receivedAmountExact,
+            oxapay_track_id: getTrackId(payment.metadata),
+            app_id: appPurchase.appId,
+            charge_request_id: appPurchase.chargeRequestId,
+            platform_offset: result.platformOffset,
+            creator_earnings: result.creatorEarnings,
           },
-          tx,
-        );
+        };
+        await invoicesService.create(invoiceSettlement, tx);
+        await tx
+          .update(cryptoPayments)
+          .set({
+            metadata: {
+              ...(payment.metadata ?? {}),
+              settlement_currency: payCurrency,
+              settlement_amount: receivedAmountExact,
+              settlement_transaction_hash: canonicalTxHash,
+              invoice_settlement: invoiceSettlement,
+              ...(callbackSettlement && { callback_settlement: callbackSettlement }),
+            },
+          })
+          .where(eq(cryptoPayments.id, paymentId));
 
         logger.info("[Crypto Payments] App credit payment confirmed", {
           paymentId: redact.paymentId(paymentId),
@@ -687,30 +791,40 @@ class CryptoPaymentsService {
 
       // Create invoice with clearly namespaced IDs to distinguish from Stripe invoices.
       // These are NOT actual Stripe IDs - they use OXAPAY_* prefix for clarity.
-      await invoicesService.create(
-        {
-          organization_id: payment.organization_id,
-          stripe_invoice_id: createCryptoInvoiceId(payment.id),
-          stripe_customer_id: createCryptoCustomerId(payment.organization_id),
-          stripe_payment_intent_id: canonicalTxHash,
-          amount_due: invoiceAmountDue,
-          amount_paid: invoiceAmountPaid,
-          currency: payCurrency.toLowerCase(),
-          status: "paid",
-          invoice_type: "crypto_payment",
-          credits_added: invoiceAmountPaid,
-          metadata: {
-            payment_method: "crypto",
-            provider: "oxapay",
-            network: payment.network,
-            token: payCurrency,
-            transaction_hash: canonicalTxHash,
-            received_after_fee: receivedAmountExact,
-            oxapay_track_id: getTrackId(payment.metadata),
-          },
+      const invoiceSettlement = {
+        organization_id: payment.organization_id,
+        stripe_invoice_id: createCryptoInvoiceId(payment.id),
+        stripe_customer_id: createCryptoCustomerId(payment.organization_id),
+        stripe_payment_intent_id: canonicalTxHash,
+        amount_due: invoiceAmountDue,
+        amount_paid: invoiceAmountPaid,
+        currency: invoiceCurrency,
+        status: "paid",
+        invoice_type: "crypto_payment",
+        credits_added: invoiceAmountPaid,
+        metadata: {
+          payment_method: "crypto",
+          provider: "oxapay",
+          network: payment.network,
+          token: payCurrency,
+          transaction_hash: canonicalTxHash,
+          received_after_fee: receivedAmountExact,
+          oxapay_track_id: getTrackId(payment.metadata),
         },
-        tx,
-      );
+      };
+      await invoicesService.create(invoiceSettlement, tx);
+      await tx
+        .update(cryptoPayments)
+        .set({
+          metadata: {
+            ...(payment.metadata ?? {}),
+            settlement_currency: payCurrency,
+            settlement_amount: receivedAmountExact,
+            settlement_transaction_hash: canonicalTxHash,
+            invoice_settlement: invoiceSettlement,
+          },
+        })
+        .where(eq(cryptoPayments.id, paymentId));
 
       await this.creditReferralRevenueSplits({
         payment,
@@ -728,8 +842,6 @@ class CryptoPaymentsService {
         organizationId: redact.orgId(payment.organization_id),
       });
     });
-
-    await dispatchAppChargeCallbacks(appChargeCallbacks);
   }
 
   /**
@@ -752,13 +864,14 @@ class CryptoPaymentsService {
       if (!payment) {
         return { success: false, message: "Payment not found" };
       }
-      if (payment.status === "confirmed") {
-        return cryptoTransactionHashesEqual(payment.transaction_hash, txHash, payment.network)
-          ? { success: true, message: "Payment already confirmed" }
-          : {
-              success: false,
-              message: "Payment confirmation replay does not match the committed settlement",
-            };
+      if (
+        payment.status === "confirmed" &&
+        !cryptoTransactionHashesEqual(payment.transaction_hash, txHash, payment.network)
+      ) {
+        return {
+          success: false,
+          message: "Payment confirmation replay does not match the committed settlement",
+        };
       }
       if (payment.status === "expired") {
         return { success: false, message: "Payment has expired" };
@@ -802,12 +915,12 @@ class CryptoPaymentsService {
         };
       }
 
-      await this.confirmPayment(
-        payment.id,
-        matchingTx.txHash,
-        new Decimal(matchingTx.amount).toFixed(),
-        matchingTx.currency || payment.token,
-      );
+      await this.confirmPayment(payment.id, matchingTx.txHash, {
+        trackId: oxaStatus.trackId,
+        invoiceAmount: oxaStatus.amount,
+        invoiceCurrency: oxaStatus.currency,
+        payCurrency: matchingTx.currency || payment.token,
+      });
       return { success: true, message: "Payment confirmed successfully" };
     } catch (error) {
       // error-policy:J1 the route translates this explicit failed result.
@@ -901,7 +1014,7 @@ class CryptoPaymentsService {
       return { success: false, message: "Payment not found" };
     }
 
-    if (payment.status !== "pending") {
+    if (payment.status !== "pending" && payment.status !== "confirmed") {
       logger.info("[Crypto Payments] Payment already processed", {
         track_id: redact.trackId(track_id),
         status: payment.status,
@@ -948,12 +1061,12 @@ class CryptoPaymentsService {
           network: payment.network,
         });
 
-        await this.confirmPayment(
-          payment.id,
-          tx.txHash || txID || track_id,
-          receivedAmount.toString(),
-          tx.currency,
-        );
+        await this.confirmPayment(payment.id, tx.txHash || txID || track_id, {
+          trackId: oxaStatus.trackId,
+          invoiceAmount: oxaStatus.amount,
+          invoiceCurrency: oxaStatus.currency,
+          payCurrency: tx.currency,
+        });
         return { success: true, message: "Payment confirmed" };
       }
 
@@ -971,11 +1084,17 @@ class CryptoPaymentsService {
 
       return { success: true, message: "Webhook processed" };
     } catch (error) {
+      // error-policy:J2 keep webhook identity while preserving the cause for retry.
       logger.error("[Crypto Payments] Webhook processing error", {
         track_id: redact.trackId(track_id),
         error,
       });
-      throw error;
+      if (error instanceof ElizaError) throw error;
+      throw new ElizaError("Crypto payment webhook settlement failed", {
+        code: "CRYPTO_WEBHOOK_SETTLEMENT_FAILED",
+        context: { trackId: track_id },
+        cause: error,
+      });
     }
   }
 

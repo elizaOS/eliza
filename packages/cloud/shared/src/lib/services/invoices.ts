@@ -7,6 +7,25 @@ import { desc, eq } from "drizzle-orm";
 import { type DbTransaction, dbRead, dbWrite } from "../../db/client";
 import { type Invoice, invoices, type NewInvoice } from "../../db/schemas";
 import { logger } from "../utils/logger";
+import { settlementDigest } from "./settlement-digest";
+
+function invoiceSettlementContract(data: NewInvoice | Invoice): Record<string, unknown> {
+  const metadata = { ...((data.metadata as Record<string, unknown> | null) ?? {}) };
+  delete metadata.settlement_digest;
+  return {
+    organization_id: data.organization_id,
+    stripe_invoice_id: data.stripe_invoice_id,
+    stripe_customer_id: data.stripe_customer_id,
+    stripe_payment_intent_id: data.stripe_payment_intent_id ?? null,
+    amount_due: new Decimal(data.amount_due).toFixed(),
+    amount_paid: new Decimal(data.amount_paid).toFixed(),
+    currency: data.currency ?? "usd",
+    status: data.status,
+    invoice_type: data.invoice_type,
+    credits_added: data.credits_added == null ? null : new Decimal(data.credits_added).toFixed(),
+    metadata,
+  };
+}
 
 /**
  * Service for invoice CRUD operations.
@@ -14,10 +33,18 @@ import { logger } from "../utils/logger";
 class InvoicesService {
   async create(data: NewInvoice, transaction?: DbTransaction): Promise<Invoice> {
     const executor = transaction ?? dbWrite;
+    const digest = settlementDigest(invoiceSettlementContract(data));
+    const dataWithDigest: NewInvoice = {
+      ...data,
+      metadata: {
+        ...((data.metadata as Record<string, unknown> | null) ?? {}),
+        settlement_digest: digest,
+      },
+    };
     const [created] = await executor
       .insert(invoices)
       .values({
-        ...data,
+        ...dataWithDigest,
         created_at: new Date(),
         updated_at: new Date(),
       })
@@ -35,23 +62,9 @@ class InvoicesService {
     if (!invoice) {
       throw new Error("Invoice replay could not recover the committed invoice");
     }
-    const creditsMatch =
-      invoice.credits_added === null && data.credits_added == null
-        ? true
-        : invoice.credits_added !== null && data.credits_added != null
-          ? new Decimal(invoice.credits_added).equals(data.credits_added)
-          : false;
-    if (
-      invoice.organization_id !== data.organization_id ||
-      invoice.stripe_customer_id !== data.stripe_customer_id ||
-      invoice.stripe_payment_intent_id !== (data.stripe_payment_intent_id ?? null) ||
-      !new Decimal(invoice.amount_due).equals(data.amount_due) ||
-      !new Decimal(invoice.amount_paid).equals(data.amount_paid) ||
-      invoice.currency !== (data.currency ?? "usd") ||
-      invoice.status !== data.status ||
-      invoice.invoice_type !== data.invoice_type ||
-      !creditsMatch
-    ) {
+    const storedDigest = settlementDigest(invoiceSettlementContract(invoice));
+    const storedMetadata = (invoice.metadata as Record<string, unknown> | null) ?? {};
+    if (storedDigest !== digest || storedMetadata.settlement_digest !== digest) {
       throw new Error("Invoice idempotency replay does not match the original settlement");
     }
 

@@ -66,6 +66,16 @@ describe("oxaPayService.getPaymentStatus — invoice amount fail-closed", () => 
     expect(status.transactions[0].nativeAmount).toBe("0.000000010000000001");
   });
 
+  test("rejects an inquiry response for a different provider track ID", async () => {
+    stubInquiryResponse({ trackId: "trk_other" });
+    await expect(oxaPayService.getPaymentStatus("trk_1")).rejects.toThrow(/track ID/i);
+  });
+
+  test("rejects a missing invoice currency", async () => {
+    stubInquiryResponse({ currency: "" });
+    await expect(oxaPayService.getPaymentStatus("trk_1")).rejects.toThrow(/invoice currency/i);
+  });
+
   test("missing amount throws OxaPayApiError instead of crediting $0", async () => {
     stubInquiryResponse({ amount: undefined });
     await expect(oxaPayService.getPaymentStatus("trk_1")).rejects.toBeInstanceOf(OxaPayApiError);

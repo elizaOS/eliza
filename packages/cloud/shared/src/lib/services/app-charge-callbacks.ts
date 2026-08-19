@@ -1,14 +1,17 @@
 /** Coordinates app-charge callback delivery and authorized room-message projection. */
 import { MemoryType } from "@elizaos/core";
 import { randomUUID } from "crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, lte, or } from "drizzle-orm";
+import { type DbTransaction, dbWrite } from "../../db/client";
 import { dbRead } from "../../db/helpers";
 import { memoriesRepository } from "../../db/repositories/agents/memories";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
+import { appChargeCallbackOutbox } from "../../db/schemas/crypto-settlement-outbox";
 import { safeFetch } from "../security/safe-fetch";
 import type { DialogueMetadata } from "../types/message-content";
 import { logger } from "../utils/logger";
 import { callbackRoomBelongsToOrganization } from "./callback-channel-authz";
+import { settlementDigest } from "./settlement-digest";
 
 export type AppChargeCallbackStatus = "paid" | "failed";
 export type AppChargeCallbackProvider = "stripe" | "oxapay";
@@ -38,6 +41,8 @@ export interface AppChargeCallbackDispatchParams {
   payerOrganizationId?: string | null;
   reason?: string;
   metadata?: Record<string, unknown>;
+  /** Stable durable-delivery identity reused across outbox retries. */
+  deliveryId?: string;
 }
 
 export interface AppChargeCallbackPayload {
@@ -64,10 +69,59 @@ export interface AppChargeCallbackPayload {
   metadata?: Record<string, unknown>;
 }
 
-interface CallbackDispatchResult {
+export interface CallbackDispatchResult {
   httpPosted: boolean;
   roomMessageCreated: boolean;
   errors: string[];
+}
+
+const CALLBACK_MAX_ATTEMPTS = 12;
+const CALLBACK_LEASE_MS = 60_000;
+
+function callbackDeliveryKey(params: AppChargeCallbackDispatchParams): string {
+  return `${params.provider}:${params.providerPaymentId}:${params.chargeRequestId}:${params.status}`;
+}
+
+export function parseAppChargeCallbackDispatchParams(
+  value: unknown,
+): AppChargeCallbackDispatchParams {
+  if (!isRecord(value)) throw new Error("App callback outbox payload is not an object");
+  const required = ["appId", "chargeRequestId", "status", "provider", "providerPaymentId"];
+  if (required.some((key) => typeof value[key] !== "string" || value[key] === "")) {
+    throw new Error("App callback outbox payload is missing required identity fields");
+  }
+  if (value.status !== "paid" && value.status !== "failed") {
+    throw new Error("App callback outbox status is invalid");
+  }
+  if (value.provider !== "stripe" && value.provider !== "oxapay") {
+    throw new Error("App callback outbox provider is invalid");
+  }
+  const optionalStrings = ["payerUserId", "payerOrganizationId", "reason", "deliveryId"];
+  if (
+    optionalStrings.some(
+      (key) => value[key] !== undefined && value[key] !== null && typeof value[key] !== "string",
+    ) ||
+    (value.amountUsd !== undefined &&
+      value.amountUsd !== null &&
+      typeof value.amountUsd !== "string" &&
+      typeof value.amountUsd !== "number") ||
+    (value.metadata !== undefined && !isRecord(value.metadata))
+  ) {
+    throw new Error("App callback outbox payload has invalid optional fields");
+  }
+  return {
+    appId: value.appId as string,
+    chargeRequestId: value.chargeRequestId as string,
+    status: value.status,
+    provider: value.provider,
+    providerPaymentId: value.providerPaymentId as string,
+    amountUsd: value.amountUsd as string | number | null | undefined,
+    payerUserId: value.payerUserId as string | null | undefined,
+    payerOrganizationId: value.payerOrganizationId as string | null | undefined,
+    reason: value.reason as string | undefined,
+    metadata: value.metadata as Record<string, unknown> | undefined,
+    deliveryId: value.deliveryId as string | undefined,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -196,6 +250,131 @@ export function createAppChargeCallbackPayload(
 }
 
 export class AppChargeCallbacksService {
+  async enqueue(
+    params: AppChargeCallbackDispatchParams,
+    transaction: DbTransaction,
+  ): Promise<void> {
+    const deliveryKey = callbackDeliveryKey(params);
+    const digest = settlementDigest(params);
+    const [inserted] = await transaction
+      .insert(appChargeCallbackOutbox)
+      .values({
+        delivery_key: deliveryKey,
+        charge_request_id: params.chargeRequestId,
+        payload: { ...params },
+        payload_digest: digest,
+      })
+      .onConflictDoNothing({ target: appChargeCallbackOutbox.delivery_key })
+      .returning();
+    if (inserted) return;
+
+    const [existing] = await transaction
+      .select()
+      .from(appChargeCallbackOutbox)
+      .where(eq(appChargeCallbackOutbox.delivery_key, deliveryKey))
+      .limit(1);
+    if (!existing || existing.payload_digest !== digest) {
+      throw new Error("App callback outbox replay does not match the committed delivery");
+    }
+  }
+
+  async drain(
+    limit = 25,
+  ): Promise<{ processed: number; delivered: number; retried: number; terminal: number }> {
+    const stats = { processed: 0, delivered: 0, retried: 0, terminal: 0 };
+    for (let index = 0; index < limit; index += 1) {
+      const claimToken = randomUUID();
+      const now = new Date();
+      const leaseExpiresAt = new Date(now.getTime() + CALLBACK_LEASE_MS);
+      const claimed = await dbWrite.transaction(async (tx) => {
+        const [candidate] = await tx
+          .select()
+          .from(appChargeCallbackOutbox)
+          .where(
+            and(
+              lte(appChargeCallbackOutbox.next_attempt_at, now),
+              or(
+                eq(appChargeCallbackOutbox.state, "pending"),
+                and(
+                  eq(appChargeCallbackOutbox.state, "processing"),
+                  lte(appChargeCallbackOutbox.lease_expires_at, now),
+                ),
+              ),
+            ),
+          )
+          .orderBy(appChargeCallbackOutbox.next_attempt_at, appChargeCallbackOutbox.created_at)
+          .for("update", { skipLocked: true })
+          .limit(1);
+        if (!candidate) return null;
+        const [row] = await tx
+          .update(appChargeCallbackOutbox)
+          .set({
+            state: "processing",
+            claim_token: claimToken,
+            lease_expires_at: leaseExpiresAt,
+            attempts: candidate.attempts + 1,
+            updated_at: now,
+          })
+          .where(eq(appChargeCallbackOutbox.id, candidate.id))
+          .returning();
+        return row ?? null;
+      });
+      if (!claimed) break;
+      stats.processed += 1;
+
+      try {
+        const params = parseAppChargeCallbackDispatchParams(claimed.payload);
+        if (settlementDigest(params) !== claimed.payload_digest) {
+          throw new Error("App callback outbox payload digest mismatch");
+        }
+        const result = await this.dispatch({ ...params, deliveryId: claimed.delivery_key });
+        if (result.errors.length > 0) throw new Error(result.errors.join("; "));
+        await dbWrite
+          .update(appChargeCallbackOutbox)
+          .set({
+            state: "delivered",
+            delivered_at: new Date(),
+            claim_token: null,
+            lease_expires_at: null,
+            last_error: null,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(appChargeCallbackOutbox.id, claimed.id),
+              eq(appChargeCallbackOutbox.claim_token, claimToken),
+            ),
+          );
+        stats.delivered += 1;
+      } catch (error) {
+        // error-policy:J4 an expected delivery failure remains visibly pending
+        // for bounded durable retry; exhausted or corrupt rows become terminal.
+        const terminal = claimed.attempts >= CALLBACK_MAX_ATTEMPTS;
+        const delayMs = Math.min(3_600_000, 1_000 * 2 ** Math.min(claimed.attempts, 10));
+        await dbWrite
+          .update(appChargeCallbackOutbox)
+          .set({
+            state: terminal ? "terminal" : "pending",
+            terminal_at: terminal ? new Date() : null,
+            next_attempt_at: new Date(Date.now() + delayMs),
+            claim_token: null,
+            lease_expires_at: null,
+            last_error: error instanceof Error ? error.message : String(error),
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(appChargeCallbackOutbox.id, claimed.id),
+              eq(appChargeCallbackOutbox.claim_token, claimToken),
+            ),
+          );
+        if (terminal) stats.terminal += 1;
+        else stats.retried += 1;
+      }
+    }
+    return stats;
+  }
+
   async dispatch(params: AppChargeCallbackDispatchParams): Promise<CallbackDispatchResult> {
     const result: CallbackDispatchResult = {
       httpPosted: false,
@@ -235,6 +414,7 @@ export class AppChargeCallbacksService {
           chargeRequest.organization_id,
         );
       } catch (error) {
+        // error-policy:J4 durable delivery records the explicit failed room channel.
         const message = error instanceof Error ? error.message : String(error);
         result.errors.push(message);
         logger.warn("[AppChargeCallbacks] Failed to create room callback message", {
@@ -248,9 +428,15 @@ export class AppChargeCallbacksService {
     const callbackUrl = stringValue(metadata, "callback_url");
     if (callbackUrl) {
       try {
-        await this.postHttpCallback(callbackUrl, stringValue(metadata, "callback_secret"), payload);
+        await this.postHttpCallback(
+          callbackUrl,
+          stringValue(metadata, "callback_secret"),
+          payload,
+          params.deliveryId,
+        );
         result.httpPosted = true;
       } catch (error) {
+        // error-policy:J4 durable delivery records the explicit failed HTTP target.
         const message = error instanceof Error ? error.message : String(error);
         result.errors.push(message);
         logger.warn("[AppChargeCallbacks] Failed to post HTTP callback", {
@@ -279,6 +465,7 @@ export class AppChargeCallbacksService {
     callbackUrl: string,
     secret: string | undefined,
     payload: AppChargeCallbackPayload,
+    deliveryId?: string,
   ): Promise<void> {
     const body = JSON.stringify(payload);
     const timestamp = new Date().toISOString();
@@ -286,7 +473,7 @@ export class AppChargeCallbacksService {
       "Content-Type": "application/json",
       "X-Eliza-Event": payload.event,
       "X-Eliza-Timestamp": timestamp,
-      "X-Eliza-Delivery": randomUUID(),
+      "X-Eliza-Delivery": deliveryId ?? randomUUID(),
     };
 
     if (secret) {

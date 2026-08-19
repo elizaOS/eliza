@@ -31,12 +31,14 @@ const PAYMENT_ID = "00000000-0000-4000-8000-0000000000d1";
 const OTHER_PAYMENT_ID = "00000000-0000-4000-8000-0000000000d2";
 const USER_ID = "00000000-0000-4000-8000-0000000000e1";
 const APP_ID = "00000000-0000-4000-8000-0000000000f1";
+const CHARGE_REQUEST_ID = "00000000-0000-4000-8000-0000000000f2";
 const PGLITE_TIMEOUT = 60000;
 
 // Controllable invoice stub: succeeds by default; throws when armed so we can
 // exercise a post-credit failure inside the confirmation transaction.
 let invoiceCreateShouldThrow = false;
 let invoiceCreateSawTransaction = false;
+let invoiceCreateCount = 0;
 let lastInvoiceAmountPaid: string | null = null;
 mock.module("../invoices", () => ({
   invoicesService: {
@@ -44,6 +46,7 @@ mock.module("../invoices", () => ({
       return undefined;
     },
     async create(data: { amount_paid: string }, transaction?: unknown) {
+      invoiceCreateCount += 1;
       invoiceCreateSawTransaction = transaction !== undefined;
       lastInvoiceAmountPaid = data.amount_paid;
       if (invoiceCreateShouldThrow) throw new Error("simulated invoice insert conflict");
@@ -109,7 +112,10 @@ mock.module("../oxapay", () => ({
   oxaPayService: {
     async getPaymentStatus() {
       return {
+        trackId: "track-123",
         status: "confirmed",
+        amount: "10",
+        currency: "USD",
         transactions: [
           {
             txHash: "0xhashManual",
@@ -133,6 +139,15 @@ let cryptoPaymentsRepository: typeof import("../../../db/repositories/crypto-pay
 let cryptoPaymentsService: typeof import("../crypto-payments").cryptoPaymentsService;
 let pgliteReady = true;
 
+function settlementEvidence(
+  invoiceAmount = "10",
+  payCurrency = "USDT",
+  trackId = "track-123",
+  invoiceCurrency = "USD",
+) {
+  return { trackId, invoiceAmount, invoiceCurrency, payCurrency };
+}
+
 async function seedPendingPayment(): Promise<void> {
   await dbWrite.execute(
     `INSERT INTO crypto_payments
@@ -141,7 +156,7 @@ async function seedPendingPayment(): Promise<void> {
      VALUES
        ('${PAYMENT_ID}', '${ORG_ID}', NULL, '0xpay', 'USDT', 'bsc',
         '10', '10', 'pending', now() + interval '1 hour',
-        '{"oxapay_track_id":"track-123"}'::jsonb);`,
+        '{"oxapay_track_id":"track-123","fiat_amount":"10","fiat_currency":"USD"}'::jsonb);`,
   );
 }
 async function seedAppPurchasePayment(): Promise<void> {
@@ -152,7 +167,7 @@ async function seedAppPurchasePayment(): Promise<void> {
      VALUES
        ('${PAYMENT_ID}', '${ORG_ID}', '${USER_ID}', '0xpay', 'USDT', 'bsc',
         '10', '10', 'pending', now() + interval '1 hour',
-        '{"oxapay_track_id":"track-123","kind":"app_credit_purchase","app_id":"${APP_ID}"}'::jsonb);`,
+        '{"oxapay_track_id":"track-123","fiat_amount":"10","fiat_currency":"USD","kind":"app_credit_purchase","app_id":"${APP_ID}"}'::jsonb);`,
   );
 }
 async function seedReferralPayment(): Promise<void> {
@@ -163,7 +178,7 @@ async function seedReferralPayment(): Promise<void> {
      VALUES
        ('${PAYMENT_ID}', '${ORG_ID}', '${USER_ID}', '0xpay', 'USDT', 'bsc',
         '10', '10', 'pending', now() + interval '1 hour',
-        '{"oxapay_track_id":"track-123"}'::jsonb);`,
+        '{"oxapay_track_id":"track-123","fiat_amount":"10","fiat_currency":"USD"}'::jsonb);`,
   );
 }
 async function orgBalance(): Promise<number> {
@@ -256,6 +271,23 @@ beforeAll(async () => {
          ON crypto_payments (transaction_hash)
          WHERE transaction_hash IS NOT NULL
            AND status IN ('pending', 'broadcast', 'confirmed')`,
+      `CREATE TABLE IF NOT EXISTS app_charge_callback_outbox (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        delivery_key text NOT NULL UNIQUE,
+        charge_request_id uuid NOT NULL,
+        payload jsonb NOT NULL,
+        payload_digest text NOT NULL,
+        state text NOT NULL DEFAULT 'pending',
+        attempts integer NOT NULL DEFAULT 0,
+        next_attempt_at timestamptz NOT NULL DEFAULT now(),
+        claim_token uuid,
+        lease_expires_at timestamptz,
+        last_error text,
+        delivered_at timestamptz,
+        terminal_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`,
     ];
     for (const stmt of ddl) await dbWrite.execute(stmt);
   } catch (error) {
@@ -270,6 +302,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   if (!pgliteReady) return;
+  await dbWrite.execute(`DELETE FROM app_charge_callback_outbox;`);
   await dbWrite.execute(`DELETE FROM credit_transactions;`);
   await dbWrite.execute(`DELETE FROM crypto_payments;`);
   await dbWrite.execute(`DELETE FROM organizations;`);
@@ -279,6 +312,7 @@ beforeEach(async () => {
   );
   invoiceCreateShouldThrow = false;
   invoiceCreateSawTransaction = false;
+  invoiceCreateCount = 0;
   lastInvoiceAmountPaid = null;
   appPurchaseSawTransaction = false;
   referralShouldThrowAfterWrite = false;
@@ -292,7 +326,7 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
       if (!pgliteReady) return;
       await seedPendingPayment();
 
-      await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashA", "10");
+      await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashA", settlementEvidence());
       expect(await orgBalance()).toBeCloseTo(10, 6);
       expect(await creditRowCount()).toBe(1);
 
@@ -303,7 +337,7 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
       await dbWrite.execute(
         `UPDATE crypto_payments SET status='pending' WHERE id='${PAYMENT_ID}';`,
       );
-      await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashA", "10");
+      await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashA", settlementEvidence());
 
       expect(await creditRowCount()).toBe(1);
       expect(await orgBalance()).toBeCloseTo(10, 6);
@@ -319,7 +353,7 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
       invoiceCreateShouldThrow = true;
 
       await expect(
-        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashApp", "10", "USDT"),
+        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashApp", settlementEvidence()),
       ).rejects.toThrow("simulated invoice insert conflict");
 
       expect(appPurchaseSawTransaction).toBe(true);
@@ -338,7 +372,7 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
       referralShouldThrowAfterWrite = true;
 
       await expect(
-        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashReferral", "10", "USDT"),
+        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashReferral", settlementEvidence()),
       ).rejects.toThrow("simulated referral failure");
 
       expect(referralSawTransaction).toBe(true);
@@ -359,7 +393,7 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
       // Arm the invoice insert (which runs after the credit) to throw.
       invoiceCreateShouldThrow = true;
       await expect(
-        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashB", "10"),
+        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashB", settlementEvidence()),
       ).rejects.toThrow();
 
       // Because the credit is granted with db: tx, the invoice failure rolled it
@@ -371,7 +405,7 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
 
       // A clean reprocess now succeeds and credits exactly once.
       invoiceCreateShouldThrow = false;
-      await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashB", "10");
+      await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashB", settlementEvidence());
       expect(await creditRowCount()).toBe(1);
       expect(await orgBalance()).toBeCloseTo(10, 6);
       expect(await paymentStatus()).toBe("confirmed");
@@ -427,11 +461,16 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
       await seedPendingPayment();
 
       const exactProviderAmount = "10.123456789012345678";
+      await dbWrite.execute(
+        `UPDATE crypto_payments
+         SET expected_amount='${exactProviderAmount}',
+             metadata = metadata || '{"fiat_amount":"${exactProviderAmount}"}'::jsonb
+         WHERE id='${PAYMENT_ID}'`,
+      );
       await cryptoPaymentsService.confirmPayment(
         PAYMENT_ID,
         "0xhashExact",
-        exactProviderAmount,
-        "USDT",
+        settlementEvidence(exactProviderAmount),
       );
 
       expect(await paymentReceivedAmount()).toBe(exactProviderAmount);
@@ -449,19 +488,84 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
     async () => {
       if (!pgliteReady) return;
       await seedPendingPayment();
-      await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashReplay", "10", "USDT");
+      await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashReplay", settlementEvidence());
 
       await expect(
-        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashReplay", "11", "USDT"),
+        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashReplay", settlementEvidence("11")),
       ).rejects.toThrow("does not match");
       await expect(
-        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xhashReplay", "10", "BTC"),
+        cryptoPaymentsService.confirmPayment(
+          PAYMENT_ID,
+          "0xhashReplay",
+          settlementEvidence("10", "BTC"),
+        ),
       ).rejects.toThrow("does not match");
       expect(await creditRowCount()).toBe(1);
       expect(await orgBalance()).toBeCloseTo(10, 6);
     },
     PGLITE_TIMEOUT,
   );
+
+  test("binds provider track ID, fiat amount, and fiat currency to the stored quote", async () => {
+    if (!pgliteReady) return;
+    await seedPendingPayment();
+
+    await expect(
+      cryptoPaymentsService.confirmPayment(
+        PAYMENT_ID,
+        "0xquote1",
+        settlementEvidence("10", "USDT", "wrong-track"),
+      ),
+    ).rejects.toThrow("server-stored fiat quote");
+    await expect(
+      cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xquote2", settlementEvidence("10.01")),
+    ).rejects.toThrow("server-stored fiat quote");
+    await expect(
+      cryptoPaymentsService.confirmPayment(
+        PAYMENT_ID,
+        "0xquote3",
+        settlementEvidence("10", "USDT", "track-123", "EUR"),
+      ),
+    ).rejects.toThrow("server-stored fiat quote");
+    expect(await paymentStatus()).toBe("pending");
+    expect(await creditRowCount()).toBe(0);
+  });
+
+  test("confirmed replay re-proves the canonical invoice settlement", async () => {
+    if (!pgliteReady) return;
+    await seedPendingPayment();
+    await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xinvoiceReplay", settlementEvidence());
+    expect(invoiceCreateCount).toBe(1);
+
+    await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xinvoiceReplay", settlementEvidence());
+    expect(invoiceCreateCount).toBe(2);
+    expect(await creditRowCount()).toBe(1);
+  });
+
+  test("confirmed app-purchase replay recovers a missing durable callback intent", async () => {
+    if (!pgliteReady) return;
+    await dbWrite.execute(
+      `INSERT INTO crypto_payments
+         (id, organization_id, user_id, payment_address, token, network,
+          expected_amount, credits_to_add, status, expires_at, metadata)
+       VALUES
+         ('${CHARGE_REQUEST_ID}', '${ORG_ID}', '${USER_ID}', 'app-charge', 'USD', 'internal',
+          '10', '10', 'pending', now() + interval '1 hour',
+          '{"kind":"app_charge_request","app_id":"${APP_ID}","creator_organization_id":"${ORG_ID}"}'::jsonb),
+         ('${PAYMENT_ID}', '${ORG_ID}', '${USER_ID}', '0xpay', 'USDT', 'bsc',
+          '10', '10', 'pending', now() + interval '1 hour',
+          '{"oxapay_track_id":"track-123","fiat_amount":"10","fiat_currency":"USD","kind":"app_credit_purchase","app_id":"${APP_ID}","charge_request_id":"${CHARGE_REQUEST_ID}"}'::jsonb)`,
+    );
+    await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xcallback", settlementEvidence());
+    let rows = await dbWrite.execute(`SELECT delivery_key FROM app_charge_callback_outbox`);
+    expect(rows.rows).toHaveLength(1);
+
+    await dbWrite.execute(`DELETE FROM app_charge_callback_outbox`);
+    await cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xcallback", settlementEvidence());
+    rows = await dbWrite.execute(`SELECT delivery_key FROM app_charge_callback_outbox`);
+    expect(rows.rows).toHaveLength(1);
+    expect(await creditRowCount()).toBe(1);
+  });
 
   test(
     "concurrent webhook and manual confirmation converge on one settlement",
@@ -499,12 +603,16 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
          VALUES
            ('${OTHER_PAYMENT_ID}', '${OTHER_ORG_ID}', NULL, '0xpay2', 'USDT', 'bsc',
             '10', '10', 'pending', now() + interval '1 hour',
-            '{"oxapay_track_id":"track-456"}'::jsonb);`,
+            '{"oxapay_track_id":"track-456","fiat_amount":"10","fiat_currency":"USD"}'::jsonb);`,
       );
 
       const results = await Promise.allSettled([
-        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xAbCd1234", "10", "USDT"),
-        cryptoPaymentsService.confirmPayment(OTHER_PAYMENT_ID, "0xaBcD1234", "10", "USDT"),
+        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xAbCd1234", settlementEvidence()),
+        cryptoPaymentsService.confirmPayment(
+          OTHER_PAYMENT_ID,
+          "0xaBcD1234",
+          settlementEvidence("10", "USDT", "track-456"),
+        ),
       ]);
 
       expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
@@ -542,12 +650,16 @@ describe("crypto top-up — no double-credit (idempotent + atomic)", () => {
         transaction_hash: "0xABCDEF1234",
         status: "broadcast",
         expires_at: new Date(Date.now() + 60_000),
-        metadata: { oxapay_track_id: "track-456" },
+        metadata: {
+          oxapay_track_id: "track-456",
+          fiat_amount: "10",
+          fiat_currency: "USD",
+        },
       });
       await seedPendingPayment();
 
       await expect(
-        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xabcdef1234", "10", "USDT"),
+        cryptoPaymentsService.confirmPayment(PAYMENT_ID, "0xabcdef1234", settlementEvidence()),
       ).rejects.toThrow("another payment");
       const existing = await cryptoPaymentsRepository.findById(OTHER_PAYMENT_ID);
       expect(existing?.transaction_hash).toBe("0xabcdef1234");

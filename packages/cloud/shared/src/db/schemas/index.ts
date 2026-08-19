@@ -51,6 +51,7 @@ export * from "./conversations";
 export * from "./credit-packs";
 export * from "./credit-transactions";
 export * from "./crypto-payments";
+export * from "./crypto-settlement-outbox";
 export * from "./daily-metrics";
 export * from "./device-bus";
 export * from "./discord-channels";
