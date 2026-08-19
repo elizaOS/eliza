@@ -54,6 +54,6 @@ export class SnapshotStorage {
           ORDER BY idx ASC`
     );
 
-    return result.rows.map((row) => row.snapshot as SchemaSnapshot);
+    return result.rows.map((row: Record<string, unknown>) => row.snapshot as SchemaSnapshot);
   }
 }
