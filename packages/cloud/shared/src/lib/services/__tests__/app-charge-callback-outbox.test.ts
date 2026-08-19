@@ -20,13 +20,15 @@ const params = {
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let service: typeof import("../app-charge-callbacks").appChargeCallbacksService;
+let settlementService: typeof import("../app-charge-settlement").appChargeSettlementService;
 
 beforeAll(async () => {
   ({ dbWrite, closeDatabaseConnectionsForTests: closeDb } = await import("../../../db/client"));
   ({ appChargeCallbacksService: service } = await import("../app-charge-callbacks"));
+  ({ appChargeSettlementService: settlementService } = await import("../app-charge-settlement"));
   await dbWrite.execute(`CREATE TABLE crypto_payments (
     id uuid PRIMARY KEY, organization_id uuid NOT NULL, user_id uuid,
-    payment_address text NOT NULL, token text NOT NULL, network text NOT NULL,
+    payment_address text NOT NULL, token_address text, token text NOT NULL, network text NOT NULL,
     expected_amount text NOT NULL, received_amount text, credits_to_add text NOT NULL,
     transaction_hash text, block_number text, status text NOT NULL,
     created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL DEFAULT now(),
@@ -98,5 +100,36 @@ describe("app charge callback outbox", () => {
     } finally {
       service.dispatch = original;
     }
+  });
+
+  test("app charge status and callback intent commit together and replay recovers deletion", async () => {
+    await dbWrite.execute(`UPDATE crypto_payments SET status='pending' WHERE id='${CHARGE_ID}'`);
+    const settlement = {
+      appId: params.appId,
+      chargeRequestId: CHARGE_ID,
+      provider: "stripe" as const,
+      providerPaymentId: "pi_exact",
+      amountUsd: "10.123456789",
+      payerOrganizationId: ORG_ID,
+    };
+
+    await settlementService.markPaid(settlement);
+    let rows = await dbWrite.execute(
+      `SELECT payload, state FROM app_charge_callback_outbox WHERE charge_request_id='${CHARGE_ID}'`,
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect((rows.rows[0] as { payload: { amountUsd: string } }).payload.amountUsd).toBe(
+      "10.123456789",
+    );
+
+    await dbWrite.execute("DELETE FROM app_charge_callback_outbox");
+    await settlementService.markPaid(settlement);
+    rows = await dbWrite.execute(
+      `SELECT payload FROM app_charge_callback_outbox WHERE charge_request_id='${CHARGE_ID}'`,
+    );
+    expect(rows.rows).toHaveLength(1);
+    await expect(
+      settlementService.markPaid({ ...settlement, providerPaymentId: "pi_other" }),
+    ).rejects.toThrow("already settled by another payment");
   });
 });

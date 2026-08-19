@@ -1,6 +1,7 @@
 /** Coordinates app-charge callback delivery and authorized room-message projection. */
 import { MemoryType } from "@elizaos/core";
 import { randomUUID } from "crypto";
+import Decimal from "decimal.js";
 import { and, eq, lte, or } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
 import { dbRead } from "../../db/helpers";
@@ -51,7 +52,7 @@ export interface AppChargeCallbackPayload {
   charge: {
     id: string;
     appId: string;
-    amountUsd: number;
+    amountUsd: string;
     status: AppChargeCallbackStatus;
     paymentContext: "verified_payer" | "any_payer";
     description?: string;
@@ -60,7 +61,7 @@ export interface AppChargeCallbackPayload {
   payment: {
     provider: AppChargeCallbackProvider;
     providerPaymentId: string;
-    amountUsd: number;
+    amountUsd: string;
     payerUserId?: string;
     payerOrganizationId?: string;
     reason?: string;
@@ -133,13 +134,16 @@ function stringValue(record: Record<string, unknown>, key: string): string | und
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function numberValue(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number.parseFloat(value);
-    if (Number.isFinite(parsed)) return parsed;
+function decimalStringValue(value: unknown, fallback?: string): string {
+  const candidate = value ?? fallback;
+  if (typeof candidate !== "string" && typeof candidate !== "number") {
+    throw new Error("App callback amount is missing");
   }
-  return fallback;
+  const amount = new Decimal(candidate);
+  if (!amount.isFinite() || amount.isNegative()) {
+    throw new Error("App callback amount is invalid");
+  }
+  return amount.toFixed();
 }
 
 function recordValue(
@@ -168,13 +172,8 @@ function agentIdFromChannel(channel: AppChargeCallbackChannel): string | undefin
   return stringValue(channel, "agentId") ?? stringValue(channel, "agent_id");
 }
 
-function formatUsd(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+function formatUsd(amount: string): string {
+  return `$${new Decimal(amount).toDecimalPlaces(2).toFixed(2)}`;
 }
 
 async function hmacHex(secret: string, message: string): Promise<string> {
@@ -216,7 +215,7 @@ export function createAppChargeCallbackPayload(
   chargeMetadata: Record<string, unknown>,
   expectedAmount: string | number,
 ): AppChargeCallbackPayload {
-  const amount = numberValue(params.amountUsd ?? expectedAmount);
+  const amount = decimalStringValue(params.amountUsd ?? expectedAmount);
   const channel = callbackChannel(chargeMetadata);
   const metadata = {
     ...callbackMetadata(chargeMetadata),
@@ -229,7 +228,7 @@ export function createAppChargeCallbackPayload(
     charge: {
       id: params.chargeRequestId,
       appId: params.appId,
-      amountUsd: numberValue(chargeMetadata.amount_usd, amount),
+      amountUsd: decimalStringValue(chargeMetadata.amount_usd, amount),
       status: params.status,
       paymentContext:
         chargeMetadata.payment_context === "any_payer" ? "any_payer" : "verified_payer",
