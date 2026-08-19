@@ -14,8 +14,10 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
-import { convergeAgentSandboxSchema } from "@elizaos/cloud-shared/db/ensure-agent-sandbox-schema";
-import { PgDialect } from "drizzle-orm/pg-core";
+import {
+  convergeAgentSandboxSchema,
+  createMigrationClientSandboxExecutor,
+} from "@elizaos/cloud-shared/db/ensure-agent-sandbox-schema";
 import pg from "pg";
 import {
   type CleanupFailure,
@@ -113,13 +115,14 @@ type PostMigrationConvergence = (client: MigrationClient) => Promise<void>;
 export async function convergeAgentSandboxSchemaOnMigrationClient(
   migrationClient: MigrationClient,
 ): Promise<void> {
-  const dialect = new PgDialect();
-  await convergeAgentSandboxSchema({
-    execute: async (statement) => {
-      const query = dialect.sqlToQuery(statement);
-      await migrationClient.query(query.sql, query.params);
-    },
-  });
+  // SQL rendering lives in @elizaos/cloud-shared, which owns drizzle-orm; the
+  // scripts entrypoint must not import drizzle-orm across an invalid package
+  // boundary under the filtered Cloud install (issue #22606).
+  await convergeAgentSandboxSchema(
+    createMigrationClientSandboxExecutor((text, params) =>
+      migrationClient.query(text, params),
+    ),
+  );
 }
 
 // Historical SQL files were edited after deployment, so their stored hashes

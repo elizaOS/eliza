@@ -1,5 +1,6 @@
 // Coordinates cloud DB ensure agent sandbox schema behavior shared by repositories and services.
 import { type SQL, sql } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { isCloudflareWorkerRuntime } from "../lib/cache/redis-factory";
 import { getCloudAwareEnv } from "../lib/runtime/cloud-bindings";
 import { applyDatabaseUrlFallback } from "./database-url";
@@ -10,6 +11,34 @@ const ensurePromises = new Map<string, Promise<void>>();
 
 export interface AgentSandboxSchemaExecutor {
   execute(statement: SQL): Promise<unknown>;
+}
+
+/**
+ * Runs one already-rendered, parameterized statement on a raw session. The
+ * deploy-time migration runner supplies its locked `pg`/PGlite `query(text,
+ * params)` here; `drizzle-orm` rendering stays inside this owning workspace so
+ * the scripts entrypoint never imports `drizzle-orm/pg-core` across an invalid
+ * package boundary (issue #22606).
+ */
+export type RawSqlQuery = (text: string, params: unknown[]) => Promise<unknown>;
+
+/**
+ * Builds an executor that renders each Drizzle `SQL` convergence statement into
+ * a `{ sql, params }` pair with `PgDialect` and forwards it to the supplied raw
+ * parameterized query function, preserving statement order. Keeping the
+ * `PgDialect` dependency here lets the filtered Cloud `scripts/admin` install
+ * consume convergence without depending on `drizzle-orm` directly.
+ */
+export function createMigrationClientSandboxExecutor(
+  query: RawSqlQuery,
+): AgentSandboxSchemaExecutor {
+  const dialect = new PgDialect();
+  return {
+    execute: (statement: SQL) => {
+      const rendered = dialect.sqlToQuery(statement);
+      return query(rendered.sql, rendered.params);
+    },
+  };
 }
 
 /**
