@@ -174,7 +174,7 @@ describe("decodePng", () => {
   });
 
   it("still decodes a last-fit screenshot-sized frame", () => {
-    expect(8000 * 4000).toBeLessThanOrEqual(MAX_DECODE_PNG_PIXELS);
+    expect(7680 * 4320).toBeLessThanOrEqual(MAX_DECODE_PNG_PIXELS);
     const decoded = decodePng(makePng({ width: 64, height: 48 }));
     expect(decoded).not.toBeNull();
     expect(decoded?.width).toBe(64);

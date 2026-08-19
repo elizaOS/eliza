@@ -35,8 +35,8 @@ import { inflateSync } from "node:zlib";
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
-/** Fail-closed pixel budget. IHDR is attacker-declared; 8K is ~33e6 pixels. */
-export const MAX_DECODE_PNG_PIXELS = 32_000_000;
+/** Fail-closed pixel budget. IHDR is attacker-declared; 8K is 33_177_600. */
+export const MAX_DECODE_PNG_PIXELS = 50_000_000;
 
 export interface RawImage {
   width: number;
