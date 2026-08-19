@@ -67,6 +67,7 @@ async function refreshMetaToken(accessToken: string): Promise<RefreshResult> {
         client_secret: appSecret,
         fb_exchange_token: accessToken,
       }),
+    { signal: AbortSignal.timeout(15_000) },
   );
 
   if (!response.ok) {
@@ -97,6 +98,7 @@ async function refreshLinkedInToken(refreshToken: string): Promise<RefreshResult
       client_id: clientId,
       client_secret: clientSecret,
     }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
@@ -132,6 +134,7 @@ async function refreshTikTokToken(refreshToken: string): Promise<RefreshResult> 
       client_key: clientKey,
       client_secret: clientSecret,
     }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
