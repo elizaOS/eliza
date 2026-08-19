@@ -184,6 +184,7 @@ export class FakeMeetingBillingSession implements MeetingBillingSession {
     reservationIds: [] as string[],
   };
   initialReserveError: Error | null = null;
+  reconcileError: Error | null = null;
   failAfterConsumedMs: number | null = null;
   reserveInitialCalls = 0;
   reconcileCalls: MeetingEndReason[] = [];
@@ -224,6 +225,7 @@ export class FakeMeetingBillingSession implements MeetingBillingSession {
 
   async reconcile(reason: MeetingEndReason) {
     this.reconcileCalls.push(reason);
+    if (this.reconcileError) throw this.reconcileError;
     this.state.status = "reconciled";
     return this.state;
   }
