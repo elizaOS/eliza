@@ -20,9 +20,13 @@ import type {
 	IAgentRuntime,
 	Memory,
 	SearchCategoryRegistration,
+	State,
 	UUID,
 } from "../../types";
-import { setContextRoutingMetadata } from "../../utils/context-routing.ts";
+import {
+	CONTEXT_ROUTING_STATE_KEY,
+	setContextRoutingMetadata,
+} from "../../utils/context-routing.ts";
 import { documentAction } from "./actions.ts";
 import { documentsProvider } from "./provider.ts";
 import { type DocumentListResult, DocumentService } from "./service.ts";
@@ -54,6 +58,14 @@ function makeMessage(text: string, routedContext?: AgentContext): Memory {
 		setContextRoutingMetadata(message, { primaryContext: routedContext });
 	}
 	return message;
+}
+
+function makeKnowledgeState(): State {
+	return {
+		values: {
+			[CONTEXT_ROUTING_STATE_KEY]: { primaryContext: "knowledge" },
+		},
+	} as unknown as State;
 }
 
 function listResult(
@@ -236,5 +248,74 @@ describe("DOCUMENT handler operation gate on knowledge-routed turns", () => {
 		);
 		expect(res?.success).toBe(true);
 		expect(service.addDocument).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("DOCUMENT handler operation gate on app-path merged routing", () => {
+	it.each([
+		["list", {}, "listDocumentsDetailed"],
+		["read", { id: DOC_ID }, "getDocumentById"],
+	] as const)(
+		"allows the read-only %s subaction when state is knowledge and message is general (app-path)",
+		async (action, extraParams, method) => {
+			const service = makeService();
+			const runtime = makeRuntime(service);
+			const state = makeKnowledgeState();
+			const message = makeMessage(
+				"what do we know about the launch?",
+				"general",
+			);
+			const res = await documentAction.handler?.(
+				runtime,
+				message,
+				state,
+				options({ action, ...extraParams }),
+			);
+			expect(service[method]).toHaveBeenCalledTimes(1);
+			expect(res?.values).not.toMatchObject({
+				error: "knowledge_context_read_only",
+			});
+		},
+	);
+
+	it.each([
+		["delete", { id: DOC_ID }],
+		["write", { text: "Launch is Friday." }],
+	] as const)(
+		"rejects the mutating %s subaction when state is knowledge and message is general (app-path)",
+		async (action, extraParams) => {
+			const service = makeService();
+			const runtime = makeRuntime(service);
+			const state = makeKnowledgeState();
+			const message = makeMessage("do the thing", "general");
+			const res = await documentAction.handler?.(
+				runtime,
+				message,
+				state,
+				options({ action, ...extraParams }),
+			);
+			expect(res?.success).toBe(false);
+			expect(res?.values).toMatchObject({
+				error: "knowledge_context_read_only",
+			});
+			expect(service.addDocument).not.toHaveBeenCalled();
+			expect(service.updateDocument).not.toHaveBeenCalled();
+			expect(service.deleteDocument).not.toHaveBeenCalled();
+		},
+	);
+
+	it("proves the app-path gate via the real handler, not a copied boolean", async () => {
+		const service = makeService();
+		const runtime = makeRuntime(service);
+		const state = makeKnowledgeState();
+		const message = makeMessage("delete the launch doc", "general");
+		const res = await documentAction.handler?.(
+			runtime,
+			message,
+			state,
+			options({ action: "delete", id: DOC_ID }),
+		);
+		expect(res?.values).toMatchObject({ error: "knowledge_context_read_only" });
+		expect(service.deleteDocument).not.toHaveBeenCalled();
 	});
 });
