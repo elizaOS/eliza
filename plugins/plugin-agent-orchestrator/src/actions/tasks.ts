@@ -1345,6 +1345,7 @@ async function runCreateLegacy(
         runtime,
         params as Record<string, unknown>,
         [task, requestText(message)],
+        requestText(message),
       );
       // An explicitly-named repo outranks a keyword route: "put up a pr on
       // my <name> repo" text-matches generic route entries ("pull request"),
@@ -2471,6 +2472,7 @@ async function resolveRequestedRepo(
   runtime: IAgentRuntime,
   params: Record<string, unknown>,
   requestTexts: ReadonlyArray<string | undefined>,
+  userOnlyText?: string,
 ): Promise<string | undefined> {
   const rawParamRepo =
     typeof params.repo === "string" && params.repo.trim()
@@ -2501,7 +2503,12 @@ async function resolveRequestedRepo(
   // it — a repo/git keyword, or the repo's own name appearing in the ask.
   let groundedParamRepo = paramRepo;
   if (paramRepo) {
-    const lowerText = text.toLowerCase();
+    // Ground against the USER'S OWN WORDS only. The composed task text is
+    // planner output — it grounds its own hallucination (live 2026-08-19:
+    // the planner invented NubsCarson/coin-toss-streak AND wrote "repo" into
+    // the task, so the joined-text check passed and the spawn died cloning).
+    const groundingText = userOnlyText ?? text;
+    const lowerText = groundingText.toLowerCase();
     const repoName = paramRepo
       .replace(/^https?:\/\/[^/]+\//i, "")
       .replace(/^git@[\w.-]+:/i, "")
@@ -2510,7 +2517,7 @@ async function resolveRequestedRepo(
       .pop();
     const grounded =
       /\b(?:repo|repository|github|gitlab|bitbucket|clone|\.git|branch|pull request|pr)\b/i.test(
-        text,
+        groundingText,
       ) ||
       (repoName !== undefined &&
         repoName.length > 2 &&
@@ -2818,6 +2825,7 @@ async function runSpawnAgent(
       runtime,
       params as Record<string, unknown>,
       [task, requestText(message)],
+      requestText(message),
     );
     if (requestedRepo && effectiveRoute) {
       logger(runtime).info(
