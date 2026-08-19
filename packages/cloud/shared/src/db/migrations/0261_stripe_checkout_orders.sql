@@ -76,18 +76,29 @@ AS $$
 DECLARE
   linked_organization_id uuid;
 BEGIN
-  IF TG_OP = 'UPDATE' AND (
-    NEW."organization_id" IS DISTINCT FROM OLD."organization_id"
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW."checkout_session_id" IS DISTINCT FROM OLD."checkout_session_id"
+    OR NEW."stripe_payment_intent_id" IS DISTINCT FROM OLD."stripe_payment_intent_id"
+    OR NEW."organization_id" IS DISTINCT FROM OLD."organization_id"
     OR NEW."initiated_by_user_id" IS DISTINCT FROM OLD."initiated_by_user_id"
-  ) THEN
-    RAISE EXCEPTION 'legacy Stripe quarantine tenant binding is immutable';
+    OR NEW."stripe_customer_id" IS DISTINCT FROM OLD."stripe_customer_id"
+    OR NEW."credit_pack_id" IS DISTINCT FROM OLD."credit_pack_id"
+    OR NEW."claimed_credits" IS DISTINCT FROM OLD."claimed_credits"
+    OR NEW."charge_amount_cents" IS DISTINCT FROM OLD."charge_amount_cents"
+    OR NEW."currency" IS DISTINCT FROM OLD."currency"
+    OR NEW."reason" IS DISTINCT FROM OLD."reason"
+    OR NEW."provider_receipt" IS DISTINCT FROM OLD."provider_receipt"
+    OR NEW."created_at" IS DISTINCT FROM OLD."created_at" THEN
+      RAISE EXCEPTION 'legacy Stripe quarantine authority is immutable';
+    END IF;
+    RETURN NEW;
   END IF;
 
   SELECT "organization_id"
     INTO linked_organization_id
     FROM "users"
     WHERE "id" = NEW."initiated_by_user_id"
-    FOR KEY SHARE;
+    FOR SHARE;
   IF NOT FOUND OR linked_organization_id IS DISTINCT FROM NEW."organization_id" THEN
     RAISE EXCEPTION 'legacy Stripe quarantine user organization mismatch';
   END IF;

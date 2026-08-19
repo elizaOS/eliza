@@ -90,14 +90,25 @@ beforeAll(async () => {
     CREATE FUNCTION enforce_test_quarantine_tenant() RETURNS trigger LANGUAGE plpgsql AS $$
     DECLARE linked_organization_id uuid;
     BEGIN
-      IF TG_OP = 'UPDATE' AND (
-        NEW.organization_id IS DISTINCT FROM OLD.organization_id
+      IF TG_OP = 'UPDATE' THEN
+        IF NEW.checkout_session_id IS DISTINCT FROM OLD.checkout_session_id
+        OR NEW.stripe_payment_intent_id IS DISTINCT FROM OLD.stripe_payment_intent_id
+        OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
         OR NEW.initiated_by_user_id IS DISTINCT FROM OLD.initiated_by_user_id
-      ) THEN
-        RAISE EXCEPTION 'legacy Stripe quarantine tenant binding is immutable';
+        OR NEW.stripe_customer_id IS DISTINCT FROM OLD.stripe_customer_id
+        OR NEW.credit_pack_id IS DISTINCT FROM OLD.credit_pack_id
+        OR NEW.claimed_credits IS DISTINCT FROM OLD.claimed_credits
+        OR NEW.charge_amount_cents IS DISTINCT FROM OLD.charge_amount_cents
+        OR NEW.currency IS DISTINCT FROM OLD.currency
+        OR NEW.reason IS DISTINCT FROM OLD.reason
+        OR NEW.provider_receipt IS DISTINCT FROM OLD.provider_receipt
+        OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+          RAISE EXCEPTION 'legacy Stripe quarantine authority is immutable';
+        END IF;
+        RETURN NEW;
       END IF;
       SELECT organization_id INTO linked_organization_id
-        FROM users WHERE id = NEW.initiated_by_user_id FOR KEY SHARE;
+        FROM users WHERE id = NEW.initiated_by_user_id FOR SHARE;
       IF NOT FOUND OR linked_organization_id IS DISTINCT FROM NEW.organization_id THEN
         RAISE EXCEPTION 'legacy Stripe quarantine user organization mismatch';
       END IF;
@@ -525,5 +536,53 @@ describe("Stripe Checkout order authority", () => {
       sql`SELECT count(*)::text AS count FROM stripe_checkout_legacy_quarantine`,
     );
     expect(quarantined[0]?.count).toBe("0");
+  });
+
+  test("legacy pack quarantine accepts only an exact replay", async () => {
+    const base = {
+      checkoutSessionId: "cs_legacy_replay",
+      paymentIntentId: "pi_legacy_replay",
+      paymentStatus: "paid",
+      amountTotal: 500,
+      currency: "usd",
+      customerId: "cus_a",
+      organizationId: ORG_A,
+      initiatedByUserId: USER_A,
+      purchaseType: "credit_pack",
+      creditPackId: PACK_A,
+      claimedCredits: "25.00",
+    } as const;
+    await expect(service.settleLegacy(base)).rejects.toThrow("immutable pack authority");
+    await expect(service.settleLegacy(base)).rejects.toThrow("immutable pack authority");
+    await expect(service.settleLegacy({ ...base, paymentIntentId: "pi_changed" })).rejects.toThrow(
+      "quarantine replay",
+    );
+    await expect(service.settleLegacy({ ...base, amountTotal: 600 })).rejects.toThrow(
+      "quarantine replay",
+    );
+    await expect(
+      service.settleLegacy({
+        ...base,
+        organizationId: ORG_B,
+        initiatedByUserId: USER_B,
+        customerId: "cus_b",
+      }),
+    ).rejects.toThrow("quarantine replay");
+    const quarantined = await sqlRows<{
+      stripe_payment_intent_id: string;
+      organization_id: string;
+      charge_amount_cents: string;
+    }>(
+      dbWrite,
+      sql`SELECT stripe_payment_intent_id, organization_id, charge_amount_cents::text
+          FROM stripe_checkout_legacy_quarantine`,
+    );
+    expect(quarantined).toEqual([
+      {
+        stripe_payment_intent_id: "pi_legacy_replay",
+        organization_id: ORG_A,
+        charge_amount_cents: "500",
+      },
+    ]);
   });
 });

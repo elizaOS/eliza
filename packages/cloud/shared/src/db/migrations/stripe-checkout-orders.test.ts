@@ -104,6 +104,12 @@ describe("0261 Stripe Checkout orders migration", () => {
         AND NOT tgisinternal
     `);
     expect(quarantineTrigger.rows).toEqual([{ count: 1 }]);
+    const quarantineGuard = await db.query<{ definition: string }>(`
+      SELECT pg_get_functiondef(p.oid) AS definition
+      FROM pg_proc p
+      WHERE p.proname = 'enforce_stripe_checkout_legacy_quarantine_tenant'
+    `);
+    expect(quarantineGuard.rows[0]?.definition).toContain("FOR SHARE");
   });
 
   test("fails closed instead of accepting a colliding partial table", async () => {
@@ -221,11 +227,21 @@ describe("0261 Stripe Checkout orders migration", () => {
       checkout_session_id, stripe_payment_intent_id, organization_id,
       initiated_by_user_id, reason, provider_receipt
     ) VALUES ('cs_valid', 'pi_valid', '${ORG_A}', '${USER_A}', 'test', '{}')`);
-    await expect(
-      db.exec(`UPDATE stripe_checkout_legacy_quarantine
-        SET initiated_by_user_id = '${USER_B}', organization_id = '${ORG_B}'
-        WHERE checkout_session_id = 'cs_valid'`),
-    ).rejects.toThrow(/tenant binding is immutable/i);
+    for (const mutation of [
+      `stripe_payment_intent_id = 'pi_changed'`,
+      `stripe_customer_id = 'cus_changed'`,
+      `charge_amount_cents = 999`,
+      `provider_receipt = '{"changed":true}'`,
+      `initiated_by_user_id = '${USER_B}', organization_id = '${ORG_B}'`,
+    ]) {
+      await expect(
+        db.exec(`UPDATE stripe_checkout_legacy_quarantine SET ${mutation}
+          WHERE checkout_session_id = 'cs_valid'`),
+      ).rejects.toThrow(/authority is immutable/i);
+    }
+    await db.exec(`UPDATE stripe_checkout_legacy_quarantine
+      SET resolved_at = now(), updated_at = now()
+      WHERE checkout_session_id = 'cs_valid'`);
     const rows = await db.query<{ organization_id: string; initiated_by_user_id: string }>(`
       SELECT organization_id::text, initiated_by_user_id::text
       FROM stripe_checkout_legacy_quarantine

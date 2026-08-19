@@ -130,6 +130,18 @@ function validateCreate(input: CreateStripeCheckoutOrderInput): void {
   }
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function assertReceiptMatches(
   order: StripeCheckoutOrder,
   receipt: StripeCheckoutReceipt,
@@ -612,7 +624,19 @@ export class StripeCheckoutOrdersService {
       if (!member) mismatch("STRIPE_LEGACY_CHECKOUT_USER_TENANT_MISMATCH", "user tenant");
 
       if (isLegacyPack) {
-        await tx
+        const reason = "missing_immutable_pre_authority_pack_quote";
+        const normalizedCurrency = receipt.currency!.toLowerCase();
+        const providerReceipt = {
+          checkout_session_id: receipt.checkoutSessionId,
+          payment_intent_id: receipt.paymentIntentId,
+          payment_status: receipt.paymentStatus,
+          amount_total: receipt.amountTotal,
+          currency: normalizedCurrency,
+          customer_id: receipt.customerId,
+          credit_pack_id: receipt.creditPackId,
+          claimed_credits: receipt.claimedCredits,
+        };
+        const [inserted] = await tx
           .insert(stripeCheckoutLegacyQuarantine)
           .values({
             checkout_session_id: receipt.checkoutSessionId,
@@ -623,24 +647,37 @@ export class StripeCheckoutOrdersService {
             credit_pack_id: receipt.creditPackId,
             claimed_credits: receipt.claimedCredits,
             charge_amount_cents: BigInt(verifiedAmountTotal),
-            currency: receipt.currency?.toLowerCase() ?? null,
-            reason: "missing_immutable_pre_authority_pack_quote",
-            provider_receipt: {
-              checkout_session_id: receipt.checkoutSessionId,
-              payment_intent_id: receipt.paymentIntentId,
-              payment_status: receipt.paymentStatus,
-              amount_total: receipt.amountTotal,
-              currency: receipt.currency,
-              customer_id: receipt.customerId,
-              credit_pack_id: receipt.creditPackId,
-              claimed_credits: receipt.claimedCredits,
-            },
+            currency: normalizedCurrency,
+            reason,
+            provider_receipt: providerReceipt,
             updated_at: new Date(),
           })
-          .onConflictDoUpdate({
-            target: stripeCheckoutLegacyQuarantine.checkout_session_id,
-            set: { updated_at: new Date() },
-          });
+          .onConflictDoNothing()
+          .returning({ checkoutSessionId: stripeCheckoutLegacyQuarantine.checkout_session_id });
+        if (!inserted) {
+          const [existingQuarantine] = await tx
+            .select()
+            .from(stripeCheckoutLegacyQuarantine)
+            .where(
+              eq(stripeCheckoutLegacyQuarantine.checkout_session_id, receipt.checkoutSessionId),
+            )
+            .limit(1)
+            .for("update");
+          const exactReplay =
+            existingQuarantine?.stripe_payment_intent_id === receipt.paymentIntentId &&
+            existingQuarantine.organization_id === verifiedOrganizationId &&
+            existingQuarantine.initiated_by_user_id === verifiedInitiatedByUserId &&
+            existingQuarantine.stripe_customer_id === receipt.customerId &&
+            existingQuarantine.credit_pack_id === receipt.creditPackId &&
+            existingQuarantine.claimed_credits === receipt.claimedCredits &&
+            existingQuarantine.charge_amount_cents === BigInt(verifiedAmountTotal) &&
+            existingQuarantine.currency === normalizedCurrency &&
+            existingQuarantine.reason === reason &&
+            canonicalJson(existingQuarantine.provider_receipt) === canonicalJson(providerReceipt);
+          if (!exactReplay) {
+            mismatch("STRIPE_LEGACY_CHECKOUT_QUARANTINE_REPLAY_CONFLICT", "quarantine replay");
+          }
+        }
         return { kind: "quarantined" as const };
       }
 
