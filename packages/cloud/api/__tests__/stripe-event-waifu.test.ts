@@ -5,7 +5,7 @@ const agentId = "123e4567-e89b-12d3-a456-426614174000";
 const paymentIntentId = "pi_agent_topup";
 const webhookFetch = mock(async () => Response.json({ ok: true }));
 const getTransactionByStripePaymentIntent = mock(
-  async (): Promise<{ id: string } | null> => null,
+  async (_paymentIntentId: string): Promise<{ id: string } | null> => null,
 );
 const addCredits = mock(async () => ({ newBalance: 8.25 }));
 const getByStripeInvoiceId = mock(async () => null);
@@ -23,6 +23,23 @@ const processAppPurchase = mock(async () => ({
   creatorEarnings: 0,
   newBalance: 5,
 }));
+const settleLegacyCheckout = mock(
+  async (params: {
+    organizationId: string | null;
+    initiatedByUserId: string | null;
+    purchaseType: string;
+    claimedCredits: string | null;
+    paymentIntentId: string;
+  }) => ({
+    organizationId: params.organizationId,
+    initiatedByUserId: params.initiatedByUserId,
+    purchaseType: params.purchaseType,
+    creditsToGrant: params.claimedCredits ?? "0",
+    alreadyApplied: Boolean(
+      await getTransactionByStripePaymentIntent(params.paymentIntentId),
+    ),
+  }),
+);
 
 function dbChain(rows: unknown[]) {
   return {
@@ -59,7 +76,14 @@ const dbRead = {
   ),
 };
 
-mock.module("@/db/helpers", () => ({ dbRead }));
+mock.module("@/db/helpers", () => ({
+  dbRead,
+  dbWrite: {},
+  writeTransaction: mock(
+    async (operation: (transaction: unknown) => Promise<unknown>) =>
+      operation({}),
+  ),
+}));
 mock.module("@/db/repositories/organizations", () => ({
   organizationsRepository: {
     findById: mock(async () => ({ name: "Agent Org" })),
@@ -130,6 +154,14 @@ mock.module("@/lib/services/referrals", () => ({
     calculateRevenueSplits,
   },
 }));
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  stripeCheckoutOrdersService: {
+    settle: mock(async () => {
+      throw new Error("durable checkout orders are outside this focused suite");
+    }),
+    settleLegacy: settleLegacyCheckout,
+  },
+}));
 mock.module("@/lib/security/safe-fetch", () => ({
   safeFetch: webhookFetch,
 }));
@@ -152,6 +184,7 @@ describe("stripe checkout queue waifu top-up callback", () => {
     triggerImmediate.mockClear();
     markAppChargePaid.mockClear();
     processAppPurchase.mockClear();
+    settleLegacyCheckout.mockClear();
     getTransactionByStripePaymentIntent.mockImplementation(async () => null);
   });
 
@@ -189,17 +222,15 @@ describe("stripe checkout queue waifu top-up callback", () => {
     } as unknown as Parameters<typeof processStripeEvent>[0]);
 
     expect(result).toBe("ack");
-    expect(addCredits).toHaveBeenCalledWith(
+    expect(settleLegacyCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: "agent-org",
-        amount: 5,
-        stripePaymentIntentId: paymentIntentId,
-        metadata: expect.objectContaining({
-          agent_id: agentId,
-          session_id: "cs_agent_paid",
-        }),
+        claimedCredits: "5.00",
+        paymentIntentId,
+        checkoutSessionId: "cs_agent_paid",
       }),
     );
+    expect(addCredits).not.toHaveBeenCalled();
     expect(webhookFetch).toHaveBeenCalledTimes(1);
     const [url, init] = (webhookFetch.mock.calls[0] ?? []) as unknown as [
       string,
@@ -211,7 +242,7 @@ describe("stripe checkout queue waifu top-up callback", () => {
     const body = JSON.parse(String((init as RequestInit).body));
     expect(body).toMatchObject({
       event: "credits.topped_up",
-      eventId: `stripe:evt_agent_topup:credits.topped_up:${agentId}`,
+      eventId: `stripe:evt_agent_topup:credits.topped_up:${agentId}:settled`,
       elizaCloudAgentId: agentId,
       organizationId: "agent-org",
       tokenContractAddress: "0x0000000000000000000000000000000000000009",
@@ -271,13 +302,15 @@ describe("stripe checkout queue waifu top-up callback", () => {
     } as unknown as Parameters<typeof processStripeEvent>[0]);
 
     expect(result).toBe("ack");
-    expect(addCredits).toHaveBeenCalledWith(
+    expect(settleLegacyCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: "agent-org",
-        amount: 5,
-        stripePaymentIntentId: "pi_org_topup",
+        claimedCredits: "5.00",
+        paymentIntentId: "pi_org_topup",
+        checkoutSessionId: "cs_org_paid",
       }),
     );
+    expect(addCredits).not.toHaveBeenCalled();
     expect(webhookFetch).not.toHaveBeenCalled();
     expect(enqueueAgentRestartOnce).not.toHaveBeenCalled();
     expect(triggerImmediate).not.toHaveBeenCalled();
