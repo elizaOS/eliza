@@ -9,6 +9,7 @@ import { defineConfig } from "vitest/config";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const coreSrcRoot = path.resolve(__dirname, "../../packages/core/src");
 const loggerSrcRoot = path.resolve(__dirname, "../../packages/logger/src");
+const sharedSrcRoot = path.resolve(__dirname, "../../packages/shared/src");
 const cloudRoutingSrcRoot = path.resolve(
   __dirname,
   "../../packages/cloud/routing/src",
@@ -52,6 +53,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/logger\/(.*)$/,
         replacement: path.join(loggerSrcRoot, "$1"),
+      },
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.join(sharedSrcRoot, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/(.*)$/,
+        replacement: path.join(sharedSrcRoot, "$1"),
       },
     ],
   },
