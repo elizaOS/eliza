@@ -7,6 +7,11 @@ describe("normalizeTrajectoryCallText", () => {
     expect(normalizeTrajectoryCallText(undefined, "fallback prompt")).toBe(
       "fallback prompt",
     );
+    expect(
+      normalizeTrajectoryCallText("", undefined, [
+        { role: "user", content: "message-only input" },
+      ]),
+    ).toContain('"content": "message-only input"');
   });
 
   it("preserves structured fallback data as inspectable JSON", () => {

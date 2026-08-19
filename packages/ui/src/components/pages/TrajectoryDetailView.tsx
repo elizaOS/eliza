@@ -151,6 +151,7 @@ function formatProviderPayload(value: unknown): string {
 export function normalizeTrajectoryCallText(...candidates: unknown[]): string {
   for (const candidate of candidates) {
     if (candidate == null) continue;
+    if (typeof candidate === "string" && candidate.length === 0) continue;
     return formatProviderPayload(candidate);
   }
   return "";
