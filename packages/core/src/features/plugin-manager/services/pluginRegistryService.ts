@@ -371,6 +371,13 @@ function isTimeoutError(err: unknown): boolean {
 	return false;
 }
 
+function isAbortError(err: unknown): boolean {
+	return (
+		(err instanceof DOMException || err instanceof Error) &&
+		err.name === "AbortError"
+	);
+}
+
 async function fetchGeneratedRegistry(): Promise<Map<string, RegistryPlugin>> {
 	const signal = AbortSignal.timeout(PLUGIN_REGISTRY_FETCH_TIMEOUT_MS);
 	let response: Response;
@@ -426,6 +433,7 @@ async function fetchGeneratedRegistry(): Promise<Map<string, RegistryPlugin>> {
 				},
 			);
 		}
+		if (isAbortError(err)) throw err;
 		throw new ElizaError("Plugin registry response was not valid JSON", {
 			code: "PLUGIN_REGISTRY_RESPONSE_INVALID",
 			cause: err,

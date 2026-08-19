@@ -144,6 +144,29 @@ describe("pluginRegistryService fetch timeout", () => {
 		expect((error as ElizaError).cause).toBeInstanceOf(SyntaxError);
 	});
 
+	it("preserves AbortError identity when response body consumption aborts", async () => {
+		const abort = new DOMException("body cancelled", "AbortError");
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.error(abort);
+			},
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(
+				new Response(body, {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
+			),
+		);
+
+		const error = await loadRegistry().catch((cause: unknown) => cause);
+
+		expect(error).toBe(abort);
+		expect(error).not.toBeInstanceOf(ElizaError);
+	});
+
 	it("terminates a real headers-plus-partial-body stall and does not cache it", async () => {
 		const server = createServer((_request, response) => {
 			response.writeHead(200, { "Content-Type": "application/json" });
