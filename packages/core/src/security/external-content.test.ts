@@ -37,6 +37,22 @@ describe("detectSuspiciousPatterns", () => {
 			detectSuspiciousPatterns("Hi, can we reschedule our meeting?"),
 		).toEqual([]);
 	});
+
+	it("still flags an honest exec command= indicator", () => {
+		expect(
+			detectSuspiciousPatterns("please exec the shell command=ls"),
+		).not.toHaveLength(0);
+	});
+
+	it("does not hang on a 100k-char exec flood", () => {
+		const flood = "exec ".repeat(20_000);
+		const t0 = performance.now();
+		const matches = detectSuspiciousPatterns(flood);
+		const ms = performance.now() - t0;
+		expect(matches).toEqual([]);
+		// Origin `.*` took ~1.3s on this same 100k-char flood.
+		expect(ms).toBeLessThan(200);
+	});
 });
 
 /**
