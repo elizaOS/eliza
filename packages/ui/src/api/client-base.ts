@@ -1454,7 +1454,17 @@ export class ElizaClient {
         path,
         options?.timeoutMs,
         init,
-      ).catch(() => "");
+      ).catch((error: unknown) => {
+        if (
+          error instanceof ApiError &&
+          (error.kind === "timeout" || error.kind === "network")
+        ) {
+          throw error;
+        }
+        // error-policy:J3 a completed HTTP failure remains authoritative when
+        // its optional diagnostic body cannot be read for a non-abort reason.
+        return "";
+      });
       let body: Record<string, unknown> | null = null;
       if (rawText) {
         try {
