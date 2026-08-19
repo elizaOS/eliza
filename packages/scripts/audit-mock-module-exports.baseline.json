@@ -64,10 +64,6 @@
     "count": 1
   },
   {
-    "finding": "[missing-export] packages/cloud/api/__tests__/stripe-event-waifu.test.ts mock \"@/db/helpers\" is missing bound export(s): dbWrite, writeTransaction",
-    "count": 1
-  },
-  {
     "finding": "[missing-export] packages/cloud/api/__tests__/stripe-queue-route.test.ts mock \"@/lib/queue/redis-queue\" is missing bound export(s): drain, queueLength",
     "count": 1
   },
@@ -365,10 +361,6 @@
   },
   {
     "finding": "[missing-export] packages/cloud/shared/src/lib/voice-session/config-consent-opus.test.ts mock \"../cache/redis-factory\" is missing bound export(s): supportsRedisEval",
-    "count": 1
-  },
-  {
-    "finding": "[missing-export] plugins/plugin-personal-assistant/src/routes/relationships.encoding.test.ts mock \"@elizaos/agent\" is missing bound export(s): APPROVAL_EXECUTION_CAPABILITY, APPROVAL_EXECUTION_PROTOCOL_VERSION, ApprovalIdempotencyConflictError, ApprovalNotFoundError, ApprovalStateTransitionError, checkRateLimit, computeNextCronRunAtMs, createApprovalQueue, createIntegrationTelemetrySpan, createPendingPromptsStore, getAgentEventService, hasOwnerAccess, loadElizaConfig, loadOwnerContactRoutingHints, loadOwnerContactsConfig, parseCronExpression, PgApprovalQueue, registerEscalationChannel, resolveApprovalService, resolveOwnerContactWithFallback, resolveOwnerEntityId, resolvePendingPromptsService, saveElizaConfig",
     "count": 1
   },
   {
