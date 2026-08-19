@@ -7,6 +7,7 @@ import {
   mergeCharacterDefaults,
   type Plugin,
   stringToUuid,
+  truncateWellFormed,
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
 import workflowPlugin from "@elizaos/plugin-workflow";
@@ -88,7 +89,7 @@ function bounded(value: string | undefined, max: number): string | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();
   if (!trimmed) return undefined;
-  return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
+  return trimmed.length > max ? truncateWellFormed(trimmed, max) : trimmed;
 }
 
 /** Returns the display name for the connection, falling back to the raw userId. Caps length to prevent oversized values from reaching the database. */
@@ -98,7 +99,7 @@ export function resolveUserName(
 ): string {
   const name = metadata?.senderName || userId;
   return name.length > MAX_USER_NAME_LENGTH
-    ? name.slice(0, MAX_USER_NAME_LENGTH)
+    ? truncateWellFormed(name, MAX_USER_NAME_LENGTH)
     : name;
 }
 
