@@ -229,6 +229,15 @@ export async function generateDefaultAcceptanceCriteria(
   const type = taskTypeHint ?? detectTaskType(goal);
   const fallback = [...DEFAULT_CRITERIA_TEMPLATES[type]];
 
+  // Static app builds keep the deterministic serve-focused template with NO
+  // model refine: every refine pass invented runtime-behavior demands in new
+  // phrasings ("browser console shows zero errors", "interaction updates the
+  // DOM", "timer changes its value") that no headless pipeline can evidence,
+  // and each parked a live, working page (2026-08-19, four distinct parks).
+  // The template criteria — reachable URL, files on disk, served content —
+  // are exactly what the evidence pipeline can prove.
+  if (type === "app-build") return fallback;
+
   if (!runtime || typeof runtime.useModel !== "function") return fallback;
 
   try {
