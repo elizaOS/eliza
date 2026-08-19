@@ -1,0 +1,15 @@
+{
+  "package": "elizaos-plugin-livetennis",
+  "repository": "github:livetennisapi/elizaos-plugin-livetennis",
+  "kind": "plugin",
+  "description": "Live tennis scores, upcoming fixtures, and player search for elizaOS agents via the Live Tennis API \u2014 ATP, WTA, Challenger, ITF and juniors. FREE-tier endpoints only, with honest per-action tier errors.",
+  "homepage": "https://livetennisapi.com",
+  "version": "0.1.1",
+  "tags": [
+    "tennis",
+    "sports",
+    "live-scores",
+    "fixtures",
+    "rankings"
+  ]
+}
