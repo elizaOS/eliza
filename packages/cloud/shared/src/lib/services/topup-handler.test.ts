@@ -149,6 +149,113 @@ test("exact_permit quote fails closed when facilitator setup fails despite a con
   expect(getSignerAddress).not.toHaveBeenCalled();
 });
 
+test("402 quote carries the required x402 v2 top-level resource object (exact scheme)", async () => {
+  // A configured recipient skips facilitator init for an `exact` EVM network,
+  // so this drives a real HTTP 402 PaymentRequired with no X-PAYMENT header.
+  const url = "https://api.example.test/api/v1/topup/10";
+  const handler = createTopupHandler({
+    amount: 10,
+    getSourceId: (walletAddress, paymentId) => `${walletAddress}:${paymentId}`,
+  });
+
+  const response = await handler(
+    new Request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        walletAddress: "0x1111111111111111111111111111111111111111",
+      }),
+    }),
+    { X402_RECIPIENT_ADDRESS: "0x2222222222222222222222222222222222222222" },
+  );
+
+  expect(response.status).toBe(402);
+  const body = (await response.json()) as {
+    x402Version: number;
+    resource: { url: string; description: string; mimeType: string };
+    accepts: Array<{ resource: string; description: string; mimeType: string; scheme: string }>;
+  };
+
+  // The defect under test: the top-level `resource` object was missing even
+  // though `x402Version: 2` was declared. A strict facilitator validates the
+  // top-level object, not accepts[0].
+  expect(body.x402Version).toBe(2);
+  expect(typeof body.resource).toBe("object");
+  expect(body.resource).not.toBeNull();
+  expect(body.resource.url).toBe(url);
+  expect(body.resource.url.length).toBeGreaterThan(0);
+  expect(body.resource.description).toBe("Top up $10");
+  expect(body.resource.mimeType).toBe("application/json");
+
+  // The same object must appear in the base64 PAYMENT-REQUIRED header. Both
+  // header spellings collapse into one case-insensitive header value, so the
+  // Fetch API returns them comma-joined; decode the first encoded segment.
+  const header = response.headers.get("PAYMENT-REQUIRED");
+  expect(header).toBeTruthy();
+  const encodedSegment = (header as string).split(", ")[0];
+  const decoded = JSON.parse(Buffer.from(encodedSegment, "base64").toString("utf-8")) as {
+    resource: { url: string; description: string; mimeType: string };
+  };
+  expect(decoded.resource).toEqual(body.resource);
+  expect(response.headers.get("Payment-Required")).toBe(header);
+
+  // Regression guard: the additive v1 fields on accepts[0] are still present.
+  const entry = body.accepts[0];
+  expect(entry.scheme).toBe("exact");
+  expect(entry.resource).toBe(url);
+  expect(entry.description).toBe("Top up $10");
+  expect(entry.mimeType).toBe("application/json");
+});
+
+test("402 quote carries the top-level resource and extensions on the exact_permit path", async () => {
+  initialize.mockClear();
+  getSignerAddress.mockClear();
+  // exact_permit (bsc) reaches the signer-init call; let it succeed so the
+  // full PaymentRequired with extensions is emitted.
+  initialize.mockResolvedValueOnce(undefined as never);
+  getSignerAddress.mockReturnValueOnce("0x2222222222222222222222222222222222222222");
+
+  const url = "https://api.example.test/api/v1/topup/10";
+  const handler = createTopupHandler({
+    amount: 10,
+    getSourceId: (walletAddress, paymentId) => `${walletAddress}:${paymentId}`,
+  });
+
+  const response = await handler(
+    new Request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        walletAddress: "0x1111111111111111111111111111111111111111",
+      }),
+    }),
+    {
+      X402_RECIPIENT_ADDRESS: "0x2222222222222222222222222222222222222222",
+      X402_NETWORK: "bsc",
+    },
+  );
+
+  expect(response.status).toBe(402);
+  const body = (await response.json()) as {
+    resource: { url: string; description: string; mimeType: string };
+    accepts: Array<{ scheme: string; resource: string }>;
+    extensions?: { paymentPermitContext?: { meta?: { kind?: string } } };
+  };
+  expect(body.resource.url).toBe(url);
+  expect(body.resource.description).toBe("Top up $10");
+  expect(body.resource.mimeType).toBe("application/json");
+  expect(body.accepts[0].scheme).toBe("exact_permit");
+  expect(body.accepts[0].resource).toBe(url);
+  expect(body.extensions?.paymentPermitContext?.meta?.kind).toBe("PAYMENT_ONLY");
+
+  const header = response.headers.get("PAYMENT-REQUIRED");
+  const encodedSegment = (header as string).split(", ")[0];
+  const decoded = JSON.parse(Buffer.from(encodedSegment, "base64").toString("utf-8")) as {
+    resource: { url: string };
+  };
+  expect(decoded.resource.url).toBe(url);
+});
+
 test("a settled top-up creates a zero-balance wallet account then credits only the paid amount", async () => {
   settle.mockResolvedValueOnce({
     success: true,

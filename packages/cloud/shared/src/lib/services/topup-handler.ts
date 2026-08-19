@@ -317,9 +317,19 @@ function paymentRequiredResponse(
   requirements: PaymentRequirements,
   extensions?: PaymentRequiredExtensions,
 ): Response {
+  // x402 v2 (section 5.1.2) requires a top-level `resource` object on
+  // PaymentRequired. It is derived from the single-source v1 fields already on
+  // `requirements`; those fields are retained additively on accepts[0] for
+  // dual-version clients. A strict v2 facilitator validates the top-level
+  // object below, not the accepts entry.
   const paymentRequired = {
     x402Version: 2,
     error: "payment_required",
+    resource: {
+      url: requirements.resource,
+      description: requirements.description,
+      mimeType: requirements.mimeType,
+    },
     accepts: [requirements],
     ...(extensions && { extensions }),
   };
