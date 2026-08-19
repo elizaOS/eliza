@@ -1079,24 +1079,26 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     entityId?: UUID;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
-    const threshold = params.match_threshold ?? 0.5;
-    const limit = params.count ?? params.limit ?? 10;
+    return this.withDocumentMutationLock(async () => {
+      const threshold = params.match_threshold ?? 0.5;
+      const limit = params.count ?? params.limit ?? 10;
 
-    const results = await this.vectorIndex.search(params.embedding, limit * 2, threshold);
+      const results = await this.vectorIndex.search(params.embedding, limit * 2, threshold);
 
-    const memories: Memory[] = [];
-    for (const result of results) {
-      const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, result.id);
-      if (!memory) continue;
-      if (params.tableName && storedMemoryTableName(memory) !== params.tableName) continue;
-      if (params.roomId && memory.roomId !== params.roomId) continue;
-      if (params.worldId && memory.worldId !== params.worldId) continue;
-      if (params.entityId && memory.entityId !== params.entityId) continue;
-      if (params.unique && !memory.unique) continue;
-      memories.push({ ...toMemory(memory), similarity: result.similarity });
-    }
+      const memories: Memory[] = [];
+      for (const result of results) {
+        const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, result.id);
+        if (!memory) continue;
+        if (params.tableName && storedMemoryTableName(memory) !== params.tableName) continue;
+        if (params.roomId && memory.roomId !== params.roomId) continue;
+        if (params.worldId && memory.worldId !== params.worldId) continue;
+        if (params.entityId && memory.entityId !== params.entityId) continue;
+        if (params.unique && !memory.unique) continue;
+        memories.push({ ...toMemory(memory), similarity: result.similarity });
+      }
 
-    return memories.slice(0, limit);
+      return memories.slice(0, limit);
+    });
   }
 
   async createMemories(

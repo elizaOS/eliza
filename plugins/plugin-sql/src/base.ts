@@ -2269,7 +2269,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   async replaceDocumentRevision(
     params: DocumentRevisionReplaceParams
-  ): Promise<DocumentMutationResult> {
+  ): Promise<DocumentMutationResult & { removedFragmentIds?: UUID[] }> {
     validateDocumentRevisionReplacement(params);
     this.validateMemoryBatchEmbeddings(
       params.fragments.map((memory) => ({ memory, tableName: "document_fragments" }))
@@ -2352,7 +2352,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           context: { documentId: params.documentId, updated: updated.length },
         });
       }
-      return { status: "updated", document: memoryFromRow(updated[0]) };
+      return {
+        status: "updated",
+        document: memoryFromRow(updated[0]),
+        removedFragmentIds: oldFragments.map(({ id }) => id),
+      };
     });
   }
 

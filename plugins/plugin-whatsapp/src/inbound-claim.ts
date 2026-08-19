@@ -167,7 +167,8 @@ async function readClaimDocument(runtime: IAgentRuntime, claimId: UUID): Promise
 function assertClaimStorage(runtime: IAgentRuntime): void {
   const adapter = runtime.adapter;
   if (
-    adapter?.documentListQueryCapability !== 2 ||
+    !Number.isInteger(adapter?.documentListQueryCapability) ||
+    adapter.documentListQueryCapability < 2 ||
     typeof adapter.getDocument !== "function" ||
     typeof adapter.compareAndSwapDocument !== "function" ||
     typeof runtime.createMemory !== "function"
