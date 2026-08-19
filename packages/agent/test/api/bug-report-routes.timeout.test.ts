@@ -5,6 +5,8 @@
  * exercised through the owning route handler so the timeout translation into
  * a structured 502 response is validated at the route boundary.
  */
+
+import { EventEmitter } from "node:events";
 import http from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -25,9 +27,9 @@ function createContext(
   body: Record<string, unknown> = validBugReport,
   ip = "127.0.0.1",
 ): BugReportRouteContext & { responseBody?: unknown; responseStatus?: number } {
-  const req = {
+  const req = Object.assign(new EventEmitter(), {
     socket: { remoteAddress: ip },
-  } as unknown as import("node:http").IncomingMessage;
+  }) as unknown as import("node:http").IncomingMessage;
   const res = {} as import("node:http").ServerResponse;
   const ctx = {
     req,
@@ -138,7 +140,7 @@ describe("bug report fetch timeout", () => {
       expect.stringContaining("api.github.com"),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(ctx.responseStatus).toBe(500);
+    expect(ctx.responseStatus).toBe(502);
     expect((ctx.responseBody as { error?: string })?.error).toBe(
       "Failed to create GitHub issue",
     );
@@ -167,6 +169,7 @@ describe("bug report fetch timeout", () => {
         "Failed to submit bug report",
       );
     } finally {
+      server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
@@ -205,6 +208,7 @@ describe("bug report fetch timeout", () => {
     expect(ctx.responseStatus).toBe(200);
     expect(signals).toHaveLength(1);
     expect(signals[0]?.aborted).toBe(false);
+    expect(ctx.req.listenerCount("aborted")).toBe(0);
     const [, init] = fetchMock.mock.calls[0] as [unknown, RequestInit];
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
@@ -231,9 +235,43 @@ describe("bug report fetch timeout", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0] as [unknown, RequestInit];
     expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    expect(ctx.req.listenerCount("aborted")).toBe(0);
     expect(ctx.responseBody).toEqual({
       url: "https://github.com/elizaOS/eliza/issues/123",
     });
     expect(ctx.responseStatus).toBe(200);
+  });
+
+  it("aborts remote intake when the client request disconnects and removes the listener", async () => {
+    let outboundSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          outboundSignal = init?.signal as AbortSignal | undefined;
+          outboundSignal?.addEventListener(
+            "abort",
+            () => reject(outboundSignal?.reason),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    vi.stubEnv(
+      "ELIZA_BUG_REPORT_API_URL",
+      "https://intake.example.test/reports",
+    );
+
+    const ctx = createContext();
+    const pending = handleBugReportRoutes(ctx);
+    await vi.waitFor(() => expect(outboundSignal).toBeDefined());
+    expect(ctx.req.listenerCount("aborted")).toBe(1);
+
+    ctx.req.emit("aborted");
+    await pending;
+
+    expect(outboundSignal?.aborted).toBe(true);
+    expect(outboundSignal?.reason).toMatchObject({ name: "AbortError" });
+    expect(ctx.responseStatus).toBe(502);
+    expect(ctx.req.listenerCount("aborted")).toBe(0);
   });
 });
