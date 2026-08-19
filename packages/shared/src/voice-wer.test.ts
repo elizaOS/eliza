@@ -77,6 +77,14 @@ describe("wordErrorRate", () => {
   it("scores a fully wrong same-length hypothesis as 1", () => {
     expect(wordErrorRate("alpha beta", "gamma delta")).toBe(1);
   });
+
+  it("fails closed on a 15k-word pair instead of allocating the Levenshtein table", () => {
+    const ref = Array.from({ length: 15_000 }, (_, i) => `w${i}`).join(" ");
+    const hyp = Array.from({ length: 15_000 }, (_, i) => `x${i}`).join(" ");
+    const started = performance.now();
+    expect(() => wordErrorRate(ref, hyp)).toThrow(/exceeds 2048 words/);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
 });
 
 // De-larp guard (#10726). The voice self-test's WER quality gate accepts a
