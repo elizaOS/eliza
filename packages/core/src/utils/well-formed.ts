@@ -18,8 +18,13 @@ import { ElizaError } from "../errors.ts";
 
 /** Nesting ceiling. Honest provider bodies are a handful of objects deep. */
 export const MAX_WELL_FORMED_DEPTH = 64;
-/** Node visit ceiling so a wide hostile tree cannot pin a model call. */
-export const MAX_WELL_FORMED_VISITS = 65_536;
+/**
+ * Node visit ceiling. Must sit well above an honest OpenAI/Anthropic body
+ * (transcript objects plus tool JSON schemas) so the sanitizer does not
+ * `fatal` a working turn. Origin completed a 200k-key object in ~123ms;
+ * 65,536 was below that. A hostile wide tree still fail-closes.
+ */
+export const MAX_WELL_FORMED_VISITS = 1_048_576;
 
 const HIGH_SURROGATE_START = 0xd800;
 const HIGH_SURROGATE_END = 0xdbff;

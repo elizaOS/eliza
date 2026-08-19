@@ -495,7 +495,13 @@ describe("deepToWellFormedUnicode unbounded input", () => {
 		}
 	});
 
-	it(`throws WELL_FORMED_UNBOUNDED at depth ${MAX_WELL_FORMED_DEPTH}`, () => {
+	it("accepts nesting exactly at the depth cap", () => {
+		// nestArray(n) wraps n times around ["ok"], so n=63 is 64 containers.
+		const input = nestArray(MAX_WELL_FORMED_DEPTH - 1);
+		expect(deepToWellFormedUnicode(input)).toBe(input);
+	});
+
+	it(`throws WELL_FORMED_UNBOUNDED one past depth ${MAX_WELL_FORMED_DEPTH}`, () => {
 		try {
 			deepToWellFormedUnicode(nestArray(MAX_WELL_FORMED_DEPTH));
 			expect.unreachable("depth cap must fail closed");
@@ -503,6 +509,12 @@ describe("deepToWellFormedUnicode unbounded input", () => {
 			expect(error).toBeInstanceOf(ElizaError);
 			expect((error as ElizaError).context?.reason).toBe("depth");
 		}
+	});
+
+	it("accepts a visit count exactly at the budget", () => {
+		// Array node + (MAX-1) strings = MAX visits.
+		const input = new Array<string>(MAX_WELL_FORMED_VISITS - 1).fill("ok");
+		expect(deepToWellFormedUnicode(input)).toBe(input);
 	});
 
 	it("throws WELL_FORMED_UNBOUNDED on a visit-budget array of strings", () => {
