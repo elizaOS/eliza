@@ -178,13 +178,29 @@ export function mergeContextRouting(
 	const stateRouting = getContextRoutingFromState(state);
 	const messageRouting = getContextRoutingFromMessage(message);
 
+	const primaryContext =
+		messageRouting.primaryContext || stateRouting.primaryContext || undefined;
+
+	const losingPrimaries: AgentContext[] = [];
+	if (
+		stateRouting.primaryContext &&
+		stateRouting.primaryContext !== primaryContext
+	) {
+		losingPrimaries.push(stateRouting.primaryContext);
+	}
+	if (
+		messageRouting.primaryContext &&
+		messageRouting.primaryContext !== primaryContext
+	) {
+		losingPrimaries.push(messageRouting.primaryContext);
+	}
+
 	const mergedSecondary = dedupeStringValues([
 		...(stateRouting.secondaryContexts || []),
 		...(messageRouting.secondaryContexts || []),
+		...losingPrimaries,
 	]) as AgentContext[];
 
-	const primaryContext =
-		messageRouting.primaryContext || stateRouting.primaryContext || undefined;
 	if (primaryContext && !mergedSecondary.includes(primaryContext)) {
 		mergedSecondary.unshift(primaryContext);
 	}
