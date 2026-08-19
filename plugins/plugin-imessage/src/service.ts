@@ -1449,17 +1449,24 @@ export class IMessageService extends Service implements IIMessageService {
         continue;
       }
 
-      // Policy gate: DM allowlist, pairing handshake, disabled, etc.
-      const dmAccess = await this.checkDmAccess(row.handle);
-      if (!dmAccess.allowed) {
+      // Policy gate: group rows are gated by IMESSAGE_GROUP_POLICY, DM rows by
+      // the DM/pairing policy. A group chat is never subject to the DM pairing
+      // handshake, so its decision is synchronous and never carries a pairing
+      // reply. Routing group rows through checkDmAccess (the previous behavior)
+      // silently ignored groupPolicy: with the default dmPolicy=pairing every
+      // group message was held, and with dmPolicy=open every group message
+      // leaked through regardless of groupPolicy=disabled/allowlist (#22283).
+      const access: { allowed: boolean; pairingReplyMessage?: string } =
+        row.chatType === "group"
+          ? this.checkGroupAccess(row.handle)
+          : await this.checkDmAccess(row.handle);
+      if (!access.allowed) {
         // A fresh pairing request carries a code for the owner-approval
         // handshake. Delivering it is an autonomous outbound text, so it
         // follows the same IMESSAGE_AUTO_REPLY consent gate as agent replies.
-        if (dmAccess.pairingReplyMessage && this.isAutoReplyEnabled()) {
-          const sendResult = await this.sendViaAppleScript(
-            row.handle,
-            dmAccess.pairingReplyMessage
-          );
+        // Only the DM pairing path produces one; group denials never do.
+        if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
+          const sendResult = await this.sendViaAppleScript(row.handle, access.pairingReplyMessage);
           if (!sendResult.success) {
             logger.warn(
               `[imessage] Pairing reply send failed for handle=${row.handle}: ${sendResult.error}`
@@ -1917,6 +1924,35 @@ export class IMessageService extends Service implements IIMessageService {
       !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
       (autoReplyRaw === true || autoReplyRaw === "true")
     );
+  }
+
+  /**
+   * Evaluates the group access policy (IMESSAGE_GROUP_POLICY) for an inbound
+   * group-chat sender. Group chats have no pairing handshake, so this decision
+   * is synchronous: `open` admits every sender, `disabled` rejects the whole
+   * chat, and `allowlist` requires the sender handle to appear in
+   * IMESSAGE_ALLOW_FROM (the same case-insensitive matching the DM allowlist
+   * uses). This is the live enforcement point the inbound poll path previously
+   * skipped by gating group rows through the DM-only `checkDmAccess` (#22283).
+   */
+  private checkGroupAccess(handle: string): { allowed: boolean } {
+    if (!this.settings) {
+      return { allowed: false };
+    }
+
+    if (this.settings.groupPolicy === "open") {
+      return { allowed: true };
+    }
+
+    if (this.settings.groupPolicy === "disabled") {
+      return { allowed: false };
+    }
+
+    // allowlist — only handles present in IMESSAGE_ALLOW_FROM may participate.
+    const inAllowlist = this.settings.allowFrom.some(
+      (allowed) => allowed.toLowerCase() === handle.toLowerCase()
+    );
+    return { allowed: inAllowlist };
   }
 
   /**
