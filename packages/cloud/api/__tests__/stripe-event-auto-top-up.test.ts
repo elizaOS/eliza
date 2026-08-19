@@ -82,6 +82,9 @@ mock.module("@/lib/services/redeemable-earnings", () => ({
   redeemableEarningsService: { addEarnings },
 }));
 mock.module("@/lib/services/referrals", () => ({ referralsService: {} }));
+mock.module("@/lib/services/stripe-checkout-orders", () => ({
+  stripeCheckoutOrdersService: {},
+}));
 mock.module("@/lib/stripe", () => ({ requireStripe: () => ({}) }));
 mock.module("@/lib/utils/logger", () => ({
   logger: {

@@ -704,7 +704,12 @@ describeE2E("POST /api/stripe/create-checkout-session", () => {
     const res = await api.post(
       "/api/stripe/create-checkout-session",
       { amount: 5 },
-      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
+      {
+        headers: sameOriginBrowserHeaders({
+          Cookie: sessionCookie,
+          "Idempotency-Key": "e2e-keyless-checkout-1",
+        }),
+      },
     );
     expect(res.status).toBe(503);
   });
@@ -720,7 +725,12 @@ describeE2E("POST /api/stripe/create-checkout-session", () => {
     const res = await api.post(
       "/api/stripe/create-checkout-session",
       { amount: 5 },
-      { headers: sameOriginBrowserHeaders({ Cookie: sessionCookie }) },
+      {
+        headers: sameOriginBrowserHeaders({
+          Cookie: sessionCookie,
+          "Idempotency-Key": "e2e-live-checkout-1",
+        }),
+      },
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { sessionId?: string; url?: string };

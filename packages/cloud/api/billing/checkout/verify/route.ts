@@ -3,9 +3,8 @@
  *
  * Synchronous fallback for the Stripe webhook on the billing-success page.
  * Retrieves a Stripe Checkout Session, verifies it belongs to the caller's
- * organization, and credits the org once (idempotent on payment_intent.id via
- * `creditsService.addCredits`). Returns the live balance and whether the
- * webhook had already applied the credits.
+ * organization, and delegates to the same durable settlement authority used
+ * by the webhook queue. Stripe metadata is only an order lookup hint.
  */
 
 import { createHmac } from "node:crypto";
@@ -27,28 +26,20 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { safeFetch } from "@/lib/security/safe-fetch";
-import { creditsService } from "@/lib/services/credits";
 import { invoicesService } from "@/lib/services/invoices";
-import { organizationsService } from "@/lib/services/organizations";
+import {
+  StripeCheckoutAuthorityError,
+  stripeCheckoutOrdersService,
+} from "@/lib/services/stripe-checkout-orders";
 import { usersService } from "@/lib/services/users";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const MAX_CREDITS = 10000;
-
 const VerifyBody = z.object({
   session_id: z.string().min(1),
   from: z.string().optional(),
 });
-
-function parseAndValidateCredits(creditsStr: string): number | null {
-  const credits = Number.parseFloat(creditsStr);
-  if (!Number.isFinite(credits) || credits <= 0 || credits > MAX_CREDITS) {
-    return null;
-  }
-  return Math.round(credits * 100) / 100;
-}
 
 const app = new Hono<AppEnv>();
 
@@ -82,11 +73,7 @@ app.post("/", async (c) => {
       );
     }
 
-    const organizationId = session.metadata?.organization_id;
-    const userId = session.metadata?.user_id;
-    const creditsStr = session.metadata?.credits ?? "0";
-    const credits = parseAndValidateCredits(creditsStr);
-    const purchaseType = session.metadata?.type ?? "checkout";
+    const checkoutOrderId = session.metadata?.checkout_order_id;
     const agentId = session.metadata?.agent_id;
     const user = await resolveCreditUser(c, agentId);
 
@@ -99,74 +86,87 @@ app.post("/", async (c) => {
         ? paymentIntent
         : (paymentIntent?.id ?? null);
 
-    if (
-      organizationId !== user.organization_id ||
-      (userId && userId !== user.id)
-    ) {
-      throw ForbiddenError("You do not have access to this checkout session.");
-    }
-
-    if (
-      !organizationId ||
-      !credits ||
-      (purchaseType !== "custom_amount" && purchaseType !== "credit_pack")
-    ) {
-      throw ValidationError("Invalid session metadata");
-    }
-
     if (!paymentIntentId) {
       throw ValidationError("No payment intent found on session");
     }
 
-    const existingTransaction =
-      await creditsService.getTransactionByStripePaymentIntent(paymentIntentId);
-
-    if (existingTransaction) {
-      const freshOrg = await organizationsService.getById(user.organization_id);
-      const balance = Number(freshOrg?.credit_balance ?? 0);
-      if (agentId) {
-        await notifyWaifuCreditsToppedUp({
-          agentId,
-          eventId: `billing-verify:${sessionId}:credits.topped_up:${agentId}:already_applied`,
-          credits,
-          paymentIntentId,
-          sessionId,
-        });
-      }
-      return c.json({
-        success: true,
-        balance,
-        alreadyApplied: true,
-      });
+    const customerId =
+      typeof session.customer === "string"
+        ? session.customer
+        : (session.customer?.id ?? null);
+    const settlement = checkoutOrderId
+      ? await stripeCheckoutOrdersService.settle(
+          {
+            checkoutOrderId,
+            clientReferenceId: session.client_reference_id,
+            metadataOrderId: session.metadata?.checkout_order_id ?? null,
+            checkoutSessionId: session.id,
+            paymentIntentId,
+            paymentStatus: session.payment_status,
+            amountTotal: session.amount_total,
+            currency: session.currency,
+            customerId,
+          },
+          {
+            callerOrganizationId: user.organization_id,
+            callerUserId: user.id,
+          },
+        )
+      : await stripeCheckoutOrdersService.settleLegacy(
+          {
+            checkoutSessionId: session.id,
+            paymentIntentId,
+            paymentStatus: session.payment_status,
+            amountTotal: session.amount_total,
+            currency: session.currency,
+            customerId,
+            organizationId: session.metadata?.organization_id ?? null,
+            initiatedByUserId: session.metadata?.user_id ?? null,
+            purchaseType: session.metadata?.type ?? null,
+            creditPackId: session.metadata?.credit_pack_id ?? null,
+            claimedCredits: session.metadata?.credits ?? null,
+          },
+          {
+            callerOrganizationId: user.organization_id,
+            callerUserId: user.id,
+          },
+        );
+    const authority =
+      "order" in settlement
+        ? {
+            durableOrder: settlement.order,
+            organizationId: settlement.order.organization_id,
+            stripeCustomerId: settlement.order.stripe_customer_id,
+            credits: Number(settlement.order.credits_to_grant),
+            purchaseType: settlement.order.purchase_type,
+          }
+        : {
+            durableOrder: null,
+            organizationId: settlement.organizationId,
+            stripeCustomerId: customerId as string,
+            credits: Number(settlement.creditsToGrant),
+            purchaseType: settlement.purchaseType,
+          };
+    const { durableOrder, credits, purchaseType } = authority;
+    if (!authority.stripeCustomerId) {
+      throw new StripeCheckoutAuthorityError(
+        "STRIPE_CHECKOUT_CUSTOMER_MISMATCH",
+        "Settled Checkout order has no pinned Stripe customer",
+      );
     }
-
-    const { newBalance } = await creditsService.addCredits({
-      organizationId,
-      amount: credits,
-      description: `Balance top-up - $${credits.toFixed(2)}`,
-      metadata: {
-        user_id: userId,
-        payment_intent_id: paymentIntentId,
-        session_id: sessionId,
-        type: purchaseType,
-        ...(agentId ? { agent_id: agentId } : {}),
-        source: "success_page_fallback",
-      },
-      stripePaymentIntentId: paymentIntentId,
-    });
 
     const existingInvoice = await invoicesService.getByStripeInvoiceId(
       `cs_${sessionId}`,
     );
     if (!existingInvoice) {
-      const amountTotal = session.amount_total
-        ? (session.amount_total / 100).toString()
-        : credits.toString();
+      const amountTotal = durableOrder
+        ? (Number(durableOrder.charge_amount_cents) / 100).toFixed(2)
+        : ((session.amount_total ?? 0) / 100).toFixed(2);
 
       await invoicesService.create({
-        organization_id: organizationId,
+        organization_id: authority.organizationId,
         stripe_invoice_id: `cs_${sessionId}`,
-        stripe_customer_id: session.customer as string,
+        stripe_customer_id: authority.stripeCustomerId,
         stripe_payment_intent_id: paymentIntentId,
         amount_due: amountTotal,
         amount_paid: amountTotal,
@@ -179,9 +179,12 @@ app.post("/", async (c) => {
         credits_added: credits.toString(),
         metadata: {
           type: purchaseType,
+          ...(durableOrder ? { checkout_order_id: durableOrder.id } : {}),
           session_id: sessionId,
           ...(agentId ? { agent_id: agentId } : {}),
-          source: "success_page_fallback",
+          source: durableOrder
+            ? "durable_checkout_settlement"
+            : "legacy_checkout_cutover",
         },
         paid_at: new Date(),
       });
@@ -190,7 +193,7 @@ app.post("/", async (c) => {
     if (agentId) {
       await notifyWaifuCreditsToppedUp({
         agentId,
-        eventId: `billing-verify:${sessionId}:credits.topped_up:${agentId}`,
+        eventId: `billing-verify:${sessionId}:credits.topped_up:${agentId}${settlement.alreadyApplied ? ":already_applied" : ""}`,
         credits,
         paymentIntentId,
         sessionId,
@@ -199,14 +202,29 @@ app.post("/", async (c) => {
 
     return c.json({
       success: true,
-      balance: newBalance,
-      alreadyApplied: false,
+      balance: settlement.newBalance,
+      alreadyApplied: settlement.alreadyApplied,
     });
   } catch (error) {
     // error-policy:J1 route boundary for the billing/ dir — the outermost handler
     // catch translates exceptions into a structured HTTP failure
     // (failureResponse → 5xx / typed status), never a fabricated success.
     logger.error("[Billing Checkout Verify] Error:", error);
+    if (error instanceof StripeCheckoutAuthorityError) {
+      if (
+        error.code === "STRIPE_CHECKOUT_ORGANIZATION_MISMATCH" ||
+        error.code === "STRIPE_CHECKOUT_USER_MISMATCH"
+      ) {
+        return failureResponse(
+          c,
+          ForbiddenError("You do not have access to this checkout order"),
+        );
+      }
+      return failureResponse(
+        c,
+        ValidationError("Checkout settlement could not be verified"),
+      );
+    }
     return failureResponse(c, error);
   }
 });
