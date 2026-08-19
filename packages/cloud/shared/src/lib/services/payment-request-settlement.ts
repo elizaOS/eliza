@@ -18,7 +18,10 @@ import {
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
-import { projectPaymentRequestReceipt } from "./payment-request-receipts";
+import {
+  curatePaymentRequestSettlementProof,
+  projectPaymentRequestReceipt,
+} from "./payment-request-receipts";
 
 const MAX_CALLBACK_ATTEMPTS = 12;
 
@@ -252,6 +255,7 @@ export async function processPaymentProviderEvent(
     paymentRequestId: requiredText(rawEvent.paymentRequestId, "paymentRequestId"),
     providerTxRef: requiredText(rawEvent.providerTxRef, "providerTxRef"),
     payloadDigest: rawEvent.payloadDigest.toLowerCase(),
+    proof: curatePaymentRequestSettlementProof(rawEvent.provider, rawEvent.proof),
   };
   if (!/^[a-f0-9]{64}$/.test(event.payloadDigest)) {
     throw new PaymentProviderEventConflictError("payloadDigest must be a SHA-256 hex digest");

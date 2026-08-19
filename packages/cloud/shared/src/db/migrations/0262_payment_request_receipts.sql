@@ -42,26 +42,6 @@ CREATE TABLE IF NOT EXISTS "payment_request_receipts" (
 CREATE INDEX IF NOT EXISTS "payment_request_receipts_org_created_idx"
   ON "payment_request_receipts" ("organization_id", "created_at");
 --> statement-breakpoint
-INSERT INTO "payment_request_receipts" (
-  "organization_id", "payment_request_id", "provider", "provider_tx_ref",
-  "provider_event_id", "amount_cents", "currency", "settled_at",
-  "payload_digest", "settlement_proof"
-)
-SELECT
-  request."organization_id", request."id", request."provider", request."settlement_tx_ref",
-  event."provider_event_id", request."amount_cents", upper(request."currency"),
-  request."settled_at", event."payload_digest", request."settlement_proof"
-FROM "payment_requests" AS request
-JOIN "payment_request_events" AS event
-  ON event."payment_request_id" = request."id"
- AND event."event_name" = 'webhook.received'
- AND event."provider_disposition" = 'settled'
- AND event."provider" = request."provider"
- AND event."provider_tx_ref" = request."settlement_tx_ref"
-WHERE request."status" = 'settled'
-  AND request."provider" IN ('stripe', 'oxapay')
-ON CONFLICT DO NOTHING;
---> statement-breakpoint
 CREATE OR REPLACE FUNCTION "reject_payment_request_receipt_mutation"()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -19,11 +19,13 @@ let dispatchPaymentCallbacks: typeof import("../payment-request-settlement").dis
 let formatUsdFromCents: typeof import("../payment-request-settlement").formatUsdFromCents;
 let creditsService: typeof import("../credits").creditsService;
 let pglite: PGlite;
-let receiptMigration: string;
+let receiptMigrations: string[];
 
-async function applyReceiptMigration(): Promise<void> {
-  for (const statement of receiptMigration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await pglite.exec(statement);
+async function applyReceiptMigrations(): Promise<void> {
+  for (const migration of receiptMigrations) {
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await pglite.exec(statement);
+    }
   }
 }
 
@@ -103,10 +105,12 @@ beforeAll(async () => {
   for (const statement of migration.split("--> statement-breakpoint")) {
     if (statement.trim()) await pglite.exec(statement);
   }
-  receiptMigration = await Bun.file(
-    new URL("../../../db/migrations/0262_payment_request_receipts.sql", import.meta.url),
-  ).text();
-  await applyReceiptMigration();
+  receiptMigrations = await Promise.all(
+    ["0262_payment_request_receipts.sql", "0263_payment_request_receipt_backfill.sql"].map((file) =>
+      Bun.file(new URL(`../../../db/migrations/${file}`, import.meta.url)).text(),
+    ),
+  );
+  await applyReceiptMigrations();
 });
 
 afterAll(async () => {
@@ -125,7 +129,7 @@ beforeEach(async () => {
     VALUES ('${ORG_A}', 'A', 'a', 0), ('${ORG_B}', 'B', 'b', 0)
   `),
   );
-  await applyReceiptMigration();
+  await applyReceiptMigrations();
 });
 
 async function insertRequest(input?: {
@@ -339,6 +343,53 @@ describe("durable payment request settlement", () => {
       { id: ORG_A, credit_balance: "25.000000" },
       { id: ORG_B, credit_balance: "43.010000" },
     ]);
+  });
+
+  test("persists only provider-allowlisted scalar settlement proof", async () => {
+    await insertRequest({ txRef: "pi_a" });
+    await insertRequest({
+      id: REQUEST_B,
+      orgId: ORG_B,
+      provider: "oxapay",
+      txRef: "trk_b",
+      amountCents: 4301,
+    });
+    const stripe = stripeEvent();
+    const oxapay = oxapayEvent();
+    await processPaymentProviderEvent({
+      ...stripe,
+      proof: {
+        ...stripe.proof,
+        raw_webhook: "must-not-copy",
+        email: "must-not-copy@example.invalid",
+        stripe_event_id: { arbitrary: "nested" },
+      },
+    });
+    await processPaymentProviderEvent({
+      ...oxapay,
+      proof: {
+        ...oxapay.proof,
+        raw_webhook: "must-not-copy",
+        arbitrary: ["nested"],
+        oxapay_type: { arbitrary: "nested" },
+      },
+    });
+
+    const requests = await sqlRows<{ id: string; settlement_proof: Record<string, unknown> }>(
+      dbWrite,
+      sql`SELECT id, settlement_proof FROM payment_requests ORDER BY id`,
+    );
+    expect(requests).toEqual([
+      { id: REQUEST_A, settlement_proof: stripe.proof },
+      { id: REQUEST_B, settlement_proof: oxapay.proof },
+    ]);
+    expect((await receiptRows()).map((receipt) => receipt.settlement_proof)).toEqual([
+      stripe.proof,
+      oxapay.proof,
+    ]);
+    expect(JSON.stringify({ requests, receipts: await receiptRows() })).not.toContain(
+      "must-not-copy",
+    );
   });
 
   test("invalidates credit caches only after the settlement transaction commits", async () => {

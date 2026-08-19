@@ -23,6 +23,47 @@ export interface ProjectPaymentRequestReceiptInput {
   settlementProof: Record<string, unknown>;
 }
 
+const SETTLEMENT_PROOF_FIELDS = {
+  stripe: [
+    "stripe_event_id",
+    "stripe_event_type",
+    "stripe_session_id",
+    "stripe_payment_intent_id",
+    "stripe_amount_total",
+    "stripe_currency",
+    "stripe_payment_status",
+  ],
+  oxapay: [
+    "provider",
+    "oxapay_track_id",
+    "oxapay_order_id",
+    "oxapay_status",
+    "oxapay_amount_cents",
+    "oxapay_currency",
+    "oxapay_callback_currency",
+    "oxapay_type",
+  ],
+} as const satisfies Record<"stripe" | "oxapay", readonly string[]>;
+
+/** Retains only provider-defined scalar fields that are safe for durable settlement records. */
+export function curatePaymentRequestSettlementProof(
+  provider: "stripe" | "oxapay",
+  proof: Record<string, unknown>,
+): Record<string, string | number | null> {
+  const curated: Record<string, string | number | null> = {};
+  for (const field of SETTLEMENT_PROOF_FIELDS[provider]) {
+    const value = proof[field];
+    if (
+      value === null ||
+      typeof value === "string" ||
+      (typeof value === "number" && Number.isFinite(value))
+    ) {
+      curated[field] = value;
+    }
+  }
+  return curated;
+}
+
 export class PaymentRequestReceiptConflictError extends ElizaError {
   override readonly name = "PaymentRequestReceiptConflictError";
 
@@ -39,6 +80,25 @@ export async function projectPaymentRequestReceipt(
   input: ProjectPaymentRequestReceiptInput,
 ): Promise<PaymentRequestReceipt> {
   const amountCents = BigInt(input.amountCents);
+  const settlementProof = curatePaymentRequestSettlementProof(
+    input.provider,
+    input.settlementProof,
+  );
+  if (
+    (input.provider === "stripe" &&
+      (settlementProof.stripe_payment_intent_id !== input.providerTxRef ||
+        settlementProof.stripe_payment_status !== "paid" ||
+        typeof settlementProof.stripe_session_id !== "string" ||
+        !settlementProof.stripe_session_id.trim())) ||
+    (input.provider === "oxapay" &&
+      (settlementProof.oxapay_track_id !== input.providerTxRef ||
+        settlementProof.oxapay_order_id !== input.paymentRequestId ||
+        settlementProof.oxapay_status !== "paid"))
+  ) {
+    throw new PaymentRequestReceiptConflictError(
+      "Payment receipt proof does not match provider settlement authority",
+    );
+  }
   const [inserted] = await tx
     .insert(paymentRequestReceipts)
     .values({
@@ -52,7 +112,7 @@ export async function projectPaymentRequestReceipt(
       currency: input.currency,
       settled_at: input.settledAt,
       payload_digest: input.payloadDigest,
-      settlement_proof: input.settlementProof,
+      settlement_proof: settlementProof,
     })
     .onConflictDoNothing()
     .returning();
@@ -73,7 +133,7 @@ export async function projectPaymentRequestReceipt(
         eq(paymentRequestReceipts.currency, input.currency),
         eq(paymentRequestReceipts.settled_at, input.settledAt),
         eq(paymentRequestReceipts.payload_digest, input.payloadDigest),
-        eq(paymentRequestReceipts.settlement_proof, input.settlementProof),
+        eq(paymentRequestReceipts.settlement_proof, settlementProof),
       ),
     )
     .limit(1);

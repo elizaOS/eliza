@@ -1,5 +1,5 @@
 /**
- * Applies migration 0262 to real PGlite and proves deterministic backfill,
+ * Applies migrations 0262-0263 to real PGlite and proves deterministic backfill,
  * replay safety, immutable retention, and tenant/provider binding.
  */
 import { afterEach, describe, expect, test } from "bun:test";
@@ -10,8 +10,12 @@ const ORG_A = "10000000-0000-4000-8000-000000000001";
 const ORG_B = "10000000-0000-4000-8000-000000000002";
 const REQUEST_A = "20000000-0000-4000-8000-000000000001";
 const REQUEST_B = "20000000-0000-4000-8000-000000000002";
-const migration = await readFile(
+const schemaMigration = await readFile(
   new URL("./0262_payment_request_receipts.sql", import.meta.url),
+  "utf8",
+);
+const backfillMigration = await readFile(
+  new URL("./0263_payment_request_receipt_backfill.sql", import.meta.url),
   "utf8",
 );
 const databases: PGlite[] = [];
@@ -44,15 +48,12 @@ async function database(): Promise<PGlite> {
       payload_digest text,
       occurred_at timestamptz NOT NULL DEFAULT now()
     );
-    CREATE UNIQUE INDEX payment_request_events_settled_provider_tx_unique
-      ON payment_request_events(provider, provider_tx_ref)
-      WHERE event_name='webhook.received' AND provider_disposition='settled';
     INSERT INTO organizations(id) VALUES ('${ORG_A}'), ('${ORG_B}');
   `);
   return db;
 }
 
-async function seedHistoricalSettlement(db: PGlite): Promise<void> {
+async function seedHistoricalRequest(db: PGlite, proof?: string): Promise<void> {
   await db.exec(`
     INSERT INTO payment_requests (
       id, organization_id, provider, amount_cents, currency, status,
@@ -60,14 +61,33 @@ async function seedHistoricalSettlement(db: PGlite): Promise<void> {
     ) VALUES (
       '${REQUEST_A}', '${ORG_A}', 'stripe', 2500, 'usd', 'settled',
       '2026-08-19T08:00:00.000Z', 'pi_a',
-      '{"stripe_session_id":"cs_a","stripe_payment_intent_id":"pi_a","stripe_payment_status":"paid"}'
+      '${
+        proof ??
+        '{"stripe_session_id":"cs_a","stripe_payment_intent_id":"pi_a","stripe_payment_status":"paid"}'
+      }'
     );
+  `);
+}
+
+async function seedAuthority(db: PGlite, eventId = "evt_a", digest = "a".repeat(64)) {
+  const callback = JSON.stringify({
+    name: "PaymentSettled",
+    paymentRequestId: REQUEST_A,
+    provider: "stripe",
+    providerEventId: eventId,
+    txRef: "pi_a",
+    amountCents: 2500,
+    currency: "USD",
+    occurredAt: "2026-08-19T08:00:00.000Z",
+    raw_webhook: "must-not-copy",
+  });
+  await db.exec(`
     INSERT INTO payment_request_events (
       payment_request_id, event_name, redacted_payload, provider, provider_event_id,
       provider_tx_ref, provider_disposition, payload_digest, occurred_at
     ) VALUES (
-      '${REQUEST_A}', 'webhook.received', '{"raw_webhook":"must-not-copy"}',
-      'stripe', 'evt_a', 'pi_a', 'settled', '${"a".repeat(64)}',
+      '${REQUEST_A}', 'webhook.received', '${callback}',
+      'stripe', '${eventId}', 'pi_a', 'settled', '${digest}',
       '2026-08-19T08:00:00.000Z'
     );
   `);
@@ -77,12 +97,20 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0262 payment request receipts migration", () => {
+describe("0262-0263 payment request receipts migrations", () => {
   test("backfills one curated receipt and replays without changing it", async () => {
     const db = await database();
-    await seedHistoricalSettlement(db);
-    await db.exec(migration);
-    await db.exec(migration);
+    await seedHistoricalRequest(db);
+    await seedAuthority(db);
+    await db.exec(schemaMigration);
+    const [precondition, insert] = backfillMigration.split("--> statement-breakpoint");
+    if (!precondition || !insert) throw new Error("0263 migration prefix is incomplete");
+    await db.exec(precondition);
+    await db.exec(insert);
+    // Simulate interruption after insert but before the exact postcondition.
+    await db.exec(backfillMigration);
+    await db.exec(schemaMigration);
+    await db.exec(backfillMigration);
 
     const receipts = await db.query<{
       organization_id: string;
@@ -126,8 +154,10 @@ describe("0262 payment request receipts migration", () => {
 
   test("rejects mutation, deletion, truncation, and cross-authority inserts", async () => {
     const db = await database();
-    await seedHistoricalSettlement(db);
-    await db.exec(migration);
+    await seedHistoricalRequest(db);
+    await seedAuthority(db);
+    await db.exec(schemaMigration);
+    await db.exec(backfillMigration);
 
     await expect(db.exec("UPDATE payment_request_receipts SET amount_cents=1")).rejects.toThrow(
       /immutable/i,
@@ -155,10 +185,50 @@ describe("0262 payment request receipts migration", () => {
     }
   });
 
+  test("rejects missing or ambiguous historical settlement authority", async () => {
+    const missing = await database();
+    await seedHistoricalRequest(missing);
+    await missing.exec(schemaMigration);
+    await expect(missing.exec(backfillMigration)).rejects.toThrow(/lacks one curated/i);
+
+    const ambiguous = await database();
+    await seedHistoricalRequest(ambiguous);
+    await seedAuthority(ambiguous);
+    await seedAuthority(ambiguous, "evt_b", "b".repeat(64));
+    await ambiguous.exec(schemaMigration);
+    await expect(ambiguous.exec(backfillMigration)).rejects.toThrow(/lacks one curated/i);
+  });
+
+  test("rejects an uncurated stored proof and a valid-shaped wrong existing row", async () => {
+    const uncurated = await database();
+    await seedHistoricalRequest(
+      uncurated,
+      '{"stripe_session_id":"cs_a","stripe_payment_intent_id":"pi_a","stripe_payment_status":"paid","raw_webhook":"must-not-copy"}',
+    );
+    await seedAuthority(uncurated);
+    await uncurated.exec(schemaMigration);
+    await expect(uncurated.exec(backfillMigration)).rejects.toThrow(/lacks one curated/i);
+
+    const conflicting = await database();
+    await seedHistoricalRequest(conflicting);
+    await seedAuthority(conflicting);
+    await conflicting.exec(schemaMigration);
+    await conflicting.exec(`INSERT INTO payment_request_receipts (
+      organization_id, payment_request_id, provider, provider_tx_ref,
+      provider_event_id, amount_cents, currency, settled_at, payload_digest,
+      settlement_proof
+    ) VALUES (
+      '${ORG_A}', '${REQUEST_A}', 'stripe', 'pi_a', 'evt_a', 2499, 'USD',
+      '2026-08-19T08:00:00.000Z', '${"a".repeat(64)}',
+      '{"stripe_session_id":"cs_a","stripe_payment_intent_id":"pi_a","stripe_payment_status":"paid"}'
+    )`);
+    await expect(conflicting.exec(backfillMigration)).rejects.toThrow(/postcondition failed/i);
+  });
+
   test("fails closed instead of accepting a colliding partial table", async () => {
     const db = await database();
     await db.exec("CREATE TABLE payment_request_receipts (id uuid PRIMARY KEY)");
-    await expect(db.exec(migration)).rejects.toThrow();
+    await expect(db.exec(schemaMigration)).rejects.toThrow();
     const columns = await db.query<{ column_name: string }>(`
       SELECT column_name FROM information_schema.columns
       WHERE table_name='payment_request_receipts'
