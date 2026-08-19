@@ -239,6 +239,26 @@ describe("EvidenceBundle", () => {
     expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
   });
 
+  it("keeps the legacy auto linkMode source-compatible without creating links", async () => {
+    const sources = tmpDir();
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+      linkMode: "auto",
+    });
+    const sourcePath = writeFixture(sources, "legacy-auto.log", "copy-only");
+    const entry = await bundle.addArtifact(sourcePath, {
+      kind: "log",
+      source: "test",
+      producedBy: "test",
+    });
+    const stored = path.join(bundle.dir, ...entry.path.split("/"));
+    expect(fs.statSync(stored).ino).not.toBe(fs.statSync(sourcePath).ino);
+    expect(fs.statSync(stored).nlink).toBe(1);
+    expect(fs.readFileSync(stored, "utf8")).toBe("copy-only");
+  });
+
   it("rejects symlink and hardlink sources instead of copying external bytes", async () => {
     const sources = tmpDir();
     const external = writeFixture(tmpDir(), "outside.log", "outside");

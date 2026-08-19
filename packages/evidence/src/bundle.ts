@@ -60,8 +60,8 @@ export interface CreateBundleOptions {
   now?: () => Date;
   /** Override the derived `<utc stamp>-<shortsha>-<tier>` run id (tests). */
   runId?: string;
-  /** Retained for source compatibility; evidence materialization is copy-only. */
-  linkMode?: "copy";
+  /** Legacy selector retained for source compatibility; materialization is always copy-only. */
+  linkMode?: "auto" | "copy";
 }
 
 /** Options for {@link EvidenceBundle.addArtifact}. */

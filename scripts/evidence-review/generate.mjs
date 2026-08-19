@@ -203,21 +203,26 @@ function physicalPath(filePath) {
   return path.join(existing, ...missing.reverse());
 }
 
-/** Refuse to mutate the verified bundle while writing reviewer output. */
-export function assertSafeOutputDir(outputDir, bundleDir) {
+/** Refuse to mutate reviewed inputs while writing reviewer-owned output. */
+export function assertSafeOutputDir(outputDir, bundleDir, sourceDirs = []) {
   if (fs.existsSync(outputDir) && fs.lstatSync(outputDir).isSymbolicLink()) {
     throw new Error("review output directory must not be a symlink");
   }
   const physicalOutput = physicalPath(outputDir);
-  const physicalBundle = bundleDir ? physicalPath(bundleDir) : null;
-  if (
-    physicalBundle &&
-    (pathsOverlap(physicalBundle, physicalOutput) ||
-      pathsOverlap(physicalOutput, physicalBundle))
-  ) {
-    throw new Error(
-      "review output and evidence bundle directories must not overlap",
-    );
+  const protectedDirs = [
+    ...(bundleDir ? [{ label: "evidence bundle", dir: bundleDir }] : []),
+    ...sourceDirs.map((dir) => ({ label: "evidence source", dir })),
+  ];
+  for (const protectedDir of protectedDirs) {
+    const physicalInput = physicalPath(protectedDir.dir);
+    if (
+      pathsOverlap(physicalInput, physicalOutput) ||
+      pathsOverlap(physicalOutput, physicalInput)
+    ) {
+      throw new Error(
+        `review output and ${protectedDir.label} directories must not overlap`,
+      );
+    }
   }
 }
 
@@ -792,9 +797,12 @@ function openFile(filePath) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const bundleDir = resolveBundleDirForOptions(options);
-  assertSafeOutputDir(options.outputDir, bundleDir);
+  const sourceDirs = options.scanDirs.map((dir) =>
+    path.resolve(REPO_ROOT, dir),
+  );
+  assertSafeOutputDir(options.outputDir, bundleDir, sourceDirs);
   fs.mkdirSync(options.outputDir, { recursive: true });
-  assertSafeOutputDir(options.outputDir, bundleDir);
+  assertSafeOutputDir(options.outputDir, bundleDir, sourceDirs);
   fs.rmSync(path.join(options.outputDir, "artifacts"), {
     recursive: true,
     force: true,

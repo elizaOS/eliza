@@ -291,6 +291,22 @@ test("rejects reviewer output that could mutate the verified bundle", () => {
   );
 });
 
+test("rejects reviewer output that overlaps an explicit compatibility source", () => {
+  const source = path.resolve("/tmp/evidence-source");
+  assert.throws(
+    () => assertSafeOutputDir(source, null, [source]),
+    /evidence source directories must not overlap/,
+  );
+  assert.throws(
+    () => assertSafeOutputDir(path.join(source, "review"), null, [source]),
+    /evidence source directories must not overlap/,
+  );
+  assert.throws(
+    () => assertSafeOutputDir(path.dirname(source), null, [source]),
+    /evidence source directories must not overlap/,
+  );
+});
+
 test("rejects a reviewer output symlink into the verified bundle", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-overlap-"));
   try {
