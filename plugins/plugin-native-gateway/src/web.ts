@@ -247,7 +247,23 @@ export class GatewayWeb extends WebPlugin {
 
     this.notifyStateChange("connecting");
 
-    const ws = new WebSocket(this.options.url);
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(this.options.url);
+    } catch (cause) {
+      // error-policy:J1 WebSocket construction is a browser boundary. Initial
+      // callers receive the failure; reconnects retain the retry contract.
+      const error =
+        cause instanceof Error
+          ? cause
+          : new Error("Failed to create WebSocket connection");
+      if (this.connectReject) {
+        this.failConnect(error);
+      } else {
+        this.handleClose(0, error.message);
+      }
+      return;
+    }
     this.ws = ws;
 
     ws.addEventListener("open", () => {
@@ -339,9 +355,7 @@ export class GatewayWeb extends WebPlugin {
         } else {
           // A gateway that answers the handshake with an error is as fatal to
           // the initial connect as a dropped socket: reject and stop retrying.
-          const error = new Error(
-            result.error?.message || "Connection failed",
-          );
+          const error = new Error(result.error?.message || "Connection failed");
           if (this.connectReject) {
             this.failConnect(error);
           } else {
