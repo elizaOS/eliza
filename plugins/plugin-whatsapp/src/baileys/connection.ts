@@ -29,23 +29,21 @@ export class BaileysConnection extends EventEmitter {
     this.emit("connection", "connecting");
 
     const state = await this.authManager.initialize();
-    this.socket = makeWASocket({
+    const socket = makeWASocket({
       auth: state,
       printQRInTerminal: false,
       logger: pino({ level: "silent" }),
       browser: ["Chrome (Linux)", "", ""],
     });
+    this.socket = socket;
 
-    this.setupEventHandlers();
-    return this.socket;
+    this.setupEventHandlers(socket);
+    return socket;
   }
 
-  private setupEventHandlers(): void {
-    if (!this.socket) {
-      return;
-    }
-
-    this.socket.ev.on("connection.update", async (update) => {
+  private setupEventHandlers(socket: WASocket): void {
+    socket.ev.on("connection.update", async (update) => {
+      if (this.socket !== socket) return;
       const { connection, qr, lastDisconnect } = update;
 
       if (qr) {
@@ -93,6 +91,7 @@ export class BaileysConnection extends EventEmitter {
         const baseDelayMs = isQRTimeout ? 1000 : 3000;
         const backoffMs = Math.min(baseDelayMs * 2 ** (this.reconnectAttempts - 1), 30000);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        if (this.socket !== socket) return;
         await this.connect();
       } catch (error) {
         this.emit("error", error);
@@ -101,11 +100,13 @@ export class BaileysConnection extends EventEmitter {
       }
     });
 
-    this.socket.ev.on("creds.update", async () => {
+    socket.ev.on("creds.update", async () => {
+      if (this.socket !== socket) return;
       await this.authManager.save();
     });
 
-    this.socket.ev.on("messages.upsert", ({ messages }) => {
+    socket.ev.on("messages.upsert", ({ messages }) => {
+      if (this.socket !== socket) return;
       this.emit("messages", messages);
     });
   }
