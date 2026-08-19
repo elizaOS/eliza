@@ -209,6 +209,79 @@ describe("creative draft owner-voice primitives", () => {
     ).toEqual(["vetoed phrase reintroduced: art"]);
   });
 
+  it("scans repeated fragment-only matches in linear time", () => {
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Adversarial fragments",
+        targetForm: "memo",
+        ownerAsk: "Draft this.",
+      },
+      memos: [{ id: "memo-perf", transcript: "Start with the result." }],
+      styleCard: buildOwnerVoiceStyleCard(ownerSources),
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+    const revised = applyCreativeDraftRevision(initial, {
+      instruction: "Never use art as a standalone label.",
+      vetoedPhrase: "art",
+      revisedAt: "2026-07-06T10:20:00.000Z",
+    });
+
+    // Each "start " token embeds the needle "art" as a word fragment, so a
+    // naive prefix/suffix-copying boundary check is quadratic in the tens of
+    // thousands of near-miss matches this narrative produces.
+    const adversarialFragments = "start ".repeat(40000);
+    const fragmentStart = performance.now();
+    const fragmentViolations = creativeDraftNarrativeViolations(
+      adversarialFragments,
+      revised,
+    );
+    const fragmentElapsed = performance.now() - fragmentStart;
+    expect(fragmentViolations).toEqual([]);
+    // A quadratic scan of this input runs for many seconds; the linear scan is
+    // a few milliseconds. The generous bound stays green on a slow CI runner
+    // while still failing the quadratic regression.
+    expect(fragmentElapsed).toBeLessThan(1500);
+
+    // A genuinely word-bounded occurrence at the end of the same long prose
+    // must still be caught.
+    expect(
+      creativeDraftNarrativeViolations(
+        `${adversarialFragments}The art speaks.`,
+        revised,
+      ),
+    ).toEqual(["vetoed phrase reintroduced: art"]);
+  });
+
+  it("treats astral neighbors as word-boundary characters via surrogate pairs", () => {
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Astral boundaries",
+        targetForm: "memo",
+        ownerAsk: "Draft this.",
+      },
+      memos: [{ id: "memo-astral", transcript: "Start with the result." }],
+      styleCard: buildOwnerVoiceStyleCard(ownerSources),
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+    const revised = applyCreativeDraftRevision(initial, {
+      instruction: "Never use art as a standalone label.",
+      vetoedPhrase: "art",
+      revisedAt: "2026-07-06T10:20:00.000Z",
+    });
+
+    // U+10348 (GOTHIC LETTER HWAIR) is an astral \p{L}. Recombining the
+    // trailing surrogate pair keeps "art" bounded by letters, so it is a
+    // fragment, not a standalone phrase.
+    expect(
+      creativeDraftNarrativeViolations("\u{10348}art\u{10348}", revised),
+    ).toEqual([]);
+    // U+1F600 (GRINNING FACE) is an astral symbol, not a letter, so it forms a
+    // word boundary and the phrase is enforced.
+    expect(
+      creativeDraftNarrativeViolations("\u{1F600}art\u{1F600}", revised),
+    ).toEqual(["vetoed phrase reintroduced: art"]);
+  });
+
   it("replaces a superseded accepted passage instead of requiring both", () => {
     const initial = createCreativeDraftArtifact({
       request: {

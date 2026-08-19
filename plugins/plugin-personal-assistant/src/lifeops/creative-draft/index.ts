@@ -343,8 +343,35 @@ function normalizedInvariantText(value: string): string {
   );
 }
 
-function isInvariantWordCharacter(value: string | undefined): boolean {
-  return value !== undefined && /[\p{L}\p{M}\p{N}]/u.test(value);
+function isInvariantWordCodePoint(codePoint: number | undefined): boolean {
+  return (
+    codePoint !== undefined &&
+    /[\p{L}\p{M}\p{N}]/u.test(String.fromCodePoint(codePoint))
+  );
+}
+
+/**
+ * Code point immediately before `index`, read without copying the prefix. A
+ * trailing surrogate pair is recombined so an astral character keeps the same
+ * word-boundary classification the old prefix-copy path produced.
+ */
+function codePointBefore(text: string, index: number): number | undefined {
+  if (index <= 0) return undefined;
+  const previous = text.charCodeAt(index - 1);
+  if (previous >= 0xdc00 && previous <= 0xdfff && index - 2 >= 0) {
+    return text.codePointAt(index - 2);
+  }
+  return text.codePointAt(index - 1);
+}
+
+/**
+ * Code point at `index`, read without copying the suffix. `codePointAt`
+ * already combines a surrogate pair that begins at a high surrogate, so an
+ * astral character following the match is classified whole.
+ */
+function codePointStartingAt(text: string, index: number): number | undefined {
+  if (index >= text.length) return undefined;
+  return text.codePointAt(index);
 }
 
 /** Match a normalized phrase without treating a short token as a word fragment. */
@@ -354,21 +381,24 @@ function containsInvariantPhrase(haystack: string, needle: string): boolean {
   if (!normalizedNeedle) return false;
 
   const needleCodePoints = Array.from(normalizedNeedle);
-  const firstNeedle = needleCodePoints[0];
-  const lastNeedle = needleCodePoints.at(-1);
+  const firstNeedle = needleCodePoints[0]?.codePointAt(0);
+  const lastNeedle = needleCodePoints.at(-1)?.codePointAt(0);
   let fromIndex = 0;
   while (fromIndex <= normalizedHaystack.length - normalizedNeedle.length) {
     const index = normalizedHaystack.indexOf(normalizedNeedle, fromIndex);
     if (index < 0) return false;
-    const before = Array.from(normalizedHaystack.slice(0, index)).at(-1);
-    const after = Array.from(
-      normalizedHaystack.slice(index + normalizedNeedle.length),
-    )[0];
+    // Read the neighboring code points by index instead of slicing a growing
+    // prefix/suffix, keeping each search step linear in the haystack length.
+    const before = codePointBefore(normalizedHaystack, index);
+    const after = codePointStartingAt(
+      normalizedHaystack,
+      index + normalizedNeedle.length,
+    );
     const startsAtBoundary =
-      !isInvariantWordCharacter(firstNeedle) ||
-      !isInvariantWordCharacter(before);
+      !isInvariantWordCodePoint(firstNeedle) ||
+      !isInvariantWordCodePoint(before);
     const endsAtBoundary =
-      !isInvariantWordCharacter(lastNeedle) || !isInvariantWordCharacter(after);
+      !isInvariantWordCodePoint(lastNeedle) || !isInvariantWordCodePoint(after);
     if (startsAtBoundary && endsAtBoundary) return true;
     fromIndex = index + 1;
   }
