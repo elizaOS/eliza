@@ -219,60 +219,160 @@ export interface KillResult {
  * routes through the approval manager like every other non-read verb. Uses
  * `execFile` (no shell) so the target can't inject a command.
  *
- *   - Windows: `taskkill /F /PID <n>` or `/F /IM <name>.exe`.
- *   - macOS / Linux: `kill -9 <pid>` or `pkill -f <name>`.
+ *   - Windows: `taskkill /F /PID <n>` or `/F /IM <exact>.exe`.
+ *   - macOS / Linux: `kill -9 <pid>` or `pkill -x <escaped exact name>`.
+ *     Never use `pkill -f`: it treats the input as a regular expression over
+ *     full command lines and can terminate unrelated processes.
  *
  * Rejects when the target does not exist (non-zero exit) so the caller gets
  * clear feedback rather than a silent no-op.
  */
-export function killApp(target: string): Promise<KillResult> {
+interface KillInvocation {
+  command: string;
+  args: string[];
+  isPid: boolean;
+  value: string;
+}
+
+function escapeProcessNamePattern(value: string): string {
+  return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+}
+
+function resolveKillInvocation(
+  target: string,
+  os: NodeJS.Platform,
+): KillInvocation {
   const value = String(target ?? "").trim();
   if (!value) {
-    return Promise.reject(
-      new Error("kill_app requires a non-empty target (pid or app name)"),
+    throw new ElizaError(
+      "kill_app requires a non-empty target (pid or app name)",
+      { code: "COMPUTER_USE_KILL_INVALID_TARGET" },
     );
   }
   const isPid = /^\d+$/.test(value);
-  const os = currentPlatform();
-  let command: string;
-  let args: string[];
-  if (os === "win32") {
-    command = "taskkill";
-    args = isPid
-      ? ["/F", "/PID", value]
-      : [
-          "/F",
-          "/IM",
-          value.toLowerCase().endsWith(".exe") ? value : `${value}.exe`,
-        ];
-  } else if (os === "darwin" || os === "linux") {
-    if (isPid) {
-      command = "kill";
-      args = ["-9", value];
-    } else {
-      command = "pkill";
-      args = ["-f", value];
+  if (isPid) {
+    const maxPid = os === "win32" ? 4_294_967_295n : 2_147_483_647n;
+    if (value.length > 10) {
+      throw new ElizaError("kill_app pid is outside the supported range", {
+        code: "COMPUTER_USE_KILL_INVALID_TARGET",
+      });
+    }
+    const pid = BigInt(value);
+    if (pid === 0n) {
+      throw new ElizaError(
+        "kill_app refuses pid 0 because it signals the process group",
+        { code: "COMPUTER_USE_KILL_INVALID_TARGET" },
+      );
+    }
+    if (pid > maxPid) {
+      throw new ElizaError("kill_app pid is outside the supported range", {
+        code: "COMPUTER_USE_KILL_INVALID_TARGET",
+      });
+    }
+    const normalizedPid = pid.toString();
+    if (os === "win32") {
+      return {
+        command: "taskkill",
+        args: ["/F", "/PID", normalizedPid],
+        isPid,
+        value: normalizedPid,
+      };
+    }
+    if (os === "darwin" || os === "linux") {
+      return {
+        command: "kill",
+        args: ["-9", normalizedPid],
+        isPid,
+        value: normalizedPid,
+      };
     }
   } else {
+    const hasControlCharacter = [...value].some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint <= 0x1f || codePoint === 0x7f;
+    });
+    if (value.includes("/") || value.includes("\\") || hasControlCharacter) {
+      throw new ElizaError(
+        "kill_app process name must be one executable name, not a path",
+        { code: "COMPUTER_USE_KILL_INVALID_TARGET" },
+      );
+    }
+    if (os === "win32") {
+      if (/[*?]/.test(value)) {
+        throw new ElizaError(
+          "kill_app does not allow wildcards in a Windows image name",
+          { code: "COMPUTER_USE_KILL_INVALID_TARGET" },
+        );
+      }
+      const image = value.toLowerCase().endsWith(".exe")
+        ? value
+        : `${value}.exe`;
+      return {
+        command: "taskkill",
+        args: ["/F", "/IM", image],
+        isPid,
+        value,
+      };
+    }
+    if (os === "darwin" || os === "linux") {
+      return {
+        command: "pkill",
+        args: ["-x", escapeProcessNamePattern(value)],
+        isPid,
+        value,
+      };
+    }
+  }
+  throw new ElizaError(`kill_app unsupported on platform "${os}"`, {
+    code: "COMPUTER_USE_KILL_UNSUPPORTED_PLATFORM",
+    context: { platform: os },
+  });
+}
+
+export function killApp(target: string): Promise<KillResult> {
+  let invocation: KillInvocation;
+  try {
+    invocation = resolveKillInvocation(target, currentPlatform());
+  } catch (err) {
     return Promise.reject(
-      new Error(`kill_app unsupported on platform "${os}"`),
+      err instanceof ElizaError
+        ? err
+        : new ElizaError("Failed to resolve the kill_app invocation", {
+            code: "COMPUTER_USE_KILL_RESOLUTION_FAILED",
+            cause: err,
+          }),
     );
   }
+  const { command, args, isPid, value } = invocation;
   return new Promise<KillResult>((resolve, reject) => {
-    execFile(command, args, { timeout: OPEN_TIMEOUT_MS }, (err) => {
-      if (err) {
-        reject(
-          new Error(
-            `kill_app failed for "${value}": ${err.message} (target may not be running)`,
-          ),
-        );
-      } else {
-        resolve({
-          target: value,
-          ...(isPid ? { pid: Number(value) } : {}),
-          killed: true,
-        });
-      }
-    });
+    try {
+      execFile(command, args, { timeout: OPEN_TIMEOUT_MS }, (err) => {
+        if (err) {
+          // error-policy:J1 process boundary translates taskkill/kill failure.
+          reject(
+            new ElizaError("kill_app failed; the target may not be running", {
+              code: "COMPUTER_USE_KILL_FAILED",
+              cause: err,
+              context: { command },
+            }),
+          );
+        } else {
+          resolve({
+            target: value,
+            ...(isPid ? { pid: Number(value) } : {}),
+            killed: true,
+          });
+        }
+      });
+    } catch (err) {
+      // error-policy:J1 process boundary translates synchronous spawn failure.
+      reject(
+        new ElizaError(`Failed to start ${command}`, {
+          code: "COMPUTER_USE_KILL_FAILED",
+          cause: err,
+          context: { command },
+        }),
+      );
+    }
   });
 }
