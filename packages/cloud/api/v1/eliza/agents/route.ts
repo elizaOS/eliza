@@ -42,6 +42,7 @@ import {
 import type { AgentListItemDto, AgentsResponse } from "@/lib/types/cloud-api";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { projectProductAgentList } from "./product-agent-list";
 
 const app = new Hono<AppEnv>();
 
@@ -281,7 +282,7 @@ app.get("/", async (c) => {
 
   const response: AgentsResponse = {
     success: true,
-    data: agents.map((agent) =>
+    data: projectProductAgentList(agents).map((agent) =>
       toAgentListItemDto(
         agent,
         agent.character_id ? charMap.get(agent.character_id) : undefined,
