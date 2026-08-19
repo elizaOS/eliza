@@ -255,11 +255,11 @@ async function readExistingRegularFile(
   }
   try {
     const entry = await handle.stat();
-    if (entry.isSymbolicLink() || !entry.isFile()) {
+    if (entry.isSymbolicLink() || !entry.isFile() || entry.nlink !== 1) {
       throw inputError(
         "TELEGRAM_EXPORT_BAD_OUTPUT_PATH",
-        "collector output target must be a regular file",
-        { filePath },
+        "collector output target must be a regular, unaliased file",
+        { filePath, linkCount: entry.nlink },
       );
     }
     if (process.platform !== "win32") {
@@ -280,15 +280,54 @@ async function readExistingRegularFile(
   }
 }
 
+/**
+ * Removes a prior generation marker before any shard is changed. A missing
+ * marker is the explicit incomplete-generation state; leaving an old manifest
+ * installed while replacing its shards would make a crash look committed.
+ */
+export async function invalidateTelegramManifest(
+  manifestPath: string,
+  assertAncestorIdentity: () => Promise<void>,
+): Promise<void> {
+  await assertAncestorIdentity();
+  const parent = await openDirectoryGuard(
+    path.dirname(manifestPath),
+    "Telegram corpus output directory",
+  );
+  try {
+    const existing = await readExistingRegularFile(manifestPath);
+    await assertDirectoryIdentity(parent);
+    await assertAncestorIdentity();
+    if (existing === undefined) return;
+    await fs.unlink(manifestPath);
+    await assertDirectoryIdentity(parent);
+    await assertAncestorIdentity();
+  } catch (error) {
+    if (error instanceof ElizaError) throw error;
+    // error-policy:J2 a marker that cannot be invalidated makes publication unsafe.
+    throw inputError(
+      "TELEGRAM_EXPORT_WRITE_FAILED",
+      "prior Telegram manifest could not be invalidated safely",
+      { manifestPath },
+      error,
+    );
+  } finally {
+    await closeDirectoryGuard(parent);
+  }
+}
+
 async function writeAtomicTextIfChanged(
   filePath: string,
   body: string,
   parent: DirectoryGuard,
+  beforeMutation?: () => Promise<void>,
 ): Promise<"written" | "reused"> {
   await assertDirectoryIdentity(parent);
   const existing = await readExistingRegularFile(filePath);
   await assertDirectoryIdentity(parent);
   if (existing === body) return "reused";
+  await beforeMutation?.();
+  await assertDirectoryIdentity(parent);
   const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   let tempHandle: FileHandle | undefined;
   let installed = false;
@@ -432,6 +471,7 @@ export async function writeTelegramShards(
   messages: CorpusMessage[],
   outDir: string,
   ownerAccountId: string,
+  beforeMutation?: () => Promise<void>,
 ): Promise<{ paths: string[]; stats: TelegramShardWriteStats }> {
   const outGuard = await openDirectoryGuard(outDir, "outDir");
   let platformGuard: DirectoryGuard | undefined;
@@ -466,6 +506,12 @@ export async function writeTelegramShards(
     };
     const paths: string[] = [];
     const wantedNames = new Set<string>();
+    let mutationStarted = false;
+    const beginMutation = async (): Promise<void> => {
+      if (mutationStarted) return;
+      await beforeMutation?.();
+      mutationStarted = true;
+    };
     for (const [month, bucket] of [...buckets.entries()].sort()) {
       bucket.sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
       const fileName = `${month}.jsonl`;
@@ -476,6 +522,7 @@ export async function writeTelegramShards(
         shardPath,
         body,
         shardGuard,
+        beginMutation,
       );
       stats[outcome] += 1;
       paths.push(shardPath);
@@ -496,6 +543,8 @@ export async function writeTelegramShards(
           { stalePath },
         );
       }
+      await assertDirectoryIdentity(shardGuard);
+      await beginMutation();
       await assertDirectoryIdentity(shardGuard);
       await fs.unlink(stalePath);
       await assertDirectoryIdentity(shardGuard);

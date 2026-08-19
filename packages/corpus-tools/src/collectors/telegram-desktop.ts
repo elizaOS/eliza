@@ -21,6 +21,7 @@ import {
   type CorpusValidationIssue,
 } from "../validator.ts";
 import {
+  invalidateTelegramManifest,
   readTelegramDesktopJson,
   type TelegramShardWriteStats,
   withTelegramOutputLock,
@@ -732,6 +733,16 @@ export async function collectTelegramDesktopExport(
       normalized,
       options.outDir,
       ownerAccountId,
+      async () => {
+        // Invalidate the prior generation immediately before the first shard
+        // mutation. If the process dies or validation fails below, absence of
+        // manifest.json tells readers that the output is incomplete; unchanged
+        // reruns retain their byte-identical marker without rewriting it.
+        await invalidateTelegramManifest(
+          path.join(options.outDir, "manifest.json"),
+          assertRootIdentity,
+        );
+      },
     );
     await assertRootIdentity();
     ctx.summary.shardCount = shardPaths.length;

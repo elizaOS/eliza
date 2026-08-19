@@ -93,8 +93,11 @@ Telegram's `verification_codes` dialog is always excluded and counted as
 credential material. Input is capped at 64 MiB and read only through that byte
 boundary before parsing. Publications use an output-root lock, account-owned
 `telegram/<account>/summary.json` files, and a manifest installed last as the
-generation commit marker; a concurrent writer or manifest validation issue
-fails the collection instead of returning partial success.
+generation commit marker. Before the first changed or stale shard is installed,
+an existing marker is removed so an interrupted update is visibly incomplete;
+unchanged reruns retain it byte-for-byte. Collector-owned hardlinks, concurrent
+writers, and manifest validation issues fail the collection instead of
+returning partial success.
 
 Migrated basic-group history retains Telegram Desktop's signed negative message
 and reply ids; account and peer identities remain positive-only. Collection

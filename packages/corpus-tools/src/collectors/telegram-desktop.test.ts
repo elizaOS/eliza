@@ -306,6 +306,32 @@ describe("collectTelegramDesktopExport", () => {
     ).resolves.toEqual(firstBytes);
   });
 
+  it("invalidates the prior manifest before changing any shard", async () => {
+    const outDir = await makeTempDir();
+    await collectFixture(FIXTURE_PATH, outDir);
+    const changed = await mutateFixture((input) => {
+      const chats = input.chats as {
+        list: Array<{ id: number; messages: Array<Record<string, unknown>> }>;
+      };
+      const dm = chats.list.find((chat) => chat.id === 200);
+      if (dm) dm.messages[0].text = "changed generation";
+    });
+    const originalRename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (oldPath, newPath) => {
+      if (String(newPath).endsWith(".jsonl")) {
+        throw new Error("synthetic shard install failure");
+      }
+      return originalRename(oldPath, newPath);
+    });
+
+    await expect(collectFixture(changed, outDir)).rejects.toMatchObject({
+      code: "TELEGRAM_EXPORT_WRITE_FAILED",
+    });
+    await expect(
+      fs.access(path.join(outDir, "manifest.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("removes stale owned shards when the input no longer contains that month", async () => {
     const exportPath = await mutateFixture((input) => {
       const chats = input.chats as {
@@ -365,6 +391,28 @@ describe("collectTelegramDesktopExport", () => {
     expect(
       (await fs.stat(path.join(outDir, "telegram", OWNER))).mode & 0o777,
     ).toBe(0o700);
+  });
+
+  it("rejects hardlinked collector outputs without chmod through the alias", async () => {
+    if (process.platform === "win32") return;
+    const outDir = await makeTempDir();
+    const first = await collectFixture(FIXTURE_PATH, outDir);
+    const shardPath = first.shardPaths[0];
+    const outsideDir = await makeTempDir();
+    const outsidePath = path.join(outsideDir, "outside.jsonl");
+    await fs.copyFile(shardPath, outsidePath);
+    await fs.chmod(outsidePath, 0o644);
+    await fs.unlink(shardPath);
+    await fs.link(outsidePath, shardPath);
+
+    await expect(collectFixture(FIXTURE_PATH, outDir)).rejects.toMatchObject({
+      code: "TELEGRAM_EXPORT_BAD_OUTPUT_PATH",
+    });
+    expect((await fs.stat(outsidePath)).mode & 0o777).toBe(0o644);
+    // No shard was mutated, so the prior committed generation remains valid.
+    await expect(
+      fs.access(path.join(outDir, "manifest.json")),
+    ).resolves.toBeUndefined();
   });
 
   it("fails closed on malformed JSON, wrong files, symlinks, and size limits", async () => {
