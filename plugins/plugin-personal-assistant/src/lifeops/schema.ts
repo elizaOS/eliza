@@ -1943,6 +1943,13 @@ export const lifeBriefItemEngagements = appLifeopsPgSchema.table(
       t.eventAt,
       t.createdAt,
     ),
+    index("idx_life_brief_item_engagements_reward_receipt")
+      .on(
+        t.agentId,
+        sql`(${t.metadataJson}::jsonb ->> 'engagementEventId')`,
+        t.createdAt,
+      )
+      .where(sql`${t.eventType} = 'rewarded'`),
   ],
 );
 

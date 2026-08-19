@@ -256,7 +256,9 @@ Recovery scans a bounded pending-outcome batch independently of the editorial
 30-day window, so a long outage cannot strand an old reward. Completed receipts,
 zero-weight outcomes, trajectory-less legacy rows, and outcomes with active
 leases are excluded from that batch; an expired lease re-enters in chronological
-order. Operational markers are also excluded from editorial history reads.
+order. A failed or missing trajectory retains a released marker and rotates by
+last-attempt time, so one poisoned oldest row cannot starve newer pending
+rewards. Operational markers are also excluded from editorial history reads.
 
 ## Plugin dependencies
 

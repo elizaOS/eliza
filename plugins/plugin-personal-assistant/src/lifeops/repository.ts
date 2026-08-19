@@ -2962,16 +2962,18 @@ export class LifeOpsRepository {
         },
       );
     }
-    const nowIso = options.nowIso ?? isoNow();
-    if (!Number.isFinite(Date.parse(nowIso))) {
+    const requestedNowIso = options.nowIso ?? isoNow();
+    const parsedNow = Date.parse(requestedNowIso);
+    if (!Number.isFinite(parsedNow)) {
       throw new ElizaError(
         "[LifeOpsRepository] Invalid pending reward scan time",
         {
           code: "LIFEOPS_BRIEF_REWARD_SCAN_TIME_INVALID",
-          context: { nowIso },
+          context: { nowIso: requestedNowIso },
         },
       );
     }
+    const nowIso = new Date(parsedNow).toISOString();
     const rows = await executeRawSql(
       this.runtime,
       `SELECT outcome.*
@@ -2994,7 +2996,19 @@ export class LifeOpsRepository {
                  OR receipt.event_at > ${sqlQuote(nowIso)}
                )
           )
-        ORDER BY outcome.event_at ASC, outcome.created_at ASC, outcome.id ASC
+        ORDER BY COALESCE(
+          (
+            SELECT MAX(retry_order.created_at::timestamptz)
+              FROM app_lifeops.life_brief_item_engagements retry_order
+             WHERE retry_order.agent_id = outcome.agent_id
+               AND retry_order.event_type = 'rewarded'
+               AND retry_order.metadata_json::jsonb ->> 'engagementEventId' = outcome.id
+          ),
+          outcome.event_at::timestamptz
+        ) ASC,
+        outcome.event_at::timestamptz ASC,
+        outcome.created_at::timestamptz ASC,
+        outcome.id ASC
         LIMIT ${sqlInteger(limit)}`,
     );
     return rows.map(parseBriefItemEngagement);
@@ -3222,10 +3236,23 @@ export class LifeOpsRepository {
     options: { nowIso?: string; leaseSeconds?: number } = {},
   ): Promise<string | null> {
     const id = briefRewardMarkerId(engagement.agentId, engagement.id);
-    const nowIso = options.nowIso ?? isoNow();
+    const requestedNowIso = options.nowIso ?? isoNow();
+    const parsedNow = Date.parse(requestedNowIso);
     const leaseSeconds = options.leaseSeconds ?? 60;
+    if (
+      !Number.isFinite(parsedNow) ||
+      !Number.isInteger(leaseSeconds) ||
+      leaseSeconds <= 0 ||
+      leaseSeconds > 3_600
+    ) {
+      throw new ElizaError("[LifeOpsRepository] Invalid reward lease", {
+        code: "LIFEOPS_BRIEF_REWARD_LEASE_INVALID",
+        context: { nowIso: requestedNowIso, leaseSeconds },
+      });
+    }
+    const nowIso = new Date(parsedNow).toISOString();
     const leaseExpiresAt = new Date(
-      Date.parse(nowIso) + leaseSeconds * 1_000,
+      parsedNow + leaseSeconds * 1_000,
     ).toISOString();
     const claimToken = crypto.randomUUID();
     const claimMetadata = {
@@ -3249,7 +3276,8 @@ export class LifeOpsRepository {
         ${sqlJson(claimMetadata)}, ${sqlQuote(nowIso)}
       ) ON CONFLICT (id) DO UPDATE SET
         event_at = EXCLUDED.event_at,
-        metadata_json = EXCLUDED.metadata_json
+        metadata_json = EXCLUDED.metadata_json,
+        created_at = EXCLUDED.created_at
       WHERE app_lifeops.life_brief_item_engagements.event_at <= ${sqlQuote(nowIso)}
         AND app_lifeops.life_brief_item_engagements.agent_id = EXCLUDED.agent_id
         AND app_lifeops.life_brief_item_engagements.metadata_json NOT LIKE '%"rewardState":"completed"%'
@@ -3277,14 +3305,25 @@ export class LifeOpsRepository {
     );
   }
 
-  /** Release only the caller's failed lease so another process can retry. */
+  /**
+   * Release only the caller's failed lease. Retaining the marker's attempt
+   * time rotates a poison row behind other pending outcomes without delaying
+   * its later retry.
+   */
   async releaseBriefEngagementRewardClaim(
     engagement: LifeOpsBriefItemEngagementRecord,
     claimToken: string,
   ): Promise<void> {
+    const releasedAt = isoNow();
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_brief_item_engagements
+      `UPDATE app_lifeops.life_brief_item_engagements
+          SET event_at = ${sqlQuote(releasedAt)},
+              created_at = ${sqlQuote(releasedAt)},
+              metadata_json = ${sqlJson({
+                engagementEventId: engagement.id,
+                rewardState: "released",
+              })}
         WHERE id = ${sqlQuote(briefRewardMarkerId(engagement.agentId, engagement.id))}
           AND agent_id = ${sqlQuote(engagement.agentId)}
           AND metadata_json LIKE ${sqlQuote(`%"claimToken":"${claimToken}"%`)}`,

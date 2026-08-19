@@ -879,9 +879,166 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     ).toEqual([]);
     expect(
       await repository.listPendingBriefEngagementRewards(runtime.agentId, {
+        nowIso: "2099-01-01T00:01:00.000Z",
+      }),
+    ).toEqual([activelyClaimed]);
+    expect(
+      await repository.listPendingBriefEngagementRewards(runtime.agentId, {
         nowIso: "2099-01-01T00:01:01.000Z",
       }),
     ).toEqual([activelyClaimed]);
+  });
+
+  it("rotates a failed oldest reward behind newer pending outcomes", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const record = (suffix: string, eventAt: string) =>
+      repository.recordBriefItemEngagement({
+        agentId: runtime.agentId,
+        briefingId: `brief-fair-retry-${suffix}`,
+        itemId: `${item.itemId}:${suffix}`,
+        source: item.source,
+        kind: item.kind,
+        sourceId: `${item.sourceId}:${suffix}`,
+        itemClass: item.itemClass,
+        eventType: "kept",
+        eventAt,
+        weight: 0.5,
+        metadata: { trajectoryId: `${suffix}-trajectory` },
+      });
+    const oldest = await record("missing", "2025-01-01T00:00:00.000Z");
+    const recoverable = await record("recoverable", "2025-02-01T00:00:00.000Z");
+    const applyReward = vi.fn(
+      async ({ trajectoryId }: { trajectoryId: string }) =>
+        trajectoryId === "recoverable-trajectory",
+    );
+    const rewardRuntime = {
+      ...runtime,
+      getService: () => ({ applyReward }),
+      getServicesByType: () => [{ applyReward }],
+    } as unknown as IAgentRuntime;
+
+    expect(
+      await retryBriefEngagementRewards({
+        runtime: rewardRuntime,
+        repository,
+        batchLimit: 1,
+      }),
+    ).toBe(0);
+    expect(
+      await retryBriefEngagementRewards({
+        runtime: rewardRuntime,
+        repository,
+        batchLimit: 1,
+      }),
+    ).toBe(1);
+    expect(applyReward.mock.calls.map(([args]) => args.trajectoryId)).toEqual([
+      "missing-trajectory",
+      "recoverable-trajectory",
+    ]);
+    expect(
+      await repository.listPendingBriefEngagementRewards(runtime.agentId),
+    ).toEqual([oldest]);
+    expect(recoverable.id).not.toBe(oldest.id);
+  });
+
+  it("rejects invalid pending-reward limits, scan times, and leases", async () => {
+    const rewardIndexes = await executeRawSql(
+      runtime,
+      `SELECT indexname
+         FROM pg_indexes
+        WHERE schemaname = 'app_lifeops'
+          AND indexname IN (
+            'idx_life_brief_item_engagements_reward_queue',
+            'idx_life_brief_item_engagements_reward_receipt'
+          )
+        ORDER BY indexname`,
+    );
+    expect(rewardIndexes.map((row) => row.indexname)).toEqual([
+      "idx_life_brief_item_engagements_reward_queue",
+      "idx_life_brief_item_engagements_reward_receipt",
+    ]);
+    for (const limit of [0, 1.5, 1_001, Number.NaN]) {
+      await expect(
+        repository.listPendingBriefEngagementRewards(runtime.agentId, {
+          limit,
+        }),
+      ).rejects.toMatchObject({
+        code: "LIFEOPS_BRIEF_REWARD_BATCH_LIMIT_INVALID",
+      });
+    }
+    await expect(
+      repository.listPendingBriefEngagementRewards(runtime.agentId, {
+        nowIso: "not-a-time",
+      }),
+    ).rejects.toMatchObject({
+      code: "LIFEOPS_BRIEF_REWARD_SCAN_TIME_INVALID",
+    });
+
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const engagement = await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-invalid-reward-lease",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "kept",
+      eventAt: "2026-08-17T17:00:00.000Z",
+      weight: 0.5,
+      metadata: { trajectoryId: "invalid-lease-trajectory" },
+    });
+    await expect(
+      repository.claimBriefEngagementReward(engagement, {
+        nowIso: "not-a-time",
+      }),
+    ).rejects.toMatchObject({ code: "LIFEOPS_BRIEF_REWARD_LEASE_INVALID" });
+    await expect(
+      repository.claimBriefEngagementReward(engagement, { leaseSeconds: 0 }),
+    ).rejects.toMatchObject({ code: "LIFEOPS_BRIEF_REWARD_LEASE_INVALID" });
+  });
+
+  it("orders pending rewards by instants rather than timestamp spelling", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const record = (suffix: string, eventAt: string) =>
+      repository.recordBriefItemEngagement({
+        agentId: runtime.agentId,
+        briefingId: `brief-reward-time-order-${suffix}`,
+        itemId: `${item.itemId}:${suffix}`,
+        source: item.source,
+        kind: item.kind,
+        sourceId: `${item.sourceId}:${suffix}`,
+        itemClass: item.itemClass,
+        eventType: "kept",
+        eventAt,
+        weight: 0.5,
+        metadata: { trajectoryId: `${suffix}-trajectory` },
+      });
+    const earlier = await record("earlier", "2026-01-01T01:00:00+02:00");
+    const later = await record("later", "2025-12-31T23:30:00.000Z");
+    const otherAgent = await repository.recordBriefItemEngagement({
+      agentId: "00000000-0000-4000-8000-000000000099",
+      briefingId: "brief-reward-time-order-other-agent",
+      itemId: `${item.itemId}:other-agent`,
+      source: item.source,
+      kind: item.kind,
+      sourceId: `${item.sourceId}:other-agent`,
+      itemClass: item.itemClass,
+      eventType: "kept",
+      eventAt: "2020-01-01T00:00:00.000Z",
+      weight: 0.5,
+      metadata: { trajectoryId: "other-agent-trajectory" },
+    });
+
+    expect(
+      await repository.listPendingBriefEngagementRewards(runtime.agentId),
+    ).toEqual([earlier, later]);
+    expect(
+      await repository.listPendingBriefEngagementRewards(otherAgent.agentId),
+    ).toEqual([otherAgent]);
   });
 
   it("uses a rolling delivery window across UTC midnight and ignores late actions", async () => {
