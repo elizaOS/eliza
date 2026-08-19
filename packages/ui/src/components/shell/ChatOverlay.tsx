@@ -164,6 +164,7 @@ import {
 } from "./chat-panel-layout";
 import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
+import { RestingPillButton } from "./RestingPillButton";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
   filterRenderableShellMessages,
@@ -1058,11 +1059,7 @@ function SheetGrabber({
   );
 }
 
-/**
- * The fully-collapsed PILL — the chat reduced to a small glass capsule at the
- * very bottom. Tap or flick/pull it up to bring the input back. Big invisible
- * hit area so it's easy to grab; the visible capsule stays small.
- */
+/** The canonical 64x32 resting pill used by every chat surface. */
 function PillHandle({
   binding,
   counterScale,
@@ -1071,11 +1068,8 @@ function PillHandle({
   pilled,
 }: {
   binding: PullGestureBinding;
-  // Inverse of the panel's pill-morph scale (see pillHandleCounterScale),
-  // applied to the visible BAR only — the button/hit geometry keeps riding the
-  // panel scale (the touch-compat mousedown after a tap must keep landing where
-  // it always did), while the painted bar stays pixel-identical to the
-  // input-mode grabber bar across the whole morph.
+  // Inverse of the panel's pill-morph scale. It wraps the complete painted
+  // target so the visible 64x32 surface and hit geometry remain identical.
   counterScale: MotionValue<number>;
   onOpen: () => void;
   breathing: boolean;
@@ -1088,77 +1082,55 @@ function PillHandle({
   pilled: boolean;
 }): React.JSX.Element {
   return (
-    <Button
-      variant="ghost"
-      data-testid="chat-pill"
-      aria-label="open chat"
-      // Pointer taps stay owned by the pull gesture's pointerup so one gesture
-      // cannot open twice. macOS Accessibility invokes AXPress as a synthetic
-      // click with detail=0 and no pointer sequence, so admit only that semantic
-      // activation here; physical mouse/touch clicks have a positive detail.
-      onClick={(event) => {
-        if (event.detail === 0) onOpen();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      // A touch tap opens the INPUT bar in the pointerup that precedes this
-      // touchend — by the time the browser dispatches its compat mouse events
-      // (mousedown/click), the composer textarea has already formed under the
-      // same coordinates, and the synthetic click would focus it and pop the
-      // keyboard the pill tap deliberately leaves down. preventDefault() on
-      // touchend suppresses the compat sequence; the gesture itself runs on
-      // pointer events and is unaffected. Unconditional: a touchend only
-      // reaches this handle when the touch STARTED on it (touch events retarget
-      // to their touchstart element), i.e. while it was the pilled handle —
-      // the render that formed the input has already flipped `pilled` false by
-      // the time this fires, so the prop cannot gate it.
-      onTouchEnd={(e) => {
-        if (e.cancelable) e.preventDefault();
-      }}
-      {...binding}
-      tabIndex={pilled ? undefined : -1}
-      aria-hidden={pilled ? undefined : true}
-      className={cn(
-        // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
-        // floating mid-air; the tall pt + full width keep a generous upward grab/
-        // flick zone so a swipe-up from anywhere across the bottom opens the chat
-        // (the lock-screen affordance). Flex-center keeps the capsule centred
-        // while the invisible hit area spans wide.
-        "flex h-auto w-full cursor-grab touch-none select-none items-end justify-center rounded-none bg-transparent px-8 pb-1.5 pt-10 hover:bg-transparent active:cursor-grabbing",
-        // Interactive only while pilled. When NOT pilled the (faded) handle must
-        // let taps fall through to the composer textarea below it — otherwise its
-        // tall hit zone steals the tap and the keyboard never opens.
-        pilled ? "pointer-events-auto" : "pointer-events-none",
-      )}
+    <motion.div
+      className="h-8 w-16 origin-bottom"
+      style={{ scale: counterScale }}
     >
-      <motion.span
-        aria-hidden="true"
-        className={cn(
-          // Identical to the SheetGrabber's closed-state bar — same white shape
-          // + color whether the chat is open or collapsed to the pill. Its
-          // show/hide is driven by the WRAPPER's `pillOpacity` crossfade
-          // (anti-phase with the grabber). The bar paints at full opacity — a
-          // prior regression pinned it to `opacity-0`, leaving the pill handle
-          // grabbable but invisible (#9142).
-          "h-1.5 w-12 shrink-0 rounded-full opacity-100 transition-colors duration-300",
-          // Same compositor-only work-state breath as the SheetGrabber bar.
-          breathing && "eliza-chat-handle-breathe",
-        )}
-        // Same explicit color as the grabber bar so the two are pixel-identical
-        // through the crossfade (HANDLE_BAR_COLOR). The counter-scale cancels
-        // the panel's pill-morph shrink for the BAR alone, so the collapsed
-        // handle renders the same size as the input-mode grabber bar.
-        style={{
-          backgroundColor: HANDLE_BAR_COLOR,
-          scale: counterScale,
-          transformOrigin: "bottom center",
+      <RestingPillButton
+        data-testid="chat-pill"
+        markTestId="chat-pill-mark"
+        aria-label="open chat"
+        breathing={breathing}
+        // Pointer taps stay owned by the pull gesture's pointerup so one gesture
+        // cannot open twice. macOS Accessibility invokes AXPress as a synthetic
+        // click with detail=0 and no pointer sequence, so admit only that semantic
+        // activation here; physical mouse/touch clicks have a positive detail.
+        onClick={(event) => {
+          if (event.detail === 0) onOpen();
         }}
+        onKeyDown={(event) => {
+          if (
+            event.key === "Enter" ||
+            event.key === " " ||
+            event.key === "ArrowUp"
+          ) {
+            event.preventDefault();
+            onOpen();
+          }
+        }}
+        // A touch tap opens the INPUT bar in the pointerup that precedes this
+        // touchend — by the time the browser dispatches its compat mouse events
+        // (mousedown/click), the composer textarea has already formed under the
+        // same coordinates, and the synthetic click would focus it and pop the
+        // keyboard the pill tap deliberately leaves down. preventDefault() on
+        // touchend suppresses the compat sequence; the gesture itself runs on
+        // pointer events and is unaffected. Unconditional: a touchend only
+        // reaches this handle when the touch STARTED on it (touch events retarget
+        // to their touchstart element), i.e. while it was the pilled handle —
+        // the render that formed the input has already flipped `pilled` false by
+        // the time this fires, so the prop cannot gate it.
+        onTouchEnd={(event) => {
+          if (event.cancelable) event.preventDefault();
+        }}
+        {...binding}
+        tabIndex={pilled ? undefined : -1}
+        aria-hidden={pilled ? undefined : true}
+        className={cn(
+          "cursor-grab touch-none select-none active:cursor-grabbing",
+          pilled ? "pointer-events-auto" : "pointer-events-none",
+        )}
       />
-    </Button>
+    </motion.div>
   );
 }
 
@@ -7066,10 +7038,9 @@ export function ChatOverlay({
           {/* PILL CAPSULE — the collapsed handle, crossfaded out as the input
               forms. Interactive only while pilled; sits over the (faded) input. */}
           <motion.div
-            className="absolute inset-x-0 bottom-0 z-30 flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
             style={{
               opacity: pillOpacity,
-              pointerEvents: pilled ? "auto" : "none",
             }}
           >
             <PillHandle

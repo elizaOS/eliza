@@ -32,8 +32,8 @@ export interface ChatOverlayWindowBoundsCoordinator {
   whenIdle: () => Promise<void>;
 }
 
-export const CHAT_OVERLAY_RESTING_WINDOW_WIDTH = 96;
-export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 56;
+export const CHAT_OVERLAY_RESTING_WINDOW_WIDTH = 64;
+export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 32;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH = 600;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT = 820;
 export const CHAT_OVERLAY_STAGE_WIDTH = CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH;

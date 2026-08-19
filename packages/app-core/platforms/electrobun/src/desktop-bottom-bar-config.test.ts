@@ -130,12 +130,12 @@ describe("desktop bottom-bar config", () => {
       expect(frame.y).toBe(800 - 100 - 20);
     });
 
-    it("clamps to a sane minimum height", () => {
+    it("does not inflate an exact measured material height", () => {
       const frame = computeBottomBarFrame(
         { x: 0, y: 0, width: 1000, height: 800 },
         { height: 1 },
       );
-      expect(frame.height).toBe(48);
+      expect(frame.height).toBe(1);
     });
 
     it("resolves rest, hover preview, sign-in chip, and expanded sizes", () => {

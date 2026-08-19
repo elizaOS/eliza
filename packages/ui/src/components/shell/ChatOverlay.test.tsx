@@ -1039,6 +1039,12 @@ describe("ChatOverlay", () => {
       fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
       fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
       expect(sheet.getAttribute("data-detent")).toBe("pill");
+      const pill = screen.getByTestId("chat-pill");
+      expect(pill.className).toContain("h-8");
+      expect(pill.className).toContain("w-16");
+      expect(pill.className).toContain("bg-[#181a20]/95");
+      expect(pill.parentElement?.className).toContain("h-8");
+      expect(pill.parentElement?.className).toContain("w-16");
       expect(barOf()).toContain("eliza-chat-handle-breathe");
       expect(barOf()).not.toContain("shimmer");
       expect(barOf()).not.toContain("background-clip");
@@ -3057,10 +3063,9 @@ describe("ChatOverlay", () => {
 
   it("keeps the collapsed pill handle non-interactive while the input is formed", () => {
     // The pill handle is always mounted over the (faded) composer so it can
-    // crossfade pill→input. Its hit zone (w-full/pt-10) sits over the textarea,
-    // so while NOT pilled it must be pointer-events-none — otherwise it
-    // intercepts the tap meant for the composer and the mobile keyboard never
-    // opens.
+    // crossfade pill→input. While NOT pilled it must be pointer-events-none —
+    // otherwise it intercepts the tap meant for the composer and the mobile
+    // keyboard never opens.
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
@@ -3071,9 +3076,11 @@ describe("ChatOverlay", () => {
     // Kept out of the tab order / a11y tree while it's not the active handle.
     expect(pill.getAttribute("tabindex")).toBe("-1");
     expect(pill.getAttribute("aria-hidden")).toBe("true");
-    // The pill's swipe-up grab zone spans the full width (not a narrow centred
-    // px-16 stub) so a swipe-up from anywhere across the bottom opens.
-    expect(pill.className).toContain("w-full");
+    // Its complete 64x32 target is visibly painted; there is no larger hidden
+    // grab zone around the capsule.
+    expect(pill.className).toContain("h-8");
+    expect(pill.className).toContain("w-16");
+    expect(pill.className).toContain("bg-[#181a20]/95");
   });
 
   it("makes the pill handle interactive (drag-to-open) once collapsed to the pill", () => {

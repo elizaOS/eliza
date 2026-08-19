@@ -132,8 +132,8 @@ export function resolveDesktopShellWindowPresentation(
 }
 
 /** Resting native hit area around the 64×32 visible pill. */
-export const DEFAULT_BOTTOM_BAR_WIDTH = 96;
-export const DEFAULT_BOTTOM_BAR_HEIGHT = 56;
+export const DEFAULT_BOTTOM_BAR_WIDTH = 64;
+export const DEFAULT_BOTTOM_BAR_HEIGHT = 32;
 
 /** Hit area around the cloud-only "Sign in with Eliza Cloud" action. */
 export const AUTH_GATE_BOTTOM_BAR_WIDTH = 336;
@@ -141,7 +141,7 @@ export const AUTH_GATE_BOTTOM_BAR_HEIGHT = 72;
 
 /** Shallow host for the resting pill's composer preview while hovered. */
 export const HOVER_BOTTOM_BAR_WIDTH = 600;
-export const HOVER_BOTTOM_BAR_HEIGHT = 96;
+export const HOVER_BOTTOM_BAR_HEIGHT = 64;
 
 /** Input-width host tall enough for the portaled composer actions menu. */
 export const INPUT_MENU_BOTTOM_BAR_HEIGHT = 320;
@@ -225,7 +225,7 @@ export function computeBottomBarFrame(
   const margin = Math.max(0, Math.round(options?.margin ?? 0));
   const availableHeight = Math.max(1, Math.round(workArea.height) - margin);
   const requestedHeight = Math.max(
-    48,
+    1,
     Math.round(options?.height ?? DEFAULT_BOTTOM_BAR_HEIGHT),
   );
   const height = Math.min(requestedHeight, availableHeight);
