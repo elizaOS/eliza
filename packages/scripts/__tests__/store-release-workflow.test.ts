@@ -27,6 +27,10 @@ const windowsSource = readFileSync(
   new URL(".github/workflows/store-windows-publish.yml", repoRoot),
   "utf8",
 );
+const browserSource = readFileSync(
+  new URL(".github/workflows/store-browser-publish.yml", repoRoot),
+  "utf8",
+);
 
 describe("canonical store release workflow", () => {
   test("calls Snap only after exact release finalization", () => {
@@ -199,5 +203,55 @@ describe("canonical store release workflow", () => {
         "Submit exact package to Partner Center",
       ]);
     }
+  });
+
+  test("calls browser stores only after exact release finalization", () => {
+    const workflow = Bun.YAML.parse(releaseSource) as {
+      jobs?: Record<
+        string,
+        {
+          needs?: string;
+          uses?: string;
+          with?: Record<string, string>;
+          secrets?: string;
+        }
+      >;
+    };
+    const browser = workflow.jobs?.["publish-browser-stores"];
+    expect(browser?.needs).toBe("finalize");
+    expect(browser?.uses).toBe("./.github/workflows/store-browser-publish.yml");
+    expect(browser?.with?.source_sha).toContain(
+      "needs.finalize.outputs.source_sha",
+    );
+    expect(browser?.with?.version).toContain("needs.finalize.outputs.version");
+    expect(browser?.secrets).toBe("inherit");
+  });
+
+  test("keeps browser stores callable-only, exact-tag-bound, protected, and fail-closed", () => {
+    const workflow = Bun.YAML.parse(browserSource) as {
+      on?: Record<string, unknown>;
+      jobs?: Record<string, { environment?: { name?: string } }>;
+    };
+    expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_call"]);
+    expect(workflow.jobs?.chrome?.environment?.name).toBe("production-release");
+    expect(workflow.jobs?.firefox?.environment?.name).toBe(
+      "production-release",
+    );
+    expect(workflow.jobs?.edge?.environment?.name).toBe("production-release");
+    expect(browserSource).toContain(`ref: \${{ inputs.source_sha }}`);
+    expect(browserSource).toContain("refs/tags/$EXPECTED_TAG^{commit}");
+    expect(browserSource).toContain(
+      "Missing required Chrome Web Store release configuration",
+    );
+    expect(browserSource).toContain(
+      "Missing required Firefox Add-ons release secrets",
+    );
+    expect(browserSource).toContain(
+      "Missing required Edge Add-ons release configuration",
+    );
+    expect(browserSource).toContain("test:smoke:firefox");
+    expect(browserSource).toContain("browser-store-submission.mjs chrome");
+    expect(browserSource).toContain("web-ext sign");
+    expect(browserSource).toContain("browser-store-submission.mjs edge");
   });
 });

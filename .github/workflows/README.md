@@ -91,14 +91,18 @@ Representative examples:
   reviewer-approved `production-release` environment; a tag protection
   ruleset restricting `v*` creation completes that boundary.
   After finalization, the canonical workflow also calls the reusable,
-  callable-only `snap-publish.yml` and `store-mobile-publish.yml` legs with the
-  exact finalized source SHA, version, channel, and tag. Those legs re-resolve
-  the tag to the supplied commit before using credentials and run behind the
-  `production-release` environment. Snap uploads the registered `eliza` name;
-  Android builds and audits the cloud-only AAB before Google Play upload; iOS
-  embeds the store runtime and uses an App Store Connect API key for signing
-  and delivery. Missing credentials fail the affected store job with the exact
-  secret names instead of silently skipping publication.
+  callable-only `snap-publish.yml`, `store-mobile-publish.yml`, and
+  `store-browser-publish.yml` legs with the exact finalized source SHA,
+  version, channel, and tag. Those legs re-resolve the tag to the supplied
+  commit before using credentials and run behind the `production-release`
+  environment. Snap uploads the registered `eliza` name; Android builds and
+  audits the cloud-only AAB before Google Play upload; iOS embeds the store
+  runtime and uses an App Store Connect API key for signing and delivery; and
+  the browser leg builds reproducible Chrome and Firefox packages, exercises
+  both installed browsers, then submits exact packages to Chrome Web Store,
+  Firefox Add-ons, and stable-only Microsoft Edge Add-ons. Missing credentials
+  fail the affected store job with the exact names instead of silently skipping
+  publication.
 
   Store credentials are environment-owned. Snap needs
   `SNAPCRAFT_STORE_CREDENTIALS`. Google Play needs the four

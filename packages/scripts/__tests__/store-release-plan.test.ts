@@ -5,6 +5,10 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  buildChromeExtensionVersion,
+  parseReleaseVersion,
+} from "../../browser-bridge-extension/scripts/release-version.mjs";
+import {
   createStoreReleasePlan,
   parseStoreSemver,
 } from "../store-release-plan.mjs";
@@ -59,7 +63,7 @@ describe("store release plan", () => {
       windows_package_version: "2.3.4.0",
       windows_publish: false,
       snap_channel: "beta",
-      extension_version: "2.3.4.20000",
+      extension_version: "2.3.4.40000",
       chrome_publish_target: "trustedTesters",
       flathub_branch: "beta",
     });
@@ -87,5 +91,24 @@ describe("store release plan", () => {
         sourceSha: "deadbeef",
       }),
     ).toThrow("40 lowercase hex");
+  });
+
+  test("matches the browser packager's Chrome version for every release lane", () => {
+    for (const version of [
+      "2.3.4-alpha.1",
+      "2.3.4-beta.2",
+      "2.3.4-rc.3",
+      "2.3.4-nightly.4",
+      "2.3.4",
+    ]) {
+      const plan = createStoreReleasePlan({
+        version,
+        channel: version === "2.3.4" ? "latest" : "beta",
+        sourceSha: SOURCE_SHA,
+      });
+      expect(plan.extension_version).toBe(
+        buildChromeExtensionVersion(parseReleaseVersion(version)),
+      );
+    }
   });
 });

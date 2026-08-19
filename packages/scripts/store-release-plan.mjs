@@ -18,10 +18,10 @@ const CHANNEL_OFFSETS = Object.freeze({
 });
 
 const EXTENSION_CHANNEL_OFFSETS = Object.freeze({
-  alpha: 10000,
-  beta: 20000,
-  rc: 30000,
-  nightly: 40000,
+  nightly: 10000,
+  alpha: 20000,
+  beta: 40000,
+  rc: 50000,
 });
 
 function requireArgument(args, name) {
@@ -73,6 +73,11 @@ function extensionVersion(parsed) {
   if ([major, minor, patch].some((value) => value > 65535)) {
     throw new Error(
       "Browser extension version components must not exceed 65535",
+    );
+  }
+  if (prerelease && !(prerelease in EXTENSION_CHANNEL_OFFSETS)) {
+    throw new Error(
+      `Unsupported browser extension prerelease lane: ${prerelease}`,
     );
   }
   const fourth = prerelease

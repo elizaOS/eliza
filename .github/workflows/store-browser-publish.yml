@@ -1,0 +1,338 @@
+name: Publish Browser Stores
+
+# This workflow has no independent trigger. The canonical transactional release
+# calls it only after npm, the exact Git tag, and the GitHub Release finalize.
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Exact canonical release commit
+        required: true
+        type: string
+      version:
+        description: Canonical release semver
+        required: true
+        type: string
+      channel:
+        description: Canonical release channel (beta or latest)
+        required: true
+        type: string
+      tag:
+        description: Finalized Git tag
+        required: true
+        type: string
+    secrets:
+      CHROME_WEB_STORE_SERVICE_ACCOUNT_JSON:
+        required: false
+      AMO_JWT_ISSUER:
+        required: false
+      AMO_JWT_SECRET:
+        required: false
+      EDGE_ADDONS_CLIENT_ID:
+        required: false
+      EDGE_ADDONS_API_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build and exercise browser store packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      extension_version: ${{ steps.plan.outputs.extension_version }}
+    steps:
+      - name: Checkout exact release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind packages to finalized release
+        id: plan
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+          EXPECTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
+          test "$EXPECTED_TAG" = "v${{ inputs.version }}"
+          test "$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")" = "$EXPECTED_SHA"
+          node packages/scripts/store-release-plan.mjs \
+            --version "${{ inputs.version }}" \
+            --channel "${{ inputs.channel }}" \
+            --source-sha "$EXPECTED_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Typecheck, lint, and unit-test extension
+        run: |
+          bun run --cwd packages/browser-bridge-extension typecheck
+          bun run --cwd packages/browser-bridge-extension lint:check
+          bun run --cwd packages/browser-bridge-extension test:unit
+
+      - name: Build reproducible Chrome and Firefox packages
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH
+          bun run --cwd packages/browser-bridge-extension package:chrome
+          bun run --cwd packages/browser-bridge-extension package:firefox
+          bun run --cwd packages/browser-bridge-extension package:stores
+          git archive --format=zip \
+            --output packages/browser-bridge-extension/dist/artifacts/browser-bridge-source.zip \
+            "$EXPECTED_SHA" -- \
+            package.json bun.lock \
+            packages/browser-bridge-extension \
+            plugins/plugin-wallet/src/browser-shim/shim.template.js
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+
+      - name: Inspect manifests and Firefox policy
+        env:
+          EXPECTED_EXTENSION_VERSION: ${{ steps.plan.outputs.extension_version }}
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require("node:fs");
+          for (const browser of ["chrome", "firefox"]) {
+            const path = `packages/browser-bridge-extension/dist/${browser}/manifest.json`;
+            const manifest = JSON.parse(fs.readFileSync(path, "utf8"));
+            if (manifest.version !== process.env.EXPECTED_EXTENSION_VERSION) {
+              throw new Error(`${browser} manifest ${manifest.version} != ${process.env.EXPECTED_EXTENSION_VERSION}`);
+            }
+          }
+          NODE
+          bun run --cwd packages/browser-bridge-extension lint:firefox
+          sha256sum packages/browser-bridge-extension/dist/artifacts/* | tee packages/browser-bridge-extension/dist/artifacts/SHA256SUMS
+
+      - name: Exercise installed Chrome and Firefox packages
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          command -v google-chrome
+          command -v firefox
+          bun run --cwd packages/browser-bridge-extension test:smoke
+          bun run --cwd packages/browser-bridge-extension test:smoke:firefox
+
+      - name: Upload exact browser packages and evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eliza-browser-stores-${{ inputs.version }}
+          path: packages/browser-bridge-extension/dist
+          if-no-files-found: error
+          retention-days: 90
+
+  chrome:
+    name: Submit Chrome Web Store package
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: production-release
+    steps:
+      - name: Checkout exact release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Download exact browser packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: eliza-browser-stores-${{ inputs.version }}
+          path: packages/browser-bridge-extension/dist
+
+      - name: Require Chrome Web Store identity and credentials
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.CHROME_WEB_STORE_SERVICE_ACCOUNT_JSON }}
+          PUBLISHER_ID: ${{ vars.CHROME_WEB_STORE_PUBLISHER_ID }}
+          ITEM_ID: ${{ vars.CHROME_WEB_STORE_ITEM_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$SERVICE_ACCOUNT_JSON" ]] && missing+=(CHROME_WEB_STORE_SERVICE_ACCOUNT_JSON)
+          [[ -z "$PUBLISHER_ID" ]] && missing+=(CHROME_WEB_STORE_PUBLISHER_ID)
+          [[ -z "$ITEM_ID" ]] && missing+=(CHROME_WEB_STORE_ITEM_ID)
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing required Chrome Web Store release configuration: ${missing[*]}"
+            exit 1
+          fi
+          if [[ "$SERVICE_ACCOUNT_JSON" == \{* ]]; then
+            printf '%s' "$SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/chrome-web-store-service-account.json"
+          else
+            printf '%s' "$SERVICE_ACCOUNT_JSON" | base64 --decode > "$RUNNER_TEMP/chrome-web-store-service-account.json"
+          fi
+          chmod 600 "$RUNNER_TEMP/chrome-web-store-service-account.json"
+
+      - name: Upload and submit Chrome release
+        env:
+          PUBLISHER_ID: ${{ vars.CHROME_WEB_STORE_PUBLISHER_ID }}
+          ITEM_ID: ${{ vars.CHROME_WEB_STORE_ITEM_ID }}
+          PUBLISH_TYPE: ${{ inputs.channel == 'latest' && 'DEFAULT_PUBLISH' || 'STAGED_PUBLISH' }}
+        run: |
+          node packages/scripts/browser-store-submission.mjs chrome \
+            --package packages/browser-bridge-extension/dist/artifacts/browser-bridge-chrome.zip \
+            --service-account "$RUNNER_TEMP/chrome-web-store-service-account.json" \
+            --publisher-id "$PUBLISHER_ID" \
+            --item-id "$ITEM_ID" \
+            --version "${{ needs.package.outputs.extension_version }}" \
+            --publish-type "$PUBLISH_TYPE" \
+            | tee "$RUNNER_TEMP/chrome-submission.json"
+
+      - name: Upload Chrome submission evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eliza-chrome-submission-${{ inputs.version }}
+          path: ${{ runner.temp }}/chrome-submission.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Remove Chrome credential
+        if: always()
+        run: rm -f "$RUNNER_TEMP/chrome-web-store-service-account.json"
+
+  firefox:
+    name: Submit Firefox Add-ons package
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: production-release
+    steps:
+      - name: Checkout exact release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Download exact browser packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: eliza-browser-stores-${{ inputs.version }}
+          path: packages/browser-bridge-extension/dist
+
+      - name: Require Firefox Add-ons credentials and metadata
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$AMO_JWT_ISSUER" ]] && missing+=(AMO_JWT_ISSUER)
+          [[ -z "$AMO_JWT_SECRET" ]] && missing+=(AMO_JWT_SECRET)
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing required Firefox Add-ons release secrets: ${missing[*]}"
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/amo-metadata.json" <<'JSON'
+          {
+            "summary": {"en-US": "Owner-approved browser control for Eliza agents."},
+            "categories": ["productivity"],
+            "version": {
+              "license": "MIT",
+              "release_notes": {"en-US": "Automated exact-tag release from the canonical elizaOS release transaction."}
+            }
+          }
+          JSON
+
+      - name: Submit listed or self-hosted Firefox release
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          AMO_CHANNEL: ${{ inputs.channel == 'latest' && 'listed' || 'unlisted' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/firefox-signed"
+          bunx web-ext sign \
+            --source-dir packages/browser-bridge-extension/dist/firefox \
+            --artifacts-dir "$RUNNER_TEMP/firefox-signed" \
+            --channel "$AMO_CHANNEL" \
+            --amo-metadata "$RUNNER_TEMP/amo-metadata.json" \
+            --upload-source-code packages/browser-bridge-extension/dist/artifacts/browser-bridge-source.zip \
+            2>&1 | tee "$RUNNER_TEMP/firefox-signed/submission.log"
+          cp "$RUNNER_TEMP/amo-metadata.json" "$RUNNER_TEMP/firefox-signed/amo-metadata.json"
+
+      - name: Upload Firefox submission evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eliza-firefox-submission-${{ inputs.version }}
+          path: ${{ runner.temp }}/firefox-signed
+          if-no-files-found: error
+          retention-days: 90
+
+  edge:
+    name: Submit Microsoft Edge Add-ons package
+    if: inputs.channel == 'latest'
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: production-release
+    steps:
+      - name: Checkout exact release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Download exact browser packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: eliza-browser-stores-${{ inputs.version }}
+          path: packages/browser-bridge-extension/dist
+
+      - name: Require Edge Add-ons product and credentials
+        env:
+          CLIENT_ID: ${{ secrets.EDGE_ADDONS_CLIENT_ID }}
+          API_KEY: ${{ secrets.EDGE_ADDONS_API_KEY }}
+          PRODUCT_ID: ${{ vars.EDGE_ADDONS_PRODUCT_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$CLIENT_ID" ]] && missing+=(EDGE_ADDONS_CLIENT_ID)
+          [[ -z "$API_KEY" ]] && missing+=(EDGE_ADDONS_API_KEY)
+          [[ -z "$PRODUCT_ID" ]] && missing+=(EDGE_ADDONS_PRODUCT_ID)
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing required Edge Add-ons release configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Upload and submit Edge release
+        env:
+          CLIENT_ID: ${{ secrets.EDGE_ADDONS_CLIENT_ID }}
+          API_KEY: ${{ secrets.EDGE_ADDONS_API_KEY }}
+          PRODUCT_ID: ${{ vars.EDGE_ADDONS_PRODUCT_ID }}
+        run: |
+          node packages/scripts/browser-store-submission.mjs edge \
+            --package packages/browser-bridge-extension/dist/artifacts/browser-bridge-chrome.zip \
+            --product-id "$PRODUCT_ID" \
+            --client-id "$CLIENT_ID" \
+            --api-key "$API_KEY" \
+            --notes "Canonical elizaOS release ${{ inputs.tag }} (${{ inputs.source_sha }})." \
+            | tee "$RUNNER_TEMP/edge-submission.json"
+
+      - name: Upload Edge submission evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eliza-edge-submission-${{ inputs.version }}
+          path: ${{ runner.temp }}/edge-submission.json
+          if-no-files-found: error
+          retention-days: 90
