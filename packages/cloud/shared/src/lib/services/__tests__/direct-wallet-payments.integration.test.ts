@@ -374,6 +374,7 @@ beforeAll(async () => {
       last_error text,
       prepared_transaction text,
       sweep_transaction_hash text,
+      prepared_metadata jsonb,
       delivered_at timestamptz,
       terminal_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(),
@@ -708,12 +709,24 @@ describe.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
         const ambiguous = await service.drainSweepOutbox(env, 1);
         expect(ambiguous.deferred).toBe(1);
         let outbox = await dbWrite.execute(
-          `SELECT state, prepared_transaction, sweep_transaction_hash FROM crypto_sweep_outbox WHERE payment_id='${payment.id}'`,
+          `SELECT state, prepared_transaction, sweep_transaction_hash, prepared_metadata
+           FROM crypto_sweep_outbox WHERE payment_id='${payment.id}'`,
         );
         expect((outbox.rows[0] as { state: string }).state).toBe("pending");
         expect((outbox.rows[0] as { prepared_transaction: string }).prepared_transaction).toBe(
           submittedSweepBytes[0],
         );
+        expect(
+          (
+            outbox.rows[0] as {
+              prepared_metadata: { network: string; nonce: string; sweepTo: string };
+            }
+          ).prepared_metadata,
+        ).toEqual({
+          network: "bsc",
+          nonce: "0",
+          sweepTo: env.CRYPTO_DIRECT_BSC_SECURE_ADDRESS,
+        });
 
         await dbWrite.execute(
           "UPDATE crypto_sweep_outbox SET next_attempt_at=now() - interval '1 second'",

@@ -61,12 +61,16 @@ CREATE TABLE IF NOT EXISTS crypto_sweep_outbox (
   last_error text,
   prepared_transaction text,
   sweep_transaction_hash text,
+  prepared_metadata jsonb,
   delivered_at timestamptz,
   terminal_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT NOW(),
   updated_at timestamptz NOT NULL DEFAULT NOW(),
   CONSTRAINT crypto_sweep_outbox_prepared_pair_check
-    CHECK ((prepared_transaction IS NULL) = (sweep_transaction_hash IS NULL))
+    CHECK (
+      (prepared_transaction IS NULL) = (sweep_transaction_hash IS NULL)
+      AND (prepared_transaction IS NULL) = (prepared_metadata IS NULL)
+    )
 );
 CREATE UNIQUE INDEX IF NOT EXISTS crypto_sweep_outbox_payment_uidx
   ON crypto_sweep_outbox(payment_id);

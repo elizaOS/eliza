@@ -73,9 +73,16 @@ describe("app charge callback outbox", () => {
 
   test("failed delivery remains durable and the active dispatcher retries it", async () => {
     await dbWrite.transaction((tx) => service.enqueue(params, tx));
-    const original = service.dispatch.bind(service);
+    const dispatcher = service as unknown as {
+      dispatchSnapshot: () => Promise<{
+        httpPosted: boolean;
+        roomMessageCreated: boolean;
+        errors: string[];
+      }>;
+    };
+    const original = dispatcher.dispatchSnapshot.bind(service);
     let attempts = 0;
-    service.dispatch = async () => {
+    dispatcher.dispatchSnapshot = async () => {
       attempts += 1;
       return attempts === 1
         ? { httpPosted: false, roomMessageCreated: false, errors: ["injected callback failure"] }
@@ -99,15 +106,27 @@ describe("app charge callback outbox", () => {
       expect((row.rows[0] as { state: string; attempts: number }).state).toBe("delivered");
       expect(Number((row.rows[0] as { attempts: number }).attempts)).toBe(2);
     } finally {
-      service.dispatch = original;
+      dispatcher.dispatchSnapshot = original;
     }
   });
 
-  test("a partial callback retry does not redeliver the channel that already succeeded", async () => {
+  test("a partial retry freezes its envelope and targets across charge metadata mutation", async () => {
     await dbWrite.transaction((tx) => service.enqueue(params, tx));
-    const original = service.dispatch.bind(service);
-    const optionsSeen: Array<{ skipRoom?: boolean; skipHttp?: boolean; createdAt?: Date }> = [];
-    service.dispatch = async (_params, options = {}) => {
+    type Snapshot = {
+      envelope: { createdAt: string; charge: { amountUsd: string } };
+      target: { callbackUrl?: string; channel?: Record<string, unknown> };
+    };
+    const dispatcher = service as unknown as {
+      dispatchSnapshot: (
+        snapshot: Snapshot,
+        options?: { skipRoom?: boolean; skipHttp?: boolean },
+      ) => Promise<{ httpPosted: boolean; roomMessageCreated: boolean; errors: string[] }>;
+    };
+    const original = dispatcher.dispatchSnapshot.bind(service);
+    const optionsSeen: Array<{ skipRoom?: boolean; skipHttp?: boolean }> = [];
+    const snapshotsSeen: Snapshot[] = [];
+    dispatcher.dispatchSnapshot = async (snapshot, options = {}) => {
+      snapshotsSeen.push(snapshot);
       optionsSeen.push(options);
       return optionsSeen.length === 1
         ? { httpPosted: false, roomMessageCreated: true, errors: ["HTTP unavailable"] }
@@ -115,6 +134,12 @@ describe("app charge callback outbox", () => {
     };
     try {
       expect((await service.drain()).retried).toBe(1);
+      await dbWrite.execute(`UPDATE crypto_payments SET expected_amount='999', metadata='{
+          "kind":"app_charge_request",
+          "app_id":"${params.appId}",
+          "callback_url":"https://mutated.invalid/callback",
+          "callback_channel":{"roomId":"mutated"}
+        }'::jsonb WHERE id='${CHARGE_ID}'`);
       await dbWrite.execute(
         "UPDATE app_charge_callback_outbox SET next_attempt_at=now() - interval '1 second'",
       );
@@ -123,17 +148,17 @@ describe("app charge callback outbox", () => {
         { skipRoom: false, skipHttp: false },
         { skipRoom: true, skipHttp: false },
       ]);
-      expect(optionsSeen[0]?.createdAt).toBeInstanceOf(Date);
-      expect(optionsSeen[1]?.createdAt?.toISOString()).toBe(
-        optionsSeen[0]?.createdAt?.toISOString(),
-      );
+      expect(snapshotsSeen[1]).toEqual(snapshotsSeen[0]);
+      expect(snapshotsSeen[1]?.envelope.charge.amountUsd).toBe("10");
+      expect(snapshotsSeen[1]?.target.callbackUrl).toBeUndefined();
+      expect(snapshotsSeen[1]?.target.channel).toBeUndefined();
       const row = await dbWrite.execute(
         "SELECT room_delivered_at, http_delivered_at FROM app_charge_callback_outbox",
       );
       expect((row.rows[0] as { room_delivered_at: Date | null }).room_delivered_at).not.toBeNull();
       expect((row.rows[0] as { http_delivered_at: Date | null }).http_delivered_at).not.toBeNull();
     } finally {
-      service.dispatch = original;
+      dispatcher.dispatchSnapshot = original;
     }
   });
 
@@ -153,9 +178,9 @@ describe("app charge callback outbox", () => {
       `SELECT payload, state FROM app_charge_callback_outbox WHERE charge_request_id='${CHARGE_ID}'`,
     );
     expect(rows.rows).toHaveLength(1);
-    expect((rows.rows[0] as { payload: { amountUsd: string } }).payload.amountUsd).toBe(
-      "10.123456789",
-    );
+    expect(
+      (rows.rows[0] as { payload: { params: { amountUsd: string } } }).payload.params.amountUsd,
+    ).toBe("10.123456789");
 
     await dbWrite.execute("DELETE FROM app_charge_callback_outbox");
     await settlementService.markPaid(settlement);
@@ -181,7 +206,9 @@ describe("app charge callback outbox", () => {
     `);
     expect(rows.rows).toHaveLength(1);
     expect((rows.rows[0] as { status: string }).status).toBe("failed");
-    expect((rows.rows[0] as { payload: { status: string } }).payload.status).toBe("failed");
+    expect(
+      (rows.rows[0] as { payload: { params: { status: string } } }).payload.params.status,
+    ).toBe("failed");
     expect((rows.rows[0] as { state: string }).state).toBe("pending");
 
     await dbWrite.execute(`UPDATE crypto_payments SET status='confirmed' WHERE id='${CHARGE_ID}'`);

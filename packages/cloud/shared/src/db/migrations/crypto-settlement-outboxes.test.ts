@@ -58,6 +58,13 @@ describe("0255 crypto settlement migration", () => {
         '{}', 'digest', 'signed-transaction'
       )`),
     ).rejects.toThrow(/prepared_pair/i);
+    await db.exec(`INSERT INTO crypto_sweep_outbox(
+        payment_id, payload, payload_digest, prepared_transaction,
+        sweep_transaction_hash, prepared_metadata
+      ) VALUES (
+        (SELECT id FROM crypto_payments WHERE transaction_hash = '0xabcd'),
+        '{}', 'digest', 'signed-transaction', 'hash', '{"network":"solana"}'
+      )`);
     await expect(
       db.exec("INSERT INTO crypto_payments(transaction_hash, status) VALUES ('0xABCD', 'pending')"),
     ).rejects.toThrow();

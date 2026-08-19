@@ -991,10 +991,23 @@ function evmPrivateKey(env: Bindings, network: DirectWalletNetwork): Hex | null 
   return (key.startsWith("0x") ? key : `0x${key}`) as Hex;
 }
 
+type PreparedSweepMetadata =
+  | {
+      network: "base" | "bsc";
+      sweepTo: string;
+      nonce: string;
+    }
+  | {
+      network: "solana";
+      sweepTo: string;
+      blockhash: string;
+      lastValidBlockHeight: number;
+    };
+
 interface PreparedSweep {
   rawTransaction: string;
   transactionHash: string;
-  sweepTo: string;
+  metadata: PreparedSweepMetadata;
 }
 
 async function prepareEvmSweep(params: {
@@ -1003,8 +1016,9 @@ async function prepareEvmSweep(params: {
   tokenAddress: Hex | null;
   tokenDecimals: number;
   units: bigint;
+  sweepTo: string;
 }): Promise<PreparedSweep | null> {
-  if (!params.tokenAddress || !params.cfg.secureAddress) return null;
+  if (!params.tokenAddress) return null;
   const privateKey = evmPrivateKey(params.env, params.cfg.network);
   if (!privateKey) return null;
 
@@ -1025,16 +1039,23 @@ async function prepareEvmSweep(params: {
     data: encodeFunctionData({
       abi: erc20Abi,
       functionName: "transfer",
-      args: [getAddress(params.cfg.secureAddress), params.units],
+      args: [getAddress(params.sweepTo), params.units],
     }),
   });
+  if (request.nonce === undefined) {
+    throw new Error("Prepared EVM sweep is missing its explicit nonce");
+  }
   const rawTransaction = await account.signTransaction(
     request as Parameters<typeof account.signTransaction>[0],
   );
   return {
     rawTransaction,
     transactionHash: keccak256(rawTransaction),
-    sweepTo: params.cfg.secureAddress,
+    metadata: {
+      network: params.cfg.network === "base" ? "base" : "bsc",
+      sweepTo: params.sweepTo,
+      nonce: String(request.nonce),
+    },
   };
 }
 
@@ -1087,8 +1108,10 @@ async function prepareSolanaSweep(params: {
   env: Bindings;
   cfg: DirectWalletNetworkConfig;
   units: bigint;
+  sweepTo: string;
+  tokenMint: string;
+  tokenDecimals: number;
 }): Promise<PreparedSweep | null> {
-  if (!params.cfg.tokenMint || !params.cfg.secureAddress) return null;
   const payer = solanaKeypairFromEnv(params.env);
   if (!payer) return null;
   if (
@@ -1099,9 +1122,9 @@ async function prepareSolanaSweep(params: {
   }
 
   const connection = new Connection(params.cfg.rpcUrl, "confirmed");
-  const mint = new PublicKey(params.cfg.tokenMint);
+  const mint = new PublicKey(params.tokenMint);
   const fromAta = getAssociatedTokenAddressSync(mint, payer.publicKey);
-  const secureOwner = new PublicKey(params.cfg.secureAddress);
+  const secureOwner = new PublicKey(params.sweepTo);
   const toAta = getAssociatedTokenAddressSync(mint, secureOwner);
   const tx = new Transaction();
   const toInfo = await connection.getAccountInfo(toAta);
@@ -1115,10 +1138,10 @@ async function prepareSolanaSweep(params: {
       toAta,
       payer.publicKey,
       params.units,
-      params.cfg.tokenDecimals,
+      params.tokenDecimals,
     ),
   );
-  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
   tx.feePayer = payer.publicKey;
   tx.sign(payer);
@@ -1126,19 +1149,58 @@ async function prepareSolanaSweep(params: {
   return {
     rawTransaction: bytesToBase64(tx.serialize()),
     transactionHash: bs58.encode(tx.signature),
-    sweepTo: params.cfg.secureAddress,
+    metadata: {
+      network: "solana",
+      sweepTo: params.sweepTo,
+      blockhash,
+      lastValidBlockHeight,
+    },
   };
+}
+
+export type SolanaSweepRecovery = "landed" | "resend" | "reprepare";
+
+export function classifySolanaSweepRecovery(params: {
+  signatureStatus: { err: unknown } | null;
+  currentBlockHeight: number;
+  lastValidBlockHeight: number;
+}): SolanaSweepRecovery {
+  if (params.signatureStatus) {
+    if (params.signatureStatus.err) {
+      throw new Error("Solana sweep transaction failed on chain");
+    }
+    return "landed";
+  }
+  return params.currentBlockHeight > params.lastValidBlockHeight ? "reprepare" : "resend";
 }
 
 async function submitPreparedSolanaSweep(
   cfg: DirectWalletNetworkConfig,
   prepared: PreparedSweep,
-): Promise<void> {
+): Promise<"landed" | "reprepare"> {
+  if (prepared.metadata.network !== "solana") {
+    throw new Error("Prepared Solana sweep metadata is invalid");
+  }
   const connection = new Connection(cfg.rpcUrl, "confirmed");
   const existing = await connection.getSignatureStatus(prepared.transactionHash, {
     searchTransactionHistory: true,
   });
-  if (existing.value && !existing.value.err) return;
+  if (existing.value) {
+    const recovery = classifySolanaSweepRecovery({
+      signatureStatus: existing.value,
+      currentBlockHeight: 0,
+      lastValidBlockHeight: prepared.metadata.lastValidBlockHeight,
+    });
+    if (recovery !== "landed") throw new Error("Solana signature status is inconsistent");
+    return "landed";
+  }
+  const recovery = classifySolanaSweepRecovery({
+    signatureStatus: null,
+    currentBlockHeight: await connection.getBlockHeight("confirmed"),
+    lastValidBlockHeight: prepared.metadata.lastValidBlockHeight,
+  });
+  if (recovery === "landed") return "landed";
+  if (recovery === "reprepare") return "reprepare";
   const submitted = await connection.sendRawTransaction(base64ToBytes(prepared.rawTransaction), {
     maxRetries: 0,
     skipPreflight: false,
@@ -1146,7 +1208,15 @@ async function submitPreparedSolanaSweep(
   if (submitted !== prepared.transactionHash) {
     throw new Error("Solana provider returned a different sweep transaction signature");
   }
-  await connection.confirmTransaction(submitted, "confirmed");
+  await connection.confirmTransaction(
+    {
+      signature: submitted,
+      blockhash: prepared.metadata.blockhash,
+      lastValidBlockHeight: prepared.metadata.lastValidBlockHeight,
+    },
+    "confirmed",
+  );
+  return "landed";
 }
 
 interface DirectSweepPayload {
@@ -1154,8 +1224,10 @@ interface DirectSweepPayload {
   network: DirectWalletNetwork;
   tokenKind: DirectWalletTokenKind;
   tokenAddress: Hex | null;
+  tokenMint: string | null;
   tokenDecimals: number;
   receivedUnits: string;
+  sweepTo: string | null;
 }
 
 function directSweepPayload(value: unknown): DirectSweepPayload {
@@ -1171,14 +1243,71 @@ function directSweepPayload(value: unknown): DirectSweepPayload {
       payload.tokenKind !== "erc20" &&
       payload.tokenKind !== "spl") ||
     (payload.tokenAddress !== null && typeof payload.tokenAddress !== "string") ||
+    (payload.tokenMint !== null && typeof payload.tokenMint !== "string") ||
     typeof payload.tokenDecimals !== "number" ||
     !Number.isInteger(payload.tokenDecimals) ||
     typeof payload.receivedUnits !== "string" ||
-    !/^\d+$/.test(payload.receivedUnits)
+    !/^\d+$/.test(payload.receivedUnits) ||
+    (payload.sweepTo !== null && typeof payload.sweepTo !== "string")
   ) {
     throw new Error("Crypto sweep outbox payload is malformed");
   }
   return payload as unknown as DirectSweepPayload;
+}
+
+function preparedSweepFromRow(value: {
+  prepared_transaction: string | null;
+  sweep_transaction_hash: string | null;
+  prepared_metadata: Record<string, unknown> | null;
+}): PreparedSweep | null {
+  if (
+    value.prepared_transaction === null &&
+    value.sweep_transaction_hash === null &&
+    value.prepared_metadata === null
+  ) {
+    return null;
+  }
+  const metadata = value.prepared_metadata;
+  if (
+    !value.prepared_transaction ||
+    !value.sweep_transaction_hash ||
+    !metadata ||
+    typeof metadata.sweepTo !== "string"
+  ) {
+    throw new Error("Prepared crypto sweep row is incomplete");
+  }
+  if (
+    (metadata.network === "base" || metadata.network === "bsc") &&
+    typeof metadata.nonce === "string"
+  ) {
+    return {
+      rawTransaction: value.prepared_transaction,
+      transactionHash: value.sweep_transaction_hash,
+      metadata: {
+        network: metadata.network,
+        sweepTo: metadata.sweepTo,
+        nonce: metadata.nonce,
+      },
+    };
+  }
+  if (
+    metadata.network === "solana" &&
+    typeof metadata.blockhash === "string" &&
+    typeof metadata.lastValidBlockHeight === "number" &&
+    Number.isSafeInteger(metadata.lastValidBlockHeight)
+  ) {
+    return {
+      rawTransaction: value.prepared_transaction,
+      transactionHash: value.sweep_transaction_hash,
+      metadata: {
+        network: "solana",
+        sweepTo: metadata.sweepTo,
+        blockhash: metadata.blockhash,
+        lastValidBlockHeight: metadata.lastValidBlockHeight,
+      },
+    };
+  }
+  throw new Error("Prepared crypto sweep metadata is malformed");
 }
 
 function directPaymentSettlementDigest(payment: CryptoPayment): string {
@@ -1769,8 +1898,10 @@ export class DirectWalletPaymentsService {
           network: direct.network,
           tokenKind: direct.tokenKind,
           tokenAddress: direct.tokenAddress,
+          tokenMint: direct.tokenMint,
           tokenDecimals: direct.tokenDecimals,
           receivedUnits: verification.receivedUnits.toString(),
+          sweepTo: cfg.secureAddress,
         });
         return {
           payment,
@@ -1879,8 +2010,10 @@ export class DirectWalletPaymentsService {
         network: direct.network,
         tokenKind: direct.tokenKind,
         tokenAddress: direct.tokenAddress,
+        tokenMint: direct.tokenMint,
         tokenDecimals: direct.tokenDecimals,
         receivedUnits: verification.receivedUnits.toString(),
+        sweepTo: cfg.secureAddress,
       });
 
       const [confirmed] = await tx
@@ -1969,45 +2102,79 @@ export class DirectWalletPaymentsService {
       const cfg = directPaymentConfig(env, payload.network);
       requireConfigured(cfg);
       const units = BigInt(payload.receivedUnits);
-      const prepared: PreparedSweep | null =
-        claimed.prepared_transaction && claimed.sweep_transaction_hash && cfg.secureAddress
-          ? {
-              rawTransaction: claimed.prepared_transaction,
-              transactionHash: claimed.sweep_transaction_hash,
-              sweepTo: cfg.secureAddress,
-            }
-          : payload.network === "solana"
-            ? await prepareSolanaSweep({ env, cfg, units })
-            : await prepareEvmSweep({
-                env,
-                cfg,
-                tokenAddress: payload.tokenAddress,
-                tokenDecimals: payload.tokenDecimals,
-                units,
-              });
-      if (prepared && !claimed.prepared_transaction) {
+      let prepared = preparedSweepFromRow(claimed);
+      if (
+        prepared &&
+        (prepared.metadata.network !== payload.network ||
+          prepared.metadata.sweepTo !== payload.sweepTo)
+      ) {
+        throw new Error("Prepared crypto sweep does not match the immutable intent");
+      }
+      const prepare = async (): Promise<PreparedSweep | null> => {
+        if (!payload.sweepTo) return null;
+        if (payload.network === "solana") {
+          if (!payload.tokenMint) throw new Error("Solana sweep intent is missing its token mint");
+          return prepareSolanaSweep({
+            env,
+            cfg,
+            units,
+            sweepTo: payload.sweepTo,
+            tokenMint: payload.tokenMint,
+            tokenDecimals: payload.tokenDecimals,
+          });
+        }
+        return prepareEvmSweep({
+          env,
+          cfg,
+          tokenAddress: payload.tokenAddress,
+          tokenDecimals: payload.tokenDecimals,
+          units,
+          sweepTo: payload.sweepTo,
+        });
+      };
+      const persistPrepared = async (
+        next: PreparedSweep,
+        previousHash: string | null,
+      ): Promise<void> => {
         const [persisted] = await dbWrite
           .update(cryptoSweepOutbox)
           .set({
-            prepared_transaction: prepared.rawTransaction,
-            sweep_transaction_hash: prepared.transactionHash,
+            prepared_transaction: next.rawTransaction,
+            sweep_transaction_hash: next.transactionHash,
+            prepared_metadata: next.metadata,
             updated_at: new Date(),
           })
           .where(
             and(
               eq(cryptoSweepOutbox.id, claimed.id),
               eq(cryptoSweepOutbox.claim_token, claimToken),
-              sql`${cryptoSweepOutbox.prepared_transaction} IS NULL`,
+              previousHash === null
+                ? sql`${cryptoSweepOutbox.sweep_transaction_hash} IS NULL`
+                : eq(cryptoSweepOutbox.sweep_transaction_hash, previousHash),
             ),
           )
           .returning({ id: cryptoSweepOutbox.id });
         if (!persisted) {
           throw new Error("Crypto sweep lease was lost before transaction preparation");
         }
+      };
+      if (!prepared) {
+        prepared = await prepare();
+        if (prepared) await persistPrepared(prepared, null);
       }
       if (prepared) {
         if (payload.network === "solana") {
-          await submitPreparedSolanaSweep(cfg, prepared);
+          const outcome = await submitPreparedSolanaSweep(cfg, prepared);
+          if (outcome === "reprepare") {
+            const expiredHash = prepared.transactionHash;
+            const replacement = await prepare();
+            if (!replacement) throw new Error("Solana sweep replacement could not be prepared");
+            await persistPrepared(replacement, expiredHash);
+            prepared = replacement;
+            if ((await submitPreparedSolanaSweep(cfg, prepared)) === "reprepare") {
+              throw new Error("New Solana sweep blockhash expired before submission");
+            }
+          }
         } else {
           await submitPreparedEvmSweep(cfg, prepared);
         }
@@ -2047,7 +2214,7 @@ export class DirectWalletPaymentsService {
               sweep: prepared
                 ? {
                     sweep_transaction_hash: prepared.transactionHash,
-                    sweep_to: prepared.sweepTo,
+                    sweep_to: prepared.metadata.sweepTo,
                   }
                 : { state: "not_configured" },
               sweep_completed_at: completedAt.toISOString(),

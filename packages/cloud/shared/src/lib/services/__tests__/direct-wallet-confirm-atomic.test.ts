@@ -245,6 +245,7 @@ beforeAll(async () => {
         last_error text,
         prepared_transaction text,
         sweep_transaction_hash text,
+        prepared_metadata jsonb,
         delivered_at timestamptz,
         terminal_at timestamptz,
         created_at timestamptz NOT NULL DEFAULT NOW(),

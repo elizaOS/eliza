@@ -76,6 +76,18 @@ export interface CallbackDispatchResult {
   errors: string[];
 }
 
+interface AppChargeCallbackOutboxPayload extends Record<string, unknown> {
+  version: 1;
+  params: AppChargeCallbackDispatchParams;
+  envelope: AppChargeCallbackPayload;
+  target: {
+    organizationId: string;
+    channel?: AppChargeCallbackChannel;
+    callbackUrl?: string;
+    callbackSecret?: string;
+  };
+}
+
 const CALLBACK_MAX_ATTEMPTS = 12;
 const CALLBACK_LEASE_MS = 60_000;
 
@@ -122,6 +134,43 @@ export function parseAppChargeCallbackDispatchParams(
     reason: value.reason as string | undefined,
     metadata: value.metadata as Record<string, unknown> | undefined,
     deliveryId: value.deliveryId as string | undefined,
+  };
+}
+
+function parseAppChargeCallbackOutboxPayload(value: unknown): AppChargeCallbackOutboxPayload {
+  if (!isRecord(value) || value.version !== 1 || !isRecord(value.target)) {
+    throw new Error("App callback outbox snapshot is invalid");
+  }
+  const params = parseAppChargeCallbackDispatchParams(value.params);
+  const envelope = value.envelope;
+  const target = value.target;
+  if (
+    !isRecord(envelope) ||
+    !isRecord(envelope.charge) ||
+    !isRecord(envelope.payment) ||
+    typeof target.organizationId !== "string" ||
+    (target.channel !== undefined && !isRecord(target.channel)) ||
+    (target.callbackUrl !== undefined && typeof target.callbackUrl !== "string") ||
+    (target.callbackSecret !== undefined && typeof target.callbackSecret !== "string") ||
+    envelope.event !== (params.status === "paid" ? "app_charge.paid" : "app_charge.failed") ||
+    envelope.charge.id !== params.chargeRequestId ||
+    envelope.charge.appId !== params.appId ||
+    envelope.charge.status !== params.status ||
+    envelope.payment.provider !== params.provider ||
+    envelope.payment.providerPaymentId !== params.providerPaymentId
+  ) {
+    throw new Error("App callback outbox snapshot binding is invalid");
+  }
+  return {
+    version: 1,
+    params,
+    envelope: envelope as unknown as AppChargeCallbackPayload,
+    target: {
+      organizationId: target.organizationId,
+      channel: target.channel as AppChargeCallbackChannel | undefined,
+      callbackUrl: target.callbackUrl as string | undefined,
+      callbackSecret: target.callbackSecret as string | undefined,
+    },
   };
 }
 
@@ -273,14 +322,43 @@ export class AppChargeCallbacksService {
     transaction: DbTransaction,
   ): Promise<void> {
     const deliveryKey = callbackDeliveryKey(params);
-    const digest = settlementDigest(params);
+    const [chargeRequest] = await transaction
+      .select()
+      .from(cryptoPayments)
+      .where(eq(cryptoPayments.id, params.chargeRequestId))
+      .for("update")
+      .limit(1);
+    if (!chargeRequest) throw new Error("App callback charge request not found");
+    const metadata = isRecord(chargeRequest.metadata) ? chargeRequest.metadata : {};
+    if (metadata.kind !== "app_charge_request" || metadata.app_id !== params.appId) {
+      throw new Error("App callback charge request metadata mismatch");
+    }
+    const createdAt = new Date();
+    const snapshot: AppChargeCallbackOutboxPayload = {
+      version: 1,
+      params: { ...params, deliveryId: undefined },
+      envelope: createAppChargeCallbackPayload(
+        params,
+        metadata,
+        chargeRequest.expected_amount,
+        createdAt.toISOString(),
+      ),
+      target: {
+        organizationId: chargeRequest.organization_id,
+        channel: callbackChannel(metadata),
+        callbackUrl: stringValue(metadata, "callback_url"),
+        callbackSecret: stringValue(metadata, "callback_secret"),
+      },
+    };
+    const digest = settlementDigest(snapshot);
     const [inserted] = await transaction
       .insert(appChargeCallbackOutbox)
       .values({
         delivery_key: deliveryKey,
         charge_request_id: params.chargeRequestId,
-        payload: { ...params },
+        payload: snapshot,
         payload_digest: digest,
+        created_at: createdAt,
       })
       .onConflictDoNothing({ target: appChargeCallbackOutbox.delivery_key })
       .returning();
@@ -291,7 +369,14 @@ export class AppChargeCallbacksService {
       .from(appChargeCallbackOutbox)
       .where(eq(appChargeCallbackOutbox.delivery_key, deliveryKey))
       .limit(1);
-    if (!existing || existing.payload_digest !== digest) {
+    if (!existing) {
+      throw new Error("App callback outbox replay does not match the committed delivery");
+    }
+    const existingSnapshot = parseAppChargeCallbackOutboxPayload(existing.payload);
+    if (
+      existing.payload_digest !== settlementDigest(existingSnapshot) ||
+      settlementDigest(existingSnapshot.params) !== settlementDigest(snapshot.params)
+    ) {
       throw new Error("App callback outbox replay does not match the committed delivery");
     }
   }
@@ -342,16 +427,18 @@ export class AppChargeCallbacksService {
       let deliveryResult: CallbackDispatchResult | null = null;
 
       try {
-        const params = parseAppChargeCallbackDispatchParams(claimed.payload);
-        if (settlementDigest(params) !== claimed.payload_digest) {
+        const snapshot = parseAppChargeCallbackOutboxPayload(claimed.payload);
+        if (settlementDigest(snapshot) !== claimed.payload_digest) {
           throw new Error("App callback outbox payload digest mismatch");
         }
-        deliveryResult = await this.dispatch(
-          { ...params, deliveryId: claimed.delivery_key },
+        deliveryResult = await this.dispatchSnapshot(
+          {
+            ...snapshot,
+            params: { ...snapshot.params, deliveryId: claimed.delivery_key },
+          },
           {
             skipRoom: claimed.room_delivered_at !== null,
             skipHttp: claimed.http_delivered_at !== null,
-            createdAt: claimed.created_at,
           },
         );
         if (deliveryResult.errors.length > 0) {
@@ -415,14 +502,8 @@ export class AppChargeCallbacksService {
 
   async dispatch(
     params: AppChargeCallbackDispatchParams,
-    options: { skipRoom?: boolean; skipHttp?: boolean; createdAt?: Date } = {},
+    options: { skipRoom?: boolean; skipHttp?: boolean } = {},
   ): Promise<CallbackDispatchResult> {
-    const result: CallbackDispatchResult = {
-      httpPosted: false,
-      roomMessageCreated: false,
-      errors: [],
-    };
-
     const chargeRequest = await dbRead.query.cryptoPayments.findFirst({
       where: eq(cryptoPayments.id, params.chargeRequestId),
     });
@@ -432,7 +513,7 @@ export class AppChargeCallbacksService {
         appId: params.appId,
         chargeRequestId: params.chargeRequestId,
       });
-      return result;
+      return { httpPosted: false, roomMessageCreated: false, errors: [] };
     }
 
     const metadata = isRecord(chargeRequest.metadata) ? chargeRequest.metadata : {};
@@ -441,27 +522,46 @@ export class AppChargeCallbacksService {
         appId: params.appId,
         chargeRequestId: params.chargeRequestId,
       });
-      return result;
+      return { httpPosted: false, roomMessageCreated: false, errors: [] };
     }
-
-    const payload = createAppChargeCallbackPayload(
+    const snapshot: AppChargeCallbackOutboxPayload = {
+      version: 1,
       params,
-      metadata,
-      chargeRequest.expected_amount,
-      options.createdAt instanceof Date
-        ? options.createdAt.toISOString()
-        : chargeRequest.created_at instanceof Date
+      envelope: createAppChargeCallbackPayload(
+        params,
+        metadata,
+        chargeRequest.expected_amount,
+        chargeRequest.created_at instanceof Date
           ? chargeRequest.created_at.toISOString()
           : new Date(0).toISOString(),
-    );
+      ),
+      target: {
+        organizationId: chargeRequest.organization_id,
+        channel: callbackChannel(metadata),
+        callbackUrl: stringValue(metadata, "callback_url"),
+        callbackSecret: stringValue(metadata, "callback_secret"),
+      },
+    };
+    return this.dispatchSnapshot(snapshot, options);
+  }
 
-    const channel = callbackChannel(metadata);
+  private async dispatchSnapshot(
+    snapshot: AppChargeCallbackOutboxPayload,
+    options: { skipRoom?: boolean; skipHttp?: boolean },
+  ): Promise<CallbackDispatchResult> {
+    const { params, envelope: payload, target } = snapshot;
+    const result: CallbackDispatchResult = {
+      httpPosted: false,
+      roomMessageCreated: false,
+      errors: [],
+    };
+    const channel = target.channel;
     if (channel && !options.skipRoom) {
       try {
         result.roomMessageCreated = await this.createRoomMessage(
           payload,
           channel,
-          chargeRequest.organization_id,
+          target.organizationId,
         );
       } catch (error) {
         // error-policy:J4 durable delivery records the explicit failed room channel.
@@ -475,15 +575,10 @@ export class AppChargeCallbacksService {
       }
     }
 
-    const callbackUrl = stringValue(metadata, "callback_url");
+    const callbackUrl = target.callbackUrl;
     if (callbackUrl && !options.skipHttp) {
       try {
-        await this.postHttpCallback(
-          callbackUrl,
-          stringValue(metadata, "callback_secret"),
-          payload,
-          params.deliveryId,
-        );
+        await this.postHttpCallback(callbackUrl, target.callbackSecret, payload, params.deliveryId);
         result.httpPosted = true;
       } catch (error) {
         // error-policy:J4 durable delivery records the explicit failed HTTP target.

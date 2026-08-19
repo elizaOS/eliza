@@ -62,6 +62,7 @@ export const cryptoSweepOutbox = pgTable(
     last_error: text("last_error"),
     prepared_transaction: text("prepared_transaction"),
     sweep_transaction_hash: text("sweep_transaction_hash"),
+    prepared_metadata: jsonb("prepared_metadata").$type<Record<string, unknown>>(),
     delivered_at: timestamp("delivered_at", { withTimezone: true }),
     terminal_at: timestamp("terminal_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -74,7 +75,9 @@ export const cryptoSweepOutbox = pgTable(
       .where(sql`${table.state} IN ('pending', 'processing')`),
     prepared_pair_check: check(
       "crypto_sweep_outbox_prepared_pair_check",
-      sql`(${table.prepared_transaction} IS NULL) = (${table.sweep_transaction_hash} IS NULL)`,
+      sql`(${table.prepared_transaction} IS NULL)
+        = (${table.sweep_transaction_hash} IS NULL)
+        AND (${table.prepared_transaction} IS NULL) = (${table.prepared_metadata} IS NULL)`,
     ),
   }),
 );
