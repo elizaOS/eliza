@@ -72,7 +72,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@slack/bolt": "^4.1.0",
+    "@slack/bolt": "^5.0.0",
     "@slack/web-api": "^7.15.2"
   },
   "devDependencies": {
