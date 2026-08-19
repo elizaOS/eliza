@@ -1,4 +1,4 @@
-// Coordinates cloud service oxapay behavior behind route handlers.
+/** Validates exact OxaPay invoice and inquiry contracts for crypto settlement callers. */
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { logger } from "../utils/logger";

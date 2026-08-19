@@ -1,4 +1,4 @@
-// Persists app earnings records for cloud services through the shared DB boundary.
+/** Persists app earnings records for cloud services through the shared DB boundary. */
 
 import Decimal from "decimal.js";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";

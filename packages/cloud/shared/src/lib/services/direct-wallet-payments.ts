@@ -1,4 +1,4 @@
-// Coordinates cloud service direct wallet payments behavior behind route handlers.
+/** Coordinates verified direct-wallet settlement, crediting, invoicing, and durable sweeping. */
 import {
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,

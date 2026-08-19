@@ -1,4 +1,4 @@
-// Coordinates cloud service referrals behavior behind route handlers.
+/** Coordinates referral lookup and exact revenue-split calculation behind service callers. */
 import * as crypto from "crypto";
 import Decimal from "decimal.js";
 import { eq } from "drizzle-orm";

@@ -1,4 +1,4 @@
-// Coordinates cloud service crypto payments behavior behind route handlers.
+/** Coordinates atomic provider-backed crypto settlement and recovery behind route handlers. */
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { eq, sql } from "drizzle-orm";
