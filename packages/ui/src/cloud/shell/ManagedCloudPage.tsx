@@ -15,6 +15,7 @@ import { ViewHeader } from "../../components/shared/ViewHeader";
 import { useAppSelector } from "../../state";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { isManagedCloudRuntime } from "../managed-cloud-runtime";
+import { CloudAccountMenu } from "./CloudAccountMenu";
 import { CloudRouteErrorBoundary } from "./CloudRouteErrorBoundary";
 import {
   type CloudRouteDef,
@@ -68,15 +69,22 @@ function renderManagedRoute(route: CloudRouteDef): React.ReactNode {
 
 function ManagedCloudRouteFrame({
   route,
+  email,
 }: {
   route: CloudRouteDef;
+  email: string | null;
 }): React.JSX.Element {
   const { pageInfo } = usePageHeader();
   return (
     <div className="theme-cloud flex min-h-0 min-w-0 flex-1 flex-col bg-bg text-txt">
       <ViewHeader
         title={pageInfo?.title ?? "Cloud"}
-        right={pageInfo?.actions}
+        right={
+          <div className="flex items-center gap-2">
+            {pageInfo?.actions}
+            <CloudAccountMenu email={email} />
+          </div>
+        }
         className="border-b border-border"
       />
       {pageInfo?.description ? (
@@ -121,7 +129,10 @@ export function ManagedCloudPage(): React.JSX.Element {
 
   return (
     <EnsurePageHeaderProvider>
-      <ManagedCloudRouteFrame route={route} />
+      <ManagedCloudRouteFrame
+        route={route}
+        email={session.user?.email ?? null}
+      />
     </EnsurePageHeaderProvider>
   );
 }
