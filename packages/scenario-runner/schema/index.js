@@ -203,11 +203,42 @@ export const DEFAULT_SCENARIO_LANE = "live-only";
  */
 export const DEFAULT_SCENARIO_EXECUTION_PROFILE = "simulated";
 
+/** Evidence boundary assumed for legacy simulated scenario definitions. */
+export const DEFAULT_SCENARIO_EVIDENCE_CLASS = "simulated";
+
+/** Certification claim assumed when a scenario does not declare one. */
+export const DEFAULT_SCENARIO_CERTIFICATION_CLASS = "none";
+
 const SCENARIO_LANES = new Set(["pr-deterministic", "live-only"]);
 const SCENARIO_EXECUTION_PROFILES = new Set([
   "simulated",
   "provider-qualified",
 ]);
+const SCENARIO_EVIDENCE_CLASSES = new Set([
+  "simulated",
+  "runtime-observed",
+  "provider-observed",
+  "native-device-observed",
+  "webhook-ingress-observed",
+]);
+const SCENARIO_CERTIFICATION_CLASSES = new Set([
+  "none",
+  "runtime-contract",
+  "provider",
+  "native-device",
+  "webhook-ingress",
+]);
+const EXTERNAL_SCENARIO_EVIDENCE_CLASSES = new Set([
+  "provider-observed",
+  "native-device-observed",
+  "webhook-ingress-observed",
+]);
+const REQUIRED_EVIDENCE_CLASS_BY_CERTIFICATION = {
+  "runtime-contract": "runtime-observed",
+  provider: "provider-observed",
+  "native-device": "native-device-observed",
+  "webhook-ingress": "webhook-ingress-observed",
+};
 const SCENARIO_TIERS = new Set(["T1", "T2", "T3", "T4"]);
 const SCENARIO_STATUSES = new Set(["active", "pending"]);
 
@@ -253,6 +284,74 @@ export function scenarioExecutionProfile(value) {
     );
   }
   return executionProfile;
+}
+
+/** Resolve and validate the boundary that produced a scenario's evidence. */
+export function scenarioEvidenceClass(value) {
+  const evidenceClass = value?.evidenceClass;
+  if (evidenceClass === undefined) {
+    return scenarioExecutionProfile(value) === "provider-qualified"
+      ? "provider-observed"
+      : DEFAULT_SCENARIO_EVIDENCE_CLASS;
+  }
+  if (!SCENARIO_EVIDENCE_CLASSES.has(evidenceClass)) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid evidenceClass "${evidenceClass}"; expected one of ${[...SCENARIO_EVIDENCE_CLASSES].join(", ")}`,
+    );
+  }
+  return evidenceClass;
+}
+
+/**
+ * Resolve and validate the highest certification a passing scenario may
+ * describe. Classification never substitutes for signed or live evidence.
+ */
+export function scenarioCertificationClass(value) {
+  const certificationClass =
+    value?.certificationClass ?? DEFAULT_SCENARIO_CERTIFICATION_CLASS;
+  if (!SCENARIO_CERTIFICATION_CLASSES.has(certificationClass)) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid certificationClass "${certificationClass}"; expected one of ${[...SCENARIO_CERTIFICATION_CLASSES].join(", ")}`,
+    );
+  }
+
+  const evidenceClass = scenarioEvidenceClass(value);
+  const lane = scenarioLane(value);
+  const executionProfile = scenarioExecutionProfile(value);
+  if (
+    lane === "pr-deterministic" &&
+    EXTERNAL_SCENARIO_EVIDENCE_CLASSES.has(evidenceClass)
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" declares ${evidenceClass} evidence in lane "pr-deterministic"; deterministic scenarios cannot claim provider, native-device, or webhook-ingress evidence`,
+    );
+  }
+  if (
+    EXTERNAL_SCENARIO_EVIDENCE_CLASSES.has(evidenceClass) &&
+    executionProfile !== "provider-qualified"
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" evidenceClass "${evidenceClass}" requires executionProfile "provider-qualified"`,
+    );
+  }
+  const certificationLanguage = `${value?.id ?? ""} ${value?.title ?? ""}`;
+  if (
+    certificationClass === "none" &&
+    /\bcertif(?:y|ies|ied|ication)\b/i.test(certificationLanguage)
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" uses certification language but does not declare certificationClass`,
+    );
+  }
+
+  const requiredEvidenceClass =
+    REQUIRED_EVIDENCE_CLASS_BY_CERTIFICATION[certificationClass];
+  if (requiredEvidenceClass && evidenceClass !== requiredEvidenceClass) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" certificationClass "${certificationClass}" requires evidenceClass "${requiredEvidenceClass}", received "${evidenceClass}"`,
+    );
+  }
+  return certificationClass;
 }
 
 /** Resolve and validate the optional persona-scenario complexity tier. */
@@ -377,6 +476,8 @@ export function scenario(value) {
     scenarioLane(value);
     // Provider evidence cannot be claimed by a deterministic execution profile.
     scenarioExecutionProfile(value);
+    // Certification labels must match the evidence and execution boundaries.
+    scenarioCertificationClass(value);
     // Validate optional LifeOps/persona tier metadata when authored.
     scenarioTier(value);
     // Validate pending/active inventory status before loader filtering relies on it.

@@ -1,17 +1,18 @@
 /** Scenario fixture for connector browser portal certify core; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
+  expectScenarioBrowserTask,
   expectScenarioToCallAction,
+  expectTurnBrowserTask,
   expectTurnToCallAction,
   judgeRubric,
 } from "@elizaos/scenario-runner/scenario-assertions";
-import {
-  expectScenarioBrowserTask,
-  expectTurnBrowserTask,
-} from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",
+  evidenceClass: "runtime-observed",
+  certificationClass: "runtime-contract",
   id: "connector.browser-portal.certify-core",
   title: "Certify browser and portal upload flows",
   domain: "connector-certification",

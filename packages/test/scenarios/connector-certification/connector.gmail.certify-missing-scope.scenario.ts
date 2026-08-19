@@ -2,6 +2,8 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  evidenceClass: "runtime-observed",
+  certificationClass: "runtime-contract",
   lane: "live-only",
   id: "connector.gmail.certify-missing-scope",
   title: "Certify Gmail missing-scope degradation handling",

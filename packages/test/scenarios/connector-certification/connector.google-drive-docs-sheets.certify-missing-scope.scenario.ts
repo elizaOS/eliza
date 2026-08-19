@@ -2,6 +2,8 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  evidenceClass: "runtime-observed",
+  certificationClass: "runtime-contract",
   lane: "live-only",
   id: "connector.google-drive-docs-sheets.certify-missing-scope",
   title: "Certify Drive and Docs missing-scope degradation handling",

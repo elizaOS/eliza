@@ -70,6 +70,31 @@ export default {
 **Final checks** (after all turns, in `finalChecks` array):
 `actionCalled`, `selectedAction`, `judgeRubric`, `connectorDispatchOccurred`, `memoryWriteOccurred`, `approvalRequestExists`, `browserTaskCompleted`, `messageDelivered`, and more — see `schema/index.js` for the full list.
 
+### Evidence and certification classes
+
+Scenario metadata separates what a run observed from what its title or report
+may certify:
+
+- `evidenceClass`: `simulated`, `runtime-observed`, `provider-observed`,
+  `native-device-observed`, or `webhook-ingress-observed`.
+- `certificationClass`: `none`, `runtime-contract`, `provider`,
+  `native-device`, or `webhook-ingress`.
+
+Missing metadata remains compatible for definitions that make no certification
+claim: it resolves to simulated evidence with class `none`. An id or title that
+says certify, certified, or certification is a deliberate exception and must
+declare its bounded class explicitly. A deterministic lane may certify a
+runtime contract, but it cannot claim provider, native/device, or real webhook
+evidence. External certification additionally requires `executionProfile:
+"provider-qualified"`; classification alone never makes a report publishable.
+Use `runtime-observed` + `runtime-contract` for real-runtime scenarios backed by
+fixture or simulated connectors.
+
+Because corpus validation does not import scenario modules, `id`, `title`, and
+any authored lane/profile/class fields must be string literals. Top-level object
+spreads and computed property names are rejected because they could conceal or
+override the certification boundary.
+
 ## CLI flags
 
 ```

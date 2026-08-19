@@ -497,6 +497,20 @@ export type ScenarioLane = "pr-deterministic" | "live-only";
  * backed by trusted durable/provider observers and hashed trajectories.
  */
 export type ScenarioExecutionProfile = "simulated" | "provider-qualified";
+/** Observable boundary that produced a scenario's evidence. */
+export type ScenarioEvidenceClass =
+  | "simulated"
+  | "runtime-observed"
+  | "provider-observed"
+  | "native-device-observed"
+  | "webhook-ingress-observed";
+/** Highest semantic certification a passing scenario is allowed to claim. */
+export type ScenarioCertificationClass =
+  | "none"
+  | "runtime-contract"
+  | "provider"
+  | "native-device"
+  | "webhook-ingress";
 export type ScenarioTier = "T1" | "T2" | "T3" | "T4";
 
 /**
@@ -583,6 +597,20 @@ export type ScenarioDefinition = {
    */
   executionProfile?: ScenarioExecutionProfile;
   /**
+   * Boundary actually observed by this scenario. Absent legacy definitions
+   * resolve to `simulated` (or `provider-observed` for an explicitly
+   * `provider-qualified` execution profile).
+   */
+  evidenceClass?: ScenarioEvidenceClass;
+  /**
+   * Highest certification label this definition may use. This is authoring
+   * metadata, not proof that a run qualified; reports and external observers
+   * remain authoritative. Absent means `none`; definitions whose id or title
+   * says certify/certified/certification must declare the bounded class
+   * explicitly.
+   */
+  certificationClass?: ScenarioCertificationClass;
+  /**
    * Platform-gated deferral. Present only on `live-only` scenarios that cannot
    * run in any current lane because the platform/runner they need does not exist
    * yet (e.g. a macOS SelfControl shard awaiting an `eliza-e2e-macos` runner).
@@ -624,6 +652,12 @@ export declare const DEFAULT_SCENARIO_LANE: ScenarioLane;
 /** Execution profile assumed for legacy scenario definitions. */
 export declare const DEFAULT_SCENARIO_EXECUTION_PROFILE: "simulated";
 
+/** Evidence class assumed when no explicit class is authored. */
+export declare const DEFAULT_SCENARIO_EVIDENCE_CLASS: "simulated";
+
+/** Certification class assumed when no explicit claim is authored. */
+export declare const DEFAULT_SCENARIO_CERTIFICATION_CLASS: "none";
+
 /** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
 export declare function scenarioLane(value: ScenarioDefinition): ScenarioLane;
 
@@ -640,6 +674,19 @@ export declare function isScenarioExecutionProfile(
 export declare function scenarioExecutionProfile(
   value: ScenarioDefinition,
 ): ScenarioExecutionProfile;
+
+/** Resolve and validate a scenario's observable evidence boundary. */
+export declare function scenarioEvidenceClass(
+  value: ScenarioDefinition,
+): ScenarioEvidenceClass;
+
+/**
+ * Resolve and validate a scenario's maximum certification claim against its
+ * lane, execution profile, and evidence class.
+ */
+export declare function scenarioCertificationClass(
+  value: ScenarioDefinition,
+): ScenarioCertificationClass;
 
 /** Resolve and validate the optional persona-scenario complexity tier. */
 export declare function scenarioTier(
