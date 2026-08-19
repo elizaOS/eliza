@@ -11,6 +11,9 @@ saved places, safe sharing, and navigation handoffs.
 - Saved places use one agent-private canonical document per owner. Mutations
   must use the adapter's durable document CAS contract and preserve immutable
   operation-key history; never replace this with process-local locking alone.
+  Preserve the per-owner bounds of 64 current places, 256 immutable operations,
+  and 512 KiB serialized state. Resolve retained-key replay/conflict before
+  rejecting new mutations at capacity; do not compact away idempotency history.
   Do not add another file store, scheduler, or identity graph.
 - Native coordinates may be supplied by `@elizaos/capacitor-location`, but this
   package does not request device permissions or read device location itself.
@@ -20,6 +23,9 @@ saved places, safe sharing, and navigation handoffs.
 
 - `PlaceRef`, `RoutePlan`, and `SavedPlace` are validated normalized types.
 - `MapsProviderAdapter` is the connector seam for place and route reads.
+- Coordinate canonicalization must retain exact requested coordinates and an
+  explicit `coordinateBinding` to the original coordinate place ID. Adapter
+  identity by itself is not proof that a route endpoint is equivalent.
 - `MAPS` is the umbrella action. `promoteSubactionsToActions` registers
   `MAPS_PLACE`, `MAPS_ROUTE`, `MAPS_SAVE`, `MAPS_SHARE`, and `MAPS_NAVIGATE`.
 - Direct `MAPS` execution is read-only. Saves must use the promoted `MAPS_SAVE`

@@ -10,10 +10,12 @@ import {
 } from "@elizaos/core/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MapsService } from "../src/service.js";
+import { MAX_SAVED_PLACES_PER_OWNER } from "../src/store.js";
 
 const OWNER_ID = "22222222-2222-4222-a222-222222222222";
 const ROOM_ID = "44444444-4444-4444-a444-444444444444";
 const CAS_OWNER_ID = "33333333-3333-4333-a333-333333333333";
+const QUOTA_OWNER_ID = "55555555-5555-4555-a555-555555555555";
 const place = {
   provider: "contract-maps",
   providerPlaceId: "pglite-place-1",
@@ -215,5 +217,110 @@ describe("saved-place durable CAS on PGlite", () => {
       ]),
     );
     expect(state?.operations).toHaveLength(3);
+  });
+
+  it("atomically admits one final place under PGlite quota contention", async () => {
+    const seedService = new MapsService(harness.runtime);
+    for (let index = 0; index < MAX_SAVED_PLACES_PER_OWNER - 1; index += 1) {
+      await seedService.savePlace({
+        ownerEntityId: QUOTA_OWNER_ID,
+        roomId: ROOM_ID,
+        place: { ...place, providerPlaceId: `quota-seed-${index}` },
+        idempotencyKey: `quota-seed-key-${index}`,
+      });
+    }
+
+    const originalGetDocument = harness.runtime.adapter.getDocument.bind(
+      harness.runtime.adapter,
+    );
+    const originalCompareAndSwap =
+      harness.runtime.adapter.compareAndSwapDocument.bind(
+        harness.runtime.adapter,
+      );
+    let readsAtBoundary = 0;
+    let releaseBoundaryReads: (() => void) | undefined;
+    const allReadBoundary = new Promise<void>((resolve) => {
+      releaseBoundaryReads = resolve;
+    });
+    const statuses: string[] = [];
+    harness.runtime.adapter.getDocument = async (params) => {
+      const document = await originalGetDocument(params);
+      const state = (document?.metadata as Record<string, unknown> | undefined)
+        ?.mapsSavedPlaceState as
+        | { ownerEntityId?: unknown; savedPlaces?: unknown[] }
+        | undefined;
+      if (
+        state?.ownerEntityId === QUOTA_OWNER_ID &&
+        state.savedPlaces?.length === MAX_SAVED_PLACES_PER_OWNER - 1 &&
+        readsAtBoundary < 8
+      ) {
+        readsAtBoundary += 1;
+        if (readsAtBoundary === 8) releaseBoundaryReads?.();
+        await allReadBoundary;
+      }
+      return document;
+    };
+    harness.runtime.adapter.compareAndSwapDocument = async (params) => {
+      const result = await originalCompareAndSwap(params);
+      statuses.push(result.status);
+      return result;
+    };
+
+    let settled: PromiseSettledResult<
+      Awaited<ReturnType<MapsService["savePlace"]>>
+    >[];
+    try {
+      settled = await Promise.allSettled(
+        Array.from({ length: 8 }, (_, index) =>
+          new MapsService(harness.runtime).savePlace({
+            ownerEntityId: QUOTA_OWNER_ID,
+            roomId: ROOM_ID,
+            place: { ...place, providerPlaceId: `quota-race-${index}` },
+            idempotencyKey: `quota-race-key-${index}`,
+          }),
+        ),
+      );
+    } finally {
+      harness.runtime.adapter.getDocument = originalGetDocument;
+      harness.runtime.adapter.compareAndSwapDocument = originalCompareAndSwap;
+    }
+
+    expect(readsAtBoundary).toBe(8);
+    expect(
+      settled.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      settled
+        .filter((result) => result.status === "rejected")
+        .every((result) => result.reason?.code === "MAPS_STORAGE_LIMIT"),
+    ).toBe(true);
+    expect(statuses.filter((status) => status === "updated")).toHaveLength(1);
+    expect(statuses.filter((status) => status === "conflict")).toHaveLength(7);
+    expect(await seedService.listSavedPlaces(QUOTA_OWNER_ID)).toHaveLength(
+      MAX_SAVED_PLACES_PER_OWNER,
+    );
+
+    const documents = await harness.runtime.getMemories({
+      tableName: "documents",
+      agentId: harness.runtime.agentId,
+      metadata: { source: "plugin-maps.saved-place-state.v1" },
+      limit: 10,
+    });
+    const state = documents
+      .map(
+        (document) =>
+          (document.metadata as Record<string, unknown> | undefined)
+            ?.mapsSavedPlaceState,
+      )
+      .find(
+        (candidate) =>
+          (candidate as { ownerEntityId?: unknown } | undefined)
+            ?.ownerEntityId === QUOTA_OWNER_ID,
+      ) as
+      | { savedPlaces: unknown[]; operations: unknown[]; revision: number }
+      | undefined;
+    expect(state?.savedPlaces).toHaveLength(MAX_SAVED_PLACES_PER_OWNER);
+    expect(state?.operations).toHaveLength(MAX_SAVED_PLACES_PER_OWNER);
+    expect(state?.revision).toBe(MAX_SAVED_PLACES_PER_OWNER - 1);
   });
 });

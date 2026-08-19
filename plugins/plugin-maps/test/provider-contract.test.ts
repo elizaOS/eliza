@@ -18,6 +18,11 @@ const place = {
   coordinates: { latitude: 37.77, longitude: -122.42 },
   formattedAddress: "1 Contract Way",
   categories: ["park"],
+  coordinateBinding: {
+    provider: "coordinates" as const,
+    providerPlaceId: "coordinates:37.77,-122.42",
+    coordinates: { latitude: 37.77, longitude: -122.42 },
+  },
 };
 
 const fixtures: ProviderProtocolFixture[] = [
@@ -91,7 +96,7 @@ describe("JsonMapsHttpAdapter provider contract", () => {
       connectionId: upstream.createConnectionId(),
       baseUrl: upstream.url,
       credential: "maps_contract_secret",
-      timeoutMs: 100,
+      timeoutMs: 2_000,
       testTransport: { fetchImpl: globalThis.fetch },
       allowPrivateNetworkForTests: true,
     });
@@ -193,12 +198,26 @@ describe("JsonMapsHttpAdapter provider contract", () => {
           );
         },
         timeout: async () => {
-          upstream.enqueueFault("GET", "/places/search", {
-            type: "delay",
-            durationMs: 250,
+          const timeoutAdapter = new JsonMapsHttpAdapter({
+            id: "timeout-maps",
+            connectionId: "conn_timeout_contract_123",
+            baseUrl: "https://maps-timeout.example.test",
+            timeoutMs: 100,
+            testTransport: {
+              fetchImpl: vi.fn(
+                async (_input, init) =>
+                  await new Promise<Response>((_resolve, reject) => {
+                    init?.signal?.addEventListener(
+                      "abort",
+                      () => reject(init.signal?.reason),
+                      { once: true },
+                    );
+                  }),
+              ),
+            },
           });
           await expectCode(
-            adapter.searchPlaces({ query: "park" }),
+            timeoutAdapter.searchPlaces({ query: "park" }),
             "MAPS_PROVIDER_TIMEOUT",
           );
           return passed("timeout", "bounded abort surfaced as timeout");
@@ -398,6 +417,69 @@ describe("JsonMapsHttpAdapter provider contract", () => {
       statusAdapter.searchPlaces({ query: "park" }),
       "MAPS_AUTH_EXPIRED",
     );
+  });
+
+  it("bounds headers, body reads, and cancellation under one deadline", async () => {
+    const stalledBody = () =>
+      new ReadableStream<Uint8Array>({
+        pull: async () => await new Promise<never>(() => undefined),
+        cancel: async () => await new Promise<never>(() => undefined),
+      });
+    const responses = [
+      new Response(stalledBody(), { status: 200 }),
+      new Response(stalledBody(), { status: 401 }),
+      new Response(stalledBody(), { status: 404 }),
+      new Response(stalledBody(), { status: 503 }),
+      new Response(stalledBody(), {
+        status: 200,
+        headers: { "content-length": "9" },
+      }),
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array(9));
+          },
+          cancel: async () => await new Promise<never>(() => undefined),
+        }),
+        { status: 200 },
+      ),
+    ];
+    const bounded = new JsonMapsHttpAdapter({
+      id: "deadline-maps",
+      connectionId: "conn_deadline_contract_123",
+      baseUrl: "https://maps-deadline.example.test",
+      timeoutMs: 100,
+      responseByteLimit: 8,
+      testTransport: {
+        fetchImpl: vi.fn(async () => {
+          const response = responses.shift();
+          if (!response) throw new Error("No queued response");
+          return response;
+        }),
+      },
+    });
+    await expectCode(
+      bounded.searchPlaces({ query: "stall" }),
+      "MAPS_PROVIDER_TIMEOUT",
+    );
+    await expectCode(
+      bounded.searchPlaces({ query: "auth" }),
+      "MAPS_AUTH_EXPIRED",
+    );
+    await expect(bounded.getPlace("missing")).resolves.toBeNull();
+    await expectCode(
+      bounded.searchPlaces({ query: "failure" }),
+      "MAPS_PROVIDER_FAILURE",
+    );
+    await expectCode(
+      bounded.searchPlaces({ query: "declared oversize" }),
+      "MAPS_RESPONSE_TOO_LARGE",
+    );
+    await expectCode(
+      bounded.searchPlaces({ query: "oversize" }),
+      "MAPS_RESPONSE_TOO_LARGE",
+    );
+    expect(responses).toHaveLength(0);
   });
 
   it("blocks unsafe endpoints, DNS rebinding, redirects, and oversized bodies", async () => {

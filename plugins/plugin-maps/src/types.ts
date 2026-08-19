@@ -11,6 +11,14 @@ export const coordinatesSchema = z
   })
   .strict();
 
+export const coordinateBindingSchema = z
+  .object({
+    provider: z.literal("coordinates"),
+    providerPlaceId: boundedText(512),
+    coordinates: coordinatesSchema,
+  })
+  .strict();
+
 export const placeRefSchema = z
   .object({
     provider: boundedText(64).regex(/^[a-z0-9][a-z0-9_-]*$/i),
@@ -19,6 +27,8 @@ export const placeRefSchema = z
     coordinates: coordinatesSchema,
     formattedAddress: boundedText(1_000).optional(),
     categories: z.array(boundedText(80)).max(32).default([]),
+    /** Original coordinate identity retained when a provider canonicalizes it. */
+    coordinateBinding: coordinateBindingSchema.optional(),
   })
   .strict();
 
@@ -74,6 +84,7 @@ export const routePlanRequestSchema = z
   .strict();
 
 export type Coordinates = z.infer<typeof coordinatesSchema>;
+export type CoordinateBinding = z.infer<typeof coordinateBindingSchema>;
 export type PlaceRef = z.infer<typeof placeRefSchema>;
 export type TravelMode = z.infer<typeof travelModeSchema>;
 export type RoutePlan = z.infer<typeof routePlanSchema>;

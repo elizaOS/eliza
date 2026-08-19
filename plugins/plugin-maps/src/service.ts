@@ -249,12 +249,25 @@ export class MapsService extends Service {
         assertProviderPlace(response, adapter, surface);
         continue;
       }
-      if (response.provider === adapter.id) continue;
       if (
         response.provider === "coordinates" &&
         response.providerPlaceId === requestPlace.providerPlaceId &&
         response.coordinates.latitude === requestPlace.coordinates.latitude &&
         response.coordinates.longitude === requestPlace.coordinates.longitude
+      ) {
+        continue;
+      }
+      if (
+        response.provider === adapter.id &&
+        response.coordinates.latitude === requestPlace.coordinates.latitude &&
+        response.coordinates.longitude === requestPlace.coordinates.longitude &&
+        response.coordinateBinding?.provider === "coordinates" &&
+        response.coordinateBinding.providerPlaceId ===
+          requestPlace.providerPlaceId &&
+        response.coordinateBinding.coordinates.latitude ===
+          requestPlace.coordinates.latitude &&
+        response.coordinateBinding.coordinates.longitude ===
+          requestPlace.coordinates.longitude
       ) {
         continue;
       }

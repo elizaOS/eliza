@@ -9,6 +9,7 @@ import {
   type GuardedFetchOptions,
   isBlockedHostname,
   isPrivateIpAddress,
+  logger,
   SsrfBlockedError,
 } from "@elizaos/core";
 import { MapsError } from "./errors.js";
@@ -55,6 +56,47 @@ const MIN_TIMEOUT_MS = 100;
 const MAX_TIMEOUT_MS = 60_000;
 const DEFAULT_RESPONSE_BYTES = 1024 * 1024;
 const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+
+interface RequestDeadline {
+  signal: AbortSignal;
+  dispose(): void;
+}
+
+function requestDeadline(timeoutMs: number): RequestDeadline {
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () =>
+      controller.abort(
+        new DOMException("Maps deadline elapsed", "TimeoutError"),
+      ),
+    timeoutMs,
+  );
+  timeout.unref?.();
+  return {
+    signal: controller.signal,
+    dispose: () => clearTimeout(timeout),
+  };
+}
+
+function observeTeardown(operation: Promise<unknown>, surface: string): void {
+  // error-policy:J6 Teardown is intentionally non-blocking; a redacted debug
+  // observation keeps cancellation failures visible without delaying results.
+  void operation.catch((error) => {
+    logger.debug(
+      {
+        errorName: error instanceof Error ? error.name : typeof error,
+        surface,
+      },
+      "[MapsHttpAdapter] Response-stream teardown did not complete cleanly",
+    );
+  });
+}
+
+function cancelBody(response: Response, reason: string): void {
+  // error-policy:J6 Cancellation is teardown only and must never delay the
+  // typed terminal result from an untrusted response stream.
+  if (response.body) observeTeardown(response.body.cancel(reason), reason);
+}
 
 function retryAfterMs(response: Response): number | undefined {
   const raw = response.headers.get("retry-after");
@@ -247,17 +289,30 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
       `/places/${encodeURIComponent(providerPlaceId.trim())}`,
       this.baseOrigin,
     );
-    const guarded = await this.fetchResponse(url, { method: "GET" });
+    const deadline = requestDeadline(this.timeoutMs);
     try {
-      if (guarded.response.status === 404) {
-        await guarded.response.body?.cancel();
-        return null;
+      const guarded = await this.fetchResponse(
+        url,
+        { method: "GET" },
+        deadline,
+      );
+      try {
+        if (guarded.response.status === 404) {
+          cancelBody(guarded.response, "maps place was not found");
+          return null;
+        }
+        const place = await this.decodeResponse(
+          guarded.response,
+          placeRefSchema,
+          deadline,
+        );
+        this.assertPlaceProvider(place, "detail");
+        return place;
+      } finally {
+        await guarded.release();
       }
-      const place = await this.decodeResponse(guarded.response, placeRefSchema);
-      this.assertPlaceProvider(place, "detail");
-      return place;
     } finally {
-      await guarded.release();
+      deadline.dispose();
     }
   }
 
@@ -325,12 +380,24 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
       this.assertPlaceProvider(response, surface);
       return;
     }
-    if (response.provider === this.id) return;
     if (
       response.provider === "coordinates" &&
       response.providerPlaceId === request.providerPlaceId &&
       response.coordinates.latitude === request.coordinates.latitude &&
       response.coordinates.longitude === request.coordinates.longitude
+    ) {
+      return;
+    }
+    if (
+      response.provider === this.id &&
+      response.coordinates.latitude === request.coordinates.latitude &&
+      response.coordinates.longitude === request.coordinates.longitude &&
+      response.coordinateBinding?.provider === "coordinates" &&
+      response.coordinateBinding.providerPlaceId === request.providerPlaceId &&
+      response.coordinateBinding.coordinates.latitude ===
+        request.coordinates.latitude &&
+      response.coordinateBinding.coordinates.longitude ===
+        request.coordinates.longitude
     ) {
       return;
     }
@@ -369,17 +436,23 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
       ): { success: true; data: T } | { success: false; error: unknown };
     },
   ): Promise<T> {
-    const guarded = await this.fetchResponse(url, init);
+    const deadline = requestDeadline(this.timeoutMs);
     try {
-      return await this.decodeResponse(guarded.response, schema);
+      const guarded = await this.fetchResponse(url, init, deadline);
+      try {
+        return await this.decodeResponse(guarded.response, schema, deadline);
+      } finally {
+        await guarded.release();
+      }
     } finally {
-      await guarded.release();
+      deadline.dispose();
     }
   }
 
   private async fetchResponse(
     url: URL,
     init: RequestInit,
+    deadline: RequestDeadline,
   ): ReturnType<typeof fetchWithSsrfGuard> {
     if (url.origin !== this.baseOrigin) {
       throw new MapsError(
@@ -396,9 +469,10 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
     try {
       return await fetchWithSsrfGuard({
         url: url.href,
-        init: { ...init, headers, redirect: "manual" },
+        init: { ...init, headers, redirect: "manual", signal: deadline.signal },
         maxRedirects: 0,
         timeoutMs: this.timeoutMs,
+        signal: deadline.signal,
         policy: this.allowPrivateNetworkForTests
           ? { allowPrivateNetwork: true }
           : undefined,
@@ -407,7 +481,11 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
     } catch (error) {
       // error-policy:J2 Add a typed provider/network classification while
       // preserving the original transport failure as the cause.
-      if (error instanceof Error && error.name === "AbortError") {
+      if (
+        deadline.signal.aborted ||
+        (error instanceof Error &&
+          (error.name === "AbortError" || error.name === "TimeoutError"))
+      ) {
         throw new MapsError("The maps provider timed out.", {
           code: "MAPS_PROVIDER_TIMEOUT",
           cause: error,
@@ -429,13 +507,17 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
     }
   }
 
-  private async readBoundedBody(response: Response): Promise<string> {
+  private async readBoundedBody(
+    response: Response,
+    deadline: RequestDeadline,
+  ): Promise<string> {
     const declared = response.headers.get("content-length");
     if (
       declared &&
       /^\d+$/.test(declared) &&
       Number(declared) > this.responseByteLimit
     ) {
+      cancelBody(response, "maps declared response exceeded byte limit");
       throw new MapsError(
         "The maps provider response exceeded the byte limit.",
         {
@@ -451,11 +533,30 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
     let bytes = 0;
     try {
       while (true) {
-        const chunk = await reader.read();
+        const chunk = await new Promise<ReadableStreamReadResult<Uint8Array>>(
+          (resolve, reject) => {
+            const onAbort = () =>
+              reject(
+                deadline.signal.reason ??
+                  new DOMException("Maps deadline elapsed", "TimeoutError"),
+              );
+            if (deadline.signal.aborted) return onAbort();
+            deadline.signal.addEventListener("abort", onAbort, { once: true });
+            void reader
+              .read()
+              .then(resolve, reject)
+              .finally(() =>
+                deadline.signal.removeEventListener("abort", onAbort),
+              );
+          },
+        );
         if (chunk.done) break;
         bytes += chunk.value.byteLength;
         if (bytes > this.responseByteLimit) {
-          await reader.cancel("maps response exceeded byte limit");
+          observeTeardown(
+            reader.cancel("maps response exceeded byte limit"),
+            "response-too-large",
+          );
           throw new MapsError(
             "The maps provider response exceeded the byte limit.",
             {
@@ -473,6 +574,21 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
       return body;
     } catch (error) {
       if (error instanceof MapsError) throw error;
+      if (
+        deadline.signal.aborted ||
+        (error instanceof Error &&
+          (error.name === "AbortError" || error.name === "TimeoutError"))
+      ) {
+        observeTeardown(
+          reader.cancel("maps response deadline elapsed"),
+          "response-deadline",
+        );
+        throw new MapsError("The maps provider timed out.", {
+          code: "MAPS_PROVIDER_TIMEOUT",
+          cause: error,
+          context: { status: response.status },
+        });
+      }
       // error-policy:J2 Provider bytes are untrusted; preserve bounded read and
       // UTF-8 failures without retaining or exposing response content.
       throw new MapsError(
@@ -484,7 +600,19 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
         },
       );
     } finally {
-      reader.releaseLock();
+      try {
+        reader.releaseLock();
+      } catch (error) {
+        // error-policy:J6 A pending untrusted read owns the lock until its
+        // non-blocking cancellation settles; terminal classification is fixed.
+        logger.debug(
+          {
+            errorName: error instanceof Error ? error.name : typeof error,
+            surface: "reader-release-lock",
+          },
+          "[MapsHttpAdapter] Response reader lock remained pending during teardown",
+        );
+      }
     }
   }
 
@@ -495,26 +623,25 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
         value: unknown,
       ): { success: true; data: T } | { success: false; error: unknown };
     },
+    deadline: RequestDeadline,
   ): Promise<T> {
     if (!response.ok) {
       let errorBody: unknown;
       if (response.status === 401 || response.status === 403) {
-        const text = await this.readBoundedBody(response);
-        if (text) {
-          try {
-            errorBody = JSON.parse(text);
-          } catch {
-            // error-policy:J3 An error envelope is optional; HTTP status remains
-            // authoritative and malformed diagnostic bytes are discarded.
-            errorBody = undefined;
-          }
+        try {
+          const text = await this.readBoundedBody(response, deadline);
+          if (text) errorBody = JSON.parse(text);
+        } catch {
+          // error-policy:J3 Diagnostic bytes are optional; once headers carry
+          // an error status, timeout/size/parse failures cannot replace it.
+          errorBody = undefined;
         }
       } else {
-        await response.body?.cancel();
+        cancelBody(response, "maps provider returned an error status");
       }
       throw providerError(response, errorBody);
     }
-    const text = await this.readBoundedBody(response);
+    const text = await this.readBoundedBody(response, deadline);
     let body: unknown;
     try {
       body = JSON.parse(text);

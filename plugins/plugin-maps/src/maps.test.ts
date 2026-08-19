@@ -17,6 +17,11 @@ import { mapsAction } from "./action.js";
 import { JsonMapsHttpAdapter, type MapsProviderAdapter } from "./adapter.js";
 import { mapsPlugin } from "./plugin.js";
 import { MAPS_SERVICE_TYPE, MapsService } from "./service.js";
+import {
+  MAX_SAVED_PLACE_OPERATIONS_PER_OWNER,
+  MAX_SAVED_PLACE_STATE_BYTES,
+  MAX_SAVED_PLACES_PER_OWNER,
+} from "./store.js";
 
 const AGENT_ID = "11111111-1111-4111-a111-111111111111" as UUID;
 const OWNER_ID = "22222222-2222-4222-a222-222222222222" as UUID;
@@ -478,6 +483,128 @@ describe("MapsService and MAPS action", () => {
     ).toBe(2);
   });
 
+  it("enforces operation quotas while preserving replay at capacity", async () => {
+    const request = {
+      ownerEntityId: OWNER_ID,
+      roomId: ROOM_ID,
+      place: home,
+      label: "Quota seed 0",
+      idempotencyKey: "quota-op-0",
+    };
+    const first = await service.savePlace(request);
+    for (
+      let index = 1;
+      index < MAX_SAVED_PLACE_OPERATIONS_PER_OWNER;
+      index += 1
+    ) {
+      await service.savePlace({
+        ...request,
+        label: `Quota seed ${index}`,
+        idempotencyKey: `quota-op-${index}`,
+      });
+    }
+    await expect(service.savePlace(request)).resolves.toMatchObject({
+      replayed: true,
+      commitId: first.commitId,
+    });
+    await expect(
+      service.savePlace({
+        ...request,
+        label: "Beyond operation quota",
+        idempotencyKey: "quota-op-overflow",
+      }),
+    ).rejects.toMatchObject({ code: "MAPS_STORAGE_LIMIT" });
+  });
+
+  it("admits one final place under contention and rejects boundary plus one", async () => {
+    const ownerEntityId = "66666666-6666-4666-a666-666666666666";
+    for (let index = 0; index < MAX_SAVED_PLACES_PER_OWNER - 1; index += 1) {
+      await service.savePlace({
+        ownerEntityId,
+        roomId: ROOM_ID,
+        place: { ...home, providerPlaceId: `quota-place-${index}` },
+        idempotencyKey: `quota-place-key-${index}`,
+      });
+    }
+    const attempts = Array.from({ length: 8 }, (_, index) =>
+      new MapsService(runtime).savePlace({
+        ownerEntityId,
+        roomId: ROOM_ID,
+        place: { ...home, providerPlaceId: `contended-place-${index}` },
+        idempotencyKey: `contended-place-key-${index}`,
+      }),
+    );
+    const settled = await Promise.allSettled(attempts);
+    expect(
+      settled.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      settled
+        .filter((result) => result.status === "rejected")
+        .every((result) => result.reason?.code === "MAPS_STORAGE_LIMIT"),
+    ).toBe(true);
+    expect(await service.listSavedPlaces(ownerEntityId)).toHaveLength(
+      MAX_SAVED_PLACES_PER_OWNER,
+    );
+  });
+
+  it("rejects a large valid mutation before the serialized byte ceiling", async () => {
+    const ownerEntityId = "77777777-7777-4777-a777-777777777777";
+    const largePlace = {
+      ...home,
+      name: "N".repeat(300),
+      formattedAddress: "A".repeat(1_000),
+      categories: Array.from({ length: 32 }, (_, index) =>
+        `${index}`.padEnd(80, "c"),
+      ),
+    };
+    let accepted = 0;
+    for (
+      let index = 0;
+      index < MAX_SAVED_PLACE_OPERATIONS_PER_OWNER;
+      index += 1
+    ) {
+      try {
+        await service.savePlace({
+          ownerEntityId,
+          roomId: ROOM_ID,
+          place: largePlace,
+          label: `Large ${index}`,
+          idempotencyKey: `large-key-${index}`,
+        });
+        accepted += 1;
+      } catch (error) {
+        expect(error).toMatchObject({ code: "MAPS_STORAGE_LIMIT" });
+        break;
+      }
+    }
+    expect(accepted).toBeGreaterThan(0);
+    expect(accepted).toBeLessThan(MAX_SAVED_PLACE_OPERATIONS_PER_OWNER);
+    const matching = (
+      await runtime.getMemories({
+        tableName: "documents",
+        agentId: runtime.agentId,
+        metadata: { source: "plugin-maps.saved-place-state.v1" },
+        limit: 20,
+      })
+    ).find((entry) => JSON.stringify(entry.metadata).includes(ownerEntityId));
+    expect(matching).toBeDefined();
+    const state = (matching?.metadata as Record<string, unknown> | undefined)
+      ?.mapsSavedPlaceState;
+    expect(
+      new TextEncoder().encode(JSON.stringify(state)).byteLength,
+    ).toBeLessThanOrEqual(MAX_SAVED_PLACE_STATE_BYTES);
+    await expect(
+      service.savePlace({
+        ownerEntityId,
+        roomId: ROOM_ID,
+        place: largePlace,
+        label: "Large 0",
+        idempotencyKey: "large-key-0",
+      }),
+    ).resolves.toMatchObject({ replayed: true });
+  });
+
   it("requests only unresolved route endpoints and keeps drive optional", async () => {
     const missingDestination = await invoke(runtime, {
       action: "route",
@@ -545,6 +672,28 @@ describe("MapsService and MAPS action", () => {
         destination: coordinateDestination,
       },
       {
+        origin: {
+          ...coordinateOrigin,
+          provider: adapter.id,
+          providerPlaceId: "different-place",
+          coordinateBinding: {
+            provider: "coordinates" as const,
+            providerPlaceId: coordinateOrigin.providerPlaceId,
+            coordinates: coordinateOrigin.coordinates,
+          },
+          coordinates: { ...coordinateOrigin.coordinates, longitude: -73 },
+        },
+        destination: coordinateDestination,
+      },
+      {
+        origin: {
+          ...coordinateOrigin,
+          provider: adapter.id,
+          providerPlaceId: "different-place",
+        },
+        destination: coordinateDestination,
+      },
+      {
         origin: coordinateOrigin,
         destination: {
           ...coordinateDestination,
@@ -604,6 +753,56 @@ describe("MapsService and MAPS action", () => {
         }),
       ).rejects.toMatchObject({ code: "MAPS_MALFORMED_RESPONSE" });
     }
+
+    const canonicalOrigin = {
+      ...coordinateOrigin,
+      provider: adapter.id,
+      providerPlaceId: "canonical-origin",
+      coordinateBinding: {
+        provider: "coordinates" as const,
+        providerPlaceId: coordinateOrigin.providerPlaceId,
+        coordinates: coordinateOrigin.coordinates,
+      },
+    };
+    const canonicalDestination = {
+      ...coordinateDestination,
+      provider: adapter.id,
+      providerPlaceId: "canonical-destination",
+      coordinateBinding: {
+        provider: "coordinates" as const,
+        providerPlaceId: coordinateDestination.providerPlaceId,
+        coordinates: coordinateDestination.coordinates,
+      },
+    };
+    const canonicalizingService = new MapsService(runtime);
+    canonicalizingService.registerAdapter(
+      {
+        ...adapter,
+        async planRoute(request) {
+          return {
+            provider: adapter.id,
+            routeId: "canonical-route",
+            ...request,
+            origin: canonicalOrigin,
+            destination: canonicalDestination,
+            distanceMeters: 100,
+            durationSeconds: 10,
+            warnings: [],
+          };
+        },
+      },
+      true,
+    );
+    await expect(
+      canonicalizingService.planRoute({
+        origin: coordinateOrigin,
+        destination: coordinateDestination,
+        travelMode: "drive",
+      }),
+    ).resolves.toMatchObject({
+      origin: { providerPlaceId: "canonical-origin" },
+      destination: { providerPlaceId: "canonical-destination" },
+    });
   });
 
   it("plans routes and produces non-effectful geo share/navigation handoffs", async () => {

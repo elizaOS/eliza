@@ -27,6 +27,9 @@ import {
 export const SAVED_PLACES_TABLE = "documents";
 const SAVED_PLACE_SOURCE = "plugin-maps.saved-place-state.v1";
 const MAX_CAS_ATTEMPTS = 16;
+export const MAX_SAVED_PLACES_PER_OWNER = 64;
+export const MAX_SAVED_PLACE_OPERATIONS_PER_OWNER = 256;
+export const MAX_SAVED_PLACE_STATE_BYTES = 512 * 1024;
 
 const savedPlaceOperationSchema = z
   .object({
@@ -247,6 +250,42 @@ function nextCommittedAt(state: SavedPlaceState | null): string {
   return new Date(Math.max(Date.now(), minimum)).toISOString();
 }
 
+function stateBytes(state: SavedPlaceState): number {
+  return new TextEncoder().encode(JSON.stringify(state)).byteLength;
+}
+
+function assertMutationCapacity(
+  state: SavedPlaceState | null,
+  addsPlace: boolean,
+): void {
+  if (
+    (state?.operations.length ?? 0) >= MAX_SAVED_PLACE_OPERATIONS_PER_OWNER ||
+    (addsPlace &&
+      (state?.savedPlaces.length ?? 0) >= MAX_SAVED_PLACES_PER_OWNER)
+  ) {
+    throw new MapsError("Saved-place storage quota is full for this owner.", {
+      code: "MAPS_STORAGE_LIMIT",
+      context: {
+        maxPlaces: MAX_SAVED_PLACES_PER_OWNER,
+        maxOperations: MAX_SAVED_PLACE_OPERATIONS_PER_OWNER,
+      },
+    });
+  }
+}
+
+function assertSerializedCapacity(state: SavedPlaceState): void {
+  const bytes = stateBytes(state);
+  if (bytes > MAX_SAVED_PLACE_STATE_BYTES) {
+    throw new MapsError(
+      "Saved-place storage byte quota is full for this owner.",
+      {
+        code: "MAPS_STORAGE_LIMIT",
+        context: { bytes, maxBytes: MAX_SAVED_PLACE_STATE_BYTES },
+      },
+    );
+  }
+}
+
 export interface SavedPlaceStore {
   save(request: SavePlaceRequest): Promise<SavePlaceResult>;
   list(ownerEntityId: string): Promise<SavedPlace[]>;
@@ -332,6 +371,7 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
       const mutationId = randomUUID() as UUID;
       const id = savedPlaceId(this.runtime, request);
       const existing = state?.savedPlaces.find((place) => place.id === id);
+      assertMutationCapacity(state, !existing);
       const savedPlace = savedPlaceSchema.parse({
         id,
         ownerEntityId: request.ownerEntityId,
@@ -362,6 +402,7 @@ export class RuntimeSavedPlaceStore implements SavedPlaceStore {
         savedPlaces,
         operations: [...(state?.operations ?? []), operation],
       };
+      assertSerializedCapacity(replacement);
 
       if (!document) {
         await this.runtime.createMemory(

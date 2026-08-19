@@ -16,6 +16,7 @@ export type MapsErrorCode =
   | "MAPS_ENDPOINT_BLOCKED"
   | "MAPS_RESPONSE_TOO_LARGE"
   | "MAPS_MALFORMED_RESPONSE"
+  | "MAPS_STORAGE_LIMIT"
   | "MAPS_STORAGE_FAILURE";
 
 export class MapsError extends ElizaError {
