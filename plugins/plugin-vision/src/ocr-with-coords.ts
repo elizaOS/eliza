@@ -223,6 +223,47 @@ function shiftBbox(b: BoundingBox, dx: number, dy: number): BoundingBox {
 }
 
 /**
+ * Strictly validate a PNG header and return its IHDR width/height, or null
+ * when the bytes are not a well-formed PNG with positive dimensions. This is
+ * the fail-closed reader the OCR service adapters use so a malformed frame
+ * degrades to "unknown dims" instead of feeding garbage width/height into
+ * semantic-position thirds.
+ */
+export function readPngDimensionsOrNull(
+  pngBytes: Uint8Array,
+): { width: number; height: number } | null {
+  if (pngBytes.byteLength < 24) {
+    return null;
+  }
+  const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  for (let i = 0; i < sig.length; i += 1) {
+    if (pngBytes[i] !== sig[i]) {
+      return null;
+    }
+  }
+  // IHDR type bytes at offset 12..16 must be "IHDR".
+  if (
+    pngBytes[12] !== 0x49 ||
+    pngBytes[13] !== 0x48 ||
+    pngBytes[14] !== 0x44 ||
+    pngBytes[15] !== 0x52
+  ) {
+    return null;
+  }
+  const view = new DataView(
+    pngBytes.buffer,
+    pngBytes.byteOffset,
+    pngBytes.byteLength,
+  );
+  const width = view.getUint32(16, false);
+  const height = view.getUint32(20, false);
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+  return { width, height };
+}
+
+/**
  * Read width/height from the PNG IHDR chunk without pulling in sharp on the
  * test path. PNG signature is 8 bytes; IHDR begins at offset 8 with a 4-byte
  * length, 4-byte type ("IHDR"), then 4-byte width and 4-byte height (BE).
@@ -233,33 +274,11 @@ function shiftBbox(b: BoundingBox, dx: number, dy: number): BoundingBox {
 export async function readPngDimensions(
   pngBytes: Uint8Array,
 ): Promise<{ width: number; height: number }> {
-  if (pngBytes.byteLength < 24) {
-    throw new Error("readPngDimensions: input too short to be a PNG");
+  const dims = readPngDimensionsOrNull(pngBytes);
+  if (dims === null) {
+    throw new Error(
+      "readPngDimensions: input is not a well-formed PNG with positive dimensions",
+    );
   }
-  const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-  for (let i = 0; i < sig.length; i += 1) {
-    if (pngBytes[i] !== sig[i]) {
-      throw new Error("readPngDimensions: missing PNG signature");
-    }
-  }
-  // IHDR type bytes at offset 12..16 must be "IHDR".
-  if (
-    pngBytes[12] !== 0x49 ||
-    pngBytes[13] !== 0x48 ||
-    pngBytes[14] !== 0x44 ||
-    pngBytes[15] !== 0x52
-  ) {
-    throw new Error("readPngDimensions: first chunk is not IHDR");
-  }
-  const view = new DataView(
-    pngBytes.buffer,
-    pngBytes.byteOffset,
-    pngBytes.byteLength,
-  );
-  const width = view.getUint32(16, false);
-  const height = view.getUint32(20, false);
-  if (width <= 0 || height <= 0) {
-    throw new Error(`readPngDimensions: invalid dimensions ${width}x${height}`);
-  }
-  return { width, height };
+  return dims;
 }
