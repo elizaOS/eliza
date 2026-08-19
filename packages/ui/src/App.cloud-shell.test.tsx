@@ -99,12 +99,8 @@ describe("App standalone chat-overlay wiring", () => {
       '(shellIsOpen && shellHostDetent === "input")',
     );
     expect(foundation).toContain('shellPhase === "listening"');
-    expect(foundation).toContain(
-      'shellPreviewHovered || shellPhase === "listening"',
-    );
-    expect(foundation).toContain(
-      "useWebChatPanel ? setShellPreviewHovered : undefined",
-    );
+    expect(foundation).toContain("showComposerPreview={!useWebChatPanel}");
+    expect(foundation).not.toContain("setShellPreviewHovered");
     expect(foundation).toContain(
       "{!useWebChatPanel ? (\n        <AssistantOverlay",
     );
@@ -127,7 +123,8 @@ describe("App standalone chat-overlay wiring", () => {
     );
     expect(foundation).toContain("const openSharedDesktopComposer");
     expect(foundation).toContain("window.addEventListener(CHAT_OPEN_EVENT");
-    expect(foundation).toContain('initialMode="half"');
+    expect(foundation).toContain('initialMode="input"');
+    expect(foundation).toContain('setShellHostDetent("input")');
   });
 
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {

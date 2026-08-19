@@ -74,6 +74,22 @@ describe("HomePill", () => {
     expect(onPreviewHoverChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("keeps the real resting pill when its host uses ChatOverlay for the composer", () => {
+    render(
+      <HomePill
+        phase="idle"
+        onOpen={() => {}}
+        onClose={() => {}}
+        showComposerPreview={false}
+      />,
+    );
+    const button = screen.getByRole("button");
+    fireEvent.mouseEnter(button);
+
+    expect(button.className).toContain("w-16");
+    expect(screen.queryByTestId("shell-home-pill-preview-label")).toBeNull();
+  });
+
   it("waits for the native hover frame before painting the wide preview", () => {
     const onPreviewHoverChange = vi.fn();
     const { rerender } = render(
