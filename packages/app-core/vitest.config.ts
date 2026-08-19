@@ -164,9 +164,6 @@ export default defineConfig({
       // The runner-based suites above are excluded from vitest because they use
       // node:test/bun:test. They are executed by `bun run test:script-suites`
       // (chained from `test`) so the exclusion no longer means "runs nowhere".
-      // scripts/android-sms-gateway-template.test.mjs is deliberately not in
-      // that lane (see #22347): it asserts markers that check-homepage-public-readiness.mjs
-      // lost in cc65444e1, so it fails for a real reason tracked separately.
       // Uses Node.js built-in test runner (node:test), not vitest.
       "scripts/mobile-auth-simulator-smoke-endstate.test.mjs",
       "scripts/android-sms-gateway-template.test.mjs",
