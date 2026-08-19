@@ -1814,6 +1814,13 @@
       "when": 1791835200000,
       "tag": "0259_agent_node_incarnation_rearm",
       "breakpoints": true
+    },
+    {
+      "idx": 259,
+      "version": "7",
+      "when": 1791921600000,
+      "tag": "0260_domain_purchase_authority",
+      "breakpoints": true
     }
   ]
 }

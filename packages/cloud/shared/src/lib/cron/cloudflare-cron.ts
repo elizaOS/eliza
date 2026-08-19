@@ -43,6 +43,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/social-automation",
     "/api/cron/sample-eliza-price",
     "/api/cron/process-redemptions",
+    "/api/cron/reconcile-domain-purchases",
     "/api/cron/cleanup-stuck-provisioning",
     // #14808 CLOUD lane: drain pending pii_scrub jobs (content-hash-idempotent,
     // budget-bounded; the scrub is background work, so 5-min cadence is plenty).

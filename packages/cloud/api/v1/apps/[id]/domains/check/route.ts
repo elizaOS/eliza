@@ -46,16 +46,23 @@ app.post("/", async (c) => {
     if (!availability.available) {
       return c.json({ success: true, domain, available: false });
     }
-    const price = computeDomainPrice(availability.priceUsdCents);
-    const renewal = computeDomainPrice(
-      availability.renewalUsdCents ?? availability.priceUsdCents,
-    );
+    const years =
+      await cloudflareRegistrarService.getMinimumRegistrationYears(domain);
+    const renewalWholesaleUsdCents =
+      availability.renewalUsdCents ?? availability.priceUsdCents;
+    const aggregateWholesaleUsdCents =
+      availability.priceUsdCents + renewalWholesaleUsdCents * (years - 1);
+    if (!Number.isSafeInteger(aggregateWholesaleUsdCents)) {
+      throw new Error("Cloudflare registrar quote exceeds safe integer cents");
+    }
+    const price = computeDomainPrice(aggregateWholesaleUsdCents);
+    const renewal = computeDomainPrice(renewalWholesaleUsdCents);
     return c.json({
       success: true,
       domain,
       available: true,
       currency: availability.currency,
-      years: availability.years,
+      years,
       price: {
         wholesaleUsdCents: price.wholesaleUsdCents,
         marginUsdCents: price.marginUsdCents,
