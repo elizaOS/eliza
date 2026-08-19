@@ -14,12 +14,25 @@ set -euo pipefail
   exit 1
 }
 [[ "$(node -p 'process.arch')" == "arm64" ]] || {
-  echo "Android ARM64 lane requires an arm64 host" >&2
+  echo "Android ARM64 lane requires an arm64 Node runtime" >&2
+  exit 1
+}
+
+host_arch=$(uname -m)
+[[ "$host_arch" == "aarch64" || "$host_arch" == "arm64" ]] || {
+  echo "Android ARM64 lane requires an ARM64 kernel host; found ${host_arch:-missing}" >&2
   exit 1
 }
 
 command -v java >/dev/null
 command -v adb >/dev/null
+
+java_major=$(java -XshowSettings:properties -version 2>&1 \
+  | awk -F= '$1 ~ /java.specification.version/ { gsub(/[[:space:]]/, "", $2); print $2; exit }')
+[[ "$java_major" == "21" ]] || {
+  echo "Android ARM64 lane requires Java 21; found ${java_major:-missing}" >&2
+  exit 1
+}
 
 mapfile -t attached_devices < <(adb devices | awk 'NR > 1 && $2 == "device" { print $1 }')
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
