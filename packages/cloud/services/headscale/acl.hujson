@@ -29,6 +29,22 @@
       "src": ["tag:eliza-proxy"],
       "dst": ["tag:eliza-tunnel:443"]
     },
+    // The control plane reaches dedicated agents on the container port only:
+    // health probes and bridge traffic go to http://100.64.x.y:2138. The port
+    // is resolved per sandbox — environmentVars.PORT, then HTTP_PORT, then
+    // container.port, then ELIZA_AGENT_PORT (whose own fallback is 3000) — and
+    // this file is static, so changing the resolved port anywhere requires
+    // widening this rule to match. Otherwise default-deny drops the probe with
+    // no symptom but a timeout.
+    //
+    // Scope: tag:eliza-proxy is carried by BOTH the control plane router and
+    // the internet-facing tunnel proxy, so this also grants the public proxy
+    // reach to agents on 2138. A dedicated tag:eliza-cp would narrow it.
+    {
+      "action": "accept",
+      "src": ["tag:eliza-proxy"],
+      "dst": ["tag:agent:2138"]
+    },
     // Agents can reach each other on internal ports (existing behavior).
     {
       "action": "accept",
