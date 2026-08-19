@@ -5,8 +5,8 @@
 // the sheet opens pinned at the shared HALF composer detent, every collapse path
 // (Escape, outside tap, drag/close) is a no-op, the drag handle is hidden, the
 // composer is sign-in-first/locked, transcript CHOICE widgets stay interactive,
-// external sign-in minimizes to the pill, and completion opens the conversation
-// at FULL.
+// external sign-in minimizes to the regular compact composer, and completion
+// opens the conversation at FULL.
 
 import {
   act,
@@ -583,7 +583,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByTestId("onboarding-state-probe")).toBeNull();
   });
 
-  it("minimizes for external sign-in, then opens full on authentication", () => {
+  it("uses the regular compact composer during external sign-in, then opens full on authentication", () => {
     const waitingController = makeController({
       messages: [
         {
@@ -606,13 +606,21 @@ describe("ChatOverlay first-run gating", () => {
     const sheet = screen.getByTestId("chat-sheet");
 
     expect(sheet.getAttribute("data-variant")).toBe("closed");
-    expect(sheet.getAttribute("data-detent")).toBe("pill");
-    expect(sheet.getAttribute("data-chat-state")).toBe("CLOSED");
-    expect(onStateChange).toHaveBeenLastCalledWith("CLOSED");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+    expect(screen.getByTestId("chat-composer-plus")).toBeTruthy();
+    expect(
+      (screen.getByTestId("chat-composer-textarea") as HTMLTextAreaElement)
+        .placeholder,
+    ).toBe("Waiting for sign-in…");
+    expect(screen.getByTestId("chat-pill").getAttribute("aria-hidden")).toBe(
+      "true",
+    );
 
-    // The minimized state is enforced while external auth owns the interaction.
-    fireEvent.click(screen.getByTestId("chat-pill"));
-    expect(sheet.getAttribute("data-detent")).toBe("pill");
+    // The compact state is enforced while external auth owns the interaction.
+    fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
 
     rerender(
       <ChatOverlay

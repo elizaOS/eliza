@@ -1524,8 +1524,10 @@ export function ChatOverlay({
   // pilled-and-full combos can't exist and no transition has to hand-sync two
   // separate states (which is what bred the old stuck states).
   // Onboarding owns HALF only while the user is acting inside Eliza. External
-  // Cloud auth deliberately releases that pin and minimizes the native host so
-  // Safari remains readable and clickable during sign-in.
+  // Cloud auth deliberately releases that pin and minimizes the native host to
+  // the existing compact composer so Safari remains readable and clickable
+  // during sign-in. Do not use the internal handle-only `pill` mode here: that
+  // is a drag affordance, not a user-facing idle surface.
   const pinnedOpen = firstRunOpen && !cloudLoginWaiting;
   const [mode, setMode] = React.useState<ChatMode>(
     pinnedOpen ? "half" : initialMode,
@@ -1540,7 +1542,7 @@ export function ChatOverlay({
   // only a misleading "tap an option above" hint showing). Pin it structurally
   // at HALF, the same shared mobile composer detent used after a normal pull-up.
   const effectiveMode: ChatMode = cloudLoginWaiting
-    ? "pill"
+    ? "input"
     : pinnedOpen
       ? "half"
       : mode;
@@ -3827,15 +3829,16 @@ export function ChatOverlay({
   );
 
   // First-run onboarding pin + release. In-app choices stay at HALF; external
-  // sign-in minimizes to the pill. Successful authentication opens the shared
-  // conversation at FULL so the continuation is immediately visible.
+  // sign-in minimizes to the regular compact composer. Successful
+  // authentication opens the shared conversation at FULL so the continuation
+  // is immediately visible.
   const wasFirstRunOpenRef = React.useRef(firstRunOpen);
   React.useEffect(() => {
     const was = wasFirstRunOpenRef.current;
     wasFirstRunOpenRef.current = firstRunOpen;
     if (cloudLoginWaiting) {
       setFreeH(null);
-      setMode("pill");
+      setMode("input");
       setMaximized(false);
       return;
     }
