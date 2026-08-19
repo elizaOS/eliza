@@ -1,15 +1,13 @@
 /**
  * CLI auth mode: `generateViaCli` / `streamViaCli` shell out to `claude -p` via
  * `Bun.spawn` when `ANTHROPIC_AUTH_MODE=claude-cli`, parsing the CLI's JSON
- * result into text plus token usage and emitting a usage event. The child is
- * killed if it never exits, and stdout/stderr are credited against a byte
- * budget before they become a string — origin `new Response(proc.stdout).text()`
- * never settled when the stream stayed open. Bun-only (fails on Node
- * runtimes); does not support `messages`, `tools`, `toolChoice`, or
- * `responseSchema`.
+ * result into text plus token usage and emitting a usage event. Child lifetime
+ * and stdout/stderr allocation are bounded for both buffered and streaming
+ * calls. Bun-only (fails on Node runtimes); does not support `messages`,
+ * `tools`, `toolChoice`, or `responseSchema`.
  */
 import type { IAgentRuntime, ModelTypeName, TextStreamResult } from "@elizaos/core";
-import { buildCanonicalSystemPrompt, logger } from "@elizaos/core";
+import { buildCanonicalSystemPrompt, ElizaError, logger } from "@elizaos/core";
 import { emitModelUsageEvent } from "./events";
 
 interface ClaudeCliModelUsage {
@@ -102,6 +100,62 @@ interface ClaudeCliProcess {
   kill(): void;
 }
 
+interface AsyncOutcome<T> {
+  ok: true;
+  value: T;
+}
+
+interface AsyncFailure {
+  ok: false;
+  error: Error;
+}
+
+type SettledOutcome<T> = AsyncOutcome<T> | AsyncFailure;
+
+function settle<T>(promise: Promise<T>): Promise<SettledOutcome<T>> {
+  return promise.then(
+    (value) => ({ ok: true, value }),
+    (error: unknown) => ({
+      ok: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+  );
+}
+
+function killClaudeCliProcess(proc: ClaudeCliProcess): void {
+  try {
+    proc.kill();
+  } catch {
+    // error-policy:J6 best-effort teardown — the child may already have exited.
+  }
+}
+
+function createClaudeCliDeadline(
+  proc: ClaudeCliProcess,
+  timeoutMs: number
+): { outcome: Promise<AsyncFailure>; clear: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const outcome = new Promise<AsyncFailure>((resolve) => {
+    timer = setTimeout(() => {
+      killClaudeCliProcess(proc);
+      resolve({
+        ok: false,
+        error: new ElizaError(`[Anthropic CLI] claude -p timed out after ${timeoutMs}ms`, {
+          code: "ANTHROPIC_CLI_TIMEOUT",
+          context: { timeoutMs },
+          severity: "ephemeral",
+        }),
+      });
+    }, timeoutMs);
+  });
+  return {
+    outcome,
+    clear: () => {
+      if (timer) clearTimeout(timer);
+    },
+  };
+}
+
 function getBunRuntime() {
   const bunRuntime = (
     globalThis as typeof globalThis & {
@@ -132,8 +186,15 @@ export async function readClaudeCliStreamBudget(
     if (done) break;
     total += value.byteLength;
     if (total > maxBytes) {
-      await reader.cancel();
-      throw new Error(`[Anthropic CLI] ${label} exceeded ${maxBytes} bytes (got ${total})`);
+      try {
+        await reader.cancel();
+      } catch {
+        // error-policy:J6 best-effort teardown — the limit failure below is authoritative.
+      }
+      throw new ElizaError(`[Anthropic CLI] ${label} exceeded ${maxBytes} bytes (got ${total})`, {
+        code: "ANTHROPIC_CLI_OUTPUT_LIMIT",
+        context: { label, maxBytes, observedBytes: total },
+      });
     }
     chunks.push(value);
   }
@@ -157,23 +218,24 @@ export async function collectClaudeCliOutput(
 ): Promise<{ output: string; stderr: string; exitCode: number }> {
   const timeoutMs = options?.timeoutMs ?? CLAUDE_CLI_TIMEOUT_MS;
   const maxBytes = options?.maxBytes ?? CLAUDE_CLI_MAX_STDIO_BYTES;
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    proc.kill();
-  }, timeoutMs);
+  const deadline = createClaudeCliDeadline(proc, timeoutMs);
   try {
-    const [output, stderr, exitCode] = await Promise.all([
-      readClaudeCliStreamBudget(proc.stdout, maxBytes, "stdout"),
-      readClaudeCliStreamBudget(proc.stderr, maxBytes, "stderr"),
-      proc.exited,
-    ]);
-    if (timedOut) {
-      throw new Error(`[Anthropic CLI] claude -p timed out after ${timeoutMs}ms`);
-    }
+    const collected = settle(
+      Promise.all([
+        readClaudeCliStreamBudget(proc.stdout, maxBytes, "stdout"),
+        readClaudeCliStreamBudget(proc.stderr, maxBytes, "stderr"),
+        proc.exited,
+      ])
+    );
+    const result = await Promise.race([collected, deadline.outcome]);
+    if (!result.ok) throw result.error;
+    const [output, stderr, exitCode] = result.value;
     return { output, stderr, exitCode };
+  } catch (error) {
+    killClaudeCliProcess(proc);
+    throw error;
   } finally {
-    clearTimeout(timer);
+    deadline.clear();
   }
 }
 
@@ -260,11 +322,16 @@ export function streamViaCli(
   logger.debug(`[Anthropic CLI] streaming ${modelType} → ${modelName}`);
 
   const proc = getBunRuntime().spawn(args, { stdout: "pipe", stderr: "pipe" });
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    proc.kill();
-  }, CLAUDE_CLI_TIMEOUT_MS);
+  const deadline = createClaudeCliDeadline(proc, CLAUDE_CLI_TIMEOUT_MS);
+  const stderrOutcome = settle(
+    readClaudeCliStreamBudget(proc.stderr, CLAUDE_CLI_MAX_STDIO_BYTES, "stderr")
+  );
+  const never = new Promise<AsyncFailure>(() => undefined);
+  const stderrFailure = stderrOutcome.then((outcome) => {
+    if (outcome.ok) return never;
+    killClaudeCliProcess(proc);
+    return outcome;
+  });
 
   let fullText = "";
   let usageResolved = false;
@@ -293,17 +360,31 @@ export function streamViaCli(
     let lineBuf = "";
     let streamFailed = false;
     let decodedBytes = 0;
+    let processExited = false;
 
     try {
       while (true) {
-        const { done, value } = await reader.read();
+        const readOutcome = await Promise.race([
+          settle(reader.read()),
+          deadline.outcome,
+          stderrFailure,
+        ]);
+        if (!readOutcome.ok) throw readOutcome.error;
+        const { done, value } = readOutcome.value;
         if (done) break;
         decodedBytes += value.byteLength;
         if (decodedBytes > CLAUDE_CLI_MAX_STDIO_BYTES) {
-          await reader.cancel();
-          proc.kill();
-          throw new Error(
-            `[Anthropic CLI] stdout exceeded ${CLAUDE_CLI_MAX_STDIO_BYTES} bytes (got ${decodedBytes})`
+          killClaudeCliProcess(proc);
+          throw new ElizaError(
+            `[Anthropic CLI] stdout exceeded ${CLAUDE_CLI_MAX_STDIO_BYTES} bytes (got ${decodedBytes})`,
+            {
+              code: "ANTHROPIC_CLI_OUTPUT_LIMIT",
+              context: {
+                label: "stdout",
+                maxBytes: CLAUDE_CLI_MAX_STDIO_BYTES,
+                observedBytes: decodedBytes,
+              },
+            }
           );
         }
 
@@ -363,27 +444,27 @@ export function streamViaCli(
       // non-zero exit is a provider failure, not an empty completion — throw so
       // the consumer sees the real error instead of a fabricated "end_turn"
       // with zero chunks (#9324: throw, never fabricate).
-      const exitCode = await proc.exited;
-      if (timedOut) {
-        streamFailed = true;
-        throw new Error(`[Anthropic CLI] claude -p timed out after ${CLAUDE_CLI_TIMEOUT_MS}ms`);
-      }
+      const exitOutcome = await Promise.race([
+        settle(proc.exited),
+        deadline.outcome,
+        stderrFailure,
+      ]);
+      if (!exitOutcome.ok) throw exitOutcome.error;
+      const exitCode = exitOutcome.value;
+      processExited = true;
       if (exitCode !== 0) {
-        streamFailed = true;
-        // error-policy:J6 best-effort diagnostics on an already-failed process —
-        // the typed failure below throws regardless of stderr readability.
-        const stderrText = await readClaudeCliStreamBudget(
-          proc.stderr,
-          CLAUDE_CLI_MAX_STDIO_BYTES,
-          "stderr"
-        ).catch(() => "");
-        // error-policy:J6 stderr is diagnostics on an already-failed stream.
+        const settledStderr = await stderrOutcome;
+        const stderrText = settledStderr.ok ? settledStderr.value : "";
         throw new Error(
           `[Anthropic CLI] claude -p stream failed (exit ${exitCode}): ${stderrText.slice(0, 500)}`
         );
       }
+    } catch (error) {
+      streamFailed = true;
+      throw error;
     } finally {
-      clearTimeout(timer);
+      deadline.clear();
+      if (!processExited) killClaudeCliProcess(proc);
       resolveText(fullText);
       if (!usageResolved) resolveUsage(undefined);
       if (!finishResolved) resolveFinish(streamFailed ? "error" : "end_turn");
