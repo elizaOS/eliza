@@ -120,27 +120,37 @@ type TrajectoryBridgeState = {
 };
 
 const trajectoryBridgeStates = new WeakMap<object, TrajectoryBridgeState>();
-const closedTrajectoryStepIds = new WeakMap<object, Map<string, true>>();
+// closedAt anchors the age of any capture that arrives after terminalization;
+// rejects dedupes the reporting so a retrying caller logs once, not per attempt.
+type ClosedTrajectoryStep = { closedAt: number; rejects: number };
+const closedTrajectoryStepIds = new WeakMap<
+  object,
+  Map<string, ClosedTrajectoryStep>
+>();
 const stoppingTrajectoryBridges = new WeakSet<object>();
 const MAX_CLOSED_TRAJECTORY_STEP_IDS = 10_000;
 
 function rememberClosedTrajectoryStep(
   runtime: IAgentRuntime,
   stepId: string,
-): void {
+): ClosedTrajectoryStep {
   const runtimeKey = runtime as object;
   let closed = closedTrajectoryStepIds.get(runtimeKey);
   if (!closed) {
-    closed = new Map<string, true>();
+    closed = new Map<string, ClosedTrajectoryStep>();
     closedTrajectoryStepIds.set(runtimeKey, closed);
   }
+  // Refresh LRU position but keep the original close time — age must measure
+  // from terminalization, not from the most recent rejected retry.
+  const entry = closed.get(stepId) ?? { closedAt: Date.now(), rejects: 0 };
   closed.delete(stepId);
-  closed.set(stepId, true);
+  closed.set(stepId, entry);
   while (closed.size > MAX_CLOSED_TRAJECTORY_STEP_IDS) {
     const oldest = closed.keys().next().value;
     if (typeof oldest !== "string") break;
     closed.delete(oldest);
   }
+  return entry;
 }
 
 function isClosedTrajectoryStep(
@@ -161,16 +171,31 @@ function reportLateTrajectoryCapture(
   runtime: IAgentRuntime,
   stepId: string,
   captureType: "llm" | "provider",
+  purpose?: string,
 ): void {
-  rememberClosedTrajectoryStep(runtime, stepId);
+  const entry = rememberClosedTrajectoryStep(runtime, stepId);
+  entry.rejects += 1;
+  const age = `${Math.round((Date.now() - entry.closedAt) / 1000)}s`;
+  const detail = `step=${stepId.slice(0, 12)} type=${captureType} purpose=${purpose ?? "unknown"} age=${age}`;
+  if (entry.rejects > 1) {
+    // A retrying caller re-submits the same rejected capture; one full report
+    // per step is signal, the repeats are noise.
+    runtime.logger.debug?.(
+      { stepId, captureType, purpose, rejects: entry.rejects },
+      `[trajectory-db] Repeated late capture (${detail} rejects=${entry.rejects})`,
+    );
+    return;
+  }
+  // Context inline in the message: the pretty log transport drops structured
+  // payloads, and diagnosing this race blind has already cost wrong fixes.
   const error = new ElizaError(
-    "Trajectory capture arrived after terminalization",
+    `Trajectory capture arrived after terminalization (${detail})`,
     {
       code: "TRAJECTORY_OWNER_CLOSED",
-      context: { stepId, captureType },
+      context: { stepId, captureType, purpose, closedAt: entry.closedAt },
     },
   );
-  warnRuntime(runtime, "Rejected late trajectory capture", error);
+  warnRuntime(runtime, `Rejected late trajectory capture (${detail})`, error);
   runtime.reportError("TrajectoryStorage.lateCapture", error, {
     stepId,
     captureType,
@@ -183,10 +208,11 @@ function acceptsTrajectoryStepCapture(
   enabled: boolean,
   stepId: string,
   captureType: "llm" | "provider",
+  purpose?: string,
 ): boolean {
   if (!acceptsNewTrajectoryCapture(runtime, enabled)) return false;
   if (!isClosedTrajectoryStep(runtime, stepId)) return true;
-  reportLateTrajectoryCapture(runtime, stepId, captureType);
+  reportLateTrajectoryCapture(runtime, stepId, captureType, purpose);
   return false;
 }
 
@@ -1565,6 +1591,9 @@ export async function installDatabaseTrajectoryLogger(
         bridgeIsEnabled(),
         normalized.stepId,
         "llm",
+        typeof normalized.params.purpose === "string"
+          ? normalized.params.purpose
+          : undefined,
       )
     )
       return;
@@ -2639,6 +2668,9 @@ export class DatabaseTrajectoryLogger extends Service {
         this.enabled,
         normalized.stepId,
         "llm",
+        typeof normalized.params.purpose === "string"
+          ? normalized.params.purpose
+          : undefined,
       )
     )
       return;
