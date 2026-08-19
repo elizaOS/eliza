@@ -32,6 +32,36 @@ carry no timestamps in the archive, so they are counted in the summary and
 never emitted as message rows. Re-running is idempotent: unchanged shards are
 reused, missing shards are rewritten.
 
+## Reviewed sensitive deletion
+
+The two-phase deletion boundary never mutates raw source shards. `plan` binds a
+strict JSON/YAML ruleset and candidate inventory to a deterministic local review
+queue; `apply` requires a complete decision document for that exact queue and
+writes a separate survivor corpus, zero-content tombstones, manifest, ledger,
+approval, and sanitized report.
+
+```bash
+bun run --cwd packages/corpus-tools validate -- data/source
+bun run --cwd packages/corpus-tools corpus:delete -- plan \
+  --target data/source --candidates data/.state/candidates.jsonl \
+  --rules data/delete-rules.yaml --queue data/.state/deletion-review.json \
+  --normalized-rules data/.state/deletion-rules.normalized.json
+bun run --cwd packages/corpus-tools corpus:delete -- apply \
+  --target data/source --candidates data/.state/candidates.jsonl \
+  --normalized-rules data/.state/deletion-rules.normalized.json \
+  --queue data/.state/deletion-review.json \
+  --decisions data/.state/deletion-decisions.json --output data/deleted \
+  --ledger data/.state/deletion-ledger.jsonl \
+  --manifest data/deleted/manifest.json \
+  --approval data/.state/deletion-approval.json \
+  --report data/.state/deletion-report.json
+```
+
+Rules and decisions are private owner inputs. Review every atomic group before
+apply, retain only counts and hashes in shared evidence, and prove idempotent
+re-apply plus stale-decision rejection against a protected snapshot before the
+issue is closed.
+
 ```bash
 bun run --cwd packages/corpus-tools test
 bun run --cwd packages/corpus-tools typecheck
