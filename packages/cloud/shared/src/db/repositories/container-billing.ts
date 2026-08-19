@@ -3,7 +3,6 @@ import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { containerBillingRecords, containers } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
-import { organizationBilling } from "../schemas/organization-billing";
 import { organizations } from "../schemas/organizations";
 import { parseContainerBillingNumber } from "./container-billing-numeric";
 
@@ -99,33 +98,16 @@ export class ContainerBillingRepository {
   ): Promise<ContainerBillingOrganization[]> {
     if (organizationIds.length === 0) return [];
 
-    const [orgRows, billingRows] = await Promise.all([
-      dbRead
-        .select({
-          id: organizations.id,
-          name: organizations.name,
-          credit_balance: organizations.credit_balance,
-          pay_as_you_go_from_earnings: organizations.pay_as_you_go_from_earnings,
-        })
-        .from(organizations)
-        .where(inArray(organizations.id, organizationIds)),
-      dbRead
-        .select({
-          organization_id: organizationBilling.organization_id,
-          billing_email: organizationBilling.billing_email,
-        })
-        .from(organizationBilling)
-        .where(inArray(organizationBilling.organization_id, organizationIds)),
-    ]);
-
-    const billingEmailByOrg = new Map(
-      billingRows.map((row) => [row.organization_id, row.billing_email]),
-    );
-
-    return orgRows.map((org) => ({
-      ...org,
-      billing_email: billingEmailByOrg.get(org.id) ?? null,
-    }));
+    return dbRead
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        credit_balance: organizations.credit_balance,
+        pay_as_you_go_from_earnings: organizations.pay_as_you_go_from_earnings,
+        billing_email: organizations.billing_email,
+      })
+      .from(organizations)
+      .where(inArray(organizations.id, organizationIds));
   }
 
   async suspendContainer(containerId: string, now: Date): Promise<void> {

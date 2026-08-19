@@ -14,6 +14,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -28,7 +29,9 @@ export const organizationBalanceRevisionSequence = pgSequence("organization_bala
  * and container management. The organization_config table serves as a read-optimized
  * projection for less-frequently-accessed configuration.
  *
- * Billing details → organization_billing table
+ * Billing identity and payment settings remain on this row because checkout,
+ * auto-top-up, and credit mutation lock it as one atomic authority. The legacy
+ * organization_billing table is a migration shadow, not an application read path.
  * Extended config → organization_config table
  */
 export const organizations = pgTable(
@@ -37,7 +40,7 @@ export const organizations = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     name: text("name").notNull(),
     slug: text("slug").notNull().unique(),
-    credit_balance: numeric("credit_balance", { precision: 12, scale: 6 })
+    credit_balance: numeric("credit_balance", { precision: 16, scale: 6 })
       .notNull()
       // Accounts start at $0. Shared service access is not represented as paid
       // balance; only explicit funding and promotion paths add ledger credits.
@@ -62,7 +65,7 @@ export const organizations = pgTable(
     // Settings (kept for backward compatibility with container management)
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
 
-    // Billing (kept for backward compatibility with billing/payment routes)
+    // Canonical Stripe billing identity and payment settings.
     stripe_customer_id: text("stripe_customer_id"),
     billing_email: text("billing_email"),
     stripe_payment_method_id: text("stripe_payment_method_id"),
@@ -94,6 +97,9 @@ export const organizations = pgTable(
   },
   (table) => ({
     slug_idx: index("organizations_slug_idx").on(table.slug),
+    stripe_customer_authority_unique: uniqueIndex("organizations_stripe_customer_authority_unique")
+      .on(table.stripe_customer_id)
+      .where(sql`${table.stripe_customer_id} IS NOT NULL`),
     // CHECK constraint to prevent negative credit balances at database level
     credit_balance_non_negative: check(
       "credit_balance_non_negative",

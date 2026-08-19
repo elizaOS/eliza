@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 import {
+  createSerialPackageResolver,
   isParallelSafeTask,
   MAX_TASK_CONCURRENCY,
   normalizeConcurrency,
@@ -11,9 +12,23 @@ import {
   partitionTasks,
   resolveConcurrency,
   runPool,
-  SERIALIZE_PACKAGES,
+  serialPackages,
   taskBelongsToShard,
 } from "../lib/test-task-pool.mjs";
+
+test("serial package discovery is lazy and memoized", () => {
+  let calls = 0;
+  const expected = new Set(["@elizaos/example"]);
+  const resolve = createSerialPackageResolver(() => {
+    calls += 1;
+    return expected;
+  });
+
+  expect(calls).toBe(0);
+  expect(resolve()).toBe(expected);
+  expect(resolve()).toBe(expected);
+  expect(calls).toBe(1);
+});
 
 describe("isParallelSafeTask", () => {
   test("plain `test` script in the pr lane is parallel-safe", () => {
@@ -55,7 +70,7 @@ describe("isParallelSafeTask", () => {
   });
 
   test("denylisted packages stay serial even for their `test` script", () => {
-    for (const packageName of SERIALIZE_PACKAGES) {
+    for (const packageName of serialPackages()) {
       expect(
         isParallelSafeTask({ scriptName: "test", lane: "pr", packageName }),
       ).toBe(false);
@@ -63,13 +78,13 @@ describe("isParallelSafeTask", () => {
   });
 
   test("denylist matches the packages the root test:plugins sweep pulls out", () => {
-    expect(SERIALIZE_PACKAGES.has("@elizaos/plugin-personal-assistant")).toBe(
+    expect(serialPackages().has("@elizaos/plugin-personal-assistant")).toBe(
       true,
     );
-    expect(SERIALIZE_PACKAGES.has("@elizaos/plugin-agent-orchestrator")).toBe(
+    expect(serialPackages().has("@elizaos/plugin-agent-orchestrator")).toBe(
       true,
     );
-    expect(SERIALIZE_PACKAGES.has("@elizaos/plugin-sql")).toBe(true);
+    expect(serialPackages().has("@elizaos/plugin-sql")).toBe(true);
   });
 });
 

@@ -28,7 +28,7 @@ export const creditTransactions = pgTable(
     user_id: uuid("user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    amount: numeric("amount", { precision: 12, scale: 6 }).notNull(),
+    amount: numeric("amount", { precision: 16, scale: 6 }).notNull(),
     type: text("type").notNull(),
     description: text("description"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),

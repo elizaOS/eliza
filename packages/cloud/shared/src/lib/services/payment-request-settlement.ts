@@ -18,6 +18,10 @@ import {
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
+import {
+  curatePaymentRequestSettlementProof,
+  projectPaymentRequestReceipt,
+} from "./payment-request-receipts";
 
 const MAX_CALLBACK_ATTEMPTS = 12;
 
@@ -251,6 +255,7 @@ export async function processPaymentProviderEvent(
     paymentRequestId: requiredText(rawEvent.paymentRequestId, "paymentRequestId"),
     providerTxRef: requiredText(rawEvent.providerTxRef, "providerTxRef"),
     payloadDigest: rawEvent.payloadDigest.toLowerCase(),
+    proof: curatePaymentRequestSettlementProof(rawEvent.provider, rawEvent.proof),
   };
   if (!/^[a-f0-9]{64}$/.test(event.payloadDigest)) {
     throw new PaymentProviderEventConflictError("payloadDigest must be a SHA-256 hex digest");
@@ -335,6 +340,31 @@ export async function processPaymentProviderEvent(
             "Provider transaction was replayed with a different settlement binding",
           );
         }
+        if (
+          request.status !== "settled" ||
+          request.settlement_tx_ref !== event.providerTxRef ||
+          !request.settled_at ||
+          !request.settlement_proof ||
+          !existingTransaction.provider_event_id ||
+          !existingTransaction.payload_digest ||
+          !amount
+        ) {
+          throw new PaymentProviderEventConflictError(
+            "Existing provider transaction has incomplete settlement authority",
+          );
+        }
+        await projectPaymentRequestReceipt(tx, {
+          organizationId: request.organization_id,
+          paymentRequestId: request.id,
+          provider: event.provider,
+          providerTxRef: event.providerTxRef,
+          providerEventId: existingTransaction.provider_event_id,
+          amountCents: amount.amountCents,
+          currency: amount.currency,
+          settledAt: request.settled_at,
+          payloadDigest: existingTransaction.payload_digest,
+          settlementProof: request.settlement_proof,
+        });
         return {
           callback: callbackFromPayload(payload, existingTransaction.callback_state),
           callbackState: existingTransaction.callback_state ?? "pending",
@@ -366,15 +396,31 @@ export async function processPaymentProviderEvent(
     const replay = Boolean(existingEvent);
 
     if (event.disposition === "settled") {
+      if (!amount) {
+        throw new PaymentProviderEventConflictError("Settled provider event has no amount");
+      }
       if (request.status === "settled" && request.settlement_tx_ref !== event.providerTxRef) {
         throw new PaymentProviderEventConflictError(
           "Payment request was already settled by another provider transaction",
         );
       }
 
+      await projectPaymentRequestReceipt(tx, {
+        organizationId: request.organization_id,
+        paymentRequestId: request.id,
+        provider: event.provider,
+        providerTxRef: event.providerTxRef,
+        providerEventId: event.providerEventId,
+        amountCents: amount.amountCents,
+        currency: amount.currency,
+        settledAt: request.settled_at ?? occurredAt,
+        payloadDigest: event.payloadDigest,
+        settlementProof: event.proof,
+      });
+
       const credit = await creditsService.addCredits({
         organizationId: request.organization_id,
-        amount: formatUsdFromCents(amount?.amountCents ?? 0),
+        amount: formatUsdFromCents(amount.amountCents),
         description: `${event.provider} payment request credit purchase`,
         metadata: {
           type: "payment_request_topup",
@@ -382,8 +428,8 @@ export async function processPaymentProviderEvent(
           provider: event.provider,
           providerEventId: event.providerEventId,
           providerTxRef: event.providerTxRef,
-          amountCents: amount?.amountCents,
-          currency: amount?.currency,
+          amountCents: amount.amountCents,
+          currency: amount.currency,
         },
         stripePaymentIntentId:
           event.provider === "stripe"
@@ -397,14 +443,14 @@ export async function processPaymentProviderEvent(
         credit.transaction.organization_id !== request.organization_id ||
         credit.transaction.type !== "credit" ||
         !new Decimal(String(credit.transaction.amount)).eq(
-          formatUsdFromCents(amount?.amountCents ?? 0),
+          formatUsdFromCents(amount.amountCents),
         ) ||
         creditMetadata.type !== "payment_request_topup" ||
         creditMetadata.paymentRequestId !== request.id ||
         creditMetadata.provider !== event.provider ||
         creditMetadata.providerTxRef !== event.providerTxRef ||
-        creditMetadata.amountCents !== amount?.amountCents ||
-        creditMetadata.currency !== amount?.currency
+        creditMetadata.amountCents !== amount.amountCents ||
+        creditMetadata.currency !== amount.currency
       ) {
         throw new PaymentProviderEventConflictError(
           "Existing credit idempotency row does not match payment settlement",

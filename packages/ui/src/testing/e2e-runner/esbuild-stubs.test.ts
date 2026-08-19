@@ -8,6 +8,7 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 import { stubElizaCore, stubNodeBuiltins } from "./esbuild-stubs";
@@ -131,5 +132,24 @@ describe("stubNodeBuiltins", () => {
     )() as string;
 
     expect(evaluated).toBe("eliza-browser-fixture");
+  });
+
+  it("bundles shared loopback trust while keeping browser CIDR checks fail closed", async () => {
+    const loopbackTrustPath = fileURLToPath(
+      new URL("../../../../shared/src/loopback-trust.ts", import.meta.url),
+    );
+    const bundle = await bundleWithNodeStub(`
+      import { isRemoteAddressInCidrList } from ${JSON.stringify(loopbackTrustPath)};
+      export const observed = isRemoteAddressInCidrList(
+        "172.17.0.1",
+        "172.17.0.0/16",
+      );
+    `);
+
+    const evaluated = new Function(
+      `${bundle}; return fixture.observed;`,
+    )() as boolean;
+
+    expect(evaluated).toBe(false);
   });
 });

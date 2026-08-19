@@ -84,6 +84,8 @@ export * from "./organization-config";
 export * from "./organization-encryption-keys";
 export * from "./organization-invites";
 export * from "./organizations";
+export * from "./payment-request-receipts";
+export * from "./payment-requests";
 export * from "./personal-account-convergences";
 export * from "./phone-gateway-devices";
 export * from "./pii-scrub-markers";
