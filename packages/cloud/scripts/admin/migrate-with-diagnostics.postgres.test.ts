@@ -110,11 +110,12 @@ async function expectedPendingBanner(): Promise<string> {
   return `pending migrations: ${total - CHECKPOINT_PREFIX_LENGTH}`;
 }
 
-async function seedAppliedPrefix(
-  client: pg.Client,
-  length: number,
-  order: "timestamp" | "journal" | "production-hybrid" = "journal",
-): Promise<void> {
+/**
+ * Materializes the pre-0185 catalog that the recorded ledger prefix promises.
+ * Pending migrations deliberately run against this checkpoint instead of a
+ * current schema so missing historical dependencies fail in PostgreSQL.
+ */
+async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
   await client.query(`
     CREATE TABLE jobs (
       id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -126,6 +127,8 @@ async function seedAppliedPrefix(
       updated_at timestamp with time zone NOT NULL DEFAULT now()
     );
     CREATE TABLE agent_sandboxes (
+      id uuid PRIMARY KEY,
+      organization_id uuid,
       container_name text,
       replacement_cleanup_container_name text,
       execution_tier text,
@@ -133,26 +136,179 @@ async function seedAppliedPrefix(
       pool_status text,
       node_id text,
       sandbox_id text,
+      image_digest text,
       bridge_url text,
       health_url text,
       headscale_ip text,
+      billing_status text NOT NULL DEFAULT 'active',
+      last_billed_at timestamp with time zone,
+      hourly_rate numeric(10, 4) DEFAULT '0.0200',
+      total_billed numeric(10, 2) NOT NULL DEFAULT '0.00',
+      shutdown_warning_sent_at timestamp with time zone,
+      scheduled_shutdown_at timestamp with time zone,
+      environment_revision integer NOT NULL DEFAULT 0,
+      deletion_attempt_id uuid,
+      deletion_started_at timestamp with time zone,
       bridge_port integer,
       web_ui_port integer,
       last_heartbeat_at timestamp with time zone,
-      updated_at timestamp with time zone
+      updated_at timestamp with time zone,
+      CONSTRAINT agent_sandboxes_deletion_intent_pair_check CHECK (
+        (deletion_attempt_id IS NULL AND deletion_started_at IS NULL)
+        OR (
+          deletion_attempt_id IS NOT NULL
+          AND deletion_started_at IS NOT NULL
+        )
+      ),
+      CONSTRAINT billing_status_check CHECK (
+        billing_status IN ('active', 'warning', 'shutdown_pending', 'suspended')
+      )
+    );
+    CREATE TABLE agent_sandbox_backups (
+      id uuid PRIMARY KEY,
+      sandbox_record_id uuid NOT NULL REFERENCES agent_sandboxes(id) ON DELETE CASCADE,
+      snapshot_type text NOT NULL,
+      state_data jsonb NOT NULL,
+      state_data_storage text NOT NULL DEFAULT 'inline',
+      state_data_key text,
+      size_bytes bigint,
+      backup_kind text NOT NULL DEFAULT 'full',
+      parent_backup_id uuid,
+      content_hash text,
+      verification_status text,
+      verified_at timestamp with time zone,
+      verification_error text,
+      created_at timestamp with time zone NOT NULL DEFAULT now()
     );
     CREATE TABLE users (
-      id uuid PRIMARY KEY
+      id uuid PRIMARY KEY,
+      organization_id uuid
     );
     CREATE TABLE organizations (
+      id uuid PRIMARY KEY,
+      credit_balance numeric(16, 6) NOT NULL DEFAULT '100.000000',
+      CONSTRAINT credit_balance_non_negative CHECK (credit_balance >= 0)
+    );
+    CREATE TABLE credit_transactions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+      amount numeric(16, 6) NOT NULL,
+      type text NOT NULL,
+      description text,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+      stripe_payment_intent_id text,
+      created_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE credit_packs (
       id uuid PRIMARY KEY
     );
-    -- This fixture records the pre-checkpoint ledger without replaying its SQL.
-    -- It must therefore materialize every pre-checkpoint relation referenced by
-    -- pending migrations. Keep this checkpoint schema in lockstep when a new
-    -- post-checkpoint migration depends on an older table.
+    CREATE TABLE identity_links (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+      left_entity_id text NOT NULL,
+      right_entity_id text NOT NULL,
+      provider text,
+      source text NOT NULL DEFAULT 'manual',
+      created_at timestamp with time zone NOT NULL DEFAULT now(),
+      CONSTRAINT identity_links_source_check CHECK (
+        source IN ('oauth', 'manual', 'wallet')
+      )
+    );
+    CREATE TABLE twilio_inbound_calls (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      call_sid text NOT NULL UNIQUE,
+      account_sid text NOT NULL,
+      from_number text NOT NULL,
+      to_number text NOT NULL,
+      call_status text NOT NULL,
+      agent_id uuid,
+      raw_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+      raw_payload_storage text NOT NULL DEFAULT 'inline',
+      raw_payload_key text,
+      received_at timestamp with time zone NOT NULL DEFAULT now()
+    );
     CREATE TABLE docker_nodes (
+      id uuid PRIMARY KEY,
+      node_id text UNIQUE NOT NULL,
+      host_key_fingerprint text,
+      updated_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE payment_requests (
       id uuid PRIMARY KEY
+    );
+    CREATE TABLE payment_request_events (
+      id uuid PRIMARY KEY,
+      payment_request_id uuid NOT NULL REFERENCES payment_requests(id) ON DELETE CASCADE,
+      event_name text NOT NULL CHECK (
+        event_name IN (
+          'payment.created', 'payment.delivered', 'payment.viewed',
+          'payment.proof_received', 'payment.settled', 'payment.failed',
+          'payment.canceled', 'payment.expired', 'callback.dispatched',
+          'callback.failed', 'webhook.received'
+        )
+      ),
+      redacted_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+      occurred_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE crypto_payments (
+      id uuid PRIMARY KEY,
+      transaction_hash text,
+      status text NOT NULL DEFAULT 'pending',
+      updated_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE service_pricing (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      service_id text NOT NULL,
+      method text NOT NULL,
+      cost numeric(12, 6) NOT NULL,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+      updated_at timestamp without time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE service_pricing_audit (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      service_pricing_id uuid REFERENCES service_pricing(id) ON DELETE SET NULL,
+      service_id text NOT NULL,
+      method text NOT NULL,
+      old_cost numeric(12, 6),
+      new_cost numeric(12, 6) NOT NULL,
+      change_type text NOT NULL,
+      changed_by text NOT NULL,
+      reason text
+    );
+    CREATE TABLE org_storage_quota (
+      organization_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+      bytes_used bigint NOT NULL DEFAULT 0,
+      bytes_limit bigint NOT NULL DEFAULT 5368709120,
+      created_at timestamp without time zone NOT NULL DEFAULT now(),
+      updated_at timestamp without time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE apps (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE
+    );
+    CREATE TABLE managed_domains (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      domain text NOT NULL
+    );
+    CREATE TABLE domain_purchase_idempotency (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      key text NOT NULL UNIQUE,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+      domain text NOT NULL,
+      status text NOT NULL DEFAULT 'processing',
+      charge_id uuid,
+      charge jsonb,
+      cloudflare_registration_id text,
+      managed_domain_id uuid,
+      response_body jsonb,
+      error_code text,
+      expires_at timestamp without time zone NOT NULL,
+      created_at timestamp without time zone NOT NULL DEFAULT now(),
+      updated_at timestamp without time zone NOT NULL DEFAULT now()
     );
     CREATE SCHEMA drizzle;
     CREATE TABLE drizzle.__drizzle_migrations (
@@ -161,6 +317,14 @@ async function seedAppliedPrefix(
       created_at bigint
     );
   `);
+}
+
+async function seedAppliedPrefix(
+  client: pg.Client,
+  length: number,
+  order: "timestamp" | "journal" | "production-hybrid" = "journal",
+): Promise<void> {
+  await seedPreCheckpointSchema(client);
 
   // Deployed historical runners used both orders. Timestamp mode preserves
   // production inversions where a later journal entry ran first; journal mode
