@@ -10,6 +10,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
+import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "../connectors/account-manager";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
@@ -636,6 +637,161 @@ describe("runV5MessageRuntimeStage1", () => {
 				/that's private|owner's private info|private information in this conversation/i,
 			);
 		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("keeps a MIXED disclosure+missing-action set on the planner path (#20869)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user asked for an owner read and an unavailable action.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS", "MISSING_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain that the second capability is unavailable.",
+				toolCalls: [],
+				messageToUser: "That capability is not available here.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000021" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That capability is not available here.",
+			);
+			expect(result.result.responseContent?.text).not.toMatch(
+				/that's private|owner's private info|private information in this conversation/i,
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("keeps a MIXED disclosure+validation-error set on the planner path (#20869)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user asked for an owner read and a failing action.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS", "FAILING_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain that the second capability failed validation.",
+				toolCalls: [],
+				messageToUser: "That capability could not be validated.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+			{
+				...makeMemorySearchAction(),
+				name: "FAILING_TASK",
+				contexts: ["general"],
+				validate: async () => {
+					throw new Error("validation dependency failed");
+				},
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000022" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That capability could not be validated.",
+			);
+			expect(result.result.responseContent?.text).not.toMatch(
+				/that's private|owner's private info|private information in this conversation/i,
+			);
+		}
+		expect(reportErrorCalls(runtime).length).toBeGreaterThan(0);
+		expect(useModelCalls(runtime)).toHaveLength(2);
+	});
+
+	it("keeps a MIXED disclosure+account-policy-error set on the planner path (#20869)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The user asked for an owner read and a connector action.",
+				contexts: ["general"],
+				candidateActionNames: ["OWNER_TODOS", "CONNECTOR_TASK"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Explain that connector policy could not be evaluated.",
+				toolCalls: [],
+				messageToUser: "That connector capability could not be validated.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				...makeMemorySearchAction(),
+				name: "OWNER_TODOS",
+				disclosureGate: { require: "owner_exclusive" },
+			},
+			{
+				...makeMemorySearchAction(),
+				name: "CONNECTOR_TASK",
+				contexts: ["general"],
+				connectorAccountPolicy: { provider: "failing-provider" },
+			} as Action,
+		];
+		const accountPolicyError = new Error("connector policy dependency failed");
+		(runtime.getService as ReturnType<typeof vi.fn>).mockImplementation(
+			(serviceType: string) =>
+				serviceType === CONNECTOR_ACCOUNT_SERVICE_TYPE
+					? {
+							registerProvider: vi.fn(),
+							evaluatePolicy: vi.fn(async () => {
+								throw accountPolicyError;
+							}),
+						}
+					: null,
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.GROUP }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000023" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That connector capability could not be validated.",
+			);
+			expect(result.result.responseContent?.text).not.toMatch(
+				/that's private|owner's private info|private information in this conversation/i,
+			);
+		}
+		expect(reportErrorCalls(runtime)).toContainEqual([
+			"MessageService.plannerActionValidation",
+			accountPolicyError,
+			{ action: "CONNECTOR_TASK", parentAction: undefined },
+		]);
 		expect(useModelCalls(runtime)).toHaveLength(2);
 	});
 
