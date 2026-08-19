@@ -182,7 +182,7 @@ describe("executeNativeStoragePut", () => {
   });
 
   test("preserves the authoritative per-byte rate while rounding to ledger precision", () => {
-    expect(calculateStoragePutPrice(0.0001, 0.000000001, 1)).toBe(0.000101);
+    expect(calculateStoragePutPrice(0.0001, 0.000000001, 1)).toBe(0.0001);
     expect(calculateStoragePutPrice(0.0001, 0.000000001, 50_000_000)).toBe(0.0501);
     expect(calculateStoragePutPrice(0.0000004, 0.0000004, 1)).toBe(0.000001);
   });

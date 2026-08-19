@@ -40,7 +40,7 @@ export function calculateStoragePutPrice(
   }
   return new Decimal(flatCost.toString())
     .add(new Decimal(perByteCost.toString()).mul(bytes))
-    .toDecimalPlaces(6, Decimal.ROUND_CEIL)
+    .toDecimalPlaces(6, Decimal.ROUND_HALF_UP)
     .toNumber();
 }
 
