@@ -468,4 +468,83 @@ describe("CameraWeb recording lifecycle releases the microphone", () => {
 
     expect(audioTrack.stop).toHaveBeenCalledTimes(1);
   });
+
+  it("releases the mic when no supported mime type is available", async () => {
+    const audioTrack = makeAudioTrack();
+    installCameraAndMic([audioTrack]);
+    // No codec in the probe list is supported, so getSupportedMimeType()
+    // returns null and startRecording throws after the mic is acquired.
+    (
+      globalThis as unknown as { MediaRecorder: { isTypeSupported: unknown } }
+    ).MediaRecorder.isTypeSupported = () => false;
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+
+    await expect(camera.startRecording({ audio: true })).rejects.toThrow(
+      "No supported video mime type found",
+    );
+
+    // The mic acquired before the mime-type check must not leak when the
+    // recorder is never constructed.
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the mic when MediaRecorder construction throws", async () => {
+    const audioTrack = makeAudioTrack();
+    installCameraAndMic([audioTrack]);
+    // Some browsers throw NotSupportedError from the MediaRecorder
+    // constructor even when isTypeSupported reported the codec as usable.
+    (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder =
+      class {
+        static isTypeSupported = () => true;
+        constructor() {
+          throw new DOMException("construction failed", "NotSupportedError");
+        }
+      };
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+
+    await expect(camera.startRecording({ audio: true })).rejects.toThrow(
+      "construction failed",
+    );
+
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the mic when the recorder emits an error", async () => {
+    const audioTrack = makeAudioTrack();
+    installCameraAndMic([audioTrack]);
+    // Expose the constructed recorder so the test can fire its onerror the way
+    // the browser would when the underlying capture pipeline fails.
+    let recorder: { onerror: ((event: unknown) => void) | null } | null = null;
+    (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder =
+      class {
+        static isTypeSupported = () => true;
+        mimeType = "video/webm";
+        onstop: (() => void) | null = null;
+        ondataavailable: ((event: unknown) => void) | null = null;
+        onerror: ((event: unknown) => void) | null = null;
+        constructor() {
+          recorder = this;
+        }
+        start() {}
+        stop() {
+          this.onstop?.();
+        }
+      };
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+    await camera.startRecording({ audio: true });
+
+    expect(audioTrack.stop).not.toHaveBeenCalled();
+
+    // A recorder error aborts the session without firing onstop; the handler
+    // must still release the separately-acquired mic.
+    recorder?.onerror?.(new ErrorEvent("error", { message: "pipeline lost" }));
+
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+  });
 });

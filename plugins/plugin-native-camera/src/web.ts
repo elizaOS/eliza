@@ -366,14 +366,23 @@ export class CameraWeb extends WebPlugin {
       ]);
     }
 
-    const mimeType = getSupportedMimeType();
-    if (!mimeType) throw new Error("No supported video mime type found");
+    try {
+      const mimeType = getSupportedMimeType();
+      if (!mimeType) throw new Error("No supported video mime type found");
 
-    const recorderOptions: MediaRecorderOptions = { mimeType };
-    if (options?.bitrate) recorderOptions.videoBitsPerSecond = options.bitrate;
+      const recorderOptions: MediaRecorderOptions = { mimeType };
+      if (options?.bitrate)
+        recorderOptions.videoBitsPerSecond = options.bitrate;
 
-    this.recordedChunks = [];
-    this.mediaRecorder = new MediaRecorder(streamToRecord, recorderOptions);
+      this.recordedChunks = [];
+      this.mediaRecorder = new MediaRecorder(streamToRecord, recorderOptions);
+    } catch (err) {
+      // error-policy:J2 recorder setup failed after the mic was already
+      // acquired above; release the separately-held microphone stream before
+      // rethrowing so a failed start does not leave the OS mic engaged.
+      this.releaseRecordingAudio();
+      throw err;
+    }
 
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
@@ -382,6 +391,10 @@ export class CameraWeb extends WebPlugin {
     };
 
     this.mediaRecorder.onerror = (event) => {
+      // A recorder error aborts the session without firing onstop, so release
+      // the separately-acquired mic here to avoid leaving the OS microphone
+      // engaged after a failed recording.
+      this.releaseRecordingAudio();
       this.notifyListeners("error", {
         code: "RECORDING_ERROR",
         message: `Recording error: ${(event as ErrorEvent).message || "Unknown error"}`,
