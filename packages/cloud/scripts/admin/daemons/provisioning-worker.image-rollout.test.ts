@@ -138,12 +138,22 @@ describe("warm-pool image rollout admission", () => {
         configuredImage,
         targetDigest,
       }),
+    ).toBe(false);
+    expect(
+      prePullAllowsPoolImageRollout({
+        attempted: 1,
+        failed: 0,
+        configuredImage,
+        targetDigest,
+      }),
     ).toBe(true);
   });
 
   test("passes one resolved immutable digest into the manager and exposes counts", async () => {
     const rollout = mock(async () => ({
       decision: {
+        toFence: ["old-a", "old-b"],
+        toReplace: ["old-a"],
         counts: {
           target: 1,
           targetReady: 1,
@@ -154,7 +164,12 @@ describe("warm-pool image rollout admission", () => {
       },
       reserved: ["old-a", "old-b"],
       replaced: ["old-a"],
-      deferred: [],
+      deferred: [
+        {
+          id: "old-b",
+          reason: "generation changed before non-selected reservation",
+        },
+      ],
       failed: [],
     }));
     class TestWarmPoolManager {
@@ -331,6 +346,8 @@ describe("real one-shot daemon entrypoint", () => {
       warmPoolPhaseOrder.push("rollout");
       return {
         decision: {
+          toFence: ["warm-agent-old"],
+          toReplace: ["warm-agent-old"],
           counts: {
             target: 1,
             targetReady: 1,

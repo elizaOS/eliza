@@ -30,6 +30,7 @@ const repo = {
   reserveStuckPoolEntryForReap: mock(async () => undefined),
   listPoolEntriesForRollout: mock(async () => [] as Array<Record<string, unknown>>),
   reserveStalePoolEntryForRollout: mock(async () => undefined),
+  findById: mock(async () => undefined),
   findStuckPoolProvisioning: mock(async () => [] as Array<{ id: string }>),
   countAllPoolEntries: mock(async () => ({ ready: 0, provisioning: 0 })),
   countUserProvisionsByHour: mock(async () => [] as number[]),
@@ -101,6 +102,8 @@ beforeEach(() => {
   repo.listPoolEntriesForRollout.mockResolvedValue([]);
   repo.reserveStalePoolEntryForRollout.mockReset();
   repo.reserveStalePoolEntryForRollout.mockResolvedValue(undefined);
+  repo.findById.mockReset();
+  repo.findById.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -432,5 +435,27 @@ describe("rollout exact-generation claim fencing", () => {
     expect(first.replaced).toEqual([]);
     expect(second.replaced).toEqual(["stale"]);
     expect(destroy).toHaveBeenCalledTimes(2);
+  });
+
+  test("a retained cleanup tombstone is failed, never reported as replaced", async () => {
+    const { WarmPoolManager } = await load();
+    const target = rolloutRow("target", TARGET_DIGEST);
+    const stale = rolloutRow("stale-retained", STALE_DIGEST);
+    repo.listPoolEntriesForRollout.mockResolvedValue([target, stale]);
+    repo.reserveStalePoolEntryForRollout.mockImplementation(async (row) => row);
+    repo.findById.mockResolvedValue(stale);
+    const { creator, destroy } = fakeCreator();
+    const manager = new WarmPoolManager(creator);
+
+    const result = await manager.rollout("ghcr.io/elizaos/eliza:stable", TARGET_DIGEST);
+
+    expect(destroy).toHaveBeenCalledWith("stale-retained");
+    expect(result.replaced).toEqual([]);
+    expect(result.failed).toEqual([
+      {
+        id: "stale-retained",
+        error: "remote teardown did not remove the fenced pool generation",
+      },
+    ]);
   });
 });

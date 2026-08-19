@@ -160,9 +160,11 @@ export function decideRollout(
   const selectedInFlight = staleInFlightRows.slice(0, replacementBudget);
   const remainingBudget = replacementBudget - selectedInFlight.length;
   const readyFloorHeadroom = Math.max(0, totalReady - policy.minPoolSize);
-  // Do not start draining usable old-digest capacity until at least one
-  // target generation is ready. Replenish counts only the target digest, so
-  // the following daemon phase creates that bridge generation first.
+  // Do not physically tear down ready old-digest containers until at least one
+  // target generation is ready. All stale rows are claim-fenced below, so this
+  // floor preserves only bounded teardown/recovery capacity, never stale
+  // claimable capacity. Replenish counts only the target digest and creates
+  // the bridge generation in the following daemon phase.
   const readyReplacementLimit = targetReady > 0 ? Math.min(remainingBudget, readyFloorHeadroom) : 0;
   const selectedReady = staleReadyRows.slice(0, readyReplacementLimit);
   const selected = [...selectedInFlight, ...selectedReady];
@@ -172,7 +174,7 @@ export function decideRollout(
     toReplace: selected.map((row) => row.id),
     reason:
       stale.length > 0
-        ? `selected ${selected.length}/${stale.length} stale-digest generations; preserving ready floor ${policy.minPoolSize}`
+        ? `claim-fencing all ${stale.length} stale-digest generations; selected ${selected.length} for teardown while retaining physical ready-container floor ${policy.minPoolSize}`
         : `all ${targetRows.length} generations on target digest`,
     counts: {
       target: targetRows.length,
@@ -244,7 +246,10 @@ export interface PoolContainerCreator {
    *      status='running' and `pool_ready_at` together.
    *   4. On failure, leave a non-claimable row for reconciliation.
    */
-  createPoolContainer(image: string): Promise<{ id: string; nodeId: string | null }>;
+  createPoolContainer(
+    configuredImage: string,
+    targetDigest?: string,
+  ): Promise<{ id: string; nodeId: string | null }>;
 
   /**
    * Stop the docker container backing this pool entry and delete the row.
@@ -360,11 +365,13 @@ export class WarmPoolManager {
     const decision = decideReplenish(state, this.policy);
     const created: Array<{ id: string; nodeId: string | null }> = [];
     const failed: Array<{ error: string }> = [];
-    const creationImage = targetDigest ? immutableImageReference(image, targetDigest) : image;
+    if (targetDigest) immutableImageReference(image, targetDigest);
 
     for (let i = 0; i < decision.toCreate; i++) {
       try {
-        const result = await this.creator.createPoolContainer(creationImage);
+        const result = targetDigest
+          ? await this.creator.createPoolContainer(image, targetDigest)
+          : await this.creator.createPoolContainer(image);
         created.push(result);
       } catch (err) {
         // error-policy:J1 batch boundary — a per-container provision failure is
@@ -638,7 +645,18 @@ export class WarmPoolManager {
       if (!reservedSet.has(id)) continue;
       try {
         await this.creator.destroyPoolContainer(id);
-        replaced.push(id);
+        // deleteAgent may deliberately retain a capacity-ownership tombstone
+        // when remote teardown is unresolved. A resolved creator call alone
+        // therefore does not prove replacement; only row absence does.
+        const retained = await agentSandboxesRepository.findById(id);
+        if (retained) {
+          failed.push({
+            id,
+            error: "remote teardown did not remove the fenced pool generation",
+          });
+        } else {
+          replaced.push(id);
+        }
       } catch (err) {
         // error-policy:J1 batch boundary — the exact generation remains
         // claim-fenced and is retried on the next bounded rollout sweep.

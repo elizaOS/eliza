@@ -24,10 +24,18 @@ import type { PoolContainerCreator } from "./agent-warm-pool";
 const HEALTH_PROBE_TIMEOUT_MS = 5_000;
 
 export class HetznerPoolContainerCreator implements PoolContainerCreator {
-  async createPoolContainer(image: string): Promise<{ id: string; nodeId: string | null }> {
+  async createPoolContainer(
+    configuredImage: string,
+    targetDigest?: string,
+  ): Promise<{ id: string; nodeId: string | null }> {
     const row = await agentSandboxesRepository.createPoolEntry({
       agent_name: `pool-${randomUUID().slice(0, 8)}`,
-      docker_image: image,
+      // Keep the logical configured reference stable for the claim contract,
+      // while `provision()` binds this warm generation to targetDigest for the
+      // actual Docker pull. Persisting the digest before remote creation also
+      // makes the in-flight row count against exact-digest capacity.
+      docker_image: configuredImage,
+      image_digest: targetDigest,
       status: "pending",
       database_status: "none",
       environment_vars: {},
@@ -43,7 +51,7 @@ export class HetznerPoolContainerCreator implements PoolContainerCreator {
       });
       throw new ElizaError(`Pool provision failed: ${result.error}`, {
         code: "WARM_POOL_PROVISION_FAILED",
-        context: { poolId: row.id, image },
+        context: { poolId: row.id, image: configuredImage, targetDigest },
         severity: result.retryable ? "ephemeral" : "fatal",
       });
     }

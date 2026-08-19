@@ -1032,7 +1032,10 @@ export function prePullAllowsPoolImageRollout(
   summary: PrePullImagesSummary | null,
 ): summary is PrePullImagesSummary {
   return (
-    summary !== null && summary.failed === 0 && summary.targetDigest !== null
+    summary !== null &&
+    summary.attempted > 0 &&
+    summary.failed === 0 &&
+    summary.targetDigest !== null
   );
 }
 
@@ -1238,7 +1241,9 @@ export async function processPoolHealthCheckCycle(): Promise<PoolHealthCheckSumm
 /**
  * Replace stale warm-pool generations against one immutable registry digest.
  * The manager generation-fences every selected row before remote teardown and
- * burst-bounds replacement while preserving the configured ready floor.
+ * burst-bounds remote teardown while retaining the configured physical
+ * ready-container floor. Every known-stale row is claim-fenced immediately,
+ * so that retained floor is not advertised as current-digest claim capacity.
  */
 export async function processPoolImageRolloutCycle(
   resolvedTarget?: Pick<
@@ -1268,6 +1273,11 @@ export async function processPoolImageRolloutCycle(
   }
   const pool = await getWarmPoolManager();
   const result = await pool.rollout(configuredImage, targetDigest);
+  const selected = new Set(result.decision.toReplace);
+  const deferredIds = new Set([
+    ...result.decision.toFence.filter((id) => !selected.has(id)),
+    ...result.deferred.map(({ id }) => id),
+  ]);
   return {
     action: "completed",
     configuredImage,
@@ -1278,7 +1288,7 @@ export async function processPoolImageRolloutCycle(
     selected: result.decision.counts.selected,
     reserved: result.reserved.length,
     replaced: result.replaced.length,
-    deferred: result.decision.counts.deferred + result.deferred.length,
+    deferred: deferredIds.size,
     failed: result.failed.length,
   };
 }
@@ -2018,12 +2028,18 @@ export async function runInfraMaintenanceCycle(
   );
 
   let prePullTarget: PrePullImagesSummary | null = null;
+  let warmPoolTargetDigest: string | undefined;
   await runBoundedPhase(
     logger,
     "pre-pull images cycle",
     () => processPrePullImagesCycle(),
     (summary) => {
       prePullTarget = prePullAllowsPoolImageRollout(summary) ? summary : null;
+      // Digest resolution is sufficient to pin newly-created capacity even
+      // when zero/partial pre-pull means destructive stale rollout must stay
+      // closed. Never fall back to a mutable tag once this sweep knows the
+      // immutable target.
+      warmPoolTargetDigest = summary?.targetDigest ?? undefined;
       if (summary) {
         logger.info("[provisioning-worker] pre-pull images cycle complete", {
           attempted: summary.attempted,
@@ -2033,14 +2049,12 @@ export async function runInfraMaintenanceCycle(
     },
   );
 
-  let warmPoolTargetDigest: string | undefined;
   if (prePullTarget) {
     await runBoundedPhase(
       logger,
       "warm pool image rollout cycle",
       () => processPoolImageRolloutCycle(prePullTarget),
       (summary) => {
-        if (summary.targetDigest) warmPoolTargetDigest = summary.targetDigest;
         logger.info(
           "[provisioning-worker] warm pool image rollout cycle complete",
           {

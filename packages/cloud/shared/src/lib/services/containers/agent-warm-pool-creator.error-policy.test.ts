@@ -177,10 +177,19 @@ describe("createPoolContainer fail-closed", () => {
     });
 
     const creator = getHetznerPoolContainerCreator();
-    await expect(creator.createPoolContainer("img:latest")).resolves.toEqual({
+    const targetDigest = `sha256:${"a".repeat(64)}`;
+    await expect(creator.createPoolContainer("img:latest", targetDigest)).resolves.toEqual({
       id: "row-2",
       nodeId: "node-9",
     });
+    expect(repo.createPoolEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        docker_image: "img:latest",
+        image_digest: targetDigest,
+        status: "pending",
+      }),
+    );
+    expect(sandbox.provision).toHaveBeenCalledWith("row-2", WARM_POOL_ORG_ID);
   });
 
   test("a success response without the atomic readiness stamp fails closed", async () => {

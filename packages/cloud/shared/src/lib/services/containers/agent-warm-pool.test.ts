@@ -268,6 +268,8 @@ describe("decideRollout", () => {
     expect(d.toFence).toEqual(["old-a", "old-b"]);
     expect(d.toReplace).toEqual([]);
     expect(d.counts).toMatchObject({ stale: 2, selected: 0, deferred: 2 });
+    expect(d.reason).toContain("claim-fencing all 2");
+    expect(d.reason).toContain("physical ready-container floor 1");
   });
 
   test("once target capacity exists, replacement is burst-bounded and preserves the ready floor", () => {

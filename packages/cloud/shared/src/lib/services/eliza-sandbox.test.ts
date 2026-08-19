@@ -6302,13 +6302,24 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
 
   test("a warm-pool provision becomes running only through the final readiness CAS", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const handle = providerHandle();
+    const configuredPoolImage = "ghcr.io/elizaos/eliza:stable";
+    const targetDigest = `sha256:${"a".repeat(64)}`;
+    const handle = {
+      ...providerHandle(),
+      metadata: {
+        ...providerHandle().metadata,
+        dockerImage: `ghcr.io/elizaos/eliza@${targetDigest}`,
+        imageDigest: targetDigest,
+      },
+    };
     const row: AgentSandbox = {
       ...provisioningReadyRow(),
       organization_id: WARM_POOL_ORG_ID,
       user_id: WARM_POOL_USER_ID,
       execution_tier: "dedicated-always",
       pool_status: "unclaimed",
+      docker_image: configuredPoolImage,
+      image_digest: targetDigest,
     };
     const adoptedRow: AgentSandbox = {
       ...row,
@@ -6318,7 +6329,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       container_name: handle.metadata.containerName,
       bridge_url: handle.bridgeUrl,
       health_url: handle.healthUrl,
-      docker_image: handle.metadata.dockerImage,
+      docker_image: configuredPoolImage,
       image_digest: handle.metadata.imageDigest,
     };
     const readyRow: AgentSandbox = {
@@ -6343,8 +6354,9 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       plainKey: "eliza_test_agent_key",
       prefix: "eliza_test",
     });
+    const create = mock(async () => handle);
     const provider: SandboxProvider = {
-      create: mock(async () => handle),
+      create,
       stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {}),
       checkHealth: async () => true,
@@ -6360,6 +6372,19 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
 
       expect(result.success).toBe(true);
       expect(result.sandboxRecord).toBe(readyRow);
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dockerImage: `ghcr.io/elizaos/eliza@${targetDigest}`,
+        }),
+      );
+      expect(updateSpy).toHaveBeenCalledWith(
+        AGENT,
+        expect.objectContaining({
+          status: "provisioning",
+          docker_image: configuredPoolImage,
+          image_digest: targetDigest,
+        }),
+      );
       expect(updateSpy.mock.calls.some(([, data]) => data.status === "running")).toBe(false);
       expect(commitReadySpy).toHaveBeenCalledTimes(1);
       expect(commitReadySpy).toHaveBeenCalledWith(
