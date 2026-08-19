@@ -154,6 +154,135 @@ This preflight only validates the trust binding; it does not execute the canary
 or manufacture qualification evidence. Non-qualifiable generic surfaces are
 source-documented in `_provider-canary-exclusions.json`.
 
+### Operator manifest authorization
+
+Before provisioning a target or sending authenticated ingress, authorize the
+canonical manifest offline and validate it against deployment-owned public-key
+pins:
+
+```ts
+import {
+  authorizeProviderCanary,
+  preflightAuthorizedProviderCanary,
+} from "@elizaos/scenario-runner";
+
+const authorization = authorizeProviderCanary({
+  scenario,
+  bindings,
+  manifestAuthorityPrivateKey, // an Ed25519 private KeyObject
+});
+
+preflightAuthorizedProviderCanary({
+  scenario,
+  authorization,
+  pinnedManifestAuthorityPublicKeysPem,
+});
+```
+
+The returned authorization bundle contains only the manifest, key ID, digest,
+and signature; it never serializes the private key. Generate and retain the key
+outside the repository (prefer an offline signer or managed key store), publish
+only the SPKI public-key pin, and keep provider credentials out of the manifest.
+This preflight proves operator authorization of the exact scenario and binding
+contract only. It does not contact a provider, create observations, run the
+independent semantic judge, or make evidence publishable.
+
+### Offline qualification verification
+
+After an external controller completes one isolated provider run, verify the
+retained artifacts with trusted code and deployment-owned public-key pins:
+
+```bash
+bun run --cwd packages/scenario-runner provider-qualification -- \
+  verify /absolute/path/to/verify-config.json
+```
+
+```json
+{
+  "schema": "eliza.provider-qualification-verify-config.v1",
+  "scenarioFile": "provider.gmail.confirmed-send.scenario.ts",
+  "authorizationFile": "authorization.json",
+  "manifestAuthorityPublicKeyFiles": ["keys/manifest-authority.pub.pem"],
+  "runDir": "run",
+  "observerEvidenceFile": "observer-evidence.json",
+  "observerPublicKeyFiles": ["keys/provider-observer.pub.pem"],
+  "semanticEvidenceFile": "semantic-evidence.json",
+  "semanticJudgePublicKeyFiles": ["keys/semantic-judge.pub.pem"],
+  "runnerReportFile": "runner-report.json",
+  "outputDir": "verified"
+}
+```
+
+The closed `eliza.provider-qualification-verify-config.v1` JSON object names
+the authored scenario, operator authorization, isolated run directory, signed
+observer and semantic-judge envelopes, runner report, three independent sets
+of public-key files, and a new output directory. Paths are resolved relative to
+the config file. Optional controls are `expectedTrajectoryRelativePaths`,
+`maxArtifactAgeMs`, `maxSignatureAgeMs`, and `maxClockSkewMs`; unknown fields
+fail validation.
+
+The verifier recomputes trajectory and stage hashes from disk, validates the
+operator signature, derives qualification from the signed observer and judge
+evidence, and writes mode-0600 `qualification.json` plus a hash-only
+`qualification.md` into a newly created mode-0700 directory. Exit status is
+zero only for a publishable decision with independently verified provider
+acceptance, provider readback, and idempotent replay. The JSON artifact is an
+operator-controlled evidence bundle and can contain the runner transcript;
+publish the generated Markdown or a separately reviewed/redacted attachment,
+not the private JSON verbatim. This command does not execute ingress, collect
+evidence, access provider credentials, or post to GitHub.
+
+Once every canary has an independently verified artifact, create the release
+catalog with a closed `eliza.provider-qualification-catalog-config.v1` file:
+
+```json
+{
+  "schema": "eliza.provider-qualification-catalog-config.v1",
+  "expectedScenarioIds": [
+    "provider.bluebubbles-imessage.confirmed-send",
+    "provider.discord.confirmed-send",
+    "provider.duffel-travel.booking",
+    "provider.gmail.confirmed-send",
+    "provider.google-calendar.create",
+    "provider.google-sheets.create",
+    "provider.signal.confirmed-send",
+    "provider.slack.confirmed-send",
+    "provider.telegram.confirmed-send",
+    "provider.twilio-sms.confirmed-send",
+    "provider.twilio-voice.confirmed-call",
+    "provider.whatsapp.confirmed-send",
+    "provider.x-dm.confirmed-send"
+  ],
+  "expectedRepositorySha": "0123456789abcdef0123456789abcdef01234567",
+  "artifactFiles": [
+    "bluebubbles/qualification.json",
+    "discord/qualification.json",
+    "duffel/qualification.json",
+    "gmail/qualification.json",
+    "google-calendar/qualification.json",
+    "google-sheets/qualification.json",
+    "signal/qualification.json",
+    "slack/qualification.json",
+    "telegram/qualification.json",
+    "twilio-sms/qualification.json",
+    "twilio-voice/qualification.json",
+    "whatsapp/qualification.json",
+    "x-dm/qualification.json"
+  ],
+  "outputDir": "catalog-output"
+}
+```
+
+```bash
+bun run --cwd packages/scenario-runner provider-qualification -- \
+  catalog /absolute/path/to/catalog-config.json
+```
+
+List all 13 authored canary IDs and all 13 artifact files in the real config.
+The catalog command rejects missing or extra IDs, modified artifact digests,
+unqualified decisions, repository drift, and mixed deployments before writing
+`catalog.json` and the PR/issue-ready `catalog.md`.
+
 ## Evidence scopes
 
 `evidenceScope` describes the claim a scenario is designed to support; it does

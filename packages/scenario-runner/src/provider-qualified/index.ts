@@ -2,5 +2,9 @@
 
 export * from "./canary-controller.ts";
 export * from "./manifest.ts";
+export * from "./operator-authorization.ts";
 export * from "./qualification.ts";
+export * from "./qualification-artifact.ts";
+export * from "./qualification-catalog.ts";
+export * from "./qualification-cli.ts";
 export * from "./trajectory-verifier.ts";

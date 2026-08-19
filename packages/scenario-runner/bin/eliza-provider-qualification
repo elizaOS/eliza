@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+/** Invokes the compiled offline provider-qualification verifier. */
+import { runProviderQualificationCliAndExit } from "../dist/provider-qualified/qualification-cli.js";
+
+runProviderQualificationCliAndExit();
