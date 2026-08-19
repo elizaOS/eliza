@@ -106,6 +106,9 @@ export const orgStoragePutOperations = pgTable(
     credit_transaction_id: uuid("credit_transaction_id"),
     lease_token: uuid("lease_token"),
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
+    provider_absence_observed_at: timestamp("provider_absence_observed_at", {
+      withTimezone: true,
+    }),
     result_etag: text("result_etag"),
     result_uploaded_at: timestamp("result_uploaded_at", { withTimezone: true }),
     response_json: text("response_json"),
@@ -155,6 +158,7 @@ export const orgStoragePutOperations = pgTable(
           OR ${table.credit_transaction_id} IS NOT NULL OR ${table.price_usd} = 0)
         AND ((${table.lease_token} IS NULL) = (${table.lease_expires_at} IS NULL))
         AND (${table.state} <> 'reconciling' OR ${table.lease_token} IS NOT NULL)
+        AND (${table.provider_absence_observed_at} IS NULL OR ${table.state} = 'reconciling')
         AND (${table.state} <> 'committed' OR (
           ${table.result_etag} IS NOT NULL AND ${table.result_uploaded_at} IS NOT NULL
           AND ${table.response_json} IS NOT NULL AND ${table.completed_at} IS NOT NULL

@@ -371,6 +371,37 @@ export class OrgStorageMutationsRepository {
     return normalizeOperation(rows[0]);
   }
 
+  async deferProviderAbsence(params: {
+    operationId: string;
+    organizationId: string;
+    leaseToken: string;
+    observedAt: Date;
+    recheckAt: Date;
+  }): Promise<OrgStoragePutOperation> {
+    const rows = await writeTransaction(
+      async (tx) =>
+        await tx
+          .update(orgStoragePutOperations)
+          .set({
+            state: "reconciling",
+            provider_absence_observed_at: params.observedAt,
+            lease_expires_at: params.recheckAt,
+            updated_at: params.observedAt,
+          })
+          .where(
+            and(
+              eq(orgStoragePutOperations.id, params.operationId),
+              eq(orgStoragePutOperations.organization_id, params.organizationId),
+              eq(orgStoragePutOperations.state, "provider_started"),
+              eq(orgStoragePutOperations.lease_token, params.leaseToken),
+            ),
+          )
+          .returning(),
+    );
+    if (!rows[0]) throw new StoragePutConflictError("stale_lease");
+    return normalizeOperation(rows[0]);
+  }
+
   async commitObservedPut(params: {
     operationId: string;
     organizationId: string;
@@ -389,7 +420,10 @@ export class OrgStorageMutationsRepository {
       );
       const operation = normalizeOperation(requiredRow(operationRows, "operation commit lock"));
       if (operation.state === "committed") return operation;
-      if (operation.state !== "provider_started" || operation.lease_token !== params.leaseToken) {
+      if (
+        !["provider_started", "reconciling"].includes(operation.state) ||
+        operation.lease_token !== params.leaseToken
+      ) {
         throw new StoragePutConflictError("stale_lease");
       }
 
@@ -473,6 +507,7 @@ export class OrgStorageMutationsRepository {
           completed_at: new Date(),
           lease_token: null,
           lease_expires_at: null,
+          provider_absence_observed_at: null,
           updated_at: new Date(),
         })
         .where(eq(orgStoragePutOperations.id, operation.id))
@@ -585,6 +620,7 @@ export class OrgStorageMutationsRepository {
           completed_at: new Date(),
           lease_token: null,
           lease_expires_at: null,
+          provider_absence_observed_at: null,
           updated_at: new Date(),
         })
         .where(eq(orgStoragePutOperations.id, operation.id))
@@ -706,10 +742,64 @@ export class OrgStorageMutationsRepository {
     });
   }
 
+  async quotaNeedsNativeCatalogReconciliation(organizationId: string): Promise<boolean> {
+    await dbWrite
+      .insert(orgStorageQuota)
+      .values({
+        organization_id: organizationId,
+        bytes_used: 0n,
+        bytes_limit: DEFAULT_ORG_STORAGE_BYTES_LIMIT,
+      })
+      .onConflictDoNothing();
+    const quota = await dbWrite.query.orgStorageQuota.findFirst({
+      where: eq(orgStorageQuota.organization_id, organizationId),
+      columns: { native_catalog_reconciled_at: true },
+    });
+    return !quota?.native_catalog_reconciled_at;
+  }
+
+  async reconcileNativeQuotaFromCatalog(organizationId: string): Promise<bigint> {
+    return await writeTransaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`storage-quota:${organizationId}`}, 0))`,
+      );
+      const quotaLock = await sqlRows<{ organization_id: string }>(
+        tx,
+        sql`SELECT organization_id FROM ${orgStorageQuota}
+          WHERE organization_id = ${organizationId}
+          FOR UPDATE`,
+      );
+      requiredRow(quotaLock, "native quota lock");
+      const rows = await sqlRows<{ bytes_used: bigint }>(
+        tx,
+        sql`WITH catalog AS (
+              SELECT COALESCE(SUM(size_bytes), 0) AS bytes
+              FROM ${orgStorageObjects}
+              WHERE organization_id = ${organizationId}
+                AND deleted_at IS NULL AND provider_key IS NOT NULL
+            ), reservations AS (
+              SELECT COALESCE(SUM(quota_reserved_bytes), 0) AS bytes
+              FROM ${orgStoragePutOperations}
+              WHERE organization_id = ${organizationId}
+                AND state IN ('prepared','reserved','provider_started','reconciling')
+            )
+            UPDATE ${orgStorageQuota}
+            SET bytes_used = (catalog.bytes + reservations.bytes)::bigint,
+                native_catalog_reconciled_at = NOW(),
+                updated_at = NOW()
+            FROM catalog, reservations
+            WHERE ${orgStorageQuota.organization_id} = ${organizationId}
+            RETURNING ${orgStorageQuota.bytes_used}`,
+      );
+      return bigintValue(requiredRow(rows, "native quota reconciliation").bytes_used);
+    });
+  }
+
   async listObjects(
     organizationId: string,
     prefix: string,
     limit = 1001,
+    recursive = true,
   ): Promise<OrgStorageObject[]> {
     const escapedPrefix = prefix
       .replaceAll("\\", "\\\\")
@@ -722,6 +812,9 @@ export class OrgStorageMutationsRepository {
           AND deleted_at IS NULL
           AND provider_key IS NOT NULL
           AND logical_key LIKE ${`${escapedPrefix}%`} ESCAPE '\\'
+          AND (${recursive} OR POSITION('/' IN LTRIM(
+            SUBSTRING(logical_key FROM char_length(${prefix}) + 1), '/'
+          )) = 0)
         ORDER BY logical_key ASC
         LIMIT ${Math.max(1, Math.min(limit, 1001))}`,
     );

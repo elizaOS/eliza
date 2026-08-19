@@ -17,7 +17,7 @@ WITH stale_price AS (
     change_type, changed_by, reason
   )
   SELECT id, service_id, method, cost, 0.000000001,
-    'migration_reseed', 'migration:0254',
+    'migration_reseed', 'migration:0256',
     'Restore put_per_byte after widening pricing precision'
   FROM stale_price
 )
@@ -25,6 +25,10 @@ UPDATE "service_pricing" AS pricing
 SET "cost" = 0.000000001, "updated_at" = NOW()
 FROM stale_price
 WHERE pricing.id = stale_price.id;
+--> statement-breakpoint
+
+ALTER TABLE "org_storage_quota"
+  ADD COLUMN "native_catalog_reconciled_at" timestamp with time zone;
 --> statement-breakpoint
 
 CREATE TABLE "org_storage_objects" (

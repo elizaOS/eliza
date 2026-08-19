@@ -50,6 +50,7 @@ CREATE TABLE "org_storage_put_operations" (
   "credit_transaction_id" uuid,
   "lease_token" uuid,
   "lease_expires_at" timestamp with time zone,
+  "provider_absence_observed_at" timestamp with time zone,
   "result_etag" text,
   "result_uploaded_at" timestamp with time zone,
   "response_json" text,
@@ -76,6 +77,7 @@ CREATE TABLE "org_storage_put_operations" (
     AND ("state" IN ('prepared','reconciling','refunded') OR "credit_transaction_id" IS NOT NULL OR "price_usd" = 0)
     AND (("lease_token" IS NULL) = ("lease_expires_at" IS NULL))
     AND ("state" <> 'reconciling' OR "lease_token" IS NOT NULL)
+    AND ("provider_absence_observed_at" IS NULL OR "state" = 'reconciling')
     AND ("state" <> 'committed' OR (
       "result_etag" IS NOT NULL AND "result_uploaded_at" IS NOT NULL
       AND "response_json" IS NOT NULL AND "completed_at" IS NOT NULL

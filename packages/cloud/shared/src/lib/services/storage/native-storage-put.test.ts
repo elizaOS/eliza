@@ -15,10 +15,14 @@ const preparePut = mock();
 const reservePutCredits = mock();
 const claimProviderLease = mock();
 const claimReconciliationLease = mock();
+const deferProviderAbsence = mock();
 const commitObservedPut = mock();
 const finalizeRefund = mock();
 const findObject = mock();
 const adoptLegacyObject = mock();
+const adoptLegacyObjects = mock();
+const quotaNeedsNativeCatalogReconciliation = mock();
+const reconcileNativeQuotaFromCatalog = mock();
 const listDueOperations = mock();
 const listDueGc = mock();
 const completeGc = mock();
@@ -37,10 +41,14 @@ mock.module("../../../db/repositories/org-storage-mutations", () => ({
     reservePutCredits,
     claimProviderLease,
     claimReconciliationLease,
+    deferProviderAbsence,
     commitObservedPut,
     finalizeRefund,
     findObject,
     adoptLegacyObject,
+    adoptLegacyObjects,
+    quotaNeedsNativeCatalogReconciliation,
+    reconcileNativeQuotaFromCatalog,
     listDueOperations,
     listDueGc,
     completeGc,
@@ -56,6 +64,7 @@ mock.module("../../utils/logger", () => ({ logger: { warn: loggerWarn } }));
 
 const {
   calculateStoragePutPrice,
+  ensureNativeStorageQuotaReconciled,
   executeNativeStorageDelete,
   executeNativeStoragePut,
   reconcileNativeStoragePuts,
@@ -84,10 +93,16 @@ function operation(state: OrgStoragePutOperation["state"], price = "1.000000") {
     lease_token: state === "provider_started" || state === "reconciling" ? OBJECT : null,
     lease_expires_at:
       state === "provider_started" || state === "reconciling" ? new Date(Date.now() - 1) : null,
+    provider_absence_observed_at: null,
     result_etag: state === "committed" ? "etag-1" : null,
     result_uploaded_at: state === "committed" ? new Date() : null,
-    response_json: state === "committed" ? "{}" : null,
-    completed_at: state === "committed" ? new Date() : null,
+    response_json:
+      state === "committed"
+        ? "{}"
+        : state === "refunded"
+          ? JSON.stringify({ error: "Insufficient credits" })
+          : null,
+    completed_at: state === "committed" || state === "refunded" ? new Date() : null,
     created_at: new Date(Date.now() - 60_000),
     updated_at: new Date(),
   } satisfies OrgStoragePutOperation;
@@ -122,10 +137,14 @@ beforeEach(() => {
     reservePutCredits,
     claimProviderLease,
     claimReconciliationLease,
+    deferProviderAbsence,
     commitObservedPut,
     finalizeRefund,
     findObject,
     adoptLegacyObject,
+    adoptLegacyObjects,
+    quotaNeedsNativeCatalogReconciliation,
+    reconcileNativeQuotaFromCatalog,
     listDueOperations,
     listDueGc,
     completeGc,
@@ -140,6 +159,7 @@ beforeEach(() => {
   listDueOperations.mockResolvedValue([]);
   listDueGc.mockResolvedValue([]);
   listDueDeletes.mockResolvedValue([]);
+  quotaNeedsNativeCatalogReconciliation.mockResolvedValue(false);
   reservePutCredits.mockImplementation(async () => ({
     operation: operation("reserved"),
     insufficient: false,
@@ -149,6 +169,40 @@ beforeEach(() => {
 });
 
 describe("executeNativeStoragePut", () => {
+  test("fully adopts legacy inventory before repairing a corrupted quota baseline", async () => {
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+    const bucket = fakeR2({ value: false });
+    bucket.list = mock()
+      .mockResolvedValueOnce({
+        objects: [
+          {
+            key: `org/${ORG}/first.bin`,
+            size: 3,
+            etag: "first-etag",
+            uploaded: new Date("2026-08-18T00:00:00.000Z"),
+          },
+        ],
+        truncated: true,
+        cursor: "next",
+      })
+      .mockResolvedValueOnce({
+        objects: [
+          {
+            key: `org/${ORG}/second.bin`,
+            size: 4,
+            etag: "second-etag",
+            uploaded: new Date("2026-08-18T00:01:00.000Z"),
+          },
+        ],
+        truncated: false,
+      });
+
+    await ensureNativeStorageQuotaReconciled(bucket, ORG);
+
+    expect(adoptLegacyObjects).toHaveBeenCalledTimes(2);
+    expect(reconcileNativeQuotaFromCatalog).toHaveBeenCalledWith(ORG);
+  });
+
   test("adopts a legacy logical key from strong native HEAD without moving bytes", async () => {
     const bucket = fakeR2({ value: false });
     const legacyKey = `org/${ORG}/legacy/voice.ogg`;
@@ -285,6 +339,105 @@ describe("executeNativeStoragePut", () => {
       }),
     ).rejects.toBeInstanceOf(TestInsufficientCreditsError);
     expect(bucket.put).not.toHaveBeenCalled();
+
+    preparePut.mockResolvedValue({ operation: operation("refunded"), replay: true });
+    await expect(
+      executeNativeStoragePut({
+        bucket,
+        organizationId: ORG,
+        logicalKey: "insufficient.txt",
+        idempotencyKey: "insufficient-1",
+        body: new TextEncoder().encode("payload").buffer,
+        contentType: "text/plain",
+        priceUsd: 1,
+      }),
+    ).rejects.toBeInstanceOf(TestInsufficientCreditsError);
+    expect(bucket.put).not.toHaveBeenCalled();
+  });
+
+  test("quarantines a negative HEAD while the original provider PUT remains unresolved", async () => {
+    let current = operation("prepared");
+    let releasePut: (() => void) | undefined;
+    let markPutStarted: (() => void) | undefined;
+    const putStarted = new Promise<void>((resolve) => {
+      markPutStarted = resolve;
+    });
+    const putGate = new Promise<void>((resolve) => {
+      releasePut = resolve;
+    });
+    let observed: RuntimeR2ObjectMetadata | null = null;
+    const bucket: RuntimeR2Bucket = {
+      get: mock(async () => null),
+      head: mock(async () => observed),
+      list: mock(async () => ({ objects: [], truncated: false })),
+      put: mock(async (_key, value, options) => {
+        markPutStarted?.();
+        await putGate;
+        observed = {
+          size: value instanceof ArrayBuffer ? value.byteLength : 0,
+          etag: "late-etag",
+          customMetadata: options?.customMetadata,
+        };
+      }),
+      delete: mock(async () => undefined),
+    };
+    preparePut.mockImplementation(async () => ({ operation: current, replay: false }));
+    reservePutCredits.mockImplementation(async () => {
+      current = operation("reserved");
+      return { operation: current, insufficient: false, available: 9 };
+    });
+    claimProviderLease.mockImplementation(async () => {
+      current = operation("provider_started");
+      return current;
+    });
+    claimReconciliationLease.mockImplementation(async (input: { leaseToken: string }) => {
+      current = {
+        ...current,
+        lease_token: input.leaseToken,
+        lease_expires_at: new Date(Date.now() + 60_000),
+      };
+      return current;
+    });
+    deferProviderAbsence.mockImplementation(
+      async (input: { observedAt: Date; recheckAt: Date }) => {
+        current = {
+          ...current,
+          state: "reconciling",
+          provider_absence_observed_at: input.observedAt,
+          lease_expires_at: input.recheckAt,
+        };
+        return current;
+      },
+    );
+    commitObservedPut.mockImplementation(async (input: { leaseToken: string }) => {
+      if (input.leaseToken !== current.lease_token) throw new TestStoragePutConflictError();
+      current = operation("committed");
+      return current;
+    });
+    listDueOperations.mockImplementation(async () => [current]);
+
+    const request = executeNativeStoragePut({
+      bucket,
+      organizationId: ORG,
+      logicalKey: "late-provider.txt",
+      idempotencyKey: "late-provider-1",
+      body: new TextEncoder().encode("payload").buffer,
+      contentType: "text/plain",
+      priceUsd: 1,
+    });
+    await putStarted;
+
+    const firstRecovery = await reconcileNativeStoragePuts(bucket);
+    expect(firstRecovery.refunded).toBe(0);
+    expect(deferProviderAbsence).toHaveBeenCalledTimes(1);
+    expect(finalizeRefund).not.toHaveBeenCalled();
+
+    releasePut?.();
+    await expect(request).rejects.toBeInstanceOf(TestStoragePutConflictError);
+    current.lease_expires_at = new Date(Date.now() - 1);
+    const secondRecovery = await reconcileNativeStoragePuts(bucket);
+    expect(secondRecovery.committed).toBe(1);
+    expect(finalizeRefund).not.toHaveBeenCalled();
   });
 
   test("replays a concurrent commit observed while waiting on atomic credit reservation", async () => {
@@ -307,6 +460,28 @@ describe("executeNativeStoragePut", () => {
     expect(response.etag).toBe("etag-1");
     expect(bucket.put).not.toHaveBeenCalled();
     expect(claimProviderLease).not.toHaveBeenCalled();
+  });
+
+  test("replays a terminal provider-absence refund as the original service failure", async () => {
+    const refunded = operation("refunded");
+    refunded.response_json = JSON.stringify({ error: "Storage PUT did not reach R2" });
+    preparePut.mockResolvedValue({ operation: refunded, replay: true });
+    const bucket = fakeR2({ value: false });
+    await expect(
+      executeNativeStoragePut({
+        bucket,
+        organizationId: ORG,
+        logicalKey: "refunded.txt",
+        idempotencyKey: "refunded-1",
+        body: new TextEncoder().encode("payload").buffer,
+        contentType: "text/plain",
+        priceUsd: 1,
+      }),
+    ).rejects.toMatchObject({
+      code: "PROVIDER_AMBIGUOUS",
+      message: "Storage PUT did not reach R2",
+    });
+    expect(bucket.put).not.toHaveBeenCalled();
   });
 
   test("replays an ambiguous native delete without releasing authority early", async () => {

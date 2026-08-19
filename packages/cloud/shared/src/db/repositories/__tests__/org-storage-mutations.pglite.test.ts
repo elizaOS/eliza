@@ -149,7 +149,7 @@ describe("OrgStorageMutationsRepository", () => {
     expect(audit.rows[0]).toMatchObject({
       old_cost: "0.000000000000",
       new_cost: "0.000000001000",
-      changed_by: "migration:0254",
+      changed_by: "migration:0256",
     });
   });
 
@@ -213,6 +213,67 @@ describe("OrgStorageMutationsRepository", () => {
     ]);
     expect(claims.filter((claim) => claim.status === "fulfilled")).toHaveLength(1);
     expect(claims.filter((claim) => claim.status === "rejected")).toHaveLength(1);
+  });
+
+  test("requires an expired provider-absence quarantine before one reconciler can recheck", async () => {
+    const prepared = await prepare("quarantine", "e", 4n);
+    await repository.reservePutCredits({
+      operationId: prepared.operation.id,
+      organizationId: ORG,
+    });
+    const provider = await repository.claimProviderLease({
+      operationId: prepared.operation.id,
+      organizationId: ORG,
+      leaseToken: crypto.randomUUID(),
+      leaseExpiresAt: new Date(Date.now() - 1),
+      now: new Date(Date.now() - 2),
+    });
+    const firstToken = crypto.randomUUID();
+    const firstClaim = await repository.claimReconciliationLease({
+      operationId: provider.id,
+      organizationId: ORG,
+      leaseToken: firstToken,
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+      staleBefore: new Date(),
+      now: new Date(),
+    });
+    const recheckAt = new Date(Date.now() + 10 * 60_000);
+    const quarantined = await repository.deferProviderAbsence({
+      operationId: firstClaim.id,
+      organizationId: ORG,
+      leaseToken: firstToken,
+      observedAt: new Date(),
+      recheckAt,
+    });
+    expect(quarantined.state).toBe("reconciling");
+    expect(quarantined.provider_absence_observed_at).toBeInstanceOf(Date);
+    await expect(
+      repository.claimReconciliationLease({
+        operationId: quarantined.id,
+        organizationId: ORG,
+        leaseToken: crypto.randomUUID(),
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+        staleBefore: new Date(),
+        now: new Date(),
+      }),
+    ).rejects.toMatchObject({ reason: "stale_lease" });
+
+    await dbWrite.execute(sql`UPDATE org_storage_put_operations
+      SET lease_expires_at = ${new Date(Date.now() - 1)}
+      WHERE id = ${quarantined.id}`);
+    const attempts = await Promise.allSettled(
+      [crypto.randomUUID(), crypto.randomUUID()].map((leaseToken) =>
+        repository.claimReconciliationLease({
+          operationId: quarantined.id,
+          organizationId: ORG,
+          leaseToken,
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+          staleBefore: new Date(),
+          now: new Date(),
+        }),
+      ),
+    );
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
   });
 
   test("atomically fences credit reservation against prepared-operation recovery", async () => {
@@ -324,6 +385,62 @@ describe("OrgStorageMutationsRepository", () => {
       "legacy/voice.ogg",
     ]);
     expect(listed[1]?.generation).toBe(1n);
+  });
+
+  test("repairs historical quota drift from the adopted catalog plus active reservations", async () => {
+    await repository.adoptLegacyObjects([
+      {
+        organizationId: ORG,
+        logicalKey: "legacy/one.bin",
+        providerKey: `org/${ORG}/legacy/one.bin`,
+        sizeBytes: 3n,
+        contentType: "application/octet-stream",
+        etag: "one-etag",
+        uploadedAt: new Date("2026-08-18T00:00:00.000Z"),
+      },
+      {
+        organizationId: ORG,
+        logicalKey: "legacy/two.bin",
+        providerKey: `org/${ORG}/legacy/two.bin`,
+        sizeBytes: 4n,
+        contentType: "application/octet-stream",
+        etag: "two-etag",
+        uploadedAt: new Date("2026-08-18T00:01:00.000Z"),
+      },
+    ]);
+    await dbWrite.execute(sql`UPDATE org_storage_quota
+      SET bytes_used = 99, bytes_limit = 1000
+      WHERE organization_id = ${ORG}`);
+    await Promise.all([
+      repository.reconcileNativeQuotaFromCatalog(ORG),
+      prepare("new.bin", "f", 5n),
+    ]);
+
+    const quota = await dbWrite.execute(sql`SELECT bytes_used FROM org_storage_quota
+      WHERE organization_id = ${ORG}`);
+    expect(BigInt(String(quota.rows[0]?.bytes_used))).toBe(12n);
+    expect(await repository.quotaNeedsNativeCatalogReconciliation(ORG)).toBe(false);
+  });
+
+  test("filters non-recursive catalog depth before applying the result limit", async () => {
+    await dbWrite.execute(sql`INSERT INTO org_storage_objects (
+        organization_id, logical_key, provider_key, size_bytes,
+        content_type, etag, uploaded_at
+      )
+      SELECT ${ORG}, 'folder/' || lpad(value::text, 4, '0') || '/item.bin',
+        ${`org/${ORG}/folder/`} || lpad(value::text, 4, '0') || '/item.bin',
+        1, 'application/octet-stream', 'etag-' || value, NOW()
+      FROM generate_series(0, 1000) AS value`);
+    await dbWrite.execute(sql`INSERT INTO org_storage_objects (
+        organization_id, logical_key, provider_key, size_bytes,
+        content_type, etag, uploaded_at
+      ) VALUES (
+        ${ORG}, 'folder/zzzz.bin', ${`org/${ORG}/folder/zzzz.bin`},
+        1, 'application/octet-stream', 'direct-etag', NOW()
+      )`);
+
+    const listed = await repository.listObjects(ORG, "folder", 1001, false);
+    expect(listed.map((object) => object.logical_key)).toEqual(["folder/zzzz.bin"]);
   });
 
   test("rejects an idempotency replay whose durable digest includes a changed price", async () => {

@@ -20,6 +20,7 @@ import { InsufficientCreditsError } from "../credits";
 
 const PROVIDER_LEASE_MS = 5 * 60 * 1000;
 const RECOVERY_GRACE_MS = 10 * 60 * 1000;
+const PROVIDER_ABSENCE_QUARANTINE_MS = 10 * 60 * 1000;
 const MAX_IDEMPOTENCY_KEY_BYTES = 200;
 
 /** Sums exact server-owned decimal legs, then rounds once to the ledger unit. */
@@ -112,11 +113,75 @@ function adoptedContentType(observed: RuntimeR2ObjectMetadata): string {
     : "application/octet-stream";
 }
 
+export async function ensureNativeStorageQuotaReconciled(
+  bucket: RuntimeR2Bucket,
+  organizationId: string,
+): Promise<void> {
+  if (
+    !(await orgStorageMutationsRepository.quotaNeedsNativeCatalogReconciliation(organizationId))
+  ) {
+    return;
+  }
+  if (!bucket.list) {
+    throw new NativeStoragePutError(
+      "PROVIDER_INTEGRITY",
+      "R2 LIST is required for native quota reconciliation",
+    );
+  }
+  const providerPrefix = `org/${organizationId}/`;
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  let hasMore = true;
+  while (hasMore) {
+    const page = await bucket.list({
+      prefix: providerPrefix,
+      cursor,
+      limit: 1000,
+      include: ["httpMetadata"],
+    });
+    const candidates = page.objects.map((observed) => {
+      if (
+        !observed.key?.startsWith(providerPrefix) ||
+        observed.key.length === providerPrefix.length ||
+        !observed.etag ||
+        observed.size <= 0
+      ) {
+        throw new NativeStoragePutError(
+          "PROVIDER_INTEGRITY",
+          "R2 returned incomplete legacy quota metadata",
+        );
+      }
+      return {
+        organizationId,
+        logicalKey: observed.key.slice(providerPrefix.length),
+        providerKey: observed.key,
+        sizeBytes: BigInt(observed.size),
+        contentType: adoptedContentType(observed),
+        etag: observed.etag,
+        uploadedAt: observed.uploaded ?? new Date(0),
+      };
+    });
+    await orgStorageMutationsRepository.adoptLegacyObjects(candidates);
+    hasMore = page.truncated;
+    if (!hasMore) continue;
+    if (!page.cursor || seenCursors.has(page.cursor)) {
+      throw new NativeStoragePutError(
+        "PROVIDER_INTEGRITY",
+        "R2 quota reconciliation pagination did not advance",
+      );
+    }
+    seenCursors.add(page.cursor);
+    cursor = page.cursor;
+  }
+  await orgStorageMutationsRepository.reconcileNativeQuotaFromCatalog(organizationId);
+}
+
 export async function resolveNativeStorageObject(
   bucket: RuntimeR2Bucket,
   organizationId: string,
   logicalKey: string,
 ): Promise<OrgStorageObject | undefined> {
+  await ensureNativeStorageQuotaReconciled(bucket, organizationId);
   const existing = await orgStorageMutationsRepository.findObject(organizationId, logicalKey);
   if (existing?.provider_key || existing?.deleted_at || (existing?.generation ?? 0n) > 0n) {
     return existing;
@@ -212,6 +277,22 @@ function responseFor(
   };
 }
 
+function throwRefundReplay(operation: OrgStoragePutOperation): never {
+  let response: { error?: unknown } = {};
+  try {
+    response = operation.response_json ? JSON.parse(operation.response_json) : {};
+  } catch {
+    throw new Error("[NativeStoragePut] refunded receipt is not valid JSON");
+  }
+  if (response.error === "Insufficient credits") {
+    throw new InsufficientCreditsError(Number(operation.price_usd), 0, "insufficient_balance");
+  }
+  throw new NativeStoragePutError(
+    "PROVIDER_AMBIGUOUS",
+    typeof response.error === "string" ? response.error : "The prior PUT was refunded",
+  );
+}
+
 function validateObserved(
   operation: OrgStoragePutOperation,
   observed: RuntimeR2ObjectMetadata,
@@ -294,15 +375,14 @@ export async function executeNativeStoragePut(
 
   let operation = prepared.operation;
   if (operation.state === "committed") return responseFor(operation, input.logicalKey);
-  if (operation.state === "refunded") {
-    throw new NativeStoragePutError("OPERATION_IN_PROGRESS", "The prior PUT attempt was refunded");
-  }
+  if (operation.state === "refunded") throwRefundReplay(operation);
   if (operation.state === "reconciling") {
     throw new NativeStoragePutError("OPERATION_IN_PROGRESS", "The prior PUT is reconciling");
   }
   operation = await reserveCredits(prepared);
   if (operation.state === "committed") return responseFor(operation, input.logicalKey);
-  if (operation.state === "refunded" || operation.state === "reconciling") {
+  if (operation.state === "refunded") throwRefundReplay(operation);
+  if (operation.state === "reconciling") {
     throw new NativeStoragePutError(
       "OPERATION_IN_PROGRESS",
       "The prior PUT cannot continue provider dispatch",
@@ -347,6 +427,21 @@ export async function executeNativeStoragePut(
   } catch (error) {
     // error-policy:J2 an R2 write may have committed before transport failure.
     // Preserve provider_started for HEAD reconciliation; never refund here.
+    if (error instanceof StoragePutConflictError && error.reason === "stale_lease") {
+      const latest = await orgStorageMutationsRepository.findOperation(
+        operation.organization_id,
+        operation.id,
+      );
+      if (latest?.state === "refunded") {
+        await input.bucket.delete(operation.target_provider_key);
+        if (await input.bucket.head(operation.target_provider_key)) {
+          throw new NativeStoragePutError(
+            "PROVIDER_AMBIGUOUS",
+            "A late R2 generation could not be removed after refund",
+          );
+        }
+      }
+    }
     logger.warn("[NativeStoragePut] provider outcome requires reconciliation", {
       operationId: operation.id,
       error,
@@ -430,11 +525,21 @@ export async function reconcileNativeStoragePuts(bucket: RuntimeR2Bucket) {
         staleBefore,
         now,
       });
-      if (claimed.state === "provider_started") {
+      if (claimed.state === "provider_started" || claimed.provider_absence_observed_at) {
         const observed = await bucket.head(claimed.target_provider_key);
         if (observed) {
           await commitObserved(claimed, "[redacted]", observed);
           committed++;
+          continue;
+        }
+        if (claimed.state === "provider_started") {
+          await orgStorageMutationsRepository.deferProviderAbsence({
+            operationId: claimed.id,
+            organizationId: claimed.organization_id,
+            leaseToken,
+            observedAt: now,
+            recheckAt: new Date(now.getTime() + PROVIDER_ABSENCE_QUARANTINE_MS),
+          });
           continue;
         }
       }
