@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   encodeSharedPublicWebGrounding,
+  insertSharedRuntimeGroundingMessages,
   MAX_HISTORY_MESSAGES,
   MAX_PUBLIC_WEB_GROUNDING_ENCODED_BYTES,
   mergeSharedRuntimeHistoryMessages,
@@ -160,6 +161,58 @@ describe("shared runtime long-term transcript context", () => {
       instructionPolicy: "data_only",
       text: grounding.text,
     });
+  });
+
+  test("UTF-8 truncation never persists half of an astral code point", () => {
+    const grounding = parseSharedPublicWebGrounding({
+      kind: "web_search",
+      query: "unicode boundary",
+      provider: "parallel",
+      text: `${"a".repeat(3_997)}😀`,
+      observedAt: 1,
+      truncated: false,
+    });
+
+    expect(grounding?.text).toBe("a".repeat(3_997));
+    expect(grounding?.truncated).toBe(true);
+  });
+
+  test("inserts persisted evidence before the live user/tool exchange", () => {
+    const liveMessages = [
+      { role: "system" as const, content: "system" },
+      { role: "user" as const, content: "current question" },
+      {
+        role: "assistant" as const,
+        content: [
+          { type: "tool-call" as const, toolCallId: "live", toolName: "WEB_SEARCH", input: {} },
+        ],
+      },
+      {
+        role: "tool" as const,
+        content: [
+          {
+            type: "tool-result" as const,
+            toolCallId: "live",
+            toolName: "WEB_SEARCH",
+            output: { type: "text" as const, value: "live result" },
+          },
+        ],
+      },
+    ];
+    const persisted = [
+      { role: "assistant" as const, content: "persisted call" },
+      { role: "tool" as const, content: [] },
+    ];
+
+    const inserted = insertSharedRuntimeGroundingMessages(liveMessages, persisted);
+    expect(inserted.map((message) => message.role)).toEqual([
+      "system",
+      "assistant",
+      "tool",
+      "user",
+      "assistant",
+      "tool",
+    ]);
   });
 
   test("a contradicted claim cannot outrank the latest authoritative search artifact", () => {

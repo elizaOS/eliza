@@ -92,7 +92,10 @@ function truncateUtf8(value: string, maxBytes: number): { value: string; truncat
     if (encoder.encode(trimmed.slice(0, middle)).byteLength <= maxBytes) low = middle;
     else high = middle - 1;
   }
-  return { value: trimmed.slice(0, low), truncated: true };
+  // Binary search indexes UTF-16 code units. Avoid persisting half of an
+  // astral code point when the byte boundary lands after its high surrogate.
+  const boundary = low > 0 && /[\uD800-\uDBFF]/u.test(trimmed[low - 1]) ? low - 1 : low;
+  return { value: trimmed.slice(0, boundary), truncated: true };
 }
 
 /** Rejects malformed provenance and independently bounds every persisted field. */
@@ -200,6 +203,8 @@ function selectedGroundingIndices(
       precedingUserQuery = history[cursor].content;
       break;
     }
+    // User text and the validated tool query are trusted selection inputs;
+    // assistant prose and provider result text remain excluded.
     const trustedWords = groundingWords(`${precedingUserQuery}\n${grounding.query}`);
     let overlap = 0;
     for (const word of query) if (trustedWords.has(word)) overlap += 1;
@@ -255,6 +260,24 @@ export function sharedRuntimeModelHistoryMessages(
     messages.push({ role: message.role, content: sharedRuntimeModelHistoryContent(message) });
   }
   return messages;
+}
+
+/** Inserts historical evidence without splitting a live tool call/result pair. */
+export function insertSharedRuntimeGroundingMessages(
+  messages: ModelMessage[],
+  groundingMessages: ModelMessage[],
+): ModelMessage[] {
+  if (groundingMessages.length === 0) return messages;
+  // Later planner iterations end in a live tool result, not the user's turn.
+  // Anchor evidence before the last user message so the current tool pair
+  // remains adjacent for providers that enforce message ordering.
+  const currentUserIndex = messages.findLastIndex((message) => message.role === "user");
+  if (currentUserIndex < 0) return messages;
+  return [
+    ...messages.slice(0, currentUserIndex),
+    ...groundingMessages,
+    ...messages.slice(currentUserIndex),
+  ];
 }
 
 function isPersistedMessage(value: unknown): value is SharedRuntimeHistoryMessageLike {

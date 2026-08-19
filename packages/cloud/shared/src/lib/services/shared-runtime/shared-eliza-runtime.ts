@@ -68,6 +68,7 @@ import {
   SHARED_RUNTIME_CAPABILITIES_PROVIDER,
 } from "./shared-runtime-capabilities";
 import {
+  insertSharedRuntimeGroundingMessages,
   sharedPublicWebGrounding,
   sharedRuntimeModelHistoryMessages,
 } from "./shared-runtime-history-policy";
@@ -589,11 +590,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       allowSystemInMessages: true,
       ...(params.messages
         ? {
-            messages: [
-              ...(params.messages as ModelMessage[]).slice(0, -1),
-              ...persistedGroundingMessages,
-              ...(params.messages as ModelMessage[]).slice(-1),
-            ],
+            messages: insertSharedRuntimeGroundingMessages(
+              params.messages as ModelMessage[],
+              persistedGroundingMessages,
+            ),
           }
         : { prompt: params.prompt ?? "" }),
       ...(params.tools ? { tools: modelTools(params.tools) } : {}),
