@@ -260,6 +260,11 @@ export const VIEW_OCR_POLICIES = {
       "December",
     ],
   }),
+  "plugin-computer-use-sessions-gui": expected({
+    requireAll: ["Computer sessions", "Research browser", "Linux sandbox"],
+    requireAny: ["Sequence 12", "Cursor 640, 360", "Open floating"],
+    forbid: ["Loading sessions", "unavailable"],
+  }),
   "plugin-documents-gui": exempt(
     "unregistered-remote-bundle",
     "The Documents plugin GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",

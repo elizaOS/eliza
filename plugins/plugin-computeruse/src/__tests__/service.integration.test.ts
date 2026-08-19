@@ -108,6 +108,77 @@ describe("ComputerUseService configuration", () => {
   });
 });
 
+describe("ComputerUseService isolated session adapters", () => {
+  let runtime: AgentRuntime;
+  let service: ComputerUseService;
+
+  beforeEach(async () => {
+    ({ runtime, service } = await startComputerUseRuntime());
+  });
+
+  afterEach(async () => {
+    await stopComputerUseRuntime(runtime);
+  });
+
+  it("routes distinct targets through distinct executors without state leakage", async () => {
+    const calls: string[] = [];
+    service.registerSessionTargetExecutor(
+      { kind: "sandbox", targetId: "sandbox-a" },
+      async (target) => {
+        calls.push(target.targetId ?? "missing");
+        return { success: true, cursorPosition: { x: 10, y: 11 } };
+      },
+    );
+    service.registerSessionTargetExecutor(
+      { kind: "remote_guest", targetId: "guest-b" },
+      async (target) => {
+        calls.push(target.targetId ?? "missing");
+        return { success: true, cursorPosition: { x: 90, y: 91 } };
+      },
+    );
+    const sandbox = service.createSession({
+      target: { kind: "sandbox", targetId: "sandbox-a" },
+    });
+    const guest = service.createSession({
+      target: { kind: "remote_guest", targetId: "guest-b" },
+    });
+
+    const [sandboxResult, guestResult] = await Promise.all([
+      service.executeSessionAction(sandbox.id, {
+        actionId: "sandbox-action",
+        expectedSequence: 0,
+        command: "mouse_move",
+      }),
+      service.executeSessionAction(guest.id, {
+        actionId: "guest-action",
+        expectedSequence: 0,
+        command: "mouse_move",
+      }),
+    ]);
+
+    expect(calls.sort()).toEqual(["guest-b", "sandbox-a"]);
+    expect(sandboxResult.session.cursor).toMatchObject({ x: 10, y: 11 });
+    expect(guestResult.session.cursor).toMatchObject({ x: 90, y: 91 });
+  });
+
+  it("fails visibly when an isolated target has no registered executor", async () => {
+    const session = service.createSession({
+      target: { kind: "sandbox", targetId: "missing-adapter" },
+    });
+    const outcome = await service.executeSessionAction(session.id, {
+      actionId: "action-one",
+      expectedSequence: 0,
+      command: "screenshot",
+    });
+
+    expect(outcome.result).toEqual({
+      success: false,
+      error: "No executor is registered for sandbox:missing-adapter",
+    });
+    expect(outcome.session.lastError).toBe("Computer-use action failed");
+  });
+});
+
 describe("parseComputerUseActionTimeoutMs", () => {
   it("accepts canonical positive integers", () => {
     expect(parseComputerUseActionTimeoutMs("1")).toBe(1);

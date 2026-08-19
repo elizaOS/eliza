@@ -32,7 +32,7 @@ File operations belong to the FILE action; shell/terminal access belongs to the 
 
 | Name | `serviceType` | File | What it does |
 |------|--------------|------|--------------|
-| `ComputerUseService` | `"computeruse"` | `src/services/computer-use-service.ts` | Central service: input dispatch, screenshot capture, browser CDP session, window ops, approval-manager wiring, `SceneBuilder` lifecycle. |
+| `ComputerUseService` | `"computeruse"` | `src/services/computer-use-service.ts` | Central service: input dispatch, screenshot capture, browser CDP session, window ops, approval-manager wiring, `SceneBuilder` lifecycle, and the computer-use session control plane. |
 | `VisionContextProvider` | `"vision-context"` | `src/services/vision-context-provider.ts` | Surfaces a `VisionContext` snapshot (open apps, focused window, recent actions, current task goal) for downstream consumers (e.g. plugin-vision). |
 
 ### Routes
@@ -45,6 +45,12 @@ All paths are under `/api/computer-use/` and implemented in `src/routes/computer
 | GET | `/api/computer-use/approvals/stream` | SSE stream of approval events (public) |
 | POST | `/api/computer-use/approval-mode` | Change the active `COMPUTER_USE_APPROVAL_MODE` |
 | POST | `/api/computer-use/approvals/:id` | Approve or deny a pending action |
+| GET / POST | `/api/computer-use/sessions` | List or create computer-use sessions |
+| GET | `/api/computer-use/sessions/stream` | Authenticated bounded session-event SSE stream |
+| GET / DELETE | `/api/computer-use/sessions/:id` | Inspect or close a session |
+| POST | `/api/computer-use/sessions/:id/actions` | Execute one action with an action id and expected sequence |
+| POST | `/api/computer-use/sessions/:id/lease` | Renew a physical-host input lease |
+| GET | `/api/computer-use/sessions/:id/frame` | Capture a read-only frame without advancing the action sequence |
 
 ## Layout
 
@@ -120,6 +126,15 @@ src/
     vision-context-provider.ts  VisionContextProvider (serviceType = "vision-context")
     desktop-control.ts       Low-level desktop control primitives + DesktopControl* types
     index.ts                 Barrel re-exports for services/
+
+  sessions/
+    session-manager.ts       Exclusive host/target leases, sequencing, virtual cursors, bounded events
+    types.ts                 Session target, snapshot, action, result, and event contracts
+    index.ts                 Public session-control-plane exports
+
+  views/
+    ComputerUseSessionsView.tsx          Responsive live monitor and floating-view launcher
+    computer-use-sessions-view-bundle.ts Host-loadable view bundle entry
 
   mobile/
     ocr-provider.ts          OcrProvider / CoordOcrProvider interfaces (plugin-vision contributes impls)
@@ -206,6 +221,12 @@ Power-user escape hatches read directly via `process.env` (not declared as plugi
 `BROWSER_EXECUTE_DISABLED` is declared in `package.json#agentConfig.pluginParameters` but is **inert**: `browser_execute` is unconditionally disabled in `src/security/browser-script-policy.ts` (`isBrowserExecuteAllowed()` always returns `false`, GHSA-rcvr-766c-4phv). No setting re-enables it.
 
 ## How to extend
+
+### Add an isolated session target
+
+Register one executor per stable `kind:targetId` through `ComputerUseService.registerSessionTargetExecutor`. The session manager rejects duplicate ownership of that target, serializes actions within a session, and permits different targets to execute concurrently. Executors must preserve the existing approval and platform authority boundaries; never treat a virtual cursor as a second physical host cursor.
+
+The physical host has exactly one real mouse/keyboard lease. Multiple cursors are per-session virtual viewer state for distinct browser, sandbox, or remote-guest targets. A host lease expires or closes before another host session can acquire it. Session events retain command names and cursor state, but intentionally omit parameters, typed text, screenshots, tokens, and viewer credentials.
 
 ### Add a new desktop action verb to COMPUTER_USE
 

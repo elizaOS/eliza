@@ -119,6 +119,18 @@ const GUI_INTERACTION_OWNERS: Readonly<
       ],
     },
   ],
+  "computer-use-sessions": [
+    {
+      spec: "plugins/plugin-computeruse/src/views/ComputerUseSessionsView.test.tsx",
+      proves:
+        "Exercises authenticated session/frame rendering, virtual cursors, native floating-window intent, close-session mutation, and retryable failures.",
+      signals: [
+        "renders independent targets, a frame, and a virtual cursor",
+        "requests a native always-on-top viewer",
+        "keeps list failures distinct and retryable",
+      ],
+    },
+  ],
   "lifeops-live-test": [
     {
       spec: "plugins/plugin-scheduling/src/components/lifeops-live-test/LifeOpsLiveTestSpatialView.tsx",
@@ -253,7 +265,6 @@ const INTERACTION_DEBT: Readonly<Record<string, string>> = {
 
 const MAX_INTERACTION_DEBT = 1;
 
-
 function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
   return `${view.id}:${view.viewType}`;
 }
@@ -304,7 +315,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(21);
+    expect(visualCases.length).toBe(22);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",
@@ -360,5 +371,4 @@ describe("plugin view interaction coverage", () => {
     expect(missingSpecs).toEqual([]);
     expect(missingSignals).toEqual([]);
   });
-
 });

@@ -6,6 +6,7 @@
     "sourceMap": true,
     "inlineSources": true,
     "declaration": true,
+    "incremental": false,
     "noEmit": false,
     "types": ["node", "bun-types"]
   },
