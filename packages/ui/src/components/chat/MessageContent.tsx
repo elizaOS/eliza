@@ -15,6 +15,7 @@
  */
 
 import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
 import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import {
   type FormEvent,
@@ -1361,19 +1362,70 @@ function OAuthRequestPanel({
 
 // ── Main component ──────────────────────────────────────────────────
 
+/** Renders the shared-to-personal workspace handoff on every chat surface. */
+export function CapabilityWorkspaceSetupBlock({
+  handoff,
+  text,
+}: {
+  handoff: CapabilityHandoffRequest;
+  text: string;
+}) {
+  const { setActionNotice, t } = useAppSelectorShallow((s) => ({
+    setActionNotice: s.setActionNotice,
+    t: s.t,
+  }));
+  return (
+    <div
+      className="pointer-events-auto rounded-sm border border-accent/30 bg-accent/5 p-3 text-sm"
+      data-testid="capability-workspace-setup"
+    >
+      <div className="mb-1 font-medium">
+        {t("messagecontent.CapabilitySetupTitle", {
+          defaultValue: "Set up {{capability}}",
+          capability: handoff.label,
+        })}
+      </div>
+      <div className="mb-2 whitespace-pre-wrap text-muted">
+        {text || handoff.reason}
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        onClick={() => {
+          const preserved = persistCapabilityWorkspaceHandoff(handoff);
+          if (!preserved) {
+            setActionNotice(
+              t("messagecontent.CapabilitySetupResumeUnavailable", {
+                defaultValue:
+                  "Workspace setup will open, but you'll need to resend this request afterward.",
+              }),
+              "info",
+              8_000,
+            );
+          }
+          const path = handoff.cta.href;
+          const viewId = path.slice(1).split("/")[0] || undefined;
+          dispatchNavigateViewEvent({ viewId, viewPath: path });
+        }}
+      >
+        {handoff.cta.label}
+      </Button>
+    </div>
+  );
+}
+
 export function MessageContent({
   message,
   analysisMode = false,
 }: MessageContentProps) {
   useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
-  const { sendActionMessage, setTab, handleChatRetry, setActionNotice, t } =
-    useAppSelectorShallow((s) => ({
+  const { sendActionMessage, setTab, handleChatRetry } = useAppSelectorShallow(
+    (s) => ({
       sendActionMessage: s.sendActionMessage,
       setTab: s.setTab,
       handleChatRetry: s.handleChatRetry,
-      setActionNotice: s.setActionNotice,
-      t: s.t,
-    }));
+    }),
+  );
   // Composer prefill for followup `prompt` chips. Outside the chat provider,
   // `useChatComposer` returns an inert setter, so this is safe everywhere.
   const { setChatInput } = useChatComposer();
@@ -1435,44 +1487,11 @@ export function MessageContent({
   }
 
   if (message.capabilityHandoff) {
-    const handoff = message.capabilityHandoff;
     return (
-      <div
-        className="rounded-sm border border-accent/30 bg-accent/5 p-3 text-sm"
-        data-testid="capability-workspace-setup"
-      >
-        <div className="mb-1 font-medium">
-          {t("messagecontent.CapabilitySetupTitle", {
-            defaultValue: "Set up {{capability}}",
-            capability: handoff.label,
-          })}
-        </div>
-        <div className="mb-2 whitespace-pre-wrap text-muted">
-          {message.text || handoff.reason}
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => {
-            const preserved = persistCapabilityWorkspaceHandoff(handoff);
-            if (!preserved) {
-              setActionNotice(
-                t("messagecontent.CapabilitySetupResumeUnavailable", {
-                  defaultValue:
-                    "Workspace setup will open, but you'll need to resend this request afterward.",
-                }),
-                "info",
-                8_000,
-              );
-            }
-            const path = handoff.cta.href;
-            const viewId = path.slice(1).split("/")[0] || undefined;
-            dispatchNavigateViewEvent({ viewId, viewPath: path });
-          }}
-        >
-          {handoff.cta.label}
-        </Button>
-      </div>
+      <CapabilityWorkspaceSetupBlock
+        handoff={message.capabilityHandoff}
+        text={message.text}
+      />
     );
   }
 

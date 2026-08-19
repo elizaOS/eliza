@@ -14,6 +14,7 @@ import { cn } from "../../lib/utils";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import {
+  CapabilityWorkspaceSetupBlock,
   FormSubmitReceipt,
   SensitiveRequestBlock,
 } from "../chat/MessageContent";
@@ -152,6 +153,15 @@ export function renderOverlayMessageBody(
     );
   }
 
+  if (!isUser && message.capabilityHandoff) {
+    return (
+      <CapabilityWorkspaceSetupBlock
+        handoff={message.capabilityHandoff}
+        text={message.text}
+      />
+    );
+  }
+
   if (isUser) {
     return (
       <>
@@ -196,6 +206,7 @@ export function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
+    ...(m.capabilityHandoff ? { capabilityHandoff: m.capabilityHandoff } : {}),
   };
   shellMessageDataCache.set(m, data);
   return data;

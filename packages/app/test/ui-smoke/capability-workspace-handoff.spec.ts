@@ -91,6 +91,8 @@ async function installCapabilityHandoffRoutes(
             type: "done",
             fullText: assistantText,
             agentName: "Eliza",
+            userMessageId: "capability-user-1",
+            messageId: "capability-assistant-1",
             actionResults: [
               {
                 actionName: "DEDICATED_CAPABILITY_REQUIRED",

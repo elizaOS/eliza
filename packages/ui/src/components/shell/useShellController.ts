@@ -1005,6 +1005,7 @@ export function useShellController(): ShellController {
         cached.failureKind === message.failureKind &&
         (cached.reasoning || undefined) === (message.reasoning || undefined) &&
         cached.secretRequest === message.secretRequest &&
+        cached.capabilityHandoff === message.capabilityHandoff &&
         // Tool-event merges return a NEW array reference each step, so a
         // reference compare busts the cache exactly on a new/updated tool row.
         cached.toolEvents === message.toolEvents &&
@@ -1031,6 +1032,9 @@ export function useShellController(): ShellController {
           : {}),
         ...(message.secretRequest
           ? { secretRequest: message.secretRequest }
+          : {}),
+        ...(message.capabilityHandoff
+          ? { capabilityHandoff: message.capabilityHandoff }
           : {}),
         ...(message.topics?.length ? { topics: message.topics } : {}),
       };

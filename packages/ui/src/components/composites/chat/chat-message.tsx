@@ -471,7 +471,8 @@ function arePropsEqual(
     // Turn-settle fields the glass body renderer reads: a settled turn can gain
     // reasoning / a secret request without its text changing.
     a.reasoning === b.reasoning &&
-    a.secretRequest === b.secretRequest
+    a.secretRequest === b.secretRequest &&
+    a.capabilityHandoff === b.capabilityHandoff
   );
 }
 

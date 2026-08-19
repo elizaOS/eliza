@@ -2,6 +2,7 @@
  * Defines shell reducer state for overlays, launcher mode, notifications, and
  * surface coordination.
  */
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
 import type {
   ChatFailureKind,
   ConversationSecretRequest,
@@ -68,6 +69,8 @@ export interface ShellMessage {
   attachments?: MessageAttachment[];
   /** Pending secret / OAuth request (rendered as an actionable block). */
   secretRequest?: ConversationSecretRequest;
+  /** Shared-runtime request to provision a personal workspace. */
+  capabilityHandoff?: CapabilityHandoffRequest;
   /**
    * Short topic labels for this turn (Stage-1 `topics`). Drives the transcript
    * topic grouping + chips bar (#8928). Absent when the turn had no topic.
