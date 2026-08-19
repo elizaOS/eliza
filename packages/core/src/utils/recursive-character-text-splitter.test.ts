@@ -143,6 +143,70 @@ describe("splitText", () => {
 		);
 	});
 
+	it("replaces a long run of lone high surrogates", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 50,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText("\uD83C".repeat(40));
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe("\uFFFD".repeat(40));
+	});
+
+	it("replaces a long run of lone low surrogates", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 50,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText("\uDF89".repeat(40));
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe("\uFFFD".repeat(40));
+	});
+
+	it("replaces a lone high surrogate instead of emitting it", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 10,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText("\uD83C");
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe("\uFFFD");
+	});
+
+	it("replaces a lone low surrogate instead of emitting it", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 10,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText("\uDF89");
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe("\uFFFD");
+	});
+
+	it("replaces mixed lone surrogates in a longer document", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 20,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText(`aa\uD83Cbb\uDF89cc🎉`);
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe("aa\uFFFDbb\uFFFDcc🎉");
+	});
+
+	it("keeps a well-formed emoji at chunkSize and chunkSize+1", async () => {
+		const text = `${"x".repeat(4)}🎉`;
+		for (const chunkSize of [text.length, text.length + 1]) {
+			const splitter = new RecursiveCharacterTextSplitter({
+				chunkSize,
+				chunkOverlap: 0,
+			});
+			const chunks = await splitter.splitText(text);
+			expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+			expect(chunks.join("")).toBe(text);
+			expect(chunks.some((chunk) => chunk.includes("🎉"))).toBe(true);
+		}
+	});
+
 	it("emits an emoji whole when it is larger than chunkSize", async () => {
 		const splitter = new RecursiveCharacterTextSplitter({
 			chunkSize: 1,

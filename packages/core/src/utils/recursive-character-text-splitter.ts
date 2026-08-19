@@ -3,11 +3,15 @@
  * coarsest to finest (paragraph, line, space, Unicode code point) and re-merges
  * adjacent pieces up to chunkSize, carrying chunkOverlap between successive
  * chunks. The finest grain is a code point, not a UTF-16 unit, so an astral
- * character cannot be emitted as a lone surrogate. The length function may be
- * async; chunkOverlap must be < chunkSize or the constructor throws. Pieces
- * that still exceed chunkSize are emitted and logged as a warning.
+ * character cannot be emitted as a lone surrogate. Incoming text is passed
+ * through {@link toWellFormedUnicode} so pre-existing lone surrogates become
+ * U+FFFD before chunking; every emitted chunk is well-formed. The length
+ * function may be async; chunkOverlap must be < chunkSize or the constructor
+ * throws. Pieces that still exceed chunkSize are emitted and logged as a
+ * warning.
  */
 import logger from "../logger";
+import { toWellFormedUnicode } from "./well-formed";
 
 /** Parameters for {@link RecursiveCharacterTextSplitter}. */
 export interface RecursiveCharacterTextSplitterParams {
@@ -167,6 +171,6 @@ export class RecursiveCharacterTextSplitter {
 	}
 
 	async splitText(text: string): Promise<string[]> {
-		return this._splitText(text, this.separators);
+		return this._splitText(toWellFormedUnicode(text), this.separators);
 	}
 }
