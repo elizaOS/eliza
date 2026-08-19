@@ -38,11 +38,19 @@ export default function AgentsPage() {
   }
 
   const agents: AgentListItemDto[] = agentsQuery.data ?? [];
-  const sharedCount = agents.filter((a) => a.executionTier === "shared").length;
-  const runningCount = agents.filter(
+  const hasDedicatedAgent = agents.some(
+    (agent) => agent.executionTier !== "shared",
+  );
+  const visibleAgents = hasDedicatedAgent
+    ? agents.filter((agent) => agent.executionTier !== "shared")
+    : agents;
+  const sharedCount = visibleAgents.filter(
+    (a) => a.executionTier === "shared",
+  ).length;
+  const runningCount = visibleAgents.filter(
     (a) => a.executionTier !== "shared" && a.status === "running",
   ).length;
-  const idleCount = agents.filter(
+  const idleCount = visibleAgents.filter(
     (a) =>
       a.executionTier !== "shared" &&
       (a.status === "stopped" || a.status === "disconnected"),
@@ -79,7 +87,7 @@ export default function AgentsPage() {
               idleCount={idleCount}
               creditBalance={creditBalance}
             />
-            <ElizaAgentsTable agents={agents} />
+            <ElizaAgentsTable agents={visibleAgents} />
           </>
         )}
       </DashboardPageContainer>

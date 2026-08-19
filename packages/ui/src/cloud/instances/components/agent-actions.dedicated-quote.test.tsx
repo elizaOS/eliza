@@ -1,8 +1,10 @@
 /** Verifies that Dedicated activation renders and confirms only the server quote. */
 // @vitest-environment jsdom
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaAgentActions } from "./agent-actions";
@@ -67,8 +69,17 @@ const QUOTE = {
   activation: { state: "available" as const },
 };
 
+function renderWithQueryClient(children: ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  );
+}
+
 function renderActions() {
-  render(
+  renderWithQueryClient(
     <MemoryRouter>
       <Routes>
         <Route
@@ -114,7 +125,7 @@ describe("Dedicated activation quote", () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        "Your Eliza moves to private, always-on compute. Dedicated hosting uses $0.24 per day ($0.01/hr) while running.",
+        "Your Shared Agent becomes a private, always-on Dedicated Agent. Dedicated hosting uses $0.24 per day ($0.01/hr) while running.",
       ),
     ).toBeTruthy();
     expect(
@@ -127,7 +138,7 @@ describe("Dedicated activation quote", () => {
   });
 
   it("keeps lifecycle controls while removing the manual snapshot action", () => {
-    render(
+    renderWithQueryClient(
       <MemoryRouter>
         <ElizaAgentActions
           agentId="dedicated-agent"
@@ -208,7 +219,9 @@ describe("Dedicated activation quote", () => {
     });
     renderActions();
 
-    await userEvent.click(screen.getByTestId("agent-upgrade-tier-button"));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Add funds to upgrade" }),
+    );
 
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Add credits to activate Dedicated.",
