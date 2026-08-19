@@ -376,63 +376,85 @@ export function parseSwayTree(text: string): SceneAxNode[] {
     node: SwayNode;
     currentOutput: string;
     depth: number;
-  }> = [{ node: raw, currentOutput: "", depth: 0 }];
-  let visited = 0;
+    entered: boolean;
+    nodeIndex: number;
+    floatingIndex: number;
+  }> = [
+    {
+      node: raw,
+      currentOutput: "",
+      depth: 0,
+      entered: false,
+      nodeIndex: 0,
+      floatingIndex: 0,
+    },
+  ];
+  let work = 0;
 
-  while (stack.length > 0) {
-    if (visited >= MAX_SWAY_TREE_VISIT) break;
-    const frame = stack.pop();
-    if (!frame) break;
+  while (stack.length > 0 && work < MAX_SWAY_TREE_VISIT) {
+    const frame = stack[stack.length - 1];
     const { node, depth } = frame;
-    let currentOutput = frame.currentOutput;
-    visited += 1;
+    if (!frame.entered) {
+      frame.entered = true;
+      work += 1;
+      if (node.type === "output" && typeof node.name === "string") {
+        if (!outputToDisplay.has(node.name)) {
+          outputToDisplay.set(node.name, outputToDisplay.size);
+        }
+        frame.currentOutput = node.name;
+      }
+      if (node.type === "con" || node.type === "floating_con") {
+        if (node.window !== undefined || node.app_id) {
+          const displayId = outputToDisplay.get(frame.currentOutput) ?? 0;
+          seq += 1;
+          const rect = node.rect ?? {};
+          out.push({
+            id: `a${displayId}-${seq}`,
+            role: "window",
+            label: node.name || node.app_id || "unknown",
+            bbox: [
+              Number(rect.x ?? 0),
+              Number(rect.y ?? 0),
+              Number(rect.width ?? 0),
+              Number(rect.height ?? 0),
+            ],
+            actions: ["focus", "close"],
+            displayId,
+          });
+        }
+      }
+      if (depth >= MAX_SWAY_TREE_DEPTH) {
+        stack.pop();
+        continue;
+      }
+    }
 
-    if (node.type === "output" && typeof node.name === "string") {
-      if (!outputToDisplay.has(node.name)) {
-        outputToDisplay.set(node.name, outputToDisplay.size);
-      }
-      currentOutput = node.name;
-    }
-    if (node.type === "con" || node.type === "floating_con") {
-      if (node.window !== undefined || node.app_id) {
-        const displayId = outputToDisplay.get(currentOutput) ?? 0;
-        seq += 1;
-        const rect = node.rect ?? {};
-        out.push({
-          id: `a${displayId}-${seq}`,
-          role: "window",
-          label: node.name || node.app_id || "unknown",
-          bbox: [
-            Number(rect.x ?? 0),
-            Number(rect.y ?? 0),
-            Number(rect.width ?? 0),
-            Number(rect.height ?? 0),
-          ],
-          actions: ["focus", "close"],
-          displayId,
-        });
-      }
+    const nodes = Array.isArray(node.nodes) ? node.nodes : [];
+    const floatingNodes = Array.isArray(node.floating_nodes)
+      ? node.floating_nodes
+      : [];
+    let candidate: unknown;
+    if (frame.nodeIndex < nodes.length) {
+      candidate = nodes[frame.nodeIndex];
+      frame.nodeIndex += 1;
+    } else if (frame.floatingIndex < floatingNodes.length) {
+      candidate = floatingNodes[frame.floatingIndex];
+      frame.floatingIndex += 1;
+    } else {
+      stack.pop();
+      continue;
     }
 
-    if (depth >= MAX_SWAY_TREE_DEPTH) continue;
-    const children: SwayNode[] = [];
-    if (Array.isArray(node.nodes)) {
-      for (const child of node.nodes) {
-        if (isSwayNode(child)) children.push(child);
-      }
-    }
-    if (Array.isArray(node.floating_nodes)) {
-      for (const child of node.floating_nodes) {
-        if (isSwayNode(child)) children.push(child);
-      }
-    }
-    for (let index = children.length - 1; index >= 0; index -= 1) {
-      stack.push({
-        node: children[index],
-        currentOutput,
-        depth: depth + 1,
-      });
-    }
+    work += 1;
+    if (!isSwayNode(candidate)) continue;
+    stack.push({
+      node: candidate,
+      currentOutput: frame.currentOutput,
+      depth: depth + 1,
+      entered: false,
+      nodeIndex: 0,
+      floatingIndex: 0,
+    });
   }
   return out;
 }

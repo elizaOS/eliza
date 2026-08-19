@@ -7,7 +7,7 @@
  * The Sway walk is also exercised against a 40k-deep nest that used to
  * stack-overflow after JSON.parse succeeded.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   MAX_SWAY_TREE_DEPTH,
   MAX_SWAY_TREE_VISIT,
@@ -184,6 +184,56 @@ describe("parseSwayTree", () => {
     const out = parseSwayTree(json);
     expect(out.length).toBeLessThanOrEqual(MAX_SWAY_TREE_VISIT);
     expect(out.length).toBeGreaterThan(0);
+  });
+
+  it("does not inspect a wide child array beyond the work budget", () => {
+    const child = { type: "con" };
+    let reads = 0;
+    const nodes = new Proxy(
+      Array.from({ length: MAX_SWAY_TREE_VISIT + 500 }, () => child),
+      {
+        get(target, property, receiver) {
+          if (typeof property === "string" && /^\d+$/.test(property))
+            reads += 1;
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
+    const parse = vi.spyOn(JSON, "parse").mockReturnValue({
+      type: "root",
+      nodes,
+    });
+    try {
+      parseSwayTree("{}");
+      expect(reads).toBeLessThan(MAX_SWAY_TREE_VISIT);
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
+  it("keeps depth-first order without preloading later root siblings", () => {
+    const json = JSON.stringify({
+      type: "root",
+      nodes: [
+        {
+          type: "con",
+          nodes: [
+            {
+              type: "con",
+              window: 1,
+              app_id: "first-subtree",
+              rect: { x: 0, y: 0, width: 1, height: 1 },
+            },
+          ],
+        },
+        ...Array.from({ length: MAX_SWAY_TREE_VISIT + 500 }, () => ({
+          type: "con",
+        })),
+      ],
+    });
+    expect(parseSwayTree(json).map((node) => node.label)).toContain(
+      "first-subtree",
+    );
   });
 
   it("does not recurse past the depth budget", () => {
