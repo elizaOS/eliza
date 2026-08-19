@@ -46,7 +46,9 @@ export function parseStoreSemver(version) {
   const patch = Number(patchRaw);
   const sequence = Number(sequenceRaw);
   if (sequence > 999) {
-    throw new Error(`Store prerelease sequence must not exceed 999: ${version}`);
+    throw new Error(
+      `Store prerelease sequence must not exceed 999: ${version}`,
+    );
   }
   return { major, minor, patch, prerelease, sequence };
 }
@@ -57,9 +59,7 @@ function numericBuild({ major, minor, patch, prerelease, sequence }) {
       "Store release version exceeds the Android versionCode allocation (major <= 20, minor/patch <= 99)",
     );
   }
-  const offset = prerelease
-    ? (CHANNEL_OFFSETS[prerelease] ?? 8000)
-    : 9000;
+  const offset = prerelease ? (CHANNEL_OFFSETS[prerelease] ?? 8000) : 9000;
   const value =
     major * 100000000 + minor * 1000000 + patch * 10000 + offset + sequence;
   if (value > 2100000000) {
@@ -71,20 +71,26 @@ function numericBuild({ major, minor, patch, prerelease, sequence }) {
 function extensionVersion(parsed) {
   const { major, minor, patch, prerelease, sequence } = parsed;
   if ([major, minor, patch].some((value) => value > 65535)) {
-    throw new Error("Browser extension version components must not exceed 65535");
+    throw new Error(
+      "Browser extension version components must not exceed 65535",
+    );
   }
   const fourth = prerelease
     ? (EXTENSION_CHANNEL_OFFSETS[prerelease] ?? 50000) + sequence
     : 60000;
   if (fourth > 65535) {
-    throw new Error(`Browser extension build component ${fourth} exceeds 65535`);
+    throw new Error(
+      `Browser extension build component ${fourth} exceeds 65535`,
+    );
   }
   return `${major}.${minor}.${patch}.${fourth}`;
 }
 
 export function createStoreReleasePlan({ version, channel, sourceSha }) {
   if (!/^[0-9a-f]{40}$/.test(sourceSha)) {
-    throw new Error(`Store release source SHA must be 40 lowercase hex characters: ${sourceSha}`);
+    throw new Error(
+      `Store release source SHA must be 40 lowercase hex characters: ${sourceSha}`,
+    );
   }
   if (channel !== "beta" && channel !== "latest") {
     throw new Error(`Store release channel must be beta or latest: ${channel}`);
@@ -111,6 +117,8 @@ export function createStoreReleasePlan({ version, channel, sourceSha }) {
     ios_marketing_version: `${parsed.major}.${parsed.minor}.${parsed.patch}`,
     ios_build_number: String(buildNumber),
     apple_lane: stable ? "release" : "beta",
+    windows_package_version: `${parsed.major}.${parsed.minor}.${parsed.patch}.0`,
+    windows_publish: stable,
     snap_channel: stable ? "stable" : "beta",
     extension_version: extensionVersion(parsed),
     chrome_publish_target: stable ? "default" : "trustedTesters",
@@ -137,7 +145,8 @@ export function main(args = process.argv.slice(2)) {
   });
   const outputIndex = args.indexOf("--github-output");
   if (outputIndex >= 0) {
-    if (!args[outputIndex + 1]) throw new Error("--github-output requires a path");
+    if (!args[outputIndex + 1])
+      throw new Error("--github-output requires a path");
     writeGitHubOutputs(args[outputIndex + 1], plan);
   }
   console.log(`${JSON.stringify(plan, null, 2)}\n`);

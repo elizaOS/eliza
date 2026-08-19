@@ -23,6 +23,10 @@ const mobileSource = readFileSync(
   new URL(".github/workflows/store-mobile-publish.yml", repoRoot),
   "utf8",
 );
+const windowsSource = readFileSync(
+  new URL(".github/workflows/store-windows-publish.yml", repoRoot),
+  "utf8",
+);
 
 describe("canonical store release workflow", () => {
   test("calls Snap only after exact release finalization", () => {
@@ -33,14 +37,16 @@ describe("canonical store release workflow", () => {
           needs?: string | string[];
           uses?: string;
           with?: Record<string, string>;
-          secrets?: string;
+          secrets?: string | Record<string, string>;
         }
       >;
     };
     const snap = workflow.jobs?.["publish-snap"];
     expect(snap?.needs).toBe("finalize");
     expect(snap?.uses).toBe("./.github/workflows/snap-publish.yml");
-    expect(snap?.with?.source_sha).toContain("needs.finalize.outputs.source_sha");
+    expect(snap?.with?.source_sha).toContain(
+      "needs.finalize.outputs.source_sha",
+    );
     expect(snap?.with?.version).toContain("needs.finalize.outputs.version");
     expect(snap?.secrets).toBe("inherit");
   });
@@ -54,30 +60,42 @@ describe("canonical store release workflow", () => {
     expect(workflow.jobs?.["build-and-publish"]?.environment?.name).toBe(
       "production-release",
     );
-    expect(snapSource).toContain('ref: ${{ inputs.source_sha }}');
-    expect(snapSource).toContain('refs/tags/$EXPECTED_TAG^{commit}');
+    expect(snapSource).toContain(`ref: \${{ inputs.source_sha }}`);
+    expect(snapSource).toContain("refs/tags/$EXPECTED_TAG^{commit}");
     expect(snapSource).toContain(
       "SNAPCRAFT_STORE_CREDENTIALS is required for the canonical store release",
     );
     expect(snapSource).toContain("snapcraft whoami");
-    expect(snapSource).toContain('snapcraft upload "$SNAP_FILE" --release "$CHANNEL"');
+    expect(snapSource).toContain(
+      'snapcraft upload "$SNAP_FILE" --release "$CHANNEL"',
+    );
   });
 
   test("publishes the registered stable-grade snap identity", () => {
     expect(snapcraftSource).toMatch(/^name: eliza$/m);
     expect(snapcraftSource).toMatch(/^title: Eliza$/m);
     expect(snapcraftSource).toMatch(/^grade: stable$/m);
-    expect(snapcraftSource).toMatch(/^  eliza:$/m);
+    expect(snapcraftSource).toMatch(/^ {2}eliza:$/m);
   });
 
   test("calls mobile stores only after exact release finalization", () => {
     const workflow = Bun.YAML.parse(releaseSource) as {
-      jobs?: Record<string, { needs?: string; uses?: string; with?: Record<string, string>; secrets?: string }>;
+      jobs?: Record<
+        string,
+        {
+          needs?: string;
+          uses?: string;
+          with?: Record<string, string>;
+          secrets?: string;
+        }
+      >;
     };
     const mobile = workflow.jobs?.["publish-mobile-stores"];
     expect(mobile?.needs).toBe("finalize");
     expect(mobile?.uses).toBe("./.github/workflows/store-mobile-publish.yml");
-    expect(mobile?.with?.source_sha).toContain("needs.finalize.outputs.source_sha");
+    expect(mobile?.with?.source_sha).toContain(
+      "needs.finalize.outputs.source_sha",
+    );
     expect(mobile?.with?.version).toContain("needs.finalize.outputs.version");
     expect(mobile?.secrets).toBe("inherit");
   });
@@ -88,27 +106,98 @@ describe("canonical store release workflow", () => {
       jobs?: Record<string, { environment?: { name?: string } }>;
     };
     expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_call"]);
-    expect(workflow.jobs?.android?.environment?.name).toBe("production-release");
+    expect(workflow.jobs?.android?.environment?.name).toBe(
+      "production-release",
+    );
     expect(workflow.jobs?.ios?.environment?.name).toBe("production-release");
-    expect(mobileSource).toContain('ref: ${{ inputs.source_sha }}');
-    expect(mobileSource).toContain('refs/tags/$EXPECTED_TAG^{commit}');
-    expect(mobileSource).toContain("Missing required Google Play release secrets");
+    expect(mobileSource).toContain(`ref: \${{ inputs.source_sha }}`);
+    expect(mobileSource).toContain("refs/tags/$EXPECTED_TAG^{commit}");
+    expect(mobileSource).toContain(
+      "Missing required Google Play release secrets",
+    );
     expect(mobileSource).toContain("Missing required Apple release secrets");
     expect(mobileSource).toContain("bun run build:android:cloud");
     expect(mobileSource).toContain('bundle exec fastlane "$APPLE_LANE"');
   });
 
   test("provisions every shipping iOS extension from the generated project", () => {
-    expect(mobileSource).toContain(
-      "PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);",
-    );
-    expect(mobileSource).toContain("index($0, app \".\") == 1");
-    expect(mobileSource).toContain('$0 !~ /\\.AppUITests$/');
+    expect(mobileSource).toContain("PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);");
+    expect(mobileSource).toContain('index($0, app ".") == 1');
+    expect(mobileSource).toContain("$0 !~ /\\.AppUITests$/");
     expect(mobileSource).toContain(
       'echo "APP_IDENTIFIER_EXTRA=$extension_ids" >> "$GITHUB_ENV"',
     );
     expect(mobileSource).not.toContain(
-      'APP_IDENTIFIER_EXTRA=$app_id.WebsiteBlockerContentExtension',
+      "APP_IDENTIFIER_EXTRA=$app_id.WebsiteBlockerContentExtension",
     );
+  });
+
+  test("calls Microsoft Store only after exact release finalization", () => {
+    const workflow = Bun.YAML.parse(releaseSource) as {
+      jobs?: Record<
+        string,
+        {
+          needs?: string;
+          uses?: string;
+          with?: Record<string, string>;
+          secrets?: string;
+        }
+      >;
+    };
+    const windows = workflow.jobs?.["publish-microsoft-store"];
+    expect(windows?.needs).toBe("finalize");
+    expect(windows?.uses).toBe("./.github/workflows/store-windows-publish.yml");
+    expect(windows?.with?.source_sha).toContain(
+      "needs.finalize.outputs.source_sha",
+    );
+    expect(windows?.with?.version).toContain("needs.finalize.outputs.version");
+    expect(windows?.secrets).toEqual({
+      MICROSOFT_STORE_TENANT_ID: `\${{ secrets.MICROSOFT_STORE_TENANT_ID }}`,
+      MICROSOFT_STORE_CLIENT_ID: `\${{ secrets.MICROSOFT_STORE_CLIENT_ID }}`,
+      MICROSOFT_STORE_CLIENT_SECRET: `\${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}`,
+    });
+  });
+
+  test("keeps Microsoft Store callable-only, protected, stable-only, and fail-closed", () => {
+    const workflow = Bun.YAML.parse(windowsSource) as {
+      on?: Record<string, unknown>;
+      jobs?: Record<
+        string,
+        {
+          environment?: { name?: string };
+          if?: string;
+          env?: Record<string, string>;
+          steps?: Array<{ name?: string; env?: Record<string, string> }>;
+        }
+      >;
+    };
+    expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_call"]);
+    const publish = workflow.jobs?.["build-and-publish"];
+    expect(publish?.environment?.name).toBe("production-release");
+    expect(publish?.if).toContain("inputs.channel == 'latest'");
+    expect(windowsSource).toContain(`ref: \${{ inputs.source_sha }}`);
+    expect(windowsSource).toContain("refs/tags/$EXPECTED_TAG^{commit}");
+    expect(windowsSource).toContain(
+      "Missing required Microsoft Store release configuration",
+    );
+    expect(windowsSource).toContain("ELIZA_BUILD_VARIANT: store");
+    expect(windowsSource).toContain(
+      "runFullTrust|windows.fullTrustApplication",
+    );
+    expect(windowsSource).toContain("microsoft-store-submission.mjs");
+    for (const secret of [
+      "MICROSOFT_STORE_TENANT_ID",
+      "MICROSOFT_STORE_CLIENT_ID",
+      "MICROSOFT_STORE_CLIENT_SECRET",
+    ]) {
+      expect(publish?.env).not.toHaveProperty(secret);
+      const exposedSteps = (publish?.steps ?? [])
+        .filter((step) => step.env?.[secret] !== undefined)
+        .map((step) => step.name);
+      expect(exposedSteps).toEqual([
+        "Require Partner Center identity and API credentials",
+        "Submit exact package to Partner Center",
+      ]);
+    }
   });
 });

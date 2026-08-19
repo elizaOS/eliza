@@ -27,6 +27,8 @@ describe("store release plan", () => {
       ios_marketing_version: "2.3.4",
       ios_build_number: "203049000",
       apple_lane: "release",
+      windows_package_version: "2.3.4.0",
+      windows_publish: true,
       snap_channel: "stable",
       extension_version: "2.3.4.60000",
       chrome_publish_target: "default",
@@ -54,6 +56,8 @@ describe("store release plan", () => {
     expect(beta0).toMatchObject({
       android_track: "internal",
       apple_lane: "beta",
+      windows_package_version: "2.3.4.0",
+      windows_publish: false,
       snap_channel: "beta",
       extension_version: "2.3.4.20000",
       chrome_publish_target: "trustedTesters",
