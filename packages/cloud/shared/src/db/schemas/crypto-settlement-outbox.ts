@@ -29,6 +29,8 @@ export const appChargeCallbackOutbox = pgTable(
     claim_token: uuid("claim_token"),
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     last_error: text("last_error"),
+    room_delivered_at: timestamp("room_delivered_at", { withTimezone: true }),
+    http_delivered_at: timestamp("http_delivered_at", { withTimezone: true }),
     delivered_at: timestamp("delivered_at", { withTimezone: true }),
     terminal_at: timestamp("terminal_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

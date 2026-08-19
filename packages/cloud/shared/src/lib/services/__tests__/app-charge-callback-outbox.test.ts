@@ -39,7 +39,8 @@ beforeAll(async () => {
     charge_request_id uuid NOT NULL REFERENCES crypto_payments(id), payload jsonb NOT NULL,
     payload_digest text NOT NULL, state text NOT NULL DEFAULT 'pending', attempts integer NOT NULL DEFAULT 0,
     next_attempt_at timestamptz NOT NULL DEFAULT now(), claim_token uuid, lease_expires_at timestamptz,
-    last_error text, delivered_at timestamptz, terminal_at timestamptz,
+    last_error text, room_delivered_at timestamptz, http_delivered_at timestamptz,
+    delivered_at timestamptz, terminal_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
   )`);
 });
@@ -97,6 +98,36 @@ describe("app charge callback outbox", () => {
       row = await dbWrite.execute("SELECT state, attempts FROM app_charge_callback_outbox");
       expect((row.rows[0] as { state: string; attempts: number }).state).toBe("delivered");
       expect(Number((row.rows[0] as { attempts: number }).attempts)).toBe(2);
+    } finally {
+      service.dispatch = original;
+    }
+  });
+
+  test("a partial callback retry does not redeliver the channel that already succeeded", async () => {
+    await dbWrite.transaction((tx) => service.enqueue(params, tx));
+    const original = service.dispatch.bind(service);
+    const optionsSeen: Array<{ skipRoom?: boolean; skipHttp?: boolean }> = [];
+    service.dispatch = async (_params, options = {}) => {
+      optionsSeen.push(options);
+      return optionsSeen.length === 1
+        ? { httpPosted: false, roomMessageCreated: true, errors: ["HTTP unavailable"] }
+        : { httpPosted: true, roomMessageCreated: false, errors: [] };
+    };
+    try {
+      expect((await service.drain()).retried).toBe(1);
+      await dbWrite.execute(
+        "UPDATE app_charge_callback_outbox SET next_attempt_at=now() - interval '1 second'",
+      );
+      expect((await service.drain()).delivered).toBe(1);
+      expect(optionsSeen).toEqual([
+        { skipRoom: false, skipHttp: false },
+        { skipRoom: true, skipHttp: false },
+      ]);
+      const row = await dbWrite.execute(
+        "SELECT room_delivered_at, http_delivered_at FROM app_charge_callback_outbox",
+      );
+      expect((row.rows[0] as { room_delivered_at: Date | null }).room_delivered_at).not.toBeNull();
+      expect((row.rows[0] as { http_delivered_at: Date | null }).http_delivered_at).not.toBeNull();
     } finally {
       service.dispatch = original;
     }

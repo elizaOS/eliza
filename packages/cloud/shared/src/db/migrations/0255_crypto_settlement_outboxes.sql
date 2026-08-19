@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS app_charge_callback_outbox (
   claim_token uuid,
   lease_expires_at timestamptz,
   last_error text,
+  room_delivered_at timestamptz,
+  http_delivered_at timestamptz,
   delivered_at timestamptz,
   terminal_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT NOW(),

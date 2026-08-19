@@ -320,19 +320,33 @@ export class AppChargeCallbacksService {
       });
       if (!claimed) break;
       stats.processed += 1;
+      let deliveryResult: CallbackDispatchResult | null = null;
 
       try {
         const params = parseAppChargeCallbackDispatchParams(claimed.payload);
         if (settlementDigest(params) !== claimed.payload_digest) {
           throw new Error("App callback outbox payload digest mismatch");
         }
-        const result = await this.dispatch({ ...params, deliveryId: claimed.delivery_key });
-        if (result.errors.length > 0) throw new Error(result.errors.join("; "));
+        deliveryResult = await this.dispatch(
+          { ...params, deliveryId: claimed.delivery_key },
+          {
+            skipRoom: claimed.room_delivered_at !== null,
+            skipHttp: claimed.http_delivered_at !== null,
+          },
+        );
+        if (deliveryResult.errors.length > 0) {
+          throw new Error(deliveryResult.errors.join("; "));
+        }
+        const deliveredAt = new Date();
         await dbWrite
           .update(appChargeCallbackOutbox)
           .set({
             state: "delivered",
-            delivered_at: new Date(),
+            room_delivered_at:
+              claimed.room_delivered_at ?? (deliveryResult.roomMessageCreated ? deliveredAt : null),
+            http_delivered_at:
+              claimed.http_delivered_at ?? (deliveryResult.httpPosted ? deliveredAt : null),
+            delivered_at: deliveredAt,
             claim_token: null,
             lease_expires_at: null,
             last_error: null,
@@ -349,6 +363,7 @@ export class AppChargeCallbacksService {
         // error-policy:J4 an expected delivery failure remains visibly pending
         // for bounded durable retry; exhausted or corrupt rows become terminal.
         const terminal = claimed.attempts >= CALLBACK_MAX_ATTEMPTS;
+        const attemptAt = new Date();
         const delayMs = Math.min(3_600_000, 1_000 * 2 ** Math.min(claimed.attempts, 10));
         await dbWrite
           .update(appChargeCallbackOutbox)
@@ -359,7 +374,11 @@ export class AppChargeCallbacksService {
             claim_token: null,
             lease_expires_at: null,
             last_error: error instanceof Error ? error.message : String(error),
-            updated_at: new Date(),
+            room_delivered_at:
+              claimed.room_delivered_at ?? (deliveryResult?.roomMessageCreated ? attemptAt : null),
+            http_delivered_at:
+              claimed.http_delivered_at ?? (deliveryResult?.httpPosted ? attemptAt : null),
+            updated_at: attemptAt,
           })
           .where(
             and(
@@ -374,7 +393,10 @@ export class AppChargeCallbacksService {
     return stats;
   }
 
-  async dispatch(params: AppChargeCallbackDispatchParams): Promise<CallbackDispatchResult> {
+  async dispatch(
+    params: AppChargeCallbackDispatchParams,
+    options: { skipRoom?: boolean; skipHttp?: boolean } = {},
+  ): Promise<CallbackDispatchResult> {
     const result: CallbackDispatchResult = {
       httpPosted: false,
       roomMessageCreated: false,
@@ -405,7 +427,7 @@ export class AppChargeCallbacksService {
     const payload = createAppChargeCallbackPayload(params, metadata, chargeRequest.expected_amount);
 
     const channel = callbackChannel(metadata);
-    if (channel) {
+    if (channel && !options.skipRoom) {
       try {
         result.roomMessageCreated = await this.createRoomMessage(
           payload,
@@ -425,7 +447,7 @@ export class AppChargeCallbacksService {
     }
 
     const callbackUrl = stringValue(metadata, "callback_url");
-    if (callbackUrl) {
+    if (callbackUrl && !options.skipHttp) {
       try {
         await this.postHttpCallback(
           callbackUrl,
