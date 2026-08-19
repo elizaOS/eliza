@@ -116,6 +116,28 @@ describe("validateToolSelectionArgument", () => {
     );
     expect(recovered.success).toBe(true);
   });
+
+  it("bounds concurrent hostile schema workers", async () => {
+    const pathological = {
+      type: "object",
+      properties: { value: { type: "string", pattern: "^(a+)+$" } },
+      required: ["value"],
+    } as const;
+
+    const results = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        validateToolSelectionArgument(
+          { toolArguments: { value: `${"a".repeat(80)}!` } },
+          pathological
+        )
+      )
+    );
+    expect(
+      results.filter(
+        (result) => !result.success && result.error.includes("validation capacity of 4 exceeded")
+      )
+    ).toHaveLength(8);
+  });
 });
 
 describe("validateResourceSelection", () => {

@@ -6,7 +6,6 @@
  */
 
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
 import { Worker } from "node:worker_threads";
 import type { State } from "@elizaos/core";
 import {
@@ -36,11 +35,11 @@ export interface ToolSelection {
 
 const MAX_TOOL_ARGUMENTS_JSON_BYTES = 1024 * 1024;
 const TOOL_SCHEMA_VALIDATION_TIMEOUT_MS = 250;
+const MAX_CONCURRENT_SCHEMA_VALIDATIONS = 4;
+let activeSchemaValidations = 0;
 
-const applicationEntry = process.argv[1] ?? resolve(process.cwd(), "package.json");
-const applicationRequire = createRequire(resolve(applicationEntry));
-const pluginManifestPath = applicationRequire.resolve("@elizaos/plugin-mcp/package.json");
-const AJV_WORKER_MODULE_PATH = createRequire(pluginManifestPath).resolve("ajv");
+const moduleRequire = createRequire(typeof __filename === "string" ? __filename : import.meta.url);
+const AJV_WORKER_MODULE_PATH = moduleRequire.resolve("ajv");
 
 interface SchemaWorkerResult {
   readonly success: boolean;
@@ -126,52 +125,75 @@ async function validateUntrustedToolArguments(
   const serialized = serializeToolArguments(data);
   if (!serialized.success) return serialized;
 
-  return await new Promise<ValidationResult<unknown>>((resolve) => {
-    const worker = new Worker(SCHEMA_WORKER_SOURCE, {
-      eval: true,
-      workerData: {
-        schemaJson,
-        dataJson: serialized.json,
-        ajvModulePath: AJV_WORKER_MODULE_PATH,
-      },
-    });
-    let settled = false;
-
-    const finish = (result: ValidationResult<unknown>): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      worker.removeAllListeners();
-      void worker.terminate();
-      resolve(result);
+  if (activeSchemaValidations >= MAX_CONCURRENT_SCHEMA_VALIDATIONS) {
+    return {
+      success: false,
+      error: `MCP JSON schema validation capacity of ${MAX_CONCURRENT_SCHEMA_VALIDATIONS} exceeded`,
     };
+  }
+  activeSchemaValidations += 1;
 
-    const timer = setTimeout(() => {
-      finish({
-        success: false,
-        error: `MCP JSON schema validation exceeded ${TOOL_SCHEMA_VALIDATION_TIMEOUT_MS}ms`,
+  try {
+    return await new Promise<ValidationResult<unknown>>((resolve) => {
+      const worker = new Worker(SCHEMA_WORKER_SOURCE, {
+        eval: true,
+        resourceLimits: {
+          maxOldGenerationSizeMb: 64,
+          maxYoungGenerationSizeMb: 16,
+          stackSizeMb: 4,
+        },
+        workerData: {
+          schemaJson,
+          dataJson: serialized.json,
+          ajvModulePath: AJV_WORKER_MODULE_PATH,
+        },
       });
-    }, TOOL_SCHEMA_VALIDATION_TIMEOUT_MS);
+      let settled = false;
 
-    worker.once("message", (message: SchemaWorkerResult & { errors?: unknown }) => {
-      if (message.success) {
-        finish({ success: true, data });
-      } else if (message.error) {
-        finish({ success: false, error: `schema validation failed: ${message.error}` });
-      } else {
-        finish({ success: false, error: formatWorkerErrors(message.errors) });
-      }
+      const finish = (result: ValidationResult<unknown>): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        worker.removeAllListeners();
+        void worker.terminate().then(
+          () => resolve(result),
+          () => resolve(result)
+        );
+      };
+
+      const timer = setTimeout(() => {
+        finish({
+          success: false,
+          error: `MCP JSON schema validation exceeded ${TOOL_SCHEMA_VALIDATION_TIMEOUT_MS}ms`,
+        });
+      }, TOOL_SCHEMA_VALIDATION_TIMEOUT_MS);
+
+      worker.once("message", (message: SchemaWorkerResult & { errors?: unknown }) => {
+        if (message.success) {
+          finish({ success: true, data });
+        } else if (message.error) {
+          finish({ success: false, error: `schema validation failed: ${message.error}` });
+        } else {
+          finish({ success: false, error: formatWorkerErrors(message.errors) });
+        }
+      });
+      worker.once("error", (error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        finish({ success: false, error: `schema validation failed: ${message}` });
+      });
+      worker.once("exit", (code) => {
+        if (!settled) {
+          finish({ success: false, error: `schema validation worker exited with code ${code}` });
+        }
+      });
     });
-    worker.once("error", (error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      finish({ success: false, error: `schema validation failed: ${message}` });
-    });
-    worker.once("exit", (code) => {
-      if (!settled) {
-        finish({ success: false, error: `schema validation worker exited with code ${code}` });
-      }
-    });
-  });
+  } catch (error) {
+    // error-policy:J3 worker startup failures are explicit validation failures
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `schema validation worker failed to start: ${message}` };
+  } finally {
+    activeSchemaValidations -= 1;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
