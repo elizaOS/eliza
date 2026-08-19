@@ -265,18 +265,21 @@ test("Android gateway installer supports one-command wireless pairing", () => {
     assert.match(installRunbook, new RegExp(escapeRegExp(marker)));
   }
 
+  // The readiness contract moved from GitHub Pages DNS verification to the
+  // rendered Cloudflare/Blooio surface in cc65444e1, a8a8b8d3e (#19511), and
+  // 60838c42f (#19536); assert the current admission markers instead.
   for (const marker of [
-    "GitHub Pages DNS records",
-    "sms-gateway:homepage:dns -- --apply",
-    "expectedApexRecords",
-    "expectedWwwCname",
-    "A ${expectedDomain}",
-    "CNAME www.${expectedDomain}",
+    "Cloudflare",
+    "cloudflare-origin",
+    "Text Eliza",
+    "resolveWhatsAppAdmission",
+    "WHATSAPP_PUBLIC_ENABLED",
+    "rejectedWhatsAppNumbers",
+    "+18087881821",
+    "whatsapp-fail-closed",
     "homepage-public-readiness-latest.json",
     "--evidence <path>",
     "writeEvidence",
-    "registryStatuses",
-    "delegatedNameservers",
   ]) {
     assert.match(homepageReadinessScript, new RegExp(escapeRegExp(marker)));
   }
@@ -300,16 +303,19 @@ test("Android gateway installer supports one-command wireless pairing", () => {
     assert.match(homepagePorkbunDnsScript, new RegExp(escapeRegExp(marker)));
   }
 
+  // The homepage README dropped its GitHub Pages DNS section for the Blooio
+  // WhatsApp activation contract (5a249cd99 #19532); assert the values the
+  // readiness script also enforces so the two cannot drift apart silently.
   for (const marker of [
-    "Public `eliza.app` DNS",
-    "client hold",
-    "A eliza.app",
-    "185.199.108.153",
-    "CNAME www.eliza.app",
-    "elizaos.github.io.",
-    "check-homepage-public-readiness.mjs",
-    "sms-gateway:homepage:dns",
-    "PORKBUN_API_KEY",
+    "WHATSAPP_PUBLIC_ENABLED",
+    "VITE_WHATSAPP_PHONE_NUMBER",
+    "+18087881821",
+    "wa.me",
+    "Blooio",
+    "message.received",
+    "+14155238886",
+    "+15551649988",
+    "+14159611510",
   ]) {
     assert.match(homepageReadme, new RegExp(escapeRegExp(marker)));
   }
@@ -729,6 +735,11 @@ test("BlueBubbles e2e verifier stops before retrying when validation is missing"
       verifyBlueBubblesScriptPath,
       "--bridge-url",
       bridge.url,
+      // Every sibling subtest routes evidence into the .tmp sandbox; without
+      // this the verifier writes its default .eliza-local artifact and the
+      // suite dirties the working tree.
+      "--evidence",
+      temporaryEvidencePath("bluebubbles-e2e-verifier-"),
     ]);
 
     assert.notEqual(result.code, 0);
