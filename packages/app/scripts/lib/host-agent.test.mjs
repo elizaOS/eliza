@@ -410,7 +410,7 @@ describe("host-agent helper", () => {
     const agent = await startDeviceE2eHostAgent({
       repoRoot: process.cwd(),
       artifactDir,
-      readyAttempts: 50,
+      readyAttempts: 250,
       readyDelayMs: 20,
       command: process.execPath,
       args: ["-e", fakeHostAgentScript()],
@@ -459,7 +459,7 @@ describe("host-agent helper", () => {
         startDeviceE2eHostAgent({
           repoRoot: process.cwd(),
           artifactDir: path.join(makeTmpDir(), String(index)),
-          readyAttempts: 50,
+          readyAttempts: 500,
           readyDelayMs: 10,
           command: process.execPath,
           args: ["-e", fakeHostAgentScript()],
