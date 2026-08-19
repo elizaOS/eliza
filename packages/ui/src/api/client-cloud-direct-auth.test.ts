@@ -26,6 +26,8 @@ import "./client-cloud";
 import { setBootConfig } from "../config/boot-config";
 
 const SERVER_SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
+const UUID_V4_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function calledNativeUrls(): string[] {
   return [
@@ -73,7 +75,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
         url: "https://api.eliza.app/api/auth/cli-session",
-        data: {},
+        data: { sessionId: expect.stringMatching(UUID_V4_RE) },
       }),
     );
     // The browser URL normalizes the configured www base to the apex host: the
@@ -104,7 +106,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
         url: "https://api-staging.eliza.app/api/auth/cli-session",
-        data: {},
+        data: { sessionId: expect.stringMatching(UUID_V4_RE) },
       }),
     );
     expect(result).toEqual(

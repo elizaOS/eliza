@@ -4,6 +4,7 @@
  */
 
 import crypto from "node:crypto";
+import { isCliLoginSessionId } from "@elizaos/cloud-sdk";
 import { logger } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "./base-url.js";
 import { validateCloudBaseUrl } from "./validate-url.js";
@@ -60,8 +61,7 @@ export async function cloudLogin(
   const requestTimeoutMs =
     options.requestTimeoutMs ?? DEFAULT_CLOUD_REQUEST_TIMEOUT_MS;
   const pollIntervalMs = options.pollIntervalMs ?? 2_000;
-  const sessionId = crypto.randomUUID();
-
+  const requestSessionId = crypto.randomUUID();
   logger.info("[cloud-auth] Creating auth session...");
 
   let createResponse: Response;
@@ -71,7 +71,7 @@ export async function cloudLogin(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ sessionId: requestSessionId }),
       },
       requestTimeoutMs,
     );
@@ -94,6 +94,23 @@ export async function cloudLogin(
     throw new Error(
       `Failed to create auth session (HTTP ${createResponse.status}): ${errorText}`,
     );
+  }
+
+  let createData: unknown;
+  try {
+    createData = await createResponse.json();
+  } catch (err) {
+    // error-policy:J2 preserve the malformed upstream response as the cause.
+    throw new Error("Eliza Cloud returned an invalid login session response", {
+      cause: err,
+    });
+  }
+  const sessionId =
+    typeof createData === "object" && createData !== null
+      ? (createData as { sessionId?: unknown }).sessionId
+      : undefined;
+  if (!isCliLoginSessionId(sessionId)) {
+    throw new Error("Eliza Cloud returned an invalid login session ID");
   }
 
   const browserUrl = `${baseUrl}/auth/cli-login?session=${encodeURIComponent(sessionId)}`;

@@ -429,6 +429,10 @@ function cloudLoginSessionIdOrNull(value: unknown): string | null {
     : null;
 }
 
+function createCloudLoginRequestId(): string | null {
+  return cloudLoginSessionIdOrNull(globalThis.crypto?.randomUUID?.());
+}
+
 function resolveCloudCliLoginReturnUrl(sessionId: string): string | null {
   if (
     shouldUseNativeCloudHttp() ||
@@ -3204,6 +3208,13 @@ ElizaClient.prototype.cloudLoginDirect = async function (
   this: ElizaClient,
   cloudApiBase,
 ) {
+  const requestSessionId = createCloudLoginRequestId();
+  if (!requestSessionId) {
+    return {
+      ok: false,
+      error: "Login failed: a secure UUID generator is unavailable",
+    };
+  }
   const cloudWebBase = resolveDirectCloudWebBase(cloudApiBase);
   const authApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   try {
@@ -3211,7 +3222,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       const res = await CapacitorHttp.post({
         url: `${authApiBase}/api/auth/cli-session`,
         headers: { "Content-Type": "application/json" },
-        data: {},
+        data: { sessionId: requestSessionId },
         responseType: "json",
         connectTimeout: 10_000,
         readTimeout: 10_000,
@@ -3240,7 +3251,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ sessionId: requestSessionId }),
       },
     );
     if (!res.ok) {

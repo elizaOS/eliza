@@ -41,6 +41,8 @@ import {
 } from "./direct-cloud-endpoints";
 
 const SERVER_SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
+const UUID_V4_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -105,9 +107,13 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: expect.any(String),
       }),
     );
+    const requestBody = JSON.parse(
+      String(fetchSpy.mock.calls[0]?.[1]?.body),
+    ) as { sessionId?: unknown };
+    expect(requestBody.sessionId).toEqual(expect.stringMatching(UUID_V4_RE));
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
