@@ -3763,6 +3763,172 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(dispatched.params?.[TURN_SCOPE_ARG]).toBeUndefined();
 	});
 
+	it("asks the model once for final-scope navigation wording without an evaluator retry loop", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "views-1",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "notes",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "Notes are open. What do you want to work on?",
+				toolCalls: [],
+			});
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "should not be called",
+		}));
+		const recordedStages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "trj-model-reply"),
+			recordStage: vi.fn(
+				async (_trajectoryId: string, stage: RecordedStage) => {
+					recordedStages.push(stage);
+				},
+			),
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [{ name: "VIEWS", description: "Open a UI view." }],
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: '{"effect":"view_navigation","status":"accepted"}',
+				transcriptVisibility: "internal" as const,
+				modelReplyRequired: true,
+			})),
+			evaluate,
+			recorder,
+			trajectoryId: "trj-model-reply",
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		const synthesisParams = useModel.mock.calls[1]?.[1] as
+			| Record<string, unknown>
+			| undefined;
+		expect(synthesisParams).not.toHaveProperty("tools");
+		expect(synthesisParams).not.toHaveProperty("toolChoice");
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.finalMessage).toBe(
+			"Notes are open. What do you want to work on?",
+		);
+		expect(result.evaluator?.thought).toContain("model-authored reply");
+		expect(
+			recordedStages.find((stage) => stage.kind === "evaluation")?.evaluation
+				?.reason,
+		).toBe("post_tool_model_reply");
+	});
+
+	it("never executes a tool invented during bounded post-tool synthesis", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "views-1",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "notes",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
+						},
+					},
+				],
+			})
+			// Defensive provider-adapter regression: even if a backend violates the
+			// no-tools request, its invented call is terminal text, never work.
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "views-duplicate",
+						name: "VIEWS",
+						arguments: { action: "show", view: "notes" },
+					},
+				],
+			});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: '{"effect":"view_navigation","status":"accepted"}',
+			transcriptVisibility: "internal" as const,
+			modelReplyRequired: true,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "must remain unreachable",
+			messageToUser: "Evaluator fallback",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [{ name: "VIEWS", description: "Open a UI view." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("The requested action completed.");
+	});
+
+	it("keeps full evaluation when model-reply navigation scope is incomplete", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [
+					{
+						id: "views-1",
+						name: "VIEWS",
+						arguments: {
+							action: "show",
+							view: "notes",
+							[TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING,
+						},
+					},
+				],
+			}),
+		};
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The planner explicitly said more work remains.",
+			messageToUser: "Notes are open.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: "internal navigation receipt",
+				modelReplyRequired: true,
+			})),
+			evaluate,
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(result.finalMessage).toBe("Notes are open.");
+	});
+
 	it("completes a native sequential multi-op turn instead of truncating after the first terminal result", async () => {
 		// The #17034 canonical regression: the model emits its two operations
 		// one planner round at a time. Round 1 declares more_work_pending, so
@@ -3866,6 +4032,21 @@ describe("v5 planner loop — evaluator gate", () => {
 			userFacingText: "Settings updated.",
 			verifiedUserFacing: true,
 			turnComplete: true,
+		});
+	});
+
+	it("preserves the post-tool model-reply request through the canonical planner-result mapping", () => {
+		const result = actionResultToPlannerToolResult({
+			success: true,
+			text: "internal navigation receipt",
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+		});
+
+		expect(result).toMatchObject({
+			success: true,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
 		});
 	});
 

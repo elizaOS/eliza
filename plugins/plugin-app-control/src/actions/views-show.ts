@@ -1,7 +1,7 @@
 /**
  * Resolves a requested view and asks the active shell to navigate to it.
- * The callback owns the one visible acknowledgement; the returned action
- * receipt remains available to the planner without becoming a second row.
+ * The action returns an internal effect receipt after the shell accepts the
+ * navigation; the post-tool model owns all visible wording.
  */
 
 import type {
@@ -371,11 +371,33 @@ function resolveRegisteredNotesView(
 
 interface NavigateResult {
 	ok: boolean;
+	/** Internal tool receipt for post-tool reasoning; never assistant prose. */
 	text: string;
 	/** Resolved sub-section the renderer was asked to focus (settings only). */
 	subview?: string;
 	/** The server synchronously accepted delivery to the originating renderer. */
 	completedActionDelivered?: true;
+}
+
+function navigationEffectReceipt({
+	status,
+	view,
+	navigationLabel,
+	subview,
+}: {
+	status: "accepted" | "unsupported-route" | "unconfirmed";
+	view: ViewSummary;
+	navigationLabel: string;
+	subview?: string;
+}): string {
+	return JSON.stringify({
+		effect: "view_navigation",
+		status,
+		viewId: view.id,
+		label: navigationLabel,
+		...(view.path ? { path: view.path } : {}),
+		...(subview ? { subview } : {}),
+	});
 }
 
 /** Accept only the own, literal confirmation field emitted by the agent route. */
@@ -418,9 +440,10 @@ async function navigateToView(
 	originatingClientId?: string,
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
-	// A 501/404 means this shell doesn't implement the navigate route — opening
-	// the view still counts as a soft success (the user can click through). A
-	// real transport failure (other non-2xx, network, timeout) is NOT success:
+	// A shell without the navigate route did not accept the requested effect.
+	// Keep 404/501 distinct in the internal receipt, but never claim success or
+	// request a model-authored acknowledgement for an effect that did not occur.
+	// A real transport failure (other non-2xx, network, timeout) is also NOT success:
 	// reporting "Switched to X" when nothing happened misleads the user and the
 	// chain's verifiedUserFacing logic.
 	const base = getAppControlApiBase();
@@ -442,8 +465,6 @@ async function navigateToView(
 				signal: AbortSignal.timeout(5_000),
 			},
 		);
-		const sectionSuffix = resolvedSubview ? ` — ${resolvedSubview}` : "";
-		const openedText = `Opened ${navigationLabel}${sectionSuffix}.`;
 		if (resp.ok) {
 			let responseBody: unknown;
 			try {
@@ -456,7 +477,12 @@ async function navigateToView(
 			}
 			return {
 				ok: true,
-				text: openedText,
+				text: navigationEffectReceipt({
+					status: "accepted",
+					view,
+					navigationLabel,
+					subview: resolvedSubview,
+				}),
 				subview: resolvedSubview,
 				...(delivery === "completed-action" &&
 				confirmsCompletedActionDelivery(responseBody)
@@ -464,11 +490,16 @@ async function navigateToView(
 					: {}),
 			};
 		}
-		// 501/404 = navigation route unsupported by this shell; opening succeeds.
+		// Preserve the unsupported-route diagnosis without fabricating success.
 		if (resp.status === 501 || resp.status === 404)
 			return {
-				ok: true,
-				text: openedText,
+				ok: false,
+				text: navigationEffectReceipt({
+					status: "unsupported-route",
+					view,
+					navigationLabel,
+					subview: resolvedSubview,
+				}),
 				subview: resolvedSubview,
 			};
 
@@ -482,10 +513,14 @@ async function navigateToView(
 		);
 	}
 
-	const pathHint = view.path ? ` at ${view.path}` : "";
 	return {
 		ok: false,
-		text: `Couldn't switch to ${navigationLabel}${pathHint} — the shell did not confirm the change.`,
+		text: navigationEffectReceipt({
+			status: "unconfirmed",
+			view,
+			navigationLabel,
+			subview: resolvedSubview,
+		}),
 	};
 }
 
@@ -503,7 +538,6 @@ export async function runViewsShow({
 	message,
 	options,
 	viewType,
-	callback,
 	originatingClientId,
 }: RunViewsShowInput): Promise<ActionResult> {
 	const messageText = userRequestMessageText(message);
@@ -517,8 +551,12 @@ export async function runViewsShow({
 	if (!target) {
 		const text =
 			'Tell me which view to open. Try: "open wallet" or "show settings".';
-		await callback?.({ text });
-		return { success: false, text };
+		return {
+			success: false,
+			text,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+		};
 	}
 
 	const views = await client.listViews({ viewType });
@@ -569,10 +607,11 @@ export async function runViewsShow({
 
 	if (resolution.kind === "none") {
 		const text = `No view matches ${describeTargetReference(target)}. Try \`action=list\` to see available views.`;
-		await callback?.({ text });
 		return {
 			success: false,
 			text,
+			transcriptVisibility: "internal",
+			turnComplete: false,
 			data: { target: targetReferenceLogView(target) },
 		};
 	}
@@ -581,8 +620,13 @@ export async function runViewsShow({
 		const candidates = resolution.candidates;
 		const list = candidates.map((v) => `- ${v.label} (${v.id})`).join("\n");
 		const text = `${describeTargetReference(target)} matches multiple views:\n${list}\nWhich one did you mean?`;
-		await callback?.({ text });
-		return { success: false, text, data: { candidates } };
+		return {
+			success: false,
+			text,
+			transcriptVisibility: "internal",
+			turnComplete: false,
+			data: { candidates },
+		};
 	}
 
 	const view = resolution.view;
@@ -610,21 +654,15 @@ export async function runViewsShow({
 	logger.info(
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,
 	);
-	await callback?.({ text: result.text });
 	return {
 		success: result.ok,
 		text: result.text,
-		...(result.ok
-			? {
-					// The typed callback above owns the visible completion. Keeping the
-					// terminal receipt internal prevents a second assistant row while
-					// preserving its verified text for non-transcript consumers.
-					transcriptVisibility: "internal" as const,
-					userFacingText: result.text,
-					verifiedUserFacing: true,
-					turnComplete: true,
-				}
-			: {}),
+		// Navigation has already been handed to the shell. A confirmed success
+		// requests exactly one post-tool model reply so the acknowledgement stays
+		// natural and model-owned without an evaluator/planner retry loop. Failed or
+		// unconfirmed navigation retains full evaluation and recovery.
+		transcriptVisibility: "internal",
+		...(result.ok ? { modelReplyRequired: true } : { turnComplete: false }),
 		values: {
 			mode: "show",
 			viewId: view.id,

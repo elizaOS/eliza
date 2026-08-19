@@ -268,6 +268,26 @@ describe("replyClaimsCompletedSideEffect", () => {
 			replyClaimsCompletedSideEffect("Well done — that's every task cleared."),
 		).toBe(false);
 	});
+
+	it("does not treat a completed UI-navigation reply as a note mutation", () => {
+		// Live VIEWS trajectory: the Notes route opened successfully, then this
+		// natural follow-up was rejected because the old detector paired "Done."
+		// with "notes" from the later question across a sentence boundary.
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Done. What are we doing with your notes?",
+			),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Done. What would you like to do with your notes?",
+			),
+		).toBe(false);
+		// A real saved-state claim in the following sentence remains protected.
+		expect(
+			replyClaimsCompletedSideEffect("Done. Your reminders are set."),
+		).toBe(true);
+	});
 });
 
 describe(CLAIM_EVALUATOR_NAME, () => {

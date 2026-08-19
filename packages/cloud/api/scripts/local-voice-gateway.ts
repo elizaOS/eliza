@@ -72,16 +72,21 @@ async function readLocalIdentity(runtimeOrigin: string): Promise<{
   }
 
   const configuredAgentId = process.env.ELIZA_LOCAL_VOICE_AGENT_ID?.trim();
-  const agentResponse = await fetch(new URL("/api/agents", runtimeOrigin));
-  if (!agentResponse.ok) {
-    throw new Error(`local agents route returned HTTP ${agentResponse.status}`);
+  let discoveredAgentId: string | undefined;
+  if (!configuredAgentId) {
+    const agentResponse = await fetch(new URL("/api/agents", runtimeOrigin));
+    if (!agentResponse.ok) {
+      throw new Error(
+        `local agents route returned HTTP ${agentResponse.status}`,
+      );
+    }
+    const agentsBody = (await agentResponse.json()) as {
+      agents?: Array<{ id?: unknown; status?: unknown }>;
+    };
+    discoveredAgentId = agentsBody.agents?.find(
+      (agent) => agent.status === "running" && typeof agent.id === "string",
+    )?.id as string | undefined;
   }
-  const agentsBody = (await agentResponse.json()) as {
-    agents?: Array<{ id?: unknown; status?: unknown }>;
-  };
-  const discoveredAgentId = agentsBody.agents?.find(
-    (agent) => agent.status === "running" && typeof agent.id === "string",
-  )?.id as string | undefined;
   const agentId = assertUuid(
     "local agent id",
     configuredAgentId || discoveredAgentId || "",
@@ -89,22 +94,27 @@ async function readLocalIdentity(runtimeOrigin: string): Promise<{
 
   const configuredConversationId =
     process.env.ELIZA_LOCAL_VOICE_CONVERSATION_ID?.trim();
-  const conversationResponse = await fetch(
-    new URL("/api/conversations", runtimeOrigin),
-  );
-  if (!conversationResponse.ok) {
-    throw new Error(
-      `local conversations route returned HTTP ${conversationResponse.status}`,
+  let discoveredConversationId: string | undefined;
+  if (!configuredConversationId) {
+    const conversationResponse = await fetch(
+      new URL("/api/conversations", runtimeOrigin),
     );
+    if (!conversationResponse.ok) {
+      throw new Error(
+        `local conversations route returned HTTP ${conversationResponse.status}`,
+      );
+    }
+    const conversationsBody = (await conversationResponse.json()) as {
+      conversations?: Array<{ id?: unknown; updatedAt?: unknown }>;
+    };
+    discoveredConversationId = conversationsBody.conversations
+      ?.filter((conversation) => typeof conversation.id === "string")
+      .sort((left, right) =>
+        String(right.updatedAt ?? "").localeCompare(
+          String(left.updatedAt ?? ""),
+        ),
+      )[0]?.id as string | undefined;
   }
-  const conversationsBody = (await conversationResponse.json()) as {
-    conversations?: Array<{ id?: unknown; updatedAt?: unknown }>;
-  };
-  const discoveredConversationId = conversationsBody.conversations
-    ?.filter((conversation) => typeof conversation.id === "string")
-    .sort((left, right) =>
-      String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? "")),
-    )[0]?.id as string | undefined;
   const conversationId = assertUuid(
     "local conversation id",
     configuredConversationId || discoveredConversationId || "",

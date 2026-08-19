@@ -1824,6 +1824,7 @@ describe("view management actions", () => {
 			ok: true,
 			status: 200,
 			text: async () => "",
+			json: async () => ({}),
 		} as Response);
 
 		// No explicit action option — this exercises inferMode on the raw text.
@@ -2395,6 +2396,7 @@ describe("view management actions", () => {
 			ok: true,
 			status: 200,
 			text: async () => "",
+			json: async () => ({}),
 		} as Response);
 
 		const notesResult = await action.handler(
@@ -2475,6 +2477,7 @@ describe("view management actions", () => {
 			ok: true,
 			status: 200,
 			text: async () => "",
+			json: async () => ({}),
 		} as Response);
 
 		const result = await action.handler(

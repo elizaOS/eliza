@@ -22,6 +22,7 @@
 import { ElizaError } from "../../../errors.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
+import { isCanonicalModelCapabilityDisabled } from "../../../runtime/canonical-model-capabilities.ts";
 import type {
 	FactKind,
 	FactMetadata,
@@ -416,7 +417,13 @@ const factsProvider: Provider = {
 				queryText,
 				dedupedPool,
 			).some((entry) => entry.relevance > 0);
-			if (!poolHasKeywordHit) {
+			if (
+				!poolHasKeywordHit &&
+				!(
+					typeof runtime.getSetting === "function" &&
+					isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_EMBEDDING)
+				)
+			) {
 				try {
 					const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
 						text: queryText,

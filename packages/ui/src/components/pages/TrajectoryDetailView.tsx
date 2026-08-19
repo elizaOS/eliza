@@ -142,6 +142,21 @@ function formatProviderPayload(value: unknown): string {
   }
 }
 
+/**
+ * Trajectory records are intentionally append-only and may omit prompt fields
+ * for provider failures, embeddings, or legacy rows. Normalize those sparse
+ * records at the rendering boundary so one missing prompt cannot crash the
+ * complete trajectory viewer. Structured fallbacks remain inspectable JSON.
+ */
+export function normalizeTrajectoryCallText(...candidates: unknown[]): string {
+  for (const candidate of candidates) {
+    if (candidate == null) continue;
+    if (typeof candidate === "string" && candidate.length === 0) continue;
+    return formatProviderPayload(candidate);
+  }
+  return "";
+}
+
 function isNativeToolCallEvent(
   event: TrajectoryEvent,
 ): event is NativeToolCallEvent {
@@ -757,15 +772,28 @@ export function TrajectoryDetailView({
                 })}
                 inputLabel={t("trajectorydetailview.InputUser")}
                 outputLabel={t("trajectorydetailview.OutputResponse")}
-                inputLinesLabel={`${call.userPrompt.split("\n").length} ${t(
-                  "trajectorydetailview.lines",
-                )}`}
-                outputLinesLabel={`${call.response.split("\n").length} ${t(
-                  "trajectorydetailview.lines",
-                )}`}
+                inputLinesLabel={`${
+                  normalizeTrajectoryCallText(
+                    call.userPrompt,
+                    call.prompt,
+                    call.messages,
+                  ).split("\n").length
+                } ${t("trajectorydetailview.lines")}`}
+                outputLinesLabel={`${
+                  normalizeTrajectoryCallText(call.response, call.output).split(
+                    "\n",
+                  ).length
+                } ${t("trajectorydetailview.lines")}`}
                 tags={(call.tags ?? []).filter((tag) => tag !== "llm")}
-                userPrompt={call.userPrompt}
-                response={call.response}
+                userPrompt={normalizeTrajectoryCallText(
+                  call.userPrompt,
+                  call.prompt,
+                  call.messages,
+                )}
+                response={normalizeTrajectoryCallText(
+                  call.response,
+                  call.output,
+                )}
                 copyLabel={t("trajectorydetailview.Copy")}
                 copyToClipboardLabel={t("trajectorydetailview.CopyToClipboard")}
                 onCopy={(content) => {

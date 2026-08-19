@@ -986,6 +986,19 @@ export interface ActionResult {
 	turnComplete?: boolean;
 
 	/**
+	 * Requests exactly one model-authored reply after this successful action.
+	 * The planner honors this only when the result is the turn's sole completed
+	 * tool, its queue is empty, and the native call explicitly declared final
+	 * scope. A safe no-tool model reply then completes the turn without a second
+	 * evaluator model call; failures, additional tools, unsafe replies, and
+	 * incomplete planner scope retain the normal evaluator path.
+	 *
+	 * Use for UI effects whose wording must remain model-owned (for example,
+	 * navigation). Do not pair it with canned `userFacingText`.
+	 */
+	modelReplyRequired?: boolean;
+
+	/**
 	 * Explicit chain-control override. `false` aborts the remaining planner queue
 	 * and returns immediately, including for legacy failure and fire-and-forget
 	 * actions that do not own a complete user reply. Prefer `turnComplete` for the
