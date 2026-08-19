@@ -8,6 +8,7 @@ import { countActionSearchKeywordMatches } from "../i18n/action-search-keywords"
 import { logger } from "../logger";
 import type { ActionCatalog, ActionCatalogParent } from "./action-catalog";
 import { normalizeActionName } from "./action-catalog";
+import { matchActionWildcardParts } from "./action-wildcard-glob";
 
 export type RetrievalStageName =
 	| "exact"
@@ -1042,13 +1043,14 @@ function scoreEmbeddingTieBreaker(
 	return scores;
 }
 
-function buildCandidatePatterns(candidateActions: string[]): Array<{
-	regex: RegExp;
+type CandidatePattern = {
+	regex: { test: (value: string) => boolean };
 	namespace?: string;
 	score: number;
-}> {
-	const patterns: Array<{ regex: RegExp; namespace?: string; score: number }> =
-		[];
+};
+
+function buildCandidatePatterns(candidateActions: string[]): CandidatePattern[] {
+	const patterns: CandidatePattern[] = [];
 
 	for (const candidateAction of candidateActions) {
 		const normalized = normalizeActionName(candidateAction);
@@ -1439,12 +1441,15 @@ function escapeRegex(value: string): string {
  * into a matcher over catalog-normalized action names. normalizeActionName
  * strips the "*" itself, so each literal segment between wildcards is
  * normalized with the real normalizer and only the star-adjacent separators
- * the hint actually wrote are re-attached afterward: "GMAIL_*" compiles to
- * ^GMAIL_.*$ (the children, not bare GMAIL or a GMAILSYNC sibling), while the
- * separator-less "GMAIL_SEND*" compiles to ^GMAIL_SEND.*$ and keeps matching
- * the exact name the glob is anchored to (#20467).
+ * the hint actually wrote are re-attached afterward: "GMAIL_*" still means
+ * GMAIL_ children (not bare GMAIL or a GMAILSYNC sibling), while the
+ * separator-less "GMAIL_SEND*" still matches the exact name the glob is
+ * anchored to (#20467). Matching is a linear scan, not `^lit.*lit.*$` regex —
+ * a model hint of many stars used to hang retrieve-actions.
  */
-function wildcardCandidateRegex(candidateAction: string): RegExp | null {
+function wildcardCandidateRegex(
+	candidateAction: string,
+): { test: (value: string) => boolean } | null {
 	const rawSegments = String(candidateAction)
 		.trim()
 		.replace(/\*+/g, "*")
@@ -1466,7 +1471,9 @@ function wildcardCandidateRegex(candidateAction: string): RegExp | null {
 	if (parts.every((part) => part === "")) {
 		return null;
 	}
-	return new RegExp(`^${parts.map((part) => escapeRegex(part)).join(".*")}$`);
+	return {
+		test: (value: string) => matchActionWildcardParts(parts, value),
+	};
 }
 
 function clampScore(value: number): number {
