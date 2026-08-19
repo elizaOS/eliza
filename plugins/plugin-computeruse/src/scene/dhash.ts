@@ -17,9 +17,7 @@
  *     RGBA, 8-bit depth, non-interlaced). Anything else returns `null` and
  *     the caller falls back to a coarser whole-frame byte hash. IHDR
  *     width×height above {@link MAX_DECODE_PNG_PIXELS} is rejected before
- *     `inflateSync` so a huge IHDR cannot set `maxOutputLength` to the
- *     declared scanline budget. A tiny IDAT still fails later with
- *     `inflated.length < expected`; the budget is the pre-inflate gate.
+ *     `inflateSync` / `Buffer.alloc` so a 69-byte bomb cannot throw.
  *   - Pure functions, no I/O. Safe to test deterministically.
  *
  * Block-grid contract:
@@ -37,27 +35,8 @@ import { inflateSync } from "node:zlib";
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
-/** Fail-closed pixel budget. IHDR is attacker-declared; 8K is 33_177_600. */
-export const MAX_DECODE_PNG_PIXELS = 50_000_000;
-
-/**
- * True when declared IHDR width×height must not reach inflate / RGBA alloc.
- * Uses `floor(MAX/height)` so the compare cannot overflow JS number range.
- */
-export function pngRasterExceedsDecodeBudget(
-  width: number,
-  height: number,
-): boolean {
-  if (
-    !Number.isInteger(width) ||
-    !Number.isInteger(height) ||
-    width <= 0 ||
-    height <= 0
-  ) {
-    return true;
-  }
-  return width > Math.floor(MAX_DECODE_PNG_PIXELS / height);
-}
+/** Fail-closed pixel budget. IHDR is attacker-declared; this admits 8K UHD. */
+export const MAX_DECODE_PNG_PIXELS = 7_680 * 4_320;
 
 export interface RawImage {
   width: number;
@@ -66,20 +45,12 @@ export interface RawImage {
   rgba: Buffer;
 }
 
-/** Inflate seam for tests: prove over-budget IHDR never reaches zlib. */
-export type DecodePngInflate = typeof inflateSync;
-
 /**
  * Decode a PNG buffer to RGBA. Returns null for unsupported variants
  * (interlaced, palette-indexed, 16-bit depth) — caller handles that by
  * falling back to a non-block-grid hash strategy.
- *
- * `inflate` is a test seam. Production callers omit it.
  */
-export function decodePng(
-  png: Buffer,
-  inflate: DecodePngInflate = inflateSync,
-): RawImage | null {
+export function decodePng(png: Buffer): RawImage | null {
   if (png.length < PNG_SIGNATURE.length) return null;
   for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
     if (png[i] !== PNG_SIGNATURE[i]) return null;
@@ -89,36 +60,48 @@ export function decodePng(
   let height = 0;
   let bitDepth = 0;
   let colorType = 0;
+  let compression = 0;
+  let filterMethod = 0;
   let interlace = 0;
   const idatChunks: Buffer[] = [];
+  let sawIhdr = false;
+  let sawIend = false;
 
   while (offset + 8 <= png.length) {
     const length = png.readUInt32BE(offset);
     const type = png.subarray(offset + 4, offset + 8).toString("ascii");
     const dataStart = offset + 8;
     const dataEnd = dataStart + length;
-    if (dataEnd > png.length) return null;
+    if (dataEnd + 4 > png.length) return null;
     if (type === "IHDR") {
-      if (length < 13) return null;
+      if (sawIhdr || offset !== PNG_SIGNATURE.length || length !== 13)
+        return null;
+      sawIhdr = true;
       width = png.readUInt32BE(dataStart);
       height = png.readUInt32BE(dataStart + 4);
       bitDepth = png[dataStart + 8] ?? 0;
       colorType = png[dataStart + 9] ?? 0;
+      compression = png[dataStart + 10] ?? 0;
+      filterMethod = png[dataStart + 11] ?? 0;
       interlace = png[dataStart + 12] ?? 0;
     } else if (type === "IDAT") {
+      if (!sawIhdr) return null;
       idatChunks.push(png.subarray(dataStart, dataEnd));
     } else if (type === "IEND") {
+      if (!sawIhdr || length !== 0) return null;
+      sawIend = true;
       break;
     }
     offset = dataEnd + 4; // skip CRC
   }
 
-  if (width === 0 || height === 0) return null;
+  if (!sawIhdr || !sawIend || width === 0 || height === 0) return null;
   if (bitDepth !== 8) return null;
+  if (compression !== 0 || filterMethod !== 0) return null;
   if (interlace !== 0) return null;
   if (colorType !== 2 && colorType !== 6) return null;
   if (idatChunks.length === 0) return null;
-  if (pngRasterExceedsDecodeBudget(width, height)) {
+  if (height > 0 && width > Math.floor(MAX_DECODE_PNG_PIXELS / height)) {
     return null;
   }
 
@@ -129,15 +112,14 @@ export function decodePng(
 
   let inflated: Buffer;
   try {
-    inflated = inflate(Buffer.concat(idatChunks), {
+    inflated = inflateSync(Buffer.concat(idatChunks), {
       maxOutputLength: expected,
     });
   } catch {
-    // error-policy:J3 malformed or over-budget compressed PNG input is
-    // sanitized to explicit null; decodePng never throws on untrusted bytes.
+    // error-policy:J3 Malformed compressed PNG data produces an explicit invalid result.
     return null;
   }
-  if (inflated.length < expected) return null;
+  if (inflated.length !== expected) return null;
 
   const rgba = Buffer.alloc(width * height * 4);
   const prevRow = Buffer.alloc(stride);
@@ -146,6 +128,7 @@ export function decodePng(
   for (let y = 0; y < height; y += 1) {
     const rowStart = y * (stride + 1);
     const filter = inflated[rowStart] ?? 0;
+    if (filter > 4) return null;
     const src = inflated.subarray(rowStart + 1, rowStart + 1 + stride);
     applyPngFilter(filter, src, prevRow, curRow, bytesPerPixel);
     const dstRowStart = y * width * 4;

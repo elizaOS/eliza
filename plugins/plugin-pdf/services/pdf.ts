@@ -1,6 +1,10 @@
 /**
  * Implements local PDF input validation, text extraction, metadata parsing,
  * and content cleanup for the runtime PDF service.
+ *
+ * Declared page counts are fail-closed at {@link MAX_PDF_PAGES} before any
+ * per-page `getPage` work. File-size already has {@link MAX_PDF_BUFFER_BYTES};
+ * `numPages` is independent attacker-controlled work.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -18,6 +22,18 @@ import type {
 type PdfTextItem = { str: string };
 
 export const MAX_PDF_BUFFER_BYTES = 100 * 1024 * 1024;
+/** Fail-closed page budget. `numPages` is attacker-declared, not a file size. */
+export const MAX_PDF_PAGES = 2_048;
+
+function requirePdfPageCount(numPages: unknown): number {
+  if (typeof numPages !== "number" || !Number.isSafeInteger(numPages) || numPages < 1) {
+    throw new RangeError("PDF page count must be a positive safe integer");
+  }
+  if (numPages > MAX_PDF_PAGES) {
+    throw new RangeError(`PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`);
+  }
+  return numPages;
+}
 
 const PDF_HEADER_BYTES = [0x25, 0x50, 0x44, 0x46, 0x2d] as const;
 const PDF_HEADER_SCAN_BYTES = 1024;
@@ -143,7 +159,7 @@ export class PdfService extends Service {
   async convertPdfToText(pdfBuffer: Buffer | Uint8Array): Promise<string> {
     const uint8Array = validatePdfInput(pdfBuffer);
     const pdf = await getDocumentProxy(uint8Array);
-    const numPages = pdf.numPages;
+    const numPages = requirePdfPageCount(pdf.numPages);
 
     const textPages: string[] = [];
 
@@ -165,7 +181,7 @@ export class PdfService extends Service {
     try {
       const uint8Array = validatePdfInput(pdfBuffer);
       const pdf = await getDocumentProxy(uint8Array);
-      const numPages = pdf.numPages;
+      const numPages = requirePdfPageCount(pdf.numPages);
 
       const { startPage, endPage } = normalizeExtractionOptions(options, numPages);
 
@@ -203,7 +219,7 @@ export class PdfService extends Service {
   async getDocumentInfo(pdfBuffer: Buffer | Uint8Array): Promise<PdfDocumentInfo> {
     const uint8Array = validatePdfInput(pdfBuffer);
     const pdf = await getDocumentProxy(uint8Array);
-    const numPages = pdf.numPages;
+    const numPages = requirePdfPageCount(pdf.numPages);
 
     const metadataResult = await pdf.getMetadata();
     const info =
