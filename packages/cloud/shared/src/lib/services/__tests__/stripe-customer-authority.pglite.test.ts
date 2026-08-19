@@ -837,6 +837,25 @@ describe("Stripe Customer durable authority", () => {
     }
   });
 
+  test("migration rejects an unexpected non-nullability-independent constraint", async () => {
+    const isolated = new PGlite();
+    try {
+      await isolated.exec(isolatedAuthorityBase);
+      const migration = await Bun.file(
+        new URL("../../../db/migrations/0267_stripe_customer_attempts.sql", import.meta.url),
+      ).text();
+      const statements = migration.split("--> statement-breakpoint").filter((item) => item.trim());
+      for (const statement of statements) await isolated.exec(statement);
+      await isolated.exec(`ALTER TABLE stripe_customer_attempts
+        ADD CONSTRAINT stripe_customer_attempts_unexpected_check CHECK (generation < 1000000)`);
+      const postcondition = statements.at(-1);
+      if (!postcondition) throw new Error("migration has no postcondition");
+      await expect(isolated.exec(postcondition)).rejects.toThrow(/constraint collision/i);
+    } finally {
+      await isolated.close();
+    }
+  });
+
   test("catalog postcondition rejects weakened checks, predicates, FKs, columns, defaults, and triggers", async () => {
     const cases = [
       `ALTER TABLE stripe_customer_attempts DROP CONSTRAINT stripe_customer_attempts_generation_check;
