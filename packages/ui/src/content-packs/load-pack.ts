@@ -14,7 +14,123 @@ import {
   validateContentPackManifest,
 } from "@elizaos/shared";
 
-const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;
+/** Manifest reads are short UI requests and must not stall pack loading. */
+export const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;
+
+/** A manifest is metadata, so bound it independently of its asset payloads. */
+export const CONTENT_PACK_MANIFEST_MAX_BYTES = 1024 * 1024;
+
+class ContentPackManifestTooLargeError extends Error {
+  constructor(maxBytes: number) {
+    super(`Content pack manifest exceeds ${maxBytes} bytes`);
+    this.name = "ContentPackManifestTooLargeError";
+  }
+}
+
+function cancelManifestBody(
+  body: Pick<ReadableStream<Uint8Array>, "cancel"> | undefined | null,
+  reason: unknown,
+): void {
+  if (!body) return;
+  // error-policy:J5 allSettled observes a best-effort cancellation rejection;
+  // the original transport/validation failure remains the caller-visible one.
+  void Promise.allSettled([body.cancel(reason)]);
+}
+
+async function readBoundedManifestJson<T>(
+  response: Response,
+  signal: AbortSignal,
+  sizeAbort: AbortController,
+  maxBytes: number,
+): Promise<T> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new RangeError(
+      "Content pack manifest byte limit must be a positive safe integer",
+    );
+  }
+
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && /^\d+$/.test(contentLength)) {
+    const declaredBytes = Number(contentLength);
+    if (!Number.isSafeInteger(declaredBytes) || declaredBytes > maxBytes) {
+      const error = new ContentPackManifestTooLargeError(maxBytes);
+      cancelManifestBody(response.body, error);
+      sizeAbort.abort(error);
+      throw error;
+    }
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Content pack manifest response has no body");
+
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let receivedBytes = 0;
+  let json = "";
+  let bodyComplete = false;
+  let rejectOnAbort: ((reason: unknown) => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectOnAbort = reject;
+  });
+  const onAbort = () => rejectOnAbort?.(signal.reason);
+  if (signal.aborted) onAbort();
+  else signal.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) {
+        bodyComplete = true;
+        break;
+      }
+      receivedBytes += value.byteLength;
+      if (receivedBytes > maxBytes) {
+        const error = new ContentPackManifestTooLargeError(maxBytes);
+        sizeAbort.abort(error);
+        throw error;
+      }
+      json += decoder.decode(value, { stream: true });
+    }
+    json += decoder.decode();
+    return JSON.parse(json) as T;
+  } catch (error) {
+    if (!bodyComplete) cancelManifestBody(reader, error);
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/** Fetch and fully consume one manifest within a single request/body deadline. */
+export async function getContentPackManifestJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number = CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS,
+  maxBytes: number = CONTENT_PACK_MANIFEST_MAX_BYTES,
+  callerSignal?: AbortSignal,
+): Promise<T> {
+  const sizeAbort = new AbortController();
+  const signals = [AbortSignal.timeout(timeoutMs), sizeAbort.signal];
+  if (callerSignal) signals.push(callerSignal);
+  const signal = AbortSignal.any(signals);
+  const response = await fetchImpl(url, {
+    method: "GET",
+    credentials: "omit",
+    cache: "no-store",
+    referrerPolicy: "no-referrer",
+    signal,
+  });
+  if (!response.ok) {
+    const error = new Error(`HTTP ${response.status} ${response.statusText}`);
+    cancelManifestBody(response.body, error);
+    throw error;
+  }
+  return await readBoundedManifestJson<T>(
+    response,
+    signal,
+    sizeAbort,
+    maxBytes,
+  );
+}
 
 export class ContentPackLoadError extends Error {
   constructor(
@@ -43,25 +159,20 @@ export async function loadContentPackFromUrl(
 
   let raw: unknown;
   try {
-    const timeoutSignal = AbortSignal.timeout(
+    raw = await getContentPackManifestJsonWithFetch(
+      manifestUrl,
+      globalThis.fetch,
       CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS,
+      CONTENT_PACK_MANIFEST_MAX_BYTES,
+      options.signal,
     );
-    const signal = options.signal
-      ? AbortSignal.any([options.signal, timeoutSignal])
-      : timeoutSignal;
-    const response = await globalThis.fetch(manifestUrl, {
-      method: "GET",
-      signal,
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    }
-    raw = await response.json();
   } catch (err) {
     // error-policy:J2 retain the source URL while preserving the transport,
     // body-read, timeout, or caller-cancellation failure as the cause.
     throw new ContentPackLoadError(
-      `Failed to fetch pack manifest from ${manifestUrl}`,
+      err instanceof ContentPackManifestTooLargeError
+        ? err.message
+        : `Failed to fetch pack manifest from ${manifestUrl}`,
       source,
       err,
     );
