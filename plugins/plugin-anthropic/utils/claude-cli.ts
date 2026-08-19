@@ -1,8 +1,11 @@
 /**
  * CLI auth mode: `generateViaCli` / `streamViaCli` shell out to `claude -p` via
  * `Bun.spawn` when `ANTHROPIC_AUTH_MODE=claude-cli`, parsing the CLI's JSON
- * result into text plus token usage and emitting a usage event. Bun-only (fails
- * on Node runtimes); does not support `messages`, `tools`, `toolChoice`, or
+ * result into text plus token usage and emitting a usage event. The child is
+ * killed if it never exits, and stdout/stderr are credited against a byte
+ * budget before they become a string — origin `new Response(proc.stdout).text()`
+ * never settled when the stream stayed open. Bun-only (fails on Node
+ * runtimes); does not support `messages`, `tools`, `toolChoice`, or
  * `responseSchema`.
  */
 import type { IAgentRuntime, ModelTypeName, TextStreamResult } from "@elizaos/core";
@@ -86,18 +89,24 @@ function parseUsage(
   };
 }
 
+/** Wall-clock bound for one `claude -p` child. Real generations stay under this. */
+export const CLAUDE_CLI_TIMEOUT_MS = 180_000;
+
+/** Peak stdout or stderr materialized from the child before kill. */
+export const CLAUDE_CLI_MAX_STDIO_BYTES = 8 * 1024 * 1024;
+
+interface ClaudeCliProcess {
+  stdout: ReadableStream<Uint8Array>;
+  stderr: ReadableStream<Uint8Array>;
+  exited: Promise<number>;
+  kill(): void;
+}
+
 function getBunRuntime() {
   const bunRuntime = (
     globalThis as typeof globalThis & {
       Bun?: {
-        spawn(
-          args: string[],
-          options: { stdout: "pipe"; stderr: "pipe" }
-        ): {
-          stdout: ReadableStream<Uint8Array>;
-          stderr: ReadableStream<Uint8Array>;
-          exited: Promise<number>;
-        };
+        spawn(args: string[], options: { stdout: "pipe"; stderr: "pipe" }): ClaudeCliProcess;
       };
     }
   ).Bun;
@@ -107,6 +116,65 @@ function getBunRuntime() {
   }
 
   return bunRuntime;
+}
+
+/** Read a child stream and reject before the allocation exceeds `maxBytes`. */
+export async function readClaudeCliStreamBudget(
+  stream: ReadableStream<Uint8Array>,
+  maxBytes = CLAUDE_CLI_MAX_STDIO_BYTES,
+  label = "stdio"
+): Promise<string> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error(`[Anthropic CLI] ${label} exceeded ${maxBytes} bytes (got ${total})`);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(out);
+}
+
+/**
+ * Collect stdout/stderr from a `claude -p` child and kill it if it never
+ * exits. Tests pass a short timeout so a never-ending stream fails closed
+ * without waiting the production 180s.
+ */
+export async function collectClaudeCliOutput(
+  proc: ClaudeCliProcess,
+  options?: { timeoutMs?: number; maxBytes?: number }
+): Promise<{ output: string; stderr: string; exitCode: number }> {
+  const timeoutMs = options?.timeoutMs ?? CLAUDE_CLI_TIMEOUT_MS;
+  const maxBytes = options?.maxBytes ?? CLAUDE_CLI_MAX_STDIO_BYTES;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    proc.kill();
+  }, timeoutMs);
+  try {
+    const [output, stderr, exitCode] = await Promise.all([
+      readClaudeCliStreamBudget(proc.stdout, maxBytes, "stdout"),
+      readClaudeCliStreamBudget(proc.stderr, maxBytes, "stderr"),
+      proc.exited,
+    ]);
+    if (timedOut) {
+      throw new Error(`[Anthropic CLI] claude -p timed out after ${timeoutMs}ms`);
+    }
+    return { output, stderr, exitCode };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -130,11 +198,7 @@ export async function generateViaCli(
   logger.debug(`[Anthropic CLI] ${modelType} → ${modelName}`);
 
   const proc = getBunRuntime().spawn(args, { stdout: "pipe", stderr: "pipe" });
-  const [output, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const exitCode = await proc.exited;
+  const { output, stderr, exitCode } = await collectClaudeCliOutput(proc);
 
   if (exitCode !== 0) {
     throw new Error(`[Anthropic CLI] claude -p failed (exit ${exitCode}): ${stderr.slice(0, 500)}`);
@@ -196,6 +260,11 @@ export function streamViaCli(
   logger.debug(`[Anthropic CLI] streaming ${modelType} → ${modelName}`);
 
   const proc = getBunRuntime().spawn(args, { stdout: "pipe", stderr: "pipe" });
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    proc.kill();
+  }, CLAUDE_CLI_TIMEOUT_MS);
 
   let fullText = "";
   let usageResolved = false;
@@ -223,11 +292,20 @@ export function streamViaCli(
     const decoder = new TextDecoder();
     let lineBuf = "";
     let streamFailed = false;
+    let decodedBytes = 0;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        decodedBytes += value.byteLength;
+        if (decodedBytes > CLAUDE_CLI_MAX_STDIO_BYTES) {
+          await reader.cancel();
+          proc.kill();
+          throw new Error(
+            `[Anthropic CLI] stdout exceeded ${CLAUDE_CLI_MAX_STDIO_BYTES} bytes (got ${decodedBytes})`
+          );
+        }
 
         lineBuf += decoder.decode(value, { stream: true });
         const lines = lineBuf.split("\n");
@@ -286,16 +364,26 @@ export function streamViaCli(
       // the consumer sees the real error instead of a fabricated "end_turn"
       // with zero chunks (#9324: throw, never fabricate).
       const exitCode = await proc.exited;
+      if (timedOut) {
+        streamFailed = true;
+        throw new Error(`[Anthropic CLI] claude -p timed out after ${CLAUDE_CLI_TIMEOUT_MS}ms`);
+      }
       if (exitCode !== 0) {
         streamFailed = true;
         // error-policy:J6 best-effort diagnostics on an already-failed process —
         // the typed failure below throws regardless of stderr readability.
-        const stderrText = await new Response(proc.stderr).text().catch(() => "");
+        const stderrText = await readClaudeCliStreamBudget(
+          proc.stderr,
+          CLAUDE_CLI_MAX_STDIO_BYTES,
+          "stderr"
+        ).catch(() => "");
+        // error-policy:J6 stderr is diagnostics on an already-failed stream.
         throw new Error(
           `[Anthropic CLI] claude -p stream failed (exit ${exitCode}): ${stderrText.slice(0, 500)}`
         );
       }
     } finally {
+      clearTimeout(timer);
       resolveText(fullText);
       if (!usageResolved) resolveUsage(undefined);
       if (!finishResolved) resolveFinish(streamFailed ? "error" : "end_turn");
