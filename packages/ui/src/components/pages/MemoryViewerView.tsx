@@ -1192,7 +1192,7 @@ export function MemoryViewerView({
               contentHeader={contentHeader}
               data-testid="memory-viewer-view"
             >
-              <div className="flex min-h-0 flex-1 flex-col gap-5">
+              <div className="eliza-chat-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]">
                 <div className="flex w-full flex-col items-start gap-3">
                   <div
                     ref={viewModeControl.ref}

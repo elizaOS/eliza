@@ -106,6 +106,21 @@ afterEach(() => {
 });
 
 describe("MemoryViewerView interface contract", () => {
+  it("keeps memory content scrollable above the persistent chat overlay", async () => {
+    const { container } = render(<MemoryViewerView />);
+
+    await screen.findByTestId("memory-card-mem-1");
+
+    const scroller = container.querySelector(".eliza-chat-scroll");
+    expect(scroller).not.toBeNull();
+    expect(scroller?.className).toContain(
+      "pb-[var(--eliza-chat-clearance,5.25rem)]",
+    );
+    expect(scroller?.className).toContain(
+      "pe-[var(--eliza-chat-side-clearance,0px)]",
+    );
+  });
+
   it("stacks memory cards and exposes expand state", async () => {
     render(<MemoryViewerView />);
 
