@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  assertSafeAuxiliaryOutput,
   assertSafeCertificationOutput,
   verifyBundle,
   writeOwnedFileAtomic,
@@ -186,8 +187,10 @@ function runRollup(argv: string[], io: CliIo): number {
   const json = JSON.stringify(result, null, 2);
   const outPath = parsed.flags.get("--out");
   if (outPath !== undefined) {
-    fs.writeFileSync(outPath, `${json}\n`);
-    io.err(`draft verdicts written: ${outPath}`);
+    const resolvedOut = path.resolve(outPath);
+    assertSafeAuxiliaryOutput(bundleDir, resolvedOut);
+    writeOwnedFileAtomic(resolvedOut, `${json}\n`);
+    io.err(`draft verdicts written: ${resolvedOut}`);
   } else {
     io.out(json);
   }

@@ -98,6 +98,40 @@ describe("formatRunId", () => {
   });
 });
 
+describe("bundle run directory ownership", () => {
+  it.each(["../escape", "nested/run", "nested\\run", ".", ".."])(
+    "rejects an unsafe custom run id %s before creating outside the root",
+    (runId) => {
+      const parent = tmpDir();
+      const root = path.join(parent, "runs");
+      expect(() =>
+        createBundle({
+          rootDir: root,
+          runId,
+          provenance: PROVENANCE,
+          now: fixedClock(),
+        }),
+      ).toThrow(expect.objectContaining({ code: "BUNDLE_RUN_ID_INVALID" }));
+      expect(fs.existsSync(path.join(parent, "escape"))).toBe(false);
+    },
+  );
+
+  it("does not follow a pre-existing run-directory symlink", () => {
+    const root = tmpDir();
+    const external = tmpDir();
+    fs.symlinkSync(external, path.join(root, "claimed"), "dir");
+    expect(() =>
+      createBundle({
+        rootDir: root,
+        runId: "claimed",
+        provenance: PROVENANCE,
+        now: fixedClock(),
+      }),
+    ).toThrow(expect.objectContaining({ code: "BUNDLE_DIR_EXISTS" }));
+    expect(fs.readdirSync(external)).toEqual([]);
+  });
+});
+
 describe("EvidenceBundle", () => {
   it("places artifacts by the documented kind→family mapping", async () => {
     const bundle = await buildSampleBundle(tmpDir(), tmpDir());
@@ -458,6 +492,44 @@ describe("EvidenceBundle", () => {
       ).toBe(false);
     } finally {
       fs.readSync = originalRead;
+    }
+  });
+
+  it("rejects a bundle destination replaced before the copied bytes are bound", async () => {
+    const sources = tmpDir();
+    const sourcePath = writeFixture(sources, "destination-race.log", "source");
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    const destination = path.join(
+      bundle.dir,
+      "misc",
+      "test",
+      "destination-race.log",
+    );
+    const originalFsync = fs.fsyncSync;
+    let replaced = false;
+    fs.fsyncSync = ((descriptor: number) => {
+      originalFsync(descriptor);
+      if (!replaced && fs.existsSync(destination)) {
+        replaced = true;
+        fs.renameSync(destination, `${destination}.copied`);
+        fs.writeFileSync(destination, "forged");
+      }
+    }) as typeof fs.fsyncSync;
+    try {
+      await expect(
+        bundle.addArtifact(sourcePath, {
+          kind: "log",
+          source: "test",
+          producedBy: "test",
+        }),
+      ).rejects.toMatchObject({ code: "ARTIFACT_SOURCE_UNSTABLE" });
+      expect(replaced).toBe(true);
+    } finally {
+      fs.fsyncSync = originalFsync;
     }
   });
 

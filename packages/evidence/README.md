@@ -13,6 +13,10 @@ it verifies and reads the bundle manifest. Certification (#14546) signs
 sha256(manifest bytes), which is why the manifest is written in a canonical,
 byte-stable form.
 
+The run ID is one normalized path leaf. Bundle creation claims that directory
+atomically and refuses existing directories or aliases; a caller-supplied run
+ID cannot traverse outside the configured bundle root.
+
 ## Schema contract (frozen, `schema: 1`)
 
 ```ts
@@ -142,7 +146,9 @@ the run are included even when their resulting bytes equal the prior bytes.
 - **VLM Q&A (#14544):** same pattern, `kind: 'qa'`, `qa.json` beside pixels.
 - **Certify (#14546):** runs the matrix, ingests, calls `verifyBundle`, signs
   `FinalizeResult.manifestSha256`, writes `certification.json` (an envelope
-  file, exempt from the unlisted-file sweep).
+  file, exempt from the unlisted-file sweep). Draft rollup output stays outside
+  the finalized bundle and cannot replace its manifest, metadata, artifacts, or
+  reserved certification envelope.
 - **CI gate (#14547):** verifies the signature against the committed public
   key and re-runs `verifyBundle` when the bundle is available.
 

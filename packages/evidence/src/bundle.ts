@@ -315,8 +315,37 @@ export function assertSafeCertificationOutput(
   }
 }
 
-/** Copy one single-link regular file through a stable no-follow descriptor. */
-function materialize(sourcePath: string, destPath: string): void {
+/** Keep non-envelope certification outputs outside the finalized bundle. */
+export function assertSafeAuxiliaryOutput(
+  bundleDir: string,
+  outputPath: string,
+): void {
+  const physicalBundle = physicalPath(bundleDir);
+  const resolvedOutput = path.resolve(outputPath);
+  const physicalOutput = path.join(
+    physicalPath(path.dirname(resolvedOutput)),
+    path.basename(resolvedOutput),
+  );
+  const relative = path.relative(physicalBundle, physicalOutput);
+  const insideBundle =
+    relative === "" ||
+    (relative !== ".." && !relative.startsWith(`..${path.sep}`));
+  if (insideBundle) {
+    throw new EvidenceError(
+      `auxiliary output may not replace bundle contents: ${outputPath}`,
+      {
+        code: "CERTIFICATION_OUTPUT_UNSAFE",
+        context: { bundleDir, outputPath },
+      },
+    );
+  }
+}
+
+/** Copy and hash one single-link file through stable no-follow descriptors. */
+function materialize(
+  sourcePath: string,
+  destPath: string,
+): { sha256: string; bytes: number } {
   const sourceLstat = fs.lstatSync(sourcePath, { bigint: true });
   if (
     sourceLstat.isSymbolicLink() ||
@@ -355,11 +384,13 @@ function materialize(sourcePath: string, destPath: string): void {
       0o600,
     );
     destinationCreated = true;
+    const hash = createHash("sha256");
     const chunk = Buffer.allocUnsafe(1024 * 1024);
     let total = 0n;
     for (;;) {
       const bytesRead = fs.readSync(source, chunk, 0, chunk.length, null);
       if (bytesRead === 0) break;
+      hash.update(chunk.subarray(0, bytesRead));
       let offset = 0;
       while (offset < bytesRead) {
         const written = fs.writeSync(
@@ -380,16 +411,25 @@ function materialize(sourcePath: string, destPath: string): void {
     }
     fs.fsyncSync(destination);
     const after = fs.fstatSync(source, { bigint: true });
+    const stored = fs.fstatSync(destination, { bigint: true });
+    const published = fs.lstatSync(destPath, { bigint: true });
     if (
       after.nlink !== 1n ||
       total !== after.size ||
-      !sameFileIdentity(before, after)
+      !sameFileIdentity(before, after) ||
+      !stored.isFile() ||
+      stored.nlink !== 1n ||
+      stored.size !== total ||
+      published.isSymbolicLink() ||
+      published.nlink !== 1n ||
+      !sameInode(stored, published)
     ) {
       throw new EvidenceError(
-        `artifact source changed while being copied: ${sourcePath}`,
+        `artifact source or destination changed while being copied: ${sourcePath}`,
         { code: "ARTIFACT_SOURCE_UNSTABLE", context: { sourcePath } },
       );
     }
+    return { sha256: hash.digest("hex"), bytes: Number(total) };
   } catch (error) {
     if (destination !== undefined) {
       fs.closeSync(destination);
@@ -450,14 +490,48 @@ export class EvidenceBundle {
     this.runId =
       options.runId ??
       formatRunId(started, options.provenance.commit, options.provenance.tier);
-    this.dir = path.join(options.rootDir, this.runId);
-    if (fs.existsSync(this.dir)) {
-      throw new EvidenceError(`bundle directory already exists: ${this.dir}`, {
-        code: "BUNDLE_DIR_EXISTS",
-        context: { dir: this.dir },
-      });
+    if (
+      this.runId === "." ||
+      this.runId === ".." ||
+      this.runId.includes("/") ||
+      this.runId.includes("\\") ||
+      this.runId.includes("\0") ||
+      this.runId.normalize("NFC") !== this.runId
+    ) {
+      throw new EvidenceError(
+        `bundle run id is not a safe path leaf: ${this.runId}`,
+        {
+          code: "BUNDLE_RUN_ID_INVALID",
+          context: { runId: this.runId },
+        },
+      );
     }
-    fs.mkdirSync(this.dir, { recursive: true });
+    this.dir = path.join(options.rootDir, this.runId);
+    fs.mkdirSync(options.rootDir, { recursive: true });
+    try {
+      // A non-recursive mkdir claims the run leaf atomically. Recursive mkdir
+      // would accept a symlink planted between an existence check and creation.
+      fs.mkdirSync(this.dir, { mode: 0o700 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new EvidenceError(
+          `bundle directory already exists: ${this.dir}`,
+          {
+            code: "BUNDLE_DIR_EXISTS",
+            cause: error,
+            context: { dir: this.dir },
+          },
+        );
+      }
+      throw new EvidenceError(
+        `could not create bundle directory: ${this.dir}`,
+        {
+          code: "BUNDLE_DIR_CREATE_FAILED",
+          cause: error,
+          context: { dir: this.dir },
+        },
+      );
+    }
   }
 
   private assertOpen(operation: string): void {
@@ -549,8 +623,7 @@ export class EvidenceBundle {
     }
     const destPath = path.join(this.dir, ...bundlePath.split("/"));
     fs.mkdirSync(path.dirname(destPath), { recursive: true });
-    materialize(filePath, destPath);
-    const { sha256, bytes } = await sha256File(destPath);
+    const { sha256, bytes } = materialize(filePath, destPath);
     const entry: ArtifactEntry = {
       path: bundlePath,
       sha256,
