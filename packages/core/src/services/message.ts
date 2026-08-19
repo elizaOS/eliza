@@ -435,10 +435,14 @@ const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 
 function buildDirectChannelResponseFieldSelection(
 	fields: ReadonlyArray<Pick<ResponseHandlerFieldEvaluator, "name">>,
+	options?: { includeShouldRespond?: boolean },
 ): ResponseHandlerFieldSelectionOptions {
 	const includeFieldNames = new Set<string>();
 	for (const field of fields) {
-		if (!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name)) {
+		if (
+			!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name) ||
+			(options?.includeShouldRespond === true && field.name === "shouldRespond")
+		) {
 			includeFieldNames.add(field.name);
 		}
 	}
@@ -1515,6 +1519,7 @@ type ResolvedMessageOptions = {
 	roomHandlerLease?: RoomHandlerLease;
 	onSettledActionResult?: (result: ActionResult) => void;
 	onTrajectoryTerminalOwner?: (owner: "run") => void;
+	onInferenceTimingSummary?: (summary: InferenceTurnSummary) => void;
 	runTerminalOwner?: MessageRunTerminalOwner;
 };
 
@@ -4503,6 +4508,22 @@ direct/private rules:
 Return one {{handleResponseToolName}} JSON object; no prose, markdown, or thinking.
 `;
 
+// Live voice keeps the compact direct-message prompt and its single model call,
+// but must retain the runtime's engagement decision. This pays no additional
+// inference round trip while allowing natural acknowledgements and ambient
+// speech to end in deliberate silence.
+const VOICE_DIRECT_MESSAGE_HANDLER_TEMPLATE =
+	DIRECT_MESSAGE_HANDLER_TEMPLATE.replace(
+		"task: Plan this direct message.",
+		"task: Decide whether to respond, then plan this live voice turn.",
+	).replace("- Never invent omitted shouldRespond.\n", "");
+const VOICE_ENGAGEMENT_RULES = [
+	"- shouldRespond=RESPOND for a completed caller question, request, substantive statement, or conversational continuation.",
+	"- shouldRespond=IGNORE for content-free acknowledgements, non-speech/noise, or ambient speech clearly not addressed to the agent.",
+	"- shouldRespond=STOP only when the caller explicitly asks the agent to disengage or end the conversation.",
+	"- Do not use IGNORE merely because the answer is brief, uncertain, or requires a tool.",
+].join("\n");
+
 /**
  * Answer-free refusal stubs, matched against the WHOLE normalized reply after
  * an optional leading apology ("I'm sorry, but …") is stripped. A refusal that
@@ -4794,21 +4815,27 @@ function renderMessageHandlerInstructions(
 	availableContexts: readonly ContextDefinition[],
 	options?: {
 		directMessage?: boolean;
+		voiceDirectMessage?: boolean;
 		groupTriage?: boolean;
 		responseHandlerFields?: string;
 	},
 ): string {
-	// Three tiers: DM/private (compact, no shouldRespond), unaddressed
+	// Four tiers: DM/private (compact, no shouldRespond), live voice DM
+	// (compact + shouldRespond), unaddressed
 	// group-triage (compact + shouldRespond — most such turns end in IGNORE,
 	// so they must not pay the full ~16KB rule block), and the full template
 	// for addressed/respond-likely turns.
 	const compactTier =
-		options?.directMessage === true || options?.groupTriage === true;
-	const baselineTemplate = options?.directMessage
-		? DIRECT_MESSAGE_HANDLER_TEMPLATE
-		: options?.groupTriage
-			? GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE
-			: messageHandlerTemplate;
+		options?.directMessage === true ||
+		options?.voiceDirectMessage === true ||
+		options?.groupTriage === true;
+	const baselineTemplate = options?.voiceDirectMessage
+		? VOICE_DIRECT_MESSAGE_HANDLER_TEMPLATE
+		: options?.directMessage
+			? DIRECT_MESSAGE_HANDLER_TEMPLATE
+			: options?.groupTriage
+				? GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE
+				: messageHandlerTemplate;
 	const baseline = resolveOptimizedPromptForRuntime(
 		runtime,
 		selectMessageHandlerTask(availableContexts),
@@ -4824,12 +4851,19 @@ function renderMessageHandlerInstructions(
 		},
 		template: baseline,
 	}).trim();
-	const renderedWithSharedRules = compactTier
-		? [rendered, "", `- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`].join(
+	const renderedWithVoiceRules = options?.voiceDirectMessage
+		? [rendered, "", "voice engagement rules:", VOICE_ENGAGEMENT_RULES].join(
 				"\n",
 			)
+		: rendered;
+	const renderedWithSharedRules = compactTier
+		? [
+				renderedWithVoiceRules,
+				"",
+				`- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
+			].join("\n")
 		: [
-				rendered,
+				renderedWithVoiceRules,
 				"",
 				"## Shared Response Quality Rules",
 				`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
@@ -4852,6 +4886,7 @@ function renderMessageHandlerModelInput(
 	availableContexts: readonly ContextDefinition[] = [],
 	options?: {
 		directMessage?: boolean;
+		voiceDirectMessage?: boolean;
 		groupTriage?: boolean;
 		responseHandlerFields?: string;
 	},
@@ -7724,6 +7759,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
+		const voiceDirectMessageChannel =
+			args.message.content?.channelType === ChannelType.VOICE_DM;
 		// Ambient turn = a positively-identified unaddressed text-group turn
 		// (structural classifier only — channel type + addressing + source
 		// metadata, never message text; anything uncertain fails open to
@@ -7759,7 +7796,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// point) but render the compressed prompt slices; the schema is
 		// unaffected by `compact` so the HANDLE_RESPONSE contract is identical.
 		const responseHandlerFieldSelection = directMessageChannel
-			? buildDirectChannelResponseFieldSelection(responseHandlerFields)
+			? buildDirectChannelResponseFieldSelection(responseHandlerFields, {
+					includeShouldRespond: voiceDirectMessageChannel,
+				})
 			: groupTriageTurn
 				? { compact: true }
 				: undefined;
@@ -7781,7 +7820,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			context,
 			availableContexts,
 			{
-				directMessage: directMessageChannel,
+				directMessage: directMessageChannel && !voiceDirectMessageChannel,
+				voiceDirectMessage: voiceDirectMessageChannel,
 				groupTriage: groupTriageTurn,
 				responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			},
@@ -12341,6 +12381,11 @@ export class DefaultMessageService implements IMessageService {
 								onTrajectoryTerminalOwner: options.onTrajectoryTerminalOwner,
 							}
 						: {}),
+					...(options?.onInferenceTimingSummary
+						? {
+								onInferenceTimingSummary: options.onInferenceTimingSummary,
+							}
+						: {}),
 				};
 
 				const deliveredVisibleTexts = new Set<string>();
@@ -12625,6 +12670,21 @@ export class DefaultMessageService implements IMessageService {
 						? emitInferenceTiming(inferenceTimer)
 						: null;
 					if (inferenceSummary) {
+						try {
+							opts.onInferenceTimingSummary?.(inferenceSummary);
+						} catch (error) {
+							// error-policy:J7 host timing export must not replace the
+							// user-visible result whose summary it observes.
+							runtime.logger.warn(
+								{ error, turnId: inferenceSummary.turnId },
+								"Inference timing summary callback failed",
+							);
+							runtime.reportError(
+								"MessageService.inferenceTimingSummary",
+								error,
+								{ turnId: inferenceSummary.turnId },
+							);
+						}
 						detachPostDeliverySideEffect(
 							runtime,
 							"persist_inference_timing",

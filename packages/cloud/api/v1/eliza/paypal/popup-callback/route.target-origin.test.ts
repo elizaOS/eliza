@@ -10,7 +10,7 @@ const app = new Hono<AppEnv>().route("/callback", route);
 async function render(configuredOrigin?: string): Promise<string> {
   const response = await app.request("/callback?code=secret&state=state", {}, {
     AGENT_APP_ORIGIN: configuredOrigin,
-  } as AppEnv["Bindings"]);
+  } as unknown as AppEnv["Bindings"]);
   expect(response.status).toBe(200);
   return response.text();
 }

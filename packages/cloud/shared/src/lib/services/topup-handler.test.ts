@@ -149,6 +149,41 @@ test("exact_permit quote fails closed when facilitator setup fails despite a con
   expect(getSignerAddress).not.toHaveBeenCalled();
 });
 
+test("topup quote exposes the required x402 v2 resource in its body and header", async () => {
+  const handler = createTopupHandler({
+    amount: 10,
+    getSourceId: (walletAddress, paymentId) => `${walletAddress}:${paymentId}`,
+  });
+  const url = "https://api.example.test/api/v1/topup/10";
+
+  const response = await handler(
+    new Request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        walletAddress: "0x1111111111111111111111111111111111111111",
+      }),
+    }),
+    { X402_RECIPIENT_ADDRESS: "0x2222222222222222222222222222222222222222" },
+  );
+
+  expect(response.status).toBe(402);
+  const paymentRequired = await response.json();
+  expect(paymentRequired).toMatchObject({
+    x402Version: 2,
+    resource: {
+      url,
+      description: "Top up $10",
+      mimeType: "application/json",
+    },
+    accepts: [{ resource: url }],
+  });
+
+  const header = response.headers.get("PAYMENT-REQUIRED");
+  expect(header).not.toBeNull();
+  expect(JSON.parse(Buffer.from(header!, "base64").toString("utf-8"))).toEqual(paymentRequired);
+});
+
 test("a settled top-up creates a zero-balance wallet account then credits only the paid amount", async () => {
   settle.mockResolvedValueOnce({
     success: true,

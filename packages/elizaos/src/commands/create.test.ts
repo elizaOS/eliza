@@ -5,7 +5,8 @@
 
 import * as clack from "@clack/prompts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { renderTemplateTree } from "../scaffold.js";
+import { getTemplateById } from "../manifest.js";
+import { buildPluginTemplateValues, renderTemplateTree } from "../scaffold.js";
 import { create } from "./create.js";
 
 vi.mock("@clack/prompts", () => ({
@@ -13,6 +14,8 @@ vi.mock("@clack/prompts", () => ({
   confirm: vi.fn(),
   intro: vi.fn(),
   isCancel: vi.fn(() => false),
+  note: vi.fn(),
+  outro: vi.fn(),
   select: vi.fn(),
   spinner: vi.fn(() => ({
     message: vi.fn(),
@@ -82,5 +85,29 @@ describe("create command", () => {
     expect(clack.cancel).toHaveBeenCalledWith("Project name is required.");
     expect(renderTemplateTree).not.toHaveBeenCalled();
     expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it("pins the scaffolded core dependency to the CLI's own version, not the npm latest tag", async () => {
+    vi.mocked(getTemplateById).mockReturnValueOnce({
+      description: "Plugin",
+      id: "plugin",
+      languages: ["typescript"],
+      name: "Plugin",
+      version: 1,
+    } as never);
+
+    await create("proof", {
+      skipUpstream: true,
+      template: "plugin",
+      yes: true,
+    });
+
+    // The template substitutes __ELIZAOS_VERSION__ into the scaffold's
+    // @elizaos/core dependency. "latest" resolves to the v1 line on npm while
+    // the template targets the v2 API the CLI itself is built against, so the
+    // pinned version must track the CLI's own lockstep-published version.
+    expect(buildPluginTemplateValues).toHaveBeenCalledWith(
+      expect.objectContaining({ elizaVersion: "test-version" }),
+    );
   });
 });

@@ -65,6 +65,10 @@ mock.module("@/db/client", () => ({
   runWithDbCacheAsync: async <T>(fn: () => Promise<T>) => await fn(),
 }));
 mock.module("@/lib/runtime/cloud-bindings", () => ({
+  getCloudAwareEnv: () => process.env,
+  getCloudBinding: () => undefined,
+  hasCloudBindingsContext: () => false,
+  runWithCloudBindings: <T>(_env: unknown, fn: () => T) => fn(),
   runWithCloudBindingsAsync: async <T>(_env: unknown, fn: () => Promise<T>) =>
     await fn(),
 }));
@@ -255,7 +259,12 @@ mock.module("@/lib/mobile-push/apns-provider", () => ({
   },
 }));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { warn: loggerWarn },
+  logger: {
+    debug: () => undefined,
+    error: () => undefined,
+    info: () => undefined,
+    warn: loggerWarn,
+  },
 }));
 
 const { SharedRuntimeConversation } = await import(
@@ -391,6 +400,31 @@ async function pushOperation(
     }),
   );
 }
+
+test("rejects malformed channel metadata before runtime dispatch", async () => {
+  const object = new SharedRuntimeConversation(
+    makeState(new Map<string, unknown>(), []) as never,
+    {} as never,
+  );
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "bridge",
+        agent: AGENT_FIXTURE,
+        channel: { type: "NOT_A_CHANNEL", source: "forged source" },
+        rpc: {
+          jsonrpc: "2.0",
+          id: "invalid-channel",
+          method: "message.send",
+          params: { text: "hi", roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ code: "invalid_channel" });
+});
 
 test("mobile push registration is durable, idempotent, iOS-only, and removable", async () => {
   const data = new Map<string, unknown>();

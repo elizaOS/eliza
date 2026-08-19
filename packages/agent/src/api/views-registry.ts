@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, promises as fs } from "node:fs";
+import { existsSync, promises as fs, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -45,6 +45,42 @@ const DEFAULT_VIEW_TYPE: ViewType = "gui";
 const AGENT_PACKAGE_DIR = resolveNearestPackageDirSync(
   path.dirname(fileURLToPath(import.meta.url)),
 );
+
+function resolveRealPathSync(p: string): string {
+  const absolute = path.resolve(p);
+  try {
+    return realpathSync(absolute);
+  } catch {
+    // error-policy:J3 missing leaf — walk to longest existing parent,
+    // realpath that, rejoin tail. Prevents symlink-dir escape via
+    // not-yet-created descendants.
+  }
+  const tail: string[] = [];
+  let current = absolute;
+  while (true) {
+    const parent = path.dirname(current);
+    if (parent === current) return absolute;
+    tail.unshift(path.basename(current));
+    try {
+      return path.join(realpathSync(parent), ...tail);
+    } catch {
+      current = parent;
+    }
+  }
+}
+
+function isWithin(child: string, parent: string): boolean {
+  const resolvedChild = path.resolve(child);
+  const resolvedParent = path.resolve(parent);
+  if (resolvedChild === resolvedParent) return true;
+  const rel = path.relative(resolvedParent, resolvedChild);
+  return (
+    rel.length > 0 &&
+    rel !== ".." &&
+    !rel.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(rel)
+  );
+}
 
 function normalizeViewType(viewType: ViewDeclaration["viewType"]): ViewType {
   return viewType ?? DEFAULT_VIEW_TYPE;
@@ -204,10 +240,13 @@ function resolveNearestPackageDirSync(startDir: string): string | undefined {
 export function getBundleDiskPath(entry: ViewRegistryEntry): string | null {
   if (!entry.bundlePath || !entry.pluginDir) return null;
   const resolved = path.resolve(entry.pluginDir, entry.bundlePath);
-  // Prevent path traversal outside the plugin package root.
-  const packageRoot = `${path.resolve(entry.pluginDir)}${path.sep}`;
-  if (!resolved.startsWith(packageRoot)) return null;
-  return resolved;
+  // Prevent path traversal outside the plugin package root — resolve through
+  // longest existing parent so a directory symlink cannot smuggle access.
+  const realResolved = resolveRealPathSync(resolved);
+  const realRoot = resolveRealPathSync(path.resolve(entry.pluginDir));
+  if (realResolved !== realRoot && !isWithin(realResolved, realRoot))
+    return null;
+  return realResolved;
 }
 
 /**
@@ -217,9 +256,11 @@ export function getBundleDiskPath(entry: ViewRegistryEntry): string | null {
 export function getFrameDiskPath(entry: ViewRegistryEntry): string | null {
   if (!entry.framePath || !entry.pluginDir) return null;
   const resolved = path.resolve(entry.pluginDir, entry.framePath);
-  const packageRoot = `${path.resolve(entry.pluginDir)}${path.sep}`;
-  if (!resolved.startsWith(packageRoot)) return null;
-  return resolved;
+  const realResolved = resolveRealPathSync(resolved);
+  const realRoot = resolveRealPathSync(path.resolve(entry.pluginDir));
+  if (realResolved !== realRoot && !isWithin(realResolved, realRoot))
+    return null;
+  return realResolved;
 }
 
 /**
@@ -232,9 +273,11 @@ type HeroLookup = Pick<ViewRegistryEntry, "pluginDir" | "heroImagePath">;
 export function getHeroDiskPath(entry: HeroLookup): string | null {
   if (!entry.heroImagePath || !entry.pluginDir) return null;
   const resolved = path.resolve(entry.pluginDir, entry.heroImagePath);
-  const packageRoot = `${path.resolve(entry.pluginDir)}${path.sep}`;
-  if (!resolved.startsWith(packageRoot)) return null;
-  return resolved;
+  const realResolved = resolveRealPathSync(resolved);
+  const realRoot = resolveRealPathSync(path.resolve(entry.pluginDir));
+  if (realResolved !== realRoot && !isWithin(realResolved, realRoot))
+    return null;
+  return realResolved;
 }
 
 function hasDeclaredHeroOnDiskSync(entry: HeroLookup): boolean {
@@ -266,11 +309,17 @@ export async function findHeroOnDisk(
 
   // Fall back to probing `assets/hero.<ext>` in the plugin dir.
   const packageRoot = path.resolve(entry.pluginDir);
+  const realPackageRoot = resolveRealPathSync(packageRoot);
   for (const ext of HERO_EXTENSIONS) {
     const candidate = path.join(packageRoot, "assets", `hero${ext}`);
-    if (await fileExists(candidate)) {
+    const realCandidate = resolveRealPathSync(candidate);
+    if (
+      (realCandidate === realPackageRoot ||
+        isWithin(realCandidate, realPackageRoot)) &&
+      (await fileExists(realCandidate))
+    ) {
       return {
-        absolutePath: candidate,
+        absolutePath: realCandidate,
         contentType: HERO_CONTENT_TYPES[ext] ?? "image/png",
       };
     }
@@ -579,16 +628,20 @@ async function buildEntry(
   let bundleSize: number | undefined;
   if (!view.bundleUrl && pluginDir && view.bundlePath) {
     const bundleAbs = path.resolve(pluginDir, view.bundlePath);
-    const packageRoot = `${path.resolve(pluginDir)}${path.sep}`;
-    if (bundleAbs.startsWith(packageRoot)) {
-      const bundleAvailable = await fileExists(bundleAbs);
+    const realBundleAbs = resolveRealPathSync(bundleAbs);
+    const realPackageRoot = resolveRealPathSync(path.resolve(pluginDir));
+    if (
+      realBundleAbs === realPackageRoot ||
+      isWithin(realBundleAbs, realPackageRoot)
+    ) {
+      const bundleAvailable = await fileExists(realBundleAbs);
       if (bundleAvailable && !requiresFrameDocument) {
         available = true;
       }
       if (bundleAvailable) {
         const [hash, stat] = await Promise.all([
-          computeFileHash(bundleAbs),
-          fs.stat(bundleAbs).catch(() => null),
+          computeFileHash(realBundleAbs),
+          fs.stat(realBundleAbs).catch(() => null),
         ]);
         if (hash) bundleHash = hash;
         if (stat) bundleSize = stat.size;
@@ -598,8 +651,8 @@ async function buildEntry(
         // sizes at debug and warn once per physical file for truly large output.
         const sizeKb = stat ? stat.size / 1024 : 0;
         if (stat && stat.size > VIEW_BUNDLE_WARNING_BYTES) {
-          if (!warnedLargeBundlePaths.has(bundleAbs)) {
-            warnedLargeBundlePaths.add(bundleAbs);
+          if (!warnedLargeBundlePaths.has(realBundleAbs)) {
+            warnedLargeBundlePaths.add(realBundleAbs);
             logger.warn(
               {
                 src: "ViewRegistry",
@@ -623,16 +676,20 @@ async function buildEntry(
   let frameSize: number | undefined;
   if (!view.frameUrl && pluginDir && view.framePath) {
     const frameAbs = path.resolve(pluginDir, view.framePath);
-    const packageRoot = `${path.resolve(pluginDir)}${path.sep}`;
-    if (frameAbs.startsWith(packageRoot)) {
-      const frameAvailable = await fileExists(frameAbs);
+    const realFrameAbs = resolveRealPathSync(frameAbs);
+    const realPackageRoot = resolveRealPathSync(path.resolve(pluginDir));
+    if (
+      realFrameAbs === realPackageRoot ||
+      isWithin(realFrameAbs, realPackageRoot)
+    ) {
+      const frameAvailable = await fileExists(realFrameAbs);
       if (frameAvailable) {
         available = true;
       }
       if (frameAvailable) {
         const [hash, stat] = await Promise.all([
-          computeFileHash(frameAbs),
-          fs.stat(frameAbs).catch(() => null),
+          computeFileHash(realFrameAbs),
+          fs.stat(realFrameAbs).catch(() => null),
         ]);
         if (hash) frameHash = hash;
         if (stat) frameSize = stat.size;

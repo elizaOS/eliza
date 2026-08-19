@@ -105,6 +105,7 @@ import {
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { registerBuiltinTypes } from "./builtins";
+import { assertFormControlGraphs } from "./form-control-graph";
 import {
   getAutofillData,
   getSessionById,
@@ -229,6 +230,7 @@ export class FormService extends Service {
     if (!Array.isArray(definition.controls)) {
       throw new Error("Form controls must be an array");
     }
+    assertFormControlGraphs(definition.controls);
 
     const controlKeys = new Set<string>();
     for (const control of definition.controls) {

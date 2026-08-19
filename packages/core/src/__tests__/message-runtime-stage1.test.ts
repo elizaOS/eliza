@@ -1714,6 +1714,58 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
+	it("keeps shouldRespond in the compact live-voice Stage-1 call", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				shouldRespond: "IGNORE",
+				contexts: ["simple"],
+				replyText: "",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.VOICE_DM,
+				text: "uh huh",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall).toBeDefined();
+		if (!firstCall) {
+			throw new Error("Expected the voice Stage-1 model call to be captured");
+		}
+		const params = firstCall[1] as {
+			tools?: Array<{ parameters?: { required?: string[] } }>;
+			responseSkeleton?: { spans?: Array<{ key?: string }> };
+			messages?: Array<{ content?: unknown }>;
+		};
+		const required = params.tools?.[0]?.parameters?.required ?? [];
+		expect(required).toContain("shouldRespond");
+		expect(required).toContain("contexts");
+		expect(required).not.toContain("facts");
+		expect(
+			params.responseSkeleton?.spans?.some(
+				(span) => span.key === "shouldRespond",
+			),
+		).toBe(true);
+		const systemContent = String(params.messages?.[0]?.content ?? "");
+		expect(systemContent).toContain(
+			"task: Decide whether to respond, then plan this live voice turn.",
+		);
+		expect(systemContent).toContain(
+			"shouldRespond=IGNORE for content-free acknowledgements",
+		);
+		expect(systemContent.length).toBeLessThan(5_000);
+	});
+
 	it("keeps generic programming questions on the simple path even when stale attachments linger in state", async () => {
 		// Regression for the false-positive routing where a verb like "read"
 		// in a normal dev question ("read a large file line by line in node")
