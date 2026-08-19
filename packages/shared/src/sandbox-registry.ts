@@ -22,8 +22,9 @@
  *     `gateway-webhook` both speak native TCP Redis).
  * Neither path adds a runtime dependency (this module is also bundled for
  * mobile via the agent): REST uses `fetch`, TCP uses the `node:net` builtin.
- * TCP replies are byte-capped: a declared bulk string above 1 MiB fails closed
- * instead of concatenating until the 10s socket timeout.
+ * TCP replies are byte- and chunk-capped: oversized declarations and tiny-
+ * chunk floods fail closed instead of retaining or repeatedly copying until
+ * the 10s socket timeout.
  */
 
 import net from "node:net";
@@ -32,7 +33,9 @@ import { ElizaError, logger } from "@elizaos/core";
 import {
   appendRegistryTcpBytes,
   isRegistryTcpBulkLengthAllowed,
+  isRegistryTcpChunkCountAllowed,
   MAX_REGISTRY_TCP_BYTES,
+  MAX_REGISTRY_TCP_CHUNKS,
 } from "./sandbox-registry-tcp-budget.ts";
 
 /** Hard cap on a single TCP register/refresh round-trip. */
@@ -261,7 +264,8 @@ export class SandboxRegistry {
 
     return new Promise<unknown[]>((resolve, reject) => {
       let settled = false;
-      let buffer = Buffer.alloc(0);
+      let buffer: Buffer = Buffer.alloc(0);
+      let chunkCount = 0;
 
       const finish = (err: Error | null, replies?: unknown[]): void => {
         if (settled) return;
@@ -281,6 +285,16 @@ export class SandboxRegistry {
       socket.once(secure ? "secureConnect" : "connect", onConnect);
 
       socket.on("data", (chunk: Buffer) => {
+        chunkCount += 1;
+        if (!isRegistryTcpChunkCountAllowed(chunkCount)) {
+          finish(
+            new ElizaError(
+              `Sandbox registry TCP reply exceeded ${MAX_REGISTRY_TCP_CHUNKS} chunks`,
+              { code: "SANDBOX_REGISTRY_TCP_REPLY_TOO_LARGE" },
+            ),
+          );
+          return;
+        }
         const next = appendRegistryTcpBytes(buffer, chunk);
         if (!next.ok) {
           finish(
@@ -298,7 +312,13 @@ export class SandboxRegistry {
           | RespError
           | undefined;
         if (firstErr) {
-          finish(new Error(`Redis error: ${firstErr.message}`));
+          finish(
+            firstErr.code
+              ? new ElizaError(`Redis error: ${firstErr.message}`, {
+                  code: firstErr.code,
+                })
+              : new Error(`Redis error: ${firstErr.message}`),
+          );
           return;
         }
         // Strip the AUTH/SELECT preamble replies; return only command results.
@@ -310,7 +330,10 @@ export class SandboxRegistry {
 
 /** A RESP `-ERR ...` reply, kept distinct so callers can detect failures. */
 class RespError {
-  constructor(public readonly message: string) {}
+  constructor(
+    public readonly message: string,
+    public readonly code?: string,
+  ) {}
 }
 
 /** Encode commands as a single RESP2 buffer (inline pipelining). */
@@ -366,6 +389,7 @@ function parseRespReplies(
           return {
             value: new RespError(
               `bulk string length ${line} exceeds TCP budget`,
+              "SANDBOX_REGISTRY_TCP_REPLY_TOO_LARGE",
             ),
             next: afterLine,
           };

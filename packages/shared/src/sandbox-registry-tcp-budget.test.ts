@@ -6,12 +6,17 @@ import { describe, expect, it } from "vitest";
 import {
   appendRegistryTcpBytes,
   isRegistryTcpBulkLengthAllowed,
+  isRegistryTcpChunkCountAllowed,
   MAX_REGISTRY_TCP_BYTES,
+  MAX_REGISTRY_TCP_CHUNKS,
 } from "./sandbox-registry-tcp-budget.ts";
 
 describe("appendRegistryTcpBytes", () => {
   it("accepts a last-fit honest chunk", () => {
-    const first = appendRegistryTcpBytes(Buffer.alloc(0), Buffer.from("OK\r\n"));
+    const first = appendRegistryTcpBytes(
+      Buffer.alloc(0),
+      Buffer.from("OK\r\n"),
+    );
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     expect(first.buffer.toString()).toBe("OK\r\n");
@@ -41,5 +46,17 @@ describe("isRegistryTcpBulkLengthAllowed", () => {
     );
     expect(isRegistryTcpBulkLengthAllowed(Number.NaN)).toBe(false);
     expect(isRegistryTcpBulkLengthAllowed(-2)).toBe(false);
+    expect(isRegistryTcpBulkLengthAllowed(1.5)).toBe(false);
+  });
+});
+
+describe("isRegistryTcpChunkCountAllowed", () => {
+  it("caps adversarial tiny-chunk fragmentation", () => {
+    expect(isRegistryTcpChunkCountAllowed(0)).toBe(true);
+    expect(isRegistryTcpChunkCountAllowed(MAX_REGISTRY_TCP_CHUNKS)).toBe(true);
+    expect(isRegistryTcpChunkCountAllowed(MAX_REGISTRY_TCP_CHUNKS + 1)).toBe(
+      false,
+    );
+    expect(isRegistryTcpChunkCountAllowed(Number.NaN)).toBe(false);
   });
 });
