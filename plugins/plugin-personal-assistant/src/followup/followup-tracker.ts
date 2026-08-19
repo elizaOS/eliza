@@ -193,6 +193,13 @@ function resolveLearnedCadenceDays(contact: ContactInfo): number | null {
   }
   if (gaps.length === 0) return null;
 
+  // Sort gaps ascending before indexing: the gaps are derived from
+  // chronologically-ordered interactionTimes and so are themselves in temporal
+  // order, not value order. Without this sort `gaps[middle]` is the middle gap
+  // in time, not the statistical median, which skews the learned threshold for
+  // any contact with irregular cadence (issue #22444).
+  gaps.sort((a, b) => a - b);
+
   const middle = Math.floor(gaps.length / 2);
   const median =
     gaps.length % 2 === 1
