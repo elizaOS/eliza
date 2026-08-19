@@ -105,6 +105,10 @@ export const stripeCheckoutOrders = pgTable(
       "stripe_checkout_orders_request_digest_check",
       sql`${table.request_digest} ~ '^[0-9a-f]{64}$'`,
     ),
+    request_key_check: check(
+      "stripe_checkout_orders_request_key_check",
+      sql`${table.client_request_key} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'`,
+    ),
     pack_shape_check: check(
       "stripe_checkout_orders_pack_shape_check",
       sql`(${table.purchase_type} = 'credit_pack' AND ${table.credit_pack_id} IS NOT NULL) OR (${table.purchase_type} = 'custom_amount' AND ${table.credit_pack_id} IS NULL)`,
@@ -112,6 +116,10 @@ export const stripeCheckoutOrders = pgTable(
     settlement_shape_check: check(
       "stripe_checkout_orders_settlement_shape_check",
       sql`(${table.status} = 'settled' AND ${table.stripe_checkout_session_id} IS NOT NULL AND ${table.stripe_payment_intent_id} IS NOT NULL AND ${table.credit_transaction_id} IS NOT NULL AND ${table.settled_at} IS NOT NULL) OR (${table.status} <> 'settled' AND ${table.credit_transaction_id} IS NULL AND ${table.settled_at} IS NULL)`,
+    ),
+    phase_shape_check: check(
+      "stripe_checkout_orders_phase_shape_check",
+      sql`(${table.status} IN ('quoted','provider_started','provider_ambiguous') AND ${table.stripe_checkout_session_id} IS NULL AND ${table.stripe_payment_intent_id} IS NULL) OR (${table.status} = 'delivered' AND ${table.stripe_checkout_session_id} IS NOT NULL AND ${table.stripe_payment_intent_id} IS NULL) OR ${table.status} IN ('settled','failed')`,
     ),
   }),
 );

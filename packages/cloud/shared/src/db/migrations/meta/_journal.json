@@ -1821,6 +1821,13 @@
       "when": 1791921600000,
       "tag": "0260_domain_purchase_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 260,
+      "version": "7",
+      "when": 1792008000000,
+      "tag": "0261_stripe_checkout_orders",
+      "breakpoints": true
     }
   ]
 }
