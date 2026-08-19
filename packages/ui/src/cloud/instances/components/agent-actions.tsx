@@ -473,12 +473,13 @@ export function ElizaAgentActions({
           }),
         );
         if (outcome.sourceCleanup === "not-cleaned") {
-          // The user is switched either way; a leaked shared row is only a
-          // duplicate list entry, so tell them instead of hiding it.
+          // The user is switched either way. Keep the still-authoritative row
+          // visible and describe the cleanup failure without offering a Shared
+          // delete control that the product intentionally does not expose.
           toast.info(
             t("cloud.containers.agentActions.upgradeSharedLeftBehind", {
               defaultValue:
-                "The old shared agent entry could not be removed automatically — you can delete it from your agents list.",
+                "The Shared Agent remains visible because automatic cleanup did not complete. Try again later or contact support.",
             }),
           );
         }

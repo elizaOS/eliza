@@ -8277,7 +8277,7 @@
   "cloud.containers.agentActions.upgradeConfirm": "Yes, upgrade",
   "cloud.containers.agentActions.upgradeStarted": "Upgrade started — provisioning your dedicated agent. Keep this page open.",
   "cloud.containers.agentActions.upgradeComplete": "Upgrade complete — your conversation moved to the dedicated agent.",
-  "cloud.containers.agentActions.upgradeSharedLeftBehind": "The old shared agent entry could not be removed automatically — you can delete it from your agents list.",
+  "cloud.containers.agentActions.upgradeSharedLeftBehind": "The Shared Agent remains visible because automatic cleanup did not complete. Try again later or contact support.",
   "cloud.containers.agentActions.upgradeNotReady": "The dedicated agent did not become ready in time. Your shared agent keeps working — try the upgrade again to resume it.",
   "cloud.containers.agentActions.upgradeFailed": "Upgrade failed",
   "cloud.containers.agentActions.upgradeInsufficientCredits": "Not enough credits to upgrade. Add funds at /cloud/billing and try again.",

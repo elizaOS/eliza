@@ -38,12 +38,10 @@ export default function AgentsPage() {
   }
 
   const agents: AgentListItemDto[] = agentsQuery.data ?? [];
-  const hasDedicatedAgent = agents.some(
-    (agent) => agent.executionTier !== "shared",
-  );
-  const visibleAgents = hasDedicatedAgent
-    ? agents.filter((agent) => agent.executionTier !== "shared")
-    : agents;
+  // The list response does not expose a canonical/superseded cutover marker.
+  // Keep every authoritative row visible: a dedicated target exists before its
+  // readiness/import handoff completes, so presence alone cannot retire Shared.
+  const visibleAgents = agents;
   const sharedCount = visibleAgents.filter(
     (a) => a.executionTier === "shared",
   ).length;
