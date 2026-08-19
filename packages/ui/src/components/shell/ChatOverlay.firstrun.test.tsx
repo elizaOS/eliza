@@ -222,8 +222,8 @@ describe("ChatOverlay first-run gating", () => {
 
     const sheet = screen.getByTestId("chat-sheet");
     const thread = screen.getByTestId("chat-thread");
-    expect(sheet.style.maxHeight).toBe("768px");
-    expect(thread.style.flexBasis).toBe("768px");
+    expect(sheet.style.maxHeight).toBe("756px");
+    expect(thread.style.flexBasis).toBe("756px");
   });
 
   it("opens pinned at HALF and ignores Escape while onboarding is active", () => {

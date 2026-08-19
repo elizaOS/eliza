@@ -257,6 +257,8 @@ const CHAT_PANEL_THEME = {
 // bug: the open-sheet grabber was black while the in-panel pill bar was white).
 // Fixed white matches the panel's `--muted-strong` in every context.
 const HANDLE_BAR_COLOR = "rgba(255, 255, 255, 0.96)";
+/** Keeps the rounded desktop sheet and handle inside the native host clip. */
+const DESKTOP_HOST_TOP_BREATHING_ROOM_PX = 12;
 
 // Shared easing for the overlay's cheap motion path. Open/close must stay
 // opacity/translate only: animating blur/filter or scaling a scrollable
@@ -3001,12 +3003,18 @@ export function ChatOverlay({
   // Use the frame (not just `maximized`) so the max-height stays full for the
   // whole restore drag — otherwise frame 1 clamps the panel to the inset height
   // and it pops shorter before the finger has moved.
+  const desktopHostPanelMaxH = Math.max(
+    0,
+    fullPanelMaxH - DESKTOP_HOST_TOP_BREATHING_ROOM_PX,
+  );
   const panelMaxH = fullBleedFrame
     ? fullPanelMaxH
     : fillHostAtHalf
-      ? fullPanelMaxH
+      ? desktopHostPanelMaxH
       : insetPanelMaxH;
-  const restingPanelMaxH = fillHostAtHalf ? fullPanelMaxH : insetPanelMaxH;
+  const restingPanelMaxH = fillHostAtHalf
+    ? desktopHostPanelMaxH
+    : insetPanelMaxH;
   const maxOverPull = Math.max(0, fullPanelMaxH - restingPanelMaxH);
 
   // History-height detents: COLLAPSED (0) → HALF → FULL — the thread's ideal
