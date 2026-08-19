@@ -55,6 +55,16 @@ function makeManager() {
   return manager;
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 const ASSIGNMENT = {
   connectionId: "conn-1",
   organizationId: "org-1",
@@ -77,7 +87,7 @@ afterEach(() => {
 });
 
 describe("connectBot / disconnectBot ownership race", () => {
-  test("does not overwrite a legitimate disconnect with an error status", async () => {
+  test("revokes ownership before an awaited disconnect session save", async () => {
     const fetchMock = mock(async () => new Response(null, { status: 200 }));
     globalThis.fetch = fetchMock as typeof fetch;
 
@@ -85,6 +95,11 @@ describe("connectBot / disconnectBot ownership race", () => {
     const gm = manager as unknown as {
       connectBot: (a: typeof ASSIGNMENT) => Promise<void>;
       disconnectBot: (id: string) => Promise<void>;
+    };
+
+    const save = deferred();
+    (manager as unknown as { redis: unknown }).redis = {
+      setex: mock(() => save.promise),
     };
 
     let rejectLogin: ((err: Error) => void) | undefined;
@@ -95,23 +110,83 @@ describe("connectBot / disconnectBot ownership race", () => {
 
     const connectPromise = gm.connectBot(ASSIGNMENT);
 
-    // Disconnect while login() is still in flight -- this is the legitimate,
-    // caller-initiated teardown.
-    await gm.disconnectBot(ASSIGNMENT.connectionId);
-    expect(statusPosts(fetchMock).at(-1)).toMatchObject({
-      status: "disconnected",
-    });
+    // The session save is deliberately stalled. Ownership must already be
+    // revoked even though disconnectBot() has not reached client.destroy().
+    const disconnectPromise = gm.disconnectBot(ASSIGNMENT.connectionId);
 
-    // Now the destroyed client's login() rejects (as it would in reality
-    // once the underlying connection is torn down mid-handshake).
+    // The old login fails while teardown is still awaiting the session save.
     rejectLogin?.(new Error("destroyed mid-login"));
     await connectPromise;
+    save.resolve();
+    await disconnectPromise;
 
     const posts = statusPosts(fetchMock);
     expect(posts.map((p: { status: string }) => p.status)).not.toContain(
       "error",
     );
     expect(posts.at(-1)).toMatchObject({ status: "disconnected" });
+  });
+
+  test("destroys a replaced client and ignores its queued error callback", async () => {
+    const fetchMock = mock(async () => new Response(null, { status: 200 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const manager = makeManager();
+    const gm = manager as unknown as {
+      connectBot: (a: typeof ASSIGNMENT) => Promise<void>;
+    };
+
+    const firstLogin = deferred();
+    pendingLogin = () => firstLogin.promise;
+    const firstConnect = gm.connectBot(ASSIGNMENT);
+    const firstClient = createdClients[0];
+    const queuedError = firstClient.listeners(
+      discordActual.Events.Error,
+    )[0] as (error: Error) => Promise<void>;
+
+    pendingLogin = () => Promise.resolve();
+    await gm.connectBot(ASSIGNMENT);
+
+    expect(firstClient.destroy).toHaveBeenCalledTimes(1);
+    await queuedError(new Error("stale socket error"));
+    firstLogin.reject(new Error("replaced login"));
+    await firstConnect;
+
+    expect(statusPosts(fetchMock)).toEqual([]);
+  });
+
+  test("shutdown revokes ownership before destroying an in-flight login", async () => {
+    const shutdownResponse = deferred<Response>();
+    const fetchMock = mock(async (url: string) => {
+      if (url.includes("/gateway/shutdown")) return shutdownResponse.promise;
+      return new Response(null, { status: 200 });
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const manager = makeManager();
+    const gm = manager as unknown as {
+      connectBot: (a: typeof ASSIGNMENT) => Promise<void>;
+    };
+
+    const login = deferred();
+    const save = deferred();
+    (manager as unknown as { redis: unknown }).redis = {
+      setex: mock(() => save.promise),
+      del: mock(() => Promise.resolve()),
+      srem: mock(() => Promise.resolve()),
+    };
+    pendingLogin = () => login.promise;
+    const connectPromise = gm.connectBot(ASSIGNMENT);
+    const shutdownPromise = manager.shutdown();
+
+    await Promise.resolve();
+    login.reject(new Error("shutdown destroyed login"));
+    await connectPromise;
+    expect(statusPosts(fetchMock)).toEqual([]);
+
+    save.resolve();
+    shutdownResponse.resolve(new Response(null, { status: 200 }));
+    await shutdownPromise;
   });
 
   test("still reports error status when login fails with no concurrent disconnect", async () => {
