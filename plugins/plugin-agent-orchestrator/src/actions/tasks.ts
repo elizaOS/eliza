@@ -1365,7 +1365,7 @@ async function runCreateLegacy(
       let createAssignedAppDir: string | undefined;
       let createSlugRoute: ResolvedWorkdirRoute | undefined;
       if (!createProvisionedWorkspaceId) {
-        const slugDir = appBuildSlugWorkdir(task, label, sessionWorkdir);
+        const slugDir = appBuildSlugWorkdir(task, label, sessionWorkdir, runtime);
         if (slugDir) {
           sessionWorkdir = slugDir;
           isolateWorkdir = false;
@@ -2295,10 +2295,26 @@ function appBuildSlugWorkdir(
   task: string,
   label: string,
   resolvedWorkdir: string | undefined,
+  runtime?: IAgentRuntime,
 ): string | undefined {
-  if (!resolvedWorkdir || !isAppBuildTask(task)) return undefined;
+  // Decision logging: a silent undefined here drops the build into scratch
+  // with no served URL and the park that follows is undiagnosable from the
+  // channel (live 2026-08-19: name-picker replay landed in workspaces with
+  // every placement fix live and nothing said why).
+  const declined = (reason: string): undefined => {
+    if (runtime) {
+      logger(runtime).info(
+        `[app-slug] no slug dir (${reason}); build stays in ${resolvedWorkdir ?? "<none>"}`,
+      );
+    }
+    return undefined;
+  };
+  if (!resolvedWorkdir) return declined("no resolved workdir");
+  if (!isAppBuildTask(task)) return declined("task text is not an app build");
   const deploy = resolveAppDeployConfig();
-  if (deploy.target !== "custom" || !deploy.customAppsDir) return undefined;
+  if (deploy.target !== "custom" || !deploy.customAppsDir) {
+    return declined(`deploy target=${deploy.target ?? "unset"}`);
+  }
   const appsDir = nodePathResolve(deploy.customAppsDir);
   const workdir = nodePathResolve(resolvedWorkdir);
   // A repo/route workdir OUTSIDE the apps tree still gets the slug dir: the
@@ -2316,7 +2332,7 @@ function appBuildSlugWorkdir(
   ) {
     const appsRepoRoot = nodePathResolve(appsDir, "..", "..");
     if (workdir.startsWith(appsRepoRoot + nodePathSep)) {
-      return undefined;
+      return declined("workdir is a deliberate repo location inside the apps checkout");
     }
   }
   const baseSlug =
@@ -2335,7 +2351,7 @@ function appBuildSlugWorkdir(
     }
     slug = `${baseSlug}-${n}`;
   }
-  return undefined;
+  return declined("slug collision cap reached");
 }
 
 /** The registered workspace whose path is `workdir`, if any. Planner-supplied
@@ -2792,6 +2808,7 @@ async function runSpawnAgent(
         task,
         typeof params.label === "string" && params.label ? params.label : task,
         effectiveWorkdir,
+        runtime,
       );
       if (slugDir) {
         effectiveWorkdir = slugDir;
