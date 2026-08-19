@@ -66,6 +66,7 @@ import type {
   MeetingTranscriptionPipeline,
   ResolvedMeetingBotConfig,
 } from "./types.js";
+import { isMeetingInsufficientCreditsError } from "./types.js";
 
 /** Pipeline instance plus the optional retained-audio accessor. */
 export interface MeetingPipelineInstance extends MeetingTranscriptionPipeline {
@@ -259,11 +260,17 @@ export class MeetingService extends Service {
     }
 
     // Reserve the meeting SYNCHRONOUSLY before the first await. The dup-check
-    // above and this insert run in one uninterrupted turn, so two concurrent
-    // same-URL joins cannot both slip past the check and launch two bots
-    // (TOCTOU). Every construction here (pipeline, writer, room id) is
-    // synchronous; the awaited world/room/writer setup follows with the session
-    // already claimed. Any failure rolls the reservation back (see catch).
+    // above and the `this.sessions.set` below run in one uninterrupted turn, so
+    // two concurrent same-URL joins cannot both slip past the check and launch
+    // two bots (TOCTOU) — even on the billing-metered path. Constructing the
+    // billing session, pipeline, writer, and room id is all synchronous; the
+    // credit reservation (`billing.reserveInitial`) and the world/room/writer
+    // setup are awaited only AFTER the session is claimed, inside the guarded
+    // block below. Deferring `reserveInitial` past `sessions.set` is what closes
+    // the window where two joins used to both suspend at the reservation await
+    // and then both insert; the loser now rejects at the dup-check with
+    // `already_joined` and never creates a billing session. Any failure in the
+    // guarded block rolls the reservation back and frees the meeting (see catch).
     const sessionId = crypto.randomUUID() as UUID;
     const roomId = createUniqueUuid(this.runtime, `meeting:${sessionId}`);
     const botName =
@@ -282,21 +289,6 @@ export class MeetingService extends Service {
       request,
       maxDurationMs,
     });
-
-    if (billing) {
-      try {
-        await billing.reserveInitial();
-      } catch (err) {
-        if (
-          err instanceof Error &&
-          "code" in err &&
-          err.code === "insufficient_credits"
-        ) {
-          throw new MeetingJoinError("insufficient_credits", err.message);
-        }
-        throw err;
-      }
-    }
 
     const pipeline = this.deps.createPipeline({
       runtime: this.runtime,
@@ -355,11 +347,17 @@ export class MeetingService extends Service {
     };
     this.sessions.set(sessionId, session);
 
-    // With the reservation held, do the awaited setup. If world/room ensure or
-    // the transcript writer's initial row write throws, release the reservation
-    // so the meeting is joinable again and future joins are not permanently
-    // rejected with `already_joined` by a stranded non-terminal session.
+    // With the reservation held, do the awaited setup. The credit reservation
+    // (`reserveInitial`) runs here — AFTER `this.sessions.set` — so it can no
+    // longer interleave two same-URL joins past the dup-check. If the reservation,
+    // world/room ensure, or the transcript writer's initial row write throws,
+    // release the reservation so the meeting is joinable again and future joins
+    // are not permanently rejected with `already_joined` by a stranded
+    // non-terminal session.
     try {
+      if (billing) {
+        await billing.reserveInitial();
+      }
       const worldId = await this.ensureMeetingsWorld();
       await this.runtime.ensureRoomExists({
         id: roomId,
@@ -399,6 +397,11 @@ export class MeetingService extends Service {
         );
       }
       this.sessions.delete(sessionId);
+      // Map an insufficient-credits reservation failure to the typed join error
+      // (routes surface it as 402) only after the reservation has been released.
+      if (isMeetingInsufficientCreditsError(err)) {
+        throw new MeetingJoinError("insufficient_credits", err.message);
+      }
       logger.error(
         {
           sessionId,

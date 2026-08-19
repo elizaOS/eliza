@@ -161,6 +161,76 @@ describe("MeetingService.requestJoin — validation", () => {
     expect(adapters[0].session).not.toBeNull();
   });
 
+  it("reserves the meeting synchronously on the BILLING-metered path too, so concurrent same-URL joins launch ONE bot and charge ONCE (MJ-4 TOCTOU + billing)", async () => {
+    // Regression for the cloud/organization-managed path: `createBillingSession`
+    // returns a session, so `await billing.reserveInitial()` used to run BETWEEN
+    // the dup-check and the session insert. Two concurrent same-URL joins both
+    // passed the (empty) dup-check, both suspended at reserveInitial, then both
+    // resumed and inserted sessions — launching two notetaker bots into the same
+    // meeting and reserving billing credits twice. The reservation is now taken
+    // synchronously before any await, so the loser rejects at the dup-check.
+    const billingA = new FakeMeetingBillingSession();
+    const billingB = new FakeMeetingBillingSession();
+    const { service, adapters } = makeService(undefined, [billingA, billingB]);
+    const results = await Promise.allSettled([
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+      // Same meeting, dashes stripped — canonicalized to the same native id.
+      service.requestJoin({
+        platform: "google_meet",
+        meetingUrl: "https://meet.google.com/abcdefghij",
+      }),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+      code: "already_joined",
+    });
+    // Exactly one live session and one bot launched — no double capture.
+    expect(service.listSessions({ active: true })).toHaveLength(1);
+    await adapters[0].started;
+    expect(adapters[0].session).not.toBeNull();
+    // Credits were reserved exactly once across the two billing sessions: the
+    // losing join rejected at the dup-check and never created/charged a billing
+    // session, so no double reservation and no double debit occurred.
+    expect(billingA.reserveInitialCalls + billingB.reserveInitialCalls).toBe(1);
+    expect(billingB.reserveInitialCalls).toBe(0);
+  });
+
+  it("releases the reservation when the initial credit reservation itself throws mid-join, so a retry succeeds (BL-5 + reserveInitial)", async () => {
+    // Moving `reserveInitial` after `sessions.set` means a reservation failure
+    // must also roll back the just-claimed session; otherwise a transient credit
+    // ledger error would permanently strand the meeting behind `already_joined`.
+    const failing = new FakeMeetingBillingSession();
+    failing.initialReserveError = new Error("credit ledger timeout");
+    const retryBilling = new FakeMeetingBillingSession();
+    const { service, adapters } = makeService(undefined, [
+      failing,
+      retryBilling,
+    ]);
+
+    await expect(
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+    ).rejects.toThrow("credit ledger timeout");
+    // The failed reservation neither stranded a non-terminal session nor left a
+    // dangling hold: the reservation was released through reconcile("error").
+    expect(service.listSessions()).toHaveLength(0);
+    expect(failing.reconcileCalls).toEqual(["error"]);
+    expect(adapters[0].session).toBeNull();
+
+    // Because the reservation rolled back, a retry for the same meeting URL is
+    // not blocked by `already_joined` and reserves through the second session.
+    const dto = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    expect(dto.status).toBe("requested");
+    expect(service.listSessions({ active: true })).toHaveLength(1);
+    expect(retryBilling.reserveInitialCalls).toBe(1);
+    expect(retryBilling.reconcileCalls).toEqual([]);
+  });
+
   it("releases the reservation when join setup throws, so a retry succeeds (BL-5)", async () => {
     const billing = new FakeMeetingBillingSession();
     const retryBilling = new FakeMeetingBillingSession();
