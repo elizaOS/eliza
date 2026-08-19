@@ -22,10 +22,20 @@ vi.mock("../lib/use-session-auth", () => ({
 vi.mock("./components/eliza-agent-pricing-banner", () => ({
   ElizaAgentPricingBanner: ({
     creditBalance,
+    sharedCount,
+    runningCount,
+    idleCount,
   }: {
     creditBalance: number | null;
+    sharedCount: number;
+    runningCount: number;
+    idleCount: number;
   }) => (
-    <div>Balance: {creditBalance === null ? "unavailable" : creditBalance}</div>
+    <div>
+      Balance: {creditBalance === null ? "unavailable" : creditBalance} ·
+      Shared: {sharedCount} · Paid running: {runningCount} · Paid idle:{" "}
+      {idleCount}
+    </div>
   ),
 }));
 vi.mock("./components/eliza-agents-table", () => ({
@@ -80,7 +90,11 @@ describe("AgentsPage balance isolation", () => {
     render(<AgentsPage />);
 
     expect(screen.getByText("Persistent agent")).toBeTruthy();
-    expect(screen.getByText("Balance: unavailable")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Balance: unavailable · Shared: 1 · Paid running: 0 · Paid idle: 0",
+      ),
+    ).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });

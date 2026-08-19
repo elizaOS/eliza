@@ -20,6 +20,7 @@ import { Clock, DollarSign, TrendingDown, Zap } from "lucide-react";
 import { useT } from "../lib/i18n";
 
 interface ElizaAgentPricingBannerProps {
+  sharedCount: number;
   runningCount: number;
   idleCount: number;
   /** null = balance unavailable (e.g. still loading); renders as "—". */
@@ -27,6 +28,7 @@ interface ElizaAgentPricingBannerProps {
 }
 
 export function ElizaAgentPricingBanner({
+  sharedCount,
   runningCount,
   idleCount,
   creditBalance,
@@ -34,15 +36,18 @@ export function ElizaAgentPricingBanner({
   const t = useT();
   const totalMonthlyCost =
     runningCount * MONTHLY_RUNNING_COST + idleCount * MONTHLY_IDLE_COST;
+  const hasBillableAgents = runningCount + idleCount > 0;
+  const hasAgents = hasBillableAgents || sharedCount > 0;
 
   const hoursRemaining =
-    creditBalance !== null
+    creditBalance !== null && hasBillableAgents
       ? estimateHoursRemaining(creditBalance, runningCount, idleCount)
       : null;
 
   const isLowBalance =
-    creditBalance !== null && creditBalance < AGENT_PRICING.LOW_CREDIT_WARNING;
-  const hasAgents = runningCount + idleCount > 0;
+    hasBillableAgents &&
+    creditBalance !== null &&
+    creditBalance < AGENT_PRICING.LOW_CREDIT_WARNING;
 
   return (
     <BrandCard className="relative overflow-hidden">
@@ -125,15 +130,19 @@ export function ElizaAgentPricingBanner({
               {hasAgents ? `${formatUSD(totalMonthlyCost)}/mo` : "—"}
             </p>
             <p className="text-[10px] text-white/30 font-mono">
-              {hasAgents
+              {hasBillableAgents
                 ? t("cloud.containers.pricingBanner.runningIdleSummary", {
                     defaultValue: "{{run}} running · {{idle}} idle",
                     run: runningCount,
                     idle: idleCount,
                   })
-                : t("cloud.containers.pricingBanner.noAgents", {
-                    defaultValue: "No agents",
-                  })}
+                : sharedCount > 0
+                  ? t("cloud.containers.pricingBanner.sharedFree", {
+                      defaultValue: "Shared Agent is free",
+                    })
+                  : t("cloud.containers.pricingBanner.noAgents", {
+                      defaultValue: "No agents",
+                    })}
             </p>
           </div>
 
@@ -162,15 +171,6 @@ export function ElizaAgentPricingBanner({
             </p>
           </div>
         </div>
-
-        {/* Minimum deposit note */}
-        <p className="text-[10px] text-white/25 mt-3 font-mono">
-          {t("cloud.containers.pricingBanner.minSuspend", {
-            defaultValue: "Min. {{min}} · Suspends at {{warn}}",
-            min: formatUSD(AGENT_PRICING.MINIMUM_DEPOSIT),
-            warn: formatUSD(AGENT_PRICING.LOW_CREDIT_WARNING),
-          })}
-        </p>
       </div>
     </BrandCard>
   );

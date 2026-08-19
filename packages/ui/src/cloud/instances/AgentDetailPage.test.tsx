@@ -46,15 +46,7 @@ vi.mock("./components/eliza-connect-button", () => ({
 }));
 
 import { PageHeaderProvider } from "../../cloud-ui/components/layout";
-import AgentDetailPage, {
-  formatDate,
-  formatRelativeShort,
-} from "./AgentDetailPage";
-
-const t = vi.fn(
-  (_key: string, options?: { defaultValue?: string }) =>
-    options?.defaultValue ?? _key,
-) as never;
+import AgentDetailPage from "./AgentDetailPage";
 
 const baseAgent: AgentDetailDto = {
   id: "test-agent-1",
@@ -94,89 +86,9 @@ function renderPage(agent: AgentDetailDto) {
   );
 }
 
-describe("AgentDetailPage date formatting", () => {
+describe("AgentDetailPage product detail", () => {
   afterEach(() => {
     cleanup();
-    vi.useRealTimers();
-  });
-
-  it("renders an unavailable fallback for malformed non-null dates", async () => {
-    expect(formatDate("not-a-date")).toBe("—");
-    expect(formatRelativeShort("not-a-date", t)).toBe("Never");
-  });
-
-  it("preserves valid and null date behavior", () => {
-    expect(formatDate(null)).toBe("—");
-    expect(formatRelativeShort(null, t)).toBe("Never");
-    expect(formatRelativeShort(new Date().toISOString(), t)).toBe("Just now");
-  });
-
-  it("renders intentional fallbacks for malformed non-null timestamps", () => {
-    const { container } = renderPage({
-      ...baseAgent,
-      createdAt: "not-a-date",
-      lastHeartbeatAt: "not-a-date",
-    });
-
-    expect(container.textContent).not.toContain("Invalid Date");
-    expect(screen.getAllByText("—")).toHaveLength(3);
-    expect(screen.getByText("Never")).toBeTruthy();
-  });
-
-  it("renders intentional fallbacks outside the ECMAScript TimeClip range", () => {
-    const outsideTimeClipRange = "+275760-09-13T00:00:00.001Z";
-    expect(Number.isNaN(new Date(outsideTimeClipRange).getTime())).toBe(true);
-
-    const { container } = renderPage({
-      ...baseAgent,
-      createdAt: outsideTimeClipRange,
-      lastHeartbeatAt: outsideTimeClipRange,
-    });
-
-    expect(container.textContent).not.toContain("Invalid Date");
-    expect(screen.getAllByText("—")).toHaveLength(3);
-    expect(screen.getByText("Never")).toBeTruthy();
-  });
-
-  it("preserves ordinary rendered date, time, and relative-time values", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-12T12:00:00.000Z"));
-    const createdAt = "2026-08-11T09:15:00.000Z";
-    const lastHeartbeatAt = "2026-08-12T11:30:00.000Z";
-
-    renderPage({ ...baseAgent, createdAt, lastHeartbeatAt });
-
-    expect(screen.getByText(formatDate(createdAt))).toBeTruthy();
-    expect(
-      screen.getByText(
-        new Date(createdAt).toLocaleTimeString(undefined, {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      ),
-    ).toBeTruthy();
-    expect(screen.getByText("30m ago")).toBeTruthy();
-    expect(screen.getByText(formatDate(lastHeartbeatAt))).toBeTruthy();
-    expect(screen.queryByText("—")).toBeNull();
-    expect(screen.queryByText("Never")).toBeNull();
-  });
-
-  it("replaces a duplicate old heartbeat date with its exact time", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-17T12:00:00.000Z"));
-    const lastHeartbeatAt = "2026-08-13T18:42:00.000Z";
-
-    renderPage({ ...baseAgent, lastHeartbeatAt });
-
-    expect(screen.getAllByText(formatDate(lastHeartbeatAt))).toHaveLength(1);
-    expect(
-      screen.getByText(
-        new Date(lastHeartbeatAt).toLocaleTimeString(undefined, {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      ),
-    ).toBeTruthy();
   });
 
   it("presents shared agents without infrastructure or admin panels", () => {
@@ -196,7 +108,11 @@ describe("AgentDetailPage date formatting", () => {
       bridgeUrl: "https://private-bridge.example",
     });
 
+    expect(
+      screen.getByRole("heading", { name: "Eliza Cloud Agent" }),
+    ).toBeTruthy();
     expect(screen.getByText("Shared Agent")).toBeTruthy();
+    expect(screen.getAllByText("running")).toHaveLength(1);
     expect(screen.getByText("Free")).toBeTruthy();
     expect(screen.getByText("Lifecycle actions")).toBeTruthy();
     for (const rejected of [
@@ -212,6 +128,12 @@ describe("AgentDetailPage date formatting", () => {
       "Wallet",
       "Transactions",
       "Policies",
+      "Database",
+      "Connected",
+      "Created",
+      "Last Heartbeat",
+      "test-agent-1",
+      "Timestamp Test Agent",
       "private-image",
       "private-host",
     ]) {

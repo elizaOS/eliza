@@ -38,7 +38,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   BrandButton,
-  BrandCard,
 } from "@elizaos/ui/cloud-ui";
 import {
   ExternalLink,
@@ -490,8 +489,8 @@ export function ElizaAgentActions({
   }
 
   return (
-    <BrandCard className="relative" cornerSize="md">
-      <div className="relative z-10 space-y-4">
+    <>
+      <div className="space-y-4">
         {isSleeping && (
           <div
             className="flex items-start gap-3 rounded-sm border border-white/10 bg-white/5 p-3"
@@ -839,7 +838,7 @@ export function ElizaAgentActions({
                 }}
               >
                 {t("cloud.containers.agentActions.addCredits", {
-                  defaultValue: "Add credits",
+                  defaultValue: "Add funds to upgrade",
                 })}
               </Button>
             )}
@@ -905,6 +904,6 @@ export function ElizaAgentActions({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </BrandCard>
+    </>
   );
 }
