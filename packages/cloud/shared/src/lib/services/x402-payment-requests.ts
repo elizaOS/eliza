@@ -270,13 +270,25 @@ function buildExtensions(network: NetworkConfig): PaymentRequiredExtensions | un
   };
 }
 
+type ResourceInfo = {
+  url: string;
+  description: string;
+  mimeType: string;
+};
+
 function buildPaymentRequired(
   requirements: PaymentRequirements,
+  resource: ResourceInfo,
   extensions?: PaymentRequiredExtensions,
 ) {
+  // x402 v2 (section 5.1.2) requires a top-level `resource` object on
+  // PaymentRequired. The v1 `resource`/`description`/`mimeType` fields on the
+  // accepts[0] entry are retained additively for dual-version clients; a strict
+  // v2 facilitator validates the top-level object below, not the accepts entry.
   return {
     x402Version: 2,
     error: "payment_required",
+    resource,
     accepts: [requirements],
     ...(extensions && { extensions }),
   };
@@ -623,7 +635,11 @@ class X402PaymentRequestsService {
       },
     };
 
-    const paymentRequired = buildPaymentRequired(requirements, extensions);
+    const paymentRequired = buildPaymentRequired(
+      requirements,
+      { url: resource, description, mimeType: "application/json" },
+      extensions,
+    );
     const payment = await cryptoPaymentsRepository.create({
       id,
       organization_id: input.organizationId,
