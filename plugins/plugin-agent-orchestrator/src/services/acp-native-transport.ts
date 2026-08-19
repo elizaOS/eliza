@@ -192,6 +192,19 @@ export class NativeAcpClient {
     this.proc = proc;
 
     proc.stdout.on("data", (chunk: Buffer) => this.handleStdout(chunk));
+    // A write into a pipe whose read end is gone surfaces asynchronously as an
+    // 'error' event on stdin (EPIPE). Without a listener that event becomes an
+    // uncaught exception that kills the whole runtime — observed live as a
+    // crash loop when sub-agent teardown (`closeSession`) raced the agent
+    // process exiting. Teardown-path writes are best-effort; swallow.
+    proc.stdin.on("error", (err: NodeJS.ErrnoException) => {
+      // error-policy:J6 best-effort teardown — a broken agent stdin pipe means
+      // the agent is gone; pending requests are rejected via the process
+      // 'close'/'error' handlers, so nothing is silently lost here.
+      this.emitStderr(
+        `[acp-native-transport] agent stdin error (${err?.code ?? errorMessage(err)}); dropping write\n`,
+      );
+    });
     proc.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");
       this.stderrBuffer = `${this.stderrBuffer}${text}`.slice(-16_384);
@@ -366,10 +379,14 @@ export class NativeAcpClient {
   ): Promise<unknown> {
     if (this.closed) throw new Error("ACP client is closed");
     const id = this.nextId++;
-    const proc = this.requireProcess();
+    this.requireProcess();
     const payload = { jsonrpc: "2.0", id, method, params };
     this.emitEvent({ ...payload, params: emittedParams } as AcpJsonRpcMessage);
-    proc.stdin.write(`${JSON.stringify(payload)}\n`);
+    if (!this.writeToAgent(payload)) {
+      return Promise.reject(
+        new Error(`ACP transport closed; cannot send ${method}`),
+      );
+    }
     return new Promise((resolve, reject) => {
       const timer =
         timeoutMs > 0
@@ -384,10 +401,46 @@ export class NativeAcpClient {
   }
 
   private async notify(method: string, params: unknown): Promise<void> {
-    const proc = this.requireProcess();
+    this.requireProcess();
     const payload = { jsonrpc: "2.0", method, params };
     this.emitEvent(payload as AcpJsonRpcMessage);
-    proc.stdin.write(`${JSON.stringify(payload)}\n`);
+    this.writeToAgent(payload);
+  }
+
+  /**
+   * Guarded write to the agent subprocess stdin. Returns false (instead of
+   * throwing / crashing the process) when the pipe is already closed,
+   * destroyed, or errors synchronously — the write-after-close case during
+   * sub-agent teardown, where `closeSession` can race the agent exiting.
+   * Async pipe errors (EPIPE) are absorbed by the stdin 'error' listener
+   * installed in `start()`.
+   */
+  private writeToAgent(payload: unknown): boolean {
+    const stdin = this.proc?.stdin;
+    if (!stdin || stdin.destroyed || stdin.writableEnded || !stdin.writable) {
+      return false;
+    }
+    try {
+      stdin.write(`${JSON.stringify(payload)}\n`);
+      return true;
+    } catch (err) {
+      // error-policy:J6 best-effort teardown — a synchronous EPIPE/ERR_STREAM
+      // throw here means the agent already went away; callers treat a false
+      // return as "transport closed" rather than crashing the runtime.
+      this.emitStderr(
+        `[acp-native-transport] agent stdin write failed (${errorMessage(err)}); dropping write\n`,
+      );
+      return false;
+    }
+  }
+
+  /** Route transport diagnostics through the onStderr observer, best-effort. */
+  private emitStderr(text: string): void {
+    try {
+      this.opts.onStderr?.(text);
+    } catch {
+      // error-policy:J7 diagnostics-must-not-kill-the-loop
+    }
   }
 
   /**
@@ -658,9 +711,8 @@ export class NativeAcpClient {
   }
 
   private respond(id: JsonRpcId, result: unknown): void {
-    this.requireProcess().stdin.write(
-      `${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`,
-    );
+    this.requireProcess();
+    this.writeToAgent({ jsonrpc: "2.0", id, result });
   }
 
   private respondError(
@@ -668,13 +720,12 @@ export class NativeAcpClient {
     err: unknown,
     code = JSONRPC_INTERNAL_ERROR,
   ): void {
-    this.requireProcess().stdin.write(
-      `${JSON.stringify({
-        jsonrpc: "2.0",
-        id,
-        error: { code, message: errorMessage(err) },
-      })}\n`,
-    );
+    this.requireProcess();
+    this.writeToAgent({
+      jsonrpc: "2.0",
+      id,
+      error: { code, message: errorMessage(err) },
+    });
   }
 
   private rejectAll(err: unknown): void {
