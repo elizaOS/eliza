@@ -47,6 +47,7 @@ plugins/plugin-wechat/
     utils/qrcode.ts           # displayQRUrl — prints QR code login URL to terminal
     index.test.ts             # Unit tests
     callback-server.test.ts   # Webhook URL/payload fail-closed tests
+    callback-utf8.test.ts     # Inbound UTF-8 TCP chunk-boundary integrity
     connector-account-provider.test.ts # Unit tests for ConnectorAccountProvider
 ```
 

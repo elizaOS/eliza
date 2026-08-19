@@ -87,7 +87,12 @@ export async function startCallbackServer(
       return;
     }
 
-    let body = "";
+    // Accumulate raw bytes and decode once on "end". Decoding each TCP chunk
+    // independently with Buffer.toString() corrupts any multi-byte UTF-8 code
+    // point (i.e. essentially every CJK character WeChat carries) that
+    // straddles a chunk boundary, replacing it with U+FFFD on both sides of
+    // the split (#22426).
+    const chunks: Buffer[] = [];
     let bodyBytes = 0;
     req.on("data", (chunk: Buffer) => {
       bodyBytes += chunk.length;
@@ -97,7 +102,7 @@ export async function startCallbackServer(
         req.destroy();
         return;
       }
-      body += chunk.toString();
+      chunks.push(chunk);
     });
 
     req.on("end", async () => {
@@ -105,6 +110,7 @@ export async function startCallbackServer(
         return;
       }
 
+      const body = Buffer.concat(chunks).toString("utf8");
       let payload: unknown;
       try {
         payload = JSON.parse(body);
