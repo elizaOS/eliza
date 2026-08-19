@@ -2770,11 +2770,12 @@ async function collectV5PlannerCandidateActions(args: {
 		disclosureRejectedReasons: string[];
 		/** Normalized names of EXPLICIT stage-1 candidates rejected by a
 		 * NON-disclosure gate: role/context/private-action (#20679), plus
-		 * connector-account-policy denials and `validate() === false` (#20869).
-		 * A privacy denial only proves a disclosure boundary; when the same turn
-		 * also has a non-disclosure rejection the request is compound, so the
-		 * privacy short-circuit must stand down and let the planner/recovery
-		 * path answer the non-disclosure limitation honestly. */
+		 * connector-account-policy denials, unavailable explicit capabilities,
+		 * `validate() === false`, and failed policy/validation checks (#20869). A
+		 * privacy denial only proves a disclosure boundary; when the same turn also
+		 * has a non-disclosure rejection the request is compound, so the privacy
+		 * short-circuit must stand down and let the planner/recovery path answer the
+		 * non-disclosure limitation honestly. */
 		nonDisclosureRejectedExplicitCandidates: string[];
 	};
 }): Promise<Action[]> {
@@ -2910,6 +2911,15 @@ async function collectV5PlannerCandidateActions(args: {
 			selectedActions.push(action);
 			return true;
 		} catch (error) {
+			if (explicitCandidateName) {
+				// Provider-policy and validate exceptions are fail-closed capability
+				// rejections, not disclosure decisions. Preserve that distinction so
+				// a sibling disclosure denial cannot mislabel the compound turn as
+				// purely private.
+				args.diagnostics?.nonDisclosureRejectedExplicitCandidates.push(
+					action.name,
+				);
+			}
 			// error-policy:J1 planner exposure fails closed for the affected action
 			// while reporting the validation failure to the agent.
 			args.runtime.reportError(
@@ -2947,6 +2957,15 @@ async function collectV5PlannerCandidateActions(args: {
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
 		if (resolved.length === 0) {
+			const normalizedCandidate = normalizeActionIdentifier(candidateName);
+			if (normalizedCandidate) {
+				// A missing capability is another non-disclosure limitation. Recording
+				// it keeps a simultaneous disclosure rejection from short-circuiting
+				// the planner with an unrelated privacy-only response.
+				args.diagnostics?.nonDisclosureRejectedExplicitCandidates.push(
+					normalizedCandidate,
+				);
+			}
 			args.runtime.logger.warn(
 				{
 					src: "service:message",
