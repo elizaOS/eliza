@@ -5,8 +5,6 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  MAX_SCENARIO_REDACT_DEPTH,
-  MAX_SCENARIO_REDACT_VISIT,
   redactedSensitiveActionResult,
   redactForScenarioReport,
 } from "./redaction.ts";
@@ -49,37 +47,45 @@ describe("redactForScenarioReport", () => {
     expect(redacted.self).toBe("[REDACTED]");
   });
 
-  it("fails closed on a hostile 20k-deep nest in under 50ms", () => {
+  it("preserves and redacts a 20k-deep nest without overflowing the stack", () => {
     const started = performance.now();
     const redacted = redactForScenarioReport(
       nest(20_000, { token: "s3cret", ok: 1 }),
     ) as Record<string, unknown>;
     expect(performance.now() - started).toBeLessThan(50);
     let cursor: unknown = redacted;
-    for (let i = 0; i < MAX_SCENARIO_REDACT_DEPTH; i += 1) {
+    for (let i = 0; i < 20_000; i += 1) {
       expect(cursor).toEqual(
         expect.objectContaining({ wrap: expect.anything() }),
       );
       cursor = (cursor as { wrap: unknown }).wrap;
     }
-    expect(cursor).toBe("[REDACTED]");
+    expect(cursor).toEqual({ token: "[REDACTED]", ok: 1 });
   });
 
-  it("stops a wide array at the visit budget instead of walking every slot", () => {
-    const started = performance.now();
+  it("preserves a wide report instead of silently truncating evidence", () => {
     const redacted = redactForScenarioReport({
-      items: Array.from({ length: MAX_SCENARIO_REDACT_VISIT + 100 }, () => ({
-        ok: 1,
+      items: Array.from({ length: 10_000 }, (_, index) => ({
+        index,
+        token: `secret-${index}`,
       })),
     }) as { items: unknown[] };
-    expect(performance.now() - started).toBeLessThan(50);
-    expect(redacted.items.length).toBeLessThanOrEqual(
-      MAX_SCENARIO_REDACT_VISIT + 1,
-    );
-    expect(redacted.items.includes("[REDACTED]")).toBe(true);
+    expect(redacted.items).toHaveLength(10_000);
+    expect(redacted.items.at(-1)).toEqual({
+      index: 9_999,
+      token: "[REDACTED]",
+    });
   });
 
-  it(`keeps an honest nest shallower than ${MAX_SCENARIO_REDACT_DEPTH}`, () => {
+  it("redacts only ancestor cycles, not repeated acyclic references", () => {
+    const shared = { ok: 1, token: "secret" };
+    expect(redactForScenarioReport({ first: shared, second: shared })).toEqual({
+      first: { ok: 1, token: "[REDACTED]" },
+      second: { ok: 1, token: "[REDACTED]" },
+    });
+  });
+
+  it("keeps an honest shallow nest", () => {
     expect(redactForScenarioReport(nest(4, { ok: true, token: "x" }))).toEqual(
       nest(4, { ok: true, token: "[REDACTED]" }),
     );

@@ -5,16 +5,11 @@
  * `redactedSensitiveActionResult` produces a placeholder result for actions whose
  * output is sensitive as a whole. Consumed by interceptor.ts and executor.ts.
  *
- * The walk is depth- and visit-bounded and breaks cycles. A cyclic or
- * 20k-deep payload on origin blew the stack (cyclic ~5s, 10k-deep ~1.2s)
- * while persisting the aggregate report.
+ * The walk is iterative and masks ancestor cycles, so deeply nested input
+ * cannot overflow the JavaScript stack. Complete acyclic reports are
+ * preserved regardless of their depth or number of fields.
  */
 const REDACTED = "[REDACTED]" as const;
-
-/** Nesting ceiling. Honest reports are a handful of objects deep. */
-export const MAX_SCENARIO_REDACT_DEPTH = 32;
-/** Node visit ceiling so a wide hostile array cannot pin the runner. */
-export const MAX_SCENARIO_REDACT_VISIT = 8192;
 
 const DEFAULT_SENSITIVE_KEYS = new Set([
   "access_token",
@@ -60,12 +55,11 @@ function objectHasCredentialValueShape(parent: unknown): boolean {
 
 function shouldRedactKey(
   key: string,
-  path: readonly string[],
   parent: unknown,
-  explicitPaths: ReadonlySet<string>,
+  matchesExplicitPath: boolean,
+  explicitKeys: ReadonlySet<string>,
 ): boolean {
-  const dotPath = path.join(".");
-  if (explicitPaths.has(key) || explicitPaths.has(dotPath)) {
+  if (explicitKeys.has(key) || matchesExplicitPath) {
     return true;
   }
   const normalized = normalizedKey(key);
@@ -82,64 +76,112 @@ export function redactForScenarioReport(
   value: unknown,
   explicitFieldPaths: readonly string[] = [],
 ): unknown {
-  const explicitPaths = new Set(
-    explicitFieldPaths.map(normalizedPath).filter(Boolean),
-  );
-  const seen = new WeakSet<object>();
-  let visits = 0;
-
-  function visit(
-    entry: unknown,
-    path: string[],
-    parent: unknown,
-    depth: number,
-  ): unknown {
-    if (visits >= MAX_SCENARIO_REDACT_VISIT) {
-      return REDACTED;
-    }
-    visits += 1;
-    const key = path[path.length - 1];
-    if (key && shouldRedactKey(key, path, parent, explicitPaths)) {
-      return REDACTED;
-    }
-    if (Array.isArray(entry)) {
-      if (depth >= MAX_SCENARIO_REDACT_DEPTH || seen.has(entry)) {
-        return REDACTED;
-      }
-      seen.add(entry);
-      const out: unknown[] = [];
-      for (let index = 0; index < entry.length; index += 1) {
-        if (visits >= MAX_SCENARIO_REDACT_VISIT) {
-          out.push(REDACTED);
-          break;
-        }
-        path.push(String(index));
-        out.push(visit(entry[index], path, entry, depth + 1));
-        path.pop();
-      }
-      return out;
-    }
-    if (!entry || typeof entry !== "object") {
-      return entry;
-    }
-    if (depth >= MAX_SCENARIO_REDACT_DEPTH || seen.has(entry)) {
-      return REDACTED;
-    }
-    seen.add(entry);
-    const out: Record<string, unknown> = {};
-    for (const [childKey, childValue] of Object.entries(entry)) {
-      if (visits >= MAX_SCENARIO_REDACT_VISIT) {
-        out[childKey] = REDACTED;
-        break;
-      }
-      path.push(childKey);
-      out[childKey] = visit(childValue, path, entry, depth + 1);
-      path.pop();
-    }
-    return out;
+  interface ExplicitPathNode {
+    terminal: boolean;
+    children: Map<string, ExplicitPathNode>;
+  }
+  interface VisitFrame {
+    source: object;
+    target: Record<string, unknown> | unknown[];
+    entries: [string, unknown][];
+    explicitPathNode: ExplicitPathNode | undefined;
+    index: number;
   }
 
-  return visit(value, [], undefined, 0);
+  const explicitRoot: ExplicitPathNode = {
+    terminal: false,
+    children: new Map(),
+  };
+  const explicitKeys = new Set<string>();
+  for (const configuredPath of explicitFieldPaths) {
+    const path = normalizedPath(configuredPath);
+    if (!path) continue;
+    const parts = path.split(".");
+    if (parts.length === 1) explicitKeys.add(parts[0]);
+    let node = explicitRoot;
+    for (const part of parts) {
+      let child = node.children.get(part);
+      if (!child) {
+        child = { terminal: false, children: new Map() };
+        node.children.set(part, child);
+      }
+      node = child;
+    }
+    node.terminal = true;
+  }
+
+  if (!value || typeof value !== "object") return value;
+
+  const ancestors = new WeakSet<object>();
+  const root: Record<string, unknown> | unknown[] = Array.isArray(value)
+    ? []
+    : {};
+  const stack: VisitFrame[] = [
+    {
+      source: value,
+      target: root,
+      entries: Array.isArray(value)
+        ? Array.from(value.entries(), ([index, entry]) => [
+            String(index),
+            entry,
+          ])
+        : Object.entries(value),
+      explicitPathNode: explicitRoot,
+      index: 0,
+    },
+  ];
+  ancestors.add(value);
+
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1];
+    if (frame.index >= frame.entries.length) {
+      ancestors.delete(frame.source);
+      stack.pop();
+      continue;
+    }
+
+    const [key, entry] = frame.entries[frame.index];
+    frame.index += 1;
+    const explicitPathNode = frame.explicitPathNode?.children.get(key);
+    let redacted: unknown;
+    if (
+      shouldRedactKey(
+        key,
+        frame.source,
+        explicitPathNode?.terminal === true,
+        explicitKeys,
+      )
+    ) {
+      redacted = REDACTED;
+    } else if (!entry || typeof entry !== "object") {
+      redacted = entry;
+    } else if (ancestors.has(entry)) {
+      redacted = REDACTED;
+    } else {
+      redacted = Array.isArray(entry) ? [] : {};
+      ancestors.add(entry);
+      stack.push({
+        source: entry,
+        target: redacted as Record<string, unknown> | unknown[],
+        entries: Array.isArray(entry)
+          ? Array.from(entry.entries(), ([index, item]) => [
+              String(index),
+              item,
+            ])
+          : Object.entries(entry),
+        explicitPathNode,
+        index: 0,
+      });
+    }
+
+    if (Array.isArray(frame.target)) {
+      frame.target.push(redacted);
+    } else {
+      frame.target[key] = redacted;
+    }
+  }
+
+  return root;
 }
 
 export function redactedSensitiveActionResult(actionName: string): {
