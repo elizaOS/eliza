@@ -1,6 +1,11 @@
 /** Tests authenticated, recipient-scoped in-app lifecycle leasing and acknowledgement. */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realAuth from "@/lib/auth";
+import * as realProactiveGreeting from "@/lib/services/eliza-app/onboarding-proactive-greeting";
+
+const realAuthExports = { ...realAuth };
+const realProactiveGreetingExports = { ...realProactiveGreeting };
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const INTERNAL_NOTICE = {
@@ -36,6 +41,14 @@ mock.module("@/lib/services/eliza-app/onboarding-proactive-greeting", () => ({
   enqueueProactiveLifecycleMessage: mock(async () => undefined),
 }));
 mock.module("@/lib/auth", () => ({ requireAuthOrApiKeyWithOrg: requireAuth }));
+
+afterAll(() => {
+  mock.module("@/lib/auth", () => realAuthExports);
+  mock.module(
+    "@/lib/services/eliza-app/onboarding-proactive-greeting",
+    () => realProactiveGreetingExports,
+  );
+});
 
 const app = (await import("./route")).default;
 

@@ -4,7 +4,7 @@ import { describe, expect, mock, test } from "bun:test";
 import * as realProviderRegistry from "@/lib/services/oauth/provider-registry";
 import * as realOAuthProviders from "@/lib/services/oauth/providers";
 
-const initiateOAuth2 = mock(async () => ({
+const initiateOAuth2 = mock(async (_provider: unknown, _params: unknown) => ({
   authUrl: "https://provider.example/authorize?state=opaque",
   state: "opaque",
 }));
