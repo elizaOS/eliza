@@ -196,6 +196,27 @@ describe("createProviderQualificationManifest", () => {
     );
   });
 
+  it.each(["readbackRequired", "idempotencyRequired"] as const)(
+    "rejects provider-effect contracts that disable %s",
+    (field) => {
+      const unsafeBindings = structuredClone(bindings());
+      const providerContract = unsafeBindings.observationContracts[0] as
+        | (Record<string, unknown> & { kind: "provider-effect" })
+        | undefined;
+      if (providerContract?.kind !== "provider-effect") {
+        throw new Error("test fixture lacks its provider-effect contract");
+      }
+      providerContract[field] = false;
+
+      expect(() =>
+        createProviderQualificationManifest({
+          scenario: scenario(),
+          bindings: unsafeBindings,
+        }),
+      ).toThrow(/must require provider readback and idempotency verification/);
+    },
+  );
+
   it("rejects accessors and hidden fields without invoking them", () => {
     const accessorBindings = bindings();
     let getterCalls = 0;

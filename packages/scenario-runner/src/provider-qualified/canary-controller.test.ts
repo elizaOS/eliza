@@ -10,11 +10,11 @@ import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import { PROVIDER_CANARY_SCENARIOS } from "../../../test/scenarios/provider-qualified/_provider-canary-catalog.ts";
 import { providerQualifiedScenarioProblems } from "../executor.ts";
-import { preflightProviderCanary } from "./canary-controller.ts";
 import {
   createProviderQualificationManifest,
   type ProviderRunBindings,
-} from "./manifest.ts";
+  preflightProviderCanary,
+} from "./index.ts";
 
 const hash = (value: string): string =>
   createHash("sha256").update(value).digest("hex");

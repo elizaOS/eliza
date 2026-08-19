@@ -11,6 +11,6 @@ export default buildProviderCanary({
   operation: "message-send",
   plugins: ["@elizaos/plugin-personal-assistant", "@elizaos/plugin-telegram"],
   effectLabel: "message send",
-  targetLabel: "Telegram saved-messages canary",
+  targetLabel: "private Telegram bot canary chat",
   payload: "Telegram provider canary delivery",
 });

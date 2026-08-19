@@ -74,8 +74,8 @@ export type ProviderEffectObservationContract = ObservationContractBase<
   provider: string;
   operation: string;
   providerAcceptanceRequired: true;
-  readbackRequired: boolean;
-  idempotencyRequired: boolean;
+  readbackRequired: true;
+  idempotencyRequired: true;
 };
 
 export type ProviderNoEffectObservationContract = ObservationContractBase<
@@ -678,10 +678,10 @@ function validateContractFields(
       fail(`${path}.providerAcceptanceRequired`, "must be true");
     }
     if (
-      typeof contract.readbackRequired !== "boolean" ||
-      typeof contract.idempotencyRequired !== "boolean"
+      contract.readbackRequired !== true ||
+      contract.idempotencyRequired !== true
     ) {
-      fail(path, "must declare boolean readback and idempotency requirements");
+      fail(path, "must require provider readback and idempotency verification");
     }
   } else if (contract.kind === "provider-no-effect") {
     requireExactKeys(
