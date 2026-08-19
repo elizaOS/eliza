@@ -256,6 +256,20 @@ export function classifyToolOutput(
   };
   const seen = new Set<string>();
   for (const signal of signals) {
+    // A `[tool output: …]…[/tool output]` envelope IS tool output by
+    // construction — no marker heuristics needed. Without this, a script's
+    // plain stdout (bare numbers) matched no build/test line shape and the
+    // judge failed a correct run for "missing actual shell output"
+    // (live 2026-08-19: squares.py printed 1..36, task marked failed).
+    for (const match of signal.text.matchAll(
+      /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
+    )) {
+      const inner = (match[1] ?? "").trim().slice(0, 2_000);
+      if (inner && !seen.has(inner)) {
+        seen.add(inner);
+        buckets.raw.push(inner);
+      }
+    }
     const lines = extractToolLines(signal.text, seen);
     if (lines.length === 0) continue;
     const haystack = `${signal.source ?? ""}\n${signal.text}`;

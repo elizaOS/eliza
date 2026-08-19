@@ -3342,6 +3342,19 @@ export class AcpService extends Service {
       });
       throw err;
     }
+    // A stopped session's scratch workdir may have been reclaimed by
+    // workspace GC; spawning into a missing cwd surfaces as a bare
+    // posix_spawn ENOENT on the agent command (live 2026-08-19), which reads
+    // as a broken install. Name the real condition instead.
+    if (!existsSync(session.workdir)) {
+      const message = `session workspace no longer exists (${session.workdir}); it was likely reclaimed after completion`;
+      await this.store.updateStatus(session.id, "errored", message);
+      this.emitSessionEvent(session.id, "error", { message });
+      throw new ElizaError(message, {
+        code: "ACP_SESSION_WORKSPACE_RECLAIMED",
+        context: { sessionId: session.id, workdir: session.workdir },
+      });
+    }
     const promptCredentials = await this.accountCredentialsForSession(session);
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),
