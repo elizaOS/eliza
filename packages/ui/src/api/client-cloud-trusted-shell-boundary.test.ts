@@ -290,10 +290,11 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     async ({ baseUrl, native }) => {
       platform.native = native;
       setPageLocation("localhost");
-      localStorage.setItem(STEWARD_TOKEN_KEY, "preserved-token");
-      const fetchSpy = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValueOnce(jsonResponse({ error: "unauthorized" }, 401));
+      const fetchSpy = mockTrustedShellResponse(
+        { error: "unauthorized" },
+        401,
+        () => localStorage.setItem(STEWARD_TOKEN_KEY, "preserved-token"),
+      );
       const client = new ElizaClient(baseUrl, "client-token");
 
       await client.getCloudStatus().catch(() => undefined);

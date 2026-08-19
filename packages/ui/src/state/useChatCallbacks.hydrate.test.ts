@@ -172,9 +172,7 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
   });
 
   it("selects the restored conversation before its Cloud messages finish loading", async () => {
-    let resolveMessages:
-      | ((value: { messages: ConversationMessage[] }) => void)
-      | null = null;
+    let resolveMessages!: (value: { messages: ConversationMessage[] }) => void;
     const messagesPending = new Promise<{ messages: ConversationMessage[] }>(
       (resolve) => {
         resolveMessages = resolve;
@@ -195,7 +193,7 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     );
     expect(setConversationMessages).not.toHaveBeenCalled();
 
-    resolveMessages?.({
+    resolveMessages({
       messages: [{ id: "m1", role: "user", text: "hello", timestamp: 1 }],
     });
     await expect(hydration).resolves.toBeNull();

@@ -80,7 +80,9 @@ vi.mock("../../state", () => ({
 
 vi.mock("../../api", () => ({
   client: clientMock,
-  ElizaClient: vi.fn(() => targetClientMock),
+  ElizaClient: vi.fn(function MockElizaClient() {
+    return targetClientMock;
+  }),
 }));
 
 vi.mock("../../api/client-cloud", () => ({
