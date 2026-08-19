@@ -48,9 +48,13 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
 import { appEarnings, appEarningsTransactions } from "../../../db/schemas/app-earnings";
+import {
+  appReservationSettlementQuarantines,
+  appReservationSettlements,
+} from "../../../db/schemas/app-reservation-settlements";
 import {
   appDeploymentStatusEnum,
   appReviewStatusEnum,
@@ -58,6 +62,7 @@ import {
   appUsers,
   userDatabaseStatusEnum,
 } from "../../../db/schemas/apps";
+import { autoTopUpAttempts } from "../../../db/schemas/auto-top-up-attempts";
 import { creditTransactions } from "../../../db/schemas/credit-transactions";
 import { organizations } from "../../../db/schemas/organizations";
 import {
@@ -204,6 +209,12 @@ async function holdSettledAt(holdId: string): Promise<Date | null> {
   return row?.settled_at ?? null;
 }
 
+async function settlementReceipt(holdId: string) {
+  return dbWrite.query.appReservationSettlements.findFirst({
+    where: eq(appReservationSettlements.reservation_transaction_id, holdId),
+  });
+}
+
 beforeAll(async () => {
   try {
     ({ appCreditsService } = await import("../app-credits"));
@@ -215,6 +226,9 @@ beforeAll(async () => {
       appUsers,
       appEarnings,
       appEarningsTransactions,
+      appReservationSettlements,
+      appReservationSettlementQuarantines,
+      autoTopUpAttempts,
       redeemableEarnings,
       redeemableEarningsLedger,
       redeemedEarningsTracking,
@@ -344,6 +358,15 @@ describe("stale-reservation sweep vs app-chat settle lane (#11683)", () => {
     expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.02, 6);
     expect(await appCreatorEarningsCounter(appId)).toBeCloseTo(0.02, 6);
     expect(await refundRows(payerOrgId)).toHaveLength(1);
+    expect(await settlementReceipt(holdId)).toMatchObject({
+      terminal_source: "stale_sweep",
+      outcome: "refund",
+      actual_base_cost: "0.020000",
+      organization_id: payerOrgId,
+      app_id: appId,
+      user_id: payerUserId,
+      creator_user_id: creatorUserId,
+    });
   });
 
   test("stale sweep refunds the original payer org even if the user moved orgs", async () => {
@@ -450,6 +473,232 @@ describe("stale-reservation sweep vs app-chat settle lane (#11683)", () => {
 
     // The sweep must not touch the settled hold — no second refund.
     await creditsService.sweepStaleReservations();
+    expect(await orgBalance(payerOrgId)).toBeCloseTo(99.98, 6);
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.01, 6);
+    expect(await refundRows(payerOrgId)).toHaveLength(1);
+    expect(await settlementReceipt(holdId)).toMatchObject({
+      terminal_source: "provider",
+      outcome: "refund",
+      actual_base_cost: "0.010000",
+    });
+  });
+
+  test("pre-authority quarantined settlement makes provider-late delivery a durable no-op", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerUserId, payerOrgId, creatorUserId } = await seed();
+    const holdId = await openRouteShapedHold({
+      appId,
+      userId: payerUserId,
+      estimatedBaseCost: 0.02,
+      reservedBaseCost: 0.03,
+      ageMs: 3 * 60 * 60 * 1000,
+    });
+    const historicalHold = await dbWrite.query.creditTransactions.findFirst({
+      where: eq(creditTransactions.id, holdId),
+    });
+    expect(historicalHold).toBeTruthy();
+    await dbWrite
+      .update(creditTransactions)
+      .set({
+        metadata: {
+          ...(historicalHold?.metadata ?? {}),
+          appId: appId.toUpperCase(),
+          userId: payerUserId.toUpperCase(),
+          creatorUserId: creatorUserId.toUpperCase(),
+        },
+        settled_at: new Date(),
+      })
+      .where(eq(creditTransactions.id, holdId));
+    await dbWrite.insert(appReservationSettlementQuarantines).values({
+      reservation_transaction_id: holdId,
+      organization_id: payerOrgId,
+      app_id: appId,
+      user_id: payerUserId,
+      creator_user_id: creatorUserId,
+      reason: "pre_authority_economics_unreconstructable",
+    });
+
+    const beforeOrg = await orgBalance(payerOrgId);
+    const beforeCreator = await creatorBalance(creatorUserId);
+    const result = await appCreditsService.reconcileCredits({
+      appId,
+      userId: payerUserId,
+      organizationId: payerOrgId,
+      estimatedBaseCost: 0.03,
+      actualBaseCost: 0.005,
+      description: "provider-late after authority cutover",
+      reservationTransactionId: holdId,
+    });
+
+    expect(result).toMatchObject({
+      reconciled: false,
+      difference: 0,
+      action: "none",
+      adjustedAmount: 0,
+    });
+    expect(await orgBalance(payerOrgId)).toBe(beforeOrg);
+    expect(await creatorBalance(creatorUserId)).toBe(beforeCreator);
+    expect(await refundRows(payerOrgId)).toHaveLength(0);
+    expect(await settlementReceipt(holdId)).toBeUndefined();
+    await creditsService.sweepStaleReservations();
+    expect(await orgBalance(payerOrgId)).toBe(beforeOrg);
+  });
+
+  test("concurrent sweep/provider settlement has one durable winner and duplicate delivery replays it", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerUserId, payerOrgId, creatorUserId } = await seed();
+    const holdId = await openRouteShapedHold({
+      appId,
+      userId: payerUserId,
+      estimatedBaseCost: 0.02,
+      reservedBaseCost: 0.03,
+      ageMs: 3 * 60 * 60 * 1000,
+    });
+
+    await Promise.all([
+      creditsService.sweepStaleReservations(),
+      appCreditsService.reconcileCredits({
+        appId,
+        userId: payerUserId,
+        estimatedBaseCost: 0.03,
+        actualBaseCost: 0.01,
+        description: "concurrent provider settle",
+        reservationTransactionId: holdId,
+      }),
+    ]);
+    const receipt = await settlementReceipt(holdId);
+    expect(receipt).toBeTruthy();
+    expect(await refundRows(payerOrgId)).toHaveLength(1);
+
+    await appCreditsService.reconcileCredits({
+      appId,
+      userId: payerUserId,
+      estimatedBaseCost: 0.03,
+      actualBaseCost: 0.005,
+      description: "duplicate with a third amount",
+      reservationTransactionId: holdId,
+    });
+    expect(await settlementReceipt(holdId)).toEqual(receipt);
+    expect(await refundRows(payerOrgId)).toHaveLength(1);
+    const expectedCreator = receipt?.actual_base_cost === "0.010000" ? 0.01 : 0.02;
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(expectedCreator, 6);
+  });
+
+  test("provider-first overage and insufficient overage each become terminal receipts", async () => {
+    if (!pgliteReady) return;
+    const first = await seed();
+    const firstHold = await openRouteShapedHold({
+      appId: first.appId,
+      userId: first.payerUserId,
+      estimatedBaseCost: 0.02,
+      reservedBaseCost: 0.03,
+      ageMs: 3 * 60 * 60 * 1000,
+    });
+    await appCreditsService.reconcileCredits({
+      appId: first.appId,
+      userId: first.payerUserId,
+      estimatedBaseCost: 0.03,
+      actualBaseCost: 0.04,
+      description: "provider overage",
+      reservationTransactionId: firstHold,
+    });
+    expect(await settlementReceipt(firstHold)).toMatchObject({
+      terminal_source: "provider",
+      outcome: "overage",
+      actual_base_cost: "0.040000",
+      organization_adjustment: "0.020000",
+    });
+    expect(await orgBalance(first.payerOrgId)).toBeCloseTo(99.92, 6);
+    expect(await creatorBalance(first.creatorUserId)).toBeCloseTo(0.04, 6);
+    await appCreditsService.reconcileCredits({
+      appId: first.appId,
+      userId: first.payerUserId,
+      estimatedBaseCost: 0.03,
+      actualBaseCost: 0.1,
+      description: "different duplicate overage",
+      reservationTransactionId: firstHold,
+    });
+    await creditsService.sweepStaleReservations();
+    expect(await orgBalance(first.payerOrgId)).toBeCloseTo(99.92, 6);
+    expect(await creatorBalance(first.creatorUserId)).toBeCloseTo(0.04, 6);
+
+    const second = await seed();
+    const secondHold = await openRouteShapedHold({
+      appId: second.appId,
+      userId: second.payerUserId,
+      estimatedBaseCost: 0.02,
+      reservedBaseCost: 0.03,
+      ageMs: 3 * 60 * 60 * 1000,
+    });
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: "0.000000" })
+      .where(eq(organizations.id, second.payerOrgId));
+    await appCreditsService.reconcileCredits({
+      appId: second.appId,
+      userId: second.payerUserId,
+      estimatedBaseCost: 0.03,
+      actualBaseCost: 0.04,
+      description: "uncollected provider overage",
+      reservationTransactionId: secondHold,
+    });
+    expect(await settlementReceipt(secondHold)).toMatchObject({
+      outcome: "uncollected_overage",
+      credit_transaction_id: null,
+      redeemable_ledger_entry_id: null,
+      app_earnings_transaction_id: null,
+    });
+    expect(await orgBalance(second.payerOrgId)).toBe(0);
+    expect(await creatorBalance(second.creatorUserId)).toBeCloseTo(0.03, 6);
+  });
+
+  test("receipt failure rolls every ledger projection back and a retry settles once", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerUserId, payerOrgId, creatorUserId } = await seed();
+    const holdId = await openRouteShapedHold({
+      appId,
+      userId: payerUserId,
+      estimatedBaseCost: 0.02,
+      reservedBaseCost: 0.03,
+      ageMs: 3 * 60 * 60 * 1000,
+    });
+    await dbWrite.execute(sql`
+      CREATE FUNCTION fail_app_reservation_receipt() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'injected receipt failure'; END $$ LANGUAGE plpgsql;
+    `);
+    await dbWrite.execute(sql`
+      CREATE TRIGGER fail_app_reservation_receipt
+      BEFORE INSERT ON app_reservation_settlements
+      FOR EACH ROW EXECUTE FUNCTION fail_app_reservation_receipt();
+    `);
+    await expect(
+      appCreditsService.reconcileCredits({
+        appId,
+        userId: payerUserId,
+        estimatedBaseCost: 0.03,
+        actualBaseCost: 0.01,
+        description: "fault-injected settle",
+        reservationTransactionId: holdId,
+      }),
+    ).rejects.toThrow("app_reservation_settlements");
+    expect(await settlementReceipt(holdId)).toBeUndefined();
+    expect(await holdSettledAt(holdId)).toBeNull();
+    expect(await orgBalance(payerOrgId)).toBeCloseTo(99.94, 6);
+    expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.03, 6);
+    expect(await refundRows(payerOrgId)).toHaveLength(0);
+
+    await dbWrite.execute(
+      sql`DROP TRIGGER fail_app_reservation_receipt ON app_reservation_settlements`,
+    );
+    await dbWrite.execute(sql`DROP FUNCTION fail_app_reservation_receipt()`);
+    await appCreditsService.reconcileCredits({
+      appId,
+      userId: payerUserId,
+      estimatedBaseCost: 0.03,
+      actualBaseCost: 0.01,
+      description: "retry after rollback",
+      reservationTransactionId: holdId,
+    });
     expect(await orgBalance(payerOrgId)).toBeCloseTo(99.98, 6);
     expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.01, 6);
     expect(await refundRows(payerOrgId)).toHaveLength(1);

@@ -5,13 +5,20 @@
 import Decimal from "decimal.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
+import { dbWrite, writeTransaction } from "../../db/helpers";
 import { appEarningsRepository } from "../../db/repositories/app-earnings";
 import * as appsRepositoryModule from "../../db/repositories/apps";
 import { type App, appsRepository } from "../../db/repositories/apps";
 import { organizationsRepository } from "../../db/repositories/organizations";
 import { usersRepository } from "../../db/repositories/users";
+import {
+  appReservationSettlementQuarantines,
+  appReservationSettlements,
+} from "../../db/schemas/app-reservation-settlements";
 import { apps, appUsers } from "../../db/schemas/apps";
+import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { organizations } from "../../db/schemas/organizations";
+import { redeemableEarnings } from "../../db/schemas/redeemable-earnings";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getRequestIdempotencyKey } from "../runtime/request-context";
@@ -206,6 +213,16 @@ function creatorEarningsIdentity(
     sourceId: chargeKey ? `${chargeKey}:${type}:${leg}` : appId,
     dedupeBySourceId: chargeKey !== null,
   };
+}
+
+function normalizeUuidIdentity(value: unknown): string | null {
+  if (
+    typeof value !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  ) {
+    return null;
+  }
+  return value.toLowerCase();
 }
 
 /**
@@ -1179,6 +1196,31 @@ export class AppCreditsService {
 
     // Validate metadata size and depth
     const metadata = validateMetadata(rawMetadata, "reconcileCredits");
+    if (reservationTransactionId) {
+      const [candidate] = await dbWrite
+        .select({ metadata: creditTransactions.metadata })
+        .from(creditTransactions)
+        .where(eq(creditTransactions.id, reservationTransactionId))
+        .limit(1);
+      if (!candidate) {
+        throw new Error("App reconciliation reservation does not exist");
+      }
+      if (
+        candidate.metadata.type === "app_chat_reservation" &&
+        candidate.metadata.settlement_marker === APP_CHAT_RESERVATION_SETTLEMENT_MARKER
+      ) {
+        return this.settleAppReservation({
+          appId,
+          userId,
+          organizationId: providedOrganizationId,
+          estimatedBaseCost,
+          actualBaseCost,
+          description,
+          metadata,
+          reservationTransactionId,
+        });
+      }
+    }
     const settlementMetadata = reservationTransactionId
       ? { ...metadata, reservation_transaction_id: reservationTransactionId }
       : metadata;
@@ -1489,6 +1531,330 @@ export class AppCreditsService {
   }
 
   /**
+   * Commits the first terminal app-chat settlement as one database unit. The
+   * reservation lock serializes sweep/provider contenders; a committed receipt
+   * is replayed verbatim even when the loser reports a different actual cost.
+   */
+  private async settleAppReservation(params: {
+    appId: string;
+    userId: string;
+    organizationId?: string;
+    estimatedBaseCost: number;
+    actualBaseCost: number;
+    description: string;
+    metadata?: Record<string, unknown>;
+    reservationTransactionId: string;
+  }): Promise<AppCreditReconciliationResult> {
+    if (!Number.isFinite(params.actualBaseCost) || params.actualBaseCost < 0) {
+      throw new Error("App reservation actual cost must be finite and non-negative");
+    }
+    const terminalSource =
+      params.metadata?.settlement_source === "stale_reservation_sweep"
+        ? ("stale_sweep" as const)
+        : ("provider" as const);
+
+    const outcome = await writeTransaction(async (tx) => {
+      const [reservation] = await tx
+        .select()
+        .from(creditTransactions)
+        .where(eq(creditTransactions.id, params.reservationTransactionId))
+        .for("update")
+        .limit(1);
+      const facts =
+        reservation?.metadata && typeof reservation.metadata === "object"
+          ? reservation.metadata
+          : {};
+      const organizationId = reservation?.organization_id;
+      const reservedBaseValue = facts.reserved_amount ?? facts.baseCost;
+      const reservedBase = new Decimal(String(reservedBaseValue));
+      const markupPercentage = new Decimal(String(facts.markupPercentage ?? 0));
+      const reservedTotal = new Decimal(reservation?.amount ?? Number.NaN).abs();
+      const factAppId = normalizeUuidIdentity(facts.appId);
+      const factUserId = normalizeUuidIdentity(facts.userId);
+      const creatorUserId = normalizeUuidIdentity(facts.creatorUserId);
+      if (
+        !reservation ||
+        reservation.type !== "debit" ||
+        facts.type !== "app_chat_reservation" ||
+        facts.settlement_marker !== APP_CHAT_RESERVATION_SETTLEMENT_MARKER ||
+        !organizationId ||
+        !factAppId ||
+        !factUserId ||
+        factAppId !== normalizeUuidIdentity(params.appId) ||
+        factUserId !== normalizeUuidIdentity(params.userId) ||
+        (params.organizationId !== undefined && params.organizationId !== organizationId) ||
+        !reservedBase.isFinite() ||
+        reservedBase.isNegative() ||
+        !markupPercentage.isFinite() ||
+        markupPercentage.isNegative() ||
+        !reservedTotal.isFinite()
+      ) {
+        throw new Error("App reservation identity or economic facts do not match settlement");
+      }
+
+      const [existing] = await tx
+        .select()
+        .from(appReservationSettlements)
+        .where(
+          eq(appReservationSettlements.reservation_transaction_id, params.reservationTransactionId),
+        )
+        .limit(1);
+      const [legacyQuarantine] = await tx
+        .select()
+        .from(appReservationSettlementQuarantines)
+        .where(
+          eq(
+            appReservationSettlementQuarantines.reservation_transaction_id,
+            params.reservationTransactionId,
+          ),
+        )
+        .limit(1);
+      const [lockedOrg] = await tx
+        .select({ balance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .for("update")
+        .limit(1);
+      if (!lockedOrg) throw new Error("Reservation organization no longer exists");
+      if (existing) {
+        return {
+          receipt: existing,
+          legacyQuarantine: undefined,
+          newBalance: parseOrgCreditBalance(lockedOrg.balance),
+          claimed: false,
+        };
+      }
+      if (legacyQuarantine) {
+        if (
+          legacyQuarantine.organization_id !== organizationId ||
+          legacyQuarantine.app_id !== factAppId ||
+          legacyQuarantine.user_id !== factUserId ||
+          legacyQuarantine.creator_user_id !== creatorUserId
+        ) {
+          throw new Error("Legacy app reservation quarantine identity does not match hold facts");
+        }
+        return {
+          receipt: undefined,
+          legacyQuarantine,
+          newBalance: parseOrgCreditBalance(lockedOrg.balance),
+          claimed: false,
+        };
+      }
+      if (reservation.settled_at) {
+        throw new Error("Settled app reservation is missing its terminal receipt");
+      }
+      if (!new Decimal(params.estimatedBaseCost).toDecimalPlaces(6).equals(reservedBase)) {
+        throw new Error("App reservation estimated cost differs from immutable hold facts");
+      }
+
+      const expectedReservedTotal = reservedBase
+        .mul(new Decimal(1).plus(markupPercentage.div(100)))
+        .toDecimalPlaces(6);
+      if (!expectedReservedTotal.equals(reservedTotal)) {
+        throw new Error("App reservation total does not match its immutable markup contract");
+      }
+      const actualBase = new Decimal(params.actualBaseCost).toDecimalPlaces(6);
+      const actualTotal = actualBase
+        .mul(new Decimal(1).plus(markupPercentage.div(100)))
+        .toDecimalPlaces(6);
+      const organizationAdjustment = actualTotal.minus(reservedTotal).toDecimalPlaces(6);
+      const creatorAdjustment = actualBase
+        .minus(reservedBase)
+        .mul(markupPercentage)
+        .div(100)
+        .toDecimalPlaces(6);
+      const platformAdjustment = actualBase.minus(reservedBase).toDecimalPlaces(6);
+
+      if (creatorUserId) {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${creatorUserId}`}))`,
+        );
+        await tx
+          .select({ userId: redeemableEarnings.user_id })
+          .from(redeemableEarnings)
+          .where(eq(redeemableEarnings.user_id, creatorUserId))
+          .for("update")
+          .limit(1);
+      } else if (!creatorAdjustment.isZero()) {
+        throw new Error("Monetized app reservation is missing its charge-time creator");
+      }
+      const [currentApp] = await tx
+        .select()
+        .from(apps)
+        .where(eq(apps.id, params.appId))
+        .for("update")
+        .limit(1);
+      const accountingApp: AppCreditAccountingApp = {
+        ...(currentApp ?? {}),
+        name: typeof facts.appName === "string" ? facts.appName : params.appId,
+        created_by_user_id: creatorUserId,
+        monetization_enabled: markupPercentage.gt(0),
+        review_status: markupPercentage.gt(0) ? "approved" : "rejected",
+        platform_offset_amount: 0,
+        purchase_share_percentage: 0,
+        inference_markup_percentage: markupPercentage.toNumber(),
+        persistAppEarnings: Boolean(currentApp),
+      };
+      const identityMetadata = {
+        ...params.metadata,
+        reservation_transaction_id: params.reservationTransactionId,
+        idempotencyKey: `app-reservation-settlement:${params.reservationTransactionId}`,
+        terminal_source: terminalSource,
+      };
+
+      let resultOutcome: "refund" | "overage" | "uncollected_overage" | "none" = "none";
+      let creditTransactionId: string | undefined;
+      let redeemableLedgerEntryId: string | undefined;
+      let appEarningsTransactionId: string | undefined;
+      let newBalance = parseOrgCreditBalance(lockedOrg.balance);
+
+      if (organizationAdjustment.lt(0)) {
+        resultOutcome = "refund";
+        if (creatorAdjustment.lt(0) && creatorUserId) {
+          const reversal = await this.reverseCreatorEarnings(
+            params.appId,
+            params.userId,
+            creatorAdjustment.abs().toNumber(),
+            platformAdjustment.abs().toNumber(),
+            "reconcile_refund",
+            identityMetadata,
+            accountingApp,
+            tx,
+          );
+          redeemableLedgerEntryId = reversal.redeemableLedgerEntryId;
+          appEarningsTransactionId = reversal.appEarningsTransactionId;
+        }
+        const refund = await creditsService.refundCredits({
+          organizationId,
+          amount: organizationAdjustment.abs().toFixed(6),
+          description: `App reconciliation refund (${accountingApp.name ?? params.appId})`,
+          stripePaymentIntentId: `reconcile-refund:${params.reservationTransactionId}`,
+          metadata: identityMetadata,
+          db: tx,
+          deferCacheInvalidation: true,
+        });
+        creditTransactionId = refund.transaction.id;
+        newBalance = refund.newBalance;
+      } else if (organizationAdjustment.gt(0)) {
+        if (new Decimal(lockedOrg.balance).gte(organizationAdjustment)) {
+          const debit = await creditsService.reserveAndDeductCredits({
+            organizationId,
+            amount: organizationAdjustment.toNumber(),
+            description: `App reconciliation charge (${accountingApp.name ?? params.appId})`,
+            stripePaymentIntentId: `reconcile-charge:${params.reservationTransactionId}`,
+            metadata: identityMetadata,
+            db: tx,
+            deferPostCommitEffects: true,
+          });
+          if (!debit.success || !debit.transaction) {
+            throw new Error("Locked reservation organization lost its overage debit eligibility");
+          }
+          newBalance = debit.newBalance;
+          resultOutcome = "overage";
+          creditTransactionId = debit.transaction.id;
+          if (creatorAdjustment.gt(0) && creatorUserId) {
+            const earning = await this.recordCreatorEarnings(
+              params.appId,
+              params.userId,
+              "inference_markup",
+              creatorAdjustment.toNumber(),
+              platformAdjustment.toNumber(),
+              "reconcile_charge",
+              identityMetadata,
+              accountingApp,
+              tx,
+            );
+            redeemableLedgerEntryId = earning.redeemableLedgerEntryId;
+            appEarningsTransactionId = earning.appEarningsTransactionId;
+          }
+        } else {
+          resultOutcome = "uncollected_overage";
+        }
+      }
+
+      const [receipt] = await tx
+        .insert(appReservationSettlements)
+        .values({
+          reservation_transaction_id: params.reservationTransactionId,
+          organization_id: organizationId,
+          app_id: params.appId,
+          user_id: params.userId,
+          creator_user_id: creatorUserId,
+          terminal_source: terminalSource,
+          outcome: resultOutcome,
+          reserved_base_cost: reservedBase.toFixed(6),
+          actual_base_cost: actualBase.toFixed(6),
+          markup_percentage: markupPercentage.toFixed(6),
+          reserved_total_cost: reservedTotal.toFixed(6),
+          actual_total_cost: actualTotal.toFixed(6),
+          organization_adjustment: organizationAdjustment.toFixed(6),
+          creator_adjustment: creatorAdjustment.toFixed(6),
+          platform_adjustment: platformAdjustment.toFixed(6),
+          credit_transaction_id: creditTransactionId,
+          redeemable_ledger_entry_id: redeemableLedgerEntryId,
+          app_earnings_transaction_id: appEarningsTransactionId,
+        })
+        .returning();
+      if (!receipt) throw new Error("App reservation settlement receipt was not created");
+      const [settled] = await tx
+        .update(creditTransactions)
+        .set({ settled_at: new Date() })
+        .where(
+          and(
+            eq(creditTransactions.id, params.reservationTransactionId),
+            eq(creditTransactions.organization_id, organizationId),
+            sql`${creditTransactions.settled_at} IS NULL`,
+          ),
+        )
+        .returning({ id: creditTransactions.id });
+      if (!settled) throw new Error("App reservation settlement fence was lost");
+      return { receipt, legacyQuarantine: undefined, newBalance, claimed: true };
+    });
+
+    if (outcome.legacyQuarantine) {
+      return {
+        reconciled: false,
+        difference: 0,
+        action: "none",
+        adjustedAmount: 0,
+        newBalance: outcome.newBalance,
+      };
+    }
+    if (!outcome.receipt) {
+      throw new Error("App reservation settlement completed without terminal authority");
+    }
+    if (outcome.claimed) {
+      await creditsService.invalidateCreditCaches(outcome.receipt.organization_id);
+      if (outcome.receipt.outcome === "overage") {
+        await creditsService.notifyBalanceDecrease(
+          outcome.receipt.organization_id,
+          outcome.newBalance,
+          params.metadata,
+        );
+      }
+    }
+    const organizationAdjustment = new Decimal(outcome.receipt.organization_adjustment);
+    const action =
+      outcome.receipt.outcome === "refund"
+        ? "refund"
+        : outcome.receipt.outcome === "overage" || outcome.receipt.outcome === "uncollected_overage"
+          ? "charge"
+          : "none";
+    return {
+      reconciled: outcome.receipt.outcome === "refund" || outcome.receipt.outcome === "overage",
+      difference: new Decimal(outcome.receipt.actual_base_cost)
+        .minus(outcome.receipt.reserved_base_cost)
+        .toNumber(),
+      action,
+      adjustedAmount:
+        outcome.receipt.outcome === "uncollected_overage"
+          ? 0
+          : organizationAdjustment.abs().toNumber(),
+      newBalance: outcome.newBalance,
+    };
+  }
+
+  /**
    * Read the cached markup config for an app, or fetch + cache it.
    *
    * Caches only the monetization fields (not the per-call computed cost — that
@@ -1605,7 +1971,12 @@ export class AppCreditsService {
     metadata: Record<string, unknown>,
     providedApp?: AppCreditAccountingApp,
     transaction?: DbTransaction,
-  ): Promise<{ deduplicated: boolean; commitState: CreatorEarningsCommitState }> {
+  ): Promise<{
+    deduplicated: boolean;
+    commitState: CreatorEarningsCommitState;
+    redeemableLedgerEntryId?: string;
+    appEarningsTransactionId?: string;
+  }> {
     const app: AppCreditAccountingApp | undefined =
       providedApp ?? (await appsRepository.findById(appId));
     const identity = creatorEarningsIdentity(appId, type, leg, metadata);
@@ -1642,6 +2013,8 @@ export class AppCreditsService {
       return {
         deduplicated: false,
         commitState: { ...commitState, redeemable: "below_ledger_unit" },
+        redeemableLedgerEntryId: undefined,
+        appEarningsTransactionId: undefined,
       };
     }
 
@@ -1736,7 +2109,12 @@ export class AppCreditsService {
     // Synthetic stale-sweep facts can outlive the app FK target. Their
     // redeemable entry remains the authoritative payout record.
     if (app.persistAppEarnings === false) {
-      return { deduplicated: redeemableDeduplicated, commitState };
+      return {
+        deduplicated: redeemableDeduplicated,
+        commitState,
+        redeemableLedgerEntryId: result.ledgerEntryId,
+        appEarningsTransactionId: undefined,
+      };
     }
 
     try {
@@ -1757,7 +2135,12 @@ export class AppCreditsService {
         : await appEarningsRepository.applyCreatorMovement(movement);
       commitState.shadowBalanceRecorded = true;
       commitState.shadowTransactionRecorded = true;
-      return { deduplicated: projection.deduplicated, commitState };
+      return {
+        deduplicated: projection.deduplicated,
+        commitState,
+        redeemableLedgerEntryId: result.ledgerEntryId,
+        appEarningsTransactionId: projection.transaction?.id,
+      };
     } catch (cause) {
       // error-policy:J2 projection acknowledgement ambiguity must retain the
       // redeemable ledger identity and backing charge for keyed retry.
@@ -1782,7 +2165,12 @@ export class AppCreditsService {
     leg: CreatorEarningsReversalLeg,
     metadata: Record<string, unknown>,
     providedApp?: AppCreditAccountingApp,
-  ): Promise<{ deduplicated: boolean }> {
+    transaction?: DbTransaction,
+  ): Promise<{
+    deduplicated: boolean;
+    redeemableLedgerEntryId?: string;
+    appEarningsTransactionId?: string;
+  }> {
     const app: AppCreditAccountingApp | undefined =
       providedApp ?? (await appsRepository.findById(appId));
     const chargeKey =
@@ -1831,6 +2219,7 @@ export class AppCreditsService {
         appCreatorShadowVersion: 1,
         appPlatformRevenueDelta: new Decimal(-platformRevenueAmount).toFixed(6),
       },
+      transaction,
     });
     const redeemableDeduplicated = result.deduplicated === true;
     if (!result.success) {
@@ -1855,24 +2244,34 @@ export class AppCreditsService {
     );
 
     if (app.persistAppEarnings === false) {
-      return { deduplicated: redeemableDeduplicated };
+      return {
+        deduplicated: redeemableDeduplicated,
+        redeemableLedgerEntryId: result.ledgerEntryId,
+      };
     }
 
-    const projection = await appEarningsRepository.applyCreatorMovement({
-      appId,
-      userId,
-      type: "inference_markup",
-      creatorAmount: -amount,
-      platformRevenueAmount: -platformRevenueAmount,
-      description: "Reconciliation adjustment (refund)",
-      metadata: {
-        ...metadata,
-        type: "reconciliation_refund",
+    const projection = await appEarningsRepository.applyCreatorMovement(
+      {
+        appId,
+        userId,
+        type: "inference_markup",
+        creatorAmount: -amount,
+        platformRevenueAmount: -platformRevenueAmount,
+        description: "Reconciliation adjustment (refund)",
+        metadata: {
+          ...metadata,
+          type: "reconciliation_refund",
+        },
+        redeemableLedgerEntryId: result.ledgerEntryId,
+        redeemableDeduplicated,
       },
+      transaction,
+    );
+    return {
+      deduplicated: projection.deduplicated,
       redeemableLedgerEntryId: result.ledgerEntryId,
-      redeemableDeduplicated,
-    });
-    return { deduplicated: projection.deduplicated };
+      appEarningsTransactionId: projection.transaction?.id,
+    };
   }
 
   /**
