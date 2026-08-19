@@ -244,6 +244,9 @@ CREATE OR REPLACE FUNCTION "stripe_customer_binding_is_authoritative"(
   tenant_id uuid, customer_id text
 ) RETURNS boolean AS $$
   SELECT customer_id IS NOT NULL AND (
+    SELECT count(*) = 1 FROM "organizations" o
+    WHERE o."id" = tenant_id AND o."stripe_customer_id" = customer_id
+  ) AND (
     SELECT count(*) = 1 FROM "stripe_customer_attempts" a
     WHERE a."organization_id" = tenant_id
       AND a."status" = 'bound'

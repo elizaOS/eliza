@@ -161,6 +161,35 @@ class ConcurrentClaimBarrierRepository extends AutoTopUpAttemptsRepository {
   }
 }
 
+class AuthorizationBarrierRepository extends AutoTopUpAttemptsRepository {
+  private releaseAuthorization!: () => void;
+  private signalAuthorizationEntered!: () => void;
+  readonly authorizationEntered: Promise<void>;
+  private readonly authorizationReleased: Promise<void>;
+
+  constructor() {
+    super();
+    this.authorizationEntered = new Promise<void>((resolve) => {
+      this.signalAuthorizationEntered = resolve;
+    });
+    this.authorizationReleased = new Promise<void>((resolve) => {
+      this.releaseAuthorization = resolve;
+    });
+  }
+
+  release(): void {
+    this.releaseAuthorization();
+  }
+
+  override async authorizeProviderRequest(
+    input: Parameters<RealRepository["authorizeProviderRequest"]>[0],
+  ) {
+    this.signalAuthorizationEntered();
+    await this.authorizationReleased;
+    return super.authorizeProviderRequest(input);
+  }
+}
+
 class CrashOnceAutoTopUpRepository extends AutoTopUpAttemptsRepository {
   didCrash = false;
 
@@ -168,11 +197,15 @@ class CrashOnceAutoTopUpRepository extends AutoTopUpAttemptsRepository {
     super();
   }
 
-  override async markProviderRequestStarted(
-    input: Parameters<RealRepository["markProviderRequestStarted"]>[0],
+  override async authorizeProviderRequest(
+    input: Parameters<RealRepository["authorizeProviderRequest"]>[0],
   ) {
-    const result = await super.markProviderRequestStarted(input);
-    if (this.crashPoint === "before_provider_call" && !this.didCrash && result) {
+    const result = await super.authorizeProviderRequest(input);
+    if (
+      this.crashPoint === "before_provider_call" &&
+      !this.didCrash &&
+      result.outcome === "authorized"
+    ) {
       this.didCrash = true;
       throw new SimulatedProcessCrash(this.crashPoint);
     }
@@ -610,6 +643,81 @@ describe("AutoTopUpService PGlite recovery", () => {
       expect(customers.createCalls).toBe(1);
       expect(stripe.create).toHaveBeenCalledTimes(1);
       expect(await autoAttemptCount()).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "recovery re-fences provider-started attempt after organization customer drift with zero PI I/O",
+    async () => {
+      await insertEligibleOrganization();
+      const stripe = stripeHarness();
+      const crashingRepository = new CrashOnceAutoTopUpRepository("before_provider_call");
+      const initial = autoService(crashingRepository, stripe, customerAuthority);
+      await initial.checkAndExecuteAutoTopUps({ source: "cron", limit: 1 });
+      const started = await onlyAttempt(crashingRepository);
+      expect(started.providerRequestStartedAt).not.toBeNull();
+      expect(stripe.create).not.toHaveBeenCalled();
+
+      await getPgliteClientForTests().exec(
+        "ALTER TABLE organizations DISABLE TRIGGER organization_stripe_customer_publication_guard",
+      );
+      await dbWrite.execute(sql`UPDATE organizations SET stripe_customer_id='cus_recovery_drift'
+        WHERE id=${ORGANIZATION_ID}`);
+      await getPgliteClientForTests().exec(
+        "ALTER TABLE organizations ENABLE TRIGGER organization_stripe_customer_publication_guard",
+      );
+
+      let recoveryNow = BASE_TIME + 2 * 60 * 1000 + 1;
+      const recoveryRepository = new AutoTopUpAttemptsRepository();
+      const recovery = new AutoTopUpService({
+        repository: recoveryRepository,
+        stripe: () => stripe.client,
+        now: () => new Date(recoveryNow),
+        randomUUID,
+        rolloutEnabled: () => true,
+        customerAuthority,
+      });
+      const result = await recovery.executeAutoTopUpForOrganization(ORGANIZATION_ID, {
+        source: "recovery",
+      });
+      recoveryNow += 1;
+
+      expect(result.status).toBe("manual_review");
+      expect((await onlyAttempt(recoveryRepository)).status).toBe("manual_review");
+      expect(stripe.create).not.toHaveBeenCalled();
+      expect(stripe.client.paymentIntents.retrieve).not.toHaveBeenCalled();
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "concurrent customer drift before the final provider fence durably rejects with zero PI I/O",
+    async () => {
+      await insertEligibleOrganization();
+      const stripe = stripeHarness();
+      const repository = new AuthorizationBarrierRepository();
+      const pending = autoService(
+        repository,
+        stripe,
+        customerAuthority,
+      ).executeAutoTopUpForOrganization(ORGANIZATION_ID, { source: "manual" });
+      await repository.authorizationEntered;
+      await getPgliteClientForTests().exec(
+        "ALTER TABLE organizations DISABLE TRIGGER organization_stripe_customer_publication_guard",
+      );
+      await dbWrite.execute(sql`UPDATE organizations SET stripe_customer_id='cus_concurrent_drift'
+        WHERE id=${ORGANIZATION_ID}`);
+      await getPgliteClientForTests().exec(
+        "ALTER TABLE organizations ENABLE TRIGGER organization_stripe_customer_publication_guard",
+      );
+      repository.release();
+      const result = await pending;
+
+      expect(result.status).toBe("manual_review");
+      expect((await onlyAttempt(repository)).status).toBe("manual_review");
+      expect(stripe.create).not.toHaveBeenCalled();
+      expect(stripe.client.paymentIntents.retrieve).not.toHaveBeenCalled();
     },
     TIMEOUT,
   );

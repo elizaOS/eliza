@@ -885,17 +885,6 @@ export class AutoTopUpService {
       return resultFromAttempt(candidate, recovered, candidate.lastError ?? undefined);
     }
 
-    if (!(await this.repository.customerSnapshotHasAuthority(candidate.id))) {
-      return {
-        organizationId: candidate.organizationId,
-        success: false,
-        error: "Stripe Customer authority is not verified",
-        attemptId: candidate.id,
-        status: "unavailable",
-        recovered,
-      };
-    }
-
     const leaseNow = this.now();
     const leaseToken = this.randomUUID();
     const leased = await this.repository.claimDueLease({
@@ -942,16 +931,26 @@ export class AutoTopUpService {
       return this.finishSucceededAttempt(attempt, leaseToken, recovered);
     }
 
-    if (!attempt.providerRequestStartedAt) {
-      const providerStart = this.now();
-      const started = await this.repository.markProviderRequestStarted({
-        attemptId: attempt.id,
-        leaseToken,
-        now: providerStart,
-        recoveryDeadlineAt: new Date(providerStart.getTime() + AUTO_TOP_UP_UNKNOWN_PI_RECOVERY_MS),
-      });
-      if (!started) return this.resultAfterFenceMiss(attempt, recovered);
-      attempt = started;
+    const providerStart = this.now();
+    const authorization = await this.repository.authorizeProviderRequest({
+      attemptId: attempt.id,
+      leaseToken,
+      now: providerStart,
+      recoveryDeadlineAt: new Date(providerStart.getTime() + AUTO_TOP_UP_UNKNOWN_PI_RECOVERY_MS),
+    });
+    if (authorization.outcome === "fence_lost") {
+      return this.resultAfterFenceMiss(attempt, recovered);
+    }
+    if (authorization.outcome === "rejected") {
+      return resultFromAttempt(
+        authorization.attempt,
+        recovered,
+        authorization.attempt.lastError ?? "Stripe Customer authority is not verified",
+      );
+    }
+    const wasProviderStarted = attempt.providerRequestStartedAt !== null;
+    attempt = authorization.attempt;
+    if (!wasProviderStarted) {
       logger.info("[AutoTopUp] Provider request durably started", {
         organizationId: attempt.organizationId,
         attemptId: attempt.id,

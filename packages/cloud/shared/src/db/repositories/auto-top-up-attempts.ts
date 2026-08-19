@@ -198,6 +198,11 @@ export interface MarkProviderRequestStartedInput {
   recoveryDeadlineAt: Date;
 }
 
+export type AuthorizeAutoTopUpProviderRequestResult =
+  | { outcome: "authorized"; attempt: AutoTopUpAttempt }
+  | { outcome: "rejected"; attempt: AutoTopUpAttempt }
+  | { outcome: "fence_lost" };
+
 export interface RecordPaymentIntentInput {
   attemptId: string;
   leaseToken: string;
@@ -294,6 +299,7 @@ function jsonObject(value: Record<string, unknown>, field: string): Record<strin
   try {
     JSON.stringify(value);
   } catch (cause) {
+    // error-policy:J2 Preserve the serialization cause in the typed repository failure.
     throw new ElizaError("Auto-top-up attempt JSON value is not serializable", {
       code: AUTO_TOP_UP_ATTEMPT_INVALID_INPUT,
       cause,
@@ -459,6 +465,104 @@ export class AutoTopUpAttemptsRepository {
       FROM "auto_top_up_attempts" WHERE "id"=${attemptId} LIMIT 1
     `);
     return result.rows[0]?.authoritative === true;
+  }
+
+  /**
+   * Final provider-I/O fence. It locks the current organization before the
+   * attempt, validates exact publication/receipt authority, and either starts
+   * or reauthorizes the persisted provider window. Invalid recovery snapshots
+   * become durable manual review without calling Stripe.
+   */
+  async authorizeProviderRequest(
+    input: MarkProviderRequestStartedInput,
+  ): Promise<AuthorizeAutoTopUpProviderRequestResult> {
+    requiredString(input.attemptId, "attemptId");
+    requiredString(input.leaseToken, "leaseToken");
+    assertLeaseWindow(input.now, input.recoveryDeadlineAt);
+    const [snapshot] = await dbWrite
+      .select({ organizationId: autoTopUpAttempts.organization_id })
+      .from(autoTopUpAttempts)
+      .where(eq(autoTopUpAttempts.id, input.attemptId))
+      .limit(1);
+    if (!snapshot) return { outcome: "fence_lost" };
+
+    return dbWrite.transaction(async (tx) => {
+      const [organization] = await tx
+        .select({ customerId: organizations.stripe_customer_id })
+        .from(organizations)
+        .where(eq(organizations.id, snapshot.organizationId))
+        .for("update")
+        .limit(1);
+      const [attempt] = await tx
+        .select()
+        .from(autoTopUpAttempts)
+        .where(eq(autoTopUpAttempts.id, input.attemptId))
+        .for("update")
+        .limit(1);
+      if (
+        !organization ||
+        !attempt ||
+        attempt.organization_id !== snapshot.organizationId ||
+        attempt.lease_token !== input.leaseToken ||
+        !attempt.lease_expires_at ||
+        attempt.lease_expires_at.getTime() <= input.now.getTime() ||
+        attempt.status !== "payment_pending"
+      ) {
+        return { outcome: "fence_lost" };
+      }
+      const authority = await tx.execute(sql`
+        SELECT "stripe_customer_binding_is_authoritative"(
+          ${attempt.organization_id}::uuid, ${attempt.stripe_customer_id_snapshot}::text
+        ) AS authoritative
+      `);
+      if (
+        organization.customerId !== attempt.stripe_customer_id_snapshot ||
+        authority.rows[0]?.authoritative !== true
+      ) {
+        const [rejected] = await tx
+          .update(autoTopUpAttempts)
+          .set({
+            status: "manual_review",
+            lease_token: null,
+            lease_expires_at: null,
+            next_attempt_at: null,
+            last_error: "Stripe Customer authority changed before provider request",
+            manual_review_at: input.now,
+            updated_at: input.now,
+          })
+          .where(
+            and(
+              eq(autoTopUpAttempts.id, input.attemptId),
+              eq(autoTopUpAttempts.lease_token, input.leaseToken),
+            ),
+          )
+          .returning();
+        if (!rejected) return { outcome: "fence_lost" };
+        return { outcome: "rejected", attempt: toAttempt(rejected) };
+      }
+      if (!attempt.provider_request_started_at) {
+        const [started] = await tx
+          .update(autoTopUpAttempts)
+          .set({
+            provider_request_started_at: input.now,
+            recovery_deadline_at: input.recoveryDeadlineAt,
+            next_attempt_at: input.now,
+            updated_at: input.now,
+          })
+          .where(
+            and(
+              eq(autoTopUpAttempts.id, input.attemptId),
+              eq(autoTopUpAttempts.lease_token, input.leaseToken),
+              isNull(autoTopUpAttempts.provider_request_started_at),
+            ),
+          )
+          .returning();
+        return started
+          ? { outcome: "authorized", attempt: toAttempt(started) }
+          : { outcome: "fence_lost" };
+      }
+      return { outcome: "authorized", attempt: toAttempt(attempt) };
+    });
   }
 
   /**
