@@ -2942,11 +2942,23 @@ async function collectV5PlannerCandidateActions(args: {
 		// parent is admitted under ITS OWN contexts — still gated on
 		// role/private/context via appendIfAllowed (#14622).
 		const direct = resolveRuntimeAction(actionLookup, candidateName);
-		const resolved = direct
+		let resolved = direct
 			? [direct]
 			: parentAliasesForCandidateAction(candidateName)
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) {
+			// Stage-1 models emit reversed compound names (live 2026-08-19:
+			// `CANCEL_TASKS` for `TASKS_CANCEL`). Same tokens, any order — admit
+			// only an unambiguous single match; ambiguity keeps the warn below.
+			const candidateTokenKey = actionNameTokenKey(candidateName);
+			const tokenMatches = allRuntimeActions.filter(
+				(action) => actionNameTokenKey(action.name) === candidateTokenKey,
+			);
+			if (tokenMatches.length === 1) {
+				resolved = tokenMatches;
+			}
+		}
 		if (resolved.length === 0) {
 			args.runtime.logger.warn(
 				{
@@ -3057,6 +3069,14 @@ const CODING_SUB_AGENT_EXCLUDED_ACTIONS: ReadonlySet<string> = new Set(
 	// stripped), since that is what the filter compares against.
 	["VIEWS", "CLOSEVIEW", "CLOSEALLVIEWS", "TASKS"],
 );
+
+function actionNameTokenKey(name: string): string {
+	return normalizeActionIdentifier(name)
+		.split("_")
+		.filter(Boolean)
+		.sort()
+		.join("_");
+}
 
 function getMessageHandlerCandidateActions(
 	messageHandler: MessageHandlerResult,

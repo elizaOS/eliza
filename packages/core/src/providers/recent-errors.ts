@@ -40,6 +40,12 @@ export const QUIET_ERROR_CODES: ReadonlySet<string> = new Set([
 	"TASK_WORKER_MISSING",
 	"TASK_QUERY_FAILED",
 	"TASK_ORPHAN_QUARANTINE_FAILED",
+	// Consequences of a user-requested turn abort, not systemic failures: a
+	// single "cancel all ur running coding tasks" fans out into one aborted
+	// provider error per composing provider, and the escalation path posted
+	// the raw dumps into the user's channel (live 2026-08-19).
+	"PROVIDER_COMPOSITION_ABORTED",
+	"TURN_ABORTED",
 ]);
 /** Cap serialized context length so a large payload can't blow up the prompt. */
 export const MAX_CONTEXT_CHARS = 400;

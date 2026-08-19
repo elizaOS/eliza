@@ -196,8 +196,17 @@ export function tierActionResults(
 				if (candidate === catalogParent.normalizedName) {
 					return true;
 				}
+				const candidateTokens = actionNameTokenSetKey(candidate);
 				for (const child of catalogParent.childNormalizedNames) {
 					if (candidate === child) {
+						return true;
+					}
+					// Stage-1 models emit reversed compound names (live
+					// 2026-08-19: `CANCEL_TASKS` for `TASKS_CANCEL`, so the
+					// cancel surface narrowed to nothing and the planner
+					// honestly reported the tools unavailable). Same tokens,
+					// any order — still that child.
+					if (candidateTokens === actionNameTokenSetKey(child)) {
 						return true;
 					}
 				}
@@ -574,6 +583,10 @@ function sortedUnique(values: readonly string[]): string[] {
 	return Array.from(new Set(values.filter(Boolean))).sort((left, right) =>
 		left.localeCompare(right),
 	);
+}
+
+function actionNameTokenSetKey(normalizedName: string): string {
+	return normalizedName.split("_").filter(Boolean).sort().join("_");
 }
 
 function normalizeCandidateSet(

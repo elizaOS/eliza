@@ -34,6 +34,11 @@ import {
 } from "@elizaos/core";
 import { AGENT_VOICED_METADATA } from "../voice/phrase-for-user.js";
 import type { AcpService } from "./acp-service.js";
+import {
+  collectFsObservedFiles,
+  deriveRouteMappedUrls,
+  enumerateWorkdirCandidates,
+} from "./quick-app-evidence.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";
 import {
   accountMetaFromSessionMetadata,
@@ -3712,6 +3717,40 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Direct observation fallback for workers that end with an empty final reply:
+ * name what is actually in the session workdir (post-start mtimes only) and
+ * its route-mapped public URL. Beats relaying "no captured output" for a
+ * build that exists on disk (live 2026-08-19: built dice-roller page relayed
+ * as ghosted and then parked for lack of evidence).
+ */
+function observeWorkdirDeliverable(session: SessionInfo): string[] {
+  const observed = collectFsObservedFiles({
+    workdir: session.workdir,
+    candidatePaths: enumerateWorkdirCandidates(session.workdir),
+    sessionStartedAt: new Date(session.createdAt).getTime(),
+  });
+  if (observed.length === 0) return [];
+  const meta = session.metadata as Record<string, unknown> | undefined;
+  const routeMeta =
+    meta && typeof meta.workdirRoute === "object" && meta.workdirRoute !== null
+      ? (meta.workdirRoute as Record<string, unknown>)
+      : undefined;
+  const urlMappings = Array.isArray(routeMeta?.urlMappings)
+    ? (routeMeta.urlMappings as { urlPrefix: string; localPath: string }[])
+    : undefined;
+  const directoryUrls = deriveRouteMappedUrls(observed, urlMappings).filter(
+    (url) => url.endsWith("/"),
+  );
+  const names = observed
+    .map((file) => file.split("/").pop())
+    .filter((name): name is string => typeof name === "string");
+  return [
+    `Files written (verified on disk): ${names.slice(0, 8).join(", ")}`,
+    ...directoryUrls.slice(0, 1),
+  ];
+}
+
 function composeNarration(
   event: SessionEventName,
   label: string,
@@ -3819,10 +3858,14 @@ function composeNarration(
     ].filter((line) => typeof line === "string" && line.trim().length > 0);
     return `${header}\n${lines.join("\n")}`;
   }
-  // Genuinely no captured output — keep the explicit note. The workdir stays
-  // out of the narration entirely (internal path; session metadata carries it).
+  // Genuinely no captured output: observe the workdir directly before
+  // conceding. The workdir PATH stays out of the narration (internal); only
+  // bare file names and the operator-configured public URL may surface.
   if (response === undefined) {
-    return `${header}\nsub-agent reports task complete (no captured output).`;
+    const observedLines = observeWorkdirDeliverable(session);
+    return observedLines.length > 0
+      ? `${header}\n${observedLines.join("\n")}`
+      : `${header}\nsub-agent reports task complete (no captured output).`;
   }
   // A verification-retry attempt (re-dispatched by retryIncompleteBuild) that
   // produced no change set: never narrate its raw step prose. On weak coding
@@ -3840,7 +3883,12 @@ function composeNarration(
   // Non-retry completion: keep the (transcript-stripped, banner-stripped) prose
   // so legitimate results ("PR opened: …", a question) still reach the user.
   const cleaned = stripToolTranscript(response);
-  if (!cleaned) return header;
+  if (!cleaned) {
+    const observedLines = observeWorkdirDeliverable(session);
+    return observedLines.length > 0
+      ? `${header}\n${observedLines.join("\n")}`
+      : header;
+  }
   return `${header}\n${stripRoutingKindBanner(cleaned)}`;
 }
 

@@ -31,6 +31,8 @@ import { basename, dirname, join } from "node:path";
 import {
   ElizaError,
   getTrajectoryContext,
+  runWithTrajectoryContext,
+  withStandaloneTrajectory,
   type IAgentRuntime,
   projectWorldId,
   type RecordedTrajectory,
@@ -208,6 +210,7 @@ import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
   detectCheckSurfaces,
+  enumerateWorkdirCandidates,
   mineCandidatePaths,
   probeMappedUrls,
   readFsVerifiedContents,
@@ -1867,12 +1870,31 @@ export class OrchestratorTaskService extends Service {
         // reworded evidence bundle: the #8895 CompletionEnvelope lives verbatim in
         // the sub-agent's last message, not in the prose evidence, so the structural
         // parser must see the original text.
-        void this.autoVerifyCompletion(
-          taskId,
-          sessionId,
-          completionEvidence,
-          summary ?? "",
-          completionBundle,
+        // These continuations run in the child-completion event's async
+        // context, which can still carry the SPAWN turn's trajectory step —
+        // closed minutes ago by then. Model calls made here were rejected as
+        // late captures (live 2026-08-19: purpose=action age=75s). Detach to
+        // a fresh standalone trajectory, keeping only the traceId correlation.
+        const inheritedTraceId = getTrajectoryContext()?.traceId;
+        const detachedContext = inheritedTraceId
+          ? { traceId: inheritedTraceId }
+          : undefined;
+        void runWithTrajectoryContext(detachedContext, () =>
+          withStandaloneTrajectory(
+            this.runtime,
+            {
+              source: "orchestrator-task-verify",
+              metadata: { taskId, sessionId },
+            },
+            () =>
+              this.autoVerifyCompletion(
+                taskId,
+                sessionId,
+                completionEvidence,
+                summary ?? "",
+                completionBundle,
+              ),
+          ),
         );
         // Auto-submit for provisioned-repo tasks: children run behind the
         // isolated git wrapper and cannot push, BY DESIGN — the orchestrator
@@ -1880,7 +1902,16 @@ export class OrchestratorTaskService extends Service {
         // ended with committed-but-unpushed work and a human had to finish
         // the last leg (live 2026-08-17: two hello-validation runs). Push +
         // PR fire-and-forget; verification proceeds independently.
-        void this.autoSubmitProvisionedWorkspace(taskId, sessionId);
+        void runWithTrajectoryContext(detachedContext, () =>
+          withStandaloneTrajectory(
+            this.runtime,
+            {
+              source: "orchestrator-task-submit",
+              metadata: { taskId, sessionId },
+            },
+            () => this.autoSubmitProvisionedWorkspace(taskId, sessionId),
+          ),
+        );
         // Terminalize the durable Smithers link. The original run path never
         // wrote state:"completed" (only the boot-recovery path did), so every
         // normally-completed task carried a pending/running link forever and
@@ -2593,6 +2624,10 @@ export class OrchestratorTaskService extends Service {
         candidatePaths: [
           ...(changeSet?.changedFiles ?? []),
           ...mineCandidatePaths([summary, ...subAgentReplies]),
+          // Workers that end with an empty final reply leave nothing to mine;
+          // direct enumeration nominates what is actually in the workdir and
+          // the mtime gate below decides what counts (live 2026-08-19 parks).
+          ...enumerateWorkdirCandidates(reportingSession.workdir),
         ],
         sessionStartedAt: reportingSession.registeredAt,
       });
