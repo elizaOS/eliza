@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   ready: true,
   authenticated: true,
   appModeHost: false,
+  user: { id: "u1", email: "nubs@example.com" } as {
+    id: string;
+    email: string;
+  } | null,
 }));
 
 vi.mock("../app-mode/app-mode", () => ({
@@ -31,7 +35,14 @@ vi.mock("../lib/use-session-auth", () => ({
   useSessionAuth: () => ({
     ready: mocks.ready,
     authenticated: mocks.authenticated,
+    user: mocks.user,
   }),
+}));
+
+vi.mock("./CloudAccountMenu", () => ({
+  CloudAccountMenu: ({ email }: { email: string | null }) => (
+    <button type="button">Account menu for {email}</button>
+  ),
 }));
 
 vi.mock("./CloudRouteErrorBoundary", () => ({
@@ -97,6 +108,7 @@ afterEach(() => {
   mocks.ready = true;
   mocks.authenticated = true;
   mocks.appModeHost = false;
+  mocks.user = { id: "u1", email: "nubs@example.com" };
 });
 
 describe("ManagedCloudPage", () => {
@@ -107,6 +119,11 @@ describe("ManagedCloudPage", () => {
       screen.getByRole("heading", { name: "Cloud Billing", level: 1 }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add credits" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Account menu for nubs@example.com",
+      }),
+    ).toBeTruthy();
     expect(screen.getAllByTestId("view-header")).toHaveLength(1);
   });
 
