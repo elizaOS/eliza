@@ -7,7 +7,7 @@
  * intent/keyword based instead of hard state based.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
 
@@ -58,7 +58,7 @@ if (args.has("--self-test")) {
 
 const keywordKeys = loadKeywordKeys();
 const scanRoots = roots.length > 0 ? roots : DEFAULT_ROOTS;
-requireExistingRoots(scanRoots);
+requireReadableDirectoryRoots(scanRoots);
 const files = scanRoots.flatMap((root) => walk(join(ROOT, root)));
 const actions = files
   .flatMap(scanFile)
@@ -523,7 +523,7 @@ function escapeCell(value) {
 }
 
 /**
- * Fail closed when a configured scan root is absent.
+ * Fail closed when a configured scan root cannot be enumerated as a directory.
  *
  * `walk()` swallows a missing directory and returns no files, so a renamed or
  * moved root previously reduced the action inventory silently. The generator
@@ -531,45 +531,74 @@ function escapeCell(value) {
  * committed keyword artifact and only observes a nonzero exit, so a silent
  * shrink republished that artifact with entries missing and no diagnostic.
  */
-function requireExistingRoots(scanRoots) {
-  const missing = scanRoots.filter((root) => !existsSync(join(ROOT, root)));
-  if (missing.length === 0) return;
+function requireReadableDirectoryRoots(scanRoots) {
+  const invalid = findInvalidScanRoots(scanRoots);
+  if (invalid.length === 0) return;
   console.error(
-    `[audit-action-availability] configured scan root(s) do not exist: ${missing.join(", ")}. ` +
+    `[audit-action-availability] configured scan root(s) are not readable directories: ${invalid.join(", ")}. ` +
       "Update the root list (or pass existing paths) instead of scanning nothing.",
   );
   process.exit(1);
 }
 
-/** Prove the missing-root gate fires, and that a present root still scans. */
+/** Return actionable findings for roots that the production walker cannot scan. */
+function findInvalidScanRoots(scanRoots) {
+  const invalid = [];
+  for (const root of scanRoots) {
+    const absolute = join(ROOT, root);
+    let stat;
+    try {
+      stat = statSync(absolute);
+    } catch (error) {
+      // error-policy:J3 invalid configured input is reported explicitly.
+      invalid.push(`${root} (${error.code ?? "unreadable"})`);
+      continue;
+    }
+    if (!stat.isDirectory()) {
+      invalid.push(`${root} (not a directory)`);
+      continue;
+    }
+    try {
+      readdirSync(absolute);
+    } catch (error) {
+      // error-policy:J3 an unreadable root is an explicit invalid result.
+      invalid.push(`${root} (${error.code ?? "unreadable"})`);
+    }
+  }
+  return invalid;
+}
+
+/** Prove the production root validator rejects every silent-empty shape. */
 function selfTest() {
   const cases = [
     {
       name: "missing root is refused",
       roots: ["definitely/not/a/real/root"],
-      expectMissing: true,
+      expectInvalid: true,
     },
     {
       name: "present root is accepted",
       roots: ["packages/scripts"],
-      expectMissing: false,
+      expectInvalid: false,
+    },
+    {
+      name: "regular file root is refused",
+      roots: ["package.json"],
+      expectInvalid: true,
     },
     {
       name: "one missing among present roots is refused",
       roots: ["packages/scripts", "nope/missing"],
-      expectMissing: true,
+      expectInvalid: true,
     },
   ];
   let failed = 0;
   for (const testCase of cases) {
-    const missing = testCase.roots.filter(
-      (root) => !existsSync(join(ROOT, root)),
-    );
-    const gotMissing = missing.length > 0;
-    if (gotMissing !== testCase.expectMissing) {
+    const gotInvalid = findInvalidScanRoots(testCase.roots).length > 0;
+    if (gotInvalid !== testCase.expectInvalid) {
       failed += 1;
       console.error(
-        `  \u2717 ${testCase.name}: expected missing=${testCase.expectMissing}, got ${gotMissing}`,
+        `  \u2717 ${testCase.name}: expected invalid=${testCase.expectInvalid}, got ${gotInvalid}`,
       );
     } else {
       console.log(`  \u2713 ${testCase.name}`);
