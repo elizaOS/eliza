@@ -2,10 +2,10 @@
  * Attachment object storage proxy.
  *
  * Routes:
- *   PUT    /api/v1/apis/storage/objects/{key+}   raw bytes →  { key, size, contentType, etag }
- *   GET    /api/v1/apis/storage/objects/{key+}                raw bytes
- *   HEAD   /api/v1/apis/storage/objects/{key+}                metadata headers, 404 if missing
- *   DELETE /api/v1/apis/storage/objects/{key+}                204 No Content
+ *   PUT    /api/v1/apis/storage/objects/_   raw bytes →  { key, size, contentType, etag }
+ *   GET    /api/v1/apis/storage/objects/_                raw bytes
+ *   HEAD   /api/v1/apis/storage/objects/_                metadata headers, 404 if missing
+ *   DELETE /api/v1/apis/storage/objects/_                204 No Content
  *
  * Native Worker R2 writes use immutable generation keys and a durable database
  * authority; catalog-backed reads and deletes follow the committed generation.
@@ -14,8 +14,8 @@
  *
  * Auth: requireUserOrApiKeyWithOrg.
  * Quota: hard-rejects writes with 413 when the org's bytes_limit is exceeded.
- * Pricing: PUT is durably billed by the mutation service. Catalog GET and HEAD
- * remain explicitly unbilled until durable paid-read receipts are available.
+ * Pricing: PUT, GET, and HEAD use durable server-priced receipts. Read retries
+ * recover the exact immutable provider generation before any provider access.
  */
 
 import { type Context, Hono } from "hono";
@@ -34,6 +34,10 @@ import {
   NativeStoragePutError,
   resolveNativeStorageObject,
 } from "@/lib/services/storage/native-storage-put";
+import {
+  executeNativeStorageGetOrHead,
+  NativeStorageReadError,
+} from "@/lib/services/storage/native-storage-read";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -76,6 +80,19 @@ function validateUserKey(
   return { key };
 }
 
+function validatePrivateObjectKey(
+  c: Context<AppEnv>,
+): { key: string } | { error: string } {
+  const routeMarker = c.req.param("*")?.replace(/^\/+|\/+$/g, "");
+  if (routeMarker && routeMarker !== "_") {
+    return {
+      error:
+        "Object keys are not accepted in read URLs; use /objects/_ and X-Storage-Object-Key",
+    };
+  }
+  return validateUserKey(c.req.header("X-Storage-Object-Key"));
+}
+
 app.put("/*", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -88,7 +105,7 @@ app.put("/*", async (c) => {
       return c.json(R2_NOT_CONFIGURED_BODY, 503);
     }
 
-    const validated = validateUserKey(c.req.param("*"));
+    const validated = validatePrivateObjectKey(c);
     if ("error" in validated) {
       return c.json({ error: validated.error }, 400);
     }
@@ -122,6 +139,7 @@ app.put("/*", async (c) => {
     });
     return c.json(response, 201);
   } catch (error) {
+    // error-policy:J1 transport boundary maps typed write failures to HTTP status.
     if (error instanceof InsufficientCreditsError) {
       return c.json(
         {
@@ -152,7 +170,7 @@ app.put("/*", async (c) => {
   }
 });
 
-app.get("/*", async (c) => {
+async function handleStorageGet(c: Context<AppEnv>) {
   // Hono dispatches HEAD through the matching GET route while preserving the
   // original request method. Branch here so HEAD never enters the body-read
   // path or uses GET pricing.
@@ -164,92 +182,120 @@ app.get("/*", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
 
-    const validated = validateUserKey(c.req.param("*"));
+    const validated = validatePrivateObjectKey(c);
     if ("error" in validated) {
       return c.json({ error: validated.error }, 400);
     }
 
     if (!c.env.BLOB) return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    const nativeObject = await resolveNativeStorageObject(
-      c.env.BLOB,
-      organization_id,
-      validated.key,
-    );
-    if (nativeObject?.deleted_at)
+    const priceUsd = await getServiceMethodCost(STORAGE_SERVICE_ID, "get");
+    const result = await executeNativeStorageGetOrHead({
+      bucket: c.env.BLOB,
+      organizationId: organization_id,
+      userId: user.id,
+      logicalKey: validated.key,
+      rawIdempotencyKey: c.req.header("Idempotency-Key") ?? "",
+      priceUsd,
+      method: "get",
+    });
+    if (result.status === 404)
       return c.json({ error: "Object not found" }, 404);
-    if (nativeObject?.provider_key) {
-      const object = await c.env.BLOB.get(nativeObject.provider_key);
-      if (!object) {
-        return c.json(
-          { error: "Storage generation is temporarily unavailable" },
-          503,
-        );
-      }
-      const body = object.body ?? (await object.arrayBuffer?.());
-      if (!body) {
-        return c.json({ error: "Storage generation body is unavailable" }, 503);
-      }
-      return new Response(body, {
-        status: 200,
-        headers: {
-          "Content-Type": nativeObject.content_type!,
-          "Content-Length": String(nativeObject.size_bytes),
-          ETag: nativeObject.etag!,
-          "Last-Modified": nativeObject.uploaded_at!.toUTCString(),
-        },
-      });
+    if (!result.object || !result.headers) {
+      return c.json({ error: "Storage generation body is unavailable" }, 503);
     }
-
-    return c.json({ error: "Object not found" }, 404);
+    const body = result.object.body ?? (await result.object.arrayBuffer?.());
+    if (!body)
+      return c.json({ error: "Storage generation body is unavailable" }, 503);
+    return new Response(body, {
+      status: 200,
+      headers: {
+        "Content-Type": result.headers.contentType,
+        "Content-Length": String(result.headers.size),
+        ETag: result.headers.etag,
+        "Last-Modified": result.headers.lastModified,
+        "X-Storage-Receipt-Id": result.operation.id,
+      },
+    });
   } catch (error) {
+    // error-policy:J1 transport boundary maps typed read failures to HTTP status.
+    const readFailure = storageReadFailure(c, error);
+    if (readFailure) return readFailure;
     return failureResponse(c, error);
   }
-});
+}
+
+app.get("/", handleStorageGet);
+app.get("/*", handleStorageGet);
 
 async function handleStorageHead(c: Context<AppEnv>) {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
 
-    const validated = validateUserKey(c.req.param("*"));
+    const validated = validatePrivateObjectKey(c);
     if ("error" in validated) {
       return c.json({ error: validated.error }, 400);
     }
 
     if (!c.env.BLOB?.head) return c.json(R2_NOT_CONFIGURED_BODY, 503);
-    const nativeObject = await resolveNativeStorageObject(
-      c.env.BLOB,
-      organization_id,
-      validated.key,
-    );
-    if (nativeObject?.deleted_at) return new Response(null, { status: 404 });
-    if (nativeObject?.provider_key) {
-      const observed = await c.env.BLOB.head(nativeObject.provider_key);
-      if (
-        !observed ||
-        observed.size !== Number(nativeObject.size_bytes) ||
-        observed.etag !== nativeObject.etag
-      ) {
-        return c.json(
-          { error: "Storage generation is temporarily unavailable" },
-          503,
-        );
-      }
-      return new Response(null, {
-        status: 200,
-        headers: {
-          "Content-Type": nativeObject.content_type!,
-          "Content-Length": String(nativeObject.size_bytes),
-          ETag: nativeObject.etag!,
-          "Last-Modified": nativeObject.uploaded_at!.toUTCString(),
-        },
-      });
-    }
-
-    return new Response(null, { status: 404 });
+    const priceUsd = await getServiceMethodCost(STORAGE_SERVICE_ID, "head");
+    const result = await executeNativeStorageGetOrHead({
+      bucket: c.env.BLOB,
+      organizationId: organization_id,
+      userId: user.id,
+      logicalKey: validated.key,
+      rawIdempotencyKey: c.req.header("Idempotency-Key") ?? "",
+      priceUsd,
+      method: "head",
+    });
+    if (result.status === 404) return new Response(null, { status: 404 });
+    if (!result.headers)
+      return c.json({ error: "Storage generation is unavailable" }, 503);
+    return new Response(null, {
+      status: 200,
+      headers: {
+        "Content-Type": result.headers.contentType,
+        "Content-Length": String(result.headers.size),
+        ETag: result.headers.etag,
+        "Last-Modified": result.headers.lastModified,
+        "X-Storage-Receipt-Id": result.operation.id,
+      },
+    });
   } catch (error) {
+    // error-policy:J1 transport boundary maps typed read failures to HTTP status.
+    const readFailure = storageReadFailure(c, error);
+    if (readFailure) return readFailure;
     return failureResponse(c, error);
   }
+}
+
+function storageReadFailure(
+  c: Context<AppEnv>,
+  error: unknown,
+): Response | undefined {
+  if (!(error instanceof NativeStorageReadError)) return undefined;
+  if (error.code === "INSUFFICIENT_CREDITS") {
+    return c.json(
+      {
+        error: "Insufficient credits",
+        topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+      },
+      402,
+    );
+  }
+  if (
+    error.code === "IDEMPOTENCY_REQUIRED" ||
+    error.code === "IDEMPOTENCY_INVALID"
+  ) {
+    return c.json({ error: error.message, code: error.code }, 400);
+  }
+  if (error.code === "IDEMPOTENCY_MISMATCH") {
+    return c.json({ error: error.message, code: error.code }, 409);
+  }
+  return c.json(
+    { error: "Storage read is temporarily unavailable", code: error.code },
+    503,
+  );
 }
 
 app.delete("/*", async (c) => {
@@ -257,7 +303,7 @@ app.delete("/*", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { organization_id } = user;
 
-    const validated = validateUserKey(c.req.param("*"));
+    const validated = validatePrivateObjectKey(c);
     if ("error" in validated) {
       return c.json({ error: validated.error }, 400);
     }
@@ -286,6 +332,7 @@ app.delete("/*", async (c) => {
 
     return new Response(null, { status: 204 });
   } catch (error) {
+    // error-policy:J1 transport boundary maps typed delete failures to HTTP status.
     if (error instanceof StoragePutConflictError) {
       return c.json({ error: error.message, reason: error.reason }, 409);
     }

@@ -78,6 +78,11 @@ function pathParamTypeLine(endpoint) {
 }
 
 function responseModeFor(method, route, source) {
+  if (
+    route === "/api/v1/apis/storage/objects/_" &&
+    (method === "GET" || method === "HEAD")
+  )
+    return "binary";
   if (route.endsWith("/tts")) return "binary";
   if (source.includes('"Content-Type": "text/html')) return "text";
   if (route.includes("/stream") || route.endsWith("/logs/stream"))
@@ -88,9 +93,30 @@ function responseModeFor(method, route, source) {
   return "json";
 }
 
+function headerTypeLine(endpoint) {
+  if (endpoint.route === "/api/v1/apis/storage/objects/_") {
+    return `  ${quote(endpoint.key)}: { "X-Storage-Object-Key": string; "Idempotency-Key": string; "Content-Type"?: string };`;
+  }
+  if (endpoint.route === "/api/v1/apis/storage/presign") {
+    return `  ${quote(endpoint.key)}: { "X-Storage-Object-Key": string; "Idempotency-Key": string; "Content-Type"?: string };`;
+  }
+  if (endpoint.route === "/api/v1/apis/storage/list") {
+    return `  ${quote(endpoint.key)}: { "X-Storage-Prefix": string; "X-Storage-Recursive": "true" | "false"; "Idempotency-Key": string };`;
+  }
+  return `  ${quote(endpoint.key)}: never;`;
+}
+
+function requiresStorageHeaders(endpoint) {
+  return (
+    endpoint.route === "/api/v1/apis/storage/objects/_" ||
+    endpoint.route === "/api/v1/apis/storage/presign" ||
+    endpoint.route === "/api/v1/apis/storage/list"
+  );
+}
+
 function routeMethod(endpoint) {
   const optionsArg =
-    endpoint.pathParams.length > 0
+    endpoint.pathParams.length > 0 || requiresStorageHeaders(endpoint)
       ? `options: PublicRouteCallOptions<${quote(endpoint.key)}>`
       : `options: PublicRouteCallOptions<${quote(endpoint.key)}> = {}`;
   if (
@@ -117,7 +143,7 @@ function routeMethod(endpoint) {
 
 function routeRawMethod(endpoint) {
   const optionsArg =
-    endpoint.pathParams.length > 0
+    endpoint.pathParams.length > 0 || requiresStorageHeaders(endpoint)
       ? `options: PublicRouteCallOptions<${quote(endpoint.key)}>`
       : `options: PublicRouteCallOptions<${quote(endpoint.key)}> = {}`;
   return [
@@ -134,21 +160,32 @@ const endpoints = [];
 
 for (const routeFile of routeFiles) {
   const source = await readFile(routeFile.fullPath, "utf8");
-  const methods = (
+  let methods = (
     await extractMethods(source, routeFile.fullPath, cloudRoot)
   ).filter((method) => method !== "OPTIONS" && method !== "HEAD");
   if (methods.length === 0) continue;
 
   const segments = routeFile.relativeSegments.map(segmentToRouteParam);
-  const route = `/api/${segments.map((segment) => segment.routeSegment).join("/")}`;
+  const discoveredRoute = `/api/${segments.map((segment) => segment.routeSegment).join("/")}`;
+  const fixedStorageObject =
+    discoveredRoute === "/api/v1/apis/storage/objects/{key}";
+  const route = fixedStorageObject
+    ? "/api/v1/apis/storage/objects/_"
+    : discoveredRoute;
+  if (fixedStorageObject && !methods.includes("HEAD"))
+    methods = [...methods, "HEAD"];
   if (!isGeneratedPublicRoute(route)) continue;
 
-  const pathParams = segments.flatMap((segment) =>
-    segment.paramName ? [segment.paramName] : [],
-  );
-  const catchAllPathParams = segments.flatMap((segment) =>
-    segment.paramName && segment.catchAll ? [segment.paramName] : [],
-  );
+  const pathParams = fixedStorageObject
+    ? []
+    : segments.flatMap((segment) =>
+        segment.paramName ? [segment.paramName] : [],
+      );
+  const catchAllPathParams = fixedStorageObject
+    ? []
+    : segments.flatMap((segment) =>
+        segment.paramName && segment.catchAll ? [segment.paramName] : [],
+      );
   const file = path.relative(cloudRoot, routeFile.fullPath);
 
   for (const method of methods) {
@@ -202,12 +239,18 @@ export interface PublicRoutePathParams {
 ${endpoints.map(pathParamTypeLine).join("\n")}
 }
 
+export interface PublicRouteHeaders {
+${endpoints.map(headerTypeLine).join("\n")}
+}
+
 export interface PublicRouteBaseCallOptions extends Omit<CloudRequestOptions, "json"> {
   json?: unknown;
 }
 
 export type PublicRouteCallOptions<TKey extends PublicRouteKey> =
-  PublicRouteBaseCallOptions &
+  (PublicRouteHeaders[TKey] extends never
+    ? PublicRouteBaseCallOptions
+    : Omit<PublicRouteBaseCallOptions, "headers"> & { headers: PublicRouteHeaders[TKey] }) &
     (keyof PublicRoutePathParams[TKey] extends never
       ? { pathParams?: never }
       : { pathParams: PublicRoutePathParams[TKey] });
@@ -276,7 +319,7 @@ function toRequestOptions<TKey extends PublicRouteKey>(
   options: PublicRouteCallOptions<TKey> | undefined
 ): CloudRequestOptions {
   const { pathParams: _pathParams, ...requestOptions } = options ?? {};
-  return requestOptions;
+  return requestOptions as CloudRequestOptions;
 }
 
 export class ElizaCloudPublicRoutesClient {

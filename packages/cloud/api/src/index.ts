@@ -29,7 +29,7 @@ import {
 import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-telemetry-hono";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { serveBlobHostRequest } from "./blob-host";
+import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
 import { isThinStewardPublicPath } from "./steward/public-paths";
@@ -862,6 +862,17 @@ export default {
     ctx: ExecutionContext,
   ) => {
     const url = new URL(request.url);
+    // Capability tokens are bearer credentials. Reserve their opaque namespace
+    // before any host redirect or proxy can forward it to another origin.
+    if (isStorageReadCapabilityPath(url)) {
+      return (
+        (await serveBlobHostRequest(request, url, env)) ??
+        Response.json(
+          { success: false, error: "Not found", code: "resource_not_found" },
+          { status: 404, headers: { "cache-control": "private, no-store" } },
+        )
+      );
+    }
     const frontendAliasApiTarget = getFrontendAliasApiProxyTarget(url);
     if (frontendAliasApiTarget) {
       if (frontendAliasApiTarget.pathname === "/api/health") {

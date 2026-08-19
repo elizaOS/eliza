@@ -17,6 +17,7 @@ const MIGRATIONS = [
   "0256_org_storage_native_objects.sql",
   "0257_org_storage_native_put_operations.sql",
   "0258_org_storage_generation_gc_outbox.sql",
+  "0266_org_storage_read_operations.sql",
 ];
 const TIMEOUT = 60_000;
 
@@ -44,12 +45,17 @@ beforeAll(async () => {
     `CREATE TABLE credit_transactions (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       organization_id uuid NOT NULL REFERENCES organizations(id),
+      user_id uuid,
       amount numeric(12,6) NOT NULL,
       type text NOT NULL,
       description text,
       metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
       settled_at timestamp with time zone,
       created_at timestamp DEFAULT now() NOT NULL
+    )`,
+    `CREATE TABLE users (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id)
     )`,
     `CREATE TABLE service_pricing (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -87,10 +93,26 @@ beforeAll(async () => {
 }, TIMEOUT);
 
 beforeEach(async () => {
+  // The production receipt table rejects DELETE/TRUNCATE. This database-owner-only
+  // fixture reset bypasses just its statement guard; migration tests exercise the guard itself.
   await dbWrite.execute(
-    sql.raw(`TRUNCATE org_storage_gc_outbox, org_storage_delete_operations, org_storage_put_operations,
-      org_storage_objects, org_storage_quota, credit_transactions, organizations CASCADE`),
+    sql.raw(
+      "ALTER TABLE org_storage_read_operations DISABLE TRIGGER org_storage_read_truncate_guard_trigger",
+    ),
   );
+  try {
+    await dbWrite.execute(
+      sql.raw(`TRUNCATE org_storage_read_operations, org_storage_gc_outbox,
+        org_storage_delete_operations, org_storage_put_operations, org_storage_objects,
+        org_storage_quota, credit_transactions, users, organizations CASCADE`),
+    );
+  } finally {
+    await dbWrite.execute(
+      sql.raw(
+        "ALTER TABLE org_storage_read_operations ENABLE TRIGGER org_storage_read_truncate_guard_trigger",
+      ),
+    );
+  }
   await dbWrite.execute(sql`INSERT INTO organizations (id) VALUES (${ORG})`);
   await dbWrite.execute(sql`INSERT INTO organizations (id) VALUES (${OTHER_ORG})`);
   await dbWrite.execute(
@@ -385,6 +407,46 @@ describe("OrgStorageMutationsRepository", () => {
       "legacy/voice.ogg",
     ]);
     expect(listed[1]?.generation).toBe(1n);
+  });
+
+  test("does not collect an overwritten generation while a durable read retains it", async () => {
+    await commitZeroCost("retained-generation", "a", 6n);
+    const object = await repository.findObject(ORG, "retained-generation");
+    if (!object?.provider_key || !object.content_type || !object.etag || !object.uploaded_at) {
+      throw new Error("committed storage fixture is incomplete");
+    }
+    const now = new Date();
+    const userId = crypto.randomUUID();
+    await dbWrite.execute(sql`INSERT INTO users (id, organization_id) VALUES (${userId}, ${ORG})`);
+    const receipt = await dbWrite.execute(sql`INSERT INTO org_storage_read_operations (
+        organization_id, user_id, object_id, idempotency_key_hash, request_digest,
+        method, price_usd, retain_until
+      ) VALUES (
+        ${ORG}, ${userId}, ${object.id}, ${"5".repeat(64)}, ${"6".repeat(64)},
+        'get', 0, ${new Date(now.getTime() + 60_000)}
+      ) RETURNING id`);
+    const receiptId = (receipt.rows[0] as { id: string }).id;
+    await dbWrite.execute(sql`UPDATE org_storage_read_operations SET
+        state = 'provider_succeeded', object_generation = ${object.generation},
+        provider_key = ${object.provider_key}, result_size_bytes = ${object.size_bytes},
+        result_content_type = ${object.content_type}, result_etag = ${object.etag},
+        response_status = 200, response_json = ${JSON.stringify({ size: 6 })},
+        provider_succeeded_at = ${now}
+      WHERE id = ${receiptId}`);
+    await dbWrite.execute(sql`UPDATE org_storage_read_operations
+      SET state = 'committed', completed_at = ${now} WHERE id = ${receiptId}`);
+
+    await commitZeroCost("retained-generation", "e", 3n);
+    await dbWrite.execute(sql`UPDATE org_storage_gc_outbox
+      SET not_before = ${new Date(now.getTime() - 1_000)}
+      WHERE provider_key = ${object.provider_key}`);
+
+    expect(await repository.listDueGc(now)).toEqual([]);
+    expect(
+      (await repository.listDueGc(new Date(now.getTime() + 61_000))).map(
+        (item) => item.provider_key,
+      ),
+    ).toEqual([object.provider_key]);
   });
 
   test("repairs historical quota drift from the adopted catalog plus active reservations", async () => {
@@ -729,5 +791,45 @@ describe("OrgStorageMutationsRepository", () => {
       sql`SELECT bytes_used FROM org_storage_quota WHERE organization_id = ${ORG}`,
     );
     expect(String((quota.rows[0] as { bytes_used: string } | undefined)?.bytes_used)).toBe("0");
+  });
+
+  test("holds DELETE while an exact GET receipt remains recoverable", async () => {
+    await commitZeroCost("retained", "f", 6n);
+    const object = await repository.findObject(ORG, "retained");
+    if (!object?.provider_key || !object.content_type || !object.etag || !object.uploaded_at) {
+      throw new Error("committed storage fixture is incomplete");
+    }
+    const userId = crypto.randomUUID();
+    await dbWrite.execute(sql`INSERT INTO users (id, organization_id) VALUES (${userId}, ${ORG})`);
+    const receipt = await dbWrite.execute(sql`INSERT INTO org_storage_read_operations (
+        organization_id, user_id, object_id, idempotency_key_hash, request_digest,
+        method, price_usd, retain_until
+      ) VALUES (
+        ${ORG}, ${userId}, ${object.id}, ${"1".repeat(64)}, ${"2".repeat(64)},
+        'get', 0, ${new Date(Date.now() + 60_000)}
+      ) RETURNING id`);
+    const receiptId = (receipt.rows[0] as { id: string }).id;
+    await dbWrite.execute(sql`UPDATE org_storage_read_operations SET
+        state = 'provider_succeeded', object_generation = ${object.generation},
+        provider_key = ${object.provider_key}, result_size_bytes = ${object.size_bytes},
+        result_content_type = ${object.content_type}, result_etag = ${object.etag},
+        response_status = 200, response_json = ${JSON.stringify({
+          contentType: object.content_type,
+          size: Number(object.size_bytes),
+          etag: object.etag,
+          lastModified: object.uploaded_at.toUTCString(),
+        })}, provider_succeeded_at = NOW()
+      WHERE id = ${receiptId}`);
+    await dbWrite.execute(sql`UPDATE org_storage_read_operations
+      SET state = 'committed', completed_at = NOW() WHERE id = ${receiptId}`);
+
+    await expect(
+      repository.prepareDelete({
+        organizationId: ORG,
+        logicalKey: "retained",
+        idempotencyKeyHash: "3".repeat(64),
+        requestDigest: "4".repeat(64),
+      }),
+    ).rejects.toMatchObject({ reason: "object_busy" });
   });
 });

@@ -40,6 +40,9 @@ export const CORS_ALLOW_HEADER_NAMES = [
   // affiliate attribution (X-Affiliate-Code); must be in the allow-list or the
   // browser CORS preflight rejects requests that send them.
   "Idempotency-Key",
+  "X-Storage-Object-Key",
+  "X-Storage-Prefix",
+  "X-Storage-Recursive",
   "X-Affiliate-Code",
   // The Eliza app's agent-API client (packages/ui/src/api/client-base.ts) ALWAYS
   // sends these to a shared-runtime agent's REST surface

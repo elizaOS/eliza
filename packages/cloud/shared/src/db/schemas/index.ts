@@ -84,6 +84,7 @@ export * from "./oidc";
 export * from "./org-rate-limit-overrides";
 export * from "./org-storage-mutations";
 export * from "./org-storage-quota";
+export * from "./org-storage-reads";
 export * from "./organization-billing";
 export * from "./organization-config";
 export * from "./organization-encryption-keys";
