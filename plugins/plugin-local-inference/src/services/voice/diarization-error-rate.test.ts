@@ -4,6 +4,8 @@ import {
 	computeDiarizationErrorRate,
 	type DiarizationSegment,
 	diarizationWithinBudget,
+	MAX_DER_DURATION_MS,
+	MIN_DER_FRAME_MS,
 } from "./diarization-error-rate";
 
 /**
@@ -89,6 +91,29 @@ describe("computeDiarizationErrorRate", () => {
 		const result = computeDiarizationErrorRate(reference, hypothesis);
 		expect(result.missedMs).toBeCloseTo(1000, -1);
 		expect(result.der).toBeCloseTo(1000 / 3000, 2);
+	});
+
+	it("fails closed on a hostile timeline instead of allocating millions of frames", () => {
+		const started = performance.now();
+		expect(() =>
+			computeDiarizationErrorRate(
+				[seg("alice", 0, MAX_DER_DURATION_MS + 1)],
+				[seg("spk0", 0, MAX_DER_DURATION_MS + 1)],
+			),
+		).toThrow(/exceeds/);
+		expect(performance.now() - started).toBeLessThan(50);
+	});
+
+	it("fails closed on a sub-millisecond frame that would explode frame count", () => {
+		expect(() =>
+			computeDiarizationErrorRate(
+				[seg("alice", 0, 1000)],
+				[seg("spk0", 0, 1000)],
+				{
+					frameMs: MIN_DER_FRAME_MS / 10,
+				},
+			),
+		).toThrow(/frameMs/);
 	});
 });
 
