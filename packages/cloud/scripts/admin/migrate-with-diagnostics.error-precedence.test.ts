@@ -4,6 +4,7 @@
  */
 
 import { expect, spyOn, test } from "bun:test";
+import { WARM_POOL_ORG_ID } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
 import {
   applyMigration,
   convergeAgentSandboxSchemaOnMigrationClient,
@@ -197,4 +198,8 @@ test("the migration-session adapter executes the complete convergence batch", as
       text.includes('CREATE TABLE IF NOT EXISTS "agent_pairing_tokens"'),
     ),
   ).toBe(true);
+  expect(
+    queries.find(({ text }) => text.includes('INSERT INTO "organizations"'))
+      ?.params,
+  ).toEqual([WARM_POOL_ORG_ID]);
 });
