@@ -162,3 +162,34 @@ describe("CanvasWeb validation", () => {
     },
   );
 });
+
+describe("CanvasWeb eval message source", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("ignores a spoofed eliza:evalResult from a window that is not the web view", async () => {
+    const canvas = new CanvasWeb();
+    await canvas.navigate({ url: "about:blank" });
+    const iframe = document.querySelector("iframe");
+    const webView = iframe?.contentWindow;
+    expect(webView).toBeTruthy();
+
+    const evalPromise = canvas.eval({ script: "1+1" });
+    // Same-page attacker: window.postMessage delivers source === window.
+    window.postMessage({ type: "eliza:evalResult", result: "pwned" }, "*");
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "2" },
+        origin: "null",
+        source: webView,
+      }),
+    );
+
+    await expect(evalPromise).resolves.toEqual({ result: "2" });
+  });
+});

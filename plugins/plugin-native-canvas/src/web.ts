@@ -5,7 +5,8 @@
  * `<canvas>` elements (composited as absolute-positioned DOM siblings so
  * z-ordering follows CSS `z-index`) and backs the embedded web view with an
  * iframe (inline/fullscreen) or a `window.open` popup, including the
- * `eliza://` deep-link intercept and the A2UI postMessage bridge.
+ * `eliza://` deep-link intercept and the A2UI postMessage bridge. Eval
+ * replies are accepted only from the web-view window that received the script.
  */
 
 import { WebPlugin } from "@capacitor/core";
@@ -1163,8 +1164,14 @@ export class CanvasWeb extends WebPlugin {
       }, timeoutMs);
 
       const handler = (event: MessageEvent) => {
-        const msg = event.data as WebViewIncomingMessage;
-        if (msg?.type === "eliza:evalResult" && msg.result !== undefined) {
+        // The request is posted with targetOrigin "*". Any same-page window
+        // can therefore emit `eliza:evalResult`; only the web view that
+        // received the script is allowed to complete this eval.
+        if (event.source !== target) return;
+        const data = event.data;
+        if (!data || typeof data !== "object") return;
+        const msg = data as WebViewIncomingMessage;
+        if (msg.type === "eliza:evalResult" && msg.result !== undefined) {
           clearTimeout(timeout);
           window.removeEventListener("message", handler);
           resolve({ result: String(msg.result) });
