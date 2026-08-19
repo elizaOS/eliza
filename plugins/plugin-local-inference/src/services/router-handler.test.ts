@@ -46,6 +46,37 @@ describe("installRouterHandler", () => {
 				(registration) => registration.modelType === ModelType.TEXT_EMBEDDING,
 			),
 		).toBe(false);
+		expect(registrations).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					modelType: ModelType.RESPONSE_HANDLER,
+					provider: ROUTER_PROVIDER,
+				}),
+				expect.objectContaining({
+					modelType: ModelType.ACTION_PLANNER,
+					provider: ROUTER_PROVIDER,
+				}),
+				expect.objectContaining({
+					modelType: ModelType.TEXT_COMPLETION,
+					provider: ROUTER_PROVIDER,
+				}),
+			]),
+		);
+	});
+
+	it("skips semantic aliases when TEXT_SMALL is skipped", () => {
+		const registeredTypes: string[] = [];
+		const runtime = {
+			registerModel: vi.fn((modelType: string) => {
+				registeredTypes.push(modelType);
+			}),
+		} as unknown as AgentRuntime;
+
+		installRouterHandler(runtime, { skipSlots: ["TEXT_SMALL"] });
+
+		expect(registeredTypes).not.toContain(ModelType.RESPONSE_HANDLER);
+		expect(registeredTypes).not.toContain(ModelType.ACTION_PLANNER);
+		expect(registeredTypes).not.toContain(ModelType.TEXT_COMPLETION);
 	});
 });
 

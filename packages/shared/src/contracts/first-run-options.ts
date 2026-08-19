@@ -903,6 +903,21 @@ export function getFirstRunProviderOption(
   );
 }
 
+/**
+ * Resolves a product provider choice to the identity used by its registered
+ * model handlers without changing the product id stored in configuration.
+ */
+export function getFirstRunModelRegistrationProvider(
+  providerId: unknown,
+): string | null {
+  const option = getFirstRunProviderOption(providerId);
+  if (!option) return null;
+  if (option.pluginName === "@elizaos/plugin-elizacloud") {
+    return "elizaOSCloud";
+  }
+  return option.pluginName.replace(/^@elizaos\//, "").replace(/^plugin-/, "");
+}
+
 export function getFirstRunProviderFamily(
   providerId: unknown,
 ): FirstRunProviderFamily | null {

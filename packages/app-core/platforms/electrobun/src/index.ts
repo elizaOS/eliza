@@ -91,6 +91,7 @@ import {
   getStartupDiagnosticLogTail,
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
+  terminateManagedAgentOnHostExit,
 } from "./native/agent";
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
@@ -2414,6 +2415,9 @@ async function runShutdownCleanup(reason: string): Promise<void> {
 function setupShutdown(): void {
   Electrobun.events.on("before-quit", () => {
     void runShutdownCleanup("before-quit");
+  });
+  process.once("exit", () => {
+    terminateManagedAgentOnHostExit();
   });
 }
 

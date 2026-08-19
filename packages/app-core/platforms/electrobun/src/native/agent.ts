@@ -108,6 +108,60 @@ export type {
 // Subprocess type from Bun.spawn
 type BunSubprocess = ReturnType<typeof Bun.spawn>;
 
+type OwnedChildProcess = Pick<
+  BunSubprocess,
+  "pid" | "exitCode" | "kill" | "exited"
+>;
+
+const waitForOwnedChildExit = (milliseconds: number): Promise<void> =>
+  Bun.sleep(milliseconds);
+
+/**
+ * Terminates the embedded runtime while keeping the process handle available
+ * to the host-exit safety net until the child has actually settled.
+ */
+export async function terminateOwnedChildProcess(
+  proc: OwnedChildProcess,
+  options: {
+    graceMs?: number;
+    killSettleMs?: number;
+    wait?: (milliseconds: number) => Promise<void>;
+  } = {},
+): Promise<"already-exited" | "sigterm" | "sigkill"> {
+  if (proc.exitCode !== null) return "already-exited";
+
+  const graceMs = options.graceMs ?? SIGTERM_GRACE_MS;
+  const killSettleMs = options.killSettleMs ?? 1_000;
+  const wait = options.wait ?? waitForOwnedChildExit;
+  proc.kill("SIGTERM");
+  const exited = await Promise.race([
+    proc.exited.then(() => true as const),
+    wait(graceMs).then(() => false as const),
+  ]);
+  if (exited) return "sigterm";
+
+  try {
+    proc.kill("SIGKILL");
+  } catch {
+    // error-policy:J6 teardown race — the child may settle between the grace
+    // timeout and escalation; either outcome satisfies process ownership.
+  }
+  await Promise.race([proc.exited.catch(() => undefined), wait(killSettleMs)]);
+  return "sigkill";
+}
+
+/** Synchronous last resort for a host that is already exiting. */
+export function terminateOwnedChildProcessOnHostExit(
+  proc: Pick<OwnedChildProcess, "exitCode" | "kill"> | null,
+): void {
+  if (!proc || proc.exitCode !== null) return;
+  try {
+    proc.kill("SIGKILL");
+  } catch {
+    // error-policy:J6 process-exit teardown cannot await or surface recovery.
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -2455,35 +2509,26 @@ export class AgentManager {
     const proc = this.childProcess;
     if (!proc) return;
 
-    this.childProcess = null;
-
     // Already exited
-    if (proc.exitCode !== null) return;
+    if (proc.exitCode !== null) {
+      if (this.childProcess === proc) this.childProcess = null;
+      return;
+    }
 
     diagnosticLog(`[Agent] Sending SIGTERM to pid ${proc.pid}`);
-    proc.kill("SIGTERM");
-
-    // Wait for graceful shutdown or timeout
-    const exited = await Promise.race([
-      proc.exited.then(() => true as const),
-      Bun.sleep(SIGTERM_GRACE_MS).then(() => false as const),
-    ]);
-
-    if (!exited) {
+    const termination = await terminateOwnedChildProcess(proc);
+    if (termination === "sigkill") {
       diagnosticLog(
         `[Agent] Process did not exit within ${SIGTERM_GRACE_MS}ms, sending SIGKILL`,
       );
-      try {
-        proc.kill("SIGKILL");
-      } catch {
-        // Process may have already exited between check and kill
-      }
-      // Wait briefly for SIGKILL to take effect
-      // error-policy:J6 teardown — we only await that the killed child settles
-      await Promise.race([proc.exited.catch(() => {}), Bun.sleep(1_000)]);
     }
-
+    if (this.childProcess === proc) this.childProcess = null;
     diagnosticLog("[Agent] Child process terminated");
+  }
+
+  /** Kill the owned child synchronously when the desktop host is exiting. */
+  terminateChildOnHostExit(): void {
+    terminateOwnedChildProcessOnHostExit(this.childProcess);
   }
 
   /**
@@ -2524,4 +2569,9 @@ export function getAgentManager(): AgentManager {
     agentManager = new AgentManager();
   }
   return agentManager;
+}
+
+/** Avoid creating a manager solely because an external-runtime host exits. */
+export function terminateManagedAgentOnHostExit(): void {
+  agentManager?.terminateChildOnHostExit();
 }
