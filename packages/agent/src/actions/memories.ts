@@ -225,6 +225,15 @@ interface CandidateScan {
   saturatedTables: MemoryType[];
 }
 
+const RECALL_TERMINAL_SETTING = "ELIZA_RECALL_SHORT_CIRCUIT";
+
+function recallTerminalEnabled(runtime: IAgentRuntime): boolean {
+  const raw = runtime.getSetting(RECALL_TERMINAL_SETTING);
+  return typeof raw === "boolean"
+    ? raw
+    : /^(?:1|true|yes|on)$/iu.test(String(raw ?? "").trim());
+}
+
 /**
  * Shared read scope for search and delete-by-query. The entity filter is
  * identity-cluster expanded via getRelatedEntityIds — the same expansion the
@@ -370,6 +379,14 @@ async function doSearch(
   const lines = items
     .slice(0, 25)
     .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 300)}`);
+  const userFacingText = items.length
+    ? [
+        `I found ${items.length} matching memory record(s):`,
+        ...items
+          .slice(0, 25)
+          .map((item) => `- [${item.type}] ${item.text.slice(0, 300)}`),
+      ].join("\n")
+    : undefined;
 
   // Report what was actually rendered, not what was collected: the previous
   // header claimed up to 50 items while printing 25 lines, and printed the
@@ -389,6 +406,13 @@ async function doSearch(
       describeScanWindow(scan),
       ...lines,
     ].join("\n"),
+    ...(userFacingText && recallTerminalEnabled(runtime)
+      ? {
+          userFacingText,
+          verifiedUserFacing: true,
+          turnComplete: true,
+        }
+      : {}),
     values: {
       count: items.length,
       rendered: lines.length,

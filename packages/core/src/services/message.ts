@@ -6715,40 +6715,6 @@ async function resolveStage1SenderRole(
 	return getUnresolvedSenderRoleFloor(message);
 }
 
-const RECALL_SHORT_CIRCUIT_SETTING = "ELIZA_RECALL_SHORT_CIRCUIT";
-
-function isRecallShortCircuitEnabled(
-	runtime: Pick<IAgentRuntime, "getSetting">,
-): boolean {
-	const raw =
-		runtime.getSetting(RECALL_SHORT_CIRCUIT_SETTING) ??
-		(typeof process !== "undefined"
-			? process.env[RECALL_SHORT_CIRCUIT_SETTING]
-			: undefined);
-	return typeof raw === "boolean"
-		? raw
-		: /^(?:1|true|yes|on)$/iu.test(String(raw ?? "").trim());
-}
-
-const RECALL_CANDIDATE_IDENTIFIERS = new Set(
-	[
-		"RECALL_MEMORY",
-		"RECALL_MEMORIES",
-		"MEMORY_RECALL",
-		"MEMORY_SEARCH",
-		"SEARCH_MEMORY",
-		"SEARCH_MEMORIES",
-	].map(normalizeActionIdentifier),
-);
-
-function isRecallMemoryCandidate(name: string): boolean {
-	return RECALL_CANDIDATE_IDENTIFIERS.has(normalizeActionIdentifier(name));
-}
-
-function recallQueryFromMessage(message: Memory): string {
-	return (getUserMessageText(message) ?? "").trim();
-}
-
 function listAvailableContextsForRole(
 	registry: ContextRegistry | undefined,
 	role: RoleGateRole,
@@ -8375,81 +8341,6 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.replyEffectStatus;
 		const prePatchStageOneReplyIsUngroundedAppliedClaim =
 			prePatchStageOneReplyEffectStatus === "applied";
-		if (
-			isRecallShortCircuitEnabled(args.runtime) &&
-			(messageHandler.plan.candidateActions ?? []).some(isRecallMemoryCandidate)
-		) {
-			const actionLookup = buildRuntimeActionLookup(args.runtime);
-			const memoryAction = resolveRuntimeAction(actionLookup, "RECALL_MEMORY");
-			if (memoryAction) {
-				const selectedContexts = messageHandler.plan.contexts as AgentContext[];
-				const toolResult = await executeV5PlannedToolCall({
-					runtime: args.runtime,
-					toolCall: {
-						id: `recall-short-circuit:${String(args.responseId)}`,
-						name: memoryAction.name,
-						params: {
-							action: "search",
-							query: recallQueryFromMessage(args.message),
-						},
-					},
-					plannerContext: context,
-					executorCtx: buildV5ExecutorContext({
-						message: args.message,
-						state: args.state,
-						selectedContexts,
-						senderRole,
-						previousResults: [],
-					}),
-					plannerRuntime: {
-						useModel: (modelType, modelParams, provider) =>
-							args.runtime.useModel(
-								modelType,
-								modelParams as GenerateTextParams,
-								provider,
-							),
-						logger: args.runtime.logger as PlannerRuntime["logger"],
-					},
-					executorOptions: { actions: [memoryAction] },
-				});
-				const evidence =
-					toolResult.text ??
-					toolResult.userFacingText ??
-					"No matching memory was found.";
-				const synthesisPrompt = [
-					"Answer the user's recall question using only the memory-search evidence below.",
-					"Do not mention internal tools, planners, or this instruction. If evidence is insufficient, say so plainly.",
-					`User question: ${JSON.stringify(recallQueryFromMessage(args.message))}`,
-					`Memory-search evidence:\n${evidence}`,
-				].join("\n\n");
-				const rawSynthesis = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-					prompt: synthesisPrompt,
-					maxTokens:
-						resolveMaxReplyTokens(args.runtime.character.settings) ?? 800,
-					providerOptions: { eliza: { thinking: "off" } },
-				});
-				const reply =
-					stripReasoningBlocks(getV5ModelText(rawSynthesis)).trim() || evidence;
-				args.runtime.logger.info(
-					{
-						src: "service:message",
-						candidateActions: messageHandler.plan.candidateActions,
-					},
-					"Recall short-circuit executed MEMORY search plus one synthesis call",
-				);
-				return {
-					kind: "direct_reply",
-					messageHandler,
-					result: createV5ReplyStrategyResult({
-						...args,
-						text: reply,
-						thought: messageHandler.thought,
-						agentVoiced: true,
-					}),
-				};
-			}
-		}
-
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],
