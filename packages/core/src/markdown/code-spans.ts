@@ -1,4 +1,9 @@
-/** Detects backtick-delimited inline code while preserving state across streamed chunks. */
+/**
+ * Detects backtick-delimited inline code while preserving state across streamed
+ * chunks. Fence and inline-span membership is binary-searched over the ordered
+ * span list so a document of thousands of fences cannot turn each character
+ * into a linear scan (O(n·f) hang on origin).
+ */
 
 import { type FenceSpan, parseFenceSpans } from "./fences.js";
 
@@ -121,20 +126,42 @@ function parseInlineCodeSpans(
 	};
 }
 
+function findOrderedRange<T>(
+	spans: readonly T[],
+	index: number,
+	bounds: (span: T) => readonly [number, number],
+): T | undefined {
+	let lo = 0;
+	let hi = spans.length - 1;
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1;
+		const span = spans[mid];
+		const [start, end] = bounds(span);
+		if (index < start) {
+			hi = mid - 1;
+		} else if (index >= end) {
+			lo = mid + 1;
+		} else {
+			return span;
+		}
+	}
+	return undefined;
+}
+
 function findFenceSpanAtInclusive(
 	spans: FenceSpan[],
 	index: number,
 ): FenceSpan | undefined {
-	return spans.find((span) => index >= span.start && index < span.end);
+	return findOrderedRange(spans, index, (span) => [span.start, span.end]);
 }
 
 function isInsideFenceSpan(index: number, spans: FenceSpan[]): boolean {
-	return spans.some((span) => index >= span.start && index < span.end);
+	return findFenceSpanAtInclusive(spans, index) !== undefined;
 }
 
 function isInsideInlineSpan(
 	index: number,
 	spans: Array<[number, number]>,
 ): boolean {
-	return spans.some(([start, end]) => index >= start && index < end);
+	return findOrderedRange(spans, index, (span) => span) !== undefined;
 }
