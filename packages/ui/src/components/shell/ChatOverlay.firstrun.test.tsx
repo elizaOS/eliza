@@ -495,7 +495,8 @@ describe("ChatOverlay first-run gating", () => {
 
     render(<ChatOverlay controller={controller} firstRunOpen />);
 
-    expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
+    const signIn = screen.getByText("Sign in to Eliza Cloud");
+    expect(signIn.closest('[data-chat-message-bubble="true"]')).toBeNull();
     expect(screen.getAllByTestId("thread-line").at(-1)?.textContent).toContain(
       FIRST_RUN_GREETING,
     );

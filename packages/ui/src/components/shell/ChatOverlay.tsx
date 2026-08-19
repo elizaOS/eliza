@@ -2355,6 +2355,28 @@ export function ChatOverlay({
   // stays identical.
   const renderThreadLine = React.useCallback(
     (m: ShellMessage, index: number) => {
+      const messageData = shellToChatMessageData(m);
+      const firstRunChoiceRegions =
+        firstRunOpen && isFirstRunShellMessage(m)
+          ? findChoiceRegions(m.content)
+          : [];
+      const detachedChoice =
+        firstRunChoiceRegions.length === 1 &&
+        firstRunChoiceRegions[0].options.length === 1
+          ? firstRunChoiceRegions[0]
+          : null;
+      const bubbleMessage = detachedChoice
+        ? {
+            ...messageData,
+            text: `${m.content.slice(0, detachedChoice.start)}${m.content.slice(detachedChoice.end)}`.trim(),
+          }
+        : messageData;
+      const detachedChoiceMessage = detachedChoice
+        ? {
+            ...messageData,
+            text: m.content.slice(detachedChoice.start, detachedChoice.end),
+          }
+        : null;
       const isLastAssistant =
         index === visibleMessages.length - 1 && m.role === "assistant";
       const isInFlight =
@@ -2379,6 +2401,11 @@ export function ChatOverlay({
           className={cn("w-full", firstRunOpen && index > 0 && "mt-2")}
         >
           <ChatMessage
+            afterBubbleContent={
+              detachedChoiceMessage
+                ? renderRowBody(detachedChoiceMessage, undefined)
+                : undefined
+            }
             actionAccessory={
               m.id === speakingSourceMessageId ? (
                 <SpeakingStatusAccessory />
@@ -2389,7 +2416,7 @@ export function ChatOverlay({
             // optimistic turn. Overlay rows must therefore be visible on their
             // first frame so the handoff never exposes only the prior transcript.
             agentName={agentName}
-            message={shellToChatMessageData(m)}
+            message={bubbleMessage}
             reduceMotion={reduce}
             onCopy={handleCopyMessage}
             onLongPressCopy={handleLongPressCopy}
