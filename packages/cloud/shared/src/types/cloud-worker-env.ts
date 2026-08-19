@@ -67,6 +67,12 @@ export interface Bindings {
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
   DATABASE_URL_UNPOOLED?: string;
+  /**
+   * Diagnostic-only override for running agent-sandbox schema convergence in
+   * workerd. Canonical deploys repair the schema before Worker publication;
+   * leave this unset during normal operation.
+   */
+  AGENT_SANDBOX_ENSURE_IN_WORKER?: string;
 
   // ---- Cloudflare R2 ----
   /** Object storage for voice samples, avatars, and other binary blobs. */
