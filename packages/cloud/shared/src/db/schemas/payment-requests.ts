@@ -113,6 +113,9 @@ export const paymentRequests = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   },
   (table) => ({
+    id_organization_provider_unique: uniqueIndex(
+      "payment_requests_id_organization_provider_unique",
+    ).on(table.id, table.organization_id, table.provider),
     org_created_idx: index("idx_payment_requests_org_created").on(
       table.organization_id,
       table.created_at,
