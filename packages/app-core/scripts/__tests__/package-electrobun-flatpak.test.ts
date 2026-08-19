@@ -1,0 +1,76 @@
+/**
+ * Flatpak packaging tests verify that the release bundle targets the real
+ * Electrobun launcher and emits desktop metadata without host filesystem or
+ * shell escape permissions.
+ */
+
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  requireLauncher,
+  writeMetadata,
+} from "../package-electrobun-flatpak.mjs";
+
+const tempDirs: string[] = [];
+
+function tempDir(): string {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "flatpak-package-test-"));
+  tempDirs.push(dir);
+  return dir;
+}
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe("Electrobun Flatpak packaging", () => {
+  it("requires the packaged Electrobun launcher", () => {
+    const buildDir = tempDir();
+    mkdirSync(path.join(buildDir, "bin"), { recursive: true });
+    const launcher = path.join(buildDir, "bin/launcher");
+    writeFileSync(launcher, "#!/bin/sh\n");
+    chmodSync(launcher, 0o755);
+
+    expect(requireLauncher(buildDir)).toBe("bin/launcher");
+  });
+
+  it("rejects a CLI-only tree", () => {
+    const buildDir = tempDir();
+    mkdirSync(path.join(buildDir, "bin"), { recursive: true });
+    writeFileSync(path.join(buildDir, "bin/elizaos"), "#!/bin/sh\n");
+
+    expect(() => requireLauncher(buildDir)).toThrow(/bin\/launcher/);
+  });
+
+  it("emits a graphical desktop entry and exact launcher wrapper", () => {
+    const filesDir = tempDir();
+    writeMetadata(filesDir, "bin/launcher");
+
+    const wrapper = readFileSync(path.join(filesDir, "bin/eliza"), "utf8");
+    const desktop = readFileSync(
+      path.join(filesDir, "share/applications/ai.elizaos.app.desktop"),
+      "utf8",
+    );
+    const metadata = readFileSync(
+      path.join(filesDir, "share/metainfo/ai.elizaos.app.metainfo.xml"),
+      "utf8",
+    );
+
+    expect(wrapper).toContain("/app/opt/eliza/bin/launcher");
+    expect(desktop).toContain("Terminal=false");
+    expect(desktop).toContain("Exec=eliza");
+    expect(metadata).toContain('type="desktop-application"');
+    expect(metadata).toContain("https://github.com/elizaOS/eliza/issues");
+  });
+});
