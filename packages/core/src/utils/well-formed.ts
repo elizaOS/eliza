@@ -19,12 +19,11 @@ import { ElizaError } from "../errors.ts";
 /** Nesting ceiling. Honest provider bodies are a handful of objects deep. */
 export const MAX_WELL_FORMED_DEPTH = 64;
 /**
- * Node visit ceiling. Must sit well above an honest OpenAI/Anthropic body
- * (transcript objects plus tool JSON schemas) so the sanitizer does not
- * `fatal` a working turn. Origin completed a 200k-key object in ~123ms;
- * 65,536 was below that. A hostile wide tree still fail-closes.
+ * Node/slot ceiling. Text length does not consume visits, so this still permits
+ * very large transcripts while rejecting pathological object graphs and sparse
+ * arrays before provider serialization must walk them.
  */
-export const MAX_WELL_FORMED_VISITS = 1_048_576;
+export const MAX_WELL_FORMED_VISITS = 65_536;
 
 const HIGH_SURROGATE_START = 0xd800;
 const HIGH_SURROGATE_END = 0xdbff;
@@ -131,6 +130,16 @@ type WalkCtx = {
 	visiting: WeakSet<object>;
 };
 
+function reserveVisits(ctx: WalkCtx, count: number): void {
+	if (count > MAX_WELL_FORMED_VISITS - ctx.visits) {
+		failUnbounded("visits", {
+			visits: ctx.visits + count,
+			max: MAX_WELL_FORMED_VISITS,
+		});
+	}
+	ctx.visits += count;
+}
+
 function failUnbounded(
 	reason: "depth" | "cycle" | "visits",
 	context: Record<string, unknown>,
@@ -180,6 +189,7 @@ function sanitizeObjectPreservingDescriptors<T>(
 	value: T,
 	depth: number,
 	ctx: WalkCtx,
+	ownKeys: readonly (string | symbol)[],
 ): T {
 	if (value === null || typeof value !== "object") {
 		return value;
@@ -187,7 +197,7 @@ function sanitizeObjectPreservingDescriptors<T>(
 	if (Array.isArray(value)) {
 		let changed = false;
 		const next = value.map((item) => {
-			const sanitized = walkDeep(item, depth + 1, ctx);
+			const sanitized = walkDeep(item, depth + 1, ctx, true);
 			if (sanitized !== item) {
 				changed = true;
 			}
@@ -198,7 +208,7 @@ function sanitizeObjectPreservingDescriptors<T>(
 	const source = value as Record<PropertyKey, unknown>;
 	const clone = Object.create(null) as Record<PropertyKey, unknown>;
 	let changed = false;
-	for (const key of Reflect.ownKeys(source)) {
+	for (const key of ownKeys) {
 		const descriptor = Object.getOwnPropertyDescriptor(source, key);
 		if (!descriptor) {
 			continue;
@@ -214,7 +224,7 @@ function sanitizeObjectPreservingDescriptors<T>(
 
 		const sanitizedKey = toWellFormedUnicode(key);
 		const entry = "value" in descriptor ? descriptor.value : source[key];
-		const sanitizedValue = walkDeep(entry, depth + 1, ctx);
+		const sanitizedValue = walkDeep(entry, depth + 1, ctx, true);
 		if (sanitizedKey !== key || sanitizedValue !== entry) {
 			changed = true;
 		}
@@ -239,23 +249,26 @@ function sanitizeObjectPreservingDescriptors<T>(
 	return (changed ? clone : value) as T;
 }
 
-function walkDeep<T>(value: T, depth: number, ctx: WalkCtx): T {
-	ctx.visits += 1;
-	if (ctx.visits > MAX_WELL_FORMED_VISITS) {
-		failUnbounded("visits", {
-			visits: ctx.visits,
-			max: MAX_WELL_FORMED_VISITS,
-		});
-	}
+function walkDeep<T>(
+	value: T,
+	depth: number,
+	ctx: WalkCtx,
+	visitAlreadyReserved = false,
+): T {
+	if (!visitAlreadyReserved) reserveVisits(ctx, 1);
 	if (typeof value === "string") {
 		return toWellFormedUnicode(value) as unknown as T;
 	}
 	if (Array.isArray(value)) {
 		enterContainer(value, depth, ctx);
 		try {
+			// JSON serialization visits every array index, including holes. Reserve
+			// the whole logical length before mapping so a huge sparse array cannot
+			// bypass the budget or reach the provider serializer.
+			reserveVisits(ctx, value.length);
 			let changed = false;
 			const next = value.map((item) => {
-				const sanitized = walkDeep(item, depth + 1, ctx);
+				const sanitized = walkDeep(item, depth + 1, ctx, true);
 				if (sanitized !== item) {
 					changed = true;
 				}
@@ -278,26 +291,32 @@ function walkDeep<T>(value: T, depth: number, ctx: WalkCtx): T {
 		// non-enumerable symbol properties and breaks SDK contract checks
 		// (asSchema throws "schema is not a function"). Sanitize their
 		// string-valued own properties in-place instead (#18081).
-		const needsDescriptorPreservingClone = Reflect.ownKeys(value).some(
-			(key) => {
+		enterContainer(value, depth, ctx);
+		try {
+			const ownKeys = Reflect.ownKeys(value);
+			// Reserve before reading getters or walking children. Descriptor-bearing
+			// objects also copy symbols/non-enumerables, so every own key counts.
+			reserveVisits(ctx, ownKeys.length);
+			const needsDescriptorPreservingClone = ownKeys.some((key) => {
 				const descriptor = Object.getOwnPropertyDescriptor(value, key);
 				return (
 					typeof key === "symbol" ||
 					Boolean(descriptor && !("value" in descriptor)) ||
 					typeof descriptor?.value === "function"
 				);
-			},
-		);
-		enterContainer(value, depth, ctx);
-		try {
+			});
 			if (needsDescriptorPreservingClone) {
-				return sanitizeObjectPreservingDescriptors(value, depth, ctx);
+				return sanitizeObjectPreservingDescriptors(value, depth, ctx, ownKeys);
 			}
 			let changed = false;
 			const next = Object.create(null) as Record<string, unknown>;
-			for (const [key, entry] of Object.entries(value)) {
+			for (const key of ownKeys) {
+				if (typeof key !== "string") continue;
+				const descriptor = Object.getOwnPropertyDescriptor(value, key);
+				if (!descriptor?.enumerable || !("value" in descriptor)) continue;
+				const entry = descriptor.value;
 				const sanitizedKey = toWellFormedUnicode(key);
-				const sanitized = walkDeep(entry, depth + 1, ctx);
+				const sanitized = walkDeep(entry, depth + 1, ctx, true);
 				if (sanitizedKey !== key || sanitized !== entry) {
 					changed = true;
 				}

@@ -517,6 +517,39 @@ describe("deepToWellFormedUnicode unbounded input", () => {
 		expect(deepToWellFormedUnicode(input)).toBe(input);
 	});
 
+	it("charges sparse array holes before provider serialization", () => {
+		const exact = new Array(MAX_WELL_FORMED_VISITS - 1);
+		expect(deepToWellFormedUnicode(exact)).toBe(exact);
+
+		const oversized = new Array(MAX_WELL_FORMED_VISITS);
+		expect(() => deepToWellFormedUnicode(oversized)).toThrowError(
+			expect.objectContaining({
+				code: "WELL_FORMED_UNBOUNDED",
+				context: expect.objectContaining({ reason: "visits" }),
+			}),
+		);
+	});
+
+	it("rejects an over-budget object before invoking an enumerable getter", () => {
+		const input: Record<string, unknown> = {};
+		for (let i = 0; i < MAX_WELL_FORMED_VISITS - 1; i++) {
+			input[`key-${i}`] = "ok";
+		}
+		let getterCalls = 0;
+		Object.defineProperty(input, "hostile", {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				return "should not run";
+			},
+		});
+
+		expect(() => deepToWellFormedUnicode(input)).toThrow(
+			/WELL_FORMED|visit budget/i,
+		);
+		expect(getterCalls).toBe(0);
+	});
+
 	it("throws WELL_FORMED_UNBOUNDED on a visit-budget array of strings", () => {
 		const input = new Array<string>(MAX_WELL_FORMED_VISITS).fill("ok");
 		try {
