@@ -38,6 +38,7 @@ import {
 	userReferenceLogView as queryLogView,
 } from "../../utils/reference-echo.ts";
 import { addDocumentFromFilePath } from "./docs-loader.ts";
+import { isBlockedDocumentImportPath } from "./import-file-path.ts";
 import {
 	type DocumentListResult,
 	DocumentService,
@@ -1057,6 +1058,13 @@ async function handleImportFile(
 		params,
 	);
 	if (filePath) {
+		if (isBlockedDocumentImportPath(filePath)) {
+			const text =
+				"That file path is not available for document import; it is a credential or OS-private location.";
+			return result(false, text, "import_file", {
+				values: { error: "forbidden", filePath: queryLogView(filePath) },
+			});
+		}
 		if (!fs.existsSync(filePath)) {
 			const text = `No file exists at ${describeUserReference(filePath, "that path")}; tell the user it couldn't be found.`;
 			return result(false, text, "import_file", {
