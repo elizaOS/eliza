@@ -94,7 +94,7 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
     // setDefaultAgentName).
     templates: {
       authFailedReply:
-        "My model provider isn't accepting my key right now, so I can't work through this. Check that the key is still valid and the account is active, then send that again.",
+        "I can't connect because this account isn't authorized. The account owner needs to fix that before you retry.",
       insufficientCreditsReply:
         "My model provider is out of credits, so I can't answer this one. Waiting won't fix it. Add credits or raise the quota, then send that again.",
       noModelProviderReply:
