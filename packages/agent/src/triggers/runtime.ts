@@ -1,8 +1,10 @@
 /**
  * Executes the agent's scheduled/event triggers and wires them into the task
- * scheduler. Registers the TRIGGER_DISPATCH task worker, dispatches each fire to
- * either a workflow (the WORKFLOW_DISPATCH service, idempotency-keyed) or a
- * prompt automation (a synthetic-entity turn through the message service), then
+ * scheduler and runtime events. Registers the TRIGGER_DISPATCH task worker,
+ * bridges supported runtime events into persisted event triggers, dispatches
+ * each fire to either a workflow (the WORKFLOW_DISPATCH service,
+ * idempotency-keyed) or a prompt automation (a synthetic-entity turn through
+ * the message service), then
  * records the run, recomputes next-fire metadata, deletes one-shot/exhausted
  * tasks, and hands the per-fire re-arm interval back so varying-cadence triggers
  * don't drift. Tracks per-agent execution metrics, surfaces success/failure on
@@ -11,6 +13,7 @@
  */
 import crypto from "node:crypto";
 import type {
+  EventPayload,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -19,6 +22,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  EventType,
   inspectSendHandlerResult,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   registerRuntimeManagedInternalActor,
@@ -45,6 +49,13 @@ import type {
 export const TRIGGER_TASK_NAME = "TRIGGER_DISPATCH" as const;
 export const TRIGGER_TASK_TAGS = ["queue", "repeat", "trigger"] as const;
 const HEARTBEAT_TASK_TAGS = ["queue", "repeat", "heartbeat"] as const;
+const WORKFLOW_RUN_EVENT = "workflow_run_event" as const;
+const RUNTIME_TRIGGER_EVENT_KINDS = [
+  EventType.MESSAGE_RECEIVED,
+  WORKFLOW_RUN_EVENT,
+] as const;
+
+const eventBridgeRegistrations = new WeakSet<IAgentRuntime>();
 
 const DEFAULT_MAX_ACTIVE_TRIGGERS = 100;
 
@@ -851,28 +862,100 @@ export async function executeTriggerTask(
   };
 }
 
-export function registerTriggerTaskWorker(runtime: IAgentRuntime): void {
-  if (runtime.getTaskWorker(TRIGGER_TASK_NAME)) return;
+function serializableEventPayload(
+  params: EventPayload,
+): Record<string, unknown> {
+  const payload = { ...params } as Record<string, unknown>;
+  delete payload.runtime;
+  delete payload.onComplete;
+  return payload;
+}
 
-  runtime.registerTaskWorker({
-    name: TRIGGER_TASK_NAME,
-    shouldRun: async () => true,
-    execute: async (rt, options, task) => {
-      const result = await executeTriggerTask(rt, task, {
-        source: options.source === "manual" ? "manual" : "scheduler",
-        force: options.force === true,
-      });
-      // Hand the per-fire re-arm interval back to the task service as scheduling
-      // metadata. Without it, the service's success path falls through to a
-      // frozen `baseInterval` (seeded on the first transient failure), so a
-      // varying-cadence trigger (e.g. weekday cron) permanently drifts — firing
-      // on the wrong days. Deleted tasks don't reschedule, so return nothing.
-      if (!result.taskDeleted && typeof result.updateInterval === "number") {
-        return { nextInterval: result.updateInterval };
-      }
-      return undefined;
-    },
+/**
+ * Dispatch one runtime event through the same persisted trigger engine used by
+ * the HTTP event boundary. Filtering happens before execution so unrelated
+ * event triggers do not accumulate skipped-run metrics.
+ */
+export async function dispatchRuntimeEventTriggers(
+  runtime: IAgentRuntime,
+  eventKind: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const tasks = await listTriggerTasks(runtime);
+  const matchingTasks = tasks.filter((task) => {
+    const trigger = readTriggerConfig(task);
+    return (
+      trigger?.enabled === true &&
+      trigger.triggerType === "event" &&
+      trigger.eventKind === eventKind
+    );
   });
+
+  await Promise.all(
+    matchingTasks.map(async (task) => {
+      try {
+        await executeTriggerTask(runtime, task, {
+          source: "event",
+          event: { kind: eventKind, payload },
+        });
+      } catch (error) {
+        // error-policy:J7 one trigger's persistence/dispatch failure must not
+        // reject the source runtime event or prevent sibling triggers.
+        runtime.reportError("TriggerRuntime.eventDispatch", error, {
+          eventKind,
+          taskId: task.id,
+        });
+      }
+    }),
+  );
+}
+
+function registerRuntimeEventTriggerBridge(runtime: IAgentRuntime): void {
+  if (eventBridgeRegistrations.has(runtime)) return;
+
+  for (const eventKind of RUNTIME_TRIGGER_EVENT_KINDS) {
+    runtime.registerEvent(eventKind, async (params: EventPayload) => {
+      void dispatchRuntimeEventTriggers(
+        runtime,
+        eventKind,
+        serializableEventPayload(params),
+      ).catch((error) => {
+        // error-policy:J7 trigger discovery failures are observed without
+        // blocking the source message or a nested Smithers execution event.
+        runtime.reportError("TriggerRuntime.eventBridge", error, {
+          eventKind,
+        });
+      });
+    });
+  }
+
+  eventBridgeRegistrations.add(runtime);
+}
+
+export function registerTriggerTaskWorker(runtime: IAgentRuntime): void {
+  if (!runtime.getTaskWorker(TRIGGER_TASK_NAME)) {
+    runtime.registerTaskWorker({
+      name: TRIGGER_TASK_NAME,
+      shouldRun: async () => true,
+      execute: async (rt, options, task) => {
+        const result = await executeTriggerTask(rt, task, {
+          source: options.source === "manual" ? "manual" : "scheduler",
+          force: options.force === true,
+        });
+        // Hand the per-fire re-arm interval back to the task service as scheduling
+        // metadata. Without it, the service's success path falls through to a
+        // frozen `baseInterval` (seeded on the first transient failure), so a
+        // varying-cadence trigger (e.g. weekday cron) permanently drifts — firing
+        // on the wrong days. Deleted tasks don't reschedule, so return nothing.
+        if (!result.taskDeleted && typeof result.updateInterval === "number") {
+          return { nextInterval: result.updateInterval };
+        }
+        return undefined;
+      },
+    });
+  }
+
+  registerRuntimeEventTriggerBridge(runtime);
 }
 
 export async function listTriggerTasks(

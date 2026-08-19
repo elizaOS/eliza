@@ -13,6 +13,7 @@ import { readFile } from "node:fs/promises";
 import { ModelType, type Plugin, type Route } from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
+import { registerTriggerTaskWorker } from "../../agent/src/triggers/runtime.ts";
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
@@ -248,6 +249,9 @@ async function main(): Promise<void> {
     characterName: "DeviceE2EHostAgent",
     plugins: [proxy, mediaRoutesPlugin, ...workflowPlugins],
   });
+  if (process.env.ELIZA_UI_SMOKE_WORKFLOW_JOURNEY === "1") {
+    registerTriggerTaskWorker(runtimeResult.runtime);
+  }
   if (process.env.ELIZA_UI_SMOKE_RUBY_HIGH_JOURNEY === "1") {
     const rubyHighUrl = process.env.RUBY_HIGH_URL?.trim();
     if (!rubyHighUrl) {

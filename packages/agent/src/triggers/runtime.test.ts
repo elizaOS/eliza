@@ -11,13 +11,15 @@
  */
 
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
-import { ServiceType, stringToUuid } from "@elizaos/core";
+import { EventType, ServiceType, stringToUuid } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  dispatchRuntimeEventTriggers,
   executeTriggerTask,
   listTriggerTasks,
   readTriggerConfig,
+  registerTriggerTaskWorker,
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
 } from "./runtime.ts";
@@ -51,6 +53,7 @@ interface MockRuntimeHandle {
     error: unknown;
     context?: Record<string, unknown>;
   }>;
+  setTasks: (tasks: Task[]) => void;
   setDispatchResult: (
     result:
       | { ok: true; executionId?: string }
@@ -71,6 +74,12 @@ function makeRuntime(): MockRuntimeHandle {
   const reportedErrors: MockRuntimeHandle["reportedErrors"] = [];
   let notifyError: Error | null = null;
   const runtimeSettings = new Map<string, unknown>();
+  const taskWorkers = new Map<string, unknown>();
+  const eventHandlers = new Map<
+    string,
+    Array<(params: Record<string, unknown>) => Promise<void>>
+  >();
+  let tasks: Task[] = [];
 
   const messageService = {
     async handleMessage(
@@ -134,6 +143,29 @@ function makeRuntime(): MockRuntimeHandle {
       return null;
     },
     getSetting: (name: string) => runtimeSettings.get(name),
+    getTaskWorker: (name: string) => taskWorkers.get(name),
+    registerTaskWorker: (worker: { name: string }) => {
+      taskWorkers.set(worker.name, worker);
+    },
+    registerEvent: (
+      eventKind: string,
+      handler: (params: Record<string, unknown>) => Promise<void>,
+    ) => {
+      eventHandlers.set(eventKind, [
+        ...(eventHandlers.get(eventKind) ?? []),
+        handler,
+      ]);
+    },
+    getEvent: (eventKind: string) => eventHandlers.get(eventKind),
+    emitEvent: async (eventKind: string, params: Record<string, unknown>) => {
+      await Promise.all(
+        (eventHandlers.get(eventKind) ?? []).map((handler) =>
+          handler({ ...params, runtime }),
+        ),
+      );
+    },
+    getTasks: vi.fn(async () => tasks),
+    getTask: vi.fn(async (id: UUID) => tasks.find((task) => task.id === id)),
     deleteTask: vi.fn(async (id: UUID) => {
       deletedTaskIds.push(id);
     }),
@@ -158,6 +190,9 @@ function makeRuntime(): MockRuntimeHandle {
     warnings,
     notifyCalls,
     reportedErrors,
+    setTasks: (nextTasks) => {
+      tasks = nextTasks;
+    },
     setDispatchResult: (result) => {
       dispatchResult = result;
     },
@@ -789,6 +824,160 @@ describe("executeTriggerTask", () => {
     });
     expect(result.status).toBe("skipped");
     expect(handle.dispatchCalls).toHaveLength(0);
+  });
+});
+
+describe("runtime event trigger bridge", () => {
+  let handle: MockRuntimeHandle;
+
+  beforeEach(() => {
+    handle = makeRuntime();
+    taskSeq = 0;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("dispatches only an exact Smithers step match through runtime.emitEvent", async () => {
+    const target = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+      eventFilter: {
+        event: {
+          type: "NodeFinished",
+          workflowId: "source-workflow",
+          nodeId: "collect",
+        },
+      },
+    });
+    handle.setTasks([target]);
+
+    registerTriggerTaskWorker(handle.runtime);
+    registerTriggerTaskWorker(handle.runtime);
+    expect(handle.runtime.getEvent("workflow_run_event")).toHaveLength(1);
+    expect(handle.runtime.getEvent(EventType.MESSAGE_RECEIVED)).toHaveLength(1);
+
+    await handle.runtime.emitEvent("workflow_run_event", {
+      runtime: handle.runtime,
+      event: {
+        type: "NodeFinished",
+        workflowId: "source-workflow",
+        nodeId: "publish",
+      },
+    } as never);
+    expect(handle.dispatchCalls).toHaveLength(0);
+
+    await handle.runtime.emitEvent("workflow_run_event", {
+      runtime: handle.runtime,
+      event: {
+        type: "NodeFinished",
+        workflowId: "source-workflow",
+        nodeId: "collect",
+        output: { count: 3 },
+      },
+    } as never);
+
+    await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(1));
+    expect(handle.dispatchCalls[0]).toMatchObject({
+      workflowId: "wf-1",
+      payload: {
+        eventKind: "workflow_run_event",
+        eventPayload: {
+          event: {
+            type: "NodeFinished",
+            workflowId: "source-workflow",
+            nodeId: "collect",
+          },
+        },
+      },
+    });
+    const eventPayload = handle.dispatchCalls[0]?.payload?.eventPayload;
+    expect(eventPayload).toBeDefined();
+    expect((eventPayload as Record<string, unknown>).runtime).toBeUndefined();
+    expect(handle.reportedErrors).toHaveLength(0);
+  });
+
+  it("reports trigger-list failures without rejecting the source event", async () => {
+    const failure = new Error("trigger store offline");
+    handle.runtime.getTasks = vi.fn(async () => {
+      throw failure;
+    });
+    registerTriggerTaskWorker(handle.runtime);
+
+    await expect(
+      handle.runtime.emitEvent("workflow_run_event", {
+        runtime: handle.runtime,
+        event: { type: "NodeFinished" },
+      } as never),
+    ).resolves.toBeUndefined();
+    await vi.waitFor(() =>
+      expect(handle.reportedErrors).toContainEqual({
+        scope: "TriggerRuntime.eventBridge",
+        error: failure,
+        context: { eventKind: "workflow_run_event" },
+      }),
+    );
+  });
+
+  it("does not block the source event while a workflow trigger is running", async () => {
+    const target = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+    });
+    handle.setTasks([target]);
+    let releaseDispatch: (() => void) | undefined;
+    const execute = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          releaseDispatch = () => resolve({ status: "finished" });
+        }),
+    );
+    const workflowService = handle.runtime.getService(
+      "WORKFLOW_DISPATCH",
+    ) as unknown as { execute: typeof execute };
+    workflowService.execute = execute;
+    registerTriggerTaskWorker(handle.runtime);
+
+    await expect(
+      handle.runtime.emitEvent("workflow_run_event", {
+        runtime: handle.runtime,
+        event: { type: "NodeFinished" },
+      } as never),
+    ).resolves.toBeUndefined();
+    await vi.waitFor(() => expect(releaseDispatch).toBeTypeOf("function"));
+
+    releaseDispatch?.();
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+  });
+
+  it("isolates a failing trigger from sibling event dispatches", async () => {
+    const first = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+    });
+    const second = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+    });
+    handle.setTasks([first, second]);
+    const failure = new Error("first trigger write failed");
+    handle.runtime.updateTask = vi.fn(async (id: UUID) => {
+      if (id === first.id) throw failure;
+    });
+
+    await expect(
+      dispatchRuntimeEventTriggers(handle.runtime, "workflow_run_event", {}),
+    ).resolves.toBeUndefined();
+    expect(handle.dispatchCalls).toHaveLength(2);
+    expect(handle.reportedErrors).toContainEqual({
+      scope: "TriggerRuntime.eventDispatch",
+      error: failure,
+      context: {
+        eventKind: "workflow_run_event",
+        taskId: first.id,
+      },
+    });
   });
 });
 
