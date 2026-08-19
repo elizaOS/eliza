@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS,
   DEFAULT_READY_ATTEMPTS,
   DEFAULT_READY_DELAY_MS,
   hostAgentApiBase,
@@ -17,6 +18,7 @@ import {
   parseNonNegativeSafeInteger,
   parsePort,
   parsePositiveSafeInteger,
+  resolveAdvertisementWaitOptions,
   resolveReadyOptions,
   startDeviceE2eHostAgent,
 } from "./host-agent.mjs";
@@ -213,6 +215,95 @@ describe("host-agent helper", () => {
     ).toThrow(`no greater than ${MAX_TIMER_DELAY_MS}`);
   });
 
+  it("derives short and extended advertisement timeouts from readiness", () => {
+    expect(
+      resolveAdvertisementWaitOptions({
+        readyAttempts: 2,
+        readyDelayMs: 20,
+      }),
+    ).toEqual({ timeoutMs: 40, pollIntervalMs: 40 });
+    expect(
+      resolveAdvertisementWaitOptions({
+        readyAttempts: DEFAULT_READY_ATTEMPTS,
+        readyDelayMs: DEFAULT_READY_DELAY_MS,
+      }),
+    ).toEqual({
+      timeoutMs: 180_000,
+      pollIntervalMs: DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS,
+    });
+    expect(
+      resolveAdvertisementWaitOptions({
+        readyAttempts: 3,
+        readyDelayMs: 0,
+      }),
+    ).toEqual({ timeoutMs: 3, pollIntervalMs: 3 });
+    expect(() =>
+      resolveAdvertisementWaitOptions({
+        readyAttempts: Number.MAX_SAFE_INTEGER,
+        readyDelayMs: 2,
+      }),
+    ).toThrow(/readiness budget/);
+  });
+
+  it("uses a short readiness budget when a live child never advertises", async () => {
+    const artifactDir = makeTmpDir();
+    const startedAt = Date.now();
+    await expect(
+      startDeviceE2eHostAgent({
+        repoRoot: process.cwd(),
+        artifactDir,
+        readyAttempts: 2,
+        readyDelayMs: 20,
+        command: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1_000)"],
+        env: {},
+      }),
+    ).rejects.toThrow(/timed out after 40ms/);
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(
+      fs
+        .readdirSync(artifactDir)
+        .filter((entry) => entry.startsWith(".host-agent-port-")),
+    ).toEqual([]);
+    fs.rmSync(path.join(artifactDir, "host-agent.log"));
+  });
+
+  it("shares one signal coordinator while concurrent children are starting", async () => {
+    const signalCounts = new Map(
+      ["SIGINT", "SIGTERM", "SIGHUP"].map((signal) => [
+        signal,
+        process.listenerCount(signal),
+      ]),
+    );
+    const starts = Array.from({ length: 12 }, (_, index) =>
+      startDeviceE2eHostAgent({
+        repoRoot: process.cwd(),
+        artifactDir: path.join(makeTmpDir(), String(index)),
+        readyAttempts: 10,
+        readyDelayMs: 20,
+        command: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1_000)"],
+        env: {},
+      }),
+    );
+
+    for (const [signal, count] of signalCounts) {
+      expect(process.listenerCount(signal)).toBe(count + 1);
+    }
+    const results = await Promise.allSettled(starts);
+    expect(results).toHaveLength(12);
+    expect(
+      results.every(
+        (result) =>
+          result.status === "rejected" &&
+          /timed out after 200ms/.test(String(result.reason)),
+      ),
+    ).toBe(true);
+    for (const [signal, count] of signalCounts) {
+      expect(process.listenerCount(signal)).toBe(count);
+    }
+  });
+
   it("rejects invalid readyAttempts before spawning a host agent child", async () => {
     const artifactDir = makeTmpDir();
     await expect(
@@ -299,8 +390,8 @@ describe("host-agent helper", () => {
           repoRoot: process.cwd(),
           artifactDir: makeTmpDir(),
           requestedPort: port,
-          readyAttempts: 5,
-          readyDelayMs: 10,
+          readyAttempts: 50,
+          readyDelayMs: 20,
           command: process.execPath,
           args: ["-e", fakeHostAgentScript()],
           env: {},
@@ -319,7 +410,7 @@ describe("host-agent helper", () => {
     const agent = await startDeviceE2eHostAgent({
       repoRoot: process.cwd(),
       artifactDir,
-      readyAttempts: 50,
+      readyAttempts: 250,
       readyDelayMs: 20,
       command: process.execPath,
       args: ["-e", fakeHostAgentScript()],
@@ -336,6 +427,11 @@ describe("host-agent helper", () => {
     });
 
     await agent.stop();
+    expect(
+      fs
+        .readdirSync(artifactDir)
+        .filter((entry) => entry.startsWith(".host-agent-port-")),
+    ).toEqual([]);
     expect(fs.readFileSync(agent.logPath, "utf8")).toContain(
       "fake host agent up on :0",
     );
@@ -352,12 +448,18 @@ describe("host-agent helper", () => {
   });
 
   it("starts concurrent children on distinct bound ports without probe races", async () => {
+    const signalCounts = new Map(
+      ["SIGINT", "SIGTERM", "SIGHUP"].map((signal) => [
+        signal,
+        process.listenerCount(signal),
+      ]),
+    );
     const agents = await Promise.all(
       Array.from({ length: 12 }, (_, index) =>
         startDeviceE2eHostAgent({
           repoRoot: process.cwd(),
           artifactDir: path.join(makeTmpDir(), String(index)),
-          readyAttempts: 50,
+          readyAttempts: 500,
           readyDelayMs: 10,
           command: process.execPath,
           args: ["-e", fakeHostAgentScript()],
@@ -366,6 +468,9 @@ describe("host-agent helper", () => {
       ),
     );
     try {
+      for (const [signal, count] of signalCounts) {
+        expect(process.listenerCount(signal)).toBe(count + 1);
+      }
       expect(new Set(agents.map((agent) => agent.port)).size).toBe(12);
       const responses = await Promise.all(
         agents.map((agent) => fetch(`${agent.apiBase}/api/health`)),
@@ -373,6 +478,9 @@ describe("host-agent helper", () => {
       expect(responses.every((response) => response.ok)).toBe(true);
     } finally {
       await Promise.all(agents.map((agent) => agent.stop()));
+    }
+    for (const [signal, count] of signalCounts) {
+      expect(process.listenerCount(signal)).toBe(count);
     }
   });
 

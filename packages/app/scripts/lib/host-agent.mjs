@@ -5,6 +5,7 @@
  * the stop handle used by iOS/Android device lanes.
  */
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { waitForAdvertisedPort } from "../../../scripts/e2e-ports.mjs";
@@ -13,10 +14,43 @@ export const DEFAULT_HOST_AGENT_HOST = "127.0.0.1";
 export const DEFAULT_HOST_AGENT_HEALTH_PATH = "/api/health";
 export const DEFAULT_READY_ATTEMPTS = 90;
 export const DEFAULT_READY_DELAY_MS = 2000;
+export const DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS = 100;
 /** Node clamps setTimeout delays above this value to 1 ms. */
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 const SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
+const activeSignalStops = new Set();
+const sharedSignalHandlers = new Map();
+
+function signalExitCode(signal) {
+  return 128 + (signal === "SIGHUP" ? 1 : signal === "SIGINT" ? 2 : 15);
+}
+
+/** Coordinate all live children before honoring a parent termination signal. */
+function registerSignalStop(stop) {
+  activeSignalStops.add(stop);
+  if (sharedSignalHandlers.size === 0) {
+    for (const signal of SIGNALS) {
+      const handler = () => {
+        const stops = [...activeSignalStops];
+        void Promise.allSettled(
+          stops.map((activeStop) => activeStop()),
+        ).finally(() => process.exit(signalExitCode(signal)));
+      };
+      sharedSignalHandlers.set(signal, handler);
+      process.once(signal, handler);
+    }
+  }
+
+  return () => {
+    activeSignalStops.delete(stop);
+    if (activeSignalStops.size > 0) return;
+    for (const [signal, handler] of sharedSignalHandlers) {
+      process.off(signal, handler);
+    }
+    sharedSignalHandlers.clear();
+  };
+}
 
 export function parsePort(value, label = "port") {
   const raw = String(value ?? "").trim();
@@ -114,6 +148,27 @@ export function resolveReadyOptions(options = {}) {
       "host-agent readyDelayMs",
       { max: MAX_TIMER_DELAY_MS },
     ),
+  };
+}
+
+/**
+ * Give port advertisement the same validated wall-clock budget as readiness.
+ * A zero-delay readiness loop still receives one millisecond per attempt so
+ * process startup is not converted into an immediate timeout.
+ */
+export function resolveAdvertisementWaitOptions({
+  readyAttempts,
+  readyDelayMs,
+}) {
+  const timeoutMs = readyAttempts * Math.max(readyDelayMs, 1);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new Error(
+      "Invalid host-agent readiness budget: readyAttempts * readyDelayMs must be a positive safe integer duration.",
+    );
+  }
+  return {
+    timeoutMs,
+    pollIntervalMs: Math.min(DEFAULT_ADVERTISEMENT_POLL_INTERVAL_MS, timeoutMs),
   };
 }
 
@@ -226,6 +281,7 @@ export async function startDeviceE2eHostAgent({
     readyDelayMs,
     env: process.env,
   });
+  const advertisementWait = resolveAdvertisementWaitOptions(resolvedReady);
 
   const explicitPort =
     requestedPort === null || requestedPort === undefined
@@ -235,7 +291,7 @@ export async function startDeviceE2eHostAgent({
   const logPath = path.join(artifactDir, "host-agent.log");
   const portFile = path.join(
     artifactDir,
-    `.host-agent-port-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    `.host-agent-port-${process.pid}-${randomUUID()}`,
   );
   fs.rmSync(portFile, { force: true });
   const logFd = fs.openSync(logPath, "w");
@@ -300,27 +356,11 @@ export async function startDeviceE2eHostAgent({
     return stopPromise;
   };
 
-  const signalHandlers = new Map();
-  for (const signal of SIGNALS) {
-    const handler = () => {
-      void stop().finally(() =>
-        process.exit(
-          128 + (signal === "SIGHUP" ? 1 : signal === "SIGINT" ? 2 : 15),
-        ),
-      );
-    };
-    signalHandlers.set(signal, handler);
-    process.once(signal, handler);
-  }
-  const removeSignalHandlers = () => {
-    for (const [signal, handler] of signalHandlers) {
-      process.off(signal, handler);
-    }
-  };
+  const unregisterSignalStop = registerSignalStop(stop);
 
   try {
     const port = await Promise.race([
-      waitForAdvertisedPort(portFile, { child }),
+      waitForAdvertisedPort(portFile, { child, ...advertisementWait }),
       new Promise((_, reject) => {
         child.once("error", reject);
       }),
@@ -347,14 +387,14 @@ export async function startDeviceE2eHostAgent({
       logPath,
       pid: child.pid,
       async stop() {
-        removeSignalHandlers();
+        unregisterSignalStop();
         await stop();
         log?.(`stopped host agent at ${apiBase}`);
       },
     };
   } catch (error) {
     // error-policy:J2 stop child then rethrow readiness/spawn failure
-    removeSignalHandlers();
+    unregisterSignalStop();
     await stop();
     throw error;
   }
