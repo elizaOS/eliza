@@ -561,25 +561,142 @@ export function snapshotEvidenceFile(
   name,
   label = "evidence snapshot input",
 ) {
-  requireFile(file, label);
   const destination = path.join(root, name);
-  fs.copyFileSync(file, destination);
-  return destination;
+  let pathStat;
+  try {
+    pathStat = fs.lstatSync(file);
+  } catch (error) {
+    // error-policy:J3 an absent snapshot input is translated to the explicit
+    // evidence contract; all other filesystem errors remain fatal unchanged.
+    if (error?.code === "ENOENT") {
+      throw new Error(`Missing ${label}: ${file || "<unset>"}`);
+    }
+    throw error;
+  }
+  if (pathStat.isSymbolicLink() || !pathStat.isFile() || pathStat.size === 0) {
+    throw new Error(`${label} must be a non-empty regular file: ${file}`);
+  }
+  const noFollow = fs.constants.O_NOFOLLOW ?? 0;
+  const sourceFd = fs.openSync(file, fs.constants.O_RDONLY | noFollow);
+  let destinationFd;
+  try {
+    const before = fs.fstatSync(sourceFd);
+    if (
+      !before.isFile() ||
+      before.dev !== pathStat.dev ||
+      before.ino !== pathStat.ino
+    ) {
+      throw new Error(
+        `${label} changed identity before it could be snapshotted.`,
+      );
+    }
+    destinationFd = fs.openSync(destination, "wx", 0o600);
+    const buffer = Buffer.allocUnsafe(1024 * 1024);
+    let copied = 0;
+    for (;;) {
+      const bytesRead = fs.readSync(sourceFd, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      let written = 0;
+      while (written < bytesRead) {
+        written += fs.writeSync(
+          destinationFd,
+          buffer,
+          written,
+          bytesRead - written,
+        );
+      }
+      copied += bytesRead;
+    }
+    const after = fs.fstatSync(sourceFd);
+    if (
+      copied !== before.size ||
+      after.size !== before.size ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.mtimeMs !== before.mtimeMs ||
+      after.ctimeMs !== before.ctimeMs
+    ) {
+      throw new Error(`${label} changed while it was being snapshotted.`);
+    }
+    return destination;
+  } catch (error) {
+    // error-policy:J2 remove incomplete private output, then preserve the
+    // descriptor validation or copy failure for the CLI boundary.
+    if (destinationFd !== undefined) {
+      fs.closeSync(destinationFd);
+      destinationFd = undefined;
+    }
+    fs.rmSync(destination, { force: true });
+    throw error;
+  } finally {
+    if (destinationFd !== undefined) fs.closeSync(destinationFd);
+    fs.closeSync(sourceFd);
+  }
 }
 
-function snapshotDirectory(directory, root, name) {
-  if (
-    !directory ||
-    !fs.existsSync(directory) ||
-    !fs.statSync(directory).isDirectory()
-  ) {
+export function snapshotEvidenceDirectory(directory, root, name) {
+  const destination = path.join(root, name);
+  let before;
+  try {
+    before = fs.lstatSync(directory);
+  } catch (error) {
+    // error-policy:J3 an absent directory becomes an explicit evidence input
+    // failure; other filesystem failures remain fatal unchanged.
+    if (error?.code === "ENOENT") {
+      throw new Error(
+        `Missing evidence snapshot directory: ${directory || "<unset>"}`,
+      );
+    }
+    throw error;
+  }
+  if (before.isSymbolicLink() || !before.isDirectory()) {
     throw new Error(
-      `Missing evidence snapshot directory: ${directory || "<unset>"}`,
+      `Evidence snapshot directory must be a real directory: ${directory}`,
     );
   }
-  const destination = path.join(root, name);
-  fs.cpSync(directory, destination, { recursive: true });
-  return destination;
+  fs.mkdirSync(destination, { mode: 0o700 });
+  try {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const source = path.join(directory, entry.name);
+      const entryStat = fs.lstatSync(source);
+      if (entryStat.isSymbolicLink()) {
+        throw new Error(`Evidence snapshot rejects symlink entry: ${source}`);
+      }
+      if (entryStat.isDirectory()) {
+        snapshotEvidenceDirectory(source, destination, entry.name);
+      } else if (entryStat.isFile()) {
+        snapshotEvidenceFile(
+          source,
+          destination,
+          entry.name,
+          "evidence snapshot file",
+        );
+      } else {
+        throw new Error(
+          `Evidence snapshot rejects non-regular entry: ${source}`,
+        );
+      }
+    }
+    const after = fs.lstatSync(directory);
+    if (
+      !after.isDirectory() ||
+      after.isSymbolicLink() ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.mtimeMs !== before.mtimeMs ||
+      after.ctimeMs !== before.ctimeMs
+    ) {
+      throw new Error(
+        `Evidence snapshot directory changed while it was being copied: ${directory}`,
+      );
+    }
+    return destination;
+  } catch (error) {
+    // error-policy:J2 remove the incomplete private tree, then preserve the
+    // identity, entry-type, or descriptor-copy failure for the CLI boundary.
+    fs.rmSync(destination, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 function sha256(file) {
@@ -709,8 +826,12 @@ export function finalizeWebVoiceEvidence(args) {
   try {
     return finalizeWebVoiceEvidenceSnapshot({
       ...args,
-      resultsDir: snapshotDirectory(args.resultsDir, snapshotRoot, "results"),
-      failureResultsDir: snapshotDirectory(
+      resultsDir: snapshotEvidenceDirectory(
+        args.resultsDir,
+        snapshotRoot,
+        "results",
+      ),
+      failureResultsDir: snapshotEvidenceDirectory(
         args.failureResultsDir,
         snapshotRoot,
         "failures",
@@ -875,7 +996,7 @@ function assertDesktopReport(file, head) {
   }
   if (
     typeof evidence.packagedRevision !== "string" ||
-    !head.startsWith(evidence.packagedRevision) ||
+    evidence.packagedRevision !== head ||
     typeof evidence.rendererBuildId !== "string" ||
     evidence.rendererBuildId.length === 0
   ) {

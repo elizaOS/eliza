@@ -8,13 +8,14 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   correlateAudioWindow,
   finalizeDesktopVoiceEvidence,
   finalizeWebVoiceEvidence,
   inspectAudibleMp4,
   resolveMediaTools,
+  snapshotEvidenceDirectory,
   snapshotEvidenceFile,
 } from "./voice-evidence-media.mjs";
 
@@ -43,6 +44,60 @@ test("evidence snapshot remains bound when the live source changes", () => {
   fs.writeFileSync(source, "bytes changed after capture");
 
   expect(fs.readFileSync(snapshot, "utf8")).toBe("validated bytes");
+});
+
+test("evidence snapshot rejects symlinks and concurrent source mutation", () => {
+  const root = fixtureRoot();
+  const source = path.join(root, "live-artifact.bin");
+  const symlink = path.join(root, "live-artifact-link.bin");
+  const snapshotRoot = path.join(root, "snapshot");
+  fs.mkdirSync(snapshotRoot);
+  fs.writeFileSync(source, "validated bytes");
+  fs.symlinkSync(source, symlink);
+
+  expect(() =>
+    snapshotEvidenceFile(symlink, snapshotRoot, "symlink.bin"),
+  ).toThrow(/regular file/);
+
+  const originalRead = fs.readSync;
+  let mutated = false;
+  const readSpy = vi.spyOn(fs, "readSync").mockImplementation((...args) => {
+    if (!mutated) {
+      mutated = true;
+      fs.writeFileSync(source, "tampered bytes!");
+    }
+    return originalRead(...args);
+  });
+  try {
+    expect(() =>
+      snapshotEvidenceFile(source, snapshotRoot, "mutated.bin"),
+    ).toThrow(/changed while/);
+    expect(fs.existsSync(path.join(snapshotRoot, "mutated.bin"))).toBe(false);
+  } finally {
+    readSpy.mockRestore();
+  }
+});
+
+test("evidence directory snapshot rejects symlink aliases and owns its bytes", () => {
+  const root = fixtureRoot();
+  const source = path.join(root, "live-results");
+  const nested = path.join(source, "nested");
+  const snapshotRoot = path.join(root, "snapshot");
+  fs.mkdirSync(nested, { recursive: true });
+  fs.mkdirSync(snapshotRoot);
+  fs.writeFileSync(path.join(nested, "result.json"), "original result");
+
+  const snapshot = snapshotEvidenceDirectory(source, snapshotRoot, "results");
+  fs.writeFileSync(path.join(nested, "result.json"), "later mutation");
+  expect(
+    fs.readFileSync(path.join(snapshot, "nested", "result.json"), "utf8"),
+  ).toBe("original result");
+
+  fs.symlinkSync(nested, path.join(source, "alias"));
+  expect(() =>
+    snapshotEvidenceDirectory(source, snapshotRoot, "rejected"),
+  ).toThrow(/symlink entry/);
+  expect(fs.existsSync(path.join(snapshotRoot, "rejected"))).toBe(false);
 });
 
 function run(bin, args) {
@@ -299,7 +354,7 @@ describe("packaged desktop voice media evidence", () => {
       revision: currentHead(),
       sessionId: "voice-session-123456",
       capturedAt: new Date().toISOString(),
-      packagedRevision: currentHead().slice(0, 10),
+      packagedRevision: currentHead(),
       rendererBuildId: "renderer-build-1",
       report: {
         overall: "pass",
@@ -440,6 +495,13 @@ describe("packaged desktop voice media evidence", () => {
       ]),
     );
     const validReport = fs.readFileSync(report, "utf8");
+    const abbreviatedRevision = JSON.parse(validReport);
+    abbreviatedRevision.packagedRevision = currentHead().slice(0, 10);
+    writeJson(report, abbreviatedRevision);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /running-renderer build stamp for HEAD/,
+    );
+    fs.writeFileSync(report, validReport);
     const substringBrowserDevice = JSON.parse(validReport);
     substringBrowserDevice.report.stages.find(
       (stage) => stage.stage === "asr",
@@ -537,7 +599,7 @@ describe("packaged desktop voice media evidence", () => {
       revision: currentHead(),
       sessionId: "voice-session-123456",
       capturedAt: new Date().toISOString(),
-      packagedRevision: currentHead().slice(0, 10),
+      packagedRevision: currentHead(),
       rendererBuildId: "renderer-build-1",
       report: {
         overall: "pass",

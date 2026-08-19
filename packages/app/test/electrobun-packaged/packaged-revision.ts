@@ -14,8 +14,8 @@ export function assertCurrentPackagedRevision(
   const commit = typeof stamp?.commit === "string" ? stamp.commit.trim() : "";
   if (
     buildId.length === 0 ||
-    commit.length < 10 ||
-    !expectedRevision.startsWith(commit)
+    !/^[0-9a-f]{40}$/.test(commit) ||
+    commit !== expectedRevision
   ) {
     throw new Error(
       `Running packaged renderer revision ${commit || "<missing>"} does not match checkout ${expectedRevision}.`,
