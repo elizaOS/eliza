@@ -243,13 +243,21 @@ private enum WakeGate {
         if a == b { return true }
         let maxLen = max(a.count, b.count)
         guard maxLen > 2 else { return false } // Very short words → exact only
+        // Same 64-char fail-closed cap as SwabbleWakeBridgeContract.
+        // Unbounded DP on a no-space ASR dump hangs the recognizer callback.
+        guard a.count <= maxFuzzyTokenChars, b.count <= maxFuzzyTokenChars else {
+            return false
+        }
         let threshold = max(1, (maxLen + 1) / 3)
         return editDistance(a, b) <= threshold
     }
 
+    static let maxFuzzyTokenChars = 64
+
     private static func editDistance(_ a: String, _ b: String) -> Int {
         let ac = Array(a), bc = Array(b)
         let m = ac.count, n = bc.count
+        if m > maxFuzzyTokenChars || n > maxFuzzyTokenChars { return Int.max }
         if m == 0 { return n }
         if n == 0 { return m }
         var prev = Array(0...n), curr = Array(repeating: 0, count: n + 1)
