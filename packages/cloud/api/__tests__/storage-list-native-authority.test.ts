@@ -9,7 +9,7 @@ import { Hono } from "hono";
 const ORG = "00000000-0000-4000-8000-000000021045";
 const events: string[] = [];
 const requireUserOrApiKeyWithOrg = mock(async () => ({ organization_id: ORG }));
-const adoptLegacyObject = mock();
+const adoptLegacyObjects = mock();
 const listObjects = mock();
 const getServiceMethodCost = mock(async () => 0.0001);
 const deductCredits = mock(async () => {
@@ -18,7 +18,7 @@ const deductCredits = mock(async () => {
 });
 
 mock.module("@/db/repositories", () => ({
-  orgStorageMutationsRepository: { adoptLegacyObject, listObjects },
+  orgStorageMutationsRepository: { adoptLegacyObjects, listObjects },
 }));
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
@@ -41,12 +41,11 @@ app.route("/api/v1/apis/storage/list", route);
 
 beforeEach(() => {
   events.length = 0;
-  adoptLegacyObject.mockReset();
+  adoptLegacyObjects.mockReset();
   listObjects.mockReset();
   deductCredits.mockClear();
-  adoptLegacyObject.mockImplementation(async (input) => {
-    events.push(`adopt:${input.logicalKey}`);
-    return input;
+  adoptLegacyObjects.mockImplementation(async (inputs) => {
+    events.push(`adopt:${inputs.map((input) => input.logicalKey).join(",")}`);
   });
   listObjects.mockResolvedValue([
     {
@@ -94,15 +93,17 @@ test("paginates native legacy keys, adopts them, and charges only after success"
     truncated: false,
   });
   expect(list).toHaveBeenCalledTimes(2);
-  expect(adoptLegacyObject).toHaveBeenCalledWith({
-    organizationId: ORG,
-    logicalKey: "voice/message.ogg",
-    providerKey: `org/${ORG}/voice/message.ogg`,
-    sizeBytes: 5n,
-    contentType: "audio/ogg",
-    etag: "legacy-etag",
-    uploadedAt: new Date("2026-08-18T00:00:00.000Z"),
-  });
+  expect(adoptLegacyObjects).toHaveBeenCalledWith([
+    {
+      organizationId: ORG,
+      logicalKey: "voice/message.ogg",
+      providerKey: `org/${ORG}/voice/message.ogg`,
+      sizeBytes: 5n,
+      contentType: "audio/ogg",
+      etag: "legacy-etag",
+      uploadedAt: new Date("2026-08-18T00:00:00.000Z"),
+    },
+  ]);
   expect(events).toEqual(["adopt:voice/message.ogg", "charge"]);
 });
 

@@ -280,7 +280,7 @@ describe("OrgStorageMutationsRepository", () => {
 
   test("adopts already-counted legacy bytes and transfers overwrite authority to GC", async () => {
     await dbWrite.execute(
-      sql`UPDATE org_storage_quota SET bytes_used = 8 WHERE organization_id = ${ORG}`,
+      sql`UPDATE org_storage_quota SET bytes_used = 10 WHERE organization_id = ${ORG}`,
     );
     const legacyKey = `org/${ORG}/legacy/voice.ogg`;
     const adopted = await repository.adoptLegacyObject({
@@ -294,6 +294,17 @@ describe("OrgStorageMutationsRepository", () => {
     });
     expect(adopted.generation).toBe(0n);
     expect(adopted.provider_key).toBe(legacyKey);
+    await repository.adoptLegacyObjects([
+      {
+        organizationId: ORG,
+        logicalKey: "legacy/second.ogg",
+        providerKey: `org/${ORG}/legacy/second.ogg`,
+        sizeBytes: 2n,
+        contentType: "audio/ogg",
+        etag: "legacy-second-etag",
+        uploadedAt: new Date("2026-08-18T00:00:00.000Z"),
+      },
+    ]);
     const prepared = await prepare("legacy/voice.ogg", "e", 3n);
     expect(prepared.operation.source_size_bytes).toBe(8n);
     expect(prepared.operation.quota_reserved_bytes).toBe(0n);
@@ -302,14 +313,17 @@ describe("OrgStorageMutationsRepository", () => {
     const quota = await dbWrite.execute(
       sql`SELECT bytes_used FROM org_storage_quota WHERE organization_id = ${ORG}`,
     );
-    expect(String((quota.rows[0] as { bytes_used: string } | undefined)?.bytes_used)).toBe("3");
+    expect(String((quota.rows[0] as { bytes_used: string } | undefined)?.bytes_used)).toBe("5");
     const gc = await dbWrite.execute(
       sql`SELECT provider_key FROM org_storage_gc_outbox WHERE organization_id = ${ORG}`,
     );
     expect(gc.rows[0]).toMatchObject({ provider_key: legacyKey });
     const listed = await repository.listObjects(ORG, "legacy/");
-    expect(listed.map((object) => object.logical_key)).toEqual(["legacy/voice.ogg"]);
-    expect(listed[0]?.generation).toBe(1n);
+    expect(listed.map((object) => object.logical_key)).toEqual([
+      "legacy/second.ogg",
+      "legacy/voice.ogg",
+    ]);
+    expect(listed[1]?.generation).toBe(1n);
   });
 
   test("rejects an idempotency replay whose durable digest includes a changed price", async () => {

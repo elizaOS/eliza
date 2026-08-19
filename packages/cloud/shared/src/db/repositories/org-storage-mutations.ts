@@ -57,6 +57,16 @@ export interface ReservedStoragePut {
   available: number;
 }
 
+export interface LegacyStorageObjectCandidate {
+  organizationId: string;
+  logicalKey: string;
+  providerKey: string;
+  sizeBytes: bigint;
+  contentType: string;
+  etag: string;
+  uploadedAt: Date;
+}
+
 function providerKey(organizationId: string, objectId: string, generation: bigint): string {
   return `__eliza_storage_authority/v2/org/${organizationId}/${objectId}/${generation}`;
 }
@@ -607,15 +617,7 @@ export class OrgStorageMutationsRepository {
     });
   }
 
-  async adoptLegacyObject(input: {
-    organizationId: string;
-    logicalKey: string;
-    providerKey: string;
-    sizeBytes: bigint;
-    contentType: string;
-    etag: string;
-    uploadedAt: Date;
-  }): Promise<OrgStorageObject> {
+  async adoptLegacyObject(input: LegacyStorageObjectCandidate): Promise<OrgStorageObject> {
     return await writeTransaction(async (tx) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.organizationId}:${input.logicalKey}`}, 0))`,
@@ -646,6 +648,61 @@ export class OrgStorageMutationsRepository {
         .where(eq(orgStorageObjects.id, object.id))
         .returning();
       return normalizeObject(requiredRow(adopted, "legacy adoption"));
+    });
+  }
+
+  async adoptLegacyObjects(inputs: LegacyStorageObjectCandidate[]): Promise<void> {
+    if (inputs.length === 0) return;
+    const organizationId = inputs[0]?.organizationId;
+    if (!organizationId || inputs.some((input) => input.organizationId !== organizationId)) {
+      throw new Error("[NativeStoragePut] bulk legacy adoption must belong to one tenant");
+    }
+    const candidates = JSON.stringify(
+      inputs.map((input) => ({
+        logical_key: input.logicalKey,
+        provider_key: input.providerKey,
+        size_bytes: input.sizeBytes.toString(),
+        content_type: input.contentType,
+        etag: input.etag,
+        uploaded_at: input.uploadedAt.toISOString(),
+      })),
+    );
+    await writeTransaction(async (tx) => {
+      await tx.execute(sql`WITH candidates AS (
+          SELECT logical_key, provider_key, size_bytes::bigint,
+            content_type, etag, uploaded_at::timestamptz
+          FROM jsonb_to_recordset(${candidates}::jsonb) AS candidate(
+            logical_key text, provider_key text, size_bytes text,
+            content_type text, etag text, uploaded_at text
+          )
+        )
+        INSERT INTO ${orgStorageObjects} (
+          organization_id, logical_key, provider_key, size_bytes,
+          content_type, etag, uploaded_at, updated_at
+        )
+        SELECT ${organizationId}, logical_key, provider_key, size_bytes,
+          content_type, etag, uploaded_at, NOW()
+        FROM candidates
+        ON CONFLICT (organization_id, logical_key) DO UPDATE SET
+          provider_key = EXCLUDED.provider_key,
+          size_bytes = EXCLUDED.size_bytes,
+          content_type = EXCLUDED.content_type,
+          etag = EXCLUDED.etag,
+          uploaded_at = EXCLUDED.uploaded_at,
+          updated_at = NOW()
+        WHERE ${orgStorageObjects.generation} = 0
+          AND ${orgStorageObjects.provider_key} IS NULL
+          AND ${orgStorageObjects.deleted_at} IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM ${orgStoragePutOperations} AS active_put
+            WHERE active_put.object_id = ${orgStorageObjects.id}
+              AND active_put.state IN ('prepared','reserved','provider_started','reconciling')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM ${orgStorageDeleteOperations} AS active_delete
+            WHERE active_delete.object_id = ${orgStorageObjects.id}
+              AND active_delete.state IN ('prepared','provider_started')
+          )`);
     });
   }
 

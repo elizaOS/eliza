@@ -72,6 +72,7 @@ app.get("/", async (c) => {
     let cursor: string | undefined;
     let providerTruncated = false;
     let adoptedCount = 0;
+    const legacyCandidates = [];
     do {
       const page = await bucket.list({
         prefix: scopedPrefix,
@@ -95,7 +96,7 @@ app.get("/", async (c) => {
           !/[\0\r\n]/.test(rawContentType)
             ? rawContentType
             : "application/octet-stream";
-        await orgStorageMutationsRepository.adoptLegacyObject({
+        legacyCandidates.push({
           organizationId: organization_id,
           logicalKey,
           providerKey: observed.key,
@@ -110,6 +111,7 @@ app.get("/", async (c) => {
       providerTruncated = page.truncated || adoptedCount > MAX_LIST_RESULTS;
       cursor = page.cursor;
     } while (providerTruncated && cursor && adoptedCount <= MAX_LIST_RESULTS);
+    await orgStorageMutationsRepository.adoptLegacyObjects(legacyCandidates);
 
     const catalog = await orgStorageMutationsRepository.listObjects(
       organization_id,
