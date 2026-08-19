@@ -1528,6 +1528,20 @@ async function runCreateLegacy(
         );
       }
 
+      if (ackPostedOutOfBand) {
+        // The early out-of-band ack already told the user; claim this lane's
+        // request-ack slot NOW (the progress hook posts its own spawn ack
+        // ~15s in, mid-lane — a post-lane claim was too late twice,
+        // live 2026-08-19).
+        claimRouterRequestAck(
+          runtime,
+          requestVoiceKeyForMeta({
+            ...(spawnRootMessageId ? { spawnRootMessageId } : {}),
+            ...(partVoicePart ? { requestVoicePart: partVoicePart } : {}),
+          }) ?? undefined,
+          session.sessionId,
+        );
+      }
       // Link the already-durable ACP record to its task before the first
       // prompt. If this write fails on the Smithers path, do not execute: boot
       // recovery can reconstruct the missing copy from ACP metadata and start
