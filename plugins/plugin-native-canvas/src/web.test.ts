@@ -185,7 +185,7 @@ describe("CanvasWeb eval message source", () => {
     window.dispatchEvent(
       new MessageEvent("message", {
         data: { type: "eliza:evalResult", result: "2" },
-        origin: "null",
+        origin: window.location.origin,
         source: webView,
       }),
     );
@@ -242,9 +242,71 @@ describe("CanvasWeb eval message source", () => {
     await expect(evalPromise).resolves.toEqual({ result: "Canvas App" });
   });
 
+  it("rejects an eval result from the right WindowProxy at the wrong origin", async () => {
+    const canvas = new CanvasWeb();
+    await canvas.navigate({ url: "https://canvas.eliza.how/view" });
+    const webView = document.querySelector("iframe")?.contentWindow;
+    expect(webView).toBeTruthy();
+
+    const evalPromise = canvas.eval({ script: "document.title" });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "spoofed" },
+        origin: "https://attacker.example",
+        source: webView,
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "eliza:evalResult", result: "Canvas App" },
+        origin: "https://canvas.eliza.how",
+        source: webView,
+      }),
+    );
+
+    await expect(evalPromise).resolves.toEqual({ result: "Canvas App" });
+  });
+
+  it("rejects shared web view events from the right WindowProxy at the wrong origin", async () => {
+    const canvas = new CanvasWeb();
+    const onAction = vi.fn();
+    await canvas.addListener("a2uiAction", onAction);
+    await canvas.navigate({ url: "https://canvas.eliza.how/view" });
+    const webView = document.querySelector("iframe")?.contentWindow;
+    expect(webView).toBeTruthy();
+
+    const message = {
+      type: "eliza:a2uiAction",
+      action: "confirm",
+      data: { accepted: true },
+    };
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: message,
+        origin: "https://attacker.example",
+        source: webView,
+      }),
+    );
+    expect(onAction).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: message,
+        origin: "https://canvas.eliza.how",
+        source: webView,
+      }),
+    );
+    expect(onAction).toHaveBeenCalledOnce();
+    expect(onAction).toHaveBeenCalledWith({
+      action: "confirm",
+      data: { accepted: true },
+      messageId: undefined,
+    });
+  });
+
   it("fails closed when navigating to an invalid or opaque URL and attempting postMessage", async () => {
     const canvas = new CanvasWeb();
-    await canvas.navigate({ url: "javascript:alert(1)" });
+    await canvas.navigate({ url: "data:text/html,opaque" });
 
     await expect(canvas.a2uiPush({ messages: [] })).rejects.toThrow(
       "Cannot determine web view target origin",

@@ -1209,10 +1209,10 @@ export class CanvasWeb extends WebPlugin {
       }, timeoutMs);
 
       const handler = (event: MessageEvent) => {
-        // The request is posted with targetOrigin pinned to the web view.
-        // Any same-page window can emit `eliza:evalResult`; only the web view
-        // that received the script is allowed to complete this eval.
-        if (event.source !== target) return;
+        // A WindowProxy keeps its identity when its document navigates. Check
+        // both source and origin so a later cross-origin document cannot
+        // complete an eval intended for the original navigation origin.
+        if (event.source !== target || event.origin !== targetOrigin) return;
         const data = event.data;
         if (!data || typeof data !== "object") return;
         const msg = data as WebViewIncomingMessage;
@@ -1237,6 +1237,7 @@ export class CanvasWeb extends WebPlugin {
       const iframeSrc = this.webViewIframe?.contentWindow;
       const popupSrc = this.webViewPopup;
       if (event.source !== iframeSrc && event.source !== popupSrc) return;
+      if (!this.webViewOrigin || event.origin !== this.webViewOrigin) return;
 
       const msg = event.data as WebViewIncomingMessage;
       if (!msg || typeof msg.type !== "string") return;
