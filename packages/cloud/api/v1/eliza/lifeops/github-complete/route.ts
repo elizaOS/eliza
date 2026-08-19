@@ -11,7 +11,10 @@
  */
 
 import { Hono } from "hono";
-import { createLifeOpsGithubReturnResponse } from "@/lib/services/agent-github-return";
+import {
+  createLifeOpsGithubReturnResponse,
+  normalizePostMessageTargetOrigin,
+} from "@/lib/services/agent-github-return";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -22,6 +25,7 @@ async function __hono_GET(
 ) {
   const searchParams = new URL(request.url).searchParams;
   const baseUrl = env?.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const targetOrigin = normalizePostMessageTargetOrigin(baseUrl);
   const githubConnected = searchParams.get("github_connected");
   const githubError = searchParams.get("github_error");
   const connectionId = searchParams.get("connection_id");
@@ -69,6 +73,7 @@ async function __hono_GET(
         },
         postMessage,
         returnUrl,
+        targetOrigin,
       });
     }
     return Response.redirect(
@@ -94,6 +99,7 @@ async function __hono_GET(
         },
         postMessage,
         returnUrl,
+        targetOrigin,
       });
     }
     return Response.redirect(
@@ -119,6 +125,7 @@ async function __hono_GET(
       },
       postMessage,
       returnUrl,
+      targetOrigin,
     });
   }
 

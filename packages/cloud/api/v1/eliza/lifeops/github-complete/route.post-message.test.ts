@@ -8,6 +8,7 @@ const createLifeOpsGithubReturnResponse = mock(
 
 mock.module("@/lib/services/agent-github-return", () => ({
   createLifeOpsGithubReturnResponse,
+  normalizePostMessageTargetOrigin: (value: string) => new URL(value).origin,
 }));
 
 const route = (await import("./route")).default;

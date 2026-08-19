@@ -19,6 +19,23 @@ function serializeInlineScriptValue(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+export function normalizePostMessageTargetOrigin(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return null;
+    }
+    return parsed.origin === "null" ? null : parsed.origin;
+  } catch {
+    // error-policy:J3 Invalid configured origins fail closed.
+    return null;
+  }
+}
+
 function readAgentDeepLinkPath(value: string): string | null {
   try {
     const parsed = new URL(value);
@@ -84,6 +101,7 @@ export function createLifeOpsGithubReturnResponse(args: {
   detail: LifeOpsGithubReturnDetail;
   postMessage?: boolean;
   returnUrl?: string | null;
+  targetOrigin?: string | null;
 }): Response {
   const payload = {
     type: LIFEOPS_GITHUB_POST_MESSAGE_TYPE,
@@ -166,9 +184,10 @@ export function createLifeOpsGithubReturnResponse(args: {
         const payload = ${serializeInlineScriptValue(payload)};
         const postMessageToOpener = ${args.postMessage === true ? "true" : "false"};
         const deepLink = ${serializeInlineScriptValue(deepLink)};
-        if (postMessageToOpener && window.opener && !window.opener.closed) {
+        const targetOrigin = ${serializeInlineScriptValue(args.targetOrigin ?? null)};
+        if (postMessageToOpener && targetOrigin && window.opener && !window.opener.closed) {
           try {
-            window.opener.postMessage(payload, "*");
+            window.opener.postMessage(payload, targetOrigin);
           } catch {}
         }
         if (typeof deepLink === "string" && deepLink.length > 0) {
