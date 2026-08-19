@@ -52,7 +52,6 @@ const DirectCryptoCreditCard = lazy(() =>
 );
 
 import { Button } from "../../../components/ui/button";
-import { PayAsYouGoCard } from "./pay-as-you-go-card";
 
 interface BillingTabProps {
   user: BillingUser;
@@ -514,10 +513,7 @@ export function BillingTab({ user }: BillingTabProps) {
         </div>
       </BrandCard>
 
-      {/* Pay-as-you-go from earnings — toggle for whether app earnings absorb container bills */}
-      <PayAsYouGoCard />
-
-      {/* Card Auto Top-Up — backstop when both earnings + credits run low */}
+      {/* Card auto top-up keeps the consumer billing path explicit and visible. */}
       <AutoTopUpCard />
 
       {/* Invoices Card */}

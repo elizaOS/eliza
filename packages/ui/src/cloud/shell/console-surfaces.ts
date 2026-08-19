@@ -44,7 +44,7 @@ export const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
     titleKey: "cloud.home.agents",
     titleDefault: "Agents",
     descKey: "cloud.home.agentsDesc",
-    descDefault: "Hosted agents: create, wake, sleep, logs.",
+    descDefault: "Your Shared and Dedicated Agents.",
   },
   {
     id: "billing",
