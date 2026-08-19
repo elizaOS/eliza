@@ -252,7 +252,10 @@ reward API, without reopening or rewriting a completed step.
 Settlement uses a durable lease marker plus the trajectory's idempotent reward
 receipt: an abandoned claim can be taken after its lease, and a crash after the
 trajectory update is recovered by observing the already-applied receipt.
-Operational lease markers are excluded from editorial history reads.
+Recovery scans a bounded pending-outcome batch independently of the editorial
+30-day window, so a long outage cannot strand an old reward. Completed receipts,
+zero-weight outcomes, and operational lease markers are excluded from that
+batch; operational markers are also excluded from editorial history reads.
 
 ## Plugin dependencies
 

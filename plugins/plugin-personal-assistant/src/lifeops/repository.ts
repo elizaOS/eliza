@@ -2942,6 +2942,50 @@ export class LifeOpsRepository {
     return rows.map(parseBriefItemEngagement);
   }
 
+  /**
+   * Return a bounded batch of non-zero outcomes whose durable reward receipt
+   * has not completed. Reward recovery deliberately has no editorial recency
+   * cutoff: an old outcome must remain retryable after a long outage, while
+   * completed receipts and operational marker rows never enter the batch.
+   */
+  async listPendingBriefEngagementRewards(
+    agentId: string,
+    options: { limit?: number } = {},
+  ): Promise<LifeOpsBriefItemEngagementRecord[]> {
+    const limit = options.limit ?? 250;
+    if (!Number.isInteger(limit) || limit <= 0 || limit > 1_000) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Invalid pending reward batch limit",
+        {
+          code: "LIFEOPS_BRIEF_REWARD_BATCH_LIMIT_INVALID",
+          context: { limit },
+        },
+      );
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT outcome.*
+         FROM app_lifeops.life_brief_item_engagements outcome
+        WHERE outcome.agent_id = ${sqlQuote(agentId)}
+          AND outcome.event_type IN (
+            'opened', 'replied', 'completed', 'rescheduled', 'kept',
+            'dismissed', 'ignored'
+          )
+          AND outcome.weight <> 0
+          AND NOT EXISTS (
+            SELECT 1
+              FROM app_lifeops.life_brief_item_engagements receipt
+             WHERE receipt.agent_id = outcome.agent_id
+               AND receipt.event_type = 'rewarded'
+               AND receipt.metadata_json::jsonb ->> 'engagementEventId' = outcome.id
+               AND receipt.metadata_json::jsonb ->> 'rewardState' = 'completed'
+          )
+        ORDER BY outcome.event_at ASC, outcome.created_at ASC, outcome.id ASC
+        LIMIT ${sqlInteger(limit)}`,
+    );
+    return rows.map(parseBriefItemEngagement);
+  }
+
   async summarizeBriefItemEngagements(
     agentId: string,
     options: {

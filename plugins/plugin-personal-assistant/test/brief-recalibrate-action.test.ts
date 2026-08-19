@@ -50,7 +50,10 @@ import {
   setBriefComposers,
 } from "../src/actions/brief.js";
 import { structureBriefingItems } from "../src/lifeops/briefing/editorial-judgment.js";
-import { settleBriefEngagementReward } from "../src/lifeops/briefing/engagement-reward.js";
+import {
+  retryBriefEngagementRewards,
+  settleBriefEngagementReward,
+} from "../src/lifeops/briefing/engagement-reward.js";
 import { handleBriefMessageMutation } from "../src/lifeops/briefing/message-engagement-handler.js";
 import { CalendarDomain } from "../src/lifeops/domains/calendar-service.js";
 import { gmailBriefSourceId } from "../src/lifeops/domains/gmail-service.js";
@@ -728,6 +731,85 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
       rewardState: "completed",
       trajectoryRewardKey: `brief-engagement:${engagement.id}`,
     });
+  });
+
+  it("retries old unresolved rewards in a bounded batch without revisiting settled or zero-weight rows", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const oldEventAt = "2026-06-01T17:00:00.000Z";
+    const unresolved = await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-old-unresolved-reward",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "kept",
+      eventAt: oldEventAt,
+      weight: 0.75,
+      metadata: { trajectoryId: "old-unresolved-trajectory" },
+    });
+    expect(
+      await repository.claimBriefEngagementReward(unresolved, {
+        nowIso: "2026-06-01T17:01:00.000Z",
+        leaseSeconds: 60,
+      }),
+    ).not.toBeNull();
+    const settled = await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-old-settled-reward",
+      itemId: `${item.itemId}:settled`,
+      source: item.source,
+      kind: item.kind,
+      sourceId: `${item.sourceId}:settled`,
+      itemClass: item.itemClass,
+      eventType: "kept",
+      eventAt: oldEventAt,
+      weight: 0.5,
+      metadata: { trajectoryId: "old-settled-trajectory" },
+    });
+    const settledClaim = await repository.claimBriefEngagementReward(settled, {
+      nowIso: "2026-06-01T17:01:00.000Z",
+    });
+    if (!settledClaim) throw new Error("settled claim fixture failed");
+    await repository.completeBriefEngagementRewardClaim(settled, settledClaim);
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-old-zero-reward",
+      itemId: `${item.itemId}:zero`,
+      source: item.source,
+      kind: item.kind,
+      sourceId: `${item.sourceId}:zero`,
+      itemClass: item.itemClass,
+      eventType: "opened",
+      eventAt: oldEventAt,
+      weight: 0,
+      metadata: { trajectoryId: "old-zero-trajectory" },
+    });
+    const applyReward = vi.fn(async () => true);
+    const rewardRuntime = {
+      ...runtime,
+      getService: () => ({ applyReward }),
+      getServicesByType: () => [{ applyReward }],
+    } as unknown as IAgentRuntime;
+
+    expect(
+      await retryBriefEngagementRewards({
+        runtime: rewardRuntime,
+        repository,
+        batchLimit: 1,
+      }),
+    ).toBe(1);
+    expect(applyReward).toHaveBeenCalledTimes(1);
+    expect(applyReward).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: `brief-engagement:${unresolved.id}`,
+      }),
+    );
+    expect(
+      await repository.listPendingBriefEngagementRewards(runtime.agentId),
+    ).toEqual([]);
   });
 
   it("uses a rolling delivery window across UTC midnight and ignores late actions", async () => {

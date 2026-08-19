@@ -478,7 +478,6 @@ async function loadEngagementSummariesFromLifeOps(args: {
     await retryBriefEngagementRewards({
       runtime: args.runtime,
       repository,
-      sinceIso: engagementSinceIso(),
     });
     return await repository.summarizeBriefItemEngagements(
       args.runtime.agentId,

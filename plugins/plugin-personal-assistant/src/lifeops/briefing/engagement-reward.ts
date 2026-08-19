@@ -95,26 +95,14 @@ export async function settleBriefEngagementReward(args: {
 export async function retryBriefEngagementRewards(args: {
   runtime: IAgentRuntime;
   repository: LifeOpsRepository;
-  sinceIso: string;
+  batchLimit?: number;
 }): Promise<number> {
-  const rewardable = new Set([
-    "opened",
-    "replied",
-    "completed",
-    "rescheduled",
-    "kept",
-    "dismissed",
-    "ignored",
-  ]);
-  const rows = await args.repository.listBriefItemEngagements(
+  const rows = await args.repository.listPendingBriefEngagementRewards(
     args.runtime.agentId,
-    { sinceIso: args.sinceIso },
+    args.batchLimit === undefined ? {} : { limit: args.batchLimit },
   );
   let settled = 0;
   for (const engagement of rows) {
-    if (!rewardable.has(engagement.eventType) || engagement.weight === 0) {
-      continue;
-    }
     try {
       if (
         await settleBriefEngagementReward({
