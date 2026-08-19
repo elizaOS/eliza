@@ -141,4 +141,26 @@ describe("default Eliza persona safety", () => {
       expect(preset?.system).toContain("Short is a default, not a ceiling.");
     }
   });
+
+  it("carries epistemic honesty into every resolved prompt instruction set", () => {
+    expect(definition).toBeDefined();
+    for (const language of Object.keys(definition?.variants ?? {})) {
+      const preset = resolveStylePresetById(
+        "eliza",
+        language as keyof NonNullable<typeof definition>["variants"],
+      );
+      const renderedInstructions = [
+        preset?.system,
+        ...(preset?.style.all ?? []),
+        ...(preset?.style.chat ?? []),
+      ].join("\n");
+
+      expect(renderedInstructions).toContain(
+        "separate what you know, what you checked, and what you inferred",
+      );
+      expect(renderedInstructions).toContain(
+        "never invent memory, use remembered details only when they are actually present",
+      );
+    }
+  });
 });
