@@ -107,9 +107,17 @@ enum SwabbleWakeBridgeContract {
         if a == b { return true }
         let maxLen = max(a.count, b.count)
         guard maxLen > 2 else { return false }
+        // Wake tokens are short. Unbounded edit distance on a no-space ASR
+        // dump or a hostile trigger is O(len²) and hangs the recognizer
+        // callback. Exact equality above still matches.
+        guard a.count <= maxFuzzyTokenChars, b.count <= maxFuzzyTokenChars else {
+            return false
+        }
         let threshold = max(1, (maxLen + 1) / 3)
         return editDistance(a, b) <= threshold
     }
+
+    static let maxFuzzyTokenChars = 64
 
     private static let wsPunct = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
 
@@ -120,6 +128,7 @@ enum SwabbleWakeBridgeContract {
     private static func editDistance(_ a: String, _ b: String) -> Int {
         let ac = Array(a), bc = Array(b)
         let m = ac.count, n = bc.count
+        if m > maxFuzzyTokenChars || n > maxFuzzyTokenChars { return Int.max }
         if m == 0 { return n }
         if n == 0 { return m }
         var prev = Array(0...n), curr = Array(repeating: 0, count: n + 1)

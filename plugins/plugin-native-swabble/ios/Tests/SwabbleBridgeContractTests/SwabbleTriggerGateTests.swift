@@ -41,4 +41,20 @@ final class SwabbleTriggerGateTests: XCTestCase {
             SwabbleWakeBridgeContract.isTriggerOnly(
                 transcript: "", triggers: triggers))
     }
+
+    func testOversizedNoSpaceTokensSkipFuzzyWithoutHanging() {
+        let left = String(repeating: "a", count: 32_768)
+        let right = String(repeating: "b", count: 32_768)
+        let started = Date()
+        XCTAssertFalse(
+            SwabbleWakeBridgeContract.fuzzyTokenMatch(left, right))
+        let elapsedMs = Date().timeIntervalSince(started) * 1000
+        XCTAssertLessThan(
+            elapsedMs,
+            50,
+            "oversized Levenshtein must fail closed quickly, took \(elapsedMs)ms")
+        XCTAssertFalse(
+            SwabbleWakeBridgeContract.isTriggerOnly(
+                transcript: left, triggers: [right]))
+    }
 }

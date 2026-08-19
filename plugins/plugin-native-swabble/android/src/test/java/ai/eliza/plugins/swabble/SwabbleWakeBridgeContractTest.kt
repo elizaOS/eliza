@@ -3,6 +3,7 @@ package ai.eliza.plugins.swabble
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SwabbleWakeBridgeContractTest {
@@ -64,5 +65,24 @@ class SwabbleWakeBridgeContractTest {
         )
 
         assertNull(match)
+    }
+
+    @Test
+    fun `oversized no-space tokens skip fuzzy match without hanging`() {
+        val left = "a".repeat(32_768)
+        val right = "b".repeat(32_768)
+        val hostile = config.copy(triggers = listOf(right))
+        val started = System.nanoTime()
+        val match = SwabbleWakeBridgeContract.matchWakeWord(
+            transcript = "$left turn on the lights",
+            segments = emptyList(),
+            config = hostile
+        )
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000.0
+        assertNull(match)
+        assertTrue(
+            "oversized Levenshtein must fail closed quickly, took ${elapsedMs}ms",
+            elapsedMs < 50.0
+        )
     }
 }
