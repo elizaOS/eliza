@@ -14,10 +14,8 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
-import {
-  convergeAgentSandboxSchema,
-  createMigrationClientSandboxExecutor,
-} from "@elizaos/cloud-shared/db/ensure-agent-sandbox-schema";
+import { convergeAgentSandboxSchema } from "@elizaos/cloud-shared/db/ensure-agent-sandbox-schema";
+import { createMigrationClientSandboxExecutor } from "@elizaos/cloud-shared/db/migration-sandbox-schema-executor";
 import pg from "pg";
 import {
   type CleanupFailure,
@@ -115,9 +113,8 @@ type PostMigrationConvergence = (client: MigrationClient) => Promise<void>;
 export async function convergeAgentSandboxSchemaOnMigrationClient(
   migrationClient: MigrationClient,
 ): Promise<void> {
-  // SQL rendering lives in @elizaos/cloud-shared, which owns drizzle-orm; the
-  // scripts entrypoint must not import drizzle-orm across an invalid package
-  // boundary under the filtered Cloud install (issue #22606).
+  // The migration-only adapter owns SQL rendering without pulling PgDialect
+  // into the Worker-facing schema guard module.
   await convergeAgentSandboxSchema(
     createMigrationClientSandboxExecutor((text, params) =>
       migrationClient.query(text, params),
