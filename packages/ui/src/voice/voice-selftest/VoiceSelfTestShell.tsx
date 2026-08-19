@@ -1,7 +1,7 @@
 /**
  * Self-driving voice round-trip test screen (?shellMode=voice-selftest).
  *
- * Renders OUTSIDE the app chrome / onboarding gate (mounted directly by App.tsx
+ * Renders OUTSIDE the app chrome / onboarding gate (mounted directly by the app composition root
  * like the chat-overlay shell), so it is reachable deterministically by a single
  * URL param on web (Vite), desktop (Electrobun renderer) and Android (Capacitor
  * WebView) — the SAME bundle covers all three platforms.

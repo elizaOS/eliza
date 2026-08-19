@@ -153,11 +153,21 @@ describe("buildVoiceWorkbenchReport", () => {
 			},
 		]);
 		expect(report.scenarios[0].measurementCoverage).toEqual([
-			{ metric: "first-audio-latency", count: 0, passed: false },
-			{ metric: "diarization-segments", count: 3, passed: true },
+			{
+				metric: "first-audio-latency",
+				count: 0,
+				expectedCount: 1,
+				passed: false,
+			},
+			{
+				metric: "diarization-segments",
+				count: 3,
+				expectedCount: 1,
+				passed: true,
+			},
 		]);
 		expect(formatVoiceWorkbenchMarkdown(report)).toContain(
-			"first-audio-latency=0!",
+			"first-audio-latency=0/1!",
 		);
 	});
 });

@@ -192,8 +192,6 @@ import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { isElizaCloudControlPlaneAgentlessBase } from "./utils/cloud-agent-base";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { openExternalUrl } from "./utils/openExternalUrl";
-import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
-import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
 // NOTE (#view-padding-normalize): the full floating-composer + bottom-nav +
 // safe-area bottom clearance is owned EXACTLY ONCE by the scroll region a view
@@ -2610,20 +2608,6 @@ function AppContent() {
         <BugReportModal />
       </BugReportProvider>
     );
-  }
-
-  // Self-driving voice round-trip test screen — runs the real STT->agent->TTS
-  // loop against a known phrase and reports PASS/FAIL with no human in the loop.
-  // Self-contained (its own ElizaClient + AudioContext); no app chrome / gate.
-  if (shellMode === "voice-selftest") {
-    return <VoiceSelfTestShell />;
-  }
-
-  // Multi-turn voice SCENARIO player — drives a declarative VoiceScenario through
-  // the real STT->agent->TTS loop turn-by-turn and reports a per-turn verdict.
-  // Self-contained (its own ElizaClient + AudioContext); no app chrome / gate.
-  if (shellMode === "voice-workbench") {
-    return <VoiceWorkbenchShell />;
   }
 
   // OS chat-overlay window — render JUST the floating assistant pill +

@@ -391,7 +391,7 @@ export async function runVoiceScenarioHeadless(
 					: {}),
 			}),
 		);
-	} else if (diarTurns.length > 0) {
+	} else if (!services.strictMeasurementCoverage && diarTurns.length > 0) {
 		cases.push(
 			scoreDiarizationTimeline(diarTurns, {
 				...(assertions.maxDer !== undefined
@@ -474,11 +474,13 @@ export async function runVoiceScenarioHeadless(
 		const requiredCoverage: Array<{
 			metric: string;
 			count: number;
+			expectedCount: number;
 			required: boolean;
 		}> = [
 			{
 				metric: "diarization-segments",
 				count: observedDiarization?.length ?? 0,
+				expectedCount: 1,
 				required:
 					assertions.maxDer !== undefined ||
 					scenario.classes.includes("diarization"),
@@ -487,47 +489,70 @@ export async function runVoiceScenarioHeadless(
 				metric: "first-audio-latency",
 				count: cases.filter((entry) => entry.kind === "first-response-latency")
 					.length,
+				expectedCount: corpus.groundTruth.turns.filter(
+					(label) => label.expectRespond && !label.isAgentEcho,
+				).length,
 				required: assertions.maxFirstAudioMs !== undefined,
 			},
 			{
 				metric: "voice-entity-match",
 				count: voiceEntitySamples.length,
+				expectedCount: 1,
 				required: assertions.minVoiceEntityMatchRate !== undefined,
 			},
 			{
 				metric: "entity-extraction",
 				count: expectedEntities.length,
+				expectedCount: 1,
 				required: assertions.minEntityF1 !== undefined,
 			},
 			{
 				metric: "echo-rejection",
 				count: echoSamples.length,
+				expectedCount: 1,
 				required: assertions.minEchoRejectionRate !== undefined,
 			},
 			{
 				metric: "owner-security",
 				count: ownerSamples.length,
+				expectedCount: corpus.groundTruth.turns.filter(
+					(label) => !label.isAgentEcho,
+				).length,
 				required: assertions.minOwnerAccuracy !== undefined,
 			},
 			{
 				metric: "barge-in-cancel",
 				count: bargeInSamples.length,
+				expectedCount: corpus.groundTruth.turns.filter((label) => label.bargeIn)
+					.length,
 				required: assertions.maxBargeInCancelMs !== undefined,
 			},
 			{
 				metric: "erle",
 				count: erleSamples.length,
+				expectedCount: corpus.groundTruth.turns.filter(
+					(label) => label.isAgentEcho,
+				).length,
 				required: assertions.minErleDb !== undefined,
 			},
 			{
 				metric: "streaming-partials",
 				count: partialCases.length,
+				expectedCount: corpus.groundTruth.turns.filter(
+					(label) => !label.isAgentEcho,
+				).length,
 				required: scenario.classes.includes("streaming-partials"),
 			},
 		];
 		for (const coverage of requiredCoverage) {
 			if (coverage.required) {
-				cases.push(scoreMeasurementCoverage(coverage.metric, coverage.count));
+				cases.push(
+					scoreMeasurementCoverage(
+						coverage.metric,
+						coverage.count,
+						coverage.expectedCount,
+					),
+				);
 			}
 		}
 	}

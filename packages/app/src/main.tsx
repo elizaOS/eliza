@@ -297,6 +297,23 @@ const App = lazy(async () => {
   return { default: mod.App };
 });
 
+const VoiceSelfTestShell = lazyNamedComponent<Record<string, never>>(
+  async () => {
+    const mod = await import(
+      "@elizaos/ui/voice/voice-selftest/VoiceSelfTestShell"
+    );
+    return mod.VoiceSelfTestShell;
+  },
+);
+const VoiceWorkbenchShell = lazyNamedComponent<Record<string, never>>(
+  async () => {
+    const mod = await import(
+      "@elizaos/ui/voice/voice-selftest/VoiceWorkbenchShell"
+    );
+    return mod.VoiceWorkbenchShell;
+  },
+);
+
 const AppWindowRenderer = lazyNamedComponent<{ slug: string }>(async () => {
   const mod = await import("@elizaos/ui/components/apps/AppWindowRenderer");
   return mod.AppWindowRenderer;
@@ -2497,6 +2514,15 @@ function isPhoneCompanionMode(): boolean {
   return getWindowUrlSearchParams().get("mode") === "companion";
 }
 
+type DeveloperVoiceShellMode = "voice-selftest" | "voice-workbench";
+
+function resolveDeveloperVoiceShellMode(): DeveloperVoiceShellMode | null {
+  const mode =
+    getWindowUrlSearchParams().get("shellMode") ??
+    getWindowUrlSearchParams().get("shell-mode");
+  return mode === "voice-selftest" || mode === "voice-workbench" ? mode : null;
+}
+
 function resolveAppWindowSlug(): string | null {
   if (!isAppWindowRoute()) return null;
   const path = getWindowNavigationPath();
@@ -2589,6 +2615,7 @@ function mountReactApp(): void {
   if (!rootEl) throw new Error("Root element #root not found");
 
   const phoneCompanion = isPhoneCompanionMode();
+  const developerVoiceShellMode = resolveDeveloperVoiceShellMode();
   const detachedShell = isDetachedWindowShell(windowShellRoute);
   const appWindowSlug = detachedShell ? null : resolveAppWindowSlug();
   const isSpecialWindowShell =
@@ -2613,7 +2640,7 @@ function mountReactApp(): void {
     </>
   );
 
-  const mainTree =
+  const standardMainTree =
     __ELIZA_CHAT_UI_HARNESS__ === true ? (
       <ChatWidgetHarness />
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
@@ -2641,6 +2668,19 @@ function mountReactApp(): void {
         )}
       </AppProvider>
     );
+
+  // The voice diagnostics own their client and audio lifecycle. Keep them
+  // outside AppProvider as well as App: its normal route synchronization may
+  // canonicalize the location to /chat and remount the diagnostic mid-run.
+  const mainTree = developerVoiceShellMode ? (
+    developerVoiceShellMode === "voice-selftest" ? (
+      <VoiceSelfTestShell />
+    ) : (
+      <VoiceWorkbenchShell />
+    )
+  ) : (
+    standardMainTree
+  );
 
   markStartup("react-mount:start");
   createRoot(rootEl).render(

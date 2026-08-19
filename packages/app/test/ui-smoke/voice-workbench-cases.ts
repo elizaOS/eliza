@@ -265,6 +265,12 @@ export function runWorkbenchScenarioSpec(scenario: SpecScenario): void {
       "speaker attribution is not available",
     );
 
+    // The workbench is a self-contained shell. Normal App startup/navigation
+    // effects must not rewrite it to /chat and remount the home shell while the
+    // scenario is running or after its promise resolves.
+    await expect(page).toHaveURL(/\?shellMode=voice-workbench$/);
+    await expect(page.getByTestId("voice-workbench-shell")).toBeVisible();
+
     // Every turn's response-state decision must match the mocked SSE stream and
     // no turn failed. Speaker labels and entity hints are report metadata only in
     // this lane; predicted labels stay null because no attribution model runs.

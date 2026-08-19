@@ -2,7 +2,7 @@
  * Multi-turn voice SCENARIO player screen (?shellMode=voice-workbench).
  *
  * The headful half of the Voice Workbench (#8785). Renders OUTSIDE the app
- * chrome / onboarding gate (mounted directly by App.tsx like the self-test
+ * chrome / onboarding gate (mounted directly by the app composition root like the self-test
  * shell), so it is reachable deterministically by a single URL param on web
  * (Vite), desktop (Electrobun renderer) and Android (Capacitor WebView) — the
  * SAME bundle covers all three platforms.

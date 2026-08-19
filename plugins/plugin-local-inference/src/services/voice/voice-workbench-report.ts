@@ -61,6 +61,7 @@ export interface VoiceWorkbenchScenarioReport {
 	measurementCoverage: Array<{
 		metric: string;
 		count: number;
+		expectedCount: number;
 		passed: boolean;
 	}>;
 	skipReason?: string;
@@ -168,6 +169,7 @@ export function buildVoiceWorkbenchReport(
 				.map((entry) => ({
 					metric: entry.metric,
 					count: entry.count,
+					expectedCount: entry.expectedCount,
 					passed: entry.passed,
 				})),
 			skipReason: run.skipReason,
@@ -326,7 +328,7 @@ export function formatVoiceWorkbenchMarkdown(
 				? s.measurementCoverage
 						.map(
 							(entry) =>
-								`${entry.metric}=${entry.count}${entry.passed ? "" : "!"}`,
+								`${entry.metric}=${entry.count}/${entry.expectedCount}${entry.passed ? "" : "!"}`,
 						)
 						.join(", ")
 				: "—";
