@@ -49,6 +49,9 @@ export interface HomePillProps {
    *  and listening lanes stay compact until then so WKWebView cannot clip them
    *  into the resting 96px window. Web callers leave this unset. */
   previewHostReady?: boolean;
+  /** Whether hovering may render HomePill's lightweight visual preview. Hosts
+   *  that mount the real ChatOverlay input detent must disable this duplicate. */
+  showComposerPreview?: boolean;
 }
 
 /** How long the pointer must stay down before a press becomes a hold. Above
@@ -122,6 +125,7 @@ export function HomePill({
   signingIn = false,
   onPreviewHoverChange,
   previewHostReady = true,
+  showComposerPreview = true,
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
   const needsAuth = phase === "needs-auth";
@@ -130,7 +134,8 @@ export function HomePill({
   // the overlay closed, and treating it as open would flash the label/pressed
   // state during every hold (#20483).
   const isOpen = phase === "summoned" || phase === "responding";
-  const previewEligible = phase === "idle" || needsAuth;
+  const previewEligible =
+    showComposerPreview && (phase === "idle" || needsAuth);
   const [previewHovered, setPreviewHovered] = React.useState(false);
 
   const setPreviewHover = React.useCallback(

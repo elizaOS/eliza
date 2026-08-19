@@ -1819,7 +1819,6 @@ function ShellFoundationMount({
       firstRunPinnedOpen ||
       firstRunJustCompleted ||
       keepChatOpenAfterFirstRun);
-  const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
   const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
   const [shellHostDetent, setShellHostDetent] = useState<
     "pill" | "input" | "half" | "full"
@@ -1945,8 +1944,7 @@ function ShellFoundationMount({
           expanded: shellIsOpen && shellHostDetent !== "input",
           hovered:
             useWebChatPanel &&
-            (shellPreviewHovered ||
-              shellPhase === "listening" ||
+            (shellPhase === "listening" ||
               (shellIsOpen && shellHostDetent === "input")),
         },
         timeoutMs: 1_000,
@@ -1954,7 +1952,7 @@ function ShellFoundationMount({
       if (
         !cancelled &&
         useWebChatPanel &&
-        (shellPreviewHovered || shellPhase === "listening") &&
+        shellPhase === "listening" &&
         !shellIsOpen
       ) {
         // Paint hover and Fn-listening lanes only after the native host is
@@ -1973,7 +1971,6 @@ function ShellFoundationMount({
     shellHostDetent,
     shellIsOpen,
     shellPhase,
-    shellPreviewHovered,
     useWebChatPanel,
   ]);
   useEffect(() => {
@@ -1992,7 +1989,7 @@ function ShellFoundationMount({
   }, [shellIsOpen, useWebChatPanel]);
   const openSharedDesktopComposer = useCallback(() => {
     focusComposerOnOpenRef.current = useWebChatPanel;
-    if (useWebChatPanel) setShellHostDetent("half");
+    if (useWebChatPanel) setShellHostDetent("input");
     controller?.open();
   }, [controller, useWebChatPanel]);
   useEffect(() => {
@@ -2014,7 +2011,7 @@ function ShellFoundationMount({
   if (shouldMountWebChatPanel) {
     return (
       <ChatOverlayMount
-        initialMode="half"
+        initialMode="input"
         releaseFirstRunToHalf={false}
         onFirstRunReleaseHandled={() => {}}
         onPilledChange={closeWebChatWhenPilled}
@@ -2052,9 +2049,7 @@ function ShellFoundationMount({
           controller.stopRecording();
         }}
         onHoldCancel={controller.cancelRecording}
-        onPreviewHoverChange={
-          useWebChatPanel ? setShellPreviewHovered : undefined
-        }
+        showComposerPreview={!useWebChatPanel}
         previewHostReady={!useWebChatPanel || shellPreviewHostReady}
       />
       {!useWebChatPanel ? (
