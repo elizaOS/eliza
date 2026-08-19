@@ -8,9 +8,9 @@
  * Auth: requireUserOrApiKeyWithOrg.
  * Pricing: flat per-request charge against the `storage:presign` row.
  *
- * The URL grants direct, temporary GET access through the R2 S3 endpoint;
- * clients hit R2 directly rather than this proxy. Writes continue through
- * `PUT /objects/{key+}` so organization quota enforcement remains authoritative.
+ * The URL grants direct, temporary GET access to the catalog's exact provider
+ * generation through the R2 S3 endpoint. Writes continue through the object
+ * route so organization quota and generation authority remain server-owned.
  */
 
 import { Hono } from "hono";
@@ -19,6 +19,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { creditsService } from "@/lib/services/credits";
 import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
+import { resolveNativeStorageObject } from "@/lib/services/storage/native-storage-put";
 import { getR2StorageAdapter } from "@/lib/services/storage/r2-storage-adapter";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -59,6 +60,23 @@ app.post("/", async (c) => {
       return c.json({ error: "Invalid object key" }, 400);
     }
 
+    if (!c.env.BLOB) {
+      return c.json(
+        {
+          error:
+            "Attachment storage proxy not available — server misconfigured",
+        },
+        503,
+      );
+    }
+    const object = await resolveNativeStorageObject(
+      c.env.BLOB,
+      organization_id,
+      trimmedKey,
+    );
+    if (!object?.provider_key || object.deleted_at) {
+      return c.json({ error: "Object not found" }, 404);
+    }
     const adapter = getR2StorageAdapter(c.env);
     if (!adapter) {
       logger.error("[storage proxy] R2_* env vars not set; presign rejected");
@@ -70,6 +88,9 @@ app.post("/", async (c) => {
         503,
       );
     }
+
+    const ttlSeconds = expiresIn ?? 3600;
+    const url = await adapter.presignGet(object.provider_key, ttlSeconds);
 
     const cost = await getServiceMethodCost(STORAGE_SERVICE_ID, "presign");
     if (cost > 0) {
@@ -95,9 +116,6 @@ app.post("/", async (c) => {
       }
     }
 
-    const ttlSeconds = expiresIn ?? 3600;
-    const scopedKey = `org/${organization_id}/${trimmedKey}`;
-    const url = await adapter.presignGet(scopedKey, ttlSeconds);
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
 
     return c.json({ url, expiresAt });

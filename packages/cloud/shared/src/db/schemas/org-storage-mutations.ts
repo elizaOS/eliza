@@ -56,6 +56,11 @@ export const orgStorageObjects = pgTable(
       sql`${table.generation} >= 0 AND ${table.size_bytes} >= 0 AND ((
         ${table.generation} = 0 AND ${table.provider_key} IS NULL AND ${table.size_bytes} = 0
       ) OR (
+        ${table.generation} = 0 AND ${table.provider_key} IS NOT NULL AND ${table.size_bytes} > 0
+        AND char_length(${table.content_type}) BETWEEN 1 AND 255
+        AND char_length(${table.etag}) BETWEEN 1 AND 512
+        AND ${table.uploaded_at} IS NOT NULL AND ${table.deleted_at} IS NULL
+      ) OR (
         ${table.generation} > 0 AND ${table.provider_key} IS NOT NULL
         AND ${table.content_sha256} ~ '^[0-9a-f]{64}$'
         AND char_length(${table.content_type}) BETWEEN 1 AND 255
@@ -73,6 +78,7 @@ export type OrgStoragePutState =
   | "prepared"
   | "reserved"
   | "provider_started"
+  | "reconciling"
   | "committed"
   | "refunded";
 
@@ -113,11 +119,15 @@ export const orgStoragePutOperations = pgTable(
       columns: [table.object_id, table.organization_id],
       foreignColumns: [orgStorageObjects.id, orgStorageObjects.organization_id],
     }).onDelete("restrict"),
-    credit_tenant: foreignKey({
-      name: "org_storage_put_operations_credit_tenant_fkey",
-      columns: [table.credit_transaction_id, table.organization_id],
-      foreignColumns: [creditTransactions.id, creditTransactions.organization_id],
+    credit: foreignKey({
+      name: "org_storage_put_operations_credit_fkey",
+      columns: [table.credit_transaction_id],
+      foreignColumns: [creditTransactions.id],
     }).onDelete("restrict"),
+    credit_tenant: check(
+      "org_storage_put_operations_credit_tenant_check",
+      sql`org_storage_credit_matches_tenant(${table.credit_transaction_id}, ${table.organization_id})`,
+    ),
     idempotency: uniqueIndex("org_storage_put_operations_idempotency_uidx").on(
       table.organization_id,
       table.idempotency_key_hash,
@@ -127,7 +137,7 @@ export const orgStoragePutOperations = pgTable(
     ),
     active_object: uniqueIndex("org_storage_put_operations_active_object_uidx")
       .on(table.object_id)
-      .where(sql`${table.state} IN ('prepared', 'reserved', 'provider_started')`),
+      .where(sql`${table.state} IN ('prepared', 'reserved', 'provider_started', 'reconciling')`),
     due: index("org_storage_put_operations_due_idx").on(table.state, table.lease_expires_at),
     shape: check(
       "org_storage_put_operations_shape_check",
@@ -141,9 +151,10 @@ export const orgStoragePutOperations = pgTable(
           ${table.target_size_bytes} - ${table.source_size_bytes}, 0
         )
         AND ${table.price_usd} >= 0
-        AND (${table.state} IN ('prepared', 'refunded')
+        AND (${table.state} IN ('prepared', 'reconciling', 'refunded')
           OR ${table.credit_transaction_id} IS NOT NULL OR ${table.price_usd} = 0)
         AND ((${table.lease_token} IS NULL) = (${table.lease_expires_at} IS NULL))
+        AND (${table.state} <> 'reconciling' OR ${table.lease_token} IS NOT NULL)
         AND (${table.state} <> 'committed' OR (
           ${table.result_etag} IS NOT NULL AND ${table.result_uploaded_at} IS NOT NULL
           AND ${table.response_json} IS NOT NULL AND ${table.completed_at} IS NOT NULL
@@ -228,7 +239,7 @@ export const orgStorageDeleteOperations = pgTable(
       sql`${table.idempotency_key_hash} ~ '^[0-9a-f]{64}$'
         AND ${table.request_digest} ~ '^[0-9a-f]{64}$'
         AND ${table.state} IN ('prepared', 'provider_started', 'committed')
-        AND ${table.source_generation} > 0 AND ${table.source_size_bytes} > 0
+        AND ${table.source_generation} >= 0 AND ${table.source_size_bytes} > 0
         AND ((${table.lease_token} IS NULL) = (${table.lease_expires_at} IS NULL))
         AND (${table.state} <> 'committed' OR (
           ${table.response_json} IS NOT NULL AND ${table.completed_at} IS NOT NULL

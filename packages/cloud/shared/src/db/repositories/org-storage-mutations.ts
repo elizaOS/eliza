@@ -51,6 +51,12 @@ export interface PreparedStoragePut {
   replay: boolean;
 }
 
+export interface ReservedStoragePut {
+  operation: OrgStoragePutOperation;
+  insufficient: boolean;
+  available: number;
+}
+
 function providerKey(organizationId: string, objectId: string, generation: bigint): string {
   return `__eliza_storage_authority/v2/org/${organizationId}/${objectId}/${generation}`;
 }
@@ -121,7 +127,12 @@ export class OrgStorageMutationsRepository {
       const active = await tx.query.orgStoragePutOperations.findFirst({
         where: and(
           eq(orgStoragePutOperations.object_id, object.id),
-          inArray(orgStoragePutOperations.state, ["prepared", "reserved", "provider_started"]),
+          inArray(orgStoragePutOperations.state, [
+            "prepared",
+            "reserved",
+            "provider_started",
+            "reconciling",
+          ]),
         ),
       });
       if (active) throw new StoragePutConflictError("object_busy");
@@ -178,39 +189,108 @@ export class OrgStorageMutationsRepository {
     });
   }
 
-  async attachCreditReservation(params: {
+  async reservePutCredits(params: {
     operationId: string;
     organizationId: string;
-    creditTransactionId: string | null;
-  }): Promise<OrgStoragePutOperation> {
-    const rows = await writeTransaction(
-      async (tx) =>
-        await tx
+  }): Promise<ReservedStoragePut> {
+    return await writeTransaction(async (tx) => {
+      const rows = await sqlRows<OrgStoragePutOperation>(
+        tx,
+        sql`SELECT * FROM ${orgStoragePutOperations}
+          WHERE id = ${params.operationId}
+            AND organization_id = ${params.organizationId}
+          FOR UPDATE`,
+      );
+      const operation = normalizeOperation(requiredRow(rows, "credit reservation lock"));
+      if (operation.state !== "prepared") {
+        if (["reserved", "provider_started", "committed"].includes(operation.state)) {
+          return { operation, insufficient: false, available: 0 };
+        }
+        throw new StoragePutConflictError("stale_lease");
+      }
+      if (Number(operation.price_usd) === 0) {
+        const reserved = await tx
+          .update(orgStoragePutOperations)
+          .set({ state: "reserved", updated_at: new Date() })
+          .where(eq(orgStoragePutOperations.id, operation.id))
+          .returning();
+        return {
+          operation: normalizeOperation(requiredRow(reserved, "zero-cost reservation")),
+          insufficient: false,
+          available: 0,
+        };
+      }
+
+      const balanceRows = await sqlRows<{ credit_balance: string }>(
+        tx,
+        sql`UPDATE organizations
+          SET credit_balance = credit_balance - CAST(${String(operation.price_usd)} AS numeric),
+              updated_at = NOW()
+          WHERE id = ${params.organizationId}
+            AND credit_balance >= CAST(${String(operation.price_usd)} AS numeric)
+          RETURNING credit_balance`,
+      );
+      if (balanceRows.length === 0) {
+        const availableRows = await sqlRows<{ credit_balance: string }>(
+          tx,
+          sql`SELECT credit_balance FROM organizations
+            WHERE id = ${params.organizationId} FOR UPDATE`,
+        );
+        const quotaRows = await sqlRows<{ bytes_used: bigint }>(
+          tx,
+          sql`UPDATE ${orgStorageQuota}
+            SET bytes_used = ${orgStorageQuota.bytes_used} - ${operation.quota_reserved_bytes},
+                updated_at = NOW()
+            WHERE ${orgStorageQuota.organization_id} = ${params.organizationId}
+              AND ${orgStorageQuota.bytes_used} >= ${operation.quota_reserved_bytes}
+            RETURNING ${orgStorageQuota.bytes_used}`,
+        );
+        requiredRow(quotaRows, "insufficient-credit quota release");
+        const responseJson = JSON.stringify({ error: "Insufficient credits" });
+        const refunded = await tx
           .update(orgStoragePutOperations)
           .set({
-            state: "reserved",
-            credit_transaction_id: params.creditTransactionId,
+            state: "refunded",
+            response_json: responseJson,
+            completed_at: new Date(),
             updated_at: new Date(),
           })
-          .where(
-            and(
-              eq(orgStoragePutOperations.id, params.operationId),
-              eq(orgStoragePutOperations.organization_id, params.organizationId),
-              eq(orgStoragePutOperations.state, "prepared"),
-            ),
-          )
-          .returning(),
-    );
-    if (rows[0]) return rows[0];
-    const existing = await this.findOperation(params.organizationId, params.operationId);
-    if (!existing) throw new Error("[NativeStoragePut] operation disappeared while reserving");
-    if (
-      existing.credit_transaction_id !== params.creditTransactionId ||
-      !["reserved", "provider_started", "committed", "refunded"].includes(existing.state)
-    ) {
-      throw new StoragePutConflictError("object_busy");
-    }
-    return existing;
+          .where(eq(orgStoragePutOperations.id, operation.id))
+          .returning();
+        return {
+          operation: normalizeOperation(requiredRow(refunded, "insufficient-credit receipt")),
+          insufficient: true,
+          available: Number(requiredRow(availableRows, "organization balance").credit_balance),
+        };
+      }
+
+      const metadata = JSON.stringify({
+        type: "reservation",
+        settlement_marker: "credit_reservation_v1",
+        storage_operation_id: operation.id,
+        reserved_amount: Number(operation.price_usd),
+      });
+      const holdRows = await sqlRows<{ id: string }>(
+        tx,
+        sql`INSERT INTO credit_transactions (
+            organization_id, amount, type, description, metadata, created_at
+          ) VALUES (
+            ${params.organizationId}, -CAST(${String(operation.price_usd)} AS numeric),
+            'debit', 'API proxy: storage — native put (reserved)', ${metadata}::jsonb, NOW()
+          ) RETURNING id`,
+      );
+      const holdId = requiredRow(holdRows, "credit reservation insert").id;
+      const reserved = await tx
+        .update(orgStoragePutOperations)
+        .set({ state: "reserved", credit_transaction_id: holdId, updated_at: new Date() })
+        .where(eq(orgStoragePutOperations.id, operation.id))
+        .returning();
+      return {
+        operation: normalizeOperation(requiredRow(reserved, "credit reservation attach")),
+        insufficient: false,
+        available: Number(requiredRow(balanceRows, "credit balance debit").credit_balance),
+      };
+    });
   }
 
   async claimProviderLease(params: {
@@ -247,6 +327,38 @@ export class OrgStorageMutationsRepository {
     );
     if (!rows[0]) throw new StoragePutConflictError("stale_lease");
     return rows[0];
+  }
+
+  async claimReconciliationLease(params: {
+    operationId: string;
+    organizationId: string;
+    leaseToken: string;
+    leaseExpiresAt: Date;
+    staleBefore: Date;
+    now: Date;
+  }): Promise<OrgStoragePutOperation> {
+    const rows = await writeTransaction(async (tx) =>
+      sqlRows<OrgStoragePutOperation>(
+        tx,
+        sql`UPDATE ${orgStoragePutOperations} AS operation
+          SET state = CASE
+                WHEN operation.state = 'provider_started' THEN 'provider_started'
+                ELSE 'reconciling'
+              END,
+              lease_token = ${params.leaseToken},
+              lease_expires_at = ${params.leaseExpiresAt},
+              updated_at = ${params.now}
+          WHERE operation.id = ${params.operationId}
+            AND operation.organization_id = ${params.organizationId}
+            AND ((operation.state = 'prepared' AND operation.created_at < ${params.staleBefore})
+              OR (operation.state = 'reserved' AND operation.updated_at < ${params.staleBefore})
+              OR (operation.state = 'reconciling' AND operation.lease_expires_at < ${params.now})
+              OR (operation.state = 'provider_started' AND operation.lease_expires_at < ${params.now}))
+          RETURNING operation.*`,
+      ),
+    );
+    if (!rows[0]) throw new StoragePutConflictError("stale_lease");
+    return normalizeOperation(rows[0]);
   }
 
   async commitObservedPut(params: {
@@ -362,6 +474,7 @@ export class OrgStorageMutationsRepository {
   async finalizeRefund(params: {
     operationId: string;
     organizationId: string;
+    leaseToken: string;
     responseJson: string;
   }): Promise<OrgStoragePutOperation> {
     return await writeTransaction(async (tx) => {
@@ -374,8 +487,75 @@ export class OrgStorageMutationsRepository {
       );
       const operation = normalizeOperation(requiredRow(rows, "refund lock"));
       if (operation.state === "refunded") return operation;
-      if (operation.state === "committed") {
-        throw new StoragePutConflictError("object_busy");
+      if (
+        !["reconciling", "provider_started"].includes(operation.state) ||
+        operation.lease_token !== params.leaseToken
+      ) {
+        throw new StoragePutConflictError("stale_lease");
+      }
+
+      if (Number(operation.price_usd) > 0) {
+        const holdRows = await sqlRows<{ id: string; settled_at: Date | null }>(
+          tx,
+          operation.credit_transaction_id
+            ? sql`SELECT id, settled_at FROM credit_transactions
+                WHERE id = ${operation.credit_transaction_id}
+                  AND organization_id = ${params.organizationId}
+                  AND type = 'debit'
+                  AND amount = -CAST(${String(operation.price_usd)} AS numeric)
+                  AND metadata->>'type' = 'reservation'
+                  AND metadata->>'settlement_marker' = 'credit_reservation_v1'
+                  AND metadata->>'storage_operation_id' = ${operation.id}
+                FOR UPDATE`
+            : sql`SELECT id, settled_at FROM credit_transactions
+                WHERE organization_id = ${params.organizationId}
+                  AND type = 'debit'
+                  AND amount = -CAST(${String(operation.price_usd)} AS numeric)
+                  AND metadata->>'type' = 'reservation'
+                  AND metadata->>'settlement_marker' = 'credit_reservation_v1'
+                  AND metadata->>'storage_operation_id' = ${operation.id}
+                ORDER BY created_at ASC
+                FOR UPDATE`,
+        );
+        if (
+          holdRows.length > 1 ||
+          (operation.credit_transaction_id !== null && holdRows.length !== 1) ||
+          holdRows[0]?.settled_at
+        ) {
+          throw new Error("[NativeStoragePut] refundable credit hold is missing or ambiguous");
+        }
+        if (holdRows[0]) {
+          const holdId = holdRows[0].id;
+          const refundMetadata = JSON.stringify({
+            type: "storage_put_refund",
+            storage_operation_id: operation.id,
+            reservation_transaction_id: holdId,
+          });
+          const organizationRows = await sqlRows<{ id: string }>(
+            tx,
+            sql`UPDATE organizations
+              SET credit_balance = credit_balance + CAST(${String(operation.price_usd)} AS numeric),
+                  updated_at = NOW()
+              WHERE id = ${params.organizationId}
+              RETURNING id`,
+          );
+          requiredRow(organizationRows, "credit refund balance");
+          await tx.execute(sql`INSERT INTO credit_transactions (
+              organization_id, amount, type, description, metadata, created_at
+            ) VALUES (
+              ${params.organizationId}, CAST(${String(operation.price_usd)} AS numeric),
+              'refund', 'API proxy: storage — native put (refund)',
+              ${refundMetadata}::jsonb, NOW()
+            )`);
+          const settled = await sqlRows<{ id: string }>(
+            tx,
+            sql`UPDATE credit_transactions
+              SET settled_at = NOW()
+              WHERE id = ${holdId} AND settled_at IS NULL
+              RETURNING id`,
+          );
+          requiredRow(settled, "credit refund settlement");
+        }
       }
       const quotaRows = await sqlRows<{ bytes_used: bigint }>(
         tx,
@@ -415,25 +595,6 @@ export class OrgStorageMutationsRepository {
     });
   }
 
-  async findUnattachedCreditReservation(
-    operation: OrgStoragePutOperation,
-  ): Promise<string | undefined> {
-    const rows = await sqlRows<{ id: string }>(
-      dbWrite,
-      sql`SELECT id FROM credit_transactions
-        WHERE organization_id = ${operation.organization_id}
-          AND type = 'debit'
-          AND amount = -CAST(${String(operation.price_usd)} AS numeric)
-          AND settled_at IS NULL
-          AND metadata->>'type' = 'reservation'
-          AND metadata->>'settlement_marker' = 'credit_reservation_v1'
-          AND metadata->>'storage_operation_id' = ${operation.id}
-        ORDER BY created_at ASC
-        LIMIT 1`,
-    );
-    return rows[0]?.id;
-  }
-
   async findObject(
     organizationId: string,
     logicalKey: string,
@@ -444,6 +605,70 @@ export class OrgStorageMutationsRepository {
         eq(orgStorageObjects.logical_key, logicalKey),
       ),
     });
+  }
+
+  async adoptLegacyObject(input: {
+    organizationId: string;
+    logicalKey: string;
+    providerKey: string;
+    sizeBytes: bigint;
+    contentType: string;
+    etag: string;
+    uploadedAt: Date;
+  }): Promise<OrgStorageObject> {
+    return await writeTransaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.organizationId}:${input.logicalKey}`}, 0))`,
+      );
+      await tx
+        .insert(orgStorageObjects)
+        .values({ organization_id: input.organizationId, logical_key: input.logicalKey })
+        .onConflictDoNothing();
+      const rows = await sqlRows<OrgStorageObject>(
+        tx,
+        sql`SELECT * FROM ${orgStorageObjects}
+          WHERE organization_id = ${input.organizationId}
+            AND logical_key = ${input.logicalKey}
+          FOR UPDATE`,
+      );
+      const object = normalizeObject(requiredRow(rows, "legacy adoption lock"));
+      if (object.provider_key || object.generation > 0n || object.deleted_at) return object;
+      const adopted = await tx
+        .update(orgStorageObjects)
+        .set({
+          provider_key: input.providerKey,
+          size_bytes: input.sizeBytes,
+          content_type: input.contentType,
+          etag: input.etag,
+          uploaded_at: input.uploadedAt,
+          updated_at: new Date(),
+        })
+        .where(eq(orgStorageObjects.id, object.id))
+        .returning();
+      return normalizeObject(requiredRow(adopted, "legacy adoption"));
+    });
+  }
+
+  async listObjects(
+    organizationId: string,
+    prefix: string,
+    limit = 1001,
+  ): Promise<OrgStorageObject[]> {
+    const escapedPrefix = prefix
+      .replaceAll("\\", "\\\\")
+      .replaceAll("%", "\\%")
+      .replaceAll("_", "\\_");
+    const rows = await sqlRows<OrgStorageObject>(
+      dbWrite,
+      sql`SELECT * FROM ${orgStorageObjects}
+        WHERE organization_id = ${organizationId}
+          AND deleted_at IS NULL
+          AND provider_key IS NOT NULL
+          AND logical_key LIKE ${`${escapedPrefix}%`} ESCAPE '\\'
+        ORDER BY logical_key ASC
+        LIMIT ${Math.max(1, Math.min(limit, 1001))}`,
+    );
+    return rows.map(normalizeObject);
   }
 
   async listDueOperations(now: Date, limit = MAX_DUE_BATCH): Promise<OrgStoragePutOperation[]> {
@@ -460,6 +685,10 @@ export class OrgStorageMutationsRepository {
         ),
         and(
           eq(orgStoragePutOperations.state, "provider_started"),
+          lt(orgStoragePutOperations.lease_expires_at, now),
+        ),
+        and(
+          eq(orgStoragePutOperations.state, "reconciling"),
           lt(orgStoragePutOperations.lease_expires_at, now),
         ),
       ),
@@ -521,7 +750,12 @@ export class OrgStorageMutationsRepository {
       const activePut = await tx.query.orgStoragePutOperations.findFirst({
         where: and(
           eq(orgStoragePutOperations.object_id, object.id),
-          inArray(orgStoragePutOperations.state, ["prepared", "reserved", "provider_started"]),
+          inArray(orgStoragePutOperations.state, [
+            "prepared",
+            "reserved",
+            "provider_started",
+            "reconciling",
+          ]),
         ),
       });
       const activeDelete = await tx.query.orgStorageDeleteOperations.findFirst({

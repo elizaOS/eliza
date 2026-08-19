@@ -12,10 +12,13 @@ const OBJECT = "00000000-0000-4000-8000-000000021047";
 const PROVIDER_KEY = `__eliza_storage_authority/v2/org/${ORG}/${OBJECT}/1`;
 
 const preparePut = mock();
-const attachCreditReservation = mock();
+const reservePutCredits = mock();
 const claimProviderLease = mock();
+const claimReconciliationLease = mock();
 const commitObservedPut = mock();
 const finalizeRefund = mock();
+const findObject = mock();
+const adoptLegacyObject = mock();
 const listDueOperations = mock();
 const listDueGc = mock();
 const completeGc = mock();
@@ -23,9 +26,6 @@ const prepareDelete = mock();
 const claimDeleteLease = mock();
 const commitObservedDelete = mock();
 const listDueDeletes = mock();
-const findUnattachedCreditReservation = mock();
-const reserve = mock();
-const reconcile = mock();
 const loggerWarn = mock();
 
 class TestInsufficientCreditsError extends Error {}
@@ -34,10 +34,13 @@ class TestStoragePutConflictError extends Error {}
 mock.module("../../../db/repositories/org-storage-mutations", () => ({
   orgStorageMutationsRepository: {
     preparePut,
-    attachCreditReservation,
+    reservePutCredits,
     claimProviderLease,
+    claimReconciliationLease,
     commitObservedPut,
     finalizeRefund,
+    findObject,
+    adoptLegacyObject,
     listDueOperations,
     listDueGc,
     completeGc,
@@ -45,14 +48,10 @@ mock.module("../../../db/repositories/org-storage-mutations", () => ({
     claimDeleteLease,
     commitObservedDelete,
     listDueDeletes,
-    findUnattachedCreditReservation,
   },
   StoragePutConflictError: TestStoragePutConflictError,
 }));
-mock.module("../credits", () => ({
-  creditsService: { reserve, reconcile },
-  InsufficientCreditsError: TestInsufficientCreditsError,
-}));
+mock.module("../credits", () => ({ InsufficientCreditsError: TestInsufficientCreditsError }));
 mock.module("../../utils/logger", () => ({ logger: { warn: loggerWarn } }));
 
 const {
@@ -60,6 +59,7 @@ const {
   executeNativeStorageDelete,
   executeNativeStoragePut,
   reconcileNativeStoragePuts,
+  resolveNativeStorageObject,
 } = await import("./native-storage-put");
 
 function operation(state: OrgStoragePutOperation["state"], price = "1.000000") {
@@ -81,8 +81,9 @@ function operation(state: OrgStoragePutOperation["state"], price = "1.000000") {
     quota_reserved_bytes: 7n,
     price_usd: price,
     credit_transaction_id: state === "prepared" || price === "0.000000" ? null : OP,
-    lease_token: state === "provider_started" ? OBJECT : null,
-    lease_expires_at: state === "provider_started" ? new Date(Date.now() - 1) : null,
+    lease_token: state === "provider_started" || state === "reconciling" ? OBJECT : null,
+    lease_expires_at:
+      state === "provider_started" || state === "reconciling" ? new Date(Date.now() - 1) : null,
     result_etag: state === "committed" ? "etag-1" : null,
     result_uploaded_at: state === "committed" ? new Date() : null,
     response_json: state === "committed" ? "{}" : null,
@@ -118,10 +119,13 @@ function fakeR2(throwAfterCommit: { value: boolean }): RuntimeR2Bucket {
 beforeEach(() => {
   for (const fn of [
     preparePut,
-    attachCreditReservation,
+    reservePutCredits,
     claimProviderLease,
+    claimReconciliationLease,
     commitObservedPut,
     finalizeRefund,
+    findObject,
+    adoptLegacyObject,
     listDueOperations,
     listDueGc,
     completeGc,
@@ -129,9 +133,6 @@ beforeEach(() => {
     claimDeleteLease,
     commitObservedDelete,
     listDueDeletes,
-    findUnattachedCreditReservation,
-    reserve,
-    reconcile,
     loggerWarn,
   ]) {
     fn.mockReset();
@@ -139,15 +140,51 @@ beforeEach(() => {
   listDueOperations.mockResolvedValue([]);
   listDueGc.mockResolvedValue([]);
   listDueDeletes.mockResolvedValue([]);
-  findUnattachedCreditReservation.mockResolvedValue(undefined);
-  reserve.mockResolvedValue({ reservationTransactionId: OP });
-  reconcile.mockResolvedValue({ adjustmentType: "none" });
+  reservePutCredits.mockImplementation(async () => ({
+    operation: operation("reserved"),
+    insufficient: false,
+    available: 9,
+  }));
+  findObject.mockResolvedValue(undefined);
 });
 
 describe("executeNativeStoragePut", () => {
+  test("adopts a legacy logical key from strong native HEAD without moving bytes", async () => {
+    const bucket = fakeR2({ value: false });
+    const legacyKey = `org/${ORG}/legacy/voice.ogg`;
+    bucket.head = mock(async (key: string) =>
+      key === legacyKey
+        ? {
+            size: 7,
+            etag: "legacy-etag",
+            uploaded: new Date("2026-08-18T00:00:00.000Z"),
+            httpMetadata: { contentType: "audio/ogg" },
+          }
+        : null,
+    );
+    const adopted = {
+      generation: 0n,
+      provider_key: legacyKey,
+      size_bytes: 7n,
+      content_type: "audio/ogg",
+    };
+    adoptLegacyObject.mockResolvedValue(adopted);
+    expect(await resolveNativeStorageObject(bucket, ORG, "legacy/voice.ogg")).toBe(adopted);
+    expect(adoptLegacyObject).toHaveBeenCalledWith({
+      organizationId: ORG,
+      logicalKey: "legacy/voice.ogg",
+      providerKey: legacyKey,
+      sizeBytes: 7n,
+      contentType: "audio/ogg",
+      etag: "legacy-etag",
+      uploadedAt: new Date("2026-08-18T00:00:00.000Z"),
+    });
+  });
+
   test("preserves the authoritative per-byte rate while rounding to ledger precision", () => {
     expect(calculateStoragePutPrice(0.0001, 0.000000001, 1)).toBe(0.000101);
     expect(calculateStoragePutPrice(0.0001, 0.000000001, 50_000_000)).toBe(0.0501);
+    expect(calculateStoragePutPrice(0.0000004, 0.0000004, 1)).toBe(0.000001);
   });
 
   test("keeps the hold on commit-then-ack-loss and reconciles by immutable-key HEAD", async () => {
@@ -156,9 +193,9 @@ describe("executeNativeStoragePut", () => {
       operation: current,
       replay: current.state !== "prepared",
     }));
-    attachCreditReservation.mockImplementation(async () => {
+    reservePutCredits.mockImplementation(async () => {
       current = operation("reserved");
-      return current;
+      return { operation: current, insufficient: false, available: 9 };
     });
     claimProviderLease.mockImplementation(async () => {
       current = operation("provider_started");
@@ -181,7 +218,6 @@ describe("executeNativeStoragePut", () => {
 
     await expect(executeNativeStoragePut(input)).rejects.toThrow("commit-then-ack-loss");
     expect(finalizeRefund).not.toHaveBeenCalled();
-    expect(reconcile).not.toHaveBeenCalled();
     expect(bucket.put).toHaveBeenCalledTimes(1);
     expect(bucket.put).toHaveBeenCalledWith(
       PROVIDER_KEY,
@@ -198,17 +234,15 @@ describe("executeNativeStoragePut", () => {
     });
     expect(bucket.put).toHaveBeenCalledTimes(1);
     expect(commitObservedPut).toHaveBeenCalledTimes(1);
-    expect(reconcile).not.toHaveBeenCalled();
     expect(finalizeRefund).not.toHaveBeenCalled();
   });
 
   test("persists a zero-cost terminal receipt without creating a credit transaction", async () => {
     let current = operation("prepared", "0.000000");
     preparePut.mockResolvedValue({ operation: current, replay: false });
-    attachCreditReservation.mockImplementation(async ({ creditTransactionId }) => {
-      expect(creditTransactionId).toBeNull();
+    reservePutCredits.mockImplementation(async () => {
       current = operation("reserved", "0.000000");
-      return current;
+      return { operation: current, insufficient: false, available: 0 };
     });
     claimProviderLease.mockImplementation(async () => {
       current = operation("provider_started", "0.000000");
@@ -227,9 +261,30 @@ describe("executeNativeStoragePut", () => {
       priceUsd: 0,
     });
     expect(response.etag).toBe("etag-1");
-    expect(reserve).not.toHaveBeenCalled();
-    expect(reconcile).not.toHaveBeenCalled();
+    expect(reservePutCredits).toHaveBeenCalledTimes(1);
     expect(commitObservedPut).toHaveBeenCalledTimes(1);
+  });
+
+  test("stops before provider dispatch when atomic storage credit reservation is terminal", async () => {
+    preparePut.mockResolvedValue({ operation: operation("prepared"), replay: false });
+    reservePutCredits.mockResolvedValue({
+      operation: operation("refunded"),
+      insufficient: true,
+      available: 0.25,
+    });
+    const bucket = fakeR2({ value: false });
+    await expect(
+      executeNativeStoragePut({
+        bucket,
+        organizationId: ORG,
+        logicalKey: "insufficient.txt",
+        idempotencyKey: "insufficient-1",
+        body: new TextEncoder().encode("payload").buffer,
+        contentType: "text/plain",
+        priceUsd: 1,
+      }),
+    ).rejects.toBeInstanceOf(TestInsufficientCreditsError);
+    expect(bucket.put).not.toHaveBeenCalled();
   });
 
   test("replays an ambiguous native delete without releasing authority early", async () => {
@@ -295,33 +350,47 @@ describe("executeNativeStoragePut", () => {
     const pending = operation("prepared");
     pending.created_at = new Date(Date.now() - 11 * 60_000);
     listDueOperations.mockResolvedValue([pending]);
+    claimReconciliationLease.mockResolvedValue(operation("reconciling"));
     finalizeRefund.mockResolvedValue(operation("refunded"));
     const result = await reconcileNativeStoragePuts(fakeR2({ value: false }));
     expect(result.refunded).toBe(1);
-    expect(reconcile).not.toHaveBeenCalled();
     expect(finalizeRefund).toHaveBeenCalledWith({
       operationId: OP,
       organizationId: ORG,
+      leaseToken: expect.any(String),
       responseJson: JSON.stringify({ error: "Storage PUT did not reach R2" }),
     });
   });
 
-  test("recovers and refunds a hold created just before the operation link crashed", async () => {
+  test("delegates orphan-hold recovery to the atomic storage refund transaction", async () => {
     const pending = operation("prepared");
     pending.created_at = new Date(Date.now() - 11 * 60_000);
     listDueOperations.mockResolvedValue([pending]);
-    findUnattachedCreditReservation.mockResolvedValue(OP);
-    attachCreditReservation.mockResolvedValue(operation("reserved"));
+    claimReconciliationLease.mockResolvedValue(operation("reconciling"));
     finalizeRefund.mockResolvedValue(operation("refunded"));
     await reconcileNativeStoragePuts(fakeR2({ value: false }));
-    expect(attachCreditReservation).toHaveBeenCalledWith({
-      operationId: OP,
-      organizationId: ORG,
-      creditTransactionId: OP,
-    });
-    expect(reconcile).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationId: ORG, reservedAmount: 1, actualCost: 0 }),
+    expect(reservePutCredits).not.toHaveBeenCalled();
+    expect(finalizeRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ operationId: OP, organizationId: ORG }),
     );
-    expect(finalizeRefund).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects empty and oversized content types before provider dispatch", async () => {
+    const base = {
+      bucket: fakeR2({ value: false }),
+      organizationId: ORG,
+      logicalKey: "invalid-content-type",
+      idempotencyKey: "content-type-1",
+      body: new TextEncoder().encode("payload").buffer,
+      priceUsd: 0,
+    };
+    await expect(executeNativeStoragePut({ ...base, contentType: "   " })).rejects.toMatchObject({
+      code: "CONTENT_TYPE_INVALID",
+    });
+    await expect(
+      executeNativeStoragePut({ ...base, contentType: "x".repeat(256) }),
+    ).rejects.toMatchObject({ code: "CONTENT_TYPE_INVALID" });
+    expect(preparePut).not.toHaveBeenCalled();
+    expect(base.bucket.put).not.toHaveBeenCalled();
   });
 });

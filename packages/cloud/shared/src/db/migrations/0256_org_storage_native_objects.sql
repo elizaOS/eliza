@@ -5,9 +5,24 @@ ALTER TABLE "service_pricing_audit"
   ALTER COLUMN "old_cost" TYPE numeric(18,12),
   ALTER COLUMN "new_cost" TYPE numeric(18,12);
 
-ALTER TABLE "credit_transactions"
-  ADD CONSTRAINT "credit_transactions_tenant_identity_unique"
-  UNIQUE("id", "organization_id");
+WITH stale_price AS (
+  SELECT id, service_id, method, cost
+  FROM "service_pricing"
+  WHERE "service_id" = 'storage' AND "method" = 'put_per_byte' AND "cost" = 0
+), audit AS (
+  INSERT INTO "service_pricing_audit" (
+    service_pricing_id, service_id, method, old_cost, new_cost,
+    change_type, changed_by, reason
+  )
+  SELECT id, service_id, method, cost, 0.000000001,
+    'migration_reseed', 'migration:0254',
+    'Restore put_per_byte after widening pricing precision'
+  FROM stale_price
+)
+UPDATE "service_pricing" AS pricing
+SET "cost" = 0.000000001, "updated_at" = NOW()
+FROM stale_price
+WHERE pricing.id = stale_price.id;
 
 CREATE TABLE "org_storage_objects" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -27,6 +42,11 @@ CREATE TABLE "org_storage_objects" (
   CONSTRAINT "org_storage_objects_shape_check" CHECK (
     "generation" >= 0 AND "size_bytes" >= 0 AND ((
       "generation" = 0 AND "provider_key" IS NULL AND "size_bytes" = 0
+    ) OR (
+      "generation" = 0 AND "provider_key" IS NOT NULL AND "size_bytes" > 0
+      AND char_length("content_type") BETWEEN 1 AND 255
+      AND char_length("etag") BETWEEN 1 AND 512
+      AND "uploaded_at" IS NOT NULL AND "deleted_at" IS NULL
     ) OR (
       "generation" > 0 AND "provider_key" IS NOT NULL
       AND "content_sha256" ~ '^[0-9a-f]{64}$'

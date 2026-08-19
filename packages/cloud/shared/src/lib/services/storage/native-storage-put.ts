@@ -10,16 +10,19 @@ import {
   type PreparedStoragePut,
   StoragePutConflictError,
 } from "../../../db/repositories/org-storage-mutations";
-import type { OrgStoragePutOperation } from "../../../db/schemas/org-storage-mutations";
+import type {
+  OrgStorageObject,
+  OrgStoragePutOperation,
+} from "../../../db/schemas/org-storage-mutations";
 import type { RuntimeR2Bucket, RuntimeR2ObjectMetadata } from "../../storage/r2-runtime-binding";
 import { logger } from "../../utils/logger";
-import { creditsService, InsufficientCreditsError } from "../credits";
+import { InsufficientCreditsError } from "../credits";
 
 const PROVIDER_LEASE_MS = 5 * 60 * 1000;
 const RECOVERY_GRACE_MS = 10 * 60 * 1000;
 const MAX_IDEMPOTENCY_KEY_BYTES = 200;
 
-/** Rounds the per-byte leg up to the ledger's exact six-decimal unit. */
+/** Sums exact server-owned decimal legs, then rounds once to the ledger unit. */
 export function calculateStoragePutPrice(
   flatCost: number,
   perByteCost: number,
@@ -35,10 +38,8 @@ export function calculateStoragePutPrice(
   ) {
     throw new Error("[NativeStoragePut] invalid server-owned pricing inputs");
   }
-  return new Decimal(perByteCost)
-    .mul(bytes)
-    .toDecimalPlaces(6, Decimal.ROUND_CEIL)
-    .add(flatCost)
+  return new Decimal(flatCost.toString())
+    .add(new Decimal(perByteCost.toString()).mul(bytes))
     .toDecimalPlaces(6, Decimal.ROUND_CEIL)
     .toNumber();
 }
@@ -48,6 +49,7 @@ export class NativeStoragePutError extends Error {
     public readonly code:
       | "IDEMPOTENCY_REQUIRED"
       | "IDEMPOTENCY_INVALID"
+      | "CONTENT_TYPE_INVALID"
       | "OPERATION_IN_PROGRESS"
       | "PROVIDER_AMBIGUOUS"
       | "PROVIDER_INTEGRITY",
@@ -99,6 +101,47 @@ function canonicalPrice(priceUsd: number): string {
   return priceUsd.toFixed(6);
 }
 
+function legacyProviderKey(organizationId: string, logicalKey: string): string {
+  return `org/${organizationId}/${logicalKey}`;
+}
+
+function adoptedContentType(observed: RuntimeR2ObjectMetadata): string {
+  const contentType = observed.httpMetadata?.contentType?.trim() || "application/octet-stream";
+  return contentType.length <= 255 && !/[\0\r\n]/.test(contentType)
+    ? contentType
+    : "application/octet-stream";
+}
+
+export async function resolveNativeStorageObject(
+  bucket: RuntimeR2Bucket,
+  organizationId: string,
+  logicalKey: string,
+): Promise<OrgStorageObject | undefined> {
+  const existing = await orgStorageMutationsRepository.findObject(organizationId, logicalKey);
+  if (existing?.provider_key || existing?.deleted_at || (existing?.generation ?? 0n) > 0n) {
+    return existing;
+  }
+  if (!bucket.head) throw new Error("[NativeStoragePut] R2 HEAD is unavailable");
+  const providerKey = legacyProviderKey(organizationId, logicalKey);
+  const observed = await bucket.head(providerKey);
+  if (!observed) return existing;
+  if (!observed.etag || observed.size <= 0) {
+    throw new NativeStoragePutError(
+      "PROVIDER_INTEGRITY",
+      "Legacy R2 object metadata is incomplete",
+    );
+  }
+  return await orgStorageMutationsRepository.adoptLegacyObject({
+    organizationId,
+    logicalKey,
+    providerKey,
+    sizeBytes: BigInt(observed.size),
+    contentType: adoptedContentType(observed),
+    etag: observed.etag,
+    uploadedAt: observed.uploaded ?? new Date(0),
+  });
+}
+
 async function requestIdentity(input: ExecuteNativeStoragePutInput) {
   const encodedKey = new TextEncoder().encode(input.idempotencyKey);
   if (encodedKey.byteLength === 0) {
@@ -106,6 +149,10 @@ async function requestIdentity(input: ExecuteNativeStoragePutInput) {
   }
   if (encodedKey.byteLength > MAX_IDEMPOTENCY_KEY_BYTES || /[\r\n\0]/.test(input.idempotencyKey)) {
     throw new NativeStoragePutError("IDEMPOTENCY_INVALID", "Idempotency-Key is invalid");
+  }
+  const contentType = input.contentType.trim();
+  if (contentType.length === 0 || contentType.length > 255 || /[\0\r\n]/.test(contentType)) {
+    throw new NativeStoragePutError("CONTENT_TYPE_INVALID", "Content-Type is invalid");
   }
   const contentSha256 = await sha256(input.body);
   const priceUsd = canonicalPrice(input.priceUsd);
@@ -115,13 +162,13 @@ async function requestIdentity(input: ExecuteNativeStoragePutInput) {
       version: 1,
       organizationId: input.organizationId,
       logicalKey: input.logicalKey,
-      contentType: input.contentType,
+      contentType,
       sizeBytes: input.body.byteLength,
       contentSha256,
       priceUsd,
     }),
   );
-  return { contentSha256, priceUsd, idempotencyKeyHash, requestDigest };
+  return { contentType, contentSha256, priceUsd, idempotencyKeyHash, requestDigest };
 }
 
 async function deleteRequestIdentity(input: ExecuteNativeStorageDeleteInput) {
@@ -183,27 +230,6 @@ function validateObserved(
   return { etag: observed.etag, uploadedAt: observed.uploaded ?? new Date() };
 }
 
-async function settleCredit(operation: OrgStoragePutOperation, actualCost: number): Promise<void> {
-  const reservedAmount = Number(operation.price_usd);
-  if (reservedAmount === 0) return;
-  if (!operation.credit_transaction_id) {
-    throw new Error("[NativeStoragePut] paid operation is missing its credit reservation");
-  }
-  await creditsService.reconcile({
-    organizationId: operation.organization_id,
-    reservedAmount,
-    actualCost,
-    description: "API proxy: storage — native put",
-    metadata: {
-      type: "proxy_storage",
-      service: "storage",
-      method: "put",
-      storage_operation_id: operation.id,
-      reservation_transaction_id: operation.credit_transaction_id,
-    },
-  });
-}
-
 async function commitObserved(
   operation: OrgStoragePutOperation,
   logicalKey: string,
@@ -233,45 +259,18 @@ async function commitObserved(
 async function reserveCredits(prepared: PreparedStoragePut): Promise<OrgStoragePutOperation> {
   const operation = prepared.operation;
   if (operation.state !== "prepared") return operation;
-  const amount = Number(operation.price_usd);
-  if (amount === 0) {
-    return await orgStorageMutationsRepository.attachCreditReservation({
-      operationId: operation.id,
-      organizationId: operation.organization_id,
-      creditTransactionId: null,
-    });
+  const result = await orgStorageMutationsRepository.reservePutCredits({
+    operationId: operation.id,
+    organizationId: operation.organization_id,
+  });
+  if (result.insufficient) {
+    throw new InsufficientCreditsError(
+      Number(operation.price_usd),
+      result.available,
+      "insufficient_balance",
+    );
   }
-  try {
-    const reservation = await creditsService.reserve({
-      organizationId: operation.organization_id,
-      amount,
-      idempotencyKey: `native-storage-put:${operation.id}`,
-      description: "API proxy: storage — native put",
-      metadata: {
-        type: "proxy_storage",
-        service: "storage",
-        method: "put",
-        storage_operation_id: operation.id,
-      },
-    });
-    if (!reservation.reservationTransactionId) {
-      throw new Error("[NativeStoragePut] credit reservation returned no transaction id");
-    }
-    return await orgStorageMutationsRepository.attachCreditReservation({
-      operationId: operation.id,
-      organizationId: operation.organization_id,
-      creditTransactionId: reservation.reservationTransactionId,
-    });
-  } catch (error) {
-    if (error instanceof InsufficientCreditsError) {
-      await orgStorageMutationsRepository.finalizeRefund({
-        operationId: operation.id,
-        organizationId: operation.organization_id,
-        responseJson: JSON.stringify({ error: "Insufficient credits" }),
-      });
-    }
-    throw error;
-  }
+  return result.operation;
 }
 
 export async function executeNativeStoragePut(
@@ -281,13 +280,14 @@ export async function executeNativeStoragePut(
     throw new NativeStoragePutError("PROVIDER_INTEGRITY", "R2 HEAD is unavailable");
   }
   const identity = await requestIdentity(input);
+  await resolveNativeStorageObject(input.bucket, input.organizationId, input.logicalKey);
   const prepared = await orgStorageMutationsRepository.preparePut({
     organizationId: input.organizationId,
     logicalKey: input.logicalKey,
     idempotencyKeyHash: identity.idempotencyKeyHash,
     requestDigest: identity.requestDigest,
     sizeBytes: BigInt(input.body.byteLength),
-    contentType: input.contentType,
+    contentType: identity.contentType,
     contentSha256: identity.contentSha256,
     priceUsd: identity.priceUsd,
   });
@@ -296,6 +296,9 @@ export async function executeNativeStoragePut(
   if (operation.state === "committed") return responseFor(operation, input.logicalKey);
   if (operation.state === "refunded") {
     throw new NativeStoragePutError("OPERATION_IN_PROGRESS", "The prior PUT attempt was refunded");
+  }
+  if (operation.state === "reconciling") {
+    throw new NativeStoragePutError("OPERATION_IN_PROGRESS", "The prior PUT is reconciling");
   }
   operation = await reserveCredits(prepared);
 
@@ -404,40 +407,34 @@ export async function reconcileNativeStoragePuts(bucket: RuntimeR2Bucket) {
   if (!bucket.head) throw new Error("[NativeStoragePut] R2 HEAD is unavailable");
   const now = new Date();
   const due = await orgStorageMutationsRepository.listDueOperations(now);
+  const staleBefore = new Date(now.getTime() - RECOVERY_GRACE_MS);
   let committed = 0;
   let refunded = 0;
   let failed = 0;
 
   for (const operation of due) {
     try {
-      if (operation.state === "provider_started") {
-        const observed = await bucket.head(operation.target_provider_key);
+      const leaseToken = crypto.randomUUID();
+      const claimed = await orgStorageMutationsRepository.claimReconciliationLease({
+        operationId: operation.id,
+        organizationId: operation.organization_id,
+        leaseToken,
+        leaseExpiresAt: new Date(now.getTime() + PROVIDER_LEASE_MS),
+        staleBefore,
+        now,
+      });
+      if (claimed.state === "provider_started") {
+        const observed = await bucket.head(claimed.target_provider_key);
         if (observed) {
-          await commitObserved(operation, "[redacted]", observed);
+          await commitObserved(claimed, "[redacted]", observed);
           committed++;
           continue;
         }
-      } else if (operation.created_at.getTime() + RECOVERY_GRACE_MS > now.getTime()) {
-        continue;
-      }
-      let refundable = operation;
-      if (Number(operation.price_usd) > 0 && !operation.credit_transaction_id) {
-        const orphanedCreditId =
-          await orgStorageMutationsRepository.findUnattachedCreditReservation(operation);
-        if (orphanedCreditId) {
-          refundable = await orgStorageMutationsRepository.attachCreditReservation({
-            operationId: operation.id,
-            organizationId: operation.organization_id,
-            creditTransactionId: orphanedCreditId,
-          });
-        }
-      }
-      if (refundable.credit_transaction_id) {
-        await settleCredit(refundable, 0);
       }
       await orgStorageMutationsRepository.finalizeRefund({
-        operationId: operation.id,
-        organizationId: operation.organization_id,
+        operationId: claimed.id,
+        organizationId: claimed.organization_id,
+        leaseToken,
         responseJson: JSON.stringify({ error: "Storage PUT did not reach R2" }),
       });
       refunded++;

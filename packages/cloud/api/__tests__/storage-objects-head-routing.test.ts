@@ -11,24 +11,17 @@ const ORGANIZATION_ID = "00000000-0000-4000-8000-000000021045";
 const ROUTE_PREFIX = "/api/v1/apis/storage/objects";
 const ROUTE_MOUNT = `${ROUTE_PREFIX}/:*{.+}`;
 const OBJECT_PATH = "voice/message.ogg";
-const SCOPED_KEY = `org/${ORGANIZATION_ID}/${OBJECT_PATH}`;
 const HEAD_COST = 0.00007;
 const GET_COST = 0.00011;
 const OBJECT_BYTES = new TextEncoder().encode("asset");
 const MODIFIED_AT = new Date("2026-08-17T12:00:00.000Z");
 
 const requireUserOrApiKeyWithOrg = mock();
-const getR2StorageAdapter = mock();
 const getServiceMethodCost = mock();
 const deductCredits = mock();
-const exists = mock();
-const read = mock();
-const stat = mock();
-const write = mock();
-const remove = mock();
 const tryReserveBytes = mock();
 const releaseBytes = mock();
-const findObject = mock();
+const resolveNativeStorageObject = mock();
 const executeNativeStoragePut = mock();
 const executeNativeStorageDelete = mock();
 const loggerError = mock();
@@ -44,8 +37,6 @@ class TestInsufficientCreditsError extends Error {}
 class TestNativeStoragePutError extends Error {}
 
 mock.module("@/db/repositories", () => ({
-  orgStorageQuotaRepository: { tryReserveBytes, releaseBytes },
-  orgStorageMutationsRepository: { findObject },
   StoragePutConflictError: TestStoragePutConflictError,
   StorageQuotaExceededError: TestStorageQuotaExceededError,
 }));
@@ -68,15 +59,12 @@ mock.module("@/lib/services/storage/native-storage-put", () => ({
     Number((flat + perByte * bytes).toFixed(6)),
   executeNativeStoragePut,
   executeNativeStorageDelete,
+  resolveNativeStorageObject,
   NativeStoragePutError: TestNativeStoragePutError,
 }));
 
 mock.module("@/lib/services/proxy/pricing", () => ({
   getServiceMethodCost,
-}));
-
-mock.module("@/lib/services/storage/r2-storage-adapter", () => ({
-  getR2StorageAdapter,
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -89,23 +77,42 @@ const storageObjectsRoute = (
 const app = new Hono();
 app.route(ROUTE_MOUNT, storageObjectsRoute);
 
+const nativeObject = {
+  generation: 1n,
+  provider_key: `__eliza_storage_authority/v2/org/${ORGANIZATION_ID}/object/1`,
+  size_bytes: BigInt(OBJECT_BYTES.byteLength),
+  content_type: "audio/ogg",
+  etag: "storage-etag",
+  uploaded_at: MODIFIED_AT,
+  deleted_at: null,
+};
+const bucket = {
+  get: mock(async () => ({
+    body: OBJECT_BYTES,
+    arrayBuffer: async () => OBJECT_BYTES.buffer,
+  })),
+  head: mock(async () => ({
+    size: OBJECT_BYTES.byteLength,
+    etag: "storage-etag",
+  })),
+  put: mock(),
+  delete: mock(),
+};
 function request(method: "GET" | "HEAD"): Response | Promise<Response> {
-  return app.request(`${ROUTE_PREFIX}/${OBJECT_PATH}`, { method });
+  return app.request(
+    `${ROUTE_PREFIX}/${OBJECT_PATH}`,
+    { method },
+    { BLOB: bucket },
+  );
 }
 
 beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
-  getR2StorageAdapter.mockReset();
   getServiceMethodCost.mockReset();
   deductCredits.mockReset();
-  exists.mockReset();
-  read.mockReset();
-  stat.mockReset();
-  write.mockReset();
-  remove.mockReset();
   tryReserveBytes.mockReset();
   releaseBytes.mockReset();
-  findObject.mockReset();
+  resolveNativeStorageObject.mockReset();
   executeNativeStoragePut.mockReset();
   executeNativeStorageDelete.mockReset();
   loggerError.mockReset();
@@ -114,17 +121,8 @@ beforeEach(() => {
   requireUserOrApiKeyWithOrg.mockResolvedValue({
     organization_id: ORGANIZATION_ID,
   });
-  getR2StorageAdapter.mockReturnValue({ exists, read, stat, write, remove });
   deductCredits.mockResolvedValue({ success: true });
-  exists.mockResolvedValue(true);
-  read.mockResolvedValue(OBJECT_BYTES);
-  stat.mockResolvedValue({
-    size: OBJECT_BYTES.byteLength,
-    contentType: "audio/ogg",
-    etag: "storage-etag",
-    modified: MODIFIED_AT,
-  });
-  findObject.mockResolvedValue(undefined);
+  resolveNativeStorageObject.mockResolvedValue(nativeObject);
 });
 
 test("PUT uses the authenticated native BLOB path with server-owned pricing", async () => {
@@ -161,7 +159,6 @@ test("PUT uses the authenticated native BLOB path with server-owned pricing", as
     contentType: "audio/ogg",
     priceUsd: 0.3,
   });
-  expect(getR2StorageAdapter).not.toHaveBeenCalled();
   expect(tryReserveBytes).not.toHaveBeenCalled();
   expect(deductCredits).not.toHaveBeenCalled();
 });
@@ -169,7 +166,7 @@ test("PUT uses the authenticated native BLOB path with server-owned pricing", as
 test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", async () => {
   const uploadedAt = new Date("2026-08-18T19:00:00.000Z");
   const providerKey = `__eliza_storage_authority/v2/org/${ORGANIZATION_ID}/object/1`;
-  findObject.mockResolvedValue({
+  resolveNativeStorageObject.mockResolvedValue({
     generation: 1n,
     provider_key: providerKey,
     size_bytes: BigInt(OBJECT_BYTES.byteLength),
@@ -245,13 +242,12 @@ test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", a
     idempotencyKey: "delete-1",
     priceUsd: 0,
   });
-  expect(getR2StorageAdapter).not.toHaveBeenCalled();
   expect(bucket.delete).not.toHaveBeenCalled();
 });
 
 describe("storage object HEAD routing", () => {
   test("does not charge failed native or legacy reads", async () => {
-    findObject.mockResolvedValueOnce({
+    resolveNativeStorageObject.mockResolvedValueOnce({
       generation: 1n,
       provider_key: "missing-generation",
       size_bytes: 5n,
@@ -275,8 +271,7 @@ describe("storage object HEAD routing", () => {
     expect(native.status).toBe(503);
     expect(deductCredits).not.toHaveBeenCalled();
 
-    findObject.mockResolvedValueOnce(undefined);
-    exists.mockResolvedValueOnce(false);
+    resolveNativeStorageObject.mockResolvedValueOnce(undefined);
     const legacy = await request("GET");
     expect(legacy.status).toBe(404);
     expect(deductCredits).not.toHaveBeenCalled();
@@ -299,7 +294,6 @@ describe("storage object HEAD routing", () => {
     );
 
     expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
-    expect(getR2StorageAdapter).toHaveBeenCalledTimes(1);
     expect(getServiceMethodCost).toHaveBeenCalledTimes(1);
     expect(getServiceMethodCost).toHaveBeenCalledWith("storage", "head");
     expect(deductCredits).toHaveBeenCalledTimes(1);
@@ -314,11 +308,7 @@ describe("storage object HEAD routing", () => {
         key: OBJECT_PATH,
       },
     });
-    expect(exists).toHaveBeenCalledTimes(1);
-    expect(exists).toHaveBeenCalledWith(SCOPED_KEY);
-    expect(stat).toHaveBeenCalledTimes(1);
-    expect(stat).toHaveBeenCalledWith(SCOPED_KEY);
-    expect(read).not.toHaveBeenCalled();
+    expect(bucket.head).toHaveBeenCalledWith(nativeObject.provider_key);
     expect(tryReserveBytes).not.toHaveBeenCalled();
     expect(releaseBytes).not.toHaveBeenCalled();
     expect(failureResponse).not.toHaveBeenCalled();
@@ -344,11 +334,7 @@ describe("storage object HEAD routing", () => {
         key: OBJECT_PATH,
       },
     });
-    expect(exists).toHaveBeenCalledWith(SCOPED_KEY);
-    expect(read).toHaveBeenCalledTimes(1);
-    expect(read).toHaveBeenCalledWith(SCOPED_KEY);
-    expect(stat).toHaveBeenCalledTimes(1);
-    expect(stat).toHaveBeenCalledWith(SCOPED_KEY);
+    expect(bucket.get).toHaveBeenCalledWith(nativeObject.provider_key);
     expect(failureResponse).not.toHaveBeenCalled();
   });
 });

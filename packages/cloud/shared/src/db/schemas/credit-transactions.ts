@@ -7,7 +7,6 @@ import {
   pgTable,
   text,
   timestamp,
-  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -38,10 +37,6 @@ export const creditTransactions = pgTable(
     settled_at: timestamp("settled_at"),
   },
   (table) => ({
-    tenant_identity: unique("credit_transactions_tenant_identity_unique").on(
-      table.id,
-      table.organization_id,
-    ),
     organization_idx: index("credit_transactions_organization_idx").on(table.organization_id),
     user_idx: index("credit_transactions_user_idx").on(table.user_id),
     type_idx: index("credit_transactions_type_idx").on(table.type),

@@ -36,20 +36,39 @@ async function executeSqlFile(name: string): Promise<void> {
 beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests, dbWrite } = await import("../../client"));
   for (const statement of [
-    `CREATE TABLE organizations (id uuid PRIMARY KEY)`,
+    `CREATE TABLE organizations (
+      id uuid PRIMARY KEY,
+      credit_balance numeric(12,6) DEFAULT 10 NOT NULL,
+      updated_at timestamp DEFAULT now() NOT NULL
+    )`,
     `CREATE TABLE credit_transactions (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       organization_id uuid NOT NULL REFERENCES organizations(id),
       amount numeric(12,6) NOT NULL,
       type text NOT NULL,
+      description text,
       metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
       settled_at timestamp with time zone,
       created_at timestamp DEFAULT now() NOT NULL
     )`,
-    `CREATE TABLE service_pricing (cost numeric(12,6) NOT NULL)`,
+    `CREATE TABLE service_pricing (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      service_id text NOT NULL,
+      method text NOT NULL,
+      cost numeric(12,6) NOT NULL,
+      updated_at timestamp DEFAULT now() NOT NULL
+    )`,
     `CREATE TABLE service_pricing_audit (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      service_pricing_id uuid,
+      service_id text NOT NULL,
+      method text NOT NULL,
       old_cost numeric(12,6),
-      new_cost numeric(12,6) NOT NULL
+      new_cost numeric(12,6) NOT NULL,
+      change_type text NOT NULL,
+      changed_by text NOT NULL,
+      reason text,
+      created_at timestamp DEFAULT now() NOT NULL
     )`,
     `CREATE TABLE org_storage_quota (
       organization_id uuid PRIMARY KEY REFERENCES organizations(id),
@@ -61,6 +80,8 @@ beforeAll(async () => {
   ]) {
     await dbWrite.execute(sql.raw(statement));
   }
+  await dbWrite.execute(sql`INSERT INTO service_pricing (service_id, method, cost)
+    VALUES ('storage', 'put_per_byte', 0)`);
   for (const migration of MIGRATIONS) await executeSqlFile(migration);
   ({ orgStorageMutationsRepository: repository } = await import("../org-storage-mutations"));
 }, TIMEOUT);
@@ -96,11 +117,11 @@ function prepare(logicalKey: string, id: string, bytes: bigint) {
 
 async function commitZeroCost(logicalKey: string, id: string, bytes: bigint) {
   const prepared = await prepare(logicalKey, id, bytes);
-  const reserved = await repository.attachCreditReservation({
+  const reservation = await repository.reservePutCredits({
     operationId: prepared.operation.id,
     organizationId: ORG,
-    creditTransactionId: null,
   });
+  const reserved = reservation.operation;
   const leased = await repository.claimProviderLease({
     operationId: reserved.id,
     organizationId: ORG,
@@ -119,6 +140,19 @@ async function commitZeroCost(logicalKey: string, id: string, bytes: bigint) {
 }
 
 describe("OrgStorageMutationsRepository", () => {
+  test("reseeds and audits a put_per_byte price rounded to zero by the old schema", async () => {
+    const pricing = await dbWrite.execute(sql`SELECT cost FROM service_pricing
+      WHERE service_id = 'storage' AND method = 'put_per_byte'`);
+    expect(String((pricing.rows[0] as { cost: string } | undefined)?.cost)).toBe("0.000000001000");
+    const audit = await dbWrite.execute(sql`SELECT old_cost, new_cost, changed_by
+      FROM service_pricing_audit WHERE service_id = 'storage' AND method = 'put_per_byte'`);
+    expect(audit.rows[0]).toMatchObject({
+      old_cost: "0.000000000000",
+      new_cost: "0.000000001000",
+      changed_by: "migration:0254",
+    });
+  });
+
   test("serializes concurrent quota admission across different object keys", async () => {
     const outcomes = await Promise.allSettled([prepare("one", "a", 7n), prepare("two", "e", 7n)]);
     expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
@@ -131,11 +165,11 @@ describe("OrgStorageMutationsRepository", () => {
 
   test("does not reconcile a fresh reserved operation while its request is active", async () => {
     const prepared = await prepare("active-request", "a", 4n);
-    const reserved = await repository.attachCreditReservation({
+    const reservation = await repository.reservePutCredits({
       operationId: prepared.operation.id,
       organizationId: ORG,
-      creditTransactionId: null,
     });
+    const reserved = reservation.operation;
     const now = new Date();
     expect(
       (await repository.listDueOperations(now)).map((operation) => operation.id),
@@ -149,6 +183,89 @@ describe("OrgStorageMutationsRepository", () => {
     );
   });
 
+  test("fences a stale reconciler against a concurrent live provider claim", async () => {
+    const prepared = await prepare("recovery-race", "a", 4n);
+    const reservation = await repository.reservePutCredits({
+      operationId: prepared.operation.id,
+      organizationId: ORG,
+    });
+    const reserved = reservation.operation;
+    const now = new Date();
+    await dbWrite.execute(sql`UPDATE org_storage_put_operations
+      SET updated_at = ${new Date(now.getTime() - 11 * 60 * 1000)}
+      WHERE id = ${reserved.id}`);
+    const claims = await Promise.allSettled([
+      repository.claimReconciliationLease({
+        operationId: reserved.id,
+        organizationId: ORG,
+        leaseToken: crypto.randomUUID(),
+        leaseExpiresAt: new Date(now.getTime() + 60_000),
+        staleBefore: new Date(now.getTime() - 10 * 60_000),
+        now,
+      }),
+      repository.claimProviderLease({
+        operationId: reserved.id,
+        organizationId: ORG,
+        leaseToken: crypto.randomUUID(),
+        leaseExpiresAt: new Date(now.getTime() + 60_000),
+        now,
+      }),
+    ]);
+    expect(claims.filter((claim) => claim.status === "fulfilled")).toHaveLength(1);
+    expect(claims.filter((claim) => claim.status === "rejected")).toHaveLength(1);
+  });
+
+  test("atomically fences credit reservation against prepared-operation recovery", async () => {
+    const prepared = await repository.preparePut({
+      organizationId: ORG,
+      logicalKey: "credit-attach-race",
+      idempotencyKeyHash: "7".repeat(64),
+      requestDigest: "8".repeat(64),
+      sizeBytes: 4n,
+      contentType: "text/plain",
+      contentSha256: "9".repeat(64),
+      priceUsd: "1.000000",
+    });
+    const now = new Date();
+    await dbWrite.execute(sql`UPDATE org_storage_put_operations
+      SET created_at = ${new Date(now.getTime() - 11 * 60 * 1000)}
+      WHERE id = ${prepared.operation.id}`);
+    const outcomes = await Promise.allSettled([
+      repository.reservePutCredits({
+        operationId: prepared.operation.id,
+        organizationId: ORG,
+      }),
+      repository.claimReconciliationLease({
+        operationId: prepared.operation.id,
+        organizationId: ORG,
+        leaseToken: crypto.randomUUID(),
+        leaseExpiresAt: new Date(now.getTime() + 60_000),
+        staleBefore: new Date(now.getTime() - 10 * 60_000),
+        now,
+      }),
+    ]);
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+    const result = await dbWrite.execute(sql`SELECT operation.state,
+        organization.credit_balance, count(hold.id) AS hold_count
+      FROM org_storage_put_operations operation
+      JOIN organizations organization ON organization.id = operation.organization_id
+      LEFT JOIN credit_transactions hold
+        ON hold.metadata->>'storage_operation_id' = operation.id::text
+      WHERE operation.id = ${prepared.operation.id}
+      GROUP BY operation.state, organization.credit_balance`);
+    const row = result.rows[0] as Record<string, unknown>;
+    if (row.state === "reserved") {
+      expect(row).toMatchObject({ credit_balance: "9.000000", hold_count: 1 });
+    } else {
+      expect(row).toMatchObject({
+        state: "reconciling",
+        credit_balance: "10.000000",
+        hold_count: 0,
+      });
+    }
+  });
+
   test("reserves max(new-old, 0) and releases shrink delta only at commit", async () => {
     await commitZeroCost("same", "a", 8n);
     const shrink = await prepare("same", "e", 3n);
@@ -159,6 +276,40 @@ describe("OrgStorageMutationsRepository", () => {
       sql`SELECT bytes_used FROM org_storage_quota WHERE organization_id = ${ORG}`,
     );
     expect(String((quota.rows[0] as { bytes_used: string } | undefined)?.bytes_used)).toBe("3");
+  });
+
+  test("adopts already-counted legacy bytes and transfers overwrite authority to GC", async () => {
+    await dbWrite.execute(
+      sql`UPDATE org_storage_quota SET bytes_used = 8 WHERE organization_id = ${ORG}`,
+    );
+    const legacyKey = `org/${ORG}/legacy/voice.ogg`;
+    const adopted = await repository.adoptLegacyObject({
+      organizationId: ORG,
+      logicalKey: "legacy/voice.ogg",
+      providerKey: legacyKey,
+      sizeBytes: 8n,
+      contentType: "audio/ogg",
+      etag: "legacy-etag",
+      uploadedAt: new Date("2026-08-18T00:00:00.000Z"),
+    });
+    expect(adopted.generation).toBe(0n);
+    expect(adopted.provider_key).toBe(legacyKey);
+    const prepared = await prepare("legacy/voice.ogg", "e", 3n);
+    expect(prepared.operation.source_size_bytes).toBe(8n);
+    expect(prepared.operation.quota_reserved_bytes).toBe(0n);
+    await commitZeroCost("legacy/voice.ogg", "e", 3n);
+
+    const quota = await dbWrite.execute(
+      sql`SELECT bytes_used FROM org_storage_quota WHERE organization_id = ${ORG}`,
+    );
+    expect(String((quota.rows[0] as { bytes_used: string } | undefined)?.bytes_used)).toBe("3");
+    const gc = await dbWrite.execute(
+      sql`SELECT provider_key FROM org_storage_gc_outbox WHERE organization_id = ${ORG}`,
+    );
+    expect(gc.rows[0]).toMatchObject({ provider_key: legacyKey });
+    const listed = await repository.listObjects(ORG, "legacy/");
+    expect(listed.map((object) => object.logical_key)).toEqual(["legacy/voice.ogg"]);
+    expect(listed[0]?.generation).toBe(1n);
   });
 
   test("rejects an idempotency replay whose durable digest includes a changed price", async () => {
@@ -188,22 +339,12 @@ describe("OrgStorageMutationsRepository", () => {
       contentSha256: "3".repeat(64),
       priceUsd: "1.250000",
     });
-    const transactionId = crypto.randomUUID();
-    await dbWrite.execute(sql`INSERT INTO credit_transactions
-      (id, organization_id, amount, type, metadata)
-      VALUES (
-        ${transactionId}, ${ORG}, -1.250000, 'debit',
-        ${JSON.stringify({
-          type: "reservation",
-          settlement_marker: "credit_reservation_v1",
-          storage_operation_id: prepared.operation.id,
-        })}::jsonb
-      )`);
-    const reserved = await repository.attachCreditReservation({
+    const reservation = await repository.reservePutCredits({
       operationId: prepared.operation.id,
       organizationId: ORG,
-      creditTransactionId: transactionId,
     });
+    expect(reservation.insufficient).toBe(false);
+    const reserved = reservation.operation;
     const leased = await repository.claimProviderLease({
       operationId: reserved.id,
       organizationId: ORG,
@@ -230,6 +371,39 @@ describe("OrgStorageMutationsRepository", () => {
     expect(row?.settled_at).not.toBeNull();
   });
 
+  test("atomically releases quota and writes a terminal receipt on insufficient credit", async () => {
+    await dbWrite.execute(sql`UPDATE organizations SET credit_balance = 0.5 WHERE id = ${ORG}`);
+    const prepared = await repository.preparePut({
+      organizationId: ORG,
+      logicalKey: "insufficient",
+      idempotencyKeyHash: "0".repeat(64),
+      requestDigest: "1".repeat(64),
+      sizeBytes: 4n,
+      contentType: "text/plain",
+      contentSha256: "2".repeat(64),
+      priceUsd: "1.000000",
+    });
+    const reservation = await repository.reservePutCredits({
+      operationId: prepared.operation.id,
+      organizationId: ORG,
+    });
+    expect(reservation.insufficient).toBe(true);
+    expect(reservation.available).toBe(0.5);
+    expect(reservation.operation.state).toBe("refunded");
+    const result = await dbWrite.execute(sql`SELECT quota.bytes_used,
+        organization.credit_balance, count(hold.id) AS hold_count
+      FROM org_storage_quota quota
+      JOIN organizations organization ON organization.id = quota.organization_id
+      LEFT JOIN credit_transactions hold ON hold.organization_id = organization.id
+      WHERE quota.organization_id = ${ORG}
+      GROUP BY quota.bytes_used, organization.credit_balance`);
+    expect(result.rows[0]).toMatchObject({
+      bytes_used: 0,
+      credit_balance: "0.500000",
+      hold_count: 0,
+    });
+  });
+
   test("rejects a cross-tenant credit transaction at the database boundary", async () => {
     const prepared = await repository.preparePut({
       organizationId: ORG,
@@ -253,16 +427,16 @@ describe("OrgStorageMutationsRepository", () => {
         })}::jsonb
       )`);
     await expect(
-      repository.attachCreditReservation({
-        operationId: prepared.operation.id,
-        organizationId: ORG,
-        creditTransactionId: transactionId,
-      }),
+      Promise.resolve(
+        dbWrite.execute(sql`UPDATE org_storage_put_operations
+          SET state = 'reserved', credit_transaction_id = ${transactionId}
+          WHERE id = ${prepared.operation.id}`),
+      ),
     ).rejects.toThrow();
     expect((await repository.findOperation(ORG, prepared.operation.id))?.state).toBe("prepared");
   });
 
-  test("rolls back publication when the held amount does not match the pinned price", async () => {
+  test("rejects a held amount that does not match the pinned price before provider dispatch", async () => {
     const prepared = await repository.preparePut({
       organizationId: ORG,
       logicalKey: "bad-hold",
@@ -284,13 +458,11 @@ describe("OrgStorageMutationsRepository", () => {
           storage_operation_id: prepared.operation.id,
         })}::jsonb
       )`);
-    const reserved = await repository.attachCreditReservation({
-      operationId: prepared.operation.id,
-      organizationId: ORG,
-      creditTransactionId: transactionId,
-    });
+    await dbWrite.execute(sql`UPDATE org_storage_put_operations
+      SET state = 'reserved', credit_transaction_id = ${transactionId}
+      WHERE id = ${prepared.operation.id}`);
     const leased = await repository.claimProviderLease({
-      operationId: reserved.id,
+      operationId: prepared.operation.id,
       organizationId: ORG,
       leaseToken: crypto.randomUUID(),
       leaseExpiresAt: new Date(Date.now() + 60_000),
@@ -309,10 +481,84 @@ describe("OrgStorageMutationsRepository", () => {
     const result = await dbWrite.execute(sql`SELECT o.state, h.provider_key, c.settled_at
       FROM org_storage_put_operations o
       JOIN org_storage_objects h ON h.id = o.object_id
-      JOIN credit_transactions c ON c.id = o.credit_transaction_id
-      WHERE o.id = ${leased.id}`);
+      JOIN credit_transactions c ON c.id = ${transactionId}
+      WHERE o.id = ${prepared.operation.id}`);
     const row = (result as { rows: Array<Record<string, unknown>> }).rows[0];
     expect(row).toMatchObject({ state: "provider_started", provider_key: null, settled_at: null });
+  });
+
+  test("atomically refunds an orphan hold with quota and terminal replay", async () => {
+    const prepared = await repository.preparePut({
+      organizationId: ORG,
+      logicalKey: "orphan-refund",
+      idempotencyKeyHash: "f".repeat(64),
+      requestDigest: "e".repeat(64),
+      sizeBytes: 4n,
+      contentType: "text/plain",
+      contentSha256: "d".repeat(64),
+      priceUsd: "1.000000",
+    });
+    const holdId = crypto.randomUUID();
+    await dbWrite.execute(sql`UPDATE organizations SET credit_balance = 9 WHERE id = ${ORG}`);
+    await dbWrite.execute(sql`INSERT INTO credit_transactions
+      (id, organization_id, amount, type, metadata)
+      VALUES (
+        ${holdId}, ${ORG}, -1.000000, 'debit',
+        ${JSON.stringify({
+          type: "reservation",
+          settlement_marker: "credit_reservation_v1",
+          storage_operation_id: prepared.operation.id,
+        })}::jsonb
+      )`);
+    const now = new Date();
+    await dbWrite.execute(sql`UPDATE org_storage_put_operations
+      SET created_at = ${new Date(now.getTime() - 11 * 60 * 1000)}
+      WHERE id = ${prepared.operation.id}`);
+    const leaseToken = crypto.randomUUID();
+    const claimed = await repository.claimReconciliationLease({
+      operationId: prepared.operation.id,
+      organizationId: ORG,
+      leaseToken,
+      leaseExpiresAt: new Date(now.getTime() + 60_000),
+      staleBefore: new Date(now.getTime() - 10 * 60_000),
+      now,
+    });
+    expect(claimed.state).toBe("reconciling");
+    const responseJson = JSON.stringify({ error: "Storage PUT did not reach R2" });
+    await repository.finalizeRefund({
+      operationId: claimed.id,
+      organizationId: ORG,
+      leaseToken,
+      responseJson,
+    });
+    await repository.finalizeRefund({
+      operationId: claimed.id,
+      organizationId: ORG,
+      leaseToken,
+      responseJson,
+    });
+    const result = await dbWrite.execute(sql`SELECT
+        operation.state, operation.credit_transaction_id, hold.settled_at,
+        quota.bytes_used, organization.credit_balance,
+        count(refund.id) AS refund_count
+      FROM org_storage_put_operations operation
+      JOIN credit_transactions hold ON hold.id = ${holdId}
+      JOIN org_storage_quota quota ON quota.organization_id = operation.organization_id
+      JOIN organizations organization ON organization.id = operation.organization_id
+      LEFT JOIN credit_transactions refund
+        ON refund.metadata->>'storage_operation_id' = operation.id::text
+       AND refund.metadata->>'type' = 'storage_put_refund'
+      WHERE operation.id = ${claimed.id}
+      GROUP BY operation.state, operation.credit_transaction_id, hold.settled_at,
+        quota.bytes_used, organization.credit_balance`);
+    expect(result.rows[0]).toMatchObject({
+      state: "refunded",
+      credit_transaction_id: null,
+      bytes_used: 0,
+      credit_balance: "10.000000",
+      refund_count: 1,
+    });
+    expect((result.rows[0] as { settled_at?: unknown } | undefined)?.settled_at).not.toBeNull();
   });
 
   test("releases quota and tombstones the catalog only after observed delete", async () => {

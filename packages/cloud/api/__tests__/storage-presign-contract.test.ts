@@ -29,6 +29,7 @@ const deductCredits = mock();
 const presignGet = mock();
 const failureResponse = mock();
 const loggerError = mock();
+const resolveNativeStorageObject = mock();
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
   failureResponse,
@@ -40,6 +41,9 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 
 mock.module("@/lib/services/storage/r2-storage-adapter", () => ({
   getR2StorageAdapter,
+}));
+mock.module("@/lib/services/storage/native-storage-put", () => ({
+  resolveNativeStorageObject,
 }));
 
 mock.module("@/lib/services/proxy/pricing", () => ({
@@ -59,11 +63,15 @@ const app = new Hono();
 app.route(ROUTE_PATH, presignRoute);
 
 function post(body: unknown): Response | Promise<Response> {
-  return app.request(ROUTE_PATH, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return app.request(
+    ROUTE_PATH,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    { BLOB: { head: mock() } },
+  );
 }
 
 beforeEach(() => {
@@ -75,6 +83,7 @@ beforeEach(() => {
   presignGet.mockReset();
   failureResponse.mockReset();
   loggerError.mockReset();
+  resolveNativeStorageObject.mockReset();
 
   requireUserOrApiKeyWithOrg.mockResolvedValue({
     organization_id: ORGANIZATION_ID,
@@ -83,6 +92,12 @@ beforeEach(() => {
   getServiceMethodCost.mockResolvedValue(COST);
   deductCredits.mockResolvedValue({ success: true });
   presignGet.mockResolvedValue(SIGNED_URL);
+  resolveNativeStorageObject.mockImplementation(
+    async (_bucket, organizationId, logicalKey) => ({
+      provider_key: `__eliza_storage_authority/v2/org/${organizationId}/${logicalKey}/1`,
+      deleted_at: null,
+    }),
+  );
 });
 
 afterEach(() => {
@@ -140,7 +155,7 @@ describe("POST /api/v1/apis/storage/presign", () => {
     });
     expect(presignGet).toHaveBeenCalledTimes(1);
     expect(presignGet).toHaveBeenCalledWith(
-      `org/${ORGANIZATION_ID}/voice/message.ogg`,
+      `__eliza_storage_authority/v2/org/${ORGANIZATION_ID}/voice/message.ogg/1`,
       600,
     );
   });
@@ -162,12 +177,12 @@ describe("POST /api/v1/apis/storage/presign", () => {
     expect(getServiceMethodCost).toHaveBeenCalledWith("storage", "presign");
     expect(deductCredits).not.toHaveBeenCalled();
     expect(presignGet).toHaveBeenCalledWith(
-      `org/${ORGANIZATION_ID}/avatars/profile.png`,
+      `__eliza_storage_authority/v2/org/${ORGANIZATION_ID}/avatars/profile.png/1`,
       3600,
     );
   });
 
-  test("does not presign when the organization has insufficient credits", async () => {
+  test("does not return a signed URL when the organization has insufficient credits", async () => {
     deductCredits.mockResolvedValueOnce({ success: false });
 
     const response = await post({
@@ -185,7 +200,7 @@ describe("POST /api/v1/apis/storage/presign", () => {
     expect(getR2StorageAdapter).toHaveBeenCalledTimes(1);
     expect(getServiceMethodCost).toHaveBeenCalledTimes(1);
     expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(presignGet).not.toHaveBeenCalled();
+    expect(presignGet).toHaveBeenCalledTimes(1);
   });
 
   test("rejects traversal keys before storage initialization or billing", async () => {
