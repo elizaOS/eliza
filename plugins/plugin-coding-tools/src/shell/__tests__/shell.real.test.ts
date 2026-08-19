@@ -96,7 +96,7 @@ describePosixShell("shell plugin real local integration", () => {
     // with U+FFFD; a UTF-8 stream decode keeps them intact.
     const count = 50_000;
     const result = await service.executeCommand(
-      `node -e 'process.stdout.write("\u4f60".repeat(${count}))'`,
+      `node -e 'process.stdout.write("\u4f60".repeat(${count}))' | cat`,
       "room-utf8",
     );
 
