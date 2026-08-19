@@ -274,4 +274,29 @@ describe("bug report fetch timeout", () => {
     expect(ctx.responseStatus).toBe(502);
     expect(ctx.req.listenerCount("aborted")).toBe(0);
   });
+
+  it("starts remote intake already aborted when the client disconnected while its body was read", async () => {
+    const signals: AbortSignal[] = [];
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal as AbortSignal;
+      signals.push(signal);
+      return Promise.reject(signal.reason);
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    vi.stubEnv(
+      "ELIZA_BUG_REPORT_API_URL",
+      "https://intake.example.test/reports",
+    );
+
+    const ctx = createContext();
+    Object.defineProperty(ctx.req, "aborted", { value: true });
+    await handleBugReportRoutes(ctx);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[0]?.reason).toMatchObject({ name: "AbortError" });
+    expect(ctx.responseStatus).toBe(502);
+    expect(ctx.req.listenerCount("aborted")).toBe(0);
+  });
 });

@@ -27,7 +27,11 @@ function createBugReportFetchSignal(req: RouteRequestContext["req"]): {
       new DOMException("Bug report request was aborted", "AbortError"),
     );
   };
-  req.once("aborted", abortForDisconnectedClient);
+  if (req.aborted) {
+    abortForDisconnectedClient();
+  } else {
+    req.once("aborted", abortForDisconnectedClient);
+  }
 
   return {
     signal: AbortSignal.any([
