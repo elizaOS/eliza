@@ -6526,7 +6526,11 @@ export const tasksAction: Action & {
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work. " +
-    "NOT for building a web app/page/site/interactive HTML the user wants hosted with a live link — that is APP action=create, which builds, verifies, AND publishes; a task workspace has no hosting path, so files built here never get a URL.",
+    // Page/site builds ARE tasks now: the spawn pipeline places the build in
+    // the served apps directory, verifies the live URL, and reports the link
+    // (the old claim that a task workspace has no hosting path stopped being
+    // true on 2026-08-19 and the APP-create detour parked working pages).
+    "Building a web app/page/site/interactive HTML the user wants hosted with a live link IS this action: the build runs in the served apps directory and the reply reports the verified live URL.",
   descriptionCompressed:
     "ACP coding sub-agent elizaos|pi-agent|claude|codex: spawn|send|control|list|history",
   routingHint:
