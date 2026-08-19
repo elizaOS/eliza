@@ -155,6 +155,41 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(
       screen.getAllByText("Dedicated Agent").length,
     ).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Free").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("$0.01/hr").length).toBeGreaterThanOrEqual(2);
+    const sharedRow = screen.getAllByText("Shared Eliza")[0]?.closest("tr");
+    const dedicatedRow = screen
+      .getAllByText("Dedicated Eliza")[0]
+      ?.closest("tr");
+    expect(sharedRow).toBeTruthy();
+    expect(dedicatedRow).toBeTruthy();
+    expect(
+      (
+        within(sharedRow as HTMLElement).getByRole(
+          "checkbox",
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      within(sharedRow as HTMLElement).queryByRole("button", {
+        name: "Suspend agent",
+      }),
+    ).toBeNull();
+    expect(
+      within(sharedRow as HTMLElement).queryByRole("button", {
+        name: "Delete agent",
+      }),
+    ).toBeNull();
+    expect(
+      within(dedicatedRow as HTMLElement).getByRole("button", {
+        name: "Suspend agent",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(dedicatedRow as HTMLElement).getByRole("button", {
+        name: "Delete agent",
+      }),
+    ).toBeTruthy();
     for (const rejected of [
       "Sandbox",
       "Cloud sandbox",
@@ -198,6 +233,7 @@ describe("ElizaAgentsTable per-row view model", () => {
       status: "running",
       executionTier: "shared",
     });
+    expect(runningShared.canStop).toBe(false);
     expect(runningShared.canSleep).toBe(false);
 
     const sleeping = derive({ status: "sleeping" });

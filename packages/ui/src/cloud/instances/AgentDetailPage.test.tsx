@@ -3,7 +3,6 @@
 
 import type { AgentDetailDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { cleanup, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -41,11 +40,6 @@ vi.mock("./lib/data/eliza-agents", () => ({
 
 vi.mock("./components/agent-actions", () => ({
   ElizaAgentActions: () => <div>Lifecycle actions</div>,
-}));
-vi.mock("./components/eliza-agent-tabs", () => ({
-  ElizaAgentTabs: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
 }));
 vi.mock("./components/eliza-connect-button", () => ({
   ElizaConnectButton: () => null,
@@ -203,6 +197,7 @@ describe("AgentDetailPage date formatting", () => {
     });
 
     expect(screen.getByText("Shared Agent")).toBeTruthy();
+    expect(screen.getByText("Free")).toBeTruthy();
     expect(screen.getByText("Lifecycle actions")).toBeTruthy();
     for (const rejected of [
       "Sandbox",
@@ -213,6 +208,10 @@ describe("AgentDetailPage date formatting", () => {
       "Agent Logs",
       "Docker Logs",
       "Save Snapshot",
+      "$0.01/hr",
+      "Wallet",
+      "Transactions",
+      "Policies",
       "private-image",
       "private-host",
     ]) {
@@ -224,6 +223,8 @@ describe("AgentDetailPage date formatting", () => {
     renderPage({ ...baseAgent, executionTier: "dedicated-always" });
 
     expect(screen.getByText("Dedicated Agent")).toBeTruthy();
+    expect(screen.getByText("$0.01/hr")).toBeTruthy();
     expect(screen.queryByText("Shared Agent")).toBeNull();
+    expect(screen.queryByText("Free")).toBeNull();
   });
 });

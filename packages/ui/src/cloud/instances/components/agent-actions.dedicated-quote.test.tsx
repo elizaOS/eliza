@@ -136,7 +136,19 @@ describe("Dedicated activation quote", () => {
       screen.getByRole("button", { name: "Deactivate Agent" }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete Agent" })).toBeTruthy();
+    expect(screen.queryByText("Agent Actions")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save Snapshot" })).toBeNull();
+  });
+
+  it("keeps shared agents persistent while offering explicit Dedicated activation", () => {
+    renderActions();
+
+    expect(
+      screen.getByRole("button", { name: "Upgrade to Dedicated" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Suspend Agent" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete Agent" })).toBeNull();
+    expect(screen.queryByText("Agent Actions")).toBeNull();
   });
 
   it("posts the exact quote and explicit action instead of client-computed terms", async () => {

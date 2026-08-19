@@ -492,18 +492,6 @@ export function ElizaAgentActions({
   return (
     <BrandCard className="relative" cornerSize="md">
       <div className="relative z-10 space-y-4">
-        <div className="flex items-center gap-2 pb-4 border-b border-white/10">
-          <span className="inline-block w-2 h-2 rounded-full bg-muted" />
-          <h2
-            className="text-xl font-normal text-white"
-            style={{ fontFamily: "var(--font-roboto-mono)" }}
-          >
-            {t("cloud.containers.agentActions.title", {
-              defaultValue: "Agent Actions",
-            })}
-          </h2>
-        </div>
-
         {isSleeping && (
           <div
             className="flex items-start gap-3 rounded-sm border border-white/10 bg-white/5 p-3"
@@ -600,7 +588,7 @@ export function ElizaAgentActions({
               </BrandButton>
             )}
 
-            {isRunning && (
+            {isRunning && isDedicated && (
               <BrandButton
                 variant="outline"
                 size="sm"
@@ -642,7 +630,7 @@ export function ElizaAgentActions({
               </BrandButton>
             )}
 
-            {!showDeleteConfirm ? (
+            {isDedicated && !showDeleteConfirm ? (
               <BrandButton
                 variant="outline"
                 size="sm"
@@ -655,7 +643,7 @@ export function ElizaAgentActions({
                   defaultValue: "Delete Agent",
                 })}
               </BrandButton>
-            ) : (
+            ) : isDedicated ? (
               <div className="flex flex-wrap items-center gap-2 rounded-sm border border-red-500/30 bg-red-950/20 p-3">
                 <span
                   className="text-sm text-red-400"
@@ -690,7 +678,7 @@ export function ElizaAgentActions({
                   })}
                 </BrandButton>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
