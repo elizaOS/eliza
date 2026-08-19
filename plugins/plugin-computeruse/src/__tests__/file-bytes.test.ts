@@ -18,14 +18,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  appendFile,
   createDirectory,
+  decodedBase64Budget,
   directoryExists,
+  editFile,
   getFileSize,
   MAX_FILE_OP_BYTES,
   READ_FILE_CHAR_LIMIT,
   readBytes,
+  readExactWindowFromHandle,
   readFile,
   writeBytes,
+  writeFile,
 } from "../platform/file-ops.js";
 
 function writeSparseFile(file: string, size: number): void {
@@ -191,5 +196,101 @@ describe("create_dir / directory_exists / get_file_size", () => {
     expect(s.success).toBe(true);
     expect(s.size).toBe(raw.length);
     expect(s.is_file).toBe(true);
+  });
+});
+
+describe("readExactWindowFromHandle", () => {
+  it("loops short reads and slices to the bytes actually obtained", async () => {
+    const source = Buffer.from([1, 2, 3, 4]);
+    let cursor = 0;
+    const handle = {
+      read: async (
+        buf: Buffer,
+        offset: number,
+        length: number,
+        _position: number,
+      ) => {
+        if (cursor >= source.length || length <= 0) {
+          return { bytesRead: 0 };
+        }
+        buf[offset] = source[cursor] ?? 0;
+        cursor += 1;
+        return { bytesRead: 1 };
+      },
+    };
+    const got = await readExactWindowFromHandle(handle, 0, 4);
+    expect(got.equals(source)).toBe(true);
+  });
+
+  it("stops at EOF instead of returning a zero-padded allocation", async () => {
+    const source = Buffer.from([9]);
+    let calls = 0;
+    const handle = {
+      read: async (
+        buf: Buffer,
+        offset: number,
+        _length: number,
+        _position: number,
+      ) => {
+        calls += 1;
+        if (calls === 1) {
+          buf[offset] = source[0] ?? 0;
+          return { bytesRead: 1 };
+        }
+        return { bytesRead: 0 };
+      },
+    };
+    const got = await readExactWindowFromHandle(handle, 0, 4);
+    expect(got.equals(source)).toBe(true);
+    expect(got.length).toBe(1);
+  });
+});
+
+describe("editFile / appendFile same-handle budget", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "cu-edit-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("edits through the opened handle without a stat-then-slurp", async () => {
+    const file = join(dir, "edit.txt");
+    await writeFile(file, "hello world");
+    const result = await editFile(file, "world", "universe");
+    expect(result.success).toBe(true);
+    const read = await readFile(file);
+    expect(read.content).toBe("hello universe");
+  });
+
+  it("appends using the size observed on the opened handle", async () => {
+    const file = join(dir, "a.txt");
+    await writeFile(file, "one");
+    const result = await appendFile(file, "two");
+    expect(result.success).toBe(true);
+    const read = await readFile(file);
+    expect(read.content).toBe("onetwo");
+  });
+});
+
+describe("decodedBase64Budget", () => {
+  it("matches padded and unpadded cap / cap+1 boundaries", () => {
+    const paddedFit = Buffer.alloc(3, 0x61).toString("base64");
+    expect(paddedFit.endsWith("=") || paddedFit.length % 4 === 0).toBe(true);
+    expect(decodedBase64Budget(paddedFit)).toBe(3);
+    expect(decodedBase64Budget("YQ")).toBe(1);
+    expect(decodedBase64Budget("YQ==")).toBe(1);
+    expect(decodedBase64Budget("YWE")).toBe(2);
+    expect(decodedBase64Budget("YWE=")).toBe(2);
+    expect(decodedBase64Budget("YWFh")).toBe(3);
+    expect(decodedBase64Budget("YWFhYQ")).toBe(4);
+    expect(decodedBase64Budget("YWFhYQ==")).toBe(4);
+    const overUnpadded = Buffer.alloc(MAX_FILE_OP_BYTES + 1, 0x61)
+      .toString("base64")
+      .replace(/=+$/, "");
+    expect(decodedBase64Budget(overUnpadded)).toBeGreaterThanOrEqual(
+      MAX_FILE_OP_BYTES + 1,
+    );
   });
 });
