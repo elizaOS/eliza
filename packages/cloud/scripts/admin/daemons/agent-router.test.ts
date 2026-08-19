@@ -4,7 +4,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { PassThrough } from "node:stream";
 import {
   buildProxyHeaders,
@@ -17,6 +18,7 @@ import {
   resolveSandboxRouting,
   selectAgentProxyTarget,
   sendResponse,
+  startAgentRouter,
 } from "./agent-router";
 
 function makeRequest(
@@ -50,6 +52,118 @@ function makeResponseStub() {
   output.statusCode = 0;
   return { output, headers, headersFlushed: () => headersFlushed };
 }
+
+async function closeServer(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
+
+describe("agent-router startup readiness", () => {
+  it("binds liveness while a routing dependency warmup is stalled", async () => {
+    const reported: Error[] = [];
+    const started = await startAgentRouter({
+      config: { port: 0, bindHost: "127.0.0.1" },
+      warmRoutingDependencies: () => new Promise(() => undefined),
+      warmupTimeoutMs: 100,
+      onWarmupError: (error) => reported.push(error),
+    });
+    const { port } = started.server.address() as AddressInfo;
+
+    try {
+      const health = await fetch(`http://127.0.0.1:${port}/healthz`);
+      const readiness = await fetch(`http://127.0.0.1:${port}/readyz`);
+      const route = await fetch(
+        `http://127.0.0.1:${port}/agents/e06bb509-6c52-4c33-a9f7-66addc43e8c8/routing`,
+      );
+
+      expect(health.status).toBe(200);
+      expect(await health.json()).toEqual({ ok: true });
+      expect(readiness.status).toBe(503);
+      expect(await readiness.json()).toEqual({
+        ok: false,
+        code: "router_warming",
+      });
+      expect(route.status).toBe(503);
+      expect(await route.json()).toEqual({
+        error: "agent router is not ready",
+        code: "router_warming",
+      });
+
+      await started.warmupSettled;
+      const failedReadiness = await fetch(`http://127.0.0.1:${port}/readyz`);
+      expect(failedReadiness.status).toBe(503);
+      expect(await failedReadiness.json()).toEqual({
+        ok: false,
+        code: "router_dependencies_unavailable",
+      });
+      expect(reported[0]?.message).toBe(
+        "routing dependency warmup timed out after 100ms",
+      );
+    } finally {
+      await closeServer(started.server);
+    }
+  });
+
+  it("transitions to ready only after dependency warmup succeeds", async () => {
+    let resolveWarmup: (() => void) | undefined;
+    const started = await startAgentRouter({
+      config: { port: 0, bindHost: "127.0.0.1" },
+      warmRoutingDependencies: () =>
+        new Promise<void>((resolve) => {
+          resolveWarmup = resolve;
+        }),
+    });
+    const { port } = started.server.address() as AddressInfo;
+
+    try {
+      expect((await fetch(`http://127.0.0.1:${port}/readyz`)).status).toBe(503);
+      resolveWarmup?.();
+      await started.warmupSettled;
+      const readiness = await fetch(`http://127.0.0.1:${port}/readyz`);
+      expect(readiness.status).toBe(200);
+      expect(await readiness.json()).toEqual({ ok: true });
+    } finally {
+      await closeServer(started.server);
+    }
+  });
+
+  it("reports rejected warmup without an unhandled rejection", async () => {
+    const unhandled: unknown[] = [];
+    const reported: Error[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+
+    const started = await startAgentRouter({
+      config: { port: 0, bindHost: "127.0.0.1" },
+      warmRoutingDependencies: async () => {
+        throw new Error("database unavailable");
+      },
+      onWarmupError: (error) => reported.push(error),
+    });
+    const { port } = started.server.address() as AddressInfo;
+
+    try {
+      await started.warmupSettled;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const readiness = await fetch(`http://127.0.0.1:${port}/readyz`);
+
+      expect(started.readiness.status).toBe("failed");
+      expect(readiness.status).toBe(503);
+      expect(await readiness.json()).toEqual({
+        ok: false,
+        code: "router_dependencies_unavailable",
+      });
+      expect(reported.map((error) => error.message)).toEqual([
+        "database unavailable",
+      ]);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+      await closeServer(started.server);
+    }
+  });
+});
 
 describe("sendResponse", () => {
   it("relays streaming response chunks before the upstream body closes", async () => {
