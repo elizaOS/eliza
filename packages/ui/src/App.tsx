@@ -2026,6 +2026,7 @@ function ShellFoundationMount({
     <>
       <HomePill
         phase={controller.phase}
+        open={controller.isOpen}
         speaking={controller.speaking}
         signingIn={controller.signingIn}
         onOpen={openSharedDesktopComposer}
