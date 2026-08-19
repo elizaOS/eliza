@@ -3219,7 +3219,13 @@ async function runStopAgent(
 
   try {
     const all = pickBoolean(params, content, "all") ?? false;
-    const sessions = await Promise.resolve(service.listSessions());
+    const allSessions = await Promise.resolve(service.listSessions());
+    // Only genuinely active sessions are stoppable work; sweeping stored
+    // terminal rows inflated the confirmation ("Stopped 14 task agents" for
+    // one running build, live 2026-08-19).
+    const sessions = allSessions.filter((session) =>
+      ["busy", "ready", "starting"].includes(session.status),
+    );
 
     if (all) {
       // allSettled: one unstoppable historical row must not fail the whole

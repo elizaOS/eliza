@@ -1104,6 +1104,30 @@ export class SubAgentRouter extends Service {
       );
       return;
     }
+    if (event === "error" || event === "stopped") {
+      // A user-initiated stop must not narrate as a task failure: the stop
+      // confirmation is the single notice, but the killed child's terminal
+      // raced the admin-stop stamp and relayed "couldn't finish X. try again."
+      // right before "Stopped N task agents." (live 2026-08-19). Fresh-read
+      // the stamp — the event-time snapshot predates it.
+      try {
+        const freshStamp = await this.acp?.getSession(sessionId);
+        const stampMeta = freshStamp?.metadata as
+          | Record<string, unknown>
+          | undefined;
+        if (typeof stampMeta?.[ADMIN_STOP_META_KEY] === "string") {
+          this.log("info", "suppressing terminal relay for user-stopped session", {
+            sessionId,
+            event,
+            reason: stampMeta[ADMIN_STOP_META_KEY],
+          });
+          return;
+        }
+      } catch {
+        // error-policy:J4 stamp lookup failure falls through to the normal
+        // relay; a missed suppression is noise, not data loss.
+      }
+    }
     if (event === "error" && isUnsupportedAcpMethodError(data)) {
       this.log(
         "debug",
