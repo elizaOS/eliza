@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { truncateWellFormed } from "@elizaos/core";
 import {
   resolveExecutable,
   resolveTerminalShell,
@@ -223,8 +224,18 @@ export function readEnvInt(key: string): number | undefined {
  */
 export function chunkString(input: string, limit = CHUNK_LIMIT): string[] {
   const chunks: string[] = [];
-  for (let i = 0; i < input.length; i += limit) {
-    chunks.push(input.slice(i, i + limit));
+  let remaining = input;
+  while (remaining.length > 0) {
+    // A raw slice() can land between the two UTF-16 code units of a surrogate
+    // pair (most emoji), leaving a lone surrogate at the chunk boundary that
+    // corrupts the text once the shell output ring is polled. truncateWellFormed
+    // backs the cut off by one unit instead.
+    const head = truncateWellFormed(remaining, limit);
+    if (head.length === 0) {
+      throw new RangeError("chunkString limit made no UTF-16 progress");
+    }
+    chunks.push(head);
+    remaining = remaining.slice(head.length);
   }
   return chunks;
 }
