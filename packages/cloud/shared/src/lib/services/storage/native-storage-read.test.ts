@@ -14,9 +14,12 @@ const PROVIDER_KEY = "__eliza_storage_authority/v2/opaque-generation";
 const events: string[] = [];
 
 const findByIdempotency = mock();
+const findLatestPresignRenewal = mock();
 const prepare = mock();
+const preparePresignRenewal = mock();
 const recordProviderSuccess = mock();
 const recordFailure = mock();
+const expirePresignProviderSuccess = mock();
 const commitProviderSuccess = mock();
 const authorizeCapability = mock();
 const resolveNativeStorageObject = mock();
@@ -32,9 +35,12 @@ class TestStorageReadConflictError extends Error {
 mock.module("../../../db/repositories/org-storage-reads", () => ({
   orgStorageReadsRepository: {
     findByIdempotency,
+    findLatestPresignRenewal,
     prepare,
+    preparePresignRenewal,
     recordProviderSuccess,
     recordFailure,
+    expirePresignProviderSuccess,
     commitProviderSuccess,
     authorizeCapability,
   },
@@ -48,9 +54,8 @@ mock.module("./native-storage-put", () => ({
   ensureNativeStorageQuotaReconciled,
 }));
 
-const { executeNativeStorageGetOrHead, NativeStorageReadError } = await import(
-  "./native-storage-read"
-);
+const { executeNativeStorageGetOrHead, executeNativeStoragePresign, NativeStorageReadError } =
+  await import("./native-storage-read");
 
 function operation(state: OrgStorageReadOperation["state"]): OrgStorageReadOperation {
   const terminal = state === "committed";
@@ -61,6 +66,8 @@ function operation(state: OrgStorageReadOperation["state"]): OrgStorageReadOpera
     object_id: state === "prepared" ? null : OBJECT,
     idempotency_key_hash: "a".repeat(64),
     request_digest: "b".repeat(64),
+    renewal_root_id: null,
+    renewal_generation: 0,
     method: "get",
     state,
     price_usd: "0.100000",
@@ -99,9 +106,12 @@ beforeEach(() => {
   events.length = 0;
   for (const fn of [
     findByIdempotency,
+    findLatestPresignRenewal,
     prepare,
+    preparePresignRenewal,
     recordProviderSuccess,
     recordFailure,
+    expirePresignProviderSuccess,
     commitProviderSuccess,
     authorizeCapability,
     resolveNativeStorageObject,
@@ -131,6 +141,33 @@ beforeEach(() => {
     return { operation: operation("committed"), insufficient: false };
   });
 });
+
+function presignOperation(
+  generation: number,
+  state: OrgStorageReadOperation["state"],
+  expiresAt: Date,
+): OrgStorageReadOperation {
+  const value = operation(state);
+  return {
+    ...value,
+    id:
+      generation === 0
+        ? OP
+        : `00000000-0000-4000-8000-${String(21047 + generation).padStart(12, "0")}`,
+    method: "presign",
+    renewal_root_id: generation === 0 ? null : OP,
+    renewal_generation: generation,
+    capability_id: `00000000-0000-4000-8000-${String(22047 + generation).padStart(12, "0")}`,
+    capability_host: "blob.example.test",
+    capability_issued_at: new Date(expiresAt.getTime() - 60_000),
+    capability_expires_at: expiresAt,
+    retain_until: expiresAt,
+    response_json:
+      state === "prepared"
+        ? null
+        : JSON.stringify({ expiresAt: expiresAt.toISOString(), receiptId: value.id }),
+  };
+}
 
 describe("executeNativeStorageGetOrHead", () => {
   test("records provider success before the one atomic debit", async () => {
@@ -211,5 +248,66 @@ describe("executeNativeStorageGetOrHead", () => {
     });
     expect(resolveNativeStorageObject).not.toHaveBeenCalled();
     expect(commitProviderSuccess).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeNativeStoragePresign", () => {
+  test("renews an expired stable root through one durable child before disclosure", async () => {
+    const expired = new Date(Date.now() - 60_000);
+    const root = presignOperation(0, "committed", expired);
+    const digestBytes = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(
+        JSON.stringify([
+          "native-storage-read:v2",
+          ORG,
+          USER,
+          "presign",
+          {
+            logicalKey: "private/voice.ogg",
+            ttlSeconds: 300,
+            capabilityHost: "blob.example.test",
+          },
+          "0.100000",
+        ]),
+      ),
+    );
+    root.request_digest = Array.from(new Uint8Array(digestBytes), (value) =>
+      value.toString(16).padStart(2, "0"),
+    ).join("");
+    const childPrepared = presignOperation(1, "prepared", new Date(Date.now() + 300_000));
+    const childSucceeded = { ...childPrepared, state: "provider_succeeded" as const };
+    const childCommitted = { ...childSucceeded, state: "committed" as const };
+    childCommitted.response_status = 200;
+    childCommitted.response_json = JSON.stringify({
+      expiresAt: childCommitted.capability_expires_at!.toISOString(),
+      receiptId: childCommitted.id,
+    });
+    findByIdempotency.mockResolvedValue(root);
+    findLatestPresignRenewal.mockResolvedValue(root);
+    preparePresignRenewal.mockResolvedValue({ operation: childPrepared, created: true });
+    recordProviderSuccess.mockResolvedValue(childSucceeded);
+    commitProviderSuccess.mockResolvedValue({
+      operation: childCommitted,
+      insufficient: false,
+    });
+    const bucket = { head: mock(async () => ({ size: 5, etag: "etag-1" })) };
+    const result = await executeNativeStoragePresign({
+      bucket,
+      organizationId: ORG,
+      userId: USER,
+      logicalKey: "private/voice.ogg",
+      rawIdempotencyKey: "stable-presign",
+      priceUsd: 0.25,
+      capabilityHost: "blob.example.test",
+      ttlSeconds: 300,
+    });
+    expect(result.operation).toMatchObject({
+      id: childCommitted.id,
+      renewal_generation: 1,
+      state: "committed",
+    });
+    expect(preparePresignRenewal).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([]);
   });
 });

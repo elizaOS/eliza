@@ -69,7 +69,7 @@ beforeAll(async () => {
     await dbWrite.execute(sql.raw(statement));
   }
   const source = readFileSync(
-    join(import.meta.dir, "../../migrations/0264_org_storage_read_operations.sql"),
+    join(import.meta.dir, "../../migrations/0266_org_storage_read_operations.sql"),
     "utf8",
   );
   for (const statement of source.split("--> statement-breakpoint")) {
@@ -117,6 +117,45 @@ async function providerSucceeded(id: string) {
     responseJson: JSON.stringify({ items: [], truncated: false }),
     providerSucceededAt: new Date(),
   });
+}
+
+async function committedExpiredPresign() {
+  const issuedAt = new Date("2026-08-19T10:00:00.000Z");
+  const expiresAt = new Date("2026-08-19T10:01:00.000Z");
+  const prepared = await repository.prepare({
+    organizationId: ORG,
+    userId: USER,
+    objectId: OBJECT,
+    idempotencyKeyHash: "9".repeat(64),
+    requestDigest: "8".repeat(64),
+    method: "presign",
+    priceUsd: "0.000000",
+    capabilityId: crypto.randomUUID(),
+    capabilityHost: "blob.example.test",
+    capabilityIssuedAt: issuedAt,
+    capabilityExpiresAt: expiresAt,
+    retainUntil: expiresAt,
+  });
+  const succeeded = await repository.recordProviderSuccess({
+    operationId: prepared.operation.id,
+    organizationId: ORG,
+    objectId: OBJECT,
+    objectGeneration: 1n,
+    providerKey: "opaque-provider-generation",
+    resultSizeBytes: 5n,
+    resultContentType: "audio/ogg",
+    resultEtag: "etag-1",
+    responseStatus: 200,
+    responseJson: JSON.stringify({ expiresAt: expiresAt.toISOString() }),
+    providerSucceededAt: issuedAt,
+  });
+  return (
+    await repository.commitProviderSuccess({
+      operationId: succeeded.id,
+      organizationId: ORG,
+      now: issuedAt,
+    })
+  ).operation;
 }
 
 describe("OrgStorageReadsRepository", () => {
@@ -221,5 +260,225 @@ describe("OrgStorageReadsRepository", () => {
         providerSucceededAt: new Date(),
       }),
     ).rejects.toMatchObject({ reason: "provider_result_mismatch" });
+  });
+
+  test("serializes unbounded capability renewal generations and ACK-loss replay", async () => {
+    const root = await committedExpiredPresign();
+    const lineageNow = new Date("2030-01-01T00:00:00.000Z");
+    let latest = root;
+    for (let generation = 1; generation <= 4; generation++) {
+      const issuedAt = new Date(`2026-08-19T10:0${generation}:00.000Z`);
+      const expiresAt = new Date(`2026-08-19T10:0${generation + 1}:00.000Z`);
+      const input = {
+        organizationId: ORG,
+        userId: USER,
+        rootOperationId: root.id,
+        expectedGeneration: generation,
+        idempotencyKeyHash: generation.toString(16).repeat(64),
+        requestDigest: (generation + 4).toString(16).repeat(64),
+        priceUsd: "0.000000",
+        capabilityId: crypto.randomUUID(),
+        capabilityHost: "blob.example.test",
+        capabilityIssuedAt: issuedAt,
+        capabilityExpiresAt: expiresAt,
+        now: lineageNow,
+      };
+      const raced = await Promise.all([
+        repository.preparePresignRenewal(input),
+        repository.preparePresignRenewal({ ...input, capabilityId: crypto.randomUUID() }),
+      ]);
+      expect(new Set(raced.map((value) => value.operation.id)).size).toBe(1);
+      latest = raced[0]!.operation;
+      expect(latest.renewal_generation).toBe(generation);
+      const succeeded = await repository.recordProviderSuccess({
+        operationId: latest.id,
+        organizationId: ORG,
+        objectId: OBJECT,
+        objectGeneration: 1n,
+        providerKey: "opaque-provider-generation",
+        resultSizeBytes: 5n,
+        resultContentType: "audio/ogg",
+        resultEtag: "etag-1",
+        responseStatus: 200,
+        responseJson: JSON.stringify({ expiresAt: expiresAt.toISOString() }),
+        providerSucceededAt: issuedAt,
+      });
+      const ackLossReplay = await repository.preparePresignRenewal(input);
+      expect(ackLossReplay).toMatchObject({
+        created: false,
+        operation: { id: succeeded.id, state: "provider_succeeded" },
+      });
+      latest = (
+        await repository.commitProviderSuccess({
+          operationId: succeeded.id,
+          organizationId: ORG,
+          now: issuedAt,
+        })
+      ).operation;
+    }
+    const rows = await dbWrite.execute(sql`SELECT renewal_generation
+      FROM org_storage_read_operations WHERE id = ${root.id} OR renewal_root_id = ${root.id}
+      ORDER BY renewal_generation`);
+    expect(rows.rows).toEqual([
+      { renewal_generation: 0 },
+      { renewal_generation: 1 },
+      { renewal_generation: 2 },
+      { renewal_generation: 3 },
+      { renewal_generation: 4 },
+    ]);
+
+    await repository.revokeCapabilitiesForObject({
+      organizationId: ORG,
+      objectId: OBJECT,
+      now: lineageNow,
+    });
+    await expect(
+      repository.preparePresignRenewal({
+        organizationId: ORG,
+        userId: USER,
+        rootOperationId: root.id,
+        expectedGeneration: 5,
+        idempotencyKeyHash: "e".repeat(64),
+        requestDigest: "f".repeat(64),
+        priceUsd: "0.000000",
+        capabilityId: crypto.randomUUID(),
+        capabilityHost: "blob.example.test",
+        capabilityIssuedAt: lineageNow,
+        capabilityExpiresAt: new Date(lineageNow.getTime() + 60_000),
+        now: lineageNow,
+      }),
+    ).rejects.toMatchObject({ reason: "state_conflict" });
+  });
+
+  test("tombstones an expired provider success without debit before renewing", async () => {
+    const issuedAt = new Date("2026-08-19T10:00:00.000Z");
+    const expiresAt = new Date("2026-08-19T10:01:00.000Z");
+    const prepared = await repository.prepare({
+      organizationId: ORG,
+      userId: USER,
+      objectId: OBJECT,
+      idempotencyKeyHash: "1".repeat(64),
+      requestDigest: "2".repeat(64),
+      method: "presign",
+      priceUsd: "0.250000",
+      capabilityId: crypto.randomUUID(),
+      capabilityHost: "blob.example.test",
+      capabilityIssuedAt: issuedAt,
+      capabilityExpiresAt: expiresAt,
+      retainUntil: expiresAt,
+    });
+    await repository.recordProviderSuccess({
+      operationId: prepared.operation.id,
+      organizationId: ORG,
+      objectId: OBJECT,
+      objectGeneration: 1n,
+      providerKey: "opaque-provider-generation",
+      resultSizeBytes: 5n,
+      resultContentType: "audio/ogg",
+      resultEtag: "etag-1",
+      responseStatus: 200,
+      responseJson: JSON.stringify({ expiresAt: expiresAt.toISOString() }),
+      providerSucceededAt: issuedAt,
+    });
+    const expired = await repository.expirePresignProviderSuccess({
+      operationId: prepared.operation.id,
+      organizationId: ORG,
+      now: new Date("2026-08-19T10:02:00.000Z"),
+    });
+    expect(expired).toMatchObject({ state: "failed", response_status: 409 });
+    const ledger = await dbWrite.execute(
+      sql`SELECT count(*)::int AS count FROM credit_transactions`,
+    );
+    expect(ledger.rows).toEqual([{ count: 0 }]);
+    await expect(
+      repository.preparePresignRenewal({
+        organizationId: ORG,
+        userId: USER,
+        rootOperationId: prepared.operation.id,
+        expectedGeneration: 1,
+        idempotencyKeyHash: "3".repeat(64),
+        requestDigest: "4".repeat(64),
+        priceUsd: "0.250000",
+        capabilityId: crypto.randomUUID(),
+        capabilityHost: "blob.example.test",
+        capabilityIssuedAt: new Date("2026-08-19T10:02:00.000Z"),
+        capabilityExpiresAt: new Date("2026-08-19T10:03:00.000Z"),
+        now: new Date("2026-08-19T10:02:00.000Z"),
+      }),
+    ).resolves.toMatchObject({ created: true, operation: { renewal_generation: 1 } });
+  });
+
+  test("denies renewal after the catalog object is deleted", async () => {
+    const root = await committedExpiredPresign();
+    await dbWrite.execute(
+      sql`UPDATE org_storage_objects SET deleted_at = NOW() WHERE id = ${OBJECT}`,
+    );
+    await expect(
+      repository.preparePresignRenewal({
+        organizationId: ORG,
+        userId: USER,
+        rootOperationId: root.id,
+        expectedGeneration: 1,
+        idempotencyKeyHash: "5".repeat(64),
+        requestDigest: "6".repeat(64),
+        priceUsd: "0.000000",
+        capabilityId: crypto.randomUUID(),
+        capabilityHost: "blob.example.test",
+        capabilityIssuedAt: new Date("2030-01-01T00:00:00.000Z"),
+        capabilityExpiresAt: new Date("2030-01-01T00:01:00.000Z"),
+        now: new Date("2030-01-01T00:00:00.000Z"),
+      }),
+    ).rejects.toMatchObject({ reason: "provider_result_mismatch" });
+  });
+
+  test("does not debit when revocation wins the provider-to-settlement race", async () => {
+    const issuedAt = new Date("2026-08-19T10:00:00.000Z");
+    const expiresAt = new Date("2030-08-19T10:00:00.000Z");
+    const prepared = await repository.prepare({
+      organizationId: ORG,
+      userId: USER,
+      objectId: OBJECT,
+      idempotencyKeyHash: "7".repeat(64),
+      requestDigest: "8".repeat(64),
+      method: "presign",
+      priceUsd: "0.250000",
+      capabilityId: crypto.randomUUID(),
+      capabilityHost: "blob.example.test",
+      capabilityIssuedAt: issuedAt,
+      capabilityExpiresAt: expiresAt,
+      retainUntil: expiresAt,
+    });
+    await repository.recordProviderSuccess({
+      operationId: prepared.operation.id,
+      organizationId: ORG,
+      objectId: OBJECT,
+      objectGeneration: 1n,
+      providerKey: "opaque-provider-generation",
+      resultSizeBytes: 5n,
+      resultContentType: "audio/ogg",
+      resultEtag: "etag-1",
+      responseStatus: 200,
+      responseJson: JSON.stringify({ expiresAt: expiresAt.toISOString() }),
+      providerSucceededAt: issuedAt,
+    });
+    await repository.revokeCapabilitiesForObject({
+      organizationId: ORG,
+      objectId: OBJECT,
+      now: new Date("2026-08-19T10:01:00.000Z"),
+    });
+    const settled = await repository.commitProviderSuccess({
+      operationId: prepared.operation.id,
+      organizationId: ORG,
+      now: new Date("2026-08-19T10:01:00.000Z"),
+    });
+    expect(settled.operation).toMatchObject({ state: "failed", response_status: 409 });
+    const balance = await dbWrite.execute(
+      sql`SELECT credit_balance FROM organizations WHERE id = ${ORG}`,
+    );
+    expect(balance.rows).toEqual([{ credit_balance: "1.000000" }]);
+    const ledger = await dbWrite.execute(
+      sql`SELECT count(*)::int AS count FROM credit_transactions`,
+    );
+    expect(ledger.rows).toEqual([{ count: 0 }]);
   });
 });

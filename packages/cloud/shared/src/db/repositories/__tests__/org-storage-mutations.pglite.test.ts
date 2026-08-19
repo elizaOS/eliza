@@ -17,7 +17,7 @@ const MIGRATIONS = [
   "0256_org_storage_native_objects.sql",
   "0257_org_storage_native_put_operations.sql",
   "0258_org_storage_generation_gc_outbox.sql",
-  "0264_org_storage_read_operations.sql",
+  "0266_org_storage_read_operations.sql",
 ];
 const TIMEOUT = 60_000;
 
@@ -392,6 +392,46 @@ describe("OrgStorageMutationsRepository", () => {
       "legacy/voice.ogg",
     ]);
     expect(listed[1]?.generation).toBe(1n);
+  });
+
+  test("does not collect an overwritten generation while a durable read retains it", async () => {
+    await commitZeroCost("retained-generation", "a", 6n);
+    const object = await repository.findObject(ORG, "retained-generation");
+    if (!object?.provider_key || !object.content_type || !object.etag || !object.uploaded_at) {
+      throw new Error("committed storage fixture is incomplete");
+    }
+    const now = new Date();
+    const userId = crypto.randomUUID();
+    await dbWrite.execute(sql`INSERT INTO users (id, organization_id) VALUES (${userId}, ${ORG})`);
+    const receipt = await dbWrite.execute(sql`INSERT INTO org_storage_read_operations (
+        organization_id, user_id, object_id, idempotency_key_hash, request_digest,
+        method, price_usd, retain_until
+      ) VALUES (
+        ${ORG}, ${userId}, ${object.id}, ${"5".repeat(64)}, ${"6".repeat(64)},
+        'get', 0, ${new Date(now.getTime() + 60_000)}
+      ) RETURNING id`);
+    const receiptId = (receipt.rows[0] as { id: string }).id;
+    await dbWrite.execute(sql`UPDATE org_storage_read_operations SET
+        state = 'provider_succeeded', object_generation = ${object.generation},
+        provider_key = ${object.provider_key}, result_size_bytes = ${object.size_bytes},
+        result_content_type = ${object.content_type}, result_etag = ${object.etag},
+        response_status = 200, response_json = ${JSON.stringify({ size: 6 })},
+        provider_succeeded_at = ${now}
+      WHERE id = ${receiptId}`);
+    await dbWrite.execute(sql`UPDATE org_storage_read_operations
+      SET state = 'committed', completed_at = ${now} WHERE id = ${receiptId}`);
+
+    await commitZeroCost("retained-generation", "e", 3n);
+    await dbWrite.execute(sql`UPDATE org_storage_gc_outbox
+      SET not_before = ${new Date(now.getTime() - 1_000)}
+      WHERE provider_key = ${object.provider_key}`);
+
+    expect(await repository.listDueGc(now)).toEqual([]);
+    expect(
+      (await repository.listDueGc(new Date(now.getTime() + 61_000))).map(
+        (item) => item.provider_key,
+      ),
+    ).toEqual([object.provider_key]);
   });
 
   test("repairs historical quota drift from the adopted catalog plus active reservations", async () => {

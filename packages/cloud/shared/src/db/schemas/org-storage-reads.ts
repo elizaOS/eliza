@@ -38,6 +38,8 @@ export const orgStorageReadOperations = pgTable(
     object_id: uuid("object_id"),
     idempotency_key_hash: text("idempotency_key_hash").notNull(),
     request_digest: text("request_digest").notNull(),
+    renewal_root_id: uuid("renewal_root_id"),
+    renewal_generation: integer("renewal_generation").notNull().default(0),
     method: text("method").$type<OrgStorageReadMethod>().notNull(),
     state: text("state").$type<OrgStorageReadState>().notNull().default("prepared"),
     price_usd: numeric("price_usd", { precision: 12, scale: 6 }).notNull(),
@@ -77,6 +79,9 @@ export const orgStorageReadOperations = pgTable(
       table.organization_id,
       table.idempotency_key_hash,
     ),
+    renewal: uniqueIndex("org_storage_read_operations_renewal_uidx")
+      .on(table.organization_id, table.renewal_root_id, table.renewal_generation)
+      .where(sql`${table.renewal_root_id} IS NOT NULL`),
     capability: uniqueIndex("org_storage_read_operations_capability_uidx")
       .on(table.capability_id)
       .where(sql`${table.capability_id} IS NOT NULL`),
@@ -91,6 +96,10 @@ export const orgStorageReadOperations = pgTable(
       "org_storage_read_operations_shape_check",
       sql`${table.idempotency_key_hash} ~ '^[0-9a-f]{64}$'
         AND ${table.request_digest} ~ '^[0-9a-f]{64}$'
+        AND ${table.renewal_generation} >= 0
+        AND ((${table.renewal_root_id} IS NULL AND ${table.renewal_generation} = 0)
+          OR (${table.renewal_root_id} IS NOT NULL AND ${table.renewal_generation} > 0
+            AND ${table.method} = 'presign'))
         AND ${table.method} IN ('get', 'head', 'list', 'presign')
         AND ${table.state} IN ('prepared', 'provider_succeeded', 'committed', 'failed')
         AND ${table.price_usd} >= 0 AND ${table.access_count} >= 0

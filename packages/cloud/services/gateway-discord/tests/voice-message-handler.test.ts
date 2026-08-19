@@ -102,7 +102,7 @@ describe("VoiceMessageHandler storage integration", () => {
     );
   });
 
-  test("renews one expired durable capability with a distinct deterministic receipt key", async () => {
+  test("replays one stable presign lineage key across arbitrarily many renewals", async () => {
     process.env.BLOB_READ_WRITE_TOKEN = "storage-token";
     process.env.ELIZA_CLOUD_URL = "https://cloud.example.test";
     let presignAttempts = 0;
@@ -128,17 +128,8 @@ describe("VoiceMessageHandler storage integration", () => {
           presignKeys.push(
             new Headers(init?.headers).get("Idempotency-Key") ?? "",
           );
-          if (presignAttempts === 1) {
-            return Response.json(
-              {
-                error:
-                  "Storage capability expired; retry with a new Idempotency-Key",
-              },
-              { status: 409 },
-            );
-          }
           return Response.json({
-            url: "https://blob.example/_storage/c/renewed",
+            url: `https://blob.example/_storage/c/renewed-${presignAttempts}`,
             expiresAt: "2099-06-02T19:00:00.000Z",
           });
         }
@@ -147,16 +138,20 @@ describe("VoiceMessageHandler storage integration", () => {
     );
     globalThis.fetch = fetchMock as typeof fetch;
 
-    const result = await new VoiceMessageHandler().processVoiceMessage(
-      makeAttachment(),
-      "connection-1",
-      "message-1",
-    );
-    expect(result.audioUrl).toBe("https://blob.example/_storage/c/renewed");
-    expect(presignAttempts).toBe(2);
-    expect(presignKeys[0]).toMatch(/^discord-voice:presign-0:[0-9a-f]{64}$/);
-    expect(presignKeys[1]).toMatch(/^discord-voice:presign-1:[0-9a-f]{64}$/);
-    expect(presignKeys[0]).not.toBe(presignKeys[1]);
+    const handler = new VoiceMessageHandler();
+    for (let generation = 1; generation <= 4; generation++) {
+      const result = await handler.processVoiceMessage(
+        makeAttachment(),
+        "connection-1",
+        "message-1",
+      );
+      expect(result.audioUrl).toBe(
+        `https://blob.example/_storage/c/renewed-${generation}`,
+      );
+    }
+    expect(presignAttempts).toBe(4);
+    expect(new Set(presignKeys).size).toBe(1);
+    expect(presignKeys[0]).toMatch(/^discord-voice:presign-3600:[0-9a-f]{64}$/);
   });
 
   test("cleanup deletes expired voice objects from storage", async () => {

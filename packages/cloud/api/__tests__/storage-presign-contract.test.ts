@@ -11,8 +11,8 @@ const ORG = "00000000-0000-4000-8000-000000021009";
 const USER = "00000000-0000-4000-8000-000000021010";
 const CAPABILITY = "00000000-0000-4000-8000-000000021011";
 const RECEIPT = "00000000-0000-4000-8000-000000021012";
-const ISSUED = new Date("2026-08-19T12:00:00.000Z");
-const EXPIRES = new Date("2026-08-19T12:05:00.000Z");
+const ISSUED = new Date(Date.now() - 1_000);
+const EXPIRES = new Date(Date.now() + 5 * 60_000);
 
 const requireUserOrApiKeyWithOrg = mock();
 const executeNativeStoragePresign = mock();

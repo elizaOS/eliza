@@ -848,11 +848,20 @@ export class OrgStorageMutationsRepository {
   }
 
   async listDueGc(now: Date, limit = MAX_DUE_BATCH) {
-    return await dbWrite.query.orgStorageGcOutbox.findMany({
-      where: and(eq(orgStorageGcOutbox.state, "pending"), lt(orgStorageGcOutbox.not_before, now)),
-      orderBy: (table, { asc }) => [asc(table.created_at)],
-      limit: Math.max(1, Math.min(limit, MAX_DUE_BATCH)),
-    });
+    return await sqlRows<typeof orgStorageGcOutbox.$inferSelect>(
+      dbWrite,
+      sql`SELECT gc.* FROM ${orgStorageGcOutbox} gc
+        WHERE gc.state = 'pending'
+          AND gc.not_before < ${now}
+          AND NOT EXISTS (
+            SELECT 1 FROM org_storage_read_operations read
+            WHERE read.provider_key = gc.provider_key
+              AND read.state IN ('provider_succeeded', 'committed')
+              AND read.retain_until > ${now}
+          )
+        ORDER BY gc.created_at ASC
+        LIMIT ${Math.max(1, Math.min(limit, MAX_DUE_BATCH))}`,
+    );
   }
 
   async completeGc(id: string): Promise<void> {

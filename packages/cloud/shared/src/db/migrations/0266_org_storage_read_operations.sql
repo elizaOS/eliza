@@ -1,4 +1,4 @@
--- Adds durable paid native-storage read/list/capability receipts.
+-- Adds durable paid native-storage read/list/capability receipts after migration 0265.
 CREATE TABLE "org_storage_read_operations" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE RESTRICT,
@@ -6,6 +6,8 @@ CREATE TABLE "org_storage_read_operations" (
   "object_id" uuid,
   "idempotency_key_hash" text NOT NULL,
   "request_digest" text NOT NULL,
+  "renewal_root_id" uuid,
+  "renewal_generation" integer DEFAULT 0 NOT NULL,
   "method" text NOT NULL,
   "state" text DEFAULT 'prepared' NOT NULL,
   "price_usd" numeric(12,6) NOT NULL,
@@ -35,9 +37,16 @@ CREATE TABLE "org_storage_read_operations" (
   CONSTRAINT "org_storage_read_operations_credit_fkey"
     FOREIGN KEY ("credit_transaction_id")
     REFERENCES "credit_transactions"("id") ON DELETE RESTRICT,
+  CONSTRAINT "org_storage_read_operations_renewal_root_fkey"
+    FOREIGN KEY ("renewal_root_id")
+    REFERENCES "org_storage_read_operations"("id") ON DELETE RESTRICT,
   CONSTRAINT "org_storage_read_operations_shape_check" CHECK (
     "idempotency_key_hash" ~ '^[0-9a-f]{64}$'
     AND "request_digest" ~ '^[0-9a-f]{64}$'
+    AND "renewal_generation" >= 0
+    AND (("renewal_root_id" IS NULL AND "renewal_generation" = 0)
+      OR ("renewal_root_id" IS NOT NULL AND "renewal_generation" > 0
+        AND "method" = 'presign'))
     AND "method" IN ('get','head','list','presign')
     AND "state" IN ('prepared','provider_succeeded','committed','failed')
     AND "price_usd" >= 0 AND "access_count" >= 0
@@ -67,6 +76,10 @@ CREATE UNIQUE INDEX "org_storage_read_operations_idempotency_uidx"
 CREATE UNIQUE INDEX "org_storage_read_operations_capability_uidx"
   ON "org_storage_read_operations"("capability_id") WHERE "capability_id" IS NOT NULL;
 --> statement-breakpoint
+CREATE UNIQUE INDEX "org_storage_read_operations_renewal_uidx"
+  ON "org_storage_read_operations"("organization_id", "renewal_root_id", "renewal_generation")
+  WHERE "renewal_root_id" IS NOT NULL;
+--> statement-breakpoint
 CREATE INDEX "org_storage_read_operations_capability_expiry_idx"
   ON "org_storage_read_operations"("capability_expires_at");
 --> statement-breakpoint
@@ -79,11 +92,26 @@ BEGIN
   IF NEW.state <> 'prepared' THEN
     RAISE EXCEPTION 'storage read must start prepared' USING ERRCODE = '23514';
   END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM users
+  -- Serialize request creation against tenant reassignment. The user row is
+  -- always locked before the read receipt exists, while later settlement only
+  -- locks the immutable receipt and organization ledger.
+  PERFORM 1 FROM users
     WHERE id = NEW.user_id AND organization_id = NEW.organization_id
-  ) THEN
+    FOR SHARE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'storage read actor tenant mismatch' USING ERRCODE = '23514';
+  END IF;
+  IF NEW.renewal_root_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM org_storage_read_operations root
+    WHERE root.id = NEW.renewal_root_id
+      AND root.organization_id = NEW.organization_id
+      AND root.user_id = NEW.user_id
+      AND root.method = 'presign'
+      AND root.renewal_root_id IS NULL
+      AND root.renewal_generation = 0
+    FOR SHARE
+  ) THEN
+    RAISE EXCEPTION 'storage read renewal root mismatch' USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
 END;
@@ -97,12 +125,14 @@ CREATE FUNCTION "org_storage_read_operation_guard"()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF ROW(NEW.organization_id, NEW.user_id, NEW.idempotency_key_hash,
-      NEW.request_digest, NEW.method, NEW.price_usd,
+      NEW.request_digest, NEW.renewal_root_id, NEW.renewal_generation,
+      NEW.method, NEW.price_usd,
       NEW.capability_id, NEW.capability_host, NEW.capability_issued_at,
       NEW.capability_expires_at, NEW.retain_until)
     IS DISTINCT FROM
     ROW(OLD.organization_id, OLD.user_id, OLD.idempotency_key_hash,
-      OLD.request_digest, OLD.method, OLD.price_usd,
+      OLD.request_digest, OLD.renewal_root_id, OLD.renewal_generation,
+      OLD.method, OLD.price_usd,
       OLD.capability_id, OLD.capability_host, OLD.capability_issued_at,
       OLD.capability_expires_at, OLD.retain_until) THEN
     RAISE EXCEPTION 'storage read request authority is immutable' USING ERRCODE = '23514';
@@ -126,8 +156,11 @@ BEGIN
       AND ROW(NEW.response_status, NEW.response_json) IS DISTINCT FROM
         ROW(OLD.response_status, OLD.response_json)
       AND NOT (OLD.state = 'provider_succeeded' AND NEW.state = 'failed'
-        AND NEW.response_status = 402
-        AND NEW.response_json = '{"error":"Insufficient credits"}') THEN
+        AND ((NEW.response_status = 402
+          AND NEW.response_json = '{"error":"Insufficient credits"}')
+          OR (OLD.method = 'presign' AND NEW.response_status = 409
+            AND NEW.response_json IN ('{"error":"Capability expired before settlement"}',
+              '{"error":"Capability revoked before settlement"}')))) THEN
     RAISE EXCEPTION 'storage read response authority is immutable' USING ERRCODE = '23514';
   END IF;
   IF OLD.state IN ('committed','failed') AND ROW(NEW.response_status,

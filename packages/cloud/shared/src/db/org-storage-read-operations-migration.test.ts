@@ -59,7 +59,7 @@ async function database(): Promise<PGlite> {
     ORG,
   ]);
   const source = readFileSync(
-    join(import.meta.dir, "migrations/0264_org_storage_read_operations.sql"),
+    join(import.meta.dir, "migrations/0266_org_storage_read_operations.sql"),
     "utf8",
   );
   for (const statement of source.split("--> statement-breakpoint")) {
@@ -81,7 +81,7 @@ function insertPrepared(db: PGlite, params: { method: string; price: string; use
   );
 }
 
-describe("0264 durable storage read authority", () => {
+describe("0266 durable storage read authority", () => {
   test("rejects cross-tenant actors and invalid state skips", async () => {
     const db = await database();
     await expect(

@@ -91,7 +91,8 @@ app.post("/", async (c) => {
     ) {
       return c.json(
         {
-          error: "Storage capability expired; retry with a new Idempotency-Key",
+          error:
+            "Storage capability expired; retry with the same Idempotency-Key",
           receiptId: operation.id,
         },
         409,

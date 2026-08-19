@@ -58,13 +58,6 @@ interface StorageConfig {
   token: string;
 }
 
-class ExpiredVoicePresignError extends Error {
-  constructor() {
-    super("Voice storage capability receipt expired");
-    this.name = "ExpiredVoicePresignError";
-  }
-}
-
 function getStorageConfig(): StorageConfig | null {
   const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
   const apiBaseUrl = (
@@ -168,15 +161,6 @@ async function presignVoiceObject(
   );
   const body = await parseJsonResponse(response);
   if (!response.ok) {
-    if (
-      response.status === 409 &&
-      body &&
-      typeof body === "object" &&
-      typeof (body as { error?: unknown }).error === "string" &&
-      (body as { error: string }).error.toLowerCase().includes("expired")
-    ) {
-      throw new ExpiredVoicePresignError();
-    }
     throw new Error(
       `Voice presign failed: ${response.status} ${response.statusText} ${JSON.stringify(body)}`,
     );
@@ -325,23 +309,14 @@ export class VoiceMessageHandler {
         contentType,
         await storageIdempotencyKey("put", operationIdentity),
       );
-      let signed: { url: string; expiresAt: Date };
-      try {
-        signed = await presignVoiceObject(
-          storageConfig,
-          objectKey,
-          await storageIdempotencyKey("presign-0", operationIdentity),
-        );
-      } catch (error) {
-        // error-policy:J4 one deterministic renewal handles replay after the
-        // first capability expires; any other presign failure remains visible.
-        if (!(error instanceof ExpiredVoicePresignError)) throw error;
-        signed = await presignVoiceObject(
-          storageConfig,
-          objectKey,
-          await storageIdempotencyKey("presign-1", operationIdentity),
-        );
-      }
+      const signed = await presignVoiceObject(
+        storageConfig,
+        objectKey,
+        await storageIdempotencyKey(
+          `presign-${VOICE_AUDIO_TTL_SECONDS}`,
+          operationIdentity,
+        ),
+      );
       logger.info("Uploaded voice attachment to managed storage", {
         connectionId,
         messageId,

@@ -265,6 +265,24 @@ async function settle(operation: OrgStorageReadOperation): Promise<OrgStorageRea
   return settled.operation;
 }
 
+async function settlePresign(
+  operation: OrgStorageReadOperation,
+  now: Date,
+): Promise<OrgStorageReadOperation> {
+  if (
+    operation.state === "provider_succeeded" &&
+    operation.capability_expires_at &&
+    operation.capability_expires_at <= now
+  ) {
+    return await orgStorageReadsRepository.expirePresignProviderSuccess({
+      operationId: operation.id,
+      organizationId: operation.organization_id,
+      now,
+    });
+  }
+  return await settle(operation);
+}
+
 async function failPrepared(
   operation: OrgStorageReadOperation,
   status: number,
@@ -483,12 +501,20 @@ export async function executeNativeStoragePresign(
   const prepared = await prepareIdentity({
     ...input,
     method: "presign",
-    request: { logicalKey: input.logicalKey, ttlSeconds: input.ttlSeconds },
+    request: {
+      logicalKey: input.logicalKey,
+      ttlSeconds: input.ttlSeconds,
+      capabilityHost: input.capabilityHost,
+    },
     capabilityHost: input.capabilityHost,
     capabilityTtlSeconds: input.ttlSeconds,
   });
   let operation = prepared.operation;
-  if (operation.state === "failed") {
+  const rootOperationId = operation.id;
+  if (operation.renewal_root_id !== null || operation.renewal_generation !== 0) {
+    throw new NativeStorageReadError("RECEIPT_CORRUPT", "Capability root receipt is invalid");
+  }
+  if (operation.state === "failed" && operation.response_status !== 409) {
     throwIfInsufficient(operation);
     return {
       operation,
@@ -497,14 +523,91 @@ export async function executeNativeStoragePresign(
       replay: true,
     };
   }
-  if (operation.state === "provider_succeeded") operation = await settle(operation);
-  if (operation.state === "committed") {
-    return {
-      operation,
-      status: responseStatus(operation),
-      body: parseResponse(operation),
-      replay: true,
-    };
+  if (operation.state === "provider_succeeded") {
+    operation = await settlePresign(operation, new Date());
+  }
+  if (operation.state === "committed" || operation.response_status === 409) {
+    const latest = await orgStorageReadsRepository.findLatestPresignRenewal({
+      organizationId: input.organizationId,
+      rootOperationId,
+    });
+    if (!latest) {
+      throw new NativeStorageReadError("RECEIPT_CORRUPT", "Capability lineage is missing");
+    }
+    operation = latest;
+    if (operation.state === "provider_succeeded") {
+      operation = await settlePresign(operation, new Date());
+    }
+    if (operation.capability_revoked_at !== null) {
+      throw new NativeStorageReadError("PROVIDER_INTEGRITY", "Storage capability was revoked");
+    }
+    if (
+      (operation.state === "committed" &&
+        operation.capability_expires_at &&
+        operation.capability_expires_at <= new Date()) ||
+      (operation.state === "failed" && operation.response_status === 409)
+    ) {
+      const generation = operation.renewal_generation + 1;
+      const issuedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
+      const expiresAt = new Date(issuedAt.getTime() + input.ttlSeconds * 1000);
+      const renewalPrice = canonicalPrice(input.priceUsd);
+      const renewed = await orgStorageReadsRepository.preparePresignRenewal({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        rootOperationId,
+        expectedGeneration: generation,
+        idempotencyKeyHash: await sha256(
+          JSON.stringify([
+            "native-storage-presign-renewal:v1",
+            input.organizationId,
+            rootOperationId,
+            generation,
+          ]),
+        ),
+        requestDigest: await sha256(
+          JSON.stringify([
+            "native-storage-presign-renewal:v1",
+            rootOperationId,
+            generation,
+            input.organizationId,
+            input.userId,
+            input.capabilityHost,
+            input.ttlSeconds,
+            renewalPrice,
+          ]),
+        ),
+        priceUsd: renewalPrice,
+        capabilityId: crypto.randomUUID(),
+        capabilityHost: input.capabilityHost,
+        capabilityIssuedAt: issuedAt,
+        capabilityExpiresAt: expiresAt,
+        now: issuedAt,
+      });
+      operation = renewed.operation;
+      if (operation.state === "provider_succeeded") {
+        operation = await settlePresign(operation, new Date());
+      }
+      if (operation.state === "failed" && operation.response_status === 409) {
+        return await executeNativeStoragePresign(input);
+      }
+    }
+    if (operation.state === "committed") {
+      return {
+        operation,
+        status: responseStatus(operation),
+        body: parseResponse(operation),
+        replay: true,
+      };
+    }
+    if (operation.state === "failed" && operation.response_status !== 409) {
+      throwIfInsufficient(operation);
+      return {
+        operation,
+        status: responseStatus(operation),
+        body: parseResponse(operation),
+        replay: true,
+      };
+    }
   }
 
   const nativeObject = await resolveNativeStorageObject(
@@ -546,7 +649,10 @@ export async function executeNativeStoragePresign(
     responseJson: JSON.stringify(body),
     providerSucceededAt: new Date(),
   });
-  operation = await settle(operation);
+  operation = await settlePresign(operation, new Date());
+  if (operation.state === "failed" && operation.response_status === 409) {
+    return await executeNativeStoragePresign(input);
+  }
   return { operation, status: 200, body, replay: prepared.replay };
 }
 
