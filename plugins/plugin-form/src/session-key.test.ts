@@ -15,7 +15,11 @@ import {
   getStashedSessions,
   saveSession,
 } from "./storage";
-import type { FormSession } from "./types";
+import { FORM_SESSION_COMPONENT, type FormSession } from "./types";
+
+const legacyType = (room: UUID) => `${FORM_SESSION_COMPONENT}:${room}`;
+const sessionType = (room: UUID, id: string) =>
+  `${FORM_SESSION_COMPONENT}:${room}:${id}`;
 
 const agentId = "00000000-0000-4000-8000-000000000301" as UUID;
 const entityId = "00000000-0000-4000-8000-000000000302" as UUID;
@@ -155,6 +159,95 @@ describe("form session component keying (issue #22272)", () => {
     expect((await getActiveSession(runtime, entityId, otherRoomId))?.id).toBe(
       "there",
     );
+  });
+
+  it("retires the pre-upgrade room-only component when stashing after upgrade", async () => {
+    const runtime = makeRuntime();
+
+    // Seed a live session under the legacy room-only key, exactly as the
+    // pre-upgrade code persisted in-flight sessions.
+    const legacy = makeSession("legacy", { status: "active" });
+    await runtime.createComponent({
+      id: "00000000-0000-4000-8000-0000000003a1" as UUID,
+      entityId,
+      agentId,
+      roomId,
+      worldId: agentId,
+      sourceEntityId: agentId,
+      type: legacyType(roomId),
+      createdAt: NOW - 10_000,
+      data: JSON.parse(JSON.stringify(legacy)),
+    } as Component);
+
+    // Stash the in-flight session (loaded by id, re-persisted under new key).
+    await saveSession(runtime, { ...legacy, status: "stashed" });
+
+    // The legacy room-only row is gone; the session lives only under the
+    // session-id key.
+    expect(
+      await runtime.getComponent(entityId, legacyType(roomId)),
+    ).toBeFalsy();
+    const components = await runtime.getComponents(entityId);
+    expect(components.map((c) => c.type)).toEqual([
+      sessionType(roomId, "legacy"),
+    ]);
+
+    // No ghost active session blocks a fresh start in the same room.
+    expect(await getActiveSession(runtime, entityId, roomId)).toBeNull();
+    await saveSession(runtime, makeSession("fresh", { status: "active" }));
+    expect((await getActiveSession(runtime, entityId, roomId))?.id).toBe(
+      "fresh",
+    );
+  });
+
+  it("retires the legacy room-only component on delete", async () => {
+    const runtime = makeRuntime();
+
+    const legacy = makeSession("legacy", { status: "active" });
+    await runtime.createComponent({
+      id: "00000000-0000-4000-8000-0000000003a2" as UUID,
+      entityId,
+      agentId,
+      roomId,
+      worldId: agentId,
+      sourceEntityId: agentId,
+      type: legacyType(roomId),
+      createdAt: NOW - 10_000,
+      data: JSON.parse(JSON.stringify(legacy)),
+    } as Component);
+
+    await deleteSession(runtime, legacy);
+
+    expect(
+      await runtime.getComponent(entityId, legacyType(roomId)),
+    ).toBeFalsy();
+    expect(await getActiveSession(runtime, entityId, roomId)).toBeNull();
+  });
+
+  it("never retires a legacy room-only row owned by a different session", async () => {
+    const runtime = makeRuntime();
+
+    // A legacy row for a DIFFERENT session id must survive when we save/delete
+    // an unrelated session in the same room.
+    const other = makeSession("other", { status: "active" });
+    await runtime.createComponent({
+      id: "00000000-0000-4000-8000-0000000003a3" as UUID,
+      entityId,
+      agentId,
+      roomId,
+      worldId: agentId,
+      sourceEntityId: agentId,
+      type: legacyType(roomId),
+      createdAt: NOW - 10_000,
+      data: JSON.parse(JSON.stringify(other)),
+    } as Component);
+
+    await saveSession(runtime, makeSession("mine", { status: "stashed" }));
+
+    const legacyRow = await runtime.getComponent(entityId, legacyType(roomId));
+    if (!legacyRow)
+      throw new Error("legacy row for a different session was retired");
+    expect((legacyRow.data as FormSession).id).toBe("other");
   });
 
   it("updates a session in place without creating a duplicate component", async () => {

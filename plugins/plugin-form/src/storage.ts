@@ -27,6 +27,9 @@
  * - The session id is part of the component type so distinct sessions in the
  *   same room map to distinct natural keys and never overwrite each other
  * - Room scoping ensures different rooms have different contexts
+ * - Deployments upgrading from the pre-session-id `form_session:{roomId}` key
+ *   have their in-flight session's legacy component retired on the next
+ *   saveSession/deleteSession so the stale row cannot shadow the new key
  *
  * ### Submissions
  * - Stored as components with type: `form_submission:{formId}:{submissionId}`
@@ -104,6 +107,44 @@ const isLiveSession = (session: FormSession): boolean => !isExpired(session);
  */
 const sessionComponentType = (roomId: UUID, sessionId: string): string =>
   `${FORM_SESSION_COMPONENT}:${roomId}:${sessionId}`;
+
+/**
+ * Build the pre-upgrade component type that keyed a session by room only.
+ *
+ * WHY this still matters:
+ * - Deployments that ran the old code persisted in-flight sessions under
+ *   `form_session:{roomId}` (one row per room, no session id).
+ * - After upgrading, saveSession/deleteSession write the new session-id key,
+ *   which is a different natural key, so getComponent misses the legacy row.
+ * - Left untouched, that stale `active` row keeps satisfying getActiveSession
+ *   and blocks startSession. retireLegacySessionComponent removes it once the
+ *   owning session has been re-persisted (or deleted) under the new key.
+ */
+const legacySessionComponentType = (roomId: UUID): string =>
+  `${FORM_SESSION_COMPONENT}:${roomId}`;
+
+/**
+ * Delete the pre-upgrade room-only component for a session, if present.
+ *
+ * Only removes the legacy row when it actually holds this session's data, so a
+ * room-only row belonging to a different session id is never touched.
+ */
+const retireLegacySessionComponent = async (
+  runtime: IAgentRuntime,
+  session: FormSession,
+): Promise<void> => {
+  const legacy = await runtime.getComponent(
+    session.entityId,
+    legacySessionComponentType(session.roomId),
+  );
+  if (
+    legacy?.data &&
+    isFormSession(legacy.data) &&
+    legacy.data.id === session.id
+  ) {
+    await runtime.deleteComponent(legacy.id);
+  }
+};
 
 const RESTORABLE_SESSION_STATUSES: FormSession["status"][] = [
   "active",
@@ -370,6 +411,10 @@ export async function saveSession(
   } else {
     await runtime.createComponent(component);
   }
+
+  // Retire any pre-upgrade room-only component for this session so the stale
+  // `active` row cannot shadow the freshly written session-id key.
+  await retireLegacySessionComponent(runtime, session);
 }
 
 /**
@@ -393,6 +438,10 @@ export async function deleteSession(
   if (existing) {
     await runtime.deleteComponent(existing.id);
   }
+
+  // Also remove a pre-upgrade room-only component so deleting a session leaves
+  // no ghost row behind under the legacy key.
+  await retireLegacySessionComponent(runtime, session);
 }
 
 // ============================================================================
