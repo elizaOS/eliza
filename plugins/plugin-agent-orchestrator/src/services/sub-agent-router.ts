@@ -3878,7 +3878,15 @@ function composeNarration(
     const urls = collectVerifiableUrlCandidates(response).filter(
       (url) => !isLoopbackUrl(url),
     );
-    return urls.length > 0 ? `${header}\n${urls.join("\n")}` : header;
+    if (urls.length > 0) return `${header}\n${urls.join("\n")}`;
+    // A recovered retry with no claimed URL still delivered something the
+    // user was told had FAILED — observe the workdir so the recovery is
+    // announced instead of silent (live 2026-08-19: "kanban board failed"
+    // followed by a working app and no follow-up message).
+    const observedLines = observeWorkdirDeliverable(session);
+    return observedLines.length > 0
+      ? `${header}\n${observedLines.join("\n")}`
+      : header;
   }
   // Non-retry completion: keep the (transcript-stripped, banner-stripped) prose
   // so legitimate results ("PR opened: …", a question) still reach the user.
