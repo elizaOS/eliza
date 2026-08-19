@@ -777,15 +777,18 @@ jobs:
                   fi
                   ROUTER_PORT=$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')
                   : "${ROUTER_PORT:=3458}"
-                  if curl -sf -m 3 "http://127.0.0.1:${ROUTER_PORT}/healthz" >/dev/null 2>&1; then
+                  if curl -sf -m 3 "http://127.0.0.1:${ROUTER_PORT}/healthz" >/dev/null 2>&1 && \
+                     curl -sf -m 3 "http://127.0.0.1:${ROUTER_PORT}/readyz" >/dev/null 2>&1; then
                     PUBLIC_HEALTH=""
+                    PUBLIC_READINESS=""
                     public_route_ok=false
                     for public_attempt in 1 2 3; do
-                      if PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz"); then
+                      if PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz") && \
+                         PUBLIC_READINESS=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/readyz"); then
                         public_route_ok=true
                         break
                       fi
-                      echo "Canonical /healthz attempt ${public_attempt}/3 failed for ${AGENT_ROUTER_PUBLIC_HOST}; retrying in 2s."
+                      echo "Canonical health/readiness attempt ${public_attempt}/3 failed for ${AGENT_ROUTER_PUBLIC_HOST}; retrying in 2s."
                       sleep 2
                     done
                     if [ "$public_route_ok" != "true" ]; then
@@ -798,10 +801,15 @@ jobs:
                       report_public_route_failure
                       exit 1
                     fi
-                    echo "Both daemons active and stable (worker ${AGE}s, router ${ROUTER_AGE}s, local and canonical /healthz OK) on attempt $attempt."
+                    if ! printf '%s' "$PUBLIC_READINESS" | validate_public_health_payload; then
+                      echo "::error::Canonical agent-router host returned an unexpected readiness payload: ${AGENT_ROUTER_PUBLIC_HOST}"
+                      report_public_route_failure
+                      exit 1
+                    fi
+                    echo "Both daemons active and stable (worker ${AGE}s, router ${ROUTER_AGE}s, local and canonical health/readiness OK) on attempt $attempt."
                     exit 0
                   fi
-                  echo "Health check attempt $attempt/18: worker stable (${AGE}s), router ${ROUTER_AGE}s but /healthz not ready on port ${ROUTER_PORT}."
+                  echo "Health check attempt $attempt/18: worker stable (${AGE}s), router ${ROUTER_AGE}s but health/readiness not ready on port ${ROUTER_PORT}."
                   sleep 5
                   continue
                 fi

@@ -315,13 +315,21 @@ describe("provisioning worker deployment contract", () => {
     const localHealth = workflow.indexOf(
       `curl -sf -m 3 "http://127.0.0.1:${routerPort}/healthz"`,
     );
+    const localReadiness = workflow.indexOf(
+      `curl -sf -m 3 "http://127.0.0.1:${routerPort}/readyz"`,
+    );
     const canonicalHealth = workflow.indexOf(
       `curl -fsS -m 5 "https://${publicHost}/healthz"`,
+    );
+    const canonicalReadiness = workflow.indexOf(
+      `curl -fsS -m 5 "https://${publicHost}/readyz"`,
     );
 
     expect(healthStep).toBeGreaterThan(-1);
     expect(localHealth).toBeGreaterThan(healthStep);
-    expect(canonicalHealth).toBeGreaterThan(localHealth);
+    expect(localReadiness).toBeGreaterThan(localHealth);
+    expect(canonicalHealth).toBeGreaterThan(localReadiness);
+    expect(canonicalReadiness).toBeGreaterThan(canonicalHealth);
     expect(workflow.slice(0, healthStep)).not.toContain(
       `"https://${publicHost}/healthz"`,
     );
@@ -330,6 +338,9 @@ describe("provisioning worker deployment contract", () => {
     );
     expect(workflow).toContain(
       "Canonical agent-router host returned an unexpected health payload",
+    );
+    expect(workflow).toContain(
+      "Canonical agent-router host returned an unexpected readiness payload",
     );
     expect(workflow).toContain(
       "sudo systemctl status eliza-agent-router.service --no-pager || true",
@@ -343,7 +354,7 @@ describe("provisioning worker deployment contract", () => {
     const failFast = [
       ...workflow.matchAll(/report_public_route_failure\n\s*exit 1\b/g),
     ];
-    expect(failFast).toHaveLength(2);
+    expect(failFast).toHaveLength(3);
     // The transport probe is bounded: a short retry absorbs one-off blips
     // without reintroducing the blind 30-attempt loop this PR removed.
     expect(workflow).toContain("for public_attempt in 1 2 3; do");
