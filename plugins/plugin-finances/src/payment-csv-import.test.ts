@@ -137,6 +137,62 @@ describe("parseTransactionsCsv", () => {
     });
   });
 
+  it("treats a single 'Debit/Credit Amount' column as a signed amount", () => {
+    // Regression for the collision-guard follow-up: this one physical column
+    // matches the amount, debit, AND credit hints. It must stay on the signed
+    // amount branch (sign decides direction) rather than being routed into the
+    // separate debit/credit path, which classified every row as a debit.
+    const r = parseTransactionsCsv(
+      "Date,Payee,Debit/Credit Amount\n2026-01-15,Coffee,-4.50\n2026-01-16,Refund,10.00\n",
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.transactions).toHaveLength(2);
+    expect(r.transactions[0]).toMatchObject({
+      direction: "debit",
+      amountUsd: 4.5,
+    });
+    expect(r.transactions[1]).toMatchObject({
+      direction: "credit",
+      amountUsd: 10,
+    });
+  });
+
+  it("treats a single 'Credit Card Amount' column as a signed amount", () => {
+    // "Credit Card Amount" matches both the amount and credit hints. The guard
+    // must not force every row to "credit"; a negative value is still a debit.
+    const r = parseTransactionsCsv(
+      "Date,Payee,Credit Card Amount\n2026-01-15,Coffee,-4.50\n2026-01-16,Refund,10.00\n",
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.transactions).toHaveLength(2);
+    expect(r.transactions[0]).toMatchObject({
+      direction: "debit",
+      amountUsd: 4.5,
+    });
+    expect(r.transactions[1]).toMatchObject({
+      direction: "credit",
+      amountUsd: 10,
+    });
+  });
+
+  it("treats a single 'Debit/Credit' column (no 'amount' hint) as a signed amount", () => {
+    // A lone column matching both direction hints but not the amount hint is
+    // still a signed amount column; it must not collapse to a debit-only read.
+    const r = parseTransactionsCsv(
+      "Date,Payee,Debit/Credit\n2026-01-15,Coffee,-4.50\n2026-01-16,Refund,10.00\n",
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.transactions).toHaveLength(2);
+    expect(r.transactions[0]).toMatchObject({
+      direction: "debit",
+      amountUsd: 4.5,
+    });
+    expect(r.transactions[1]).toMatchObject({
+      direction: "credit",
+      amountUsd: 10,
+    });
+  });
+
   it("normalizes US-format and 2-digit-year dates to a 2026 calendar date", () => {
     const r = parseTransactionsCsv("Date,Amount,Merchant\n1/16/26,-5,Gym\n");
     expect(r.transactions).toHaveLength(1);

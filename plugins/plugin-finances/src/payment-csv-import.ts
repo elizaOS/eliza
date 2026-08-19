@@ -305,15 +305,44 @@ export function parseTransactionsCsv(
     options.amountColumn,
     AMOUNT_COLUMN_HINTS,
   );
-  const debitIndex = findColumn(header, DEBIT_COLUMN_HINTS);
-  const creditIndex = findColumn(header, CREDIT_COLUMN_HINTS);
+  let debitIndex = findColumn(header, DEBIT_COLUMN_HINTS);
+  let creditIndex = findColumn(header, CREDIT_COLUMN_HINTS);
+  // A single physical column can satisfy multiple hint families at once:
+  // "Debit/Credit Amount" matches amount+debit+credit and "Credit Card Amount"
+  // matches amount+credit. Such a column is a signed amount, not a
+  // direction-specific column, so separate debit/credit mode is only correct
+  // when debit and credit resolve to two DISTINCT physical columns.
+  const hasSeparateDebitCredit =
+    debitIndex >= 0 && creditIndex >= 0 && debitIndex !== creditIndex;
+  // A lone column that matched both direction hints (e.g. "Debit/Credit") is a
+  // signed amount column; promote it so parseAmount reads its sign instead of
+  // treating every value as a debit.
+  if (
+    !hasSeparateDebitCredit &&
+    debitIndex >= 0 &&
+    debitIndex === creditIndex &&
+    amountIndex < 0
+  ) {
+    amountIndex = debitIndex;
+  }
+  // When debit/credit collapse onto a single signed amount column, clear the
+  // direction indices so parseAmount never falls through to a direction-only
+  // branch that would discard the sign.
+  if (!hasSeparateDebitCredit && amountIndex >= 0) {
+    if (debitIndex === amountIndex) {
+      debitIndex = -1;
+    }
+    if (creditIndex === amountIndex) {
+      creditIndex = -1;
+    }
+  }
   // The AMOUNT substring fallback in findColumn matches a separate
   // "Amount Debit"/"Amount Credit" bank header (both contain "amount").
   // Left alone, that single-amount branch reads the debit column as a signed
   // amount — flipping debit rows to credit and dropping credit-only rows.
-  // Drop an inferred amount index that actually points at the debit/credit
-  // column so the intended separate-column path runs. An explicit
-  // options.amountColumn match is honored and never collapsed here.
+  // Drop an inferred amount index that points at one of two DISTINCT
+  // debit/credit columns so the intended separate-column path runs. An
+  // explicit options.amountColumn match is honored and never collapsed here.
   const amountExplicit =
     options.amountColumn !== undefined &&
     amountIndex >= 0 &&
@@ -322,6 +351,7 @@ export function parseTransactionsCsv(
   if (
     !amountExplicit &&
     amountIndex >= 0 &&
+    hasSeparateDebitCredit &&
     (amountIndex === debitIndex || amountIndex === creditIndex)
   ) {
     amountIndex = -1;
