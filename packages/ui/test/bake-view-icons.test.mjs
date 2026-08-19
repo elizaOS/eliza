@@ -5,8 +5,8 @@
  * copies the actual script into a temp package mirror and executes it as a
  * subprocess, so path resolution and the destructive rewrite are exercised for
  * real — against sandboxed assets, never the repository copies. Deterministic;
- * no network. The best-effort Biome pass inside the script is inert here (no
- * bunx in the mirror root) and is not under test.
+ * no network. The harness removes PATH from the subprocess environment so the
+ * script's best-effort Biome pass fails immediately and is not under test.
  */
 import { execFileSync } from "node:child_process";
 import {
@@ -59,9 +59,18 @@ function makeMirror() {
 }
 
 function runBake(script, args) {
+  // The production script formats its output through a best-effort `bunx`
+  // subprocess. Keep this contract test offline and independent of the host's
+  // global tools/cache: process.execPath is absolute, while an empty PATH makes
+  // the optional formatter fail immediately on every platform.
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key.toLowerCase() !== "path"),
+  );
+  env.PATH = "";
   try {
     const stdout = execFileSync(process.execPath, [script, ...args], {
       encoding: "utf8",
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     return { status: 0, stdout, stderr: "" };
