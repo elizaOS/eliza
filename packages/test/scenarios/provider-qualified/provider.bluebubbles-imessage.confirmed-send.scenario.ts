@@ -7,7 +7,8 @@ export default buildProviderCanary({
   isolation: "per-scenario",
   id: "provider.bluebubbles-imessage.confirmed-send",
   title: "Provider-qualified BlueBubbles iMessage send canary",
-  provider: "bluebubbles-imessage",
+  provider: "bluebubbles",
+  connectorProvider: "bluebubbles",
   operation: "message-send",
   plugins: [
     "@elizaos/plugin-personal-assistant",

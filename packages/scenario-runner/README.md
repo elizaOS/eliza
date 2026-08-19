@@ -163,19 +163,28 @@ pins:
 ```ts
 import {
   authorizeProviderCanary,
-  preflightAuthorizedProviderCanary,
+  createProviderCanaryTargetBinding,
+  preflightAuthorizedProviderCanaryExecution,
 } from "@elizaos/scenario-runner";
 
+const targetBinding = createProviderCanaryTargetBinding({
+  kind: operationKind,
+  providerTarget,
+  operationInput,
+});
 const authorization = authorizeProviderCanary({
   scenario,
-  bindings,
+  bindings: { ...bindings, target: { ...bindings.target, operation: targetBinding } },
   manifestAuthorityPrivateKey, // an Ed25519 private KeyObject
 });
 
-preflightAuthorizedProviderCanary({
+preflightAuthorizedProviderCanaryExecution({
   scenario,
   authorization,
   pinnedManifestAuthorityPublicKeysPem,
+  operationKind,
+  providerTarget,
+  operationInput,
 });
 ```
 
@@ -183,6 +192,9 @@ The returned authorization bundle contains only the manifest, key ID, digest,
 and signature; it never serializes the private key. Generate and retain the key
 outside the repository (prefer an offline signer or managed key store), publish
 only the SPKI public-key pin, and keep provider credentials out of the manifest.
+The provider target and complete non-credential operation input remain in
+operator-controlled JSON; their canonical hashes are signed into the manifest
+and rechecked before execution.
 This preflight proves operator authorization of the exact scenario and binding
 contract only. It does not contact a provider, create observations, run the
 independent semantic judge, or make evidence publishable.
@@ -202,6 +214,9 @@ bun run --cwd packages/scenario-runner provider-qualification -- \
   "schema": "eliza.provider-qualification-verify-config.v1",
   "scenarioFile": "provider.gmail.confirmed-send.scenario.ts",
   "authorizationFile": "authorization.json",
+  "operationKind": "gmail.email-send",
+  "providerTargetFile": "provider-target.json",
+  "operationInputFile": "operation-input.json",
   "manifestAuthorityPublicKeyFiles": ["keys/manifest-authority.pub.pem"],
   "runDir": "run",
   "observerEvidenceFile": "observer-evidence.json",

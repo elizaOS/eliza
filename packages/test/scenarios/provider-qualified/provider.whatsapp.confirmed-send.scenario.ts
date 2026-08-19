@@ -8,6 +8,7 @@ export default buildProviderCanary({
   id: "provider.whatsapp.confirmed-send",
   title: "Provider-qualified WhatsApp confirmed-send canary",
   provider: "whatsapp",
+  connectorProvider: "whatsapp",
   operation: "message-send",
   plugins: ["@elizaos/plugin-personal-assistant", "@elizaos/plugin-whatsapp"],
   effectLabel: "message send",

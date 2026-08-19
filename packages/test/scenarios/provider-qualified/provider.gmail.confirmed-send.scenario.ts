@@ -40,6 +40,7 @@ export default scenario({
       name: "gmail-canary-email-send",
       observerId: "gmail-provider-observer",
       provider: "gmail",
+      connectorProvider: "google",
       accountId: "operator-gmail-canary-account",
       operation: "email-send",
       minCount: 1,

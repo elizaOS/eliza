@@ -7,7 +7,8 @@ export default buildProviderCanary({
   isolation: "per-scenario",
   id: "provider.google-sheets.create",
   title: "Provider-qualified Google Drive and Sheets create canary",
-  provider: "google-sheets",
+  provider: "google-drive",
+  connectorProvider: "google",
   operation: "spreadsheet-create",
   plugins: [
     "@elizaos/plugin-personal-assistant",

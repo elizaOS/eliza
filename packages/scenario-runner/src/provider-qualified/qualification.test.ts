@@ -70,6 +70,7 @@ function scenario(): ScenarioDefinition {
         name: "calendar-create",
         observerId: "calendar-observer",
         provider: "google-calendar",
+        connectorProvider: "google",
         accountId: "parent-account",
         operation: "event-create",
       },
@@ -107,6 +108,12 @@ function bindings(
     target: {
       principalRefSha256: hash("principal"),
       roomRefSha256: hash("room"),
+      operation: {
+        schema: "eliza.provider-operation-binding.v1",
+        kind: "google-calendar.event-create",
+        providerTargetRefSha256: hash("provider-target"),
+        operationInputSha256: hash("operation-input"),
+      },
     },
     models: {
       actingAdapter: "eliza-runtime",
@@ -118,7 +125,7 @@ function bindings(
     },
     connectors: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         environment: "provider-sandbox",
@@ -126,7 +133,7 @@ function bindings(
     ],
     ingress: {
       kind: "provider-webhook",
-      provider: "google-calendar",
+      provider: "google",
       channel: "google-chat",
       accountRefSha256,
       connectionRefSha256,
@@ -136,7 +143,7 @@ function bindings(
     },
     capabilities: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         capability: "event-create",
@@ -151,7 +158,7 @@ function bindings(
         sourceKind: "provider-api",
         system: "google-calendar",
         environment: "provider-sandbox",
-        connectorProvider: "google-calendar",
+        connectorProvider: "google",
         accountRefSha256,
         connectionRefSha256,
         requiredCount: 1,
@@ -306,7 +313,7 @@ function fixture(): DeriveProviderQualificationInput & {
     connectorBindings: [
       {
         observationId: observation.observationId,
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("connection"),
       },
@@ -439,6 +446,7 @@ function noEffectFixture(): ReturnType<typeof fixture> {
       name: "calendar-no-effect",
       observerId: "calendar-observer",
       provider: "google-calendar",
+      connectorProvider: "google",
       accountId: "parent-account",
       intervalCoversScenario: true,
     },
@@ -459,7 +467,7 @@ function noEffectFixture(): ReturnType<typeof fixture> {
       sourceKind: "provider-api",
       system: "google-calendar",
       environment: "provider-sandbox",
-      connectorProvider: "google-calendar",
+      connectorProvider: "google",
       accountRefSha256: hash("parent-account"),
       connectionRefSha256: hash("connection"),
       requiredCount: 1,
@@ -509,7 +517,7 @@ function noEffectFixture(): ReturnType<typeof fixture> {
     connectorBindings: [
       {
         observationId: observation.observationId,
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("connection"),
       },

@@ -270,6 +270,8 @@ type TurnMatcher = string | RegExp;
 type TrustedObservationFilters = {
   observerId?: StringMatcher;
   provider?: StringMatcher;
+  /** Production connector/account namespace, which may differ from the external provider receipt namespace. */
+  connectorProvider?: StringMatcher;
   accountId?: StringMatcher;
   operation?: StringMatcher;
   resourceId?: StringMatcher;

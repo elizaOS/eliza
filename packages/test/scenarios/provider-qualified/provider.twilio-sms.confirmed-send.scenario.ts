@@ -37,6 +37,7 @@ export default scenario({
       name: "twilio-canary-sms-send",
       observerId: "twilio-provider-observer",
       provider: "twilio",
+      connectorProvider: "twilio",
       accountId: "operator-twilio-canary-account",
       operation: "sms-send",
       minCount: 1,

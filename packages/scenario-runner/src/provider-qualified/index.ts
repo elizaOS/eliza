@@ -2,6 +2,7 @@
 
 export * from "./canary-controller.ts";
 export * from "./manifest.ts";
+export * from "./operation-binding.ts";
 export * from "./operator-authorization.ts";
 export * from "./qualification.ts";
 export * from "./qualification-artifact.ts";

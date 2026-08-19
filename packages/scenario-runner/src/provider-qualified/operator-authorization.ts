@@ -20,6 +20,11 @@ import {
   type ProviderRunBindings,
 } from "./manifest.ts";
 import {
+  createProviderOperationBinding,
+  type ProviderOperationBinding,
+  type ProviderOperationKind,
+} from "./operation-binding.ts";
+import {
   type ProviderQualificationManifestSignature,
   providerManifestSigningBytes,
   providerObserverKeyId,
@@ -38,6 +43,11 @@ export interface AuthorizedProviderCanaryPreflight {
   status: "operator-authorization-validated";
   scenarioId: string;
   authorization: ProviderCanaryAuthorization;
+}
+
+export interface AuthorizedProviderCanaryExecutionPreflight
+  extends AuthorizedProviderCanaryPreflight {
+  targetBinding: ProviderOperationBinding;
 }
 
 const MAX_PINNED_MANIFEST_AUTHORITIES = 16;
@@ -150,6 +160,15 @@ export function authorizeProviderCanary(input: {
     manifest,
     manifestSignature,
   });
+}
+
+/** Hash provider-native routing and operation input without retaining raw values. */
+export function createProviderCanaryTargetBinding(input: {
+  kind: ProviderOperationKind;
+  providerTarget: unknown;
+  operationInput: unknown;
+}): ProviderOperationBinding {
+  return createProviderOperationBinding(input);
 }
 
 /**
@@ -276,4 +295,37 @@ export function preflightAuthorizedProviderCanary(input: {
     scenarioId: input.scenario.id,
     authorization: validatedAuthorization,
   });
+}
+
+/**
+ * Validate authorization and bind the raw, operator-controlled routing input
+ * to its manifest hashes before an external controller may execute ingress.
+ */
+export function preflightAuthorizedProviderCanaryExecution(input: {
+  scenario: ScenarioDefinition;
+  authorization: unknown;
+  pinnedManifestAuthorityPublicKeysPem: readonly [string, ...string[]];
+  operationKind: ProviderOperationKind;
+  providerTarget: unknown;
+  operationInput: unknown;
+}): AuthorizedProviderCanaryExecutionPreflight {
+  const preflight = preflightAuthorizedProviderCanary(input);
+  const targetBinding = createProviderCanaryTargetBinding({
+    kind: input.operationKind,
+    providerTarget: input.providerTarget,
+    operationInput: input.operationInput,
+  });
+  const expected = preflight.authorization.manifest.target.operation;
+  if (
+    targetBinding.schema !== expected.schema ||
+    targetBinding.kind !== expected.kind ||
+    targetBinding.providerTargetRefSha256 !==
+      expected.providerTargetRefSha256 ||
+    targetBinding.operationInputSha256 !== expected.operationInputSha256
+  ) {
+    fail(
+      "provider target or operation input does not match the signed manifest",
+    );
+  }
+  return Object.freeze({ ...preflight, targetBinding });
 }

@@ -8,6 +8,7 @@ export type ProviderCanaryConfig = {
   id: string;
   title: string;
   provider: string;
+  connectorProvider: string;
   operation: string;
   plugins: string[];
   effectLabel: string;
@@ -45,6 +46,7 @@ export function buildProviderCanary(config: ProviderCanaryConfig) {
         name: `${config.provider}-canary-${config.operation}`,
         observerId,
         provider: config.provider,
+        connectorProvider: config.connectorProvider,
         accountId,
         operation: config.operation,
         minCount: 1,

@@ -44,6 +44,7 @@ function scenario(): ScenarioDefinition {
         name: "calendar-create",
         observerId: "calendar-observer",
         provider: "google-calendar",
+        connectorProvider: "google",
         accountId: "parent-account",
         operation: "event-create",
         minCount: 1,
@@ -78,6 +79,12 @@ function bindings(): ProviderRunBindings {
     target: {
       principalRefSha256: hash("parent-principal"),
       roomRefSha256: hash("parent-room"),
+      operation: {
+        schema: "eliza.provider-operation-binding.v1",
+        kind: "google-calendar.event-create",
+        providerTargetRefSha256: hash("provider-target"),
+        operationInputSha256: hash("operation-input"),
+      },
     },
     models: {
       actingAdapter: "eliza-runtime",
@@ -89,7 +96,7 @@ function bindings(): ProviderRunBindings {
     },
     connectors: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         environment: "provider-sandbox",
@@ -97,7 +104,7 @@ function bindings(): ProviderRunBindings {
     ],
     ingress: {
       kind: "provider-webhook",
-      provider: "google-calendar",
+      provider: "google",
       channel: "google-chat",
       accountRefSha256,
       connectionRefSha256,
@@ -107,7 +114,7 @@ function bindings(): ProviderRunBindings {
     },
     capabilities: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         capability: "event-create",
@@ -122,7 +129,7 @@ function bindings(): ProviderRunBindings {
         sourceKind: "provider-api",
         system: "google-calendar",
         environment: "provider-sandbox",
-        connectorProvider: "google-calendar",
+        connectorProvider: "google",
         accountRefSha256,
         connectionRefSha256,
         requiredCount: 1,
@@ -462,7 +469,7 @@ describe("createProviderQualificationManifest", () => {
         sourceKind: "durable-database",
         system: "draft-store",
         environment: "provider-sandbox",
-        connectorProvider: "google-calendar",
+        connectorProvider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("google-connection"),
         requiredCount: 1,
@@ -487,6 +494,7 @@ describe("createProviderQualificationManifest", () => {
         name: "guest-availability-read",
         observerId: "outlook-observer",
         provider: "outlook-calendar",
+        connectorProvider: "outlook-calendar",
         accountId: "guest-account",
         minCount: 1,
         intervalCoversScenario: true,
@@ -547,7 +555,7 @@ describe("createProviderQualificationManifest", () => {
       bindings: multi,
     });
     expect(manifest.connectors).toHaveLength(2);
-    expect(manifest.ingress.provider).toBe("google-calendar");
+    expect(manifest.ingress.provider).toBe("google");
     expect(manifest.requiredObservations).toHaveLength(2);
   });
 

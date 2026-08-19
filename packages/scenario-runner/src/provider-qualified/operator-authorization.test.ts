@@ -9,7 +9,9 @@ import { describe, expect, it } from "vitest";
 import type { ProviderRunBindings } from "./manifest.ts";
 import {
   authorizeProviderCanary,
+  createProviderCanaryTargetBinding,
   preflightAuthorizedProviderCanary,
+  preflightAuthorizedProviderCanaryExecution,
 } from "./operator-authorization.ts";
 import { providerObserverKeyId } from "./qualification.ts";
 
@@ -43,6 +45,7 @@ function scenario(): ScenarioDefinition {
         name: "calendar-event-create",
         observerId: "calendar-observer",
         provider: "google-calendar",
+        connectorProvider: "google",
         accountId: "operator-calendar-account",
         operation: "event-create",
         minCount: 1,
@@ -77,7 +80,27 @@ function bindings(
         { observerId: "calendar-observer", keyId: observerKeyId },
       ],
     },
-    target: { principalRefSha256, roomRefSha256 },
+    target: {
+      principalRefSha256,
+      roomRefSha256,
+      operation: createProviderCanaryTargetBinding({
+        kind: "google-calendar.event-create",
+        providerTarget: { calendarId: "operator-canary-calendar" },
+        operationInput: {
+          title: "Harmless canary event",
+          start: "2026-08-20T17:00:00.000Z",
+          end: "2026-08-20T17:15:00.000Z",
+          timeZone: "UTC",
+          attendees: [],
+          location: null,
+          description: null,
+          createMeetLink: false,
+          sendUpdates: "none",
+          recurrence: [],
+          idempotencyKey: "calendar-canary-001",
+        },
+      }),
+    },
     models: {
       actingAdapter: "eliza-runtime",
       actingProvider: "acting-provider",
@@ -88,7 +111,7 @@ function bindings(
     },
     connectors: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         environment: "operator-canary",
@@ -96,7 +119,7 @@ function bindings(
     ],
     ingress: {
       kind: "provider-api",
-      provider: "google-calendar",
+      provider: "google",
       channel: "operator-canary",
       accountRefSha256,
       connectionRefSha256,
@@ -106,7 +129,7 @@ function bindings(
     },
     capabilities: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         capability: "event-create",
@@ -121,7 +144,7 @@ function bindings(
         sourceKind: "provider-api",
         system: "google-calendar",
         environment: "operator-canary",
-        connectorProvider: "google-calendar",
+        connectorProvider: "google",
         accountRefSha256,
         connectionRefSha256,
         requiredCount: 1,
@@ -150,6 +173,60 @@ function authority() {
 }
 
 describe("provider canary operator authorization", () => {
+  it("binds provider-native target and operation input before execution", () => {
+    const signer = authority();
+    const definition = scenario();
+    const providerTarget = { calendarId: "operator-canary-calendar" };
+    const operationInput = {
+      title: "Harmless canary event",
+      start: "2026-08-20T17:00:00.000Z",
+      end: "2026-08-20T17:15:00.000Z",
+      timeZone: "UTC",
+      attendees: [],
+      location: null,
+      description: null,
+      createMeetLink: false,
+      sendUpdates: "none",
+      recurrence: [],
+      idempotencyKey: "calendar-canary-001",
+    };
+    const targetBinding = createProviderCanaryTargetBinding({
+      kind: "google-calendar.event-create",
+      providerTarget,
+      operationInput,
+    });
+    const bound = bindings(signer.keyId);
+    bound.target = {
+      ...bound.target,
+      operation: targetBinding,
+    };
+    const authorization = authorizeProviderCanary({
+      scenario: definition,
+      bindings: bound,
+      manifestAuthorityPrivateKey: signer.privateKey,
+    });
+    expect(
+      preflightAuthorizedProviderCanaryExecution({
+        scenario: definition,
+        authorization,
+        pinnedManifestAuthorityPublicKeysPem: [signer.publicKeyPem],
+        operationKind: "google-calendar.event-create",
+        providerTarget,
+        operationInput,
+      }).targetBinding,
+    ).toEqual(targetBinding);
+    expect(() =>
+      preflightAuthorizedProviderCanaryExecution({
+        scenario: definition,
+        authorization,
+        pinnedManifestAuthorityPublicKeysPem: [signer.publicKeyPem],
+        operationKind: "google-calendar.event-create",
+        providerTarget: { calendarId: "wrong-calendar" },
+        operationInput,
+      }),
+    ).toThrow(/does not match the signed manifest/);
+  });
+
   it("authorizes and preflights one exact manifest without serializing the private key", () => {
     const signer = authority();
     const definition = scenario();

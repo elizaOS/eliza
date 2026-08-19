@@ -12,8 +12,12 @@ import { fileURLToPath } from "node:url";
 import { loadScenarioFile } from "../loader.ts";
 import type { ScenarioReport } from "../types.ts";
 import {
+  PROVIDER_OPERATION_KINDS,
+  type ProviderOperationKind,
+} from "./operation-binding.ts";
+import {
   type ProviderCanaryAuthorization,
-  preflightAuthorizedProviderCanary,
+  preflightAuthorizedProviderCanaryExecution,
 } from "./operator-authorization.ts";
 import type {
   SignedProviderObserverEvidence,
@@ -39,6 +43,9 @@ export interface ProviderQualificationVerifyConfig {
   schema: typeof PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA;
   scenarioFile: string;
   authorizationFile: string;
+  operationKind: ProviderOperationKind;
+  providerTargetFile: string;
+  operationInputFile: string;
   manifestAuthorityPublicKeyFiles: readonly [string, ...string[]];
   runDir: string;
   observerEvidenceFile: string;
@@ -110,6 +117,9 @@ export function parseProviderQualificationVerifyConfig(
     "schema",
     "scenarioFile",
     "authorizationFile",
+    "operationKind",
+    "providerTargetFile",
+    "operationInputFile",
     "manifestAuthorityPublicKeyFiles",
     "runDir",
     "observerEvidenceFile",
@@ -136,6 +146,12 @@ export function parseProviderQualificationVerifyConfig(
   if (input.schema !== PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA) {
     throw new Error("verify config schema is unsupported");
   }
+  const operationKind = requiredString(input.operationKind, "operationKind");
+  if (
+    !(PROVIDER_OPERATION_KINDS as readonly string[]).includes(operationKind)
+  ) {
+    throw new Error("operationKind is unsupported");
+  }
   const expected = input.expectedTrajectoryRelativePaths;
   if (
     expected !== undefined &&
@@ -150,6 +166,15 @@ export function parseProviderQualificationVerifyConfig(
     authorizationFile: requiredString(
       input.authorizationFile,
       "authorizationFile",
+    ),
+    operationKind: operationKind as ProviderOperationKind,
+    providerTargetFile: requiredString(
+      input.providerTargetFile,
+      "providerTargetFile",
+    ),
+    operationInputFile: requiredString(
+      input.operationInputFile,
+      "operationInputFile",
     ),
     manifestAuthorityPublicKeyFiles: stringArray(
       input.manifestAuthorityPublicKeyFiles,
@@ -349,10 +374,19 @@ export async function verifyProviderQualificationFromConfig(
     baseDir,
     config.manifestAuthorityPublicKeyFiles,
   );
-  const authorized = preflightAuthorizedProviderCanary({
+  const authorized = preflightAuthorizedProviderCanaryExecution({
     scenario,
     authorization,
     pinnedManifestAuthorityPublicKeysPem: authorityPins,
+    operationKind: config.operationKind,
+    providerTarget: readJson(
+      resolveFrom(baseDir, config.providerTargetFile),
+      "provider target",
+    ),
+    operationInput: readJson(
+      resolveFrom(baseDir, config.operationInputFile),
+      "provider operation input",
+    ),
   });
   const signedEvidence = readJson<SignedProviderObserverEvidence>(
     resolveFrom(baseDir, config.observerEvidenceFile),

@@ -8,6 +8,7 @@ export default buildProviderCanary({
   id: "provider.google-calendar.create",
   title: "Provider-qualified Google Calendar create canary",
   provider: "google-calendar",
+  connectorProvider: "google",
   operation: "event-create",
   plugins: [
     "@elizaos/plugin-personal-assistant",

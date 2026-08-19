@@ -8,6 +8,7 @@ export default buildProviderCanary({
   id: "provider.signal.confirmed-send",
   title: "Provider-qualified Signal confirmed-send canary",
   provider: "signal",
+  connectorProvider: "signal",
   operation: "message-send",
   plugins: ["@elizaos/plugin-personal-assistant", "@elizaos/plugin-signal"],
   effectLabel: "message send",

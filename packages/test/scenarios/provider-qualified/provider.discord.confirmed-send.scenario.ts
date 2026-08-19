@@ -37,6 +37,7 @@ export default scenario({
       name: "discord-canary-message-send",
       observerId: "discord-provider-observer",
       provider: "discord",
+      connectorProvider: "discord",
       accountId: "operator-discord-canary-account",
       operation: "message-send",
       minCount: 1,

@@ -8,6 +8,7 @@ export default buildProviderCanary({
   id: "provider.telegram.confirmed-send",
   title: "Provider-qualified Telegram confirmed-send canary",
   provider: "telegram",
+  connectorProvider: "telegram",
   operation: "message-send",
   plugins: ["@elizaos/plugin-personal-assistant", "@elizaos/plugin-telegram"],
   effectLabel: "message send",

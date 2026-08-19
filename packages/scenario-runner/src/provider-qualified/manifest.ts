@@ -11,6 +11,11 @@ import type {
   ScenarioDefinition,
   ScenarioFinalCheck,
 } from "@elizaos/scenario-runner/schema";
+import {
+  PROVIDER_OPERATION_CONTRACT_BY_KIND,
+  type ProviderOperationBinding,
+  validateProviderOperationBinding,
+} from "./operation-binding.ts";
 
 export const PROVIDER_QUALIFICATION_MANIFEST_SCHEMA =
   "eliza.provider-qualified-manifest.v1" as const;
@@ -129,6 +134,8 @@ export interface ProviderRunBindings {
   target: {
     principalRefSha256: string;
     roomRefSha256: string;
+    /** Typed, hash-only binding for provider-native routing and operation input. */
+    operation: ProviderOperationBinding;
   };
   models: {
     actingAdapter: string;
@@ -782,6 +789,22 @@ function contractMatchesCheck(
     fail(`${path}.operation`, "is not supported for this observation kind");
   }
   if (
+    contract.kind === "provider-effect" ||
+    contract.kind === "provider-no-effect"
+  ) {
+    if (
+      scalarString(check.connectorProvider, `${path}.connectorProvider`) !==
+      contract.connectorProvider
+    ) {
+      fail(path, "connector provider differs from the authored final check");
+    }
+  } else if (check.connectorProvider !== undefined) {
+    fail(
+      `${path}.connectorProvider`,
+      "is not supported for this observation kind",
+    );
+  }
+  if (
     contract.kind === "durable-approval" ||
     contract.kind === "durable-draft" ||
     contract.kind === "scheduled-task"
@@ -877,12 +900,14 @@ function validateBindings(
   requireExactKeys(bindings.target, "bindings.target", [
     "principalRefSha256",
     "roomRefSha256",
+    "operation",
   ]);
   requireSha256(
     bindings.target.principalRefSha256,
     "bindings.target.principalRefSha256",
   );
   requireSha256(bindings.target.roomRefSha256, "bindings.target.roomRefSha256");
+  validateProviderOperationBinding(bindings.target.operation);
 
   requireExactKeys(bindings.models, "bindings.models", [
     "actingAdapter",
@@ -1140,12 +1165,6 @@ function validateBindings(
       );
     }
     if (contract.kind === "provider-effect") {
-      if (contract.provider !== contract.connectorProvider) {
-        fail(
-          `bindings.observationContracts[${index}].provider`,
-          "must match the connector provider",
-        );
-      }
       if (
         !capabilityNames.has(`${boundConnectorKey}\u0000${contract.operation}`)
       ) {
@@ -1156,12 +1175,6 @@ function validateBindings(
       }
       hasProviderBoundary = true;
     } else if (contract.kind === "provider-no-effect") {
-      if (contract.provider !== contract.connectorProvider) {
-        fail(
-          `bindings.observationContracts[${index}].provider`,
-          "must match the connector provider",
-        );
-      }
       for (const effectKind of contract.effectKinds) {
         if (!capabilityNames.has(`${boundConnectorKey}\u0000${effectKind}`)) {
           fail(
@@ -1177,6 +1190,31 @@ function validateBindings(
     fail(
       "bindings.observationContracts",
       "must include provider-effect or provider-no-effect proof",
+    );
+  }
+  const targetContract =
+    PROVIDER_OPERATION_CONTRACT_BY_KIND[bindings.target.operation.kind];
+  const matchingTargetContracts = bindings.observationContracts.filter(
+    (contract) => {
+      if (
+        contract.kind !== "provider-effect" &&
+        contract.kind !== "provider-no-effect"
+      ) {
+        return false;
+      }
+      return (
+        contract.provider === targetContract.provider &&
+        contract.connectorProvider === targetContract.connectorProvider &&
+        (contract.kind === "provider-effect"
+          ? contract.operation === targetContract.operation
+          : contract.effectKinds.includes(targetContract.operation))
+      );
+    },
+  );
+  if (matchingTargetContracts.length !== 1) {
+    fail(
+      "bindings.target.operation",
+      "must match exactly one provider-effect or provider-no-effect observation contract",
     );
   }
   if (

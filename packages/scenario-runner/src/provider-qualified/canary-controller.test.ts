@@ -15,6 +15,10 @@ import {
   type ProviderRunBindings,
   preflightProviderCanary,
 } from "./index.ts";
+import {
+  PROVIDER_OPERATION_CONTRACT_BY_KIND,
+  type ProviderOperationKind,
+} from "./operation-binding.ts";
 
 const hash = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
@@ -22,30 +26,54 @@ const hash = (value: string): string =>
 type CanaryCase = {
   scenario: ScenarioDefinition;
   provider: string;
+  connectorProvider: string;
   observerId: string;
   accountId: string;
   operation: string;
+  operationKind: ProviderOperationKind;
 };
 
 const cases: CanaryCase[] = PROVIDER_CANARY_SCENARIOS.map((scenario) => {
   const check = scenario.finalChecks?.find(
     (candidate) => candidate.type === "providerEffectObserved",
   );
-  if (check?.type !== "providerEffectObserved") {
+  if (
+    check?.type !== "providerEffectObserved" ||
+    typeof check.provider !== "string" ||
+    typeof check.connectorProvider !== "string" ||
+    typeof check.observerId !== "string" ||
+    typeof check.accountId !== "string" ||
+    typeof check.operation !== "string"
+  ) {
     throw new Error(`${scenario.id} lacks its provider effect check`);
+  }
+  const operationKind = Object.entries(
+    PROVIDER_OPERATION_CONTRACT_BY_KIND,
+  ).find(
+    ([, contract]) =>
+      contract.provider === check.provider &&
+      contract.connectorProvider === check.connectorProvider &&
+      contract.operation === check.operation,
+  )?.[0] as ProviderOperationKind | undefined;
+  if (!operationKind) {
+    throw new Error(`${scenario.id} has no canonical operation binding kind`);
   }
   return {
     scenario,
     provider: check.provider,
+    connectorProvider: check.connectorProvider,
     observerId: check.observerId,
     accountId: check.accountId,
     operation: check.operation,
+    operationKind,
   };
 });
 
 function bindings(testCase: CanaryCase): ProviderRunBindings {
   const accountRefSha256 = hash(testCase.accountId);
-  const connectionRefSha256 = hash(`${testCase.provider}-canary-connection`);
+  const connectionRefSha256 = hash(
+    `${testCase.connectorProvider}-canary-connection`,
+  );
   return {
     runId: `run-${testCase.provider}-canary`,
     runNonce: "a".repeat(64),
@@ -63,6 +91,12 @@ function bindings(testCase: CanaryCase): ProviderRunBindings {
     target: {
       principalRefSha256: hash("operator-canary-principal"),
       roomRefSha256: hash(`${testCase.provider}-canary-room`),
+      operation: {
+        schema: "eliza.provider-operation-binding.v1",
+        kind: testCase.operationKind,
+        providerTargetRefSha256: hash(`${testCase.provider}-provider-target`),
+        operationInputSha256: hash(`${testCase.provider}-operation-input`),
+      },
     },
     models: {
       actingAdapter: "eliza-runtime",
@@ -74,7 +108,7 @@ function bindings(testCase: CanaryCase): ProviderRunBindings {
     },
     connectors: [
       {
-        provider: testCase.provider,
+        provider: testCase.connectorProvider,
         accountRefSha256,
         connectionRefSha256,
         environment: "operator-canary",
@@ -82,7 +116,7 @@ function bindings(testCase: CanaryCase): ProviderRunBindings {
     ],
     ingress: {
       kind: "provider-api",
-      provider: testCase.provider,
+      provider: testCase.connectorProvider,
       channel: `${testCase.provider}-canary`,
       accountRefSha256,
       connectionRefSha256,
@@ -92,7 +126,7 @@ function bindings(testCase: CanaryCase): ProviderRunBindings {
     },
     capabilities: [
       {
-        provider: testCase.provider,
+        provider: testCase.connectorProvider,
         accountRefSha256,
         connectionRefSha256,
         capability: testCase.operation,
@@ -107,7 +141,7 @@ function bindings(testCase: CanaryCase): ProviderRunBindings {
         sourceKind: "provider-api",
         system: testCase.provider,
         environment: "operator-canary",
-        connectorProvider: testCase.provider,
+        connectorProvider: testCase.connectorProvider,
         accountRefSha256,
         connectionRefSha256,
         requiredCount: 1,
