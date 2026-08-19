@@ -7,9 +7,11 @@
  * additionally resolves symlinks and verifies the real path stays under the workspace
  * root, since a string-prefix check on the unresolved path alone cannot catch a symlink
  * that escapes after normalization. read() and list() realpath() their full target;
- * write() walks each parent component with lstat before creating it, so a
- * symlink ancestor cannot mkdir descendants outside the workspace; when the
- * final component already exists it is realpath()'d the same way as read().
+ * write() walks each parent component with lstat and creates only real
+ * directories, so a symlink ancestor cannot mkdir descendants outside the
+ * workspace. Concurrent mkdir EEXIST is re-lstat'd and accepted only as a
+ * real directory (a swapped symlink still fails closed). When the final
+ * component already exists it is realpath()'d the same way as read().
  */
 import {
 	lstat,
@@ -312,7 +314,21 @@ export class DeviceFilesystemBridge extends Service {
 					throw error;
 				}
 				await this.assertRealPathWithinRoot(current);
-				await mkdir(next);
+				try {
+					await mkdir(next);
+				} catch (mkdirError) {
+					// error-policy:J3 a concurrent writer may have created this
+					// component between our lstat and mkdir; only EEXIST is
+					// benign, and only if a re-lstat still sees a real directory
+					// (a swapped symlink stays a confinement failure).
+					if (!isEexist(mkdirError)) {
+						throw mkdirError;
+					}
+					const raced = await lstat(next);
+					if (raced.isSymbolicLink() || !raced.isDirectory()) {
+						throw mkdirError;
+					}
+				}
 				current = next;
 			}
 		}
@@ -358,10 +374,18 @@ export class DeviceFilesystemBridge extends Service {
 }
 
 function isEnoent(error: unknown): boolean {
+	return isErrno(error, "ENOENT");
+}
+
+function isEexist(error: unknown): boolean {
+	return isErrno(error, "EEXIST");
+}
+
+function isErrno(error: unknown, code: string): boolean {
 	return (
 		typeof error === "object" &&
 		error !== null &&
-		(error as NodeJS.ErrnoException).code === "ENOENT"
+		(error as NodeJS.ErrnoException).code === code
 	);
 }
 
