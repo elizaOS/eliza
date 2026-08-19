@@ -1,7 +1,6 @@
 /**
- * Verifies stop() prevents an in-flight restart's start() from resurrecting
- * a socket for a session the caller already tore down. Mirrors the mocking
- * style in ../baileys/connection.test.ts.
+ * Deterministically exercises pairing lifecycle ownership across stopped,
+ * restarted, and replaced Baileys sockets.
  */
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -129,5 +128,76 @@ describe("WhatsAppPairingSession stop/restart race", () => {
     await vi.advanceTimersByTimeAsync(3000);
 
     expect(makeWASocket).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let an older in-flight restart join a later explicit start", async () => {
+    vi.useFakeTimers();
+
+    let releaseRestart: (() => void) | undefined;
+    const restartGate = new Promise<void>((resolve) => {
+      releaseRestart = resolve;
+    });
+    let versionCalls = 0;
+    vi.mocked(fetchLatestBaileysVersion).mockImplementation(async () => {
+      versionCalls++;
+      if (versionCalls === 2) await restartGate;
+      return { version: [2, 3000, 0] };
+    });
+
+    const session = new WhatsAppPairingSession({
+      authDir: "/tmp/whatsapp-pairing-test",
+      accountId: "acct-1",
+      onEvent: vi.fn(),
+    });
+    await session.start();
+    sockets[0]?.ev.emit("connection.update", {
+      connection: "close",
+      lastDisconnect: {
+        error: { output: { statusCode: DISCONNECT_REASON.restartRequired } },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(versionCalls).toBe(2);
+
+    session.stop();
+    await session.start();
+    expect(makeWASocket).toHaveBeenCalledTimes(2);
+
+    releaseRestart?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(makeWASocket).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores late close events from the socket a restart replaced", async () => {
+    vi.useFakeTimers();
+
+    const onEvent = vi.fn();
+    const session = new WhatsAppPairingSession({
+      authDir: "/tmp/whatsapp-pairing-test",
+      accountId: "acct-1",
+      onEvent,
+    });
+    await session.start();
+    const firstSocket = sockets[0];
+    firstSocket?.ev.emit("connection.update", {
+      connection: "close",
+      lastDisconnect: {
+        error: { output: { statusCode: DISCONNECT_REASON.restartRequired } },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(makeWASocket).toHaveBeenCalledTimes(2);
+
+    firstSocket?.ev.emit("connection.update", {
+      connection: "close",
+      lastDisconnect: {
+        error: { output: { statusCode: DISCONNECT_REASON.restartRequired } },
+      },
+    });
+    firstSocket?.ev.emit("connection.update", { connection: "open" });
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(makeWASocket).toHaveBeenCalledTimes(2);
+    expect(onEvent).not.toHaveBeenCalledWith(expect.objectContaining({ status: "connected" }));
   });
 });
