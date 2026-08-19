@@ -1,5 +1,5 @@
 /** Coordinates app-charge callback delivery and authorized room-message projection. */
-import { MemoryType } from "@elizaos/core";
+import { MemoryType, stringToUuid } from "@elizaos/core";
 import { randomUUID } from "crypto";
 import Decimal from "decimal.js";
 import { and, eq, lte, or } from "drizzle-orm";
@@ -214,6 +214,7 @@ export function createAppChargeCallbackPayload(
   params: AppChargeCallbackDispatchParams,
   chargeMetadata: Record<string, unknown>,
   expectedAmount: string | number,
+  createdAt = new Date().toISOString(),
 ): AppChargeCallbackPayload {
   const amount = decimalStringValue(params.amountUsd ?? expectedAmount);
   const channel = callbackChannel(chargeMetadata);
@@ -224,7 +225,7 @@ export function createAppChargeCallbackPayload(
 
   return {
     event: params.status === "paid" ? "app_charge.paid" : "app_charge.failed",
-    createdAt: new Date().toISOString(),
+    createdAt,
     charge: {
       id: params.chargeRequestId,
       appId: params.appId,
@@ -249,6 +250,24 @@ export function createAppChargeCallbackPayload(
 }
 
 export class AppChargeCallbacksService {
+  async failChargeAndEnqueue(params: AppChargeCallbackDispatchParams): Promise<boolean> {
+    return dbWrite.transaction(async (tx) => {
+      const [charge] = await tx
+        .select({ status: cryptoPayments.status })
+        .from(cryptoPayments)
+        .where(eq(cryptoPayments.id, params.chargeRequestId))
+        .for("update")
+        .limit(1);
+      if (!charge || charge.status === "confirmed") return false;
+      await tx
+        .update(cryptoPayments)
+        .set({ status: "failed", updated_at: new Date() })
+        .where(eq(cryptoPayments.id, params.chargeRequestId));
+      await this.enqueue(params, tx);
+      return true;
+    });
+  }
+
   async enqueue(
     params: AppChargeCallbackDispatchParams,
     transaction: DbTransaction,
@@ -424,7 +443,14 @@ export class AppChargeCallbacksService {
       return result;
     }
 
-    const payload = createAppChargeCallbackPayload(params, metadata, chargeRequest.expected_amount);
+    const payload = createAppChargeCallbackPayload(
+      params,
+      metadata,
+      chargeRequest.expected_amount,
+      chargeRequest.created_at instanceof Date
+        ? chargeRequest.created_at.toISOString()
+        : new Date(0).toISOString(),
+    );
 
     const channel = callbackChannel(metadata);
     if (channel && !options.skipRoom) {
@@ -551,8 +577,27 @@ export class AppChargeCallbacksService {
         ? `Payment went through for ${formatUsd(payload.payment.amountUsd)}.`
         : `Payment did not go through for ${formatUsd(payload.payment.amountUsd)}.`;
 
+    const memoryId = stringToUuid(
+      `app-charge-callback:${payload.payment.provider}:${payload.payment.providerPaymentId}:${payload.charge.id}:${payload.charge.status}`,
+    );
+    const existing = await memoriesRepository.findById(memoryId);
+    if (existing) {
+      const metadata =
+        existing.metadata && typeof existing.metadata === "object"
+          ? (existing.metadata as Record<string, unknown>)
+          : {};
+      if (
+        metadata.appChargeEvent !== payload.event ||
+        metadata.appChargeId !== payload.charge.id ||
+        metadata.providerPaymentId !== payload.payment.providerPaymentId
+      ) {
+        throw new Error("App callback deterministic room delivery identity is already bound");
+      }
+      return true;
+    }
+
     await memoriesRepository.create({
-      id: randomUUID(),
+      id: memoryId,
       roomId,
       entityId: agentId,
       agentId,

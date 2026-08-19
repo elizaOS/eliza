@@ -243,6 +243,7 @@ beforeAll(async () => {
         claim_token uuid,
         lease_expires_at timestamptz,
         last_error text,
+        prepared_transaction text,
         sweep_transaction_hash text,
         delivered_at timestamptz,
         terminal_at timestamptz,

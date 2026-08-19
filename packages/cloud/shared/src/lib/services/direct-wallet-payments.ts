@@ -5,13 +5,7 @@ import {
   getAccount,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
-import {
-  Connection,
-  Keypair,
-  PublicKey,
-  sendAndConfirmTransaction,
-  Transaction,
-} from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import Decimal from "decimal.js";
 import { and, eq, lte, or, sql } from "drizzle-orm";
@@ -24,6 +18,7 @@ import {
   type Hex,
   http,
   isAddress,
+  keccak256,
   parseAbiItem,
   parseEventLogs,
 } from "viem";
@@ -996,13 +991,19 @@ function evmPrivateKey(env: Bindings, network: DirectWalletNetwork): Hex | null 
   return (key.startsWith("0x") ? key : `0x${key}`) as Hex;
 }
 
-async function sweepEvmIfConfigured(params: {
+interface PreparedSweep {
+  rawTransaction: string;
+  transactionHash: string;
+  sweepTo: string;
+}
+
+async function prepareEvmSweep(params: {
   env: Bindings;
   cfg: DirectWalletNetworkConfig;
   tokenAddress: Hex | null;
   tokenDecimals: number;
   units: bigint;
-}): Promise<{ sweep_transaction_hash: string; sweep_to: string } | null> {
+}): Promise<PreparedSweep | null> {
   if (!params.tokenAddress || !params.cfg.secureAddress) return null;
   const privateKey = evmPrivateKey(params.env, params.cfg.network);
   if (!privateKey) return null;
@@ -1019,7 +1020,7 @@ async function sweepEvmIfConfigured(params: {
     chain: params.cfg.network === "base" ? base : bsc,
     transport: http(params.cfg.rpcUrl),
   });
-  const hash = await wallet.sendTransaction({
+  const request = await wallet.prepareTransactionRequest({
     to: params.tokenAddress,
     data: encodeFunctionData({
       abi: erc20Abi,
@@ -1027,7 +1028,39 @@ async function sweepEvmIfConfigured(params: {
       args: [getAddress(params.cfg.secureAddress), params.units],
     }),
   });
-  return { sweep_transaction_hash: hash, sweep_to: params.cfg.secureAddress };
+  const rawTransaction = await account.signTransaction(
+    request as Parameters<typeof account.signTransaction>[0],
+  );
+  return {
+    rawTransaction,
+    transactionHash: keccak256(rawTransaction),
+    sweepTo: params.cfg.secureAddress,
+  };
+}
+
+async function submitPreparedEvmSweep(
+  cfg: DirectWalletNetworkConfig,
+  prepared: PreparedSweep,
+): Promise<void> {
+  const client = createPublicClient({
+    chain: cfg.network === "base" ? base : bsc,
+    transport: http(cfg.rpcUrl),
+  });
+  try {
+    const existing = await client.getTransaction({
+      hash: prepared.transactionHash as Hex,
+    });
+    if (existing.hash.toLowerCase() === prepared.transactionHash.toLowerCase()) return;
+  } catch {
+    // error-policy:J4 Absence or a transient lookup error is safe because the
+    // dispatcher resends the exact same signed bytes and therefore the same hash.
+  }
+  const submitted = await client.sendRawTransaction({
+    serializedTransaction: prepared.rawTransaction as Hex,
+  });
+  if (submitted.toLowerCase() !== prepared.transactionHash.toLowerCase()) {
+    throw new Error("EVM provider returned a different sweep transaction hash");
+  }
 }
 
 function solanaKeypairFromEnv(env: Bindings): Keypair | null {
@@ -1039,11 +1072,22 @@ function solanaKeypairFromEnv(env: Bindings): Keypair | null {
   return Keypair.fromSecretKey(bs58.decode(raw));
 }
 
-async function sweepSolanaIfConfigured(params: {
+function bytesToBase64(value: Uint8Array): string {
+  let binary = "";
+  for (const byte of value) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+async function prepareSolanaSweep(params: {
   env: Bindings;
   cfg: DirectWalletNetworkConfig;
   units: bigint;
-}): Promise<{ sweep_transaction_hash: string; sweep_to: string } | null> {
+}): Promise<PreparedSweep | null> {
   if (!params.cfg.tokenMint || !params.cfg.secureAddress) return null;
   const payer = solanaKeypairFromEnv(params.env);
   if (!payer) return null;
@@ -1074,10 +1118,35 @@ async function sweepSolanaIfConfigured(params: {
       params.cfg.tokenDecimals,
     ),
   );
-  const hash = await sendAndConfirmTransaction(connection, tx, [payer], {
-    commitment: "confirmed",
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payer.publicKey;
+  tx.sign(payer);
+  if (!tx.signature) throw new Error("Solana sweep transaction has no signature");
+  return {
+    rawTransaction: bytesToBase64(tx.serialize()),
+    transactionHash: bs58.encode(tx.signature),
+    sweepTo: params.cfg.secureAddress,
+  };
+}
+
+async function submitPreparedSolanaSweep(
+  cfg: DirectWalletNetworkConfig,
+  prepared: PreparedSweep,
+): Promise<void> {
+  const connection = new Connection(cfg.rpcUrl, "confirmed");
+  const existing = await connection.getSignatureStatus(prepared.transactionHash, {
+    searchTransactionHistory: true,
   });
-  return { sweep_transaction_hash: hash, sweep_to: params.cfg.secureAddress };
+  if (existing.value && !existing.value.err) return;
+  const submitted = await connection.sendRawTransaction(base64ToBytes(prepared.rawTransaction), {
+    maxRetries: 0,
+    skipPreflight: false,
+  });
+  if (submitted !== prepared.transactionHash) {
+    throw new Error("Solana provider returned a different sweep transaction signature");
+  }
+  await connection.confirmTransaction(submitted, "confirmed");
 }
 
 interface DirectSweepPayload {
@@ -1900,16 +1969,49 @@ export class DirectWalletPaymentsService {
       const cfg = directPaymentConfig(env, payload.network);
       requireConfigured(cfg);
       const units = BigInt(payload.receivedUnits);
-      const sweep: { sweep_transaction_hash: string; sweep_to: string } | null =
-        payload.network === "solana"
-          ? await sweepSolanaIfConfigured({ env, cfg, units })
-          : await sweepEvmIfConfigured({
-              env,
-              cfg,
-              tokenAddress: payload.tokenAddress,
-              tokenDecimals: payload.tokenDecimals,
-              units,
-            });
+      const prepared: PreparedSweep | null =
+        claimed.prepared_transaction && claimed.sweep_transaction_hash && cfg.secureAddress
+          ? {
+              rawTransaction: claimed.prepared_transaction,
+              transactionHash: claimed.sweep_transaction_hash,
+              sweepTo: cfg.secureAddress,
+            }
+          : payload.network === "solana"
+            ? await prepareSolanaSweep({ env, cfg, units })
+            : await prepareEvmSweep({
+                env,
+                cfg,
+                tokenAddress: payload.tokenAddress,
+                tokenDecimals: payload.tokenDecimals,
+                units,
+              });
+      if (prepared && !claimed.prepared_transaction) {
+        const [persisted] = await dbWrite
+          .update(cryptoSweepOutbox)
+          .set({
+            prepared_transaction: prepared.rawTransaction,
+            sweep_transaction_hash: prepared.transactionHash,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(cryptoSweepOutbox.id, claimed.id),
+              eq(cryptoSweepOutbox.claim_token, claimToken),
+              sql`${cryptoSweepOutbox.prepared_transaction} IS NULL`,
+            ),
+          )
+          .returning({ id: cryptoSweepOutbox.id });
+        if (!persisted) {
+          throw new Error("Crypto sweep lease was lost before transaction preparation");
+        }
+      }
+      if (prepared) {
+        if (payload.network === "solana") {
+          await submitPreparedSolanaSweep(cfg, prepared);
+        } else {
+          await submitPreparedEvmSweep(cfg, prepared);
+        }
+      }
       externalSweepReturned = true;
       const completedAt = new Date();
       await hooks?.afterExternalSweep?.();
@@ -1931,7 +2033,7 @@ export class DirectWalletPaymentsService {
           .set({
             state: "delivered",
             delivered_at: completedAt,
-            sweep_transaction_hash: sweep?.sweep_transaction_hash ?? null,
+            sweep_transaction_hash: prepared?.transactionHash ?? null,
             claim_token: null,
             lease_expires_at: null,
             last_error: null,
@@ -1942,7 +2044,12 @@ export class DirectWalletPaymentsService {
           .update(cryptoPayments)
           .set({
             metadata: sql`COALESCE(${cryptoPayments.metadata}, '{}'::jsonb) || ${JSON.stringify({
-              sweep: sweep ?? { state: "not_configured" },
+              sweep: prepared
+                ? {
+                    sweep_transaction_hash: prepared.transactionHash,
+                    sweep_to: prepared.sweepTo,
+                  }
+                : { state: "not_configured" },
               sweep_completed_at: completedAt.toISOString(),
             })}::jsonb`,
             updated_at: completedAt,

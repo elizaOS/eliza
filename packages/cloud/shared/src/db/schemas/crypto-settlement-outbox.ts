@@ -2,6 +2,7 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -59,6 +60,7 @@ export const cryptoSweepOutbox = pgTable(
     claim_token: uuid("claim_token"),
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     last_error: text("last_error"),
+    prepared_transaction: text("prepared_transaction"),
     sweep_transaction_hash: text("sweep_transaction_hash"),
     delivered_at: timestamp("delivered_at", { withTimezone: true }),
     terminal_at: timestamp("terminal_at", { withTimezone: true }),
@@ -70,6 +72,10 @@ export const cryptoSweepOutbox = pgTable(
     due_idx: index("crypto_sweep_outbox_due_idx")
       .on(table.next_attempt_at, table.created_at)
       .where(sql`${table.state} IN ('pending', 'processing')`),
+    prepared_pair_check: check(
+      "crypto_sweep_outbox_prepared_pair_check",
+      sql`(${table.prepared_transaction} IS NULL) = (${table.sweep_transaction_hash} IS NULL)`,
+    ),
   }),
 );
 

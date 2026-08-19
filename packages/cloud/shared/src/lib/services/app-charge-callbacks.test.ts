@@ -135,4 +135,18 @@ describe("AppChargeCallbacksService — SSRF-guarded HTTP callback", () => {
     expect(result.httpPosted).toBe(false);
     expect(result.errors[0]).toContain("500");
   });
+
+  it("retries with an immutable callback envelope", async () => {
+    seedCharge({
+      kind: "app_charge_request",
+      app_id: APP_ID,
+      callback_url: CALLBACK_URL,
+    });
+
+    await appChargeCallbacksService.dispatch(DISPATCH_PARAMS);
+    await appChargeCallbacksService.dispatch(DISPATCH_PARAMS);
+
+    expect(safeFetchCalls).toHaveLength(2);
+    expect(String(safeFetchCalls[1]?.init?.body)).toBe(String(safeFetchCalls[0]?.init?.body));
+  });
 });

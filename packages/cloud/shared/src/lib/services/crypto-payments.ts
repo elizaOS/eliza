@@ -38,6 +38,7 @@ export type CryptoPaymentErrorCode =
   | "INVALID_UUID"
   | "AMOUNT_TOO_SMALL"
   | "AMOUNT_TOO_LARGE"
+  | "INVALID_CURRENCY"
   | "SERVICE_NOT_CONFIGURED"
   | "PAYMENT_NOT_FOUND"
   | "PAYMENT_ALREADY_CONFIRMED"
@@ -69,7 +70,6 @@ export interface CreatePaymentParams {
   payCurrency?: string;
   network?: OxaPayNetwork;
   description?: string;
-  callbackUrl?: string;
   returnUrl?: string;
   metadata?: Record<string, unknown>;
 }
@@ -96,6 +96,7 @@ const paymentMetadataSchema = z
     pay_link: z.string().optional(),
     fiat_currency: z.string().optional(),
     fiat_amount: z.union([z.string(), z.number()]).optional(),
+    oxapay_order_id: z.string().optional(),
   })
   .passthrough();
 
@@ -127,6 +128,7 @@ function storedInvoiceSettlement(value: unknown): NewInvoice {
 
 interface OxaSettlementEvidence {
   trackId: string;
+  orderId: string;
   invoiceAmount: string;
   invoiceCurrency: string;
   payCurrency: string;
@@ -134,11 +136,13 @@ interface OxaSettlementEvidence {
 
 function oxaQuoteForPayment(payment: CryptoPayment): {
   trackId: string;
+  orderId?: string;
   fiatAmount: string;
   fiatCurrency: string;
 } {
   const metadata = extractMetadata(payment.metadata);
   const trackId = getTrackId(metadata);
+  const orderId = metadata.oxapay_order_id?.trim();
   const rawAmount = metadata.fiat_amount ?? payment.expected_amount;
   const fiatAmount = new Decimal(rawAmount).toFixed();
   const fiatCurrency = metadata.fiat_currency?.trim().toUpperCase();
@@ -148,7 +152,7 @@ function oxaQuoteForPayment(payment: CryptoPayment): {
       context: { paymentId: payment.id },
     });
   }
-  return { trackId, fiatAmount, fiatCurrency };
+  return { trackId, orderId, fiatAmount, fiatCurrency };
 }
 
 function validateOxaSettlementEvidence(
@@ -169,6 +173,7 @@ function validateOxaSettlementEvidence(
   }
   if (
     evidence.trackId !== quote.trackId ||
+    (quote.orderId !== undefined && evidence.orderId !== quote.orderId) ||
     !invoiceAmount.equals(quote.fiatAmount) ||
     evidence.invoiceCurrency.trim().toUpperCase() !== quote.fiatCurrency
   ) {
@@ -259,14 +264,45 @@ function appChargeFailureCallbackForPayment(
   };
 }
 
-async function dispatchAppChargeFailureForPayment(
+async function persistAppChargeFailureForPayment(
   payment: CryptoPayment,
+  status: "expired" | "failed",
   reason: string,
 ): Promise<void> {
   const callback = appChargeFailureCallbackForPayment(payment, reason);
-  if (callback) {
-    await appChargeCallbacksService.dispatch(callback);
-  }
+  await dbWrite.transaction(async (tx) => {
+    const [locked] = await tx
+      .select()
+      .from(cryptoPayments)
+      .where(eq(cryptoPayments.id, payment.id))
+      .for("update")
+      .limit(1);
+    if (!locked || locked.status === "confirmed") return;
+    await tx
+      .update(cryptoPayments)
+      .set({
+        status,
+        metadata: {
+          ...(locked.metadata ?? {}),
+          failureReason: reason,
+        },
+        updated_at: new Date(),
+      })
+      .where(eq(cryptoPayments.id, payment.id));
+    if (!callback) return;
+    const [chargeRequest] = await tx
+      .select({ status: cryptoPayments.status })
+      .from(cryptoPayments)
+      .where(eq(cryptoPayments.id, callback.chargeRequestId))
+      .for("update")
+      .limit(1);
+    if (!chargeRequest || chargeRequest.status === "confirmed") return;
+    await tx
+      .update(cryptoPayments)
+      .set({ status: "failed", updated_at: new Date() })
+      .where(eq(cryptoPayments.id, callback.chargeRequestId));
+    await appChargeCallbacksService.enqueue(callback, tx);
+  });
 }
 
 /**
@@ -311,6 +347,13 @@ class CryptoPaymentsService {
       throw new CryptoPaymentError("SERVICE_NOT_CONFIGURED", "Payment service not configured");
     }
 
+    if (currency.trim().toUpperCase() !== "USD") {
+      throw new CryptoPaymentError(
+        "INVALID_CURRENCY",
+        "Crypto credit purchases are priced only in USD",
+      );
+    }
+
     const amountDecimal = new Decimal(amount);
     const validation = validatePaymentAmount(amountDecimal);
 
@@ -324,9 +367,7 @@ class CryptoPaymentsService {
     // OXAPAY_CALLBACK_URL: Override for local development with ngrok.
     // In production, falls back to NEXT_PUBLIC_APP_URL which points to the live domain.
     const callbackUrl =
-      params.callbackUrl ||
-      process.env.OXAPAY_CALLBACK_URL ||
-      `${process.env.NEXT_PUBLIC_APP_URL}/api/crypto/webhook`;
+      process.env.OXAPAY_CALLBACK_URL || `${process.env.NEXT_PUBLIC_APP_URL}/api/crypto/webhook`;
 
     const returnUrl =
       params.returnUrl ||
@@ -363,6 +404,7 @@ class CryptoPaymentsService {
       metadata: {
         ...(metadata ?? {}),
         oxapay_track_id: oxaInvoice.trackId,
+        oxapay_order_id: orderId,
         pay_link: oxaInvoice.payLink,
         fiat_currency: currency,
         fiat_amount: amountDecimal.toFixed(),
@@ -441,6 +483,7 @@ class CryptoPaymentsService {
 
         await this.confirmPayment(payment.id, tx.txHash, {
           trackId: oxaStatus.trackId,
+          orderId: oxaStatus.orderId,
           invoiceAmount: oxaStatus.amount,
           invoiceCurrency: oxaStatus.currency,
           payCurrency: tx.currency,
@@ -458,8 +501,7 @@ class CryptoPaymentsService {
       }
 
       if (oxaPayService.isPaymentExpired(oxaStatus.status)) {
-        await cryptoPaymentsRepository.markAsExpired(payment.id);
-        await dispatchAppChargeFailureForPayment(payment, "expired");
+        await persistAppChargeFailureForPayment(payment, "expired", "expired");
         const expiredPayment = await cryptoPaymentsRepository.findById(payment.id);
         if (!expiredPayment) {
           throw new Error("Failed to retrieve expired payment");
@@ -472,8 +514,7 @@ class CryptoPaymentsService {
       }
 
       if (oxaPayService.isPaymentFailed(oxaStatus.status)) {
-        await cryptoPaymentsRepository.markAsFailed(payment.id, oxaStatus.status);
-        await dispatchAppChargeFailureForPayment(payment, oxaStatus.status);
+        await persistAppChargeFailureForPayment(payment, "failed", oxaStatus.status);
         const failedPayment = await cryptoPaymentsRepository.findById(payment.id);
         if (!failedPayment) {
           throw new Error("Failed to retrieve failed payment");
@@ -931,6 +972,7 @@ class CryptoPaymentsService {
 
       await this.confirmPayment(payment.id, matchingTx.txHash, {
         trackId: oxaStatus.trackId,
+        orderId: oxaStatus.orderId,
         invoiceAmount: oxaStatus.amount,
         invoiceCurrency: oxaStatus.currency,
         payCurrency: matchingTx.currency || payment.token,
@@ -1077,6 +1119,7 @@ class CryptoPaymentsService {
 
         await this.confirmPayment(payment.id, tx.txHash || txID || track_id, {
           trackId: oxaStatus.trackId,
+          orderId: oxaStatus.orderId,
           invoiceAmount: oxaStatus.amount,
           invoiceCurrency: oxaStatus.currency,
           payCurrency: tx.currency,
@@ -1085,14 +1128,12 @@ class CryptoPaymentsService {
       }
 
       if (oxaPayService.isPaymentExpired(status)) {
-        await cryptoPaymentsRepository.markAsExpired(payment.id);
-        await dispatchAppChargeFailureForPayment(payment, "expired");
+        await persistAppChargeFailureForPayment(payment, "expired", "expired");
         return { success: true, message: "Payment marked as expired" };
       }
 
       if (oxaPayService.isPaymentFailed(status)) {
-        await cryptoPaymentsRepository.markAsFailed(payment.id, status);
-        await dispatchAppChargeFailureForPayment(payment, status);
+        await persistAppChargeFailureForPayment(payment, "failed", status);
         return { success: true, message: "Payment marked as failed" };
       }
 
@@ -1129,6 +1170,10 @@ class CryptoPaymentsService {
 
   async listExpiredPendingPayments(): Promise<CryptoPayment[]> {
     return cryptoPaymentsRepository.listExpiredPendingPayments();
+  }
+
+  async expirePaymentWithCallback(payment: CryptoPayment): Promise<void> {
+    await persistAppChargeFailureForPayment(payment, "expired", "expired");
   }
 
   private formatPaymentStatus(payment: CryptoPayment): PaymentStatus {

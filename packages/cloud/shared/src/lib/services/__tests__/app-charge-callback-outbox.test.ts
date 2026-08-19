@@ -163,4 +163,30 @@ describe("app charge callback outbox", () => {
       settlementService.markPaid({ ...settlement, providerPaymentId: "pi_other" }),
     ).rejects.toThrow("already settled by another payment");
   });
+
+  test("failed charge status and notification intent commit atomically", async () => {
+    await dbWrite.execute(`UPDATE crypto_payments SET status='pending' WHERE id='${CHARGE_ID}'`);
+    const failed = { ...params, status: "failed" as const, reason: "provider declined" };
+
+    expect(await service.failChargeAndEnqueue(failed)).toBe(true);
+    const rows = await dbWrite.execute(`
+      SELECT p.status, o.payload, o.state
+      FROM crypto_payments p
+      JOIN app_charge_callback_outbox o ON o.charge_request_id = p.id
+      WHERE p.id='${CHARGE_ID}'
+    `);
+    expect(rows.rows).toHaveLength(1);
+    expect((rows.rows[0] as { status: string }).status).toBe("failed");
+    expect((rows.rows[0] as { payload: { status: string } }).payload.status).toBe("failed");
+    expect((rows.rows[0] as { state: string }).state).toBe("pending");
+
+    await dbWrite.execute(`UPDATE crypto_payments SET status='confirmed' WHERE id='${CHARGE_ID}'`);
+    expect(
+      await service.failChargeAndEnqueue({ ...failed, providerPaymentId: "pi_late_failure" }),
+    ).toBe(false);
+    const late = await dbWrite.execute(
+      "SELECT count(*)::int AS count FROM app_charge_callback_outbox",
+    );
+    expect((late.rows[0] as { count: number }).count).toBe(1);
+  });
 });

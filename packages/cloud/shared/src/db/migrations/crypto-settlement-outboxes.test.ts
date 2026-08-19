@@ -45,6 +45,19 @@ describe("0255 crypto settlement migration", () => {
       "SELECT transaction_hash FROM crypto_payments ORDER BY transaction_hash",
     );
     expect(rows.rows.map((row) => row.transaction_hash)).toEqual(["0xabcd", "SoLaNaCase"]);
+    const preparedColumn = await db.query<{ data_type: string }>(`
+      SELECT data_type FROM information_schema.columns
+      WHERE table_name = 'crypto_sweep_outbox' AND column_name = 'prepared_transaction'
+    `);
+    expect(preparedColumn.rows).toEqual([{ data_type: "text" }]);
+    await expect(
+      db.exec(`INSERT INTO crypto_sweep_outbox(
+        payment_id, payload, payload_digest, prepared_transaction
+      ) VALUES (
+        (SELECT id FROM crypto_payments WHERE transaction_hash = '0xabcd'),
+        '{}', 'digest', 'signed-transaction'
+      )`),
+    ).rejects.toThrow(/prepared_pair/i);
     await expect(
       db.exec("INSERT INTO crypto_payments(transaction_hash, status) VALUES ('0xABCD', 'pending')"),
     ).rejects.toThrow();
