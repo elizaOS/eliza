@@ -1,145 +1,127 @@
 /**
- * Compile-time ReDoS gate for in-process VFS grep/rg patterns.
- *
- * `RegExp#test` is synchronous and cannot be aborted. Nested quantifiers and
- * quantified alternation (`(a+)+$`, `(a|aa)+`) hang the agent on ordinary
- * file lines — origin: 20 × 28-`a` lines took ~9s on Bun; one line hung Node
- * past 8s. Character classes are skipped so `[a+]+` stays legal.
+ * Runs caller-supplied VFS grep expressions outside the agent event loop.
+ * JavaScript regular-expression evaluation is synchronous, so the worker is
+ * terminated when a search exceeds its fixed CPU-time budget.
  */
+import { Worker } from "node:worker_threads";
 
-/** Longest grep/rg pattern accepted before compile. */
+/** Longest grep/rg pattern accepted before worker startup. */
 export const MAX_VFS_SEARCH_PATTERN_LENGTH = 512;
 
-export type CompiledVfsSearchPattern =
-  | { ok: true; matcher: RegExp }
+/** Wall-clock budget for compiling and evaluating one VFS search. */
+export const VFS_SEARCH_PATTERN_TIMEOUT_MS = 1_000;
+
+export type VfsSearchPatternResult =
+  | { ok: true; selectedLineIndexes: number[][] }
   | { ok: false; error: string };
 
+const WORKER_SOURCE = `
+const { parentPort, workerData } = require("node:worker_threads");
+
+try {
+  const matcher = new RegExp(workerData.pattern, workerData.ignoreCase ? "i" : "");
+  const selectedLineIndexes = workerData.linesByTarget.map((lines) => {
+    const selected = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      matcher.lastIndex = 0;
+      const matches = matcher.test(lines[index]);
+      if (workerData.invertMatch ? !matches : matches) {
+        selected.push(index);
+        if (workerData.filesWithMatches) break;
+      }
+    }
+    return selected;
+  });
+  parentPort.postMessage({ ok: true, selectedLineIndexes });
+} catch (error) {
+  parentPort.postMessage({
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+`;
+
 /**
- * Compile a VFS grep/rg pattern, rejecting nested quantifiers and quantified
- * alternation that would backtrack catastrophically on ordinary file lines.
+ * Compile and evaluate a VFS grep pattern in a disposable worker. This keeps
+ * full JavaScript RegExp compatibility while making catastrophic backtracking
+ * terminate without blocking the agent process.
  */
-export function compileVfsSearchPattern(
-  pattern: string,
-  ignoreCase = false,
-): CompiledVfsSearchPattern {
-  if (pattern.length > MAX_VFS_SEARCH_PATTERN_LENGTH) {
-    return {
+export function runVfsSearchPattern(options: {
+  pattern: string;
+  ignoreCase: boolean;
+  invertMatch: boolean;
+  filesWithMatches: boolean;
+  linesByTarget: string[][];
+  timeoutMs?: number;
+}): Promise<VfsSearchPatternResult> {
+  if (options.pattern.length > MAX_VFS_SEARCH_PATTERN_LENGTH) {
+    return Promise.resolve({
       ok: false,
       error: `pattern longer than ${MAX_VFS_SEARCH_PATTERN_LENGTH} characters`,
-    };
+    });
   }
-  if (vfsSearchPatternIsUnsafe(pattern)) {
-    return {
-      ok: false,
-      error:
-        "unsafe regular expression (nested quantifiers or quantified alternation)",
-    };
-  }
+
+  let worker: Worker;
   try {
-    return { ok: true, matcher: new RegExp(pattern, ignoreCase ? "i" : "") };
+    worker = new Worker(WORKER_SOURCE, {
+      eval: true,
+      name: "eliza-vfs-regex",
+      resourceLimits: { maxOldGenerationSizeMb: 64 },
+      workerData: {
+        pattern: options.pattern,
+        ignoreCase: options.ignoreCase,
+        invertMatch: options.invertMatch,
+        filesWithMatches: options.filesWithMatches,
+        linesByTarget: options.linesByTarget,
+      },
+    });
   } catch (error) {
-    return {
+    return Promise.resolve({
       ok: false,
       error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timedOut = false;
+    const settle = (result: VfsSearchPatternResult): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      resolve(result);
     };
-  }
-}
+    const timeoutMs = options.timeoutMs ?? VFS_SEARCH_PATTERN_TIMEOUT_MS;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      void worker.terminate().then(
+        () => settle({ ok: false, error: "regular expression timed out" }),
+        (error: unknown) =>
+          settle({
+            ok: false,
+            error: `regular expression timed out; worker termination failed: ${error instanceof Error ? error.message : String(error)}`,
+          }),
+      );
+    }, timeoutMs);
 
-/**
- * True when a group that already has a quantifier or alternation is itself
- * quantified — the star-height > 1 shape that makes `(a+)+$` and `(a|aa)+`
- * hang a synchronous `RegExp#test`.
- */
-export function vfsSearchPatternIsUnsafe(source: string): boolean {
-  type Frame = { quantifiedAtom: boolean; alternation: boolean };
-  const stack: Frame[] = [{ quantifiedAtom: false, alternation: false }];
-  let escaped = false;
-  let i = 0;
-  while (i < source.length) {
-    const ch = source[i];
-    const frame = stack[stack.length - 1];
-    if (frame === undefined) return true;
-    if (escaped) {
-      escaped = false;
-      i += 1;
-      continue;
-    }
-    if (ch === "\\") {
-      escaped = true;
-      i += 1;
-      continue;
-    }
-    if (ch === "(") {
-      stack.push({ quantifiedAtom: false, alternation: false });
-      if (source.startsWith("?", i + 1)) {
-        i += 2;
-        continue;
+    worker.once("message", (result: VfsSearchPatternResult) => settle(result));
+    worker.once("error", (error) =>
+      settle({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    worker.once("exit", (code) => {
+      if (timedOut) {
+        settle({ ok: false, error: "regular expression timed out" });
+        return;
       }
-      i += 1;
-      continue;
-    }
-    if (ch === ")") {
-      if (stack.length <= 1) {
-        i += 1;
-        continue;
+      if (!settled && code !== 0) {
+        settle({
+          ok: false,
+          error: `regular expression worker exited with code ${code}`,
+        });
       }
-      const closed = stack.pop();
-      i += 1;
-      if (closed === undefined) return true;
-      if (isQuantifierStart(source[i])) {
-        if (closed.quantifiedAtom || closed.alternation) return true;
-        const parent = stack[stack.length - 1];
-        if (parent) parent.quantifiedAtom = true;
-        i = skipQuantifier(source, i);
-      }
-      continue;
-    }
-    if (ch === "[") {
-      i = skipCharacterClass(source, i);
-      continue;
-    }
-    if (ch === "|" && stack.length > 1) {
-      frame.alternation = true;
-      i += 1;
-      continue;
-    }
-    if (isQuantifierStart(ch)) {
-      frame.quantifiedAtom = true;
-      i = skipQuantifier(source, i);
-      continue;
-    }
-    i += 1;
-  }
-  return false;
-}
-
-function isQuantifierStart(ch: string | undefined): boolean {
-  return ch === "*" || ch === "+" || ch === "?" || ch === "{";
-}
-
-function skipCharacterClass(source: string, index: number): number {
-  let i = index + 1;
-  if (source[i] === "^") i += 1;
-  if (source[i] === "]") i += 1;
-  while (i < source.length) {
-    if (source[i] === "\\") {
-      i += 2;
-      continue;
-    }
-    if (source[i] === "]") return i + 1;
-    i += 1;
-  }
-  return source.length;
-}
-
-function skipQuantifier(source: string, index: number): number {
-  const ch = source[index];
-  if (ch === "*" || ch === "+" || ch === "?") {
-    const next = index + 1;
-    return source[next] === "?" ? next + 1 : next;
-  }
-  if (ch !== "{") return index + 1;
-  const close = source.indexOf("}", index + 1);
-  if (close < 0) return source.length;
-  return source[close + 1] === "?" ? close + 2 : close + 1;
+    });
+  });
 }

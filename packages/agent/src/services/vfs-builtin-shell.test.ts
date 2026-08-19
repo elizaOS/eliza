@@ -121,7 +121,10 @@ describe("runVfsBuiltinShell", () => {
   it("rejects nested-quantifier grep patterns before testing VFS lines", async () => {
     const vfs = createVirtualFilesystemService({ projectId: "redos" });
     await vfs.initialize();
-    await vfs.writeFile("src/bomb.ts", `${"a".repeat(28)}!\n`);
+    await vfs.writeFile(
+      "src/bomb.ts",
+      Array.from({ length: 20 }, () => `${"a".repeat(28)}!`).join("\n"),
+    );
 
     const startedAt = Date.now();
     const result = await runVfsBuiltinShell({
@@ -129,9 +132,9 @@ describe("runVfsBuiltinShell", () => {
       command: "grep",
       args: ["(a+)+$", "."],
     });
-    expect(Date.now() - startedAt).toBeLessThan(200);
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
     expect(result).toMatchObject({ exitCode: 2, stdout: "" });
-    expect(result.stderr).toContain("unsafe regular expression");
+    expect(result.stderr).toContain("regular expression timed out");
   });
 
   it("keeps command separators inside quoted arguments", async () => {
