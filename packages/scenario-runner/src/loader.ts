@@ -8,6 +8,7 @@ import { lstat, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { ElizaError } from "@elizaos/core";
 import {
   DEFAULT_SCENARIO_LANE,
   type ScenarioDefinition,
@@ -51,7 +52,7 @@ export interface ScenarioMetadata {
   file: string;
   id: string;
   status?: string;
-  title?: string;
+  title: string;
   /** Persona-scenario complexity tier as declared in the file. */
   tier?: string;
   /** CI lane as declared in the file; absent means the default lane. */
@@ -338,6 +339,7 @@ function assertStaticScenarioMetadataObject(
   objectLiteral: ts.ObjectLiteralExpression,
   file: string,
 ): void {
+  const authoredPropertyNames = new Set<string>();
   for (const property of objectLiteral.properties) {
     if (ts.isSpreadAssignment(property)) {
       throw new Error(
@@ -352,6 +354,35 @@ function assertStaticScenarioMetadataObject(
       throw new Error(
         `[scenario-loader] ${file}: scenario metadata cannot use computed property names because certification fields would not be statically auditable`,
       );
+    }
+    if ("name" in property && property.name) {
+      const name = propertyNameText(property.name);
+      if (
+        name &&
+        [
+          "id",
+          "title",
+          "status",
+          "tier",
+          "lane",
+          "evidenceClass",
+          "certificationClass",
+          "executionProfile",
+        ].includes(name) &&
+        (ts.isGetAccessorDeclaration(property) ||
+          ts.isSetAccessorDeclaration(property) ||
+          ts.isMethodDeclaration(property))
+      ) {
+        throw new Error(
+          `[scenario-loader] ${file}: ${name} must be a statically readable property assignment`,
+        );
+      }
+      if (name && authoredPropertyNames.has(name)) {
+        throw new Error(
+          `[scenario-loader] ${file}: scenario metadata cannot declare duplicate property "${name}" because static and runtime classification could disagree`,
+        );
+      }
+      if (name) authoredPropertyNames.add(name);
     }
   }
 }
@@ -456,8 +487,10 @@ export async function loadScenarioMetadataFile(
   try {
     scenarioCertificationClass(metadata as unknown as ScenarioDefinition);
   } catch (err) {
-    throw new Error(
+    // error-policy:J2 Preserve the schema failure beneath the static-loader boundary.
+    throw new ElizaError(
       `[scenario-loader] ${file}: ${err instanceof Error ? err.message : String(err)}`,
+      { code: "SCENARIO_METADATA_INVALID", cause: err, context: { file } },
     );
   }
   return metadata;

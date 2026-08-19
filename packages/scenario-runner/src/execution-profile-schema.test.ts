@@ -134,15 +134,22 @@ describe("scenario evidence and certification classes", () => {
   });
 
   it("requires certification language to carry an explicit bounded class", () => {
-    expect(() =>
-      scenario({
-        ...base,
-        id: "fixture.certify-provider",
-        title: "Certify provider delivery",
-      }),
-    ).toThrow(
-      /uses certification language but does not declare certificationClass/,
-    );
+    for (const title of [
+      "Certify provider delivery",
+      "Certified provider delivery",
+      "Certifying provider delivery",
+      "Provider delivery certifications",
+    ]) {
+      expect(() =>
+        scenario({
+          ...base,
+          id: "fixture.provider-claim",
+          title,
+        }),
+      ).toThrow(
+        /uses certification language but does not declare certificationClass/,
+      );
+    }
   });
 
   it("accepts an explicitly provider-qualified webhook contract", () => {

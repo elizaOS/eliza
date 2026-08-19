@@ -606,7 +606,7 @@ export type ScenarioDefinition = {
    * Highest certification label this definition may use. This is authoring
    * metadata, not proof that a run qualified; reports and external observers
    * remain authoritative. Absent means `none`; definitions whose id or title
-   * says certify/certified/certification must declare the bounded class
+   * uses certification language must declare the bounded class
    * explicitly.
    */
   certificationClass?: ScenarioCertificationClass;

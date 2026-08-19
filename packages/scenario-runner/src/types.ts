@@ -13,7 +13,9 @@ import type {
   CapturedConnectorDispatch,
   CapturedMemoryWrite,
   CapturedStateTransition,
+  ScenarioCertificationClass,
   ScenarioContext,
+  ScenarioEvidenceClass,
   ScenarioExecutionProfile,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
@@ -304,6 +306,16 @@ export interface ScenarioReport {
    * rather than relabeling them simulated.
    */
   executionProfile?: ScenarioExecutionProfile;
+  /**
+   * Observable boundary declared by the scenario and validated against the
+   * effective execution profile. Optional only for legacy report producers.
+   */
+  evidenceClass?: ScenarioEvidenceClass;
+  /**
+   * Maximum certification claim supported by the declared evidence boundary.
+   * This is classification metadata, not a provider qualification decision.
+   */
+  certificationClass?: ScenarioCertificationClass;
   /**
    * Trusted, hashed evidence captured outside the action-result/model-prose
    * path. The reporter validates profile agreement, provenance references, and

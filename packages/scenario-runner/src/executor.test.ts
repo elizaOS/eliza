@@ -88,6 +88,10 @@ describe("scenario executor wait turns", () => {
     );
 
     expect(report.status).toBe("passed");
+    expect(report).toMatchObject({
+      evidenceClass: "simulated",
+      certificationClass: "none",
+    });
     expect(handleMessage).not.toHaveBeenCalled();
     expect(runtime.useModel).not.toHaveBeenCalled();
     expect(report.turns[0]).toMatchObject({
@@ -127,6 +131,30 @@ describe("scenario executor wait turns", () => {
 });
 
 describe("provider-qualified execution boundary", () => {
+  it("uses a scenario-declared execution profile when the caller omits one", async () => {
+    const report = await runScenario(
+      {
+        id: "provider-profile-default",
+        title: "Provider profile default",
+        domain: "executor",
+        executionProfile: "provider-qualified",
+        turns: [],
+      },
+      createRuntime([]),
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.executionProfile).toBe("provider-qualified");
+    expect(report.error).toContain(
+      "cannot establish authenticated production ingress",
+    );
+    expect(report.error).not.toContain("executor received simulated");
+  });
+
   it("fails before creating synthetic users or dispatching through the in-process runtime", async () => {
     const ensureConnection = vi.fn(async () => undefined);
     const setSetting = vi.fn();

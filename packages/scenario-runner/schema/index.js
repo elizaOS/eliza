@@ -337,7 +337,7 @@ export function scenarioCertificationClass(value) {
   const certificationLanguage = `${value?.id ?? ""} ${value?.title ?? ""}`;
   if (
     certificationClass === "none" &&
-    /\bcertif(?:y|ies|ied|ication)\b/i.test(certificationLanguage)
+    /\bcertif(?:y|ies|ied|ying|ication|ications)\b/i.test(certificationLanguage)
   ) {
     throw new Error(
       `scenario "${value?.id ?? "<unknown>"}" uses certification language but does not declare certificationClass`,

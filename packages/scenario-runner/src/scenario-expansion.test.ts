@@ -9,6 +9,7 @@ import {
   listScenarioMetadata,
   loadAllScenarios,
   loadScenarioFile,
+  loadScenarioMetadataFile,
   SCENARIO_EDGE_VARIANTS,
   validateScenarioCorpus,
 } from "./loader.ts";
@@ -219,6 +220,79 @@ describe("scenario-runner edge expansion", () => {
     await expect(validateScenarioCorpus(dynamicTitleDir)).rejects.toThrow(
       "title must be a statically readable string literal",
     );
+  });
+
+  it("rejects duplicate metadata whose static and runtime values could disagree", async () => {
+    const dir = await makeTempScenarioDir();
+    await writeScenarioFile(dir, "duplicate.scenario.ts", [
+      "export default {",
+      '  id: "fixture.duplicate",',
+      '  title: "Duplicate metadata",',
+      '  evidenceClass: "runtime-observed",',
+      '  certificationClass: "runtime-contract",',
+      '  evidenceClass: "provider-observed",',
+      '  domain: "fixture",',
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+
+    await expect(validateScenarioCorpus(dir)).rejects.toThrow(
+      'scenario metadata cannot declare duplicate property "evidenceClass"',
+    );
+  });
+
+  it("rejects accessor and method forms for audited metadata without importing them", async () => {
+    const getterDir = await makeTempScenarioDir();
+    await writeScenarioFile(getterDir, "getter.scenario.ts", [
+      "export default {",
+      '  id: "fixture.getter",',
+      '  title: "Getter metadata",',
+      '  get evidenceClass() { return "provider-observed"; },',
+      '  domain: "fixture",',
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+    await expect(validateScenarioCorpus(getterDir)).rejects.toThrow(
+      "evidenceClass must be a statically readable property assignment",
+    );
+
+    const methodDir = await makeTempScenarioDir();
+    await writeScenarioFile(methodDir, "method.scenario.ts", [
+      "export default {",
+      '  id: "fixture.method",',
+      '  title: "Method metadata",',
+      '  certificationClass() { return "provider"; },',
+      '  domain: "fixture",',
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+    await expect(validateScenarioCorpus(methodDir)).rejects.toThrow(
+      "certificationClass must be a statically readable property assignment",
+    );
+  });
+
+  it("preserves the certification schema failure as the static loader cause", async () => {
+    const dir = await makeTempScenarioDir();
+    const file = join(dir, "invalid.scenario.ts");
+    await writeScenarioFile(dir, "invalid.scenario.ts", [
+      "export default {",
+      '  id: "fixture.invalid",',
+      '  title: "Invalid metadata",',
+      '  evidenceClass: "provider-observed",',
+      '  certificationClass: "provider",',
+      '  domain: "fixture",',
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+
+    const failure = await loadScenarioMetadataFile(file).catch(
+      (error) => error,
+    );
+    expect(failure).toMatchObject({
+      code: "SCENARIO_METADATA_INVALID",
+      cause: expect.any(Error),
+      context: { file },
+    });
   });
 
   it("only appends edge context to non-blank message-like turn text", () => {
