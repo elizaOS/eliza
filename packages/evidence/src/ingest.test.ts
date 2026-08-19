@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createBundle, type EvidenceBundle } from "./bundle.ts";
 import { EvidenceError } from "./errors.ts";
 import {
+  assertSafeBundleOutput,
   captureSiloSnapshot,
   ingestAllSilos,
   ingestNamedSilo,
@@ -130,6 +131,114 @@ async function build(repo: string): Promise<{
 }
 
 describe("ingestAllSilos", () => {
+  it("includes a byte-identical file rewritten during the run", async () => {
+    const repo = tmpDir();
+    const file = path.join(repo, "packages/app/test-results/reused.log");
+    write(repo, "packages/app/test-results/reused.log", "same");
+    const baseline = captureSiloSnapshot(repo);
+    fs.writeFileSync(file, "same");
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: {
+        commit: "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "fix/rewrite",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: { node: "v24" },
+      },
+    });
+    await ingestAllSilos(bundle, repo, baseline);
+    expect((await bundle.finalize()).manifest.artifacts).toHaveLength(1);
+  });
+
+  it("copies the same stable bytes that won the baseline comparison", async () => {
+    const repo = tmpDir();
+    const file = path.join(repo, "packages/app/test-results/race.log");
+    write(repo, "packages/app/test-results/race.log", "OLD");
+    const baseline = captureSiloSnapshot(repo);
+    const originalRead = fs.readSync;
+    let changed = false;
+    fs.readSync = ((...args: Parameters<typeof fs.readSync>) => {
+      const count = originalRead(...args);
+      if (!changed && count > 0) {
+        changed = true;
+        fs.writeFileSync(file, "NEW");
+      }
+      return count;
+    }) as typeof fs.readSync;
+    try {
+      const bundle = createBundle({
+        rootDir: tmpDir(),
+        provenance: {
+          commit: "abcdef0123456789abcdef0123456789abcdef01",
+          branch: "fix/race",
+          runner: "local",
+          tier: "cpu",
+          envFingerprint: { node: "v24" },
+        },
+      });
+      await ingestAllSilos(bundle, repo, baseline);
+      const finalized = await bundle.finalize();
+      expect(finalized.manifest.artifacts).toHaveLength(1);
+      expect(
+        fs.readFileSync(
+          path.join(bundle.dir, finalized.manifest.artifacts[0].path),
+          "utf8",
+        ),
+      ).toBe("NEW");
+    } finally {
+      fs.readSync = originalRead;
+    }
+  });
+
+  it("fails after bounded retries when a producer file never stabilizes", () => {
+    const repo = tmpDir();
+    const file = path.join(repo, "packages/app/test-results/churning.log");
+    write(repo, "packages/app/test-results/churning.log", "AAA");
+    const originalRead = fs.readSync;
+    let toggle = false;
+    fs.readSync = ((...args: Parameters<typeof fs.readSync>) => {
+      const count = originalRead(...args);
+      if (count > 0) {
+        toggle = !toggle;
+        fs.writeFileSync(file, toggle ? "BBB" : "AAA");
+      }
+      return count;
+    }) as typeof fs.readSync;
+    try {
+      expect(() => captureSiloSnapshot(repo)).toThrow(
+        expect.objectContaining({ code: "SILO_SOURCE_UNSTABLE" }),
+      );
+    } finally {
+      fs.readSync = originalRead;
+    }
+  });
+
+  it("rejects symlinked producer roots and bundle-output overlap", () => {
+    const repo = tmpDir();
+    const external = tmpDir();
+    write(external, "outside.log", "outside");
+    fs.symlinkSync(external, path.join(repo, "e2e-recordings"), "dir");
+    expect(() => captureSiloSnapshot(repo)).toThrow(/canonical evidence root/);
+    expect(() =>
+      assertSafeBundleOutput(repo, path.join(repo, "e2e-recordings", "runs")),
+    ).toThrow();
+
+    fs.rmSync(path.join(repo, "e2e-recordings"));
+    fs.mkdirSync(path.join(repo, "packages/app/test-results"), {
+      recursive: true,
+    });
+    expect(() =>
+      assertSafeBundleOutput(
+        repo,
+        path.join(repo, "packages/app/test-results/bundles"),
+      ),
+    ).toThrow(/overlaps canonical evidence root/);
+    expect(() => assertSafeBundleOutput(repo, repo)).toThrow(
+      /overlaps canonical evidence root/,
+    );
+  });
+
   it("excludes unchanged stale files and includes only exact-run deltas", async () => {
     const repo = tmpDir();
     write(repo, "packages/app/test-results/stale.log", "old");

@@ -14,6 +14,7 @@
 
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { EvidenceBundle } from "./bundle.ts";
 import { EvidenceError } from "./errors.ts";
@@ -54,20 +55,125 @@ function snapshotKey(silo: string, rootLabel: string, relPath: string): string {
   return `${silo}\0${rootLabel}\0${relPath}`;
 }
 
-function hashFile(filePath: string): string {
-  const hash = createHash("sha256");
-  const descriptor = fs.openSync(filePath, "r");
-  const chunk = Buffer.allocUnsafe(1024 * 1024);
-  try {
-    let bytesRead = 0;
-    do {
-      bytesRead = fs.readSync(descriptor, chunk, 0, chunk.length, null);
-      if (bytesRead > 0) hash.update(chunk.subarray(0, bytesRead));
-    } while (bytesRead > 0);
-  } finally {
-    fs.closeSync(descriptor);
+interface StableCapture {
+  sha256: string;
+  size: number;
+  mtimeMs: number;
+  ctimeMs: number;
+  stagedPath?: string;
+}
+
+function sameIdentity(left: fs.BigIntStats, right: fs.BigIntStats): boolean {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
+  );
+}
+
+/** Read one regular non-symlink file through a stable descriptor. */
+function captureStableFile(
+  filePath: string,
+  stagingDir?: string,
+): StableCapture {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const sourceLstat = fs.lstatSync(filePath);
+    if (sourceLstat.isSymbolicLink() || !sourceLstat.isFile()) {
+      throw new EvidenceError(
+        `evidence source is not a regular file: ${filePath}`,
+        {
+          code: "SILO_SOURCE_UNSAFE",
+          context: { filePath },
+        },
+      );
+    }
+    const descriptor = fs.openSync(
+      filePath,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+    );
+    const stagedPath = stagingDir
+      ? path.join(
+          stagingDir,
+          `${process.pid}-${Date.now()}-${attempt}-${Math.random()}`,
+        )
+      : undefined;
+    let stagedDescriptor: number | undefined;
+    try {
+      const before = fs.fstatSync(descriptor, { bigint: true });
+      if (!before.isFile()) {
+        throw new EvidenceError(
+          `evidence source is not a regular file: ${filePath}`,
+          {
+            code: "SILO_SOURCE_UNSAFE",
+            context: { filePath },
+          },
+        );
+      }
+      if (stagedPath) {
+        stagedDescriptor = fs.openSync(
+          stagedPath,
+          fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+          0o600,
+        );
+      }
+      const hash = createHash("sha256");
+      const chunk = Buffer.allocUnsafe(1024 * 1024);
+      let total = 0;
+      for (;;) {
+        const bytesRead = fs.readSync(descriptor, chunk, 0, chunk.length, null);
+        if (bytesRead === 0) break;
+        const bytes = chunk.subarray(0, bytesRead);
+        hash.update(bytes);
+        if (stagedDescriptor !== undefined) {
+          let offset = 0;
+          while (offset < bytes.length) {
+            const written = fs.writeSync(
+              stagedDescriptor,
+              bytes,
+              offset,
+              bytes.length - offset,
+            );
+            if (written === 0) {
+              throw new EvidenceError(
+                `could not stage evidence source bytes: ${filePath}`,
+                { code: "SILO_SOURCE_UNSTABLE", context: { filePath } },
+              );
+            }
+            offset += written;
+          }
+        }
+        total += bytesRead;
+      }
+      if (stagedDescriptor !== undefined) {
+        fs.fsyncSync(stagedDescriptor);
+        fs.closeSync(stagedDescriptor);
+        stagedDescriptor = undefined;
+      }
+      const after = fs.fstatSync(descriptor, { bigint: true });
+      if (sameIdentity(before, after) && BigInt(total) === after.size) {
+        return {
+          sha256: hash.digest("hex"),
+          size: total,
+          mtimeMs: Number(after.mtimeNs) / 1_000_000,
+          ctimeMs: Number(after.ctimeNs) / 1_000_000,
+          ...(stagedPath ? { stagedPath } : {}),
+        };
+      }
+    } finally {
+      if (stagedDescriptor !== undefined) fs.closeSync(stagedDescriptor);
+      fs.closeSync(descriptor);
+    }
+    if (stagedPath) fs.rmSync(stagedPath, { force: true });
   }
-  return hash.digest("hex");
+  throw new EvidenceError(
+    `evidence source changed while being captured: ${filePath}`,
+    {
+      code: "SILO_SOURCE_UNSTABLE",
+      context: { filePath, attempts: 3 },
+    },
+  );
 }
 
 // Directory names that never contain evidence; everything else in a silo is
@@ -102,12 +208,47 @@ function* walkSiloFiles(root: string, relBase = ""): Generator<string> {
   const entries = fs.readdirSync(root, { withFileTypes: true });
   for (const entry of entries) {
     const rel = relBase === "" ? entry.name : `${relBase}/${entry.name}`;
-    if (entry.isDirectory()) {
+    const full = path.join(root, entry.name);
+    const stat = fs.lstatSync(full);
+    if (stat.isSymbolicLink()) {
+      throw new EvidenceError(`symlink in evidence producer tree: ${full}`, {
+        code: "SILO_SOURCE_UNSAFE",
+      });
+    } else if (stat.isDirectory()) {
       if (SKIP_DIR_NAMES.has(entry.name)) continue;
-      yield* walkSiloFiles(path.join(root, entry.name), rel);
-    } else if (entry.isFile()) {
+      yield* walkSiloFiles(full, rel);
+    } else if (stat.isFile()) {
       yield rel;
     }
+  }
+}
+
+function assertCanonicalRoot(repoRoot: string, rootDir: string): void {
+  const relative = path.relative(repoRoot, rootDir);
+  let cursor = repoRoot;
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    cursor = path.join(cursor, segment);
+    if (!fs.existsSync(cursor)) return;
+    if (fs.lstatSync(cursor).isSymbolicLink()) {
+      throw new EvidenceError(
+        `canonical evidence root crosses a symlink: ${cursor}`,
+        {
+          code: "SILO_SOURCE_UNSAFE",
+          context: { rootDir, cursor },
+        },
+      );
+    }
+  }
+  const physicalRepo = fs.realpathSync(repoRoot);
+  const physicalRoot = fs.realpathSync(rootDir);
+  if (!overlaps(physicalRepo, physicalRoot)) {
+    throw new EvidenceError(
+      `canonical evidence root escapes the repository: ${rootDir}`,
+      {
+        code: "SILO_SOURCE_UNSAFE",
+        context: { rootDir, physicalRoot },
+      },
+    );
   }
 }
 
@@ -116,6 +257,7 @@ async function ingestSilo(
   repoRoot: string,
   definition: SiloDefinition,
   baseline?: SiloSnapshot,
+  stagingDir?: string,
 ): Promise<IngestResult> {
   const presentRoots = definition.roots.filter((root) =>
     fs.existsSync(path.join(repoRoot, root.dir)),
@@ -127,30 +269,53 @@ async function ingestSilo(
   let artifactCount = 0;
   for (const root of presentRoots) {
     const rootDir = path.join(repoRoot, root.dir);
+    assertCanonicalRoot(repoRoot, rootDir);
+    const rootStat = fs.lstatSync(rootDir);
+    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+      throw new EvidenceError(
+        `canonical evidence root is not a regular directory: ${rootDir}`,
+        {
+          code: "SILO_SOURCE_UNSAFE",
+          context: { rootDir },
+        },
+      );
+    }
     for (const rel of walkSiloFiles(rootDir)) {
       const sourcePath = path.join(rootDir, ...rel.split("/"));
+      const captured = captureStableFile(sourcePath, stagingDir);
       const previous =
         baseline?.files[snapshotKey(definition.silo, root.label, rel)];
       if (previous !== undefined) {
-        const stat = fs.statSync(sourcePath);
         if (
-          previous.size === stat.size &&
-          previous.mtimeMs === stat.mtimeMs &&
-          previous.ctimeMs === stat.ctimeMs &&
-          previous.sha256 === hashFile(sourcePath)
+          previous.size === captured.size &&
+          previous.mtimeMs === captured.mtimeMs &&
+          previous.ctimeMs === captured.ctimeMs &&
+          previous.sha256 === captured.sha256
         ) {
+          if (captured.stagedPath)
+            fs.rmSync(captured.stagedPath, { force: true });
           continue;
         }
       }
       const defaultKind = classifyByExtension(rel);
       const kind = definition.classify?.(rel, defaultKind) ?? defaultKind;
-      await bundle.addArtifact(sourcePath, {
+      if (!captured.stagedPath) {
+        throw new EvidenceError(
+          "stable ingest capture did not produce staged bytes",
+          {
+            code: "SILO_SOURCE_UNSTABLE",
+            context: { sourcePath },
+          },
+        );
+      }
+      await bundle.addArtifact(captured.stagedPath, {
         kind,
         source: definition.source,
         ...(definition.lane !== undefined ? { lane: definition.lane } : {}),
         producedBy: definition.producedBy,
         relativePath: namespace ? `${root.label}/${rel}` : rel,
       });
+      fs.rmSync(captured.stagedPath, { force: true });
       artifactCount += 1;
     }
   }
@@ -226,10 +391,60 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   },
 ];
 
+function physicalPath(filePath: string): string {
+  let cursor = path.resolve(filePath);
+  const missing: string[] = [];
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    missing.push(path.basename(cursor));
+    cursor = parent;
+  }
+  const existing = fs.existsSync(cursor) ? fs.realpathSync(cursor) : cursor;
+  return path.join(existing, ...missing.reverse());
+}
+
+function overlaps(left: string, right: string): boolean {
+  const relative = path.relative(left, right);
+  return (
+    relative === "" ||
+    (relative !== ".." && !relative.startsWith(`..${path.sep}`))
+  );
+}
+
+/** Reject bundle output that could be discovered as producer evidence. */
+export function assertSafeBundleOutput(
+  repoRoot: string,
+  outputRoot: string,
+): void {
+  const physicalOutput = physicalPath(outputRoot);
+  for (const definition of SILO_DEFINITIONS) {
+    for (const root of definition.roots) {
+      const producer = path.join(repoRoot, root.dir);
+      if (fs.existsSync(producer)) {
+        assertCanonicalRoot(repoRoot, producer);
+      }
+      const physicalProducer = physicalPath(producer);
+      if (
+        overlaps(physicalOutput, physicalProducer) ||
+        overlaps(physicalProducer, physicalOutput)
+      ) {
+        throw new EvidenceError(
+          `bundle output overlaps canonical evidence root: ${producer}`,
+          {
+            code: "BUNDLE_OUTPUT_UNSAFE",
+            context: { outputRoot, producer },
+          },
+        );
+      }
+    }
+  }
+}
+
 /**
  * Hash the current canonical producer inventory before a coordinated run.
  * Passing the result back to ingestion makes the resulting bundle contain only
- * new or content-changed artifacts from that run; an untouched stale file can
+ * new or written/replaced artifacts from that run; an untouched stale file can
  * never be relabeled with the new bundle's commit provenance.
  */
 export function captureSiloSnapshot(repoRoot: string): SiloSnapshot {
@@ -237,17 +452,28 @@ export function captureSiloSnapshot(repoRoot: string): SiloSnapshot {
   for (const definition of SILO_DEFINITIONS) {
     for (const root of definition.roots) {
       const rootDir = path.join(repoRoot, root.dir);
-      if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
+      if (!fs.existsSync(rootDir)) {
         continue;
+      }
+      assertCanonicalRoot(repoRoot, rootDir);
+      const rootStat = fs.lstatSync(rootDir);
+      if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+        throw new EvidenceError(
+          `canonical evidence root is not a regular directory: ${rootDir}`,
+          {
+            code: "SILO_SOURCE_UNSAFE",
+            context: { rootDir },
+          },
+        );
       }
       for (const rel of walkSiloFiles(rootDir)) {
         const filePath = path.join(rootDir, ...rel.split("/"));
-        const stat = fs.statSync(filePath);
+        const captured = captureStableFile(filePath);
         files[snapshotKey(definition.silo, root.label, rel)] = {
-          sha256: hashFile(filePath),
-          size: stat.size,
-          mtimeMs: stat.mtimeMs,
-          ctimeMs: stat.ctimeMs,
+          sha256: captured.sha256,
+          size: captured.size,
+          mtimeMs: captured.mtimeMs,
+          ctimeMs: captured.ctimeMs,
         };
       }
     }
@@ -266,11 +492,20 @@ export async function ingestAllSilos(
   repoRoot: string,
   baseline?: SiloSnapshot,
 ): Promise<IngestResult[]> {
+  const stagingDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-evidence-ingest-"),
+  );
   const results: IngestResult[] = [];
-  for (const definition of SILO_DEFINITIONS) {
-    results.push(await ingestSilo(bundle, repoRoot, definition, baseline));
+  try {
+    for (const definition of SILO_DEFINITIONS) {
+      results.push(
+        await ingestSilo(bundle, repoRoot, definition, baseline, stagingDir),
+      );
+    }
+    return results;
+  } finally {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
   }
-  return results;
 }
 
 /** Run a single named silo ingestor; unknown names are a caller bug. */
@@ -286,5 +521,18 @@ export async function ingestNamedSilo(
       context: { silo, known: [...SILO_NAMES] },
     });
   }
-  return ingestSilo(bundle, repoRoot, definition);
+  const stagingDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-evidence-ingest-"),
+  );
+  try {
+    return await ingestSilo(
+      bundle,
+      repoRoot,
+      definition,
+      undefined,
+      stagingDir,
+    );
+  } finally {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+  }
 }

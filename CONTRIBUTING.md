@@ -242,8 +242,9 @@ bun run --cwd packages/app capture:linux-desktop -- --issue <n> --slug <s>
 bun run --cwd packages/app capture:windows-desktop -- --issue <n> --slug <s>
 ```
 
-The matrix command snapshots producer hashes before executing lanes, creates
-one named bundle from only new or changed artifacts, runs the canonical
+The matrix command snapshots producer hashes and filesystem identity before
+executing lanes, creates one named bundle from only new or written/replaced
+artifacts, runs the canonical
 integrity verifier, and passes that exact run to the dashboard. Raw producer directories
 are never scanned implicitly; `evidence:review -- --source=<dir>` is reserved
 for deliberate archived or ad-hoc compatibility review.

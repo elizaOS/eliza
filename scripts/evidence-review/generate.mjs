@@ -9,6 +9,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -318,7 +319,7 @@ async function buildArtifactRecord(full, meta, options, counters) {
     id: `${counters.nextId++}`,
     type: meta.type,
     source: meta.source,
-    path: toPosixPath(path.relative(REPO_ROOT, full)),
+    path: meta.displayPath ?? toPosixPath(path.relative(REPO_ROOT, full)),
     href: toPosixPath(path.relative(options.outputDir, full)),
     bytes: stat.size,
     mtime: stat.mtime.toISOString(),
@@ -376,7 +377,7 @@ const BUNDLE_KIND_TO_TYPE = {
  * untrusted disk input (error-policy:J3): a missing or malformed manifest throws
  * an explicit error rather than silently reviewing a partial/forged inventory.
  */
-function readBundleManifest(bundleDir) {
+function readBundleManifest(bundleDir, bytes = null) {
   const manifestPath = path.join(bundleDir, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
     throw new Error(
@@ -385,7 +386,11 @@ function readBundleManifest(bundleDir) {
   }
   let manifest;
   try {
-    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    manifest = JSON.parse(
+      bytes === null
+        ? fs.readFileSync(manifestPath, "utf8")
+        : bytes.toString("utf8"),
+    );
   } catch (error) {
     throw new Error(
       `--bundle: ${manifestPath} is not valid JSON: ${error?.message || error}`,
@@ -399,6 +404,38 @@ function readBundleManifest(bundleDir) {
   return manifest;
 }
 
+function copyVerifiedArtifact(source, destination, entry) {
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  const temporary = `${destination}.tmp-${process.pid}`;
+  fs.rmSync(temporary, { force: true });
+  try {
+    fs.copyFileSync(source, temporary, fs.constants.COPYFILE_EXCL);
+    const descriptor = fs.openSync(temporary, "r");
+    const hash = createHash("sha256");
+    const chunk = Buffer.allocUnsafe(1024 * 1024);
+    let total = 0;
+    try {
+      for (;;) {
+        const bytesRead = fs.readSync(descriptor, chunk, 0, chunk.length, null);
+        if (bytesRead === 0) break;
+        hash.update(chunk.subarray(0, bytesRead));
+        total += bytesRead;
+      }
+    } finally {
+      fs.closeSync(descriptor);
+    }
+    const sha256 = hash.digest("hex");
+    if (total !== entry.bytes || sha256 !== entry.sha256) {
+      throw new Error(
+        `--bundle: artifact changed while copying reviewer snapshot: ${entry.path}`,
+      );
+    }
+    fs.renameSync(temporary, destination);
+  } finally {
+    fs.rmSync(temporary, { force: true });
+  }
+}
+
 /**
  * Append reviewer artifacts read from a bundle manifest. Each listed file's
  * absolute path is recorded in `seen` so the subsequent silo scan does not
@@ -407,8 +444,14 @@ function readBundleManifest(bundleDir) {
  * — a bundle's signed inventory must match its contents.
  */
 async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
+  const manifestPath = path.join(bundleDir, "manifest.json");
+  const manifestBefore = fs.readFileSync(manifestPath);
   verifyBundleIntegrity(bundleDir);
-  const manifest = readBundleManifest(bundleDir);
+  const manifestAfter = fs.readFileSync(manifestPath);
+  if (!manifestBefore.equals(manifestAfter)) {
+    throw new Error("--bundle: manifest changed during integrity verification");
+  }
+  const manifest = readBundleManifest(bundleDir, manifestAfter);
   const runId = typeof manifest.runId === "string" ? manifest.runId : null;
   for (const entry of manifest.artifacts) {
     const rel = typeof entry?.path === "string" ? entry.path : "";
@@ -424,6 +467,8 @@ async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
       );
     }
     seen.add(full);
+    const owned = path.join(options.outputDir, "artifacts", ...rel.split("/"));
+    copyVerifiedArtifact(full, owned, entry);
     const type = BUNDLE_KIND_TO_TYPE[entry.kind] ?? classifyArtifactPath(full);
     if (!type) continue;
     const source =
@@ -432,8 +477,8 @@ async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
         : inferSource(REPO_ROOT, full);
     out.push(
       await buildArtifactRecord(
-        full,
-        { type, source, bundleRunId: runId },
+        owned,
+        { type, source, bundleRunId: runId, displayPath: rel },
         options,
         counters,
       ),
@@ -745,6 +790,10 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   assertSafeOutputDir(options.outputDir, resolveBundleDirForOptions(options));
   fs.mkdirSync(options.outputDir, { recursive: true });
+  fs.rmSync(path.join(options.outputDir, "artifacts"), {
+    recursive: true,
+    force: true,
+  });
 
   const manifest = await collectArtifacts(options);
   const manifestPath = path.join(options.outputDir, "manifest.json");

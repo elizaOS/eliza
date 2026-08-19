@@ -1,6 +1,6 @@
 /**
  * Real-filesystem tests for the bundle builder and verifier: byte-stable
- * manifests under an injected clock, hardlink vs copy materialization, path
+ * manifests under an injected clock, copy materialization, path
  * collision/traversal refusal, single-use lifecycle, and tamper detection.
  * Everything runs against tmp dirs — no mocks of the code under test; the
  * only injected seam is the link function (the EXDEV condition cannot be
@@ -204,7 +204,7 @@ describe("EvidenceBundle", () => {
     ).toBe(true);
   });
 
-  it("hardlinks on the same volume in auto mode", async () => {
+  it("copies by default so later producer writes cannot mutate the bundle", async () => {
     const sources = tmpDir();
     const bundle = createBundle({
       rootDir: tmpDir(),
@@ -218,7 +218,13 @@ describe("EvidenceBundle", () => {
       producedBy: "run-all.mjs",
     });
     const stored = path.join(bundle.dir, ...entry.path.split("/"));
-    expect(fs.statSync(stored).ino).toBe(fs.statSync(sourcePath).ino);
+    expect(fs.statSync(stored).ino).not.toBe(fs.statSync(sourcePath).ino);
+    const finalized = await bundle.finalize();
+    fs.writeFileSync(sourcePath, "changed-after-finalize");
+    expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
+    expect((await verifyBundle(path.dirname(finalized.manifestPath))).ok).toBe(
+      true,
+    );
   });
 
   it("copies when linkMode is copy", async () => {
@@ -249,6 +255,7 @@ describe("EvidenceBundle", () => {
       rootDir: tmpDir(),
       provenance: PROVENANCE,
       now: fixedClock(),
+      linkMode: "auto",
       link: () => {
         throw exdev;
       },
@@ -273,6 +280,7 @@ describe("EvidenceBundle", () => {
       rootDir: tmpDir(),
       provenance: PROVENANCE,
       now: fixedClock(),
+      linkMode: "auto",
       link: () => {
         throw eperm;
       },

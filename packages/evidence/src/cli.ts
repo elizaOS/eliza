@@ -21,6 +21,7 @@ import { parseRequirements } from "./certify/rollup.ts";
 import { REVIEWER_KINDS, type ReviewerKind } from "./certify/schema.ts";
 import { EvidenceError } from "./errors.ts";
 import {
+  assertSafeBundleOutput,
   captureSiloSnapshot,
   ingestAllSilos,
   type SiloSnapshot,
@@ -147,6 +148,7 @@ async function runCreate(argv: string[], io: CliIo): Promise<number> {
   const rootDir = path.resolve(
     args.outDir ?? path.join(repoRoot, "evidence", "runs"),
   );
+  assertSafeBundleOutput(repoRoot, rootDir);
   const git = collectGitProvenance(repoRoot);
   const runner = resolveRunnerKind(process.env);
   const laneReports = args.laneReports.map((report) => {
@@ -278,6 +280,7 @@ async function runSnapshot(argv: string[], io: CliIo): Promise<number> {
     });
   }
   const resolvedOut = path.resolve(outPath);
+  assertSafeBundleOutput(path.resolve(repoRoot), resolvedOut);
   fs.mkdirSync(path.dirname(resolvedOut), { recursive: true });
   const snapshot = captureSiloSnapshot(path.resolve(repoRoot));
   fs.writeFileSync(resolvedOut, `${JSON.stringify(snapshot)}\n`, "utf8");

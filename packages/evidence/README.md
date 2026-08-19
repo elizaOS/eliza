@@ -6,7 +6,7 @@ certification contract live in this README and the package `CLAUDE.md`.
 
 One harness run produces one bundle: `evidence/runs/<run-id>/` with a
 `manifest.json` listing every artifact and a `meta.json` recording provenance
-(commit, branch, runner, tier, env fingerprint). Named ingestors copy/hardlink
+(commit, branch, runner, tier, env fingerprint). Named ingestors copy
 each producer's canonical output into the bundle and stamp provenance at ingest
 time. The reviewer never crawls those producer directories on its normal path;
 it verifies and reads the bundle manifest. Certification (#14546) signs
@@ -102,8 +102,8 @@ The former roots `device-e2e-output/`,
 `packages/scenario-runner/reports/` have no live writer and are not part of
 normal ingestion. Operators inspecting archived material may pass them to the
 reviewer with explicit `--source`; that compatibility mode never runs
-implicitly. Artifacts are hardlinked when the silo shares a volume with the
-bundle, copied otherwise, and hashed **as stored** so a corrupt copy fails at
+implicitly. Artifacts are copied into the bundle and hashed **as stored** so
+later producer writes cannot mutate a finalized run and a corrupt copy fails at
 add time.
 
 ## CLI
@@ -126,9 +126,10 @@ findings; non-zero exit on any issue. Verification is lstat-based: a verified
 bundle contains no symlinks anywhere — a symlinked artifact would be mutable
 after signing, and a symlinked directory would mount an unswept external tree.
 
-The coordinated matrix captures a content-hash snapshot before its lanes run
-and passes it through `--baseline`; unchanged files in persistent producer
-roots are excluded rather than relabeled with the current commit.
+The coordinated matrix captures a content-and-filesystem-identity snapshot
+before its lanes run and passes it through `--baseline`; untouched files in
+persistent producer roots are excluded, while files written or replaced during
+the run are included even when their resulting bytes equal the prior bytes.
 
 ## How later pieces slot in
 

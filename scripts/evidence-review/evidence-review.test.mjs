@@ -1,5 +1,6 @@
 /**
- * Unit tests for the evidence-review classifier and screenshot heuristics.
+ * Deterministic evidence-review contract tests using real temporary bundles,
+ * the real verifier subprocess, and local screenshot-analysis fixtures.
  */
 
 import assert from "node:assert/strict";
@@ -214,6 +215,12 @@ test("--bundle reviews an evidence bundle's manifest without silo scanning", asy
     const log = manifest.artifacts.find((a) => a.type === "log");
     assert.ok(log, "log artifact present");
     assert.match(log.preview, /hello from the bundle/);
+    assert.match(log.href, /^artifacts\//);
+    await writeFile(path.join(bundleDir, "notes.log"), "mutated later\n");
+    assert.match(
+      await readFile(path.resolve(outDir, log.href), "utf8"),
+      /hello from the bundle/,
+    );
     const other = manifest.artifacts.find((a) => a.type === "artifact");
     assert.ok(other, "schema-listed other artifact remains inspectable");
     assert.equal(other.source, "unit-audit");
@@ -250,7 +257,7 @@ test("bundle review never silently truncates a verified manifest", async () => {
   try {
     const bundleDir = path.join(tmpDir, "bundle");
     const outDir = path.join(tmpDir, "out");
-    await writeBundle(bundleDir, { extraReports: 101 });
+    await writeBundle(bundleDir, { extraReports: 901 });
     const result = runGenerate([
       `--bundle=${bundleDir}`,
       `--out=${outDir}`,
@@ -262,7 +269,7 @@ test("bundle review never silently truncates a verified manifest", async () => {
     const review = JSON.parse(
       await readFile(path.join(outDir, "manifest.json"), "utf8"),
     );
-    assert.equal(review.artifacts.length, 104);
+    assert.equal(review.artifacts.length, 904);
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }

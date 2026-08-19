@@ -295,6 +295,20 @@ describe("runCli create", () => {
     expect(fs.readdirSync(out)).toEqual([]);
   });
 
+  it("rejects bundle output nested under a canonical producer before creation", async () => {
+    const repo = initFixtureRepo();
+    const out = path.join(repo, "packages/app/test-results/bundles");
+    const captured = capture();
+    expect(
+      await runCli(
+        ["create", "--tier", "cpu", "--out", out, "--repo-root", repo],
+        captured.io,
+      ),
+    ).toBe(1);
+    expect(captured.errLines.join("\n")).toContain("BUNDLE_OUTPUT_UNSAFE");
+    expect(fs.existsSync(out)).toBe(false);
+  });
+
   it("fails loud outside a git repository", async () => {
     const notRepo = tmpDir();
     const { io, errLines } = capture();

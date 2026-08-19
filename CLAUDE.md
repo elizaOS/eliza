@@ -347,7 +347,7 @@ unit coverage but is not end-to-end proof.
 
 The normal evidence path is bundle-first. `bun run test:matrix:review` executes
 the named producers after hashing their pre-run inventory, creates one
-`evidence/runs/<run-id>/` bundle from only new or content-changed artifacts, runs the
+`evidence/runs/<run-id>/` bundle from only new or written/replaced artifacts, runs the
 canonical integrity verifier, and reviews that exact run. Standalone
 `bun run evidence:review:no-open` selects the newest finalized bundle;
 `--bundle=evidence/runs/<run-id>` pins a specific one. Raw producer directories

@@ -1,7 +1,7 @@
 /**
  * Evidence-bundle builder and integrity verifier. One harness run produces one
- * `evidence/runs/<run-id>/` directory; artifacts are hardlinked (same volume)
- * or copied in, hashed as stored, and inventoried in `manifest.json` beside a
+ * `evidence/runs/<run-id>/` directory; artifacts are copied in, hashed as
+ * stored, and inventoried in `manifest.json` beside a
  * provenance `meta.json`. Certification (#14546) signs sha256(manifest bytes),
  * so `finalize()` writes the manifest canonically: artifacts sorted by path
  * (UTF-16 code-unit order), object keys sorted, no whitespace variance, one
@@ -218,7 +218,7 @@ export class EvidenceBundle {
     },
   ) {
     this.now = options.now ?? (() => new Date());
-    this.linkMode = options.linkMode ?? "auto";
+    this.linkMode = options.linkMode ?? "copy";
     this.provenance = options.provenance;
     this.link = options.link;
     const started = this.now();
@@ -257,7 +257,7 @@ export class EvidenceBundle {
   }
 
   /**
-   * Copy/hardlink `filePath` into the bundle and record its manifest entry.
+   * Copy `filePath` into the bundle and record its manifest entry.
    * The hash is computed from the bytes as stored in the bundle, so a corrupt
    * copy is caught at add time rather than at certification time.
    */

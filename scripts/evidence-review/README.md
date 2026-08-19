@@ -11,7 +11,7 @@ bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>
 `test:matrix` always passes its exact newly-created bundle to the reviewer. It
 does not select “latest,” so a stale or concurrent run cannot replace the
 evidence being reviewed. Before any lane runs it hashes the named producer
-inventory; bundle creation then admits only new or content-changed files, so a
+inventory; bundle creation then admits only new or written/replaced files, so a
 skipped lane contributes zero stale artifacts. The standalone zero-argument review command selects
 the newest finalized bundle as a convenience. In both cases the canonical
 `@elizaos/evidence` verifier checks artifact bytes, sizes, hashes, provenance,
