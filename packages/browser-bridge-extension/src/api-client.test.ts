@@ -254,14 +254,13 @@ describe("BrowserBridgeRelayClient", () => {
     vi.stubGlobal("fetch", fetchMock);
     const client = new BrowserBridgeRelayClient(config);
     const progress: CompanionSessionProgressRequest = {
-      status: "running",
-      note: "working",
-      pageContext: null,
+      completedActionId: "action-0",
+      currentActionIndex: 1,
+      result: { "action-0": { ok: true } },
     };
     const completion: CompanionSessionCompleteRequest = {
-      status: "completed",
+      status: "done",
       result: { ok: true },
-      error: null,
     };
 
     await client.updateSessionProgress("session/one two", progress);

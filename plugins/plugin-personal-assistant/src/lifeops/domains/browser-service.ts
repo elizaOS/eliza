@@ -16,6 +16,7 @@ import {
   type BrowserBridgeCompanionPreflightRequest,
   type BrowserBridgeCompanionPreflightResponse,
   type BrowserBridgeCompanionRevokeResponse,
+  type BrowserBridgeCompanionSessionProgressRequest,
   type BrowserBridgeCompanionStatus,
   type BrowserBridgeCompanionSyncRequest,
   type BrowserBridgeCompanionSyncResponse,
@@ -1348,7 +1349,7 @@ export class BrowserDomain {
     companionId: string,
     pairingToken: string,
     sessionId: string,
-    request: UpdateLifeOpsBrowserSessionProgressRequest,
+    request: BrowserBridgeCompanionSessionProgressRequest,
   ): Promise<LifeOpsBrowserSession> {
     const companion = await this.requireBrowserCompanion(
       companionId,
@@ -1371,6 +1372,10 @@ export class BrowserDomain {
             request.currentActionIndex,
             session.actions.length,
           );
+    const completedActionId = requireNonEmptyString(
+      request.completedActionId,
+      "completedActionId",
+    );
     if (currentActionIndex < session.currentActionIndex) {
       fail(409, "browser session checkpoint cannot move backwards");
     }
@@ -1383,6 +1388,13 @@ export class BrowserDomain {
         ? undefined
         : requireRecord(request.metadata, "metadata");
     if (currentActionIndex === session.currentActionIndex) {
+      const completedAction = session.actions[currentActionIndex - 1];
+      if (!completedAction || completedAction.id !== completedActionId) {
+        fail(
+          409,
+          "browser session checkpoint action does not match its receipt",
+        );
+      }
       if (
         recordPatchMatches(session.result, resultPatch) &&
         recordPatchMatches(session.metadata, metadataPatch)
@@ -1393,6 +1405,13 @@ export class BrowserDomain {
     }
     if (currentActionIndex !== session.currentActionIndex + 1) {
       fail(409, "browser session checkpoint must advance exactly one action");
+    }
+    const expectedAction = session.actions[session.currentActionIndex];
+    if (!expectedAction || expectedAction.id !== completedActionId) {
+      fail(
+        409,
+        "browser session checkpoint action does not match the queued action",
+      );
     }
     const updatedAt = new Date().toISOString();
     const lifecycle = mergeBrowserTaskLifecycle({
@@ -1407,6 +1426,7 @@ export class BrowserDomain {
         sessionId: session.id,
         companion,
         expectedActionIndex: session.currentActionIndex,
+        completedActionId,
         currentActionIndex,
         resultPatch: lifecycle.result,
         metadataPatch: lifecycle.metadata,

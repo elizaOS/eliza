@@ -9,6 +9,7 @@ import type {
   BrowserBridgeCompanionPreflightRequest,
   BrowserBridgeCompanionPreflightResponse,
   BrowserBridgeCompanionRevokeResponse,
+  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionStatus,
   BrowserBridgeCompanionSyncRequest,
   BrowserBridgeCompanionSyncResponse,
@@ -115,7 +116,7 @@ export interface BrowserBridgeRouteService extends Service {
     companionId: string,
     pairingToken: string,
     sessionId: string,
-    request: UpdateBrowserBridgeSessionProgressRequest,
+    request: BrowserBridgeCompanionSessionProgressRequest,
     ownerEntityId?: UUID | null,
   ): Promise<LifeOpsBrowserSession>;
   completeBrowserSessionFromCompanion(

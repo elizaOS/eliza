@@ -56,29 +56,23 @@ function httpDecodePathComponent(
   }
 }
 
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) {
-    return firstHeaderValue(value[0]);
-  }
-  if (typeof value !== "string") {
+export function resolveBrowserBridgeLocalApiOrigin(
+  req: http.IncomingMessage,
+): string | null {
+  const localPort = req.socket.localPort;
+  if (!Number.isInteger(localPort) || !localPort || localPort < 1) {
     return null;
   }
-  const normalized = value.split(",")[0]?.trim();
-  return normalized ? normalized : null;
-}
-
-function requestBaseUrl(req: http.IncomingMessage): string {
-  const headers = req.headers ?? {};
   const protocol =
-    firstHeaderValue(headers["x-forwarded-proto"]) ??
-    (req.socket instanceof TLSSocket && req.socket.encrypted
-      ? "https"
-      : "http");
-  const host =
-    firstHeaderValue(headers["x-forwarded-host"]) ??
-    firstHeaderValue(headers.host) ??
-    "localhost";
-  return `${protocol}://${host}`;
+    req.socket instanceof TLSSocket && req.socket.encrypted ? "https" : "http";
+  const localAddress = req.socket.localAddress?.trim().toLowerCase();
+  const localHost =
+    localAddress === "::1" || localAddress === "0:0:0:0:0:0:0:1"
+      ? "[::1]"
+      : localAddress === "::" || localAddress === "0:0:0:0:0:0:0:0"
+        ? "[::1]"
+        : "127.0.0.1";
+  return `${protocol}://${localHost}:${localPort}`;
 }
 
 function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
@@ -92,13 +86,15 @@ function buildRouteContext(
   runtime: AgentRuntime | null,
 ): BrowserBridgeRouteContext {
   const method = (req.method ?? "GET").toUpperCase();
-  const url = new URL(req.url ?? "/", requestBaseUrl(req));
+  const localApiOrigin = resolveBrowserBridgeLocalApiOrigin(req);
+  const url = new URL(req.url ?? "/", localApiOrigin ?? "http://127.0.0.1");
   return {
     req,
     res,
     method,
     pathname: url.pathname,
     url,
+    localApiOrigin,
     state: {
       runtime,
       adminEntityId: routeOwnerEntityId(runtime),

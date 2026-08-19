@@ -301,6 +301,11 @@ export interface UpdateBrowserBridgeSessionProgressRequest {
   metadata?: Record<string, unknown>;
 }
 
+export interface BrowserBridgeCompanionSessionProgressRequest
+  extends UpdateBrowserBridgeSessionProgressRequest {
+  completedActionId: string;
+}
+
 export const BROWSER_BRIDGE_PACKAGE_PATH_TARGETS = [
   "extension_root",
   "chrome_build",

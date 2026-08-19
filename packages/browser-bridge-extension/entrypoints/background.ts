@@ -928,6 +928,7 @@ async function executeSession(
       currentTabId = outcome.currentTabId;
       actionResults[action.id] = outcome.result;
       await client.updateSessionProgress(session.id, {
+        completedActionId: action.id,
         currentActionIndex: index + 1,
         result: {
           [action.id]: outcome.result,

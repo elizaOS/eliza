@@ -8,19 +8,19 @@ import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionConfig,
   BrowserBridgeCompanionPreflightRequest,
+  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionSyncRequest,
   BrowserBridgeSettings,
   CompleteLifeOpsBrowserSessionRequest,
   CreateBrowserBridgeCompanionAutoPairRequest,
   LifeOpsBrowserSession,
-  UpdateBrowserBridgeSessionProgressRequest,
 } from "./browser-bridge-contracts";
 
 export type CompanionPreflightRequest = BrowserBridgeCompanionPreflightRequest;
 export type CompanionSyncRequest = BrowserBridgeCompanionSyncRequest;
 export type CompanionSession = LifeOpsBrowserSession;
 export type CompanionSessionProgressRequest =
-  UpdateBrowserBridgeSessionProgressRequest;
+  BrowserBridgeCompanionSessionProgressRequest;
 export type CompanionSessionCompleteRequest =
   CompleteLifeOpsBrowserSessionRequest;
 export type CompanionConfig = BrowserBridgeCompanionConfig;

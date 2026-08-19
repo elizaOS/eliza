@@ -182,6 +182,11 @@ export interface UpdateBrowserBridgeSessionProgressRequest {
   metadata?: Record<string, unknown>;
 }
 
+export interface BrowserBridgeCompanionSessionProgressRequest
+  extends UpdateBrowserBridgeSessionProgressRequest {
+  completedActionId: string;
+}
+
 export type LifeOpsBrowserSessionStatus =
   | "awaiting_confirmation"
   | "queued"

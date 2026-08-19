@@ -23,6 +23,7 @@ import {
   BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
   type BrowserBridgeCompanionAuthErrorCode,
   type BrowserBridgeCompanionPreflightRequest,
+  type BrowserBridgeCompanionSessionProgressRequest,
   type BrowserBridgeCompanionSyncRequest,
   type BrowserBridgeKind,
   type CreateBrowserBridgeCompanionAutoPairRequest,
@@ -58,6 +59,7 @@ export interface BrowserBridgeRouteContext {
   method: string;
   pathname: string;
   url: URL;
+  localApiOrigin: string | null;
   state: {
     runtime: AgentRuntime | null;
     adminEntityId: UUID | null;
@@ -131,13 +133,43 @@ function getBrowserCompanionAuth(
 
 export function isBrowserAutoPairOriginAllowed(
   originHeader: string,
-  requestOrigin: string,
+  localApiOrigin: string | null,
   isLoopback: boolean,
 ): boolean {
-  if (!originHeader) {
-    return isLoopback;
+  if (!isLoopback || !localApiOrigin) {
+    return false;
   }
-  return originHeader === requestOrigin;
+  if (!originHeader) return true;
+  try {
+    const origin = new URL(originHeader);
+    const localApi = new URL(localApiOrigin);
+    const loopbackHost =
+      origin.hostname === "127.0.0.1" ||
+      origin.hostname === "localhost" ||
+      origin.hostname === "[::1]" ||
+      origin.hostname === "::1";
+    if (
+      loopbackHost &&
+      origin.protocol === localApi.protocol &&
+      origin.port === localApi.port
+    ) {
+      return true;
+    }
+    return (
+      (origin.protocol === "chrome-extension:" ||
+        origin.protocol === "moz-extension:" ||
+        origin.protocol === "safari-web-extension:") &&
+      origin.hostname.length > 0 &&
+      origin.username === "" &&
+      origin.password === "" &&
+      origin.pathname === "" &&
+      origin.search === "" &&
+      origin.hash === ""
+    );
+  } catch {
+    // error-policy:J3 The browser-supplied Origin is untrusted input.
+    return false;
+  }
 }
 
 function browserAutoPairOriginAllowed(ctx: BrowserBridgeRouteContext): boolean {
@@ -147,7 +179,7 @@ function browserAutoPairOriginAllowed(ctx: BrowserBridgeRouteContext): boolean {
       : "";
   return isBrowserAutoPairOriginAllowed(
     originHeader,
-    ctx.url.origin,
+    ctx.localApiOrigin,
     requestIsLoopback(ctx),
   );
 }
@@ -589,6 +621,11 @@ export async function handleBrowserBridgeRoutes(
       );
       return true;
     }
+    const localApiOrigin = ctx.localApiOrigin;
+    if (!localApiOrigin) {
+      ctx.error(res, "browser auto-pair local API origin is unavailable", 503);
+      return true;
+    }
     const body =
       await readJsonBody<CreateBrowserBridgeCompanionAutoPairRequest>(req, res);
     if (!body) return true;
@@ -600,7 +637,7 @@ export async function handleBrowserBridgeRoutes(
         res,
         await service.autoPairBrowserCompanion(
           body,
-          ctx.url.origin,
+          localApiOrigin,
           ctx.state.adminEntityId,
         ),
         201,
@@ -1060,7 +1097,10 @@ export async function handleBrowserBridgeRoutes(
         return;
       }
       const body =
-        await readJsonBody<UpdateBrowserBridgeSessionProgressRequest>(req, res);
+        await readJsonBody<BrowserBridgeCompanionSessionProgressRequest>(
+          req,
+          res,
+        );
       if (!body) return;
       if (!isBrowserBridgeRouteBodyObject(body)) {
         rejectMalformedBrowserBridgePayload(ctx);

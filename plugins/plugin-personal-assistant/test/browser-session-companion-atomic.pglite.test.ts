@@ -148,12 +148,27 @@ describe("browser companion atomic persistence", () => {
     );
     expect(claimed?.id).toBe(session.id);
 
+    const mismatchedAction =
+      await repository.updateBrowserSessionProgressFromCompanion({
+        agentId: runtime.agentId,
+        sessionId: session.id,
+        companion: owner,
+        expectedActionIndex: 0,
+        completedActionId: session.actions[1].id,
+        currentActionIndex: 1,
+        resultPatch: { wrongAction: true },
+        metadataPatch: {},
+        updatedAt: new Date().toISOString(),
+      });
+    expect(mismatchedAction).toBeNull();
+
     const firstStep =
       await repository.updateBrowserSessionProgressFromCompanion({
         agentId: runtime.agentId,
         sessionId: session.id,
         companion: owner,
         expectedActionIndex: 0,
+        completedActionId: session.actions[0].id,
         currentActionIndex: 1,
         resultPatch: { first: true },
         metadataPatch: {},
@@ -167,6 +182,7 @@ describe("browser companion atomic persistence", () => {
         sessionId: session.id,
         companion: owner,
         expectedActionIndex: 1,
+        completedActionId: session.actions[1].id,
         currentActionIndex: session.actions.length,
         resultPatch: { terminal: true },
         metadataPatch: {},
@@ -181,6 +197,7 @@ describe("browser companion atomic persistence", () => {
         sessionId: session.id,
         companion: owner,
         expectedActionIndex: session.actions.length,
+        completedActionId: session.actions[1].id,
         currentActionIndex: session.actions.length,
         resultPatch: { retried: true },
         metadataPatch: {},
@@ -191,6 +208,7 @@ describe("browser companion atomic persistence", () => {
         sessionId: session.id,
         companion: owner,
         expectedActionIndex: session.actions.length,
+        completedActionId: session.actions[1].id,
         currentActionIndex: 1,
         resultPatch: { rewound: true },
         metadataPatch: {},
@@ -201,6 +219,7 @@ describe("browser companion atomic persistence", () => {
         sessionId: session.id,
         companion: foreign,
         expectedActionIndex: session.actions.length,
+        completedActionId: session.actions[1].id,
         currentActionIndex: session.actions.length,
         resultPatch: { stolen: true },
         metadataPatch: {},

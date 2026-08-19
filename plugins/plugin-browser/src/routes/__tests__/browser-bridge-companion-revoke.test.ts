@@ -57,6 +57,7 @@ function createContext(args: {
     method: args.method,
     pathname: args.pathname,
     url: new URL(`http://127.0.0.1${args.pathname}`),
+    localApiOrigin: "http://127.0.0.1:3000",
     state: {
       runtime,
       adminEntityId:
@@ -76,6 +77,54 @@ function createContext(args: {
 }
 
 describe("Browser Bridge companion revoke route", () => {
+  it("auto-pairs only against the socket-derived local API origin", async () => {
+    const request = {
+      browser: "chrome" as const,
+      profileId: "default",
+    };
+    const autoPairBrowserCompanion = vi.fn(async () => ({
+      companion: { id: "companion-1" },
+      config: { apiBaseUrl: "http://127.0.0.1:3000" },
+    }));
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/auto-pair",
+      headers: { origin: "chrome-extension://installed-extension" },
+      body: request,
+      service: { autoPairBrowserCompanion },
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    const handled = await handleBrowserBridgeRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(autoPairBrowserCompanion).toHaveBeenCalledWith(
+      request,
+      "http://127.0.0.1:3000",
+      "owner-1",
+    );
+    expect(ctx.res.statusCode).toBe(201);
+  });
+
+  it("rejects auto-pair from a non-loopback peer before token issuance", async () => {
+    const autoPairBrowserCompanion = vi.fn();
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/auto-pair",
+      headers: { origin: "chrome-extension://installed-extension" },
+      body: { browser: "chrome" },
+      remoteAddress: "192.0.2.10",
+      service: { autoPairBrowserCompanion },
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    const handled = await handleBrowserBridgeRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(autoPairBrowserCompanion).not.toHaveBeenCalled();
+    expect(ctx.res.statusCode).toBe(403);
+  });
+
   it("revokes a companion token by companion id", async () => {
     const revokedAt = "2026-05-08T12:00:00.000Z";
     const service = {

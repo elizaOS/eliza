@@ -6560,6 +6560,7 @@ export class LifeOpsRepository {
     sessionId: string;
     companion: BrowserBridgeCompanionStatus;
     expectedActionIndex: number;
+    completedActionId: string;
     currentActionIndex: number;
     resultPatch: Record<string, unknown>;
     metadataPatch: Record<string, unknown>;
@@ -6582,6 +6583,7 @@ export class LifeOpsRepository {
           AND browser = ${sqlQuote(args.companion.browser)}
           AND profile_id = ${sqlQuote(args.companion.profileId)}
           AND current_action_index = ${sqlInteger(args.expectedActionIndex)}
+          AND (actions_json::jsonb -> ${sqlInteger(args.expectedActionIndex)} ->> 'id') = ${sqlQuote(args.completedActionId)}
           AND ${sqlInteger(args.currentActionIndex)} <= jsonb_array_length(actions_json::jsonb)
         RETURNING *`,
     );

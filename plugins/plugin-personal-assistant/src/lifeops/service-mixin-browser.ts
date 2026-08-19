@@ -6,8 +6,12 @@
 import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPairingResponse,
+  BrowserBridgeCompanionPreflightRequest,
+  BrowserBridgeCompanionPreflightResponse,
   BrowserBridgeCompanionRevokeResponse,
+  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionStatus,
+  BrowserBridgeCompanionSyncRequest,
   BrowserBridgeCompanionSyncResponse,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
@@ -44,8 +48,13 @@ export interface BrowserBridgeService {
   syncBrowserCompanion(
     companionId: string,
     pairingToken: string,
-    request: SyncBrowserBridgeStateRequest,
+    request: BrowserBridgeCompanionSyncRequest,
   ): Promise<BrowserBridgeCompanionSyncResponse>;
+  preflightBrowserCompanion(
+    companionId: string,
+    pairingToken: string,
+    request: BrowserBridgeCompanionPreflightRequest,
+  ): Promise<BrowserBridgeCompanionPreflightResponse>;
   listBrowserSessions(): Promise<LifeOpsBrowserSession[]>;
   getBrowserSession(sessionId: string): Promise<LifeOpsBrowserSession>;
   createBrowserSession(
@@ -63,7 +72,7 @@ export interface BrowserBridgeService {
     companionId: string,
     pairingToken: string,
     sessionId: string,
-    request: UpdateLifeOpsBrowserSessionProgressRequest,
+    request: BrowserBridgeCompanionSessionProgressRequest,
   ): Promise<LifeOpsBrowserSession>;
   completeBrowserSessionFromCompanion(
     companionId: string,

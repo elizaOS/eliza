@@ -9,8 +9,12 @@ import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeCompanionAutoPairResponse,
   type BrowserBridgeCompanionPairingResponse,
+  type BrowserBridgeCompanionPreflightRequest,
+  type BrowserBridgeCompanionPreflightResponse,
   type BrowserBridgeCompanionRevokeResponse,
+  type BrowserBridgeCompanionSessionProgressRequest,
   type BrowserBridgeCompanionStatus,
+  type BrowserBridgeCompanionSyncRequest,
   type BrowserBridgeCompanionSyncResponse,
   type BrowserBridgePageContext,
   type BrowserBridgeRouteService,
@@ -132,10 +136,23 @@ export class BrowserBridgePluginService
   async syncBrowserCompanion(
     companionId: string,
     pairingToken: string,
-    request: SyncBrowserBridgeStateRequest,
+    request: BrowserBridgeCompanionSyncRequest,
     ownerEntityId?: UUID | null,
   ): Promise<BrowserBridgeCompanionSyncResponse> {
     return this.lifeOps(ownerEntityId).syncBrowserCompanion(
+      companionId,
+      pairingToken,
+      request,
+    );
+  }
+
+  async preflightBrowserCompanion(
+    companionId: string,
+    pairingToken: string,
+    request: BrowserBridgeCompanionPreflightRequest,
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeCompanionPreflightResponse> {
+    return this.lifeOps(ownerEntityId).preflightBrowserCompanion(
       companionId,
       pairingToken,
       request,
@@ -199,7 +216,7 @@ export class BrowserBridgePluginService
     companionId: string,
     pairingToken: string,
     sessionId: string,
-    request: UpdateBrowserBridgeSessionProgressRequest,
+    request: BrowserBridgeCompanionSessionProgressRequest,
     ownerEntityId?: UUID | null,
   ): Promise<LifeOpsBrowserSession> {
     return this.lifeOps(
