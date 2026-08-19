@@ -1178,6 +1178,7 @@ export function ChatOverlay({
   firstRunOpen = false,
   initialMode = "input",
   releaseFirstRunToHalf = false,
+  fillHostAtHalf = false,
   onFirstRunReleaseHandled,
   onPilledChange,
   onDetentChange,
@@ -1204,6 +1205,8 @@ export function ChatOverlay({
    * completion and a runtime-target remount happen in the same transition.
    */
   releaseFirstRunToHalf?: boolean;
+  /** Desktop bottom-bar hosts have no page behind their transparent window. */
+  fillHostAtHalf?: boolean;
   /** Acknowledges that the retained completion intent reached this overlay. */
   onFirstRunReleaseHandled?: () => void;
   /**
@@ -2998,8 +3001,13 @@ export function ChatOverlay({
   // Use the frame (not just `maximized`) so the max-height stays full for the
   // whole restore drag — otherwise frame 1 clamps the panel to the inset height
   // and it pops shorter before the finger has moved.
-  const panelMaxH = fullBleedFrame ? fullPanelMaxH : insetPanelMaxH;
-  const maxOverPull = Math.max(1, fullPanelMaxH - insetPanelMaxH);
+  const panelMaxH = fullBleedFrame
+    ? fullPanelMaxH
+    : fillHostAtHalf
+      ? fullPanelMaxH
+      : insetPanelMaxH;
+  const restingPanelMaxH = fillHostAtHalf ? fullPanelMaxH : insetPanelMaxH;
+  const maxOverPull = Math.max(0, fullPanelMaxH - restingPanelMaxH);
 
   // History-height detents: COLLAPSED (0) → HALF → FULL — the thread's ideal
   // flex-basis; flex-shrink clamps the real height to fit. FULL == panelMaxH so
@@ -3012,7 +3020,9 @@ export function ChatOverlay({
   // detent may never outrun its current panel ceiling: panelCapH intentionally
   // follows threadHeight during a live over-pull, so an oversized HALF target
   // otherwise re-expands the cap and clips the grabber above the screen.
-  const halfH = resolveChatPanelHalfDetentHeight(viewportH, panelMaxH);
+  const halfH = fillHostAtHalf
+    ? panelMaxH
+    : resolveChatPanelHalfDetentHeight(viewportH, panelMaxH);
   const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
   // A free-drag rest height wins over the detent until a detent is re-taken.
   const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
@@ -3202,7 +3212,7 @@ export function ChatOverlay({
     ([h, t, pin]: number[]) =>
       Math.min(
         fullPanelMaxH,
-        Math.max(insetPanelMaxH + maxOverPull * Math.max(t, pin), h),
+        Math.max(restingPanelMaxH + maxOverPull * Math.max(t, pin), h),
       ),
   );
   // Corner radius is CONSTANT at every sheet height (no swim while the panel

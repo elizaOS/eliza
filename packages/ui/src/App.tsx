@@ -2012,6 +2012,7 @@ function ShellFoundationMount({
     return (
       <ChatOverlayMount
         initialMode="input"
+        fillHostAtHalf
         releaseFirstRunToHalf={false}
         onFirstRunReleaseHandled={() => {}}
         onPilledChange={closeWebChatWhenPilled}
@@ -2092,6 +2093,7 @@ function ShellFoundationMount({
  */
 function ChatOverlayMount({
   initialMode,
+  fillHostAtHalf = false,
   releaseFirstRunToHalf,
   onFirstRunReleaseHandled,
   onPilledChange,
@@ -2099,6 +2101,7 @@ function ChatOverlayMount({
   onStateChange,
 }: {
   initialMode?: "input" | "half";
+  fillHostAtHalf?: boolean;
   releaseFirstRunToHalf: boolean;
   onFirstRunReleaseHandled: () => void;
   onPilledChange?: (pilled: boolean) => void;
@@ -2133,6 +2136,7 @@ function ChatOverlayMount({
       agentName={agentName}
       slash={slash}
       initialMode={initialMode}
+      fillHostAtHalf={fillHostAtHalf}
       firstRunOpen={firstRunComplete === false}
       releaseFirstRunToHalf={releaseFirstRunToHalf}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
