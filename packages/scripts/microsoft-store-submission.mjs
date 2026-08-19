@@ -110,6 +110,35 @@ export function classifyCommitStatus(status) {
   return "pending";
 }
 
+export function validateStoreUploadUrl(value) {
+  const raw = requiredValue(value, "Microsoft Store submission upload URL");
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("Microsoft Store submission upload URL is invalid");
+  }
+  const trustedAzureBlob = /^[a-z0-9]{3,24}\.blob\.core\.windows\.net$/.test(
+    parsed.hostname,
+  );
+  const permissions = parsed.searchParams.get("sp") ?? "";
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.port !== "" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    !trustedAzureBlob ||
+    !parsed.searchParams.has("sig") ||
+    !parsed.searchParams.has("se") ||
+    !permissions.includes("w")
+  ) {
+    throw new Error(
+      "Microsoft Store submission upload URL must be a writable HTTPS Azure Blob SAS URL",
+    );
+  }
+  return parsed.toString();
+}
+
 export async function obtainStoreToken({
   tenantId,
   clientId,
@@ -182,10 +211,7 @@ export async function submitMicrosoftStoreUpdate({
   const submissionId = encodeURIComponent(
     requiredValue(String(created?.id ?? ""), "Microsoft Store submission ID"),
   );
-  const uploadUrl = requiredValue(
-    created?.fileUploadUrl,
-    "Microsoft Store submission upload URL",
-  );
+  const uploadUrl = validateStoreUploadUrl(created?.fileUploadUrl);
   const submissionUrl = `${submissionsUrl}/${submissionId}`;
   const updated = prepareSubmissionPayload(created, packageName);
 

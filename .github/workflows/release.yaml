@@ -587,4 +587,7 @@ jobs:
       version: ${{ needs.finalize.outputs.version }}
       tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
       channel: ${{ needs.finalize.outputs.channel }}
-    secrets: inherit
+    secrets:
+      MICROSOFT_STORE_TENANT_ID: ${{ secrets.MICROSOFT_STORE_TENANT_ID }}
+      MICROSOFT_STORE_CLIENT_ID: ${{ secrets.MICROSOFT_STORE_CLIENT_ID }}
+      MICROSOFT_STORE_CLIENT_SECRET: ${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}

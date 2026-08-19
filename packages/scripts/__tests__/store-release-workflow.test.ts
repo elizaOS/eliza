@@ -37,7 +37,7 @@ describe("canonical store release workflow", () => {
           needs?: string | string[];
           uses?: string;
           with?: Record<string, string>;
-          secrets?: string;
+          secrets?: string | Record<string, string>;
         }
       >;
     };
@@ -151,13 +151,25 @@ describe("canonical store release workflow", () => {
       "needs.finalize.outputs.source_sha",
     );
     expect(windows?.with?.version).toContain("needs.finalize.outputs.version");
-    expect(windows?.secrets).toBe("inherit");
+    expect(windows?.secrets).toEqual({
+      MICROSOFT_STORE_TENANT_ID: `\${{ secrets.MICROSOFT_STORE_TENANT_ID }}`,
+      MICROSOFT_STORE_CLIENT_ID: `\${{ secrets.MICROSOFT_STORE_CLIENT_ID }}`,
+      MICROSOFT_STORE_CLIENT_SECRET: `\${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}`,
+    });
   });
 
   test("keeps Microsoft Store callable-only, protected, stable-only, and fail-closed", () => {
     const workflow = Bun.YAML.parse(windowsSource) as {
       on?: Record<string, unknown>;
-      jobs?: Record<string, { environment?: { name?: string }; if?: string }>;
+      jobs?: Record<
+        string,
+        {
+          environment?: { name?: string };
+          if?: string;
+          env?: Record<string, string>;
+          steps?: Array<{ name?: string; env?: Record<string, string> }>;
+        }
+      >;
     };
     expect(Object.keys(workflow.on ?? {})).toEqual(["workflow_call"]);
     const publish = workflow.jobs?.["build-and-publish"];
@@ -173,5 +185,19 @@ describe("canonical store release workflow", () => {
       "runFullTrust|windows.fullTrustApplication",
     );
     expect(windowsSource).toContain("microsoft-store-submission.mjs");
+    for (const secret of [
+      "MICROSOFT_STORE_TENANT_ID",
+      "MICROSOFT_STORE_CLIENT_ID",
+      "MICROSOFT_STORE_CLIENT_SECRET",
+    ]) {
+      expect(publish?.env).not.toHaveProperty(secret);
+      const exposedSteps = (publish?.steps ?? [])
+        .filter((step) => step.env?.[secret] !== undefined)
+        .map((step) => step.name);
+      expect(exposedSteps).toEqual([
+        "Require Partner Center identity and API credentials",
+        "Submit exact package to Partner Center",
+      ]);
+    }
   });
 });

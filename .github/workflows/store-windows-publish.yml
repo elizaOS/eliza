@@ -56,9 +56,6 @@ jobs:
       ELIZA_MSIX_PUBLISHER_ID: ${{ vars.MICROSOFT_STORE_PUBLISHER_ID }}
       ELIZA_MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MICROSOFT_STORE_PUBLISHER_DISPLAY_NAME }}
       MICROSOFT_STORE_APPLICATION_ID: ${{ vars.MICROSOFT_STORE_APPLICATION_ID }}
-      MICROSOFT_STORE_TENANT_ID: ${{ secrets.MICROSOFT_STORE_TENANT_ID }}
-      MICROSOFT_STORE_CLIENT_ID: ${{ secrets.MICROSOFT_STORE_CLIENT_ID }}
-      MICROSOFT_STORE_CLIENT_SECRET: ${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}
     steps:
       - name: Enable Git long paths
         shell: pwsh
@@ -90,6 +87,10 @@ jobs:
 
       - name: Require Partner Center identity and API credentials
         shell: pwsh
+        env:
+          MICROSOFT_STORE_TENANT_ID: ${{ secrets.MICROSOFT_STORE_TENANT_ID }}
+          MICROSOFT_STORE_CLIENT_ID: ${{ secrets.MICROSOFT_STORE_CLIENT_ID }}
+          MICROSOFT_STORE_CLIENT_SECRET: ${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}
         run: |
           $required = @(
             "ELIZA_MSIX_IDENTITY_NAME",
@@ -230,6 +231,10 @@ jobs:
           retention-days: 90
 
       - name: Submit exact package to Partner Center
+        env:
+          MICROSOFT_STORE_TENANT_ID: ${{ secrets.MICROSOFT_STORE_TENANT_ID }}
+          MICROSOFT_STORE_CLIENT_ID: ${{ secrets.MICROSOFT_STORE_CLIENT_ID }}
+          MICROSOFT_STORE_CLIENT_SECRET: ${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}
         run: >-
           node packages/scripts/microsoft-store-submission.mjs
           --archive "${{ steps.package.outputs.archive }}"
