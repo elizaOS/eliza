@@ -26,6 +26,9 @@ import type { ShellPhase } from "./shell-state";
 
 export interface HomePillProps {
   phase: ShellPhase;
+  /** Whether the chat overlay is actually open. Voice activity can enter
+   *  `responding` while the pill remains closed, so phase cannot own this. */
+  open?: boolean;
   onOpen: () => void;
   onClose: () => void;
   /** Begin hold-to-talk capture (wired to `startRecording("ptt")`). When
@@ -116,6 +119,7 @@ const PROCESS_DOTS = [
  */
 export function HomePill({
   phase,
+  open,
   onOpen,
   onClose,
   onHoldStart,
@@ -129,11 +133,10 @@ export function HomePill({
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
   const needsAuth = phase === "needs-auth";
-  // The pill reads as "open" (its click will close) only for the overlay
-  // surfaces. `listening` is deliberately NOT included: hold-to-talk runs with
-  // the overlay closed, and treating it as open would flash the label/pressed
-  // state during every hold (#20483).
-  const isOpen = phase === "summoned" || phase === "responding";
+  // Hosts with a controller must pass its real overlay state. The phase-only
+  // fallback preserves standalone stories and consumers, but cannot distinguish
+  // a closed-pill voice response from a response inside an open chat.
+  const isOpen = open ?? (phase === "summoned" || phase === "responding");
   const previewEligible =
     showComposerPreview && (phase === "idle" || needsAuth);
   const [previewHovered, setPreviewHovered] = React.useState(false);
