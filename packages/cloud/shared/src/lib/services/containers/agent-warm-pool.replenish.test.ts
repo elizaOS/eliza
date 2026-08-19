@@ -99,6 +99,20 @@ describe("replenish creates when ENABLED and below target", () => {
     expect(result.decision.toCreate).toBe(1);
   });
 
+  test("binds an exact target digest without changing the configured claim image", async () => {
+    const { WarmPoolManager } = await load();
+    const { creator, create } = fakeCreator();
+    const manager = new WarmPoolManager(creator);
+    const targetDigest = `sha256:${"a".repeat(64)}`;
+
+    const result = await manager.replenish("img:stable", targetDigest);
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledWith("img:stable", targetDigest);
+    expect(repo.countAllPoolEntries).toHaveBeenCalledWith({ digest: targetDigest });
+    expect(result.created).toHaveLength(1);
+  });
+
   test("does NOT over-create when the pool already meets target", async () => {
     const { WarmPoolManager } = await load();
     // ready:1 meets the minPoolSize=1 target => deficit 0 => no creates.

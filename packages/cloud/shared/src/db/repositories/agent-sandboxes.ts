@@ -93,6 +93,8 @@ export type {
   NewAgentSandboxBackup,
 };
 
+const CANONICAL_SHA256_IMAGE_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
+
 /**
  * Lightweight legacy-list projection. Catalogue-v2 fields are intentionally
  * read through the dedicated catalogue repository so this path never grows
@@ -230,6 +232,7 @@ function warmPoolRuntimeLocatorConditions(): SQL[] {
     sql`${agentSandboxes.bridge_url} IS NOT NULL AND btrim(${agentSandboxes.bridge_url}) <> ''`,
     sql`${agentSandboxes.health_url} IS NOT NULL AND btrim(${agentSandboxes.health_url}) <> ''`,
     sql`${agentSandboxes.docker_image} IS NOT NULL AND btrim(${agentSandboxes.docker_image}) <> ''`,
+    sql`${agentSandboxes.image_digest} ~ '^sha256:[0-9a-f]{64}$'`,
     isNull(agentSandboxes.deleted_at),
     isNull(agentSandboxes.deletion_attempt_id),
     isNull(agentSandboxes.replacement_cleanup_sandbox_id),
@@ -240,7 +243,12 @@ function warmPoolRuntimeReadyConditions(): SQL[] {
   return [isNotNull(agentSandboxes.pool_ready_at), ...warmPoolRuntimeLocatorConditions()];
 }
 
-function claimableWarmPoolConditions(filter: { image?: string } = {}): SQL[] {
+export interface WarmPoolImageFilter {
+  image?: string;
+  digest?: string;
+}
+
+function claimableWarmPoolConditions(filter: WarmPoolImageFilter = {}): SQL[] {
   const conditions: SQL[] = [
     eq(agentSandboxes.organization_id, WARM_POOL_ORG_ID),
     eq(agentSandboxes.user_id, WARM_POOL_USER_ID),
@@ -251,10 +259,13 @@ function claimableWarmPoolConditions(filter: { image?: string } = {}): SQL[] {
   if (filter.image !== undefined) {
     conditions.push(eq(agentSandboxes.docker_image, filter.image));
   }
+  if (filter.digest !== undefined) {
+    conditions.push(eq(agentSandboxes.image_digest, filter.digest));
+  }
   return conditions;
 }
 
-function inFlightWarmPoolConditions(filter: { image?: string } = {}): SQL[] {
+function inFlightWarmPoolConditions(filter: WarmPoolImageFilter = {}): SQL[] {
   const conditions: SQL[] = [
     eq(agentSandboxes.organization_id, WARM_POOL_ORG_ID),
     eq(agentSandboxes.user_id, WARM_POOL_USER_ID),
@@ -266,6 +277,9 @@ function inFlightWarmPoolConditions(filter: { image?: string } = {}): SQL[] {
   ];
   if (filter.image !== undefined) {
     conditions.push(eq(agentSandboxes.docker_image, filter.image));
+  }
+  if (filter.digest !== undefined) {
+    conditions.push(eq(agentSandboxes.image_digest, filter.digest));
   }
   return conditions;
 }
@@ -1403,7 +1417,7 @@ export class AgentSandboxesRepository {
   // ── Warm pool ─────────────────────────────────────────────────────────
 
   /** Count entries that the claim transaction can transfer immediately. */
-  async countUnclaimedPool(filter: { image?: string } = {}): Promise<number> {
+  async countUnclaimedPool(filter: WarmPoolImageFilter = {}): Promise<number> {
     await ensureAgentSandboxSchema();
     const [row] = await dbWrite
       .select({ count: sql<number>`count(*)::int` })
@@ -1412,7 +1426,7 @@ export class AgentSandboxesRepository {
     if (!row) {
       throw new ElizaError("Warm-pool capacity query returned no aggregate row", {
         code: "WARM_POOL_CAPACITY_READ_FAILED",
-        context: { image: filter.image },
+        context: { image: filter.image, digest: filter.digest },
       });
     }
     return row.count;
@@ -1424,7 +1438,7 @@ export class AgentSandboxesRepository {
    * replacement capacity.
    */
   async countAllPoolEntries(
-    filter: { image?: string } = {},
+    filter: WarmPoolImageFilter = {},
   ): Promise<{ ready: number; provisioning: number }> {
     await ensureAgentSandboxSchema();
     const claimable = and(...claimableWarmPoolConditions(filter));
@@ -1444,7 +1458,7 @@ export class AgentSandboxesRepository {
     if (!inventory) {
       throw new ElizaError("Warm-pool inventory query returned no aggregate row", {
         code: "WARM_POOL_CAPACITY_READ_FAILED",
-        context: { image: filter.image },
+        context: { image: filter.image, digest: filter.digest },
       });
     }
     return inventory;
@@ -1562,7 +1576,7 @@ export class AgentSandboxesRepository {
   }
 
   /** Claimable rows, ordered by the same FIFO stamp used by the claim path. */
-  async listClaimablePool(filter: { image?: string } = {}): Promise<AgentSandbox[]> {
+  async listClaimablePool(filter: WarmPoolImageFilter = {}): Promise<AgentSandbox[]> {
     await ensureAgentSandboxSchema();
     return dbWrite
       .select()
@@ -1636,6 +1650,29 @@ export class AgentSandboxesRepository {
         ),
       )
       .orderBy(agentSandboxes.pool_ready_at);
+  }
+
+  /**
+   * Every retained warm-pool generation that image rollout may classify.
+   * Unlike the ready-only status reader, this includes provisioning/error
+   * generations and prior failed rollout reservations so a mutable-tag change
+   * cannot leave invisible old-digest capacity behind forever.
+   */
+  async listPoolEntriesForRollout(): Promise<AgentSandbox[]> {
+    await ensureAgentSandboxSchema();
+    return dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.organization_id, WARM_POOL_ORG_ID),
+          eq(agentSandboxes.user_id, WARM_POOL_USER_ID),
+          eq(agentSandboxes.pool_status, "unclaimed"),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
+        ),
+      )
+      .orderBy(agentSandboxes.pool_ready_at, agentSandboxes.created_at);
   }
 
   /**
@@ -2011,6 +2048,50 @@ export class AgentSandboxesRepository {
           isNull(agentSandboxes.deleted_at),
           isNull(agentSandboxes.deletion_attempt_id),
           sql`NOT (${and(...warmPoolRuntimeReadyConditions())})`,
+        ),
+      )
+      .returning();
+    return reserved;
+  }
+
+  /**
+   * Fence one exact stale image generation before rollout tears down its
+   * remote container. The generation CAS closes both races that matter:
+   * a concurrent claim deletes the pool row first and this returns undefined,
+   * while a successful reservation moves the row out of `running` before the
+   * claim query can transfer it. A prior failed teardown may reserve again on
+   * the next sweep because `deletion_failed` remains a retained pool row.
+   */
+  async reserveStalePoolEntryForRollout(
+    expected: WarmPoolRuntimeGeneration,
+    targetDigest: string,
+  ): Promise<AgentSandbox | undefined> {
+    await ensureAgentSandboxSchema();
+    if (!CANONICAL_SHA256_IMAGE_DIGEST_RE.test(targetDigest)) {
+      throw new ElizaError("Warm-pool rollout target digest must be canonical sha256", {
+        code: "WARM_POOL_ROLLOUT_DIGEST_INVALID",
+        context: { targetDigest },
+        severity: "fatal",
+      });
+    }
+    if (expected.organization_id !== WARM_POOL_ORG_ID || expected.image_digest === targetDigest) {
+      return undefined;
+    }
+    const [reserved] = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "deletion_failed",
+        error_message: `Warm-pool image rollout reserved stale generation for ${targetDigest}`,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          ...warmPoolGenerationConditions(expected),
+          eq(agentSandboxes.user_id, WARM_POOL_USER_ID),
+          eq(agentSandboxes.pool_status, "unclaimed"),
+          sql`${agentSandboxes.image_digest} IS DISTINCT FROM ${targetDigest}`,
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.deletion_attempt_id),
         ),
       )
       .returning();

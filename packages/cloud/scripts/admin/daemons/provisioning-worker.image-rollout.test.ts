@@ -10,7 +10,9 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_WARM_POOL_POLICY } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-forecast";
 import {
   __setDepsForTests,
+  prePullAllowsPoolImageRollout,
   processFleetUpgradeCycle,
+  processPoolImageRolloutCycle,
   readWorkerConfig,
 } from "./provisioning-worker";
 
@@ -110,6 +112,96 @@ describe("processFleetUpgradeCycle shared image-change capacity", () => {
   });
 });
 
+describe("warm-pool image rollout admission", () => {
+  test("only a completed zero-failure pre-pull authorizes rollout", () => {
+    expect(prePullAllowsPoolImageRollout(null)).toBe(false);
+    expect(
+      prePullAllowsPoolImageRollout({
+        attempted: 2,
+        failed: 1,
+        configuredImage,
+        targetDigest,
+      }),
+    ).toBe(false);
+    expect(
+      prePullAllowsPoolImageRollout({
+        attempted: 0,
+        failed: 0,
+        configuredImage,
+        targetDigest: null,
+      }),
+    ).toBe(false);
+    expect(
+      prePullAllowsPoolImageRollout({
+        attempted: 0,
+        failed: 0,
+        configuredImage,
+        targetDigest,
+      }),
+    ).toBe(false);
+    expect(
+      prePullAllowsPoolImageRollout({
+        attempted: 1,
+        failed: 0,
+        configuredImage,
+        targetDigest,
+      }),
+    ).toBe(true);
+  });
+
+  test("passes one resolved immutable digest into the manager and exposes counts", async () => {
+    const rollout = mock(async () => ({
+      decision: {
+        toFence: ["old-a", "old-b"],
+        toReplace: ["old-a"],
+        counts: {
+          target: 1,
+          targetReady: 1,
+          stale: 2,
+          selected: 1,
+          deferred: 1,
+        },
+      },
+      reserved: ["old-a", "old-b"],
+      replaced: ["old-a"],
+      deferred: [
+        {
+          id: "old-b",
+          reason: "generation changed before non-selected reservation",
+        },
+      ],
+      failed: [],
+    }));
+    class TestWarmPoolManager {
+      rollout = rollout;
+    }
+    __setDepsForTests({
+      containersEnv: { defaultAgentImage: () => configuredImage },
+      resolveImageDigest: async () => targetDigest,
+      WarmPoolManager: TestWarmPoolManager,
+      getHetznerPoolContainerCreator: () => ({}),
+      envWarmPoolPolicy: () => DEFAULT_WARM_POOL_POLICY,
+    } as unknown as Parameters<typeof __setDepsForTests>[0]);
+
+    const result = await processPoolImageRolloutCycle();
+
+    expect(rollout).toHaveBeenCalledWith(configuredImage, targetDigest);
+    expect(result).toEqual({
+      action: "completed",
+      configuredImage,
+      targetDigest,
+      target: 1,
+      targetReady: 1,
+      stale: 2,
+      selected: 1,
+      reserved: 2,
+      replaced: 1,
+      deferred: 1,
+      failed: 0,
+    });
+  });
+});
+
 const oneShotModuleSpecifiers = [
   "@elizaos/cloud-shared/lib/services/provisioning-jobs",
   "@elizaos/cloud-shared/lib/utils/logger",
@@ -155,6 +247,7 @@ async function withOneShotModuleMocks(
 
 describe("real one-shot daemon entrypoint", () => {
   test("runs one complete canary-aware cycle, closes owned handles, and exits cleanly", async () => {
+    const warmPoolPhaseOrder: string[] = [];
     const logger = {
       info: mock((..._args: unknown[]) => {}),
       warn: mock((..._args: unknown[]) => {}),
@@ -218,10 +311,13 @@ describe("real one-shot daemon entrypoint", () => {
     const syncAllocatedCounts = mock(
       async () => new Map([["node-a", { previous: 0, actual: 1 }]]),
     );
-    const prePullAgentImageOnAvailableNodes = mock(async () => [
-      { nodeId: "node-a", status: "pulled" },
-      { nodeId: "node-b", status: "failed" },
-    ]);
+    const prePullAgentImageOnAvailableNodes = mock(async () => {
+      warmPoolPhaseOrder.push("pre-pull");
+      return [
+        { nodeId: "node-a", status: "pulled" },
+        { nodeId: "node-b", status: "pulled" },
+      ];
+    });
     const evaluateCapacity = mock(async () => ({
       shouldScaleUp: true,
       shouldScaleDownNodeIds: [],
@@ -238,11 +334,34 @@ describe("real one-shot daemon entrypoint", () => {
       reconciliation: {},
       removed: [],
     }));
-    const replenish = mock(async () => ({
-      created: ["warm-agent-next"],
-      failed: [],
-      decision: { reason: "forecast deficit" },
-    }));
+    const replenish = mock(async () => {
+      warmPoolPhaseOrder.push("replenish");
+      return {
+        created: ["warm-agent-next"],
+        failed: [],
+        decision: { reason: "forecast deficit" },
+      };
+    });
+    const rollout = mock(async () => {
+      warmPoolPhaseOrder.push("rollout");
+      return {
+        decision: {
+          toFence: ["warm-agent-old"],
+          toReplace: ["warm-agent-old"],
+          counts: {
+            target: 1,
+            targetReady: 1,
+            stale: 1,
+            selected: 1,
+            deferred: 0,
+          },
+        },
+        reserved: ["warm-agent-old"],
+        replaced: ["warm-agent-old"],
+        deferred: [],
+        failed: [],
+      };
+    });
     const countInFlightByTypes = mock(async () => 1);
     const listRunningWithDigestOtherThan = mock(async () => [
       {
@@ -278,11 +397,13 @@ describe("real one-shot daemon entrypoint", () => {
       failedRows: 0,
       invalidRows: 0,
     }));
+    const resolveImageDigest = mock(async () => targetDigest);
 
     class OneShotWarmPoolManager {
       drainIdle = drainIdle;
       healthCheck = healthCheck;
       replenish = replenish;
+      rollout = rollout;
     }
 
     const replacements: Readonly<Record<string, object>> = {
@@ -317,6 +438,8 @@ describe("real one-shot daemon entrypoint", () => {
       "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool": {
         WarmPoolManager: OneShotWarmPoolManager,
         envWarmPoolPolicy: () => DEFAULT_WARM_POOL_POLICY,
+        immutableImageReference: (_image: string, digest: string) =>
+          `ghcr.io/elizaos/eliza@${digest}`,
       },
       "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator": {
         getHetznerPoolContainerCreator: () => ({ kind: "deterministic" }),
@@ -329,7 +452,7 @@ describe("real one-shot daemon entrypoint", () => {
         assertSSHKeyAvailable: () => {},
       },
       "@elizaos/cloud-shared/lib/services/containers/registry-probe": {
-        resolveImageDigest: async () => targetDigest,
+        resolveImageDigest,
       },
       "@elizaos/cloud-shared/db/repositories/agent-sandboxes": {
         agentSandboxesRepository: {
@@ -461,14 +584,21 @@ describe("real one-shot daemon entrypoint", () => {
         expect(healthCheckAll).toHaveBeenCalledTimes(1);
         expect(syncAllocatedCounts).toHaveBeenCalledTimes(1);
         expect(prePullAgentImageOnAvailableNodes).toHaveBeenCalledWith(
-          configuredImage,
+          `ghcr.io/elizaos/eliza@${targetDigest}`,
         );
+        expect(resolveImageDigest).toHaveBeenCalledTimes(2);
         expect(evaluateCapacity).toHaveBeenCalledTimes(1);
         expect(provisionNode).toHaveBeenCalledTimes(1);
         expect(drainNode).not.toHaveBeenCalled();
         expect(drainIdle).toHaveBeenCalledWith(configuredImage);
         expect(healthCheck).toHaveBeenCalledTimes(1);
-        expect(replenish).toHaveBeenCalledWith(configuredImage);
+        expect(rollout).toHaveBeenCalledWith(configuredImage, targetDigest);
+        expect(replenish).toHaveBeenCalledWith(configuredImage, targetDigest);
+        expect(warmPoolPhaseOrder).toEqual([
+          "pre-pull",
+          "rollout",
+          "replenish",
+        ]);
         expect(reconcileOrphanContainersOnNodes).toHaveBeenCalledTimes(1);
         expect(reconcileOrphanAppContainersOnNodes).toHaveBeenCalledTimes(1);
         expect(cleanupExpiredPreDeleteRecoveryBackups).toHaveBeenCalledTimes(1);

@@ -3123,7 +3123,13 @@ export class ElizaSandboxService {
     // Solution: Retry loop catches unique constraint errors, cleans up ghost container, and retries.
     const MAX_PROVISION_ATTEMPTS = 3;
     let lastError: string = "Unknown error";
-    const provisionDockerImage = resolveManagedProvisionDockerImage(rec.docker_image);
+    const provisionDockerImage =
+      isWarmPoolProvision &&
+      rec.docker_image &&
+      rec.image_digest &&
+      /^sha256:[0-9a-f]{64}$/.test(rec.image_digest)
+        ? digestPinnedImageRef(rec.docker_image, rec.image_digest)
+        : resolveManagedProvisionDockerImage(rec.docker_image);
 
     // Materialize the stored env for the container: BYO secrets are encrypted
     // at rest (#11332); compatibility plaintext values pass through unchanged. A
@@ -3354,7 +3360,13 @@ export class ElizaSandboxService {
           if (dockerMeta.bridgePort) updateData.bridge_port = dockerMeta.bridgePort;
           if (dockerMeta.webUiPort) updateData.web_ui_port = dockerMeta.webUiPort;
           if (dockerMeta.headscaleIp) updateData.headscale_ip = dockerMeta.headscaleIp;
-          if (dockerMeta.dockerImage) updateData.docker_image = dockerMeta.dockerImage;
+          if (dockerMeta.dockerImage) {
+            // Warm-pool rows retain the configured logical image reference so
+            // the API's exact-image claim contract can see them. Their actual
+            // immutable runtime generation is recorded by image_digest.
+            updateData.docker_image =
+              isWarmPoolProvision && rec.docker_image ? rec.docker_image : dockerMeta.dockerImage;
+          }
           // Always overwrite the digest (including null) so a re-provision
           // onto a different image clears any stale value. The reconciler
           // treats null as "unknown, wait until probe succeeds before

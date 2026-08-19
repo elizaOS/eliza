@@ -16,6 +16,8 @@ export interface ImageReferenceStatus {
 export interface RolloutPoolRow {
   id: string;
   docker_image: string | null;
+  image_digest: string | null;
+  claimable: boolean;
   node_id: string | null;
   pool_ready_at: Date | null;
   health_url: string | null;
@@ -41,8 +43,11 @@ export interface ImageRolloutSummary {
   status: ImageRolloutStatus;
   safeNextAction: ImageRolloutSafeNextAction;
   counts: {
+    totalGenerations: number;
     totalReady: number;
+    inFlightOrUnclaimable: number;
     matchingDesired: number;
+    matchingReady: number;
     stale: number;
     unknownImage: number;
   };
@@ -120,54 +125,66 @@ export function imageMatchesDesired(currentImage: string | null, desiredImage: s
 
 export function summarizeImageRollout(params: {
   desiredImage: string;
+  desiredDigest?: string;
   enabled: boolean;
   rows: RolloutPoolRow[];
 }): ImageRolloutSummary {
-  const desired = describeImageReference(params.desiredImage);
+  const configured = describeImageReference(params.desiredImage);
+  const desired = params.desiredDigest
+    ? {
+        ...configured,
+        reference: `${configured.repository}@${params.desiredDigest}`,
+        digest: params.desiredDigest,
+        pinning: "digest" as const,
+        productionSafe: SHA256_DIGEST_RE.test(params.desiredDigest),
+        warning: SHA256_DIGEST_RE.test(params.desiredDigest)
+          ? null
+          : "Resolved image digest must be a full sha256:<64 hex> reference.",
+      }
+    : configured;
   const currentCounts = new Map<
     string,
     { image: string; tag: string | null; digest: string | null; count: number }
   >();
   const staleRows: ImageRolloutSummary["staleRows"] = [];
   let matchingDesired = 0;
+  let matchingReady = 0;
   let unknownImage = 0;
 
   for (const row of params.rows) {
-    if (!row.docker_image) {
+    if (!row.image_digest) {
       unknownImage++;
-      staleRows.push({
-        id: row.id,
-        currentImage: null,
-        currentTag: null,
-        currentDigest: null,
-        nodeId: row.node_id,
-        poolReadyAt: row.pool_ready_at,
-        healthUrl: row.health_url,
-      });
-      continue;
     }
 
-    const current = describeImageReference(row.docker_image);
-    const existing = currentCounts.get(row.docker_image);
-    if (existing) {
-      existing.count++;
-    } else {
-      currentCounts.set(row.docker_image, {
-        image: row.docker_image,
-        tag: current.tag,
-        digest: current.digest,
-        count: 1,
-      });
+    if (row.docker_image) {
+      const current = describeImageReference(row.docker_image);
+      const currentKey = `${row.docker_image}\u0000${row.image_digest ?? "unknown"}`;
+      const existing = currentCounts.get(currentKey);
+      if (existing) {
+        existing.count++;
+      } else {
+        currentCounts.set(currentKey, {
+          image: row.docker_image,
+          tag: current.tag,
+          digest: row.image_digest,
+          count: 1,
+        });
+      }
     }
 
-    if (imageMatchesDesired(row.docker_image, params.desiredImage)) {
+    const matchesDesired = params.desiredDigest
+      ? row.image_digest === params.desiredDigest
+      : imageMatchesDesired(row.docker_image, params.desiredImage);
+    if (matchesDesired) {
       matchingDesired++;
+      if (row.claimable) matchingReady++;
     } else {
+      const current = row.docker_image ? describeImageReference(row.docker_image) : null;
       staleRows.push({
         id: row.id,
         currentImage: row.docker_image,
-        currentTag: current.tag,
-        currentDigest: current.digest,
+        currentTag: current?.tag ?? null,
+        currentDigest: row.image_digest,
         nodeId: row.node_id,
         poolReadyAt: row.pool_ready_at,
         healthUrl: row.health_url,
@@ -175,7 +192,7 @@ export function summarizeImageRollout(params: {
     }
   }
 
-  const totalReady = params.rows.length;
+  const totalReady = params.rows.filter((row) => row.claimable).length;
   let status: ImageRolloutStatus;
   let safeNextAction: ImageRolloutSafeNextAction;
   if (!params.enabled) {
@@ -184,12 +201,12 @@ export function summarizeImageRollout(params: {
   } else if (!desired.productionSafe) {
     status = "blocked_unpinned_desired_image";
     safeNextAction = "configure_pinned_desired_image";
-  } else if (totalReady === 0) {
-    status = "no_ready_pool";
-    safeNextAction = "replenish_pool";
   } else if (staleRows.length > 0) {
     status = "needs_rollout";
     safeNextAction = "replace_stale_pool_entries";
+  } else if (totalReady === 0) {
+    status = "no_ready_pool";
+    safeNextAction = "replenish_pool";
   } else {
     status = "current";
     safeNextAction = "none";
@@ -201,13 +218,16 @@ export function summarizeImageRollout(params: {
     status,
     safeNextAction,
     counts: {
+      totalGenerations: params.rows.length,
       totalReady,
+      inFlightOrUnclaimable: params.rows.length - totalReady,
       matchingDesired,
+      matchingReady,
       stale: staleRows.length,
       unknownImage,
     },
-    currentImages: Array.from(currentCounts.values()).sort((a, b) =>
-      a.image.localeCompare(b.image),
+    currentImages: Array.from(currentCounts.values()).sort(
+      (a, b) => a.image.localeCompare(b.image) || (a.digest ?? "").localeCompare(b.digest ?? ""),
     ),
     staleRows,
     supportedActions: [

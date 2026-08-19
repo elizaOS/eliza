@@ -16,6 +16,7 @@
  * them to repository + Hetzner client I/O.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
 import { containersEnv } from "../../config/containers-env";
@@ -38,6 +39,7 @@ export interface PoolStateSnapshot {
     id: string;
     pool_ready_at: Date | null;
     docker_image: string | null;
+    image_digest: string | null;
     node_id: string | null;
     health_url: string | null;
   }>;
@@ -106,22 +108,108 @@ export function decideDrain(
 }
 
 export interface RolloutDecision {
+  toFence: string[];
   toReplace: string[];
   reason: string;
+  counts: {
+    target: number;
+    targetReady: number;
+    stale: number;
+    staleReady: number;
+    staleInFlight: number;
+    unknownDigest: number;
+    selected: number;
+    deferred: number;
+  };
+}
+
+export interface RolloutRowSnapshot {
+  id: string;
+  image_digest: string | null;
+  claimable: boolean;
+}
+
+/** Bind a mutable Docker reference to the immutable digest resolved for this sweep. */
+export function immutableImageReference(image: string, digest: string): string {
+  if (!/^sha256:[0-9a-f]{64}$/.test(digest)) {
+    throw new ElizaError("Warm-pool image digest must be canonical sha256", {
+      code: "WARM_POOL_ROLLOUT_DIGEST_INVALID",
+      context: { digest },
+      severity: "fatal",
+    });
+  }
+  const withoutDigest = image.split("@", 1)[0] ?? image;
+  const lastSlash = withoutDigest.lastIndexOf("/");
+  const lastColon = withoutDigest.lastIndexOf(":");
+  const repository = lastColon > lastSlash ? withoutDigest.slice(0, lastColon) : withoutDigest;
+  return `${repository}@${digest}`;
 }
 
 export function decideRollout(
-  unclaimedRows: Array<{ id: string; docker_image: string | null }>,
-  currentImage: string,
+  unclaimedRows: RolloutRowSnapshot[],
+  targetDigest: string,
+  policy: Pick<WarmPoolPolicy, "minPoolSize" | "replenishBurstLimit">,
 ): RolloutDecision {
-  const stale = unclaimedRows.filter(
-    (r) => r.docker_image !== currentImage && r.docker_image !== null,
-  );
+  const stale = unclaimedRows.filter((row) => row.image_digest !== targetDigest);
+  const targetRows = unclaimedRows.filter((row) => row.image_digest === targetDigest);
+  const targetReady = targetRows.filter((row) => row.claimable).length;
+  const staleReadyRows = stale.filter((row) => row.claimable);
+  const staleInFlightRows = stale.filter((row) => !row.claimable);
+  const totalReady = targetReady + staleReadyRows.length;
+  const replacementBudget = Math.max(0, policy.replenishBurstLimit);
+  const selectedInFlight = staleInFlightRows.slice(0, replacementBudget);
+  const remainingBudget = replacementBudget - selectedInFlight.length;
+  const readyFloorHeadroom = Math.max(0, totalReady - policy.minPoolSize);
+  // Do not physically tear down ready old-digest containers until at least one
+  // target generation is ready. All stale rows are claim-fenced below, so this
+  // floor preserves only bounded teardown/recovery capacity, never stale
+  // claimable capacity. Replenish counts only the target digest and creates
+  // the bridge generation in the following daemon phase.
+  const readyReplacementLimit = targetReady > 0 ? Math.min(remainingBudget, readyFloorHeadroom) : 0;
+  const selectedReady = staleReadyRows.slice(0, readyReplacementLimit);
+  const selected = [...selectedInFlight, ...selectedReady];
+  const unknownDigest = stale.filter((row) => row.image_digest === null).length;
   return {
-    toReplace: stale.map((r) => r.id),
+    toFence: stale.map((row) => row.id),
+    toReplace: selected.map((row) => row.id),
     reason:
-      stale.length > 0 ? `replacing ${stale.length} stale-image rows` : "all rows on current image",
+      stale.length > 0
+        ? `claim-fencing all ${stale.length} stale-digest generations; selected ${selected.length} for teardown while retaining physical ready-container floor ${policy.minPoolSize}`
+        : `all ${targetRows.length} generations on target digest`,
+    counts: {
+      target: targetRows.length,
+      targetReady,
+      stale: stale.length,
+      staleReady: staleReadyRows.length,
+      staleInFlight: staleInFlightRows.length,
+      unknownDigest,
+      selected: selected.length,
+      deferred: stale.length - selected.length,
+    },
   };
+}
+
+function hasText(value: string | null): value is string {
+  return value !== null && value.trim().length > 0;
+}
+
+function isCanonicalImageDigest(value: string | null): value is string {
+  return value !== null && /^sha256:[0-9a-f]{64}$/.test(value);
+}
+
+function isClaimableRolloutGeneration(row: AgentSandbox): boolean {
+  return (
+    row.status === "running" &&
+    row.pool_ready_at !== null &&
+    hasText(row.sandbox_id) &&
+    hasText(row.node_id) &&
+    hasText(row.container_name) &&
+    hasText(row.bridge_url) &&
+    hasText(row.health_url) &&
+    hasText(row.docker_image) &&
+    isCanonicalImageDigest(row.image_digest) &&
+    row.replacement_cleanup_sandbox_id === null
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +246,10 @@ export interface PoolContainerCreator {
    *      status='running' and `pool_ready_at` together.
    *   4. On failure, leave a non-claimable row for reconciliation.
    */
-  createPoolContainer(image: string): Promise<{ id: string; nodeId: string | null }>;
+  createPoolContainer(
+    configuredImage: string,
+    targetDigest?: string,
+  ): Promise<{ id: string; nodeId: string | null }>;
 
   /**
    * Stop the docker container backing this pool entry and delete the row.
@@ -205,7 +296,11 @@ export interface WarmPoolReconciliationResult {
 
 export interface RolloutResult {
   decision: RolloutDecision;
+  configuredImage: string;
+  targetDigest: string;
+  reserved: string[];
   replaced: string[];
+  deferred: Array<{ id: string; reason: string }>;
   failed: Array<{ id: string; error: string }>;
 }
 
@@ -221,9 +316,10 @@ export class WarmPoolManager {
   /**
    * Compute current pool state + forecast. Pure-ish: only reads.
    */
-  async snapshot(image: string): Promise<PoolStateSnapshot> {
-    const counts = await agentSandboxesRepository.countAllPoolEntries({ image });
-    const unclaimedRows = await agentSandboxesRepository.listClaimablePool({ image });
+  async snapshot(image: string, targetDigest?: string): Promise<PoolStateSnapshot> {
+    const filter = targetDigest ? { digest: targetDigest } : { image };
+    const counts = await agentSandboxesRepository.countAllPoolEntries(filter);
+    const unclaimedRows = await agentSandboxesRepository.listClaimablePool(filter);
 
     const buckets = await this.collectHourlyBuckets(this.policy.forecastWindowHours);
     const forecast = computeForecast({
@@ -241,6 +337,7 @@ export class WarmPoolManager {
         id: r.id,
         pool_ready_at: r.pool_ready_at,
         docker_image: r.docker_image,
+        image_digest: r.image_digest,
         node_id: r.node_id,
         health_url: r.health_url,
       })),
@@ -249,7 +346,7 @@ export class WarmPoolManager {
     };
   }
 
-  async replenish(image: string): Promise<ReplenishResult> {
+  async replenish(image: string, targetDigest?: string): Promise<ReplenishResult> {
     if (!containersEnv.warmPoolEnabled()) {
       return {
         decision: { toCreate: 0, reason: "WARM_POOL_ENABLED=false (no-op)" },
@@ -264,14 +361,17 @@ export class WarmPoolManager {
     // manually-invoked health route. A stranded row is repaired or fenced
     // before the capacity snapshot decides whether to create a replacement.
     const reconciliation = await this.reconcileUnclaimable();
-    const state = await this.snapshot(image);
+    const state = await this.snapshot(image, targetDigest);
     const decision = decideReplenish(state, this.policy);
     const created: Array<{ id: string; nodeId: string | null }> = [];
     const failed: Array<{ error: string }> = [];
+    if (targetDigest) immutableImageReference(image, targetDigest);
 
     for (let i = 0; i < decision.toCreate; i++) {
       try {
-        const result = await this.creator.createPoolContainer(image);
+        const result = targetDigest
+          ? await this.creator.createPoolContainer(image, targetDigest)
+          : await this.creator.createPoolContainer(image);
         created.push(result);
       } catch (err) {
         // error-policy:J1 batch boundary — a per-container provision failure is
@@ -469,24 +569,70 @@ export class WarmPoolManager {
     );
   }
 
-  async rollout(image: string): Promise<RolloutResult> {
+  async rollout(image: string, targetDigest: string): Promise<RolloutResult> {
     if (!containersEnv.warmPoolEnabled()) {
       return {
-        decision: { toReplace: [], reason: "WARM_POOL_ENABLED=false (no-op)" },
+        decision: {
+          toFence: [],
+          toReplace: [],
+          reason: "WARM_POOL_ENABLED=false (no-op)",
+          counts: {
+            target: 0,
+            targetReady: 0,
+            stale: 0,
+            staleReady: 0,
+            staleInFlight: 0,
+            unknownDigest: 0,
+            selected: 0,
+            deferred: 0,
+          },
+        },
+        configuredImage: image,
+        targetDigest,
+        reserved: [],
         replaced: [],
+        deferred: [],
         failed: [],
       };
     }
 
-    const rows = await agentSandboxesRepository.listAllRunningPoolEntries();
-    const decision = decideRollout(rows, image);
+    const rows = await agentSandboxesRepository.listPoolEntriesForRollout();
+    const decision = decideRollout(
+      rows.map((row) => ({
+        id: row.id,
+        image_digest: row.image_digest,
+        claimable: isClaimableRolloutGeneration(row),
+      })),
+      targetDigest,
+      this.policy,
+    );
+    const rowsById = new Map(rows.map((row) => [row.id, row]));
+    const reserved: string[] = [];
+    const reservedSet = new Set<string>();
     const replaced: string[] = [];
+    const deferred: Array<{ id: string; reason: string }> = [];
     const failed: Array<{ id: string; error: string }> = [];
 
-    for (const id of decision.toReplace) {
+    for (const id of decision.toFence) {
+      const expected = rowsById.get(id);
+      if (!expected) {
+        deferred.push({ id, reason: "rollout snapshot no longer contains generation" });
+        continue;
+      }
       try {
-        await this.creator.destroyPoolContainer(id);
-        replaced.push(id);
+        const fenced = await agentSandboxesRepository.reserveStalePoolEntryForRollout(
+          expected,
+          targetDigest,
+        );
+        if (!fenced) {
+          deferred.push({
+            id,
+            reason: "generation changed, reached target digest, or was claimed",
+          });
+          continue;
+        }
+        reserved.push(id);
+        reservedSet.add(id);
       } catch (err) {
         // error-policy:J1 batch boundary — a per-row replace failure is recorded
         // in the structured `failed[]` result; the stale row stays and is retried
@@ -495,24 +641,62 @@ export class WarmPoolManager {
       }
     }
 
+    for (const id of decision.toReplace) {
+      if (!reservedSet.has(id)) continue;
+      try {
+        await this.creator.destroyPoolContainer(id);
+        // deleteAgent may deliberately retain a capacity-ownership tombstone
+        // when remote teardown is unresolved. A resolved creator call alone
+        // therefore does not prove replacement; only row absence does.
+        const retained = await agentSandboxesRepository.findById(id);
+        if (retained) {
+          failed.push({
+            id,
+            error: "remote teardown did not remove the fenced pool generation",
+          });
+        } else {
+          replaced.push(id);
+        }
+      } catch (err) {
+        // error-policy:J1 batch boundary — the exact generation remains
+        // claim-fenced and is retried on the next bounded rollout sweep.
+        failed.push({ id, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
     logger.info("[warm-pool] rollout", {
       decision,
+      configuredImage: image,
+      targetDigest,
+      reserved: reserved.length,
       replaced: replaced.length,
+      deferred: deferred.length,
       failed: failed.length,
     });
-    return { decision, replaced, failed };
+    return {
+      decision,
+      configuredImage: image,
+      targetDigest,
+      reserved,
+      replaced,
+      deferred,
+      failed,
+    };
   }
 
-  async rolloutStatus(image: string): Promise<ImageRolloutSummary> {
+  async rolloutStatus(image: string, targetDigest?: string): Promise<ImageRolloutSummary> {
     const rows = containersEnv.warmPoolEnabled()
-      ? await agentSandboxesRepository.listAllRunningPoolEntries()
+      ? await agentSandboxesRepository.listPoolEntriesForRollout()
       : [];
     return summarizeImageRollout({
       desiredImage: image,
+      desiredDigest: targetDigest,
       enabled: containersEnv.warmPoolEnabled(),
       rows: rows.map((r) => ({
         id: r.id,
         docker_image: r.docker_image,
+        image_digest: r.image_digest,
+        claimable: isClaimableRolloutGeneration(r),
         node_id: r.node_id,
         pool_ready_at: r.pool_ready_at,
         health_url: r.health_url,

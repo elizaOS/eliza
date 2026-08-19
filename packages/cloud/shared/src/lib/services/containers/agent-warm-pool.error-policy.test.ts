@@ -28,6 +28,9 @@ const repo = {
   promoteStrandedPoolEntryReady: mock(async () => undefined),
   reserveUnclaimablePoolEntryForReap: mock(async () => undefined),
   reserveStuckPoolEntryForReap: mock(async () => undefined),
+  listPoolEntriesForRollout: mock(async () => [] as Array<Record<string, unknown>>),
+  reserveStalePoolEntryForRollout: mock(async () => undefined),
+  findById: mock(async () => undefined),
   findStuckPoolProvisioning: mock(async () => [] as Array<{ id: string }>),
   countAllPoolEntries: mock(async () => ({ ready: 0, provisioning: 0 })),
   countUserProvisionsByHour: mock(async () => [] as number[]),
@@ -95,6 +98,12 @@ beforeEach(() => {
   repo.listWarmPoolReconciliationCandidates.mockResolvedValue([]);
   repo.findStuckPoolProvisioning.mockReset();
   repo.findStuckPoolProvisioning.mockResolvedValue([]);
+  repo.listPoolEntriesForRollout.mockReset();
+  repo.listPoolEntriesForRollout.mockResolvedValue([]);
+  repo.reserveStalePoolEntryForRollout.mockReset();
+  repo.reserveStalePoolEntryForRollout.mockResolvedValue(undefined);
+  repo.findById.mockReset();
+  repo.findById.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -335,5 +344,118 @@ describe("healthCheck honors the disabled no-op", () => {
     });
     expect(repo.listClaimablePool).not.toHaveBeenCalled();
     expect(destroy).not.toHaveBeenCalled();
+  });
+});
+
+const TARGET_DIGEST = `sha256:${"a".repeat(64)}`;
+const STALE_DIGEST = `sha256:${"b".repeat(64)}`;
+
+function rolloutRow(
+  id: string,
+  digest: string | null,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id,
+    organization_id: "pool-org",
+    status: "running",
+    environment_revision: 1,
+    sandbox_id: `sandbox-${id}`,
+    node_id: "node-1",
+    container_name: `agent-${id}`,
+    bridge_url: "http://100.64.0.10:3000",
+    health_url: "http://100.64.0.10:3000/health",
+    docker_image: "ghcr.io/elizaos/eliza:stable",
+    image_digest: digest,
+    pool_ready_at: new Date("2026-08-19T00:00:00.000Z"),
+    replacement_cleanup_sandbox_id: null,
+    ...overrides,
+  };
+}
+
+describe("rollout exact-generation claim fencing", () => {
+  test("fences every stale generation even with no target-ready row, but destroys none yet", async () => {
+    const { WarmPoolManager } = await load();
+    const oldA = rolloutRow("old-a", STALE_DIGEST);
+    const oldB = rolloutRow("old-b", STALE_DIGEST);
+    repo.listPoolEntriesForRollout.mockResolvedValue([oldA, oldB]);
+    repo.reserveStalePoolEntryForRollout.mockImplementation(async (row) => row);
+    const { creator, destroy } = fakeCreator();
+    const manager = new WarmPoolManager(creator, {
+      ...DEFAULT_WARM_POOL_POLICY,
+      minPoolSize: 1,
+      replenishBurstLimit: 2,
+    });
+
+    const result = await manager.rollout("ghcr.io/elizaos/eliza:stable", TARGET_DIGEST);
+
+    expect(repo.reserveStalePoolEntryForRollout).toHaveBeenCalledTimes(2);
+    expect(result.reserved).toEqual(["old-a", "old-b"]);
+    expect(result.decision.toReplace).toEqual([]);
+    expect(destroy).not.toHaveBeenCalled();
+  });
+
+  test("a concurrent claim that wins the generation CAS is never destroyed", async () => {
+    const { WarmPoolManager } = await load();
+    repo.listPoolEntriesForRollout.mockResolvedValue([
+      rolloutRow("claim-winner", STALE_DIGEST, {
+        status: "provisioning",
+        pool_ready_at: null,
+      }),
+    ]);
+    repo.reserveStalePoolEntryForRollout.mockResolvedValue(undefined);
+    const { creator, destroy } = fakeCreator();
+    const manager = new WarmPoolManager(creator);
+
+    const result = await manager.rollout("ghcr.io/elizaos/eliza:stable", TARGET_DIGEST);
+
+    expect(result.reserved).toEqual([]);
+    expect(result.deferred[0]?.reason).toContain("claimed");
+    expect(destroy).not.toHaveBeenCalled();
+  });
+
+  test("partial teardown failure stays fenced and succeeds on the next bounded sweep", async () => {
+    const { WarmPoolManager } = await load();
+    const target = rolloutRow("target", TARGET_DIGEST);
+    const stale = rolloutRow("stale", STALE_DIGEST);
+    repo.listPoolEntriesForRollout.mockResolvedValue([target, stale]);
+    repo.reserveStalePoolEntryForRollout.mockImplementation(async (row) => row);
+    let attempts = 0;
+    const destroy = mock(async () => {
+      attempts++;
+      if (attempts === 1) throw new Error("ssh timeout");
+    });
+    const { creator } = fakeCreator({ destroyPoolContainer: destroy });
+    const manager = new WarmPoolManager(creator);
+
+    const first = await manager.rollout("ghcr.io/elizaos/eliza:stable", TARGET_DIGEST);
+    const second = await manager.rollout("ghcr.io/elizaos/eliza:stable", TARGET_DIGEST);
+
+    expect(first.failed[0]?.error).toContain("ssh timeout");
+    expect(first.replaced).toEqual([]);
+    expect(second.replaced).toEqual(["stale"]);
+    expect(destroy).toHaveBeenCalledTimes(2);
+  });
+
+  test("a retained cleanup tombstone is failed, never reported as replaced", async () => {
+    const { WarmPoolManager } = await load();
+    const target = rolloutRow("target", TARGET_DIGEST);
+    const stale = rolloutRow("stale-retained", STALE_DIGEST);
+    repo.listPoolEntriesForRollout.mockResolvedValue([target, stale]);
+    repo.reserveStalePoolEntryForRollout.mockImplementation(async (row) => row);
+    repo.findById.mockResolvedValue(stale);
+    const { creator, destroy } = fakeCreator();
+    const manager = new WarmPoolManager(creator);
+
+    const result = await manager.rollout("ghcr.io/elizaos/eliza:stable", TARGET_DIGEST);
+
+    expect(destroy).toHaveBeenCalledWith("stale-retained");
+    expect(result.replaced).toEqual([]);
+    expect(result.failed).toEqual([
+      {
+        id: "stale-retained",
+        error: "remote teardown did not remove the fenced pool generation",
+      },
+    ]);
   });
 });

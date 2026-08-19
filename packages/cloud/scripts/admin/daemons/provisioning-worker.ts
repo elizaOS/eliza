@@ -40,6 +40,8 @@ type WorkerWarmPoolManager =
   typeof import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool").WarmPoolManager;
 type WorkerEnvWarmPoolPolicy =
   typeof import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool").envWarmPoolPolicy;
+type WorkerImmutableImageReference =
+  typeof import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool").immutableImageReference;
 type WorkerContainersEnv =
   typeof import("@elizaos/cloud-shared/lib/config/containers-env").containersEnv;
 type WorkerAssertSSHKeyAvailable =
@@ -82,6 +84,7 @@ interface WorkerDeps {
   getNodeAutoscaler: WorkerNodeAutoscaler;
   WarmPoolManager: WorkerWarmPoolManager;
   envWarmPoolPolicy: WorkerEnvWarmPoolPolicy;
+  immutableImageReference: WorkerImmutableImageReference;
   getHetznerPoolContainerCreator: WorkerWarmPoolCreator;
   containersEnv: WorkerContainersEnv;
   assertSSHKeyAvailable: WorkerAssertSSHKeyAvailable;
@@ -338,6 +341,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         getNodeAutoscaler: autoscalerModule.getNodeAutoscaler,
         WarmPoolManager: warmPoolModule.WarmPoolManager,
         envWarmPoolPolicy: warmPoolModule.envWarmPoolPolicy,
+        immutableImageReference: warmPoolModule.immutableImageReference,
         getHetznerPoolContainerCreator:
           warmPoolCreatorModule.getHetznerPoolContainerCreator,
         containersEnv: containersEnvModule.containersEnv,
@@ -807,6 +811,8 @@ interface NodeHealthSummary {
 interface PrePullImagesSummary {
   attempted: number;
   failed: number;
+  configuredImage: string;
+  targetDigest: string | null;
 }
 
 interface NodeAutoscaleSummary {
@@ -828,6 +834,20 @@ interface PoolReplenishSummary {
   created: number;
   failed: number;
   reason: string;
+}
+
+interface PoolImageRolloutSummary {
+  action: "completed" | "skipped_no_digest";
+  configuredImage: string;
+  targetDigest: string | null;
+  target: number;
+  targetReady: number;
+  stale: number;
+  selected: number;
+  reserved: number;
+  replaced: number;
+  deferred: number;
+  failed: number;
 }
 
 interface PoolHealthCheckSummary {
@@ -984,12 +1004,39 @@ async function processSyncAllocatedCountsCycle(): Promise<number> {
  */
 async function processPrePullImagesCycle(): Promise<PrePullImagesSummary | null> {
   if (process.env.ELIZA_AGENT_HOT_POOL_PREPULL === "false") return null;
-  const { dockerNodeManager, containersEnv } = await loadDeps();
-  const image = containersEnv.defaultAgentImage();
+  const {
+    dockerNodeManager,
+    containersEnv,
+    immutableImageReference,
+    resolveImageDigest,
+  } = await loadDeps();
+  const configuredImage = containersEnv.defaultAgentImage();
+  const targetDigest = await resolveImageDigest(configuredImage);
+  if (!targetDigest) {
+    return { attempted: 0, failed: 0, configuredImage, targetDigest: null };
+  }
+  const image = immutableImageReference(configuredImage, targetDigest);
   const result =
     await dockerNodeManager.prePullAgentImageOnAvailableNodes(image);
   const failed = result.filter((n) => n.status === "failed").length;
-  return { attempted: result.length, failed };
+  return {
+    attempted: result.length,
+    failed,
+    configuredImage,
+    targetDigest,
+  };
+}
+
+/** A disabled or failed pre-pull must never authorize destructive rollout. */
+export function prePullAllowsPoolImageRollout(
+  summary: PrePullImagesSummary | null,
+): summary is PrePullImagesSummary {
+  return (
+    summary !== null &&
+    summary.attempted > 0 &&
+    summary.failed === 0 &&
+    summary.targetDigest !== null
+  );
 }
 
 /**
@@ -1192,6 +1239,61 @@ export async function processPoolHealthCheckCycle(): Promise<PoolHealthCheckSumm
 }
 
 /**
+ * Replace stale warm-pool generations against one immutable registry digest.
+ * The manager generation-fences every selected row before remote teardown and
+ * burst-bounds remote teardown while retaining the configured physical
+ * ready-container floor. Every known-stale row is claim-fenced immediately,
+ * so that retained floor is not advertised as current-digest claim capacity.
+ */
+export async function processPoolImageRolloutCycle(
+  resolvedTarget?: Pick<
+    PrePullImagesSummary,
+    "configuredImage" | "targetDigest"
+  >,
+): Promise<PoolImageRolloutSummary> {
+  const { containersEnv, resolveImageDigest } = await loadDeps();
+  const configuredImage =
+    resolvedTarget?.configuredImage ?? containersEnv.defaultAgentImage();
+  const targetDigest =
+    resolvedTarget?.targetDigest ?? (await resolveImageDigest(configuredImage));
+  if (!targetDigest) {
+    return {
+      action: "skipped_no_digest",
+      configuredImage,
+      targetDigest: null,
+      target: 0,
+      targetReady: 0,
+      stale: 0,
+      selected: 0,
+      reserved: 0,
+      replaced: 0,
+      deferred: 0,
+      failed: 0,
+    };
+  }
+  const pool = await getWarmPoolManager();
+  const result = await pool.rollout(configuredImage, targetDigest);
+  const selected = new Set(result.decision.toReplace);
+  const deferredIds = new Set([
+    ...result.decision.toFence.filter((id) => !selected.has(id)),
+    ...result.deferred.map(({ id }) => id),
+  ]);
+  return {
+    action: "completed",
+    configuredImage,
+    targetDigest,
+    target: result.decision.counts.target,
+    targetReady: result.decision.counts.targetReady,
+    stale: result.decision.counts.stale,
+    selected: result.decision.counts.selected,
+    reserved: result.reserved.length,
+    replaced: result.replaced.length,
+    deferred: deferredIds.size,
+    failed: result.failed.length,
+  };
+}
+
+/**
  * Refill the warm pool up to its forecast target. THIS IS THE MISSING CALLER:
  * `WarmPoolManager.replenish()` had no live invocation anywhere in the tree —
  * the only historical caller was the deprecated (undeployed) container-control-
@@ -1207,11 +1309,13 @@ export async function processPoolHealthCheckCycle(): Promise<PoolHealthCheckSumm
  * runs AFTER the node-health / autoscale phases below so it sees fresh node
  * capacity when it decides how many to create.
  */
-export async function processPoolReplenishCycle(): Promise<PoolReplenishSummary> {
+export async function processPoolReplenishCycle(
+  targetDigest?: string,
+): Promise<PoolReplenishSummary> {
   const { containersEnv } = await loadDeps();
   const image = containersEnv.defaultAgentImage();
   const pool = await getWarmPoolManager();
-  const result = await pool.replenish(image);
+  const result = await pool.replenish(image, targetDigest);
   return {
     created: result.created.length,
     failed: result.failed.length,
@@ -1923,11 +2027,19 @@ export async function runInfraMaintenanceCycle(
     },
   );
 
+  let prePullTarget: PrePullImagesSummary | null = null;
+  let warmPoolTargetDigest: string | undefined;
   await runBoundedPhase(
     logger,
     "pre-pull images cycle",
     () => processPrePullImagesCycle(),
     (summary) => {
+      prePullTarget = prePullAllowsPoolImageRollout(summary) ? summary : null;
+      // Digest resolution is sufficient to pin newly-created capacity even
+      // when zero/partial pre-pull means destructive stale rollout must stay
+      // closed. Never fall back to a mutable tag once this sweep knows the
+      // immutable target.
+      warmPoolTargetDigest = summary?.targetDigest ?? undefined;
       if (summary) {
         logger.info("[provisioning-worker] pre-pull images cycle complete", {
           attempted: summary.attempted,
@@ -1936,6 +2048,23 @@ export async function runInfraMaintenanceCycle(
       }
     },
   );
+
+  if (prePullTarget) {
+    await runBoundedPhase(
+      logger,
+      "warm pool image rollout cycle",
+      () => processPoolImageRolloutCycle(prePullTarget),
+      (summary) => {
+        logger.info(
+          "[provisioning-worker] warm pool image rollout cycle complete",
+          {
+            event: "warm_pool.image_rollout",
+            ...summary,
+          },
+        );
+      },
+    );
+  }
 
   await runBoundedPhase(
     logger,
@@ -1993,7 +2122,7 @@ export async function runInfraMaintenanceCycle(
   await runBoundedPhase(
     logger,
     "warm pool replenish cycle",
-    () => processPoolReplenishCycle(),
+    () => processPoolReplenishCycle(warmPoolTargetDigest),
     (result) => {
       if (result.created > 0 || result.failed > 0) {
         logger.info(
