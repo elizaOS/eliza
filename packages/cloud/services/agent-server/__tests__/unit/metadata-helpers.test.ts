@@ -110,6 +110,14 @@ describe("resolveUserName", () => {
     expect(result.length).toBe(255);
     expect(result).toBe("A".repeat(255));
   });
+
+  test("does not split a surrogate pair when the 255-cut lands inside one", () => {
+    // 256 UTF-16 units: the emoji's surrogate pair straddles the cut at 255.
+    const longName = `${"A".repeat(254)}\u{1F600}`;
+    const result = resolveUserName("user-001", { senderName: longName });
+    // Backs off before the split pair rather than truncating to a lone surrogate.
+    expect(result).toBe("A".repeat(254));
+  });
 });
 
 describe("buildConnectionMetadata", () => {
@@ -174,6 +182,20 @@ describe("buildConnectionMetadata", () => {
     expect(result).toEqual({
       platformName: "whatsapp",
       chatId: "x".repeat(128),
+    });
+  });
+
+  test("does not split a surrogate pair when the 128-cut lands inside one", () => {
+    // 129 UTF-16 units: the emoji's surrogate pair straddles the cut at 128.
+    const longId = `${"x".repeat(127)}\u{1F600}`;
+    const result = buildConnectionMetadata({
+      platformName: "whatsapp",
+      chatId: longId,
+    });
+    // Backs off before the split pair rather than truncating to a lone surrogate.
+    expect(result).toEqual({
+      platformName: "whatsapp",
+      chatId: "x".repeat(127),
     });
   });
 
