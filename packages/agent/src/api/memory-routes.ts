@@ -63,6 +63,7 @@ const QUICK_CONTEXT_DOCUMENTS_THRESHOLD = 0.2;
 
 const MEMORY_BROWSE_DEFAULT_LIMIT = 50;
 const MEMORY_BROWSE_MAX_LIMIT = 200;
+const MEMORY_BROWSE_MAX_SCAN_ROWS = 25_000;
 const MEMORY_FEED_DEFAULT_LIMIT = 50;
 const MEMORY_FEED_MAX_LIMIT = 100;
 const MEMORY_TABLE_NAMES = [
@@ -842,28 +843,91 @@ async function fetchMemoriesFromTables(
   // matchesKeyword has OR semantics for multi-token queries, so only a
   // single token can be pushed into the adapter without excluding valid rows.
   const textContains = searchTerms.length === 1 ? searchTerms[0] : undefined;
+  const maxScannedRowsPerTable = Math.max(
+    1,
+    Math.floor(MEMORY_BROWSE_MAX_SCAN_ROWS / Math.max(tables.length, 1)),
+  );
 
   // Tables are independent and remain concurrent, but each table advances an
-  // offset cursor instead of repeatedly reading a larger prefix. Requiring the
-  // target from every non-exhausted table makes a bounded final cross-table
-  // merge safe without draining an unbounded store merely to compute a total.
+  // exclusive keyset cursor instead of repeatedly reading a larger prefix.
+  // Requiring the target from every non-exhausted table makes the final
+  // cross-table merge safe. The request-wide row budget fails closed when a
+  // filter is too sparse to prove the page without draining an unbounded store.
   const tableResults = await Promise.all(
     tables.map(async (tableName) => {
       const eligible: TaggedMemory[] = [];
       let cursor: { createdAt: number; id: UUID } | undefined;
       let batchSize = 200;
+      let scannedRows = 0;
 
       for (;;) {
+        const queryLimit = Math.min(
+          batchSize,
+          maxScannedRowsPerTable - scannedRows,
+        );
+        if (queryLimit <= 0) {
+          throw new ElizaError(
+            "Memory browse exceeded its bounded scan budget before proving the page",
+            {
+              code: "MEMORY_BROWSE_SCAN_LIMIT",
+              context: {
+                tableName,
+                scannedRows,
+                maxScannedRows: maxScannedRowsPerTable,
+                target: params.target,
+              },
+            },
+          );
+        }
         const memories = await runtime.getMemories({
           agentId: runtime.agentId as UUID,
           roomId: params.roomId,
           tableName,
-          limit: batchSize,
+          limit: queryLimit,
           cursor,
           end: params.before,
           textContains,
           includeEmbedding: false, // browse feed discards embeddings
         });
+        scannedRows += memories.length;
+
+        let nextCursor = cursor;
+        for (const memory of memories) {
+          if (!memory.id) {
+            throw new ElizaError(
+              "A paged memory row did not contain the required id",
+              {
+                code: "MEMORY_BROWSE_CURSOR_MISSING_ID",
+                context: { tableName },
+              },
+            );
+          }
+          const candidate = {
+            createdAt: memoryCreatedAt(memory),
+            id: memory.id,
+          };
+          if (
+            nextCursor &&
+            (candidate.createdAt > nextCursor.createdAt ||
+              (candidate.createdAt === nextCursor.createdAt &&
+                compareMemoryIds(candidate.id, nextCursor.id) >= 0))
+          ) {
+            throw new ElizaError(
+              "Memory adapter did not advance the requested keyset cursor",
+              {
+                code: "MEMORY_BROWSE_CURSOR_NO_PROGRESS",
+                context: {
+                  tableName,
+                  cursorCreatedAt: nextCursor.createdAt,
+                  cursorId: nextCursor.id,
+                  returnedCreatedAt: candidate.createdAt,
+                  returnedId: candidate.id,
+                },
+              },
+            );
+          }
+          nextCursor = candidate;
+        }
 
         for (const memory of memories) {
           const tagged = { ...memory, _table: tableName };
@@ -892,23 +956,27 @@ async function fetchMemoriesFromTables(
           eligible.push(tagged);
         }
 
-        if (memories.length < batchSize) {
+        if (memories.length < queryLimit) {
           return eligible;
         }
         if (eligible.length >= params.target) {
           return eligible;
         }
-        const last = memories.at(-1);
-        if (!last?.id) {
+        if (scannedRows >= maxScannedRowsPerTable) {
           throw new ElizaError(
-            "A paged memory row did not contain the required id",
+            "Memory browse exceeded its bounded scan budget before proving the page",
             {
-              code: "MEMORY_BROWSE_CURSOR_MISSING_ID",
-              context: { tableName },
+              code: "MEMORY_BROWSE_SCAN_LIMIT",
+              context: {
+                tableName,
+                scannedRows,
+                maxScannedRows: maxScannedRowsPerTable,
+                target: params.target,
+              },
             },
           );
         }
-        cursor = { createdAt: memoryCreatedAt(last), id: last.id };
+        cursor = nextCursor;
         batchSize = Math.min(batchSize * 2, 5_000);
       }
     }),

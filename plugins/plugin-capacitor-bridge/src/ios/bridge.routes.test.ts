@@ -298,7 +298,7 @@ describe("iOS bridge — memories view routes", () => {
 
 	it("finds sparse matches beyond the first adapter window", async () => {
 		for (let i = 0; i < 450; i++) {
-			await seedMemory("messages", i >= 420 ? `needle ${i}` : `hay ${i}`, i);
+			await seedMemory("messages", i < 30 ? `needle ${i}` : `hay ${i}`, i);
 		}
 		const result = await call(
 			backend,
@@ -310,6 +310,58 @@ describe("iOS bridge — memories view routes", () => {
 			totalIsExact: false,
 			hasMore: true,
 		});
+	});
+
+	it("fails closed when an adapter ignores the keyset cursor", async () => {
+		for (let i = 0; i < 450; i++) {
+			await seedMemory("messages", i < 30 ? `needle ${i}` : `hay ${i}`, i);
+		}
+		const cursorAware = runtime.getMemories.bind(runtime);
+		runtime.getMemories = vi.fn((params) =>
+			cursorAware({ ...params, cursor: undefined }),
+		);
+
+		await expect(
+			call(
+				backend,
+				"GET",
+				"/api/memories/browse?type=messages&q=needle%20missing&limit=20",
+			),
+		).rejects.toMatchObject({ code: "MEMORY_BROWSE_CURSOR_NO_PROGRESS" });
+		expect(runtime.getMemories).toHaveBeenCalledTimes(2);
+	});
+
+	it("fails closed at the shared request-wide sparse scan bound", async () => {
+		let sequence = 0;
+		const getMemories = vi.fn(
+			async (params: { limit?: number }): Promise<Memory[]> =>
+				Array.from({ length: params.limit ?? 0 }, () => {
+					const index = sequence++;
+					return {
+						id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}` as UUID,
+						entityId: AGENT_ID,
+						roomId: AGENT_ID,
+						agentId: AGENT_ID,
+						createdAt: 1_000_000 - index,
+						content: { text: `hay ${index}` },
+					} as Memory;
+				}),
+		);
+		runtime.getMemories = getMemories as IAgentRuntime["getMemories"];
+
+		await expect(
+			call(
+				backend,
+				"GET",
+				"/api/memories/browse?type=messages&q=needle%20missing&limit=20",
+			),
+		).rejects.toMatchObject({ code: "MEMORY_BROWSE_SCAN_LIMIT" });
+		expect(
+			getMemories.mock.calls.reduce(
+				(sum, [params]) => sum + (params.limit ?? 0),
+				0,
+			),
+		).toBe(25_000);
 	});
 
 	it("stats totals per table", async () => {

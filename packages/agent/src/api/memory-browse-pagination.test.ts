@@ -308,4 +308,46 @@ describe("memory viewer incremental pagination (#22061)", () => {
       }),
     ).toBe(true);
   });
+
+  test("fails closed when an adapter accepts but ignores the keyset cursor", async () => {
+    const rows = Array.from({ length: 450 }, (_, i) =>
+      makeRow(i, i >= 420 ? `needle ${i}` : `hay ${i}`),
+    );
+    const { runtime, getMemories } = makeRuntime({ messages: rows });
+    const cursorAware = getMemories.getMockImplementation() as
+      | ((query: MemoryQuery) => Promise<Memory[]>)
+      | undefined;
+    expect(cursorAware).toBeDefined();
+    getMemories.mockImplementation((query: MemoryQuery) =>
+      cursorAware?.({ ...query, cursor: undefined }),
+    );
+
+    await expect(
+      get(
+        runtime,
+        "/api/memories/browse?type=messages&q=needle%20missing&limit=20",
+      ),
+    ).rejects.toMatchObject({ code: "MEMORY_BROWSE_CURSOR_NO_PROGRESS" });
+    expect(getMemories).toHaveBeenCalledTimes(2);
+  });
+
+  test("fails closed at a request-wide sparse scan bound", async () => {
+    const rows = Array.from({ length: 25_001 }, (_, i) =>
+      makeRow(i, `hay ${i}`),
+    );
+    const { runtime, getMemories } = makeRuntime({ messages: rows });
+
+    await expect(
+      get(
+        runtime,
+        "/api/memories/browse?type=messages&q=needle%20missing&limit=20",
+      ),
+    ).rejects.toMatchObject({ code: "MEMORY_BROWSE_SCAN_LIMIT" });
+    expect(
+      getMemories.mock.calls.reduce(
+        (sum, [query]) => sum + (query as MemoryQuery).limit,
+        0,
+      ),
+    ).toBe(25_000);
+  });
 });
