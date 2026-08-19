@@ -31,8 +31,8 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
             "Control Center gallery search must list the Ask Eliza control; a missing result means the ElizaWidgets appex/control registration path regressed."
         )
         XCTAssertTrue(
-            springboard.staticTexts["Eliza Voice"].waitForExistence(timeout: 8),
-            "Control Center gallery search must list the Eliza Voice control; a missing result means the ElizaWidgets appex/control registration path regressed."
+            springboard.staticTexts["Talk to Eliza"].waitForExistence(timeout: 8),
+            "Control Center gallery search must list the Talk to Eliza control; a missing result means the ElizaWidgets appex/control registration path regressed."
         )
 
         attachAccessibilitySnapshot(named: "control-gallery-eliza-results")

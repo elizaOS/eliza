@@ -43,18 +43,6 @@ enum ElizaWidgetDeepLink {
         )
     }
 
-    static func dailyBrief(source: Source) -> URL {
-        url(path: "lifeops/daily-brief", action: "lifeops.daily-brief", source: source)
-    }
-
-    static func newTask(source: Source) -> URL {
-        url(path: "lifeops/task/new", action: "lifeops.create", source: source)
-    }
-
-    static func smartReply(source: Source) -> URL {
-        url(path: "chat", action: "smart-reply", source: source)
-    }
-
     private static func url(
         path: String,
         action: String,
@@ -105,8 +93,7 @@ struct ElizaWidgetTimelineProvider: TimelineProvider {
     }
 }
 
-/// The five quick actions mirror the app target's App Intents
-/// (`ElizaAppIntents.swift`): Ask, Voice, Daily Brief, New Task, Smart Reply.
+/// The two quick actions mirror the app target's App Intents: Ask and voice.
 private struct ElizaQuickAction: Identifiable {
     let id: String
     let title: LocalizedStringResource
@@ -123,27 +110,9 @@ private let elizaQuickActions: [ElizaQuickAction] = [
     ),
     ElizaQuickAction(
         id: "voice",
-        title: "Voice",
+        title: "Talk",
         systemImage: "waveform",
         url: ElizaWidgetDeepLink.voice(source: .widget)
-    ),
-    ElizaQuickAction(
-        id: "daily-brief",
-        title: "Brief",
-        systemImage: "sun.max",
-        url: ElizaWidgetDeepLink.dailyBrief(source: .widget)
-    ),
-    ElizaQuickAction(
-        id: "new-task",
-        title: "Task",
-        systemImage: "checklist",
-        url: ElizaWidgetDeepLink.newTask(source: .widget)
-    ),
-    ElizaQuickAction(
-        id: "smart-reply",
-        title: "Reply",
-        systemImage: "text.bubble",
-        url: ElizaWidgetDeepLink.smartReply(source: .widget)
     ),
 ]
 
@@ -184,7 +153,7 @@ struct ElizaQuickActionsWidgetView: View {
             Spacer(minLength: 0)
             Text("Ask Eliza")
                 .font(.headline)
-            Text("Chat · Voice · Tasks")
+            Text("Ask · Talk")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -233,7 +202,7 @@ struct ElizaQuickActionsWidgetView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Ask Eliza")
                     .font(.headline)
-                Text("Chat · Voice · Tasks")
+                Text("Ask · Talk")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -253,7 +222,7 @@ struct ElizaQuickActionsWidget: Widget {
             ElizaQuickActionsWidgetView()
         }
         .configurationDisplayName("Eliza Quick Actions")
-        .description("Ask, talk, and plan with Eliza from your Home and Lock Screen.")
+        .description("Ask or talk to Eliza from your Home and Lock Screen.")
         .supportedFamilies([
             .systemSmall,
             .systemMedium,

@@ -68,7 +68,7 @@ struct AskElizaIntent: AppIntent {
 
 @available(iOS 16.0, *)
 struct StartElizaVoiceIntent: AppIntent {
-    static var title: LocalizedStringResource = "Start Voice Chat"
+    static var title: LocalizedStringResource = "Talk to Eliza"
     static var description = IntentDescription("Open Eliza directly into voice chat.")
     static var openAppWhenRun = true
 
@@ -79,51 +79,6 @@ struct StartElizaVoiceIntent: AppIntent {
             action: "voice",
             extraItems: [URLQueryItem(name: "voice", value: "1")]
         )
-        return .result()
-    }
-}
-
-@available(iOS 16.0, *)
-struct OpenElizaDailyBriefIntent: AppIntent {
-    static var title: LocalizedStringResource = "Open Daily Brief"
-    static var description = IntentDescription("Open the LifeOps daily brief in Eliza.")
-    static var openAppWhenRun = true
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        ElizaAppIntentRouter.open(path: "lifeops/daily-brief", action: "lifeops.daily-brief")
-        return .result()
-    }
-}
-
-@available(iOS 16.0, *)
-struct CreateElizaTaskIntent: AppIntent {
-    static var title: LocalizedStringResource = "Create LifeOps Task"
-    static var description = IntentDescription("Ask Eliza to create or plan a LifeOps task.")
-    static var openAppWhenRun = true
-
-    @Parameter(title: "Task", requestValueDialog: "What task should Eliza create?")
-    var task: String?
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        ElizaAppIntentRouter.open(path: "lifeops/task/new", action: "lifeops.create", text: task)
-        return .result()
-    }
-}
-
-@available(iOS 16.0, *)
-struct DraftElizaSmartReplyIntent: AppIntent {
-    static var title: LocalizedStringResource = "Draft Smart Reply"
-    static var description = IntentDescription("Ask Eliza to draft a reply from copied or dictated context.")
-    static var openAppWhenRun = true
-
-    @Parameter(title: "Context", requestValueDialog: "What should Eliza reply to?")
-    var context: String?
-
-    @MainActor
-    func perform() async throws -> some IntentResult {
-        ElizaAppIntentRouter.open(path: "chat", action: "smart-reply", text: context)
         return .result()
     }
 }
@@ -149,39 +104,10 @@ struct ElizaAppShortcutsProvider: AppShortcutsProvider {
         AppShortcut(
             intent: StartElizaVoiceIntent(),
             phrases: [
-                "Start voice with \(.applicationName)",
-                "Start \(.applicationName) voice",
+                "Talk to \(.applicationName)",
             ],
-            shortTitle: "Voice",
+            shortTitle: "Talk to Eliza",
             systemImageName: "waveform"
-        )
-
-        AppShortcut(
-            intent: OpenElizaDailyBriefIntent(),
-            phrases: [
-                "Open \(.applicationName) daily brief",
-                "Show my daily brief in \(.applicationName)",
-            ],
-            shortTitle: "Daily Brief",
-            systemImageName: "sun.max"
-        )
-
-        AppShortcut(
-            intent: CreateElizaTaskIntent(),
-            phrases: [
-                "Create a task in \(.applicationName)",
-            ],
-            shortTitle: "New Task",
-            systemImageName: "checklist"
-        )
-
-        AppShortcut(
-            intent: DraftElizaSmartReplyIntent(),
-            phrases: [
-                "Draft a reply with \(.applicationName)",
-            ],
-            shortTitle: "Smart Reply",
-            systemImageName: "text.bubble"
         )
     }
 }
