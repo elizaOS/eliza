@@ -296,7 +296,7 @@ export class DeviceFilesystemBridge extends Service {
 				const info = await lstat(next);
 				if (info.isSymbolicLink()) {
 					throw new Error(
-						`${DEVICE_FILESYSTEM_LOG_PREFIX} resolved path escapes workspace root: ${next}`,
+						`${DEVICE_FILESYSTEM_LOG_PREFIX} symlinked parent is not permitted: ${next}`,
 					);
 				}
 				if (!info.isDirectory()) {

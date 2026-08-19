@@ -2,7 +2,13 @@
  * Unit tests for `normalizeDevicePath`, plus integration tests exercising the Node
  * backend's traversal/symlink-escape guards against a real temp directory on disk (no mocks).
  */
-import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	symlinkSync,
+} from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -155,7 +161,7 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 
 			await expect(
 				bridge.write("linked-outside/new.txt", "nope"),
-			).rejects.toThrow(/escapes workspace root/);
+			).rejects.toThrow(/symlinked parent is not permitted/);
 		} finally {
 			rmSync(outside, { recursive: true, force: true });
 		}
@@ -168,7 +174,7 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 
 			await expect(
 				bridge.write("linked-outside/nested/new.txt", "nope"),
-			).rejects.toThrow(/escapes workspace root/);
+			).rejects.toThrow(/symlinked parent is not permitted/);
 			expect(existsSync(path.join(outside, "nested"))).toBe(false);
 			expect(existsSync(path.join(outside, "nested", "new.txt"))).toBe(false);
 		} finally {
@@ -236,6 +242,23 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 		} finally {
 			rmSync(outside, { recursive: true, force: true });
 		}
+	});
+
+	it("refuses writes through an in-root symlinked directory ancestor", async () => {
+		mkdirSync(path.join(tempRoot, "real"), { recursive: true });
+		symlinkSync(
+			path.join(tempRoot, "real"),
+			path.join(tempRoot, "alias"),
+			"dir",
+		);
+
+		await expect(bridge.write("alias/inner/file.txt", "nope")).rejects.toThrow(
+			/symlinked parent is not permitted/,
+		);
+		expect(existsSync(path.join(tempRoot, "real", "inner"))).toBe(false);
+		expect(existsSync(path.join(tempRoot, "real", "inner", "file.txt"))).toBe(
+			false,
+		);
 	});
 
 	it("follows an in-root symlink to an in-root file on write (read/write symmetry)", async () => {
