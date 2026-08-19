@@ -68,6 +68,7 @@ import {
   KNOWN_ADAPTER_TYPES,
   normalizeTaskAgentAdapter,
   type ResolvedWorkdirRoute,
+  resolveRouteForWorkdir,
   resolveSpawnWorkdir,
 } from "../services/task-agent-routing.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
@@ -1329,12 +1330,19 @@ async function runCreateLegacy(
       // injection never fires here. Re-attach the contract on the task text
       // itself; the helper is gated + idempotent so non-app tasks pass through.
       let createAssignedAppDir: string | undefined;
+      let createSlugRoute: ResolvedWorkdirRoute | undefined;
       if (!createProvisionedWorkspaceId) {
         const slugDir = appBuildSlugWorkdir(task, label, sessionWorkdir);
         if (slugDir) {
           sessionWorkdir = slugDir;
           isolateWorkdir = false;
           createAssignedAppDir = slugDir;
+          // The slug dir sits inside the apps route's tree; without re-
+          // resolving, the session missed the route stamp and the residuals
+          // gate counted the whole shared checkout's uncommitted paths
+          // against the build (live 2026-08-19: 142 residuals parked a live
+          // page).
+          createSlugRoute = resolveRouteForWorkdir(runtime, slugDir);
           logger(runtime).info(
             `[TASKS:create] app build runs in its served slug dir: ${slugDir}`,
           );
@@ -1418,8 +1426,8 @@ async function runCreateLegacy(
           // false on every TASKS:create session and a failed verification
           // posts a failure instead of re-dispatching.
           initialTask: taskWithRouteHints,
-          workdirRouteId: route?.id,
-          workdirRoute: route,
+          workdirRouteId: (createSlugRoute ?? route)?.id,
+          workdirRoute: createSlugRoute ?? route,
           keepAliveAfterComplete,
           ...(durableRun ? smithersDurableRunMetadata(durableRun) : {}),
         },
@@ -2687,7 +2695,7 @@ async function runSpawnAgent(
       extraMetadata.subAgent === true
         ? inheritedResolvedWorkdirRoute(extraMetadata)
         : undefined;
-    const effectiveRoute = route ?? inheritedRoute;
+    let effectiveRoute = route ?? inheritedRoute;
     let effectiveWorkdir = effectiveRoute?.workdir ?? workdir;
     // Only isolate per-session when we fell back to a shared scratch root (no
     // route). A route resolves to a specific project dir that must be used as-is.
@@ -2761,6 +2769,9 @@ async function runSpawnAgent(
       if (slugDir) {
         effectiveWorkdir = slugDir;
         isolateWorkdir = false;
+        // Same route re-resolution as the create path: the slug dir needs the
+        // apps route stamp or the residuals gate misreads the shared checkout.
+        effectiveRoute = resolveRouteForWorkdir(runtime, slugDir) ?? effectiveRoute;
         logger(runtime).info(
           `[TASKS:spawn_agent] app build runs in its served slug dir: ${slugDir}`,
         );
