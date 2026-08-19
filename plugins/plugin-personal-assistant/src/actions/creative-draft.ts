@@ -583,16 +583,29 @@ export const creativeDraftAction: Action & {
             data: { error: "MISSING_REVISION_INPUT" },
           };
         }
-        const standingDraftDocumentId =
-          params.draftDocumentId ??
-          (await findStandingDraftDocumentId({ documents, message }));
-        const currentDraft = standingDraftDocumentId
+        // Explicit revision inputs are authoritative. Only infer a standing
+        // document when neither persisted identity nor a complete artifact was
+        // supplied, otherwise an unrelated stored draft can replace the
+        // caller's artifact or make it fail as ambiguous.
+        const standingDraftDocumentId = params.draftDocumentId
+          ? params.draftDocumentId
+          : params.currentDraft
+            ? null
+            : await findStandingDraftDocumentId({ documents, message });
+        const currentDraft = params.draftDocumentId
           ? await loadPersistedDraft({
               documents,
               message,
-              documentId: standingDraftDocumentId,
+              documentId: params.draftDocumentId,
             })
-          : params.currentDraft;
+          : (params.currentDraft ??
+            (standingDraftDocumentId
+              ? await loadPersistedDraft({
+                  documents,
+                  message,
+                  documentId: standingDraftDocumentId,
+                })
+              : undefined));
         if (!currentDraft) {
           throw new ElizaError("Creative draft is unavailable", {
             code: "CREATIVE_DRAFT_NOT_FOUND",

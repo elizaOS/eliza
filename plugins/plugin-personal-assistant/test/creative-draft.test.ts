@@ -183,6 +183,65 @@ describe("creative draft owner-voice primitives", () => {
     ).toThrow(/still contains vetoed phrase/u);
   });
 
+  it("matches vetoes as phrases instead of fragments of other words", () => {
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Token boundaries",
+        targetForm: "memo",
+        ownerAsk: "Draft this.",
+      },
+      memos: [{ id: "memo-boundary", transcript: "Start with the result." }],
+      styleCard: buildOwnerVoiceStyleCard(ownerSources),
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+
+    const revised = applyCreativeDraftRevision(initial, {
+      instruction: "Never use art as a standalone label.",
+      vetoedPhrase: "art",
+      revisedAt: "2026-07-06T10:20:00.000Z",
+    });
+
+    expect(
+      creativeDraftNarrativeViolations("Start with the result.", revised),
+    ).toEqual([]);
+    expect(
+      creativeDraftNarrativeViolations("The ART label is misleading.", revised),
+    ).toEqual(["vetoed phrase reintroduced: art"]);
+  });
+
+  it("replaces a superseded accepted passage instead of requiring both", () => {
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Successive approvals",
+        targetForm: "memo",
+        ownerAsk: "Draft this.",
+      },
+      memos: [{ id: "memo-approval", transcript: "First source version." }],
+      styleCard: buildOwnerVoiceStyleCard(ownerSources),
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+    const first = applyCreativeDraftRevision(initial, {
+      instruction: "Approve the first rewrite.",
+      acceptedEdit: "First opening approved.",
+      replacementText: "The first approved opening.",
+      revisedAt: "2026-07-06T10:20:00.000Z",
+    });
+    const second = applyCreativeDraftRevision(first, {
+      instruction: "Replace that opening with this approved version.",
+      acceptedEdit: "Replacement opening approved.",
+      replacementText: "The final approved opening.",
+      revisedAt: "2026-07-06T10:30:00.000Z",
+    });
+
+    expect(second.acceptedPassages).toEqual(["The final approved opening."]);
+    expect(
+      creativeDraftNarrativeViolations(
+        "The final approved opening. Continue from here.",
+        second,
+      ),
+    ).toEqual([]);
+  });
+
   it("revises a non-first section by sectionIndex", () => {
     const styleCard = buildOwnerVoiceStyleCard(ownerSources);
     const initial = createCreativeDraftArtifact({

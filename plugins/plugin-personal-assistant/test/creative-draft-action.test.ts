@@ -482,6 +482,76 @@ describe("CREATIVE_DRAFT persisted voice-memo workflow", () => {
     expect(test.documents.updateDocument).not.toHaveBeenCalled();
   });
 
+  it("uses an explicit currentDraft without consulting ambiguous standing drafts", async () => {
+    const test = harness({ transcript: "Use the explicit artifact." });
+    const initial = await runAction(
+      test.runtime,
+      voiceMessage({
+        id: "explicit-artifact-memo",
+        url: "/api/media/explicit-artifact.wav",
+        contentType: "audio",
+        mimeType: "audio/wav",
+      }),
+      {
+        action: "compose",
+        request: {
+          title: "Explicit Artifact",
+          targetForm: "memo",
+          ownerAsk: "Draft this memo.",
+        },
+      },
+    );
+    expect(initial.success).toBe(true);
+    const currentDraft = initial.data?.draft;
+    const storedDraft = test.stored.get(DRAFT_DOCUMENT_ID) as string;
+    test.documents.listDocuments.mockResolvedValueOnce([
+      {
+        id: DRAFT_DOCUMENT_ID,
+        agentId: AGENT_ID,
+        entityId: OWNER_ID,
+        roomId: ROOM_ID,
+        content: { text: storedDraft },
+        metadata: { documentKind: "creative-owner-voice-draft" },
+      } as Memory,
+      {
+        id: "00000000-0000-4000-8000-000000000009" as UUID,
+        agentId: AGENT_ID,
+        entityId: OWNER_ID,
+        roomId: ROOM_ID,
+        content: { text: storedDraft },
+        metadata: { documentKind: "creative-owner-voice-draft" },
+      } as Memory,
+    ]);
+
+    const revision = await runAction(
+      test.runtime,
+      {
+        ...voiceMessage({ id: "note", url: "/note", contentType: "document" }),
+        content: { text: "Revise the supplied artifact." },
+      },
+      {
+        action: "revise",
+        currentDraft,
+        revision: {
+          instruction: "Use the supplied artifact.",
+          replacementText: "The explicit artifact wins.",
+          revisedAt: "2026-08-07T12:10:00.000Z",
+        },
+      },
+    );
+
+    expect(revision.success).toBe(true);
+    expect(revision.data).toMatchObject({
+      draft: {
+        title: "Explicit Artifact",
+        sections: [{ text: "The explicit artifact wins." }],
+      },
+    });
+    expect(test.documents.getDocumentById).not.toHaveBeenCalled();
+    expect(test.documents.updateDocument).not.toHaveBeenCalled();
+    expect(test.documents.addDocument).toHaveBeenCalledTimes(2);
+  });
+
   it("fails visibly instead of creating a draft when STT returns no transcript", async () => {
     const test = harness();
     const result = await runAction(
