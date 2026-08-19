@@ -15,10 +15,9 @@ import {
 const GOOGLE_CALENDAR_EVENTS_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars";
 const GOOGLE_CALENDAR_LIST_ENDPOINT =
   "https://www.googleapis.com/calendar/v3/users/me/calendarList";
-// Bounds the feed loop against a provider (or misbehaving proxy) that repeats
-// or never stops minting a nextPageToken -- 1,000 pages * 2,500/page covers
-// even a very dense calendar while keeping worst-case requests/memory finite.
+// Bounds provider calls independently from the accumulated Worker response.
 const MAX_GOOGLE_CALENDAR_FEED_PAGES = 1_000;
+const MAX_GOOGLE_CALENDAR_FEED_EVENTS = 10_000;
 
 type GoogleCalendarEventDate = {
   date?: string;
@@ -352,11 +351,16 @@ export async function fetchManagedGoogleCalendarFeed(args: {
       items?: GoogleCalendarApiEvent[];
       nextPageToken?: string;
     };
-    events.push(
-      ...(parsed.items ?? [])
-        .map((event) => normalizeGoogleCalendarEvent(args.calendarId, event, args.timeZone))
-        .filter((event): event is ManagedGoogleCalendarEvent => event !== null),
-    );
+    const normalizedPage = (parsed.items ?? [])
+      .map((event) => normalizeGoogleCalendarEvent(args.calendarId, event, args.timeZone))
+      .filter((event): event is ManagedGoogleCalendarEvent => event !== null);
+    if (events.length + normalizedPage.length > MAX_GOOGLE_CALENDAR_FEED_EVENTS) {
+      fail(
+        502,
+        `Google Calendar feed exceeded ${MAX_GOOGLE_CALENDAR_FEED_EVENTS} events; narrow the requested time range.`,
+      );
+    }
+    events.push(...normalizedPage);
     const nextPageToken = parsed.nextPageToken?.trim() || undefined;
     if (nextPageToken && seenPageTokens.has(nextPageToken)) {
       fail(502, "Google Calendar feed pagination repeated a page token.");
