@@ -1,8 +1,11 @@
 /**
  * @module template
- * @description Simple template resolution for form-controlled prompts
+ * @description Simple template resolution for form-controlled prompts.
+ * Nested `fields` graphs are bounded before the walk so a hostile session
+ * or LLM-authored form cannot stack-overflow the agent.
  */
 
+import { assertFormControlGraph } from "./form-control-graph";
 import type { FormControl, FormSession } from "./types";
 
 export type TemplateValues = Record<string, string>;
@@ -53,6 +56,7 @@ export function resolveControlTemplates(
   control: FormControl,
   values: TemplateValues,
 ): FormControl {
+  assertFormControlGraph(control);
   const resolvedOptions = control.options?.map((option) => ({
     ...option,
     label: renderTemplate(option.label, values) ?? option.label,
