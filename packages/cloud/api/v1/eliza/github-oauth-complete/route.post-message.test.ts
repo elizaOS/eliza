@@ -13,6 +13,7 @@ const readManagedAgentGithubBinding = mock(() => null);
 
 mock.module("@/lib/services/agent-github-return", () => ({
   createLifeOpsGithubReturnResponse,
+  normalizePostMessageTargetOrigin: (value: string) => new URL(value).origin,
 }));
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: { findByIdAndOrg },

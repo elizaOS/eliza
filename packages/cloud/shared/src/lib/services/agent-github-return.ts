@@ -19,6 +19,23 @@ function serializeInlineScriptValue(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+export function normalizePostMessageTargetOrigin(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return null;
+    }
+    return parsed.origin === "null" ? null : parsed.origin;
+  } catch {
+    // error-policy:J3 Invalid configured origins fail closed.
+    return null;
+  }
+}
+
 function readAgentDeepLinkPath(value: string): string | null {
   try {
     const parsed = new URL(value);
