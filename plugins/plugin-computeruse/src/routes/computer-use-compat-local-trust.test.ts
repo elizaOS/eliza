@@ -1,5 +1,5 @@
 /** Exercises the real shared trust classifier through the computer-use policy wrapper. */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isTrustedComputerUseLocalRequest } from "./computer-use-compat-local-trust.js";
 
 function req(

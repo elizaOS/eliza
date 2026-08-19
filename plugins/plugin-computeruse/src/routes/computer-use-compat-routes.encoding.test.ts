@@ -6,10 +6,6 @@ import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@elizaos/core", () => ({
-  resolveAliasedEnvValue: () => undefined,
-}));
-
 const { handleComputerUseCompatRoutes } = await import(
   "./computer-use-compat-routes.js"
 );
