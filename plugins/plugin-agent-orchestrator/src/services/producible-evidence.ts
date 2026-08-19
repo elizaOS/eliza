@@ -77,6 +77,33 @@ export interface InventedArtifactFilterResult {
   dropped: string[];
 }
 
+/** Evidence classes no orchestrator pipeline can collect: the verifier judges
+ *  from workdir files, tool stdout, git changesets, and HTTP probes — never a
+ *  live browser session or a human eyeball. A generated criterion demanding
+ *  one of these is unsatisfiable by design and parks working deliverables
+ *  (live 2026-08-19: "Browser console shows zero JavaScript errors during a
+ *  complete work-to-break cycle" parked a built, served pomodoro page). */
+const UNCOLLECTABLE_EVIDENCE_RE =
+  /\b(?:browser\s+console|devtools|dev\s+tools|console\s+logs?\s+(?:show|prove|confirm)|screenshots?|screen\s+recording|visually\s+(?:verify|confirm|inspect)|manual(?:ly)?\s+(?:test|verify|confirm|inspect)|user\s+confirms?|lighthouse|cross-browser|no\s+(?:js|javascript)\s+(?:errors?|warnings?)\s+in\s+the\s+(?:browser|console))\b/i;
+
+/**
+ * Drop generated criteria whose proof would require evidence the pipeline
+ * cannot produce (browser runtime state, human inspection). Deterministic
+ * template criteria never trip this; only model-refined text does.
+ */
+export function stripUncollectableEvidenceCriteria(
+  criteria: readonly string[],
+): InventedArtifactFilterResult {
+  const kept: string[] = [];
+  const dropped: string[] = [];
+  for (const criterion of criteria) {
+    (UNCOLLECTABLE_EVIDENCE_RE.test(criterion) ? dropped : kept).push(
+      criterion,
+    );
+  }
+  return { kept, dropped };
+}
+
 /**
  * Drop generated criteria that pin a concrete path/filename absent from the
  * request. The worker legitimately chooses its own layout when the request

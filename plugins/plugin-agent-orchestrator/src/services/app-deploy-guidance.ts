@@ -180,6 +180,7 @@ function customHostGuidance(
   config: AppDeployConfig,
   _task?: string,
   monetized?: boolean,
+  assignedAppDir?: string,
 ): string {
   const dir = config.customAppsDir ?? "";
   const base = config.customBaseUrl ?? "";
@@ -200,7 +201,11 @@ function customHostGuidance(
     "--- Publishing web apps (custom host) ---",
     "If (and only if) your task is to build OR edit a web app, page, or site for the operator — not a script, CLI, library, or backend service — publish it to the operator's configured static host:",
     `- Published apps are plain static files under \`${dir}/<slug>/\` (index.html plus any css/js — there is NO per-app build step), served live at \`${base}/apps/<slug>/\`.`,
-    `- To CREATE a new app: pick a fresh, short kebab-case \`<slug>\`, write the files into \`${dir}/<slug>/\`, then open \`${base}/apps/<slug>/\` to confirm it works and report that URL.`,
+    // A server-assigned dir removes the child's slug choice entirely: a
+    // self-picked slug overwrote an existing app (live 2026-08-19).
+    assignedAppDir
+      ? `- To CREATE the app: your assigned app folder is \`${assignedAppDir}/\` — write index.html (plus css/js) directly there and NOWHERE else under \`${dir}/\`; it serves at \`${base}/apps/${assignedAppDir.split("/").pop()}/\` — open that URL to confirm and report it.`
+      : `- To CREATE a new app: pick a fresh, short kebab-case \`<slug>\` that is NOT an existing folder under \`${dir}/\`, write the files into \`${dir}/<slug>/\`, then open \`${base}/apps/<slug>/\` to confirm it works and report that URL. Never overwrite an existing app folder you did not create.`,
     `- To EDIT an existing app: the \`<slug>\` is the app's existing folder name under \`${dir}/\` — read its files there, modify them in place, then re-open \`${base}/apps/<slug>/\` to confirm. Do not create a new slug for an edit.`,
     monetizeLine,
   ];
@@ -276,7 +281,7 @@ function extractViewPluginSourceDir(task: string): string | undefined {
 export function augmentTaskWithDeployGuidance(
   task: string,
   config?: AppDeployConfig,
-  opts?: { monetized?: boolean; cloudAppId?: string },
+  opts?: { monetized?: boolean; cloudAppId?: string; assignedAppDir?: string },
 ): string {
   // Idempotent: if a deploy block is already present, no-op.
   if (
@@ -311,7 +316,12 @@ export function augmentTaskWithDeployGuidance(
     // A custom-host app only touches Cloud when it is monetized (it registers
     // for billing); only then does an existing-app binding apply.
     const boundLine = monetized ? existingCloudAppLine(opts?.cloudAppId) : "";
-    const custom = customHostGuidance(resolved, task, monetized);
+    const custom = customHostGuidance(
+      resolved,
+      task,
+      monetized,
+      opts?.assignedAppDir,
+    );
     const block = boundLine ? `${custom}\n${boundLine}` : custom;
     return `${task.trimEnd()}\n\n${block}`;
   }

@@ -42,7 +42,10 @@ import {
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
 import { NativeAcpClient } from "./acp-native-transport.js";
-import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
+import {
+  augmentTaskWithDeployGuidance,
+  resolveAppDeployConfig,
+} from "./app-deploy-guidance.js";
 import {
   CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
   type CodexSandboxMode,
@@ -1884,10 +1887,27 @@ export class AcpService extends Service {
       // Re-attach it ONCE here, before the transport branch, so BOTH the native
       // and the CLI/acpx paths host the app and report a verified URL. No-op for
       // non-app tasks; applied only to the initial task, never to follow-up sends.
+      // When the spawn's workdir already IS a served app dir (slug placement
+      // by construction), name it in the guidance so the child never picks —
+      // and never collides with — a slug of its own.
+      const deployConfig = resolveAppDeployConfig();
+      const appsDirResolved = deployConfig.customAppsDir
+        ? resolve(deployConfig.customAppsDir)
+        : undefined;
+      const workdirResolved = resolve(session.workdir);
+      const assignedAppDir =
+        appsDirResolved &&
+        workdirResolved.startsWith(appsDirResolved + sep) &&
+        !workdirResolved
+          .slice(appsDirResolved.length + 1)
+          .includes(sep)
+          ? workdirResolved
+          : undefined;
       const initialTask =
         opts.initialTask && opts.initialTask.trim().length > 0
           ? augmentTaskWithDeployGuidance(opts.initialTask, undefined, {
               monetized: opts.monetized,
+              assignedAppDir,
             })
           : opts.initialTask;
 

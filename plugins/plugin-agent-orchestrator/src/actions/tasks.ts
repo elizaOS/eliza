@@ -1328,11 +1328,13 @@ async function runCreateLegacy(
       // sendPrompt (smithers or direct), so the AcpService initialTask deploy
       // injection never fires here. Re-attach the contract on the task text
       // itself; the helper is gated + idempotent so non-app tasks pass through.
+      let createAssignedAppDir: string | undefined;
       if (!createProvisionedWorkspaceId) {
         const slugDir = appBuildSlugWorkdir(task, label, sessionWorkdir);
         if (slugDir) {
           sessionWorkdir = slugDir;
           isolateWorkdir = false;
+          createAssignedAppDir = slugDir;
           logger(runtime).info(
             `[TASKS:create] app build runs in its served slug dir: ${slugDir}`,
           );
@@ -1353,7 +1355,10 @@ async function runCreateLegacy(
           swarmRoomMetadata,
         ),
         undefined,
-        { monetized: pickBoolean(params, content, "appMonetized") === true },
+        {
+          monetized: pickBoolean(params, content, "appMonetized") === true,
+          assignedAppDir: createAssignedAppDir,
+        },
       );
       const smithersRunId = randomUUID();
       const durableRun: SmithersDurableRunLink | undefined =
@@ -2221,8 +2226,23 @@ function appBuildSlugWorkdir(
   if (deploy.target !== "custom" || !deploy.customAppsDir) return undefined;
   const appsDir = nodePathResolve(deploy.customAppsDir);
   const workdir = nodePathResolve(resolvedWorkdir);
-  if (appsDir !== workdir && !appsDir.startsWith(workdir + nodePathSep)) {
-    return undefined;
+  // A repo/route workdir OUTSIDE the apps tree still gets the slug dir: the
+  // deploy guidance names the apps dir absolutely, so a child in a scratch
+  // cwd writes there anyway — and a self-picked slug clobbered an existing
+  // app (live 2026-08-19: pomodoro-timer overwritten from a workspaces cwd
+  // after the planner hallucinated a nonexistent workdir). The only workdirs
+  // exempt are ones INSIDE the apps tree's parent repo but outside the apps
+  // dir — those are deliberate repo asks, handled by the provisioned path
+  // before this helper runs.
+  if (
+    appsDir !== workdir &&
+    !appsDir.startsWith(workdir + nodePathSep) &&
+    !workdir.startsWith(appsDir + nodePathSep)
+  ) {
+    const appsRepoRoot = nodePathResolve(appsDir, "..", "..");
+    if (workdir.startsWith(appsRepoRoot + nodePathSep)) {
+      return undefined;
+    }
   }
   const baseSlug =
     label

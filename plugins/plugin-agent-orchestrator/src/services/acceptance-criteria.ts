@@ -7,7 +7,10 @@
 
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
-import { stripInventedArtifactCriteria } from "./producible-evidence.js";
+import {
+  stripInventedArtifactCriteria,
+  stripUncollectableEvidenceCriteria,
+} from "./producible-evidence.js";
 
 /** Coarse task classification driving which template set is applied. */
 export type OrchestratorTaskType =
@@ -238,7 +241,9 @@ export async function generateDefaultAcceptanceCriteria(
     // The prompt forbids invented paths, but the filter is the enforcement:
     // a criterion pinning a path the goal never named is unsatisfiable by
     // design (#20794), so it is dropped and the template tops the set back up.
-    const producible = stripInventedArtifactCriteria(candidates, goal).kept;
+    const producible = stripUncollectableEvidenceCriteria(
+      stripInventedArtifactCriteria(candidates, goal).kept,
+    ).kept;
     const refined = normalizeCriteria(producible, fallback);
     return refined.length >= MIN_CRITERIA ? refined : fallback;
   } catch {
