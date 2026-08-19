@@ -506,9 +506,16 @@ describe("packaged desktop voice media evidence", () => {
     const unsynchronized = JSON.parse(
       fs.readFileSync(captureProvenance, "utf8"),
     );
-    unsynchronized.captures.speakerLoopback.startedAt = new Date(
+    const unsynchronizedSpeakerStart = new Date(
       Date.parse(unsynchronized.captures.screen.startedAt) + 500,
     ).toISOString();
+    unsynchronized.captures.speakerLoopback.startedAt =
+      unsynchronizedSpeakerStart;
+    const enclosingReport = JSON.parse(validReport);
+    enclosingReport.report.startedAt = new Date(
+      Date.parse(unsynchronizedSpeakerStart) + 100,
+    ).toISOString();
+    writeJson(report, enclosingReport);
     writeJson(captureProvenance, unsynchronized);
     expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
       /did not start within 250ms/,
