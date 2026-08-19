@@ -3834,7 +3834,7 @@ describe("v5 planner loop — evaluator gate", () => {
 		).toBe("post_tool_model_reply");
 	});
 
-	it("never executes a tool invented during bounded post-tool synthesis", async () => {
+	it("fails closed on a required-reply synthesis that invents a tool call, routing the completed action through the evaluator (#22609)", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -3851,10 +3851,13 @@ describe("v5 planner loop — evaluator gate", () => {
 					},
 				],
 			})
-			// Defensive provider-adapter regression: even if a backend violates the
-			// no-tools request, its invented call is terminal text, never work.
+			// Non-compliant provider: the required-reply synthesis round is sent
+			// WITHOUT a tool catalog, yet the backend co-emits prose AND an
+			// unsolicited tool call. The whole response must be rejected: the prose
+			// is not consumed and the invented tool never executes (#22609).
 			.mockResolvedValueOnce({
-				text: "",
+				text: "Notes are open — I also archived the old ones.",
+				messageToUser: "Notes are open — I also archived the old ones.",
 				toolCalls: [
 					{
 						id: "views-duplicate",
@@ -3872,8 +3875,8 @@ describe("v5 planner loop — evaluator gate", () => {
 		const evaluate = vi.fn(async () => ({
 			success: true,
 			decision: "FINISH" as const,
-			thought: "must remain unreachable",
-			messageToUser: "Evaluator fallback",
+			thought: "evaluator reviewed the completed navigation",
+			messageToUser: "Your notes are open.",
 		}));
 
 		const result = await runPlannerLoop({
@@ -3884,11 +3887,17 @@ describe("v5 planner loop — evaluator gate", () => {
 			evaluate,
 		});
 
+		// The sole action ran exactly once; the invented tool never executed.
 		expect(useModel).toHaveBeenCalledTimes(2);
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
-		expect(evaluate).not.toHaveBeenCalled();
+		// Fail closed: the synthesis prose is NOT accepted. The completed action
+		// is routed through the normal evaluator, which owns the final reply.
+		expect(evaluate).toHaveBeenCalledTimes(1);
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe("The requested action completed.");
+		expect(result.finalMessage).toBe("Your notes are open.");
+		expect(result.finalMessage).not.toBe(
+			"Notes are open — I also archived the old ones.",
+		);
 	});
 
 	it("keeps full evaluation when model-reply navigation scope is incomplete", async () => {

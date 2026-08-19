@@ -609,6 +609,96 @@ async function runPlannerLoopIterations(
 			lastPlannerExplicitCompleted = plannerOutput.completed;
 			if (synthesizingRequiredModelReply) {
 				pendingRequiredModelReply = false;
+				if (plannerOutput.toolCalls.length > 0) {
+					// Fail closed (#22609): the required-reply synthesis is a
+					// tool-free round. When a non-compliant provider returns BOTH
+					// prose and an unsolicited tool call, the response is invalid AS
+					// A WHOLE — its prose must NOT be accepted and the invented tool
+					// must NOT run. Route the already-completed sole action (it ran
+					// exactly once before this round was armed) through the normal
+					// evaluator/fallback path, exactly as if the model-reply request
+					// had never been made. This prevents an unsolicited tool call
+					// from smuggling its co-emitted prose past evaluator review.
+					params.runtime.logger?.warn?.(
+						{
+							iteration,
+							inventedToolCalls: plannerOutput.toolCalls.length,
+						},
+						"[planner-loop] required-reply synthesis returned an unsolicited tool call; rejecting the whole response and routing the completed action through the evaluator",
+					);
+					const evaluator = await evaluateTrajectory(
+						params,
+						trajectory,
+						iteration,
+					);
+					trajectory.evaluatorOutputs.push(
+						projectToolDiagnosticValue(
+							evaluator,
+							redactDiagnosticText,
+						) as EvaluatorOutput,
+					);
+					appendEvaluatorContextEvent(
+						trajectory,
+						evaluator,
+						iteration,
+						redactDiagnosticText,
+					);
+					const protocolFailureRelay =
+						deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
+					if (protocolFailureRelay) {
+						return {
+							status: "finished",
+							trajectory,
+							finalMessage: userSafeFinalMessage(
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									protocolFailureRelay,
+								),
+								trajectory,
+							),
+						};
+					}
+					if (evaluator.decision === "FINISH") {
+						return {
+							status: "finished",
+							trajectory,
+							evaluator,
+							finalMessage: userSafeFinalMessage(
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									preferredFinalMessageFromToolOrModel(
+										trajectory,
+										evaluator.messageToUser,
+										evaluator.success === false
+											? failedToolFallbackMessage(trajectory)
+											: undefined,
+									),
+									evaluator.success === false
+										? userSafeFailureReport(evaluator.messageToUser, trajectory)
+										: undefined,
+								),
+								trajectory,
+							),
+						};
+					}
+					// The evaluator declined to FINISH, but this round has no tool
+					// catalog and the invented tool must never execute. Relay the
+					// completed action's own truthful result instead of replaying
+					// work or fabricating a save.
+					const relay = deterministicSuccessfulToolRelay(trajectory);
+					return {
+						status: "finished",
+						trajectory,
+						evaluator,
+						finalMessage: userSafeFinalMessage(
+							terminalMessageWithFailureAuthority(
+								trajectory,
+								relay ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE,
+							),
+							trajectory,
+						),
+					};
+				}
 				const requiredModelReply = userSafeCapturedAnswerCandidate(
 					plannerOutput.messageToUser,
 				);
