@@ -9,7 +9,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { validateCorpusTarget } from "../validator.ts";
-import { collectTelegramDesktopExport } from "./telegram-desktop.ts";
+import {
+  assertTelegramDesktopPlatformSupported,
+  collectTelegramDesktopExport,
+} from "./telegram-desktop.ts";
 import {
   readTelegramDesktopJson,
   withTelegramOutputLock,
@@ -20,6 +23,10 @@ import {
 const FIXTURE_PATH = path.join(
   import.meta.dirname,
   "../../fixtures/telegram-desktop/result.json",
+);
+const MIGRATED_GROUP_FIXTURE_PATH = path.join(
+  import.meta.dirname,
+  "../../fixtures/telegram-desktop/migrated-basic-group/result.json",
 );
 const OWNER = "100";
 const tempDirs: string[] = [];
@@ -66,6 +73,30 @@ afterEach(async () => {
 });
 
 describe("collectTelegramDesktopExport", () => {
+  it("fails closed on Windows until ACL and reparse protections are proven", () => {
+    expect(() => assertTelegramDesktopPlatformSupported("win32")).toThrow(
+      expect.objectContaining({
+        code: "TELEGRAM_EXPORT_UNSUPPORTED_PLATFORM",
+      }),
+    );
+  });
+
+  it("preserves signed migrated basic-group message and reply identities", async () => {
+    const outDir = await makeTempDir();
+    const result = await collectFixture(MIGRATED_GROUP_FIXTURE_PATH, outDir);
+
+    expect(result.manifest.totals.messages).toBe(2);
+    const rows = (await fs.readFile(result.shardPaths[0], "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(rows.map((row) => row.id)).toEqual([
+      "telegram:100:group:300:-1000000001",
+      "telegram:100:group:300:-1000000002",
+    ]);
+    expect(rows[1].replyToId).toBe("telegram:100:group:300:-1000000001");
+  });
+
   it("maps DMs and allowlisted peers with compound identities and frozen bounds", async () => {
     const outDir = await makeTempDir();
     const result = await collectFixture(FIXTURE_PATH, outDir);
@@ -172,10 +203,9 @@ describe("collectTelegramDesktopExport", () => {
     expect(result.summary.deniedChannelChats).toBe(2);
     expect(result.summary.deniedChannelMessages).toBe(2);
     expect(result.manifest.totals.messages).toBe(3);
-    expect(await fs.readdir(path.join(outDir, "telegram", OWNER))).toEqual([
-      "2024-08.jsonl",
-      "summary.json",
-    ]);
+    expect(
+      (await fs.readdir(path.join(outDir, "telegram", OWNER))).sort(),
+    ).toEqual(["2024-08.jsonl", "summary.json"]);
   });
 
   it("keeps equal numeric peer and message ids distinct across peer kinds", async () => {

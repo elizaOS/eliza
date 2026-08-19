@@ -155,6 +155,18 @@ function telegramInputError(
   return new ElizaError(message, { code, context, cause });
 }
 
+/** Fails closed where private ACL and reparse-point enforcement is unavailable. */
+export function assertTelegramDesktopPlatformSupported(
+  platform: NodeJS.Platform = process.platform,
+): void {
+  if (platform !== "win32") return;
+  throw telegramInputError(
+    "TELEGRAM_EXPORT_UNSUPPORTED_PLATFORM",
+    "Telegram Desktop corpus collection is disabled on Windows until output reparse-point rejection and owner-only ACL enforcement are implemented and verified",
+    { platform },
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -212,6 +224,29 @@ function canonicalIntegerId(value: unknown, location: string): string {
     throw telegramInputError(
       "TELEGRAM_EXPORT_BAD_ID",
       `${location} must be a canonical positive integer id`,
+      { location },
+    );
+  }
+  return text;
+}
+
+/**
+ * Telegram Desktop exports migrated basic-group history with negative message
+ * ids (the desktop client shifts them by -1,000,000,000). Message and reply
+ * ids therefore accept canonical signed non-zero integers; account, peer, and
+ * allowlist identities remain positive-only at their existing boundary.
+ */
+function canonicalMessageId(value: unknown, location: string): string {
+  const text =
+    typeof value === "number" && Number.isSafeInteger(value)
+      ? String(value)
+      : typeof value === "string"
+        ? value
+        : undefined;
+  if (!text || !/^-?(?:[1-9]\d{0,18})$/.test(text)) {
+    throw telegramInputError(
+      "TELEGRAM_EXPORT_BAD_ID",
+      `${location} must be a canonical non-zero signed integer message id`,
       { location },
     );
   }
@@ -374,7 +409,7 @@ function mapChatMessages(
   for (const [index, value] of messages.entries()) {
     const location = `${chatLocation}.messages[${index}]`;
     const record = requireRecord(value, location);
-    const rawMessageId = canonicalIntegerId(record.id, `${location}.id`);
+    const rawMessageId = canonicalMessageId(record.id, `${location}.id`);
     if (rawIds.has(rawMessageId)) {
       throw telegramInputError(
         "TELEGRAM_EXPORT_DUPLICATE_MESSAGE",
@@ -439,7 +474,7 @@ function mapChatMessages(
     const rawReplyToId =
       record.reply_to_message_id === undefined
         ? undefined
-        : canonicalIntegerId(
+        : canonicalMessageId(
             record.reply_to_message_id,
             `${location}.reply_to_message_id`,
           );
@@ -552,6 +587,7 @@ function initialSummary(): TelegramDesktopSummary {
 export async function collectTelegramDesktopExport(
   options: TelegramDesktopCollectorOptions,
 ): Promise<TelegramDesktopCollectResult> {
+  assertTelegramDesktopPlatformSupported();
   const ownerAccountId = canonicalOwnerId(
     options.ownerAccountId,
     "ownerAccountId",

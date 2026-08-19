@@ -96,6 +96,13 @@ boundary before parsing. Publications use an output-root lock, account-owned
 generation commit marker; a concurrent writer or manifest validation issue
 fails the collection instead of returning partial success.
 
+Migrated basic-group history retains Telegram Desktop's signed negative message
+and reply ids; account and peer identities remain positive-only. Collection
+currently fails closed on Windows because Node's portable filesystem API cannot
+both reject directory reparse points and establish owner-only ACLs for these raw
+private-message artifacts. Windows support requires platform-specific ACL and
+reparse-point enforcement plus real-host verification.
+
 ```bash
 bun run --cwd packages/corpus-tools test
 bun run --cwd packages/corpus-tools typecheck
