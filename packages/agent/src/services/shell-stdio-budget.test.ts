@@ -17,12 +17,14 @@ describe("appendShellStdio", () => {
     expect(state.bytes).toBe(2);
   });
 
-  it("rejects a single chunk larger than the budget without retaining it", () => {
+  it("keeps the leading slice of an oversized first chunk", () => {
     const state = createShellStdioState();
-    const chunk = Buffer.alloc(MAX_SHELL_STDIO_BYTES + 1, 0x78);
-    expect(appendShellStdio(state, "stdout", chunk)).toBe("overflow");
-    expect(state.stdout).toBe("");
-    expect(state.bytes).toBe(0);
+    const max = 8;
+    expect(appendShellStdio(state, "stdout", Buffer.from("x".repeat(20)), max)).toBe(
+      "overflow",
+    );
+    expect(state.stdout).toBe("xxxxxxxx");
+    expect(state.bytes).toBe(max);
   });
 
   it("rejects the write that would cross the budget after honest output", () => {
@@ -39,5 +41,31 @@ describe("appendShellStdio", () => {
     expect(state.stdout).toBe("abcd");
     expect(state.stderr).toBe("efgh");
     expect(state.bytes).toBe(8);
+  });
+
+  it("keeps the leading stderr slice of an oversized chunk", () => {
+    const state = createShellStdioState();
+    expect(
+      appendShellStdio(state, "stderr", Buffer.from("yyyyyyyyyy"), 4),
+    ).toBe("overflow");
+    expect(state.stderr).toBe("yyyy");
+    expect(state.bytes).toBe(4);
+  });
+
+  it("fills the cap across several pipe-sized chunks", () => {
+    const state = createShellStdioState();
+    const max = 8;
+    expect(appendShellStdio(state, "stdout", Buffer.from("aaa"), max)).toBe(
+      "ok",
+    );
+    expect(appendShellStdio(state, "stdout", Buffer.from("bbb"), max)).toBe(
+      "ok",
+    );
+    expect(appendShellStdio(state, "stdout", Buffer.from("cccc"), max)).toBe(
+      "overflow",
+    );
+    expect(state.bytes).toBe(max);
+    expect(state.stdout).toBe("aaabbbcc");
+    expect(MAX_SHELL_STDIO_BYTES).toBe(8_388_608);
   });
 });
