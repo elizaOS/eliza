@@ -13,6 +13,7 @@ import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  check,
   foreignKey,
   index,
   integer,
@@ -178,6 +179,10 @@ export const containerBillingRecords = pgTable(
       foreignColumns: [creditTransactions.id, creditTransactions.organization_id],
       name: "container_billing_records_credit_transaction_tenant_fk",
     }).onDelete("restrict"),
+    success_ledger_check: check(
+      "container_billing_records_success_ledger_check",
+      sql`${table.status} <> 'success' OR ${table.credit_transaction_id} IS NOT NULL`,
+    ),
     container_idx: index("container_billing_records_container_idx").on(table.container_id),
     org_idx: index("container_billing_records_org_idx").on(table.organization_id),
     created_idx: index("container_billing_records_created_idx").on(table.created_at),

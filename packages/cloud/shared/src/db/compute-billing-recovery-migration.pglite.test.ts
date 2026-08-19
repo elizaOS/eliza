@@ -9,12 +9,19 @@ const ORG_B = "00000000-0000-4000-8000-000000000022";
 const AGENT = "00000000-0000-4000-8000-000000000033";
 const AGENT_PENDING = "00000000-0000-4000-8000-000000000034";
 const CONTAINER = "00000000-0000-4000-8000-000000000044";
+const CONTAINER_B = "00000000-0000-4000-8000-000000000045";
 const TX = "00000000-0000-4000-8000-000000000055";
+const MISSING_TX = "00000000-0000-4000-8000-000000000056";
+const EXACT_RECEIPT = "00000000-0000-4000-8000-000000000071";
+const MISSING_RECEIPT = "00000000-0000-4000-8000-000000000072";
+const MISMATCH_RECEIPT = "00000000-0000-4000-8000-000000000073";
+const NULL_RECEIPT = "00000000-0000-4000-8000-000000000074";
 const SUSPEND_JOB = "00000000-0000-4000-8000-000000000066";
 const migration = readFileSync(
   new URL("./migrations/0265_compute_billing_recovery.sql", import.meta.url),
   "utf8",
 ).replaceAll("--> statement-breakpoint", "");
+const migrationPrefix = migration.slice(0, migration.indexOf("CREATE TABLE agent_billing_records"));
 
 let database: PGlite;
 
@@ -76,10 +83,25 @@ beforeAll(async () => {
         'shutdown_pending', '2026-08-19T01:00:00Z', '2026-08-19T01:00:00Z');
     INSERT INTO containers
       (id, organization_id, status, desired_count, cpu, memory, last_billed_at, created_at)
-      VALUES ('${CONTAINER}', '${ORG_A}', 'running', 1, 1024, 2048,
-        '2026-08-19T01:00:00Z', '2026-08-19T01:00:00Z');
+      VALUES
+        ('${CONTAINER}', '${ORG_A}', 'running', 1, 1024, 2048,
+          '2026-08-19T01:00:00Z', '2026-08-19T01:00:00Z'),
+        ('${CONTAINER_B}', '${ORG_B}', 'running', 1, 1024, 2048,
+          '2026-08-19T01:00:00Z', '2026-08-19T01:00:00Z');
     INSERT INTO credit_transactions (id, organization_id, amount)
       VALUES ('${TX}', '${ORG_A}', -0.01);
+    INSERT INTO container_billing_records
+      (id, container_id, organization_id, amount, billing_period_start, billing_period_end,
+       status, credit_transaction_id)
+      VALUES
+        ('${EXACT_RECEIPT}', '${CONTAINER}', '${ORG_A}', 0.01,
+          '2026-08-19T00:00:00Z', '2026-08-19T01:00:00Z', 'success', '${TX}'),
+        ('${MISSING_RECEIPT}', '${CONTAINER}', '${ORG_A}', 0.01,
+          '2026-08-18T23:00:00Z', '2026-08-19T00:00:00Z', 'success', '${MISSING_TX}'),
+        ('${MISMATCH_RECEIPT}', '${CONTAINER_B}', '${ORG_B}', 0.01,
+          '2026-08-19T00:00:00Z', '2026-08-19T01:00:00Z', 'success', '${TX}'),
+        ('${NULL_RECEIPT}', '${CONTAINER}', '${ORG_A}', 0.01,
+          '2026-08-18T22:00:00Z', '2026-08-18T23:00:00Z', 'success', NULL);
     INSERT INTO jobs (id, organization_id, agent_id, type, status, data, created_at)
       VALUES ('${SUSPEND_JOB}', '${ORG_A}', '${AGENT_PENDING}', 'agent_suspend',
         'pending', '{"agentId":"${AGENT_PENDING}","organizationId":"${ORG_A}","userId":"legacy-user"}',
@@ -101,6 +123,7 @@ describe("compute billing recovery migration", () => {
     expect(initial.rows).toEqual([
       { workload_kind: "agent", rate_per_hour: "0.010000" },
       { workload_kind: "agent", rate_per_hour: "0.010000" },
+      { workload_kind: "container", rate_per_hour: "0.027917" },
       { workload_kind: "container", rate_per_hour: "0.027917" },
     ]);
 
@@ -161,6 +184,69 @@ describe("compute billing recovery migration", () => {
       { table_name: "agent_billing_records", confdeltype: "r" },
       { table_name: "container_billing_records", confdeltype: "r" },
     ]);
+    const newWriteConstraints = await database.query<{ name: string; validated: boolean }>(
+      `SELECT conname AS name, convalidated AS validated
+       FROM pg_constraint
+       WHERE conname IN (
+         'container_billing_records_credit_transaction_tenant_fk',
+         'container_billing_records_success_ledger_check'
+       )
+       ORDER BY conname`,
+    );
+    expect(newWriteConstraints.rows).toEqual([
+      { name: "container_billing_records_credit_transaction_tenant_fk", validated: false },
+      { name: "container_billing_records_success_ledger_check", validated: false },
+    ]);
+    const quarantined = await database.query<{
+      receipt_id: string;
+      classification: string;
+    }>(`SELECT receipt_id::text, classification
+       FROM container_billing_legacy_ledger_bindings
+       ORDER BY receipt_id`);
+    expect(quarantined.rows).toEqual([
+      { receipt_id: MISSING_RECEIPT, classification: "missing_transaction" },
+      { receipt_id: MISMATCH_RECEIPT, classification: "tenant_mismatch" },
+      { receipt_id: NULL_RECEIPT, classification: "missing_reference" },
+    ]);
+    const exactQuarantine = await database.query<{ count: string }>(
+      `SELECT count(*)::text FROM container_billing_legacy_ledger_bindings
+       WHERE receipt_id = '${EXACT_RECEIPT}'`,
+    );
+    expect(exactQuarantine.rows[0]?.count).toBe("0");
+    await expect(
+      database.exec(`UPDATE container_billing_legacy_ledger_bindings
+        SET classification = classification WHERE receipt_id = '${MISSING_RECEIPT}'`),
+    ).rejects.toMatchObject({
+      constraint: "container_billing_legacy_ledger_bindings_immutable",
+    });
+    await expect(
+      database.exec(`DELETE FROM container_billing_legacy_ledger_bindings
+        WHERE receipt_id = '${MISSING_RECEIPT}'`),
+    ).rejects.toMatchObject({
+      constraint: "container_billing_legacy_ledger_bindings_immutable",
+    });
+    await expect(
+      database.exec(`TRUNCATE container_billing_legacy_ledger_bindings`),
+    ).rejects.toMatchObject({
+      constraint: "container_billing_legacy_ledger_bindings_immutable",
+    });
+    await expect(
+      database.exec(`INSERT INTO container_billing_legacy_ledger_bindings
+        (receipt_id, organization_id, credit_transaction_id, classification)
+        VALUES ('${EXACT_RECEIPT}', '${ORG_A}', '${TX}', 'tenant_mismatch')`),
+    ).rejects.toMatchObject({ constraint: "container_billing_legacy_ledger_bindings_reason" });
+    await expect(
+      database.exec(`INSERT INTO container_billing_records
+        (container_id, organization_id, amount, billing_period_start, billing_period_end,
+         status, credit_transaction_id)
+        VALUES ('${CONTAINER}', '${ORG_A}', 0.01, now() - interval '3 hour', now(),
+          'success', NULL)`),
+    ).rejects.toMatchObject({ constraint: "container_billing_records_success_ledger_check" });
+    await database.exec(`INSERT INTO container_billing_records
+      (container_id, organization_id, amount, billing_period_start, billing_period_end,
+       status, credit_transaction_id)
+      VALUES ('${CONTAINER}', '${ORG_A}', 0, now() - interval '4 hour', now(),
+        'failed', NULL)`);
     await expect(
       database.exec(`INSERT INTO container_billing_records
         (container_id, organization_id, amount, billing_period_start, billing_period_end,
@@ -168,6 +254,15 @@ describe("compute billing recovery migration", () => {
         VALUES ('${CONTAINER}', '${ORG_B}', 0.01, now() - interval '1 hour', now(),
           'success', '${TX}')`),
     ).rejects.toThrow();
+    await expect(
+      database.exec(`INSERT INTO container_billing_records
+        (container_id, organization_id, amount, billing_period_start, billing_period_end,
+         status, credit_transaction_id)
+        VALUES ('${CONTAINER_B}', '${ORG_B}', 0.01, now() - interval '2 hour', now(),
+          'success', '${TX}')`),
+    ).rejects.toMatchObject({
+      constraint: "container_billing_records_credit_transaction_tenant_fk",
+    });
     await database.exec(`INSERT INTO container_billing_records
       (container_id, organization_id, amount, billing_period_start, billing_period_end,
        status, credit_transaction_id)
@@ -176,14 +271,15 @@ describe("compute billing recovery migration", () => {
     await expect(
       database.exec(`UPDATE container_billing_records SET amount = amount`),
     ).rejects.toMatchObject({ constraint: "compute_billing_receipt_immutable" });
-    await expect(database.exec(`TRUNCATE container_billing_records`)).rejects.toMatchObject({
-      constraint: "compute_billing_receipt_immutable",
-    });
-    await database.exec(`DELETE FROM containers WHERE id = '${CONTAINER}'`);
+    await expect(database.exec(`TRUNCATE container_billing_records`)).rejects.toThrow();
+    const beforeDelete = await database.query<{ count: string }>(
+      `SELECT count(*)::text FROM container_billing_records`,
+    );
+    await database.exec(`DELETE FROM containers WHERE id IN ('${CONTAINER}', '${CONTAINER_B}')`);
     const retained = await database.query<{ count: string }>(
       `SELECT count(*)::text FROM container_billing_records`,
     );
-    expect(retained.rows[0]?.count).toBe("1");
+    expect(retained.rows[0]?.count).toBe(beforeDelete.rows[0]?.count);
   });
 
   test("enforces numeric range at the shared ledger boundary", async () => {
@@ -194,4 +290,59 @@ describe("compute billing recovery migration", () => {
       database.exec(`UPDATE credit_transactions SET amount = 10000000000 WHERE id = '${TX}'`),
     ).rejects.toMatchObject({ code: "22003" });
   });
+
+  test("fails closed on replay without rewriting quarantined history", async () => {
+    const before = await database.query<{ receipt_id: string; classification: string }>(
+      `SELECT receipt_id::text, classification
+       FROM container_billing_legacy_ledger_bindings ORDER BY receipt_id`,
+    );
+    await expect(database.exec(`BEGIN; ${migration}; COMMIT;`)).rejects.toThrow();
+    await database.exec("ROLLBACK");
+    const after = await database.query<{ receipt_id: string; classification: string }>(
+      `SELECT receipt_id::text, classification
+       FROM container_billing_legacy_ledger_bindings ORDER BY receipt_id`,
+    );
+    expect(after.rows).toEqual(before.rows);
+  });
+});
+
+test("0265 rolls back cleanly when a partial quarantine table collides", async () => {
+  const partial = new PGlite();
+  try {
+    await partial.exec(`
+      CREATE TABLE organizations (id uuid PRIMARY KEY);
+      CREATE TABLE agent_sandboxes (
+        id uuid PRIMARY KEY, last_billed_at timestamptz, total_billed numeric(12,4)
+      );
+      CREATE TABLE containers (
+        id uuid PRIMARY KEY, organization_id uuid NOT NULL, last_billed_at timestamptz,
+        total_billed numeric(12,4)
+      );
+      CREATE TABLE credit_transactions (
+        id uuid PRIMARY KEY, organization_id uuid NOT NULL, amount numeric(12,6)
+      );
+      CREATE TABLE container_billing_records (
+        id uuid PRIMARY KEY, container_id uuid NOT NULL, organization_id uuid NOT NULL,
+        amount numeric(12,4) NOT NULL, credit_transaction_id uuid,
+        CONSTRAINT container_billing_records_organization_id_organizations_id_fk
+          FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+      );
+      CREATE TABLE container_billing_legacy_ledger_bindings (receipt_id uuid PRIMARY KEY);
+    `);
+    await expect(partial.exec(`BEGIN; ${migrationPrefix}; COMMIT;`)).rejects.toThrow();
+    await partial.exec("ROLLBACK");
+    const amountPrecision = await partial.query<{ precision: number; scale: number }>(
+      `SELECT numeric_precision AS precision, numeric_scale AS scale
+       FROM information_schema.columns
+       WHERE table_name = 'container_billing_records' AND column_name = 'amount'`,
+    );
+    expect(amountPrecision.rows).toEqual([{ precision: 12, scale: 4 }]);
+    const originalConstraint = await partial.query<{ delete_action: string }>(
+      `SELECT confdeltype AS delete_action FROM pg_constraint
+       WHERE conname = 'container_billing_records_organization_id_organizations_id_fk'`,
+    );
+    expect(originalConstraint.rows).toEqual([{ delete_action: "c" }]);
+  } finally {
+    await partial.close();
+  }
 });

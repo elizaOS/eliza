@@ -50,6 +50,7 @@ export * from "./cloud-files";
 export * from "./compute-billing";
 export * from "./compute-billing-rate-segments";
 export * from "./compute-stop-intents";
+export * from "./container-billing-legacy-ledger-bindings";
 export * from "./containers";
 export * from "./conversations";
 export * from "./credit-packs";
