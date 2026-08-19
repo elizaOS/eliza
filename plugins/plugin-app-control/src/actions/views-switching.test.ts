@@ -619,6 +619,33 @@ describe("view switching — VIEWS action resolver", () => {
 			});
 		});
 
+		it.each([404, 501])(
+			"does not acknowledge navigation when the shell returns unsupported status %s",
+			async (status) => {
+				vi.mocked(globalThis.fetch).mockResolvedValue(
+					new Response(null, { status }),
+				);
+
+				const { result, callback } = await runShow(
+					REGISTRY,
+					"open the calendar",
+				);
+
+				expect(callback).not.toHaveBeenCalled();
+				expect(result).toMatchObject({
+					success: false,
+					transcriptVisibility: "internal",
+					turnComplete: false,
+				});
+				expect(result).not.toHaveProperty("modelReplyRequired");
+				expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+					effect: "view_navigation",
+					status: "unsupported-route",
+					viewId: "calendar",
+				});
+			},
+		);
+
 		it("preserves Home and Messages labels in internal navigation receipts", async () => {
 			installNavigateCapture();
 			const messagesView = [

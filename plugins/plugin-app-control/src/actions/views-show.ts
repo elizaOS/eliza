@@ -440,9 +440,10 @@ async function navigateToView(
 	originatingClientId?: string,
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
-	// A 501/404 means this shell doesn't implement the navigate route — opening
-	// the view still counts as a soft success (the user can click through). A
-	// real transport failure (other non-2xx, network, timeout) is NOT success:
+	// A shell without the navigate route did not accept the requested effect.
+	// Keep 404/501 distinct in the internal receipt, but never claim success or
+	// request a model-authored acknowledgement for an effect that did not occur.
+	// A real transport failure (other non-2xx, network, timeout) is also NOT success:
 	// reporting "Switched to X" when nothing happened misleads the user and the
 	// chain's verifiedUserFacing logic.
 	const base = getAppControlApiBase();
@@ -489,10 +490,10 @@ async function navigateToView(
 					: {}),
 			};
 		}
-		// 501/404 = navigation route unsupported by this shell; opening succeeds.
+		// Preserve the unsupported-route diagnosis without fabricating success.
 		if (resp.status === 501 || resp.status === 404)
 			return {
-				ok: true,
+				ok: false,
 				text: navigationEffectReceipt({
 					status: "unsupported-route",
 					view,

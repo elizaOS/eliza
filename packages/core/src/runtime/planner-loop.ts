@@ -549,6 +549,7 @@ async function runPlannerLoopIterations(
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
+			const synthesizingRequiredModelReply = pendingRequiredModelReply;
 			const plannerOutput = await callPlanner({
 				runtime: params.runtime,
 				context: trajectory.context,
@@ -556,7 +557,13 @@ async function runPlannerLoopIterations(
 				config,
 				modelType: params.modelType,
 				provider: params.provider,
-				tools: params.tools,
+				// A successful final-scope action may ask for one natural closing
+				// sentence. That round is synthesis, not planning: remove the tool
+				// catalog entirely so callPlanner cannot default an omitted toolChoice
+				// to "required" and re-run the action. The branch below consumes this
+				// output exactly once, including when a non-compliant provider invents
+				// a tool call despite receiving no tools.
+				tools: synthesizingRequiredModelReply ? undefined : params.tools,
 				// Force a tool call ONLY while the turn's "use a real tool" requirement
 				// is still unmet. Once a non-terminal tool has executed, relax to
 				// "auto" so the planner is free to synthesize a terminal REPLY from
@@ -564,11 +571,13 @@ async function runPlannerLoopIterations(
 				// iteration. "auto" must be EXPLICIT: passing the caller's (undefined)
 				// choice would be a no-op because callPlanner defaults undefined back
 				// to "required".
-				toolChoice: requireNonTerminalToolCall
-					? hasExecutedNonTerminalTool(trajectory)
-						? "auto"
-						: "required"
-					: params.toolChoice,
+				toolChoice: synthesizingRequiredModelReply
+					? undefined
+					: requireNonTerminalToolCall
+						? hasExecutedNonTerminalTool(trajectory)
+							? "auto"
+							: "required"
+						: params.toolChoice,
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
@@ -598,8 +607,61 @@ async function runPlannerLoopIterations(
 			// "not complete" blocks. This keeps backward compat with planner
 			// outputs that don't carry either signal.
 			lastPlannerExplicitCompleted = plannerOutput.completed;
-			if (pendingRequiredModelReply && plannerOutput.toolCalls.length > 0) {
+			if (synthesizingRequiredModelReply) {
 				pendingRequiredModelReply = false;
+				const requiredModelReply = userSafeCapturedAnswerCandidate(
+					plannerOutput.messageToUser,
+				);
+				const finalMessage =
+					requiredModelReply ?? REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE;
+				trajectory.steps.push({
+					iteration,
+					thought: plannerOutput.thought,
+					terminalMessage: finalMessage,
+					terminalOnly: true,
+				});
+				trajectory.context = appendTerminalPlannerOutputEvent({
+					context: trajectory.context,
+					iteration,
+					message: finalMessage,
+				});
+				const gated: EvaluatorOutput = {
+					success: true,
+					decision: "FINISH",
+					thought: MODEL_REPLY_GATED_EVALUATOR_THOUGHT,
+					messageToUser: finalMessage,
+				};
+				trajectory.evaluatorOutputs.push(
+					projectToolDiagnosticValue(
+						gated,
+						redactDiagnosticText,
+					) as EvaluatorOutput,
+				);
+				trajectory.context = appendEvaluationEvent({
+					context: trajectory.context,
+					iteration,
+					evaluator: gated,
+					redactDiagnosticText,
+				});
+				const gateStartedAt = Date.now();
+				await recordGatedEvaluationStage({
+					runtime: params.runtime,
+					recorder: params.recorder,
+					trajectoryId: params.trajectoryId,
+					parentStageId: params.parentStageId,
+					iteration,
+					startedAt: gateStartedAt,
+					endedAt: Date.now(),
+					output: gated,
+					reason: "post_tool_model_reply",
+					logger: params.runtime.logger,
+				});
+				return {
+					status: "finished",
+					trajectory,
+					evaluator: gated,
+					finalMessage,
+				};
 			}
 
 			if (plannerOutput.toolCalls.length === 0) {
@@ -693,67 +755,6 @@ async function runPlannerLoopIterations(
 					});
 					continue;
 				}
-				const requiredModelReply = pendingRequiredModelReply
-					? userSafeCapturedAnswerCandidate(plannerOutput.messageToUser)
-					: undefined;
-				if (requiredModelReply) {
-					pendingRequiredModelReply = false;
-					trajectory.steps.push({
-						iteration,
-						thought: plannerOutput.thought,
-						terminalMessage: requiredModelReply,
-						terminalOnly: true,
-					});
-					trajectory.context = appendTerminalPlannerOutputEvent({
-						context: trajectory.context,
-						iteration,
-						message: requiredModelReply,
-					});
-					const gated: EvaluatorOutput = {
-						success: true,
-						decision: "FINISH",
-						thought: MODEL_REPLY_GATED_EVALUATOR_THOUGHT,
-						messageToUser: requiredModelReply,
-					};
-					trajectory.evaluatorOutputs.push(
-						projectToolDiagnosticValue(
-							gated,
-							redactDiagnosticText,
-						) as EvaluatorOutput,
-					);
-					trajectory.context = appendEvaluationEvent({
-						context: trajectory.context,
-						iteration,
-						evaluator: gated,
-						redactDiagnosticText,
-					});
-					const gateStartedAt = Date.now();
-					await recordGatedEvaluationStage({
-						runtime: params.runtime,
-						recorder: params.recorder,
-						trajectoryId: params.trajectoryId,
-						parentStageId: params.parentStageId,
-						iteration,
-						startedAt: gateStartedAt,
-						endedAt: Date.now(),
-						output: gated,
-						reason: "post_tool_model_reply",
-						logger: params.runtime.logger,
-					});
-					return {
-						status: "finished",
-						trajectory,
-						evaluator: gated,
-						finalMessage: userSafeFinalMessage(
-							terminalMessageWithFailureAuthority(
-								trajectory,
-								requiredModelReply,
-							),
-							trajectory,
-						),
-					};
-				}
-				pendingRequiredModelReply = false;
 				trajectory.steps.push({
 					iteration,
 					thought: plannerOutput.thought,
@@ -5509,6 +5510,8 @@ export const GATED_EVALUATOR_THOUGHT =
 
 export const MODEL_REPLY_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: successful final-scope action received one safe model-authored reply; evaluator LLM call skipped.";
+
+const REQUIRED_MODEL_REPLY_FALLBACK_MESSAGE = "The requested action completed.";
 
 export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";
