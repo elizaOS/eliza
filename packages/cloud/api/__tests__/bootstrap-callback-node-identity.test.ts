@@ -7,9 +7,10 @@
  * fingerprint may change it. Uses a deterministic in-memory repository stub —
  * the guard is pure route logic, so no DB is needed to prove the behavior.
  */
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import * as dockerNodesActual from "@/db/repositories/docker-nodes";
+import * as hetznerAttestationActual from "@/lib/services/containers/hetzner-node-attestation";
 import * as loggerActual from "@/lib/utils/logger";
 
 interface StoredNode {
@@ -22,6 +23,9 @@ interface StoredNode {
   host_key_fingerprint: string | null;
   node_incarnation: string | null;
   status: string;
+  fleet_kind?: "cloud" | null;
+  infrastructure_provider?: "hetzner" | null;
+  provider_server_id?: string | null;
   metadata: Record<string, unknown>;
 }
 
@@ -86,6 +90,10 @@ const mockReconcileProvisionalCapacity = mock(
     return stored;
   },
 );
+const mockAttestHetznerCloudNode = mock(async () => ({
+  serverId: 4242,
+  server: { id: 4242 },
+}));
 
 mock.module("@/db/repositories/docker-nodes", () => ({
   ...dockerNodesActual,
@@ -109,6 +117,18 @@ mock.module("@/lib/utils/logger", () => ({
     debug: mock(),
   },
 }));
+
+mock.module("@/lib/services/containers/hetzner-node-attestation", () => ({
+  ...hetznerAttestationActual,
+  attestHetznerCloudNode: mockAttestHetznerCloudNode,
+}));
+
+afterAll(() => {
+  mock.module(
+    "@/lib/services/containers/hetzner-node-attestation",
+    () => hetznerAttestationActual,
+  );
+});
 
 const BOOTSTRAP_SECRET = "test-bootstrap-secret";
 process.env.CONTAINERS_BOOTSTRAP_SECRET = BOOTSTRAP_SECRET;
@@ -136,9 +156,13 @@ function useProvisionalAutoscaledNode(requestedCapacity: number | null): void {
     capacity: 0,
     host_key_fingerprint: null,
     node_incarnation: null,
+    fleet_kind: "cloud",
+    infrastructure_provider: "hetzner",
+    provider_server_id: "4242",
     metadata: {
       provider: "hetzner-cloud",
       autoscaled: true,
+      environment: "local",
       capacityProvisional: true,
       capacityRequested: requestedCapacity,
       capacityPolicyFallback: 8,
@@ -156,6 +180,11 @@ describe("bootstrap-callback node-identity guard (#12876)", () => {
     mockFindByNodeId.mockClear();
     mockRotateNodeHostKeyFingerprint.mockClear();
     mockReconcileProvisionalCapacity.mockClear();
+    mockAttestHetznerCloudNode.mockReset();
+    mockAttestHetznerCloudNode.mockResolvedValue({
+      serverId: 4242,
+      server: { id: 4242 },
+    });
   });
 
   test("rejects hostname mutation on existing node without the required fingerprint", async () => {
@@ -305,6 +334,28 @@ describe("bootstrap-callback node-identity guard (#12876)", () => {
     expect(mockUpdate).toHaveBeenCalledTimes(1);
     expect(lastUpdateArg).not.toHaveProperty("capacity");
     expect(stored?.capacity).toBe(24);
+  });
+
+  test("does not promote provisional capacity when live Hetzner authority fails", async () => {
+    useProvisionalAutoscaledNode(null);
+    mockAttestHetznerCloudNode.mockRejectedValueOnce(
+      new Error("provider firewall authority drifted"),
+    );
+
+    const response = await post({
+      nodeId: "node-1",
+      hostname: "10.0.0.1",
+      memTotalMb: 32_768,
+      vCpuCount: 8,
+      hostKeyFingerprint: "SHA256:new-node-key",
+    });
+
+    expect(response.status).toBe(500);
+    expect(mockAttestHetznerCloudNode).toHaveBeenCalledTimes(1);
+    expect(mockReconcileProvisionalCapacity).not.toHaveBeenCalled();
+    expect(mockRotateNodeHostKeyFingerprint).not.toHaveBeenCalled();
+    expect(stored?.capacity).toBe(0);
+    expect(stored?.metadata.capacityProvisional).toBe(true);
   });
 
   test("reconciles the small autoscaled default row to hardware capacity exactly once", async () => {

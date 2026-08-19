@@ -53,6 +53,8 @@ export interface ComputeServer {
   publicIpv4?: string | null;
   /** Free-form provider labels. */
   labels?: Record<string, string>;
+  /** Provider firewall attachments visible on the server read model. */
+  firewallAttachments?: Array<{ id: number | string; status?: string }>;
 }
 
 /**
@@ -126,6 +128,8 @@ export interface CreateServerInput {
   sshKeyIds?: number[];
   /** Network IDs to attach the server to (private networking). */
   networkIds?: number[];
+  /** Firewall IDs to attach atomically during server creation. */
+  firewallIds?: number[];
   /** Free-form provider label key/value map. */
   labels?: Record<string, string>;
 }

@@ -148,7 +148,7 @@ describe("HetznerCloudClient public surface", () => {
   });
 
   test("withToken ignores a caller-injected origin and keeps credentials pinned", async () => {
-    queueJson({ servers: [] });
+    queueJson({ servers: [], meta: { pagination: { next_page: null } } });
     const clientWithRogueOptions = HetznerCloudClient.withToken(TOKEN, {
       apiBaseUrl: "https://attacker.example/v1",
     } as unknown as {
@@ -210,7 +210,7 @@ describe("HetznerCloudClient public surface", () => {
 
 describe("HetznerCloudClient transport", () => {
   test("sends Bearer auth + JSON content-type to the default API base", async () => {
-    queueJson({ servers: [] });
+    queueJson({ servers: [], meta: { pagination: { next_page: null } } });
     await client().listServers();
 
     const req = lastRequest();
@@ -244,16 +244,72 @@ describe("HetznerCloudClient transport", () => {
 
 describe("HetznerCloudClient servers", () => {
   test("listServers without labels hits /servers with no query string", async () => {
-    queueJson({ servers: [{ id: 1 }] });
+    queueJson({ servers: [{ id: 1 }], meta: { pagination: { next_page: null } } });
     const servers = await client().listServers();
-    expect(servers).toEqual([{ id: 1 }] as never);
+    expect(servers).toEqual([{ id: 1, publicIpv4: null, firewallAttachments: [] }] as never);
     expect(lastRequest().url).toBe(`${API_BASE}/servers`);
   });
 
   test("listServers encodes a label selector", async () => {
-    queueJson({ servers: [] });
+    queueJson({ servers: [], meta: { pagination: { next_page: null } } });
     await client().listServers({ "managed-by": "eliza-cloud" });
     expect(lastRequest().url).toBe(`${API_BASE}/servers?label_selector=managed-by=eliza-cloud`);
+  });
+
+  test("listServers follows every provider page without dropping the label scope", async () => {
+    queueJson({
+      servers: [{ id: 1 }],
+      meta: { pagination: { next_page: 2 } },
+    });
+    queueJson({
+      servers: [{ id: 2 }],
+      meta: { pagination: { next_page: null } },
+    });
+
+    const servers = await client().listServers({ environment: "production" });
+
+    expect(servers.map((server) => server.id)).toEqual([1, 2]);
+    expect(recorded.map((request) => request.url)).toEqual([
+      `${API_BASE}/servers?label_selector=environment=production`,
+      `${API_BASE}/servers?label_selector=environment=production&page=2`,
+    ]);
+  });
+
+  test("listServers rejects pagination cycles before repeating a page", async () => {
+    queueJson({
+      servers: [{ id: 1 }],
+      meta: { pagination: { next_page: 1 } },
+    });
+
+    await expect(client().listServers()).rejects.toMatchObject({ code: "server_error" });
+    expect(recorded).toHaveLength(1);
+  });
+
+  test("listServers fails closed when pagination metadata is absent", async () => {
+    queueJson({ servers: [] });
+
+    await expect(client().listServers()).rejects.toMatchObject({ code: "server_error" });
+  });
+
+  test("listServers rejects duplicate provider identities across pages", async () => {
+    queueJson({
+      servers: [{ id: 1 }],
+      meta: { pagination: { next_page: 2 } },
+    });
+    queueJson({ servers: [{ id: 1 }], meta: { pagination: { next_page: null } } });
+
+    await expect(client().listServers()).rejects.toMatchObject({ code: "server_error" });
+  });
+
+  test("rejects malformed firewall state at the provider boundary", async () => {
+    queueJson({
+      server: {
+        id: 42,
+        public_net: { ipv4: null, ipv6: null, firewalls: [{ id: 8101 }] },
+      },
+    });
+
+    await expect(client().getServer(42)).rejects.toMatchObject({ code: "server_error" });
   });
 
   test("getServer returns the server payload on 200", async () => {
@@ -279,6 +335,7 @@ describe("HetznerCloudClient servers", () => {
       userData: "#cloud-config\n",
       sshKeyIds: [11, 22],
       networkIds: [33],
+      firewallIds: [44, 55],
       labels: { purpose: "test" },
     };
     const result = await client().createServer(input);
@@ -295,12 +352,18 @@ describe("HetznerCloudClient servers", () => {
       start_after_create: true,
       ssh_keys: [11, 22],
       networks: [33],
+      firewalls: [{ firewall: 44 }, { firewall: 55 }],
       labels: { purpose: "test" },
     });
     // Response mapping: root_password → rootPassword, and public_net collapsed
     // onto the canonical seam field publicIpv4 (null when absent).
     expect(result).toEqual({
-      server: { id: 100, name: "n1", publicIpv4: null } as never,
+      server: {
+        id: 100,
+        name: "n1",
+        publicIpv4: null,
+        firewallAttachments: [],
+      } as never,
       rootPassword: "pw",
     });
   });
@@ -315,6 +378,7 @@ describe("HetznerCloudClient servers", () => {
       userData: "x",
       sshKeyIds: [],
       networkIds: [],
+      firewallIds: [],
       labels: {},
     });
     expect(lastRequest().body).toEqual({
@@ -628,7 +692,7 @@ describe("HetznerCloudClient env construction", () => {
   test("fromEnv constructs a client when HCLOUD_TOKEN is set and uses it as Bearer", async () => {
     process.env.HCLOUD_TOKEN = "env-token-xyz";
     const c = HetznerCloudClient.fromEnv();
-    queueJson({ servers: [] });
+    queueJson({ servers: [], meta: { pagination: { next_page: null } } });
     await c.listServers();
     expect(lastRequest().headers.Authorization).toBe("Bearer env-token-xyz");
   });

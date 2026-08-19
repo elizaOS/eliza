@@ -122,6 +122,7 @@ interface ServerRecord {
   activeAtTick: number;
   createdIso: string;
   labels: Record<string, string>;
+  firewallAttachments: Array<{ id: number; status: "applied" }>;
   deleted: boolean;
 }
 
@@ -230,6 +231,7 @@ export class InMemoryComputeProvider implements ComputeProvider {
       activeAtTick: this.currentTick + this.serverActivateAfterTicks,
       createdIso: this.deterministicIso(),
       labels: { ...(input.labels ?? {}) },
+      firewallAttachments: (input.firewallIds ?? []).map((id) => ({ id, status: "applied" })),
       deleted: false,
     };
     this.servers.set(id, rec);
@@ -440,6 +442,7 @@ export class InMemoryComputeProvider implements ComputeProvider {
       // mirrors real providers, which return no IP while still provisioning.
       publicIpv4: active ? `10.0.0.${rec.id % 256}` : null,
       labels: { ...rec.labels },
+      firewallAttachments: rec.firewallAttachments.map((attachment) => ({ ...attachment })),
     };
   }
 
