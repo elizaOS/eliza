@@ -2380,6 +2380,35 @@ describe("ChatOverlay", () => {
     expect(screen.queryByText("Stop transcribing")).toBeNull();
   });
 
+  it("grows the native input host while the portaled chat-actions menu is open", () => {
+    const onStateChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        onStateChange={onStateChange}
+      />,
+    );
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(screen.getByText("Upload file")).toBeTruthy();
+    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_UNDER_HALF");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+  });
+
   it("returns to Home from the chat-actions menu", () => {
     const navigateHome = vi.fn();
     render(<ChatOverlay controller={makeController({ navigateHome })} />);

@@ -1223,6 +1223,7 @@ export function ChatOverlay({
   /** Native hosts use this to grow the transparent pill window with the sheet. */
   onStateChange?: (state: ChatState) => void;
 }): React.JSX.Element {
+  const [chatActionsOpen, setChatActionsOpen] = React.useState(false);
   const {
     messages,
     phase,
@@ -3056,9 +3057,16 @@ export function ChatOverlay({
         : baseH >= halfH - 1
           ? "OPEN_HALF_OR_OVER"
           : "OPEN_UNDER_HALF";
+  // The actions menu is portaled above the composer. INPUT's shallow 96px
+  // native desktop host would clip that portal at the window boundary, so use
+  // the existing under-half host footprint only for the menu's lifetime. The
+  // renderer remains in INPUT and returns to its narrow non-blocking host as
+  // soon as the menu closes.
+  const nativeSurfaceState: ChatState =
+    chatActionsOpen && chatState === "INPUT" ? "OPEN_UNDER_HALF" : chatState;
   React.useEffect(() => {
-    onStateChange?.(chatState);
-  }, [chatState, onStateChange]);
+    onStateChange?.(nativeSurfaceState);
+  }, [nativeSurfaceState, onStateChange]);
   // The status header is gated on the LIVE rendered height, NOT the settled enum
   // — otherwise dragging the panel below half keeps the top strip mounted on a
   // too-short panel. It shows only when the panel actually renders at/over half
@@ -6361,7 +6369,7 @@ export function ChatOverlay({
                   Discord/Telegram room. Search is agent-driveable; Upload is a
                   pure client affordance. */}
               {!transcriptionComposerActive ? (
-                <DropdownMenu>
+                <DropdownMenu onOpenChange={setChatActionsOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
