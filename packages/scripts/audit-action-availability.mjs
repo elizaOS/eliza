@@ -7,7 +7,7 @@
  * intent/keyword based instead of hard state based.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
 
@@ -52,10 +52,14 @@ const roots = process.argv
   .filter((arg) => !arg.startsWith("--"))
   .filter(Boolean);
 
+if (args.has("--self-test")) {
+  process.exit(selfTest());
+}
+
 const keywordKeys = loadKeywordKeys();
-const files = (roots.length > 0 ? roots : DEFAULT_ROOTS).flatMap((root) =>
-  walk(join(ROOT, root)),
-);
+const scanRoots = roots.length > 0 ? roots : DEFAULT_ROOTS;
+requireExistingRoots(scanRoots);
+const files = scanRoots.flatMap((root) => walk(join(ROOT, root)));
 const actions = files
   .flatMap(scanFile)
   .sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file));
@@ -516,4 +520,65 @@ function capitalizeAscii(value) {
 
 function escapeCell(value) {
   return String(value).replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
+/**
+ * Fail closed when a configured scan root is absent.
+ *
+ * `walk()` swallows a missing directory and returns no files, so a renamed or
+ * moved root previously reduced the action inventory silently. The generator
+ * that consumes this audit (`generate-action-search-keywords.mjs`) writes a
+ * committed keyword artifact and only observes a nonzero exit, so a silent
+ * shrink republished that artifact with entries missing and no diagnostic.
+ */
+function requireExistingRoots(scanRoots) {
+  const missing = scanRoots.filter((root) => !existsSync(join(ROOT, root)));
+  if (missing.length === 0) return;
+  console.error(
+    `[audit-action-availability] configured scan root(s) do not exist: ${missing.join(", ")}. ` +
+      "Update the root list (or pass existing paths) instead of scanning nothing.",
+  );
+  process.exit(1);
+}
+
+/** Prove the missing-root gate fires, and that a present root still scans. */
+function selfTest() {
+  const cases = [
+    {
+      name: "missing root is refused",
+      roots: ["definitely/not/a/real/root"],
+      expectMissing: true,
+    },
+    {
+      name: "present root is accepted",
+      roots: ["packages/scripts"],
+      expectMissing: false,
+    },
+    {
+      name: "one missing among present roots is refused",
+      roots: ["packages/scripts", "nope/missing"],
+      expectMissing: true,
+    },
+  ];
+  let failed = 0;
+  for (const testCase of cases) {
+    const missing = testCase.roots.filter(
+      (root) => !existsSync(join(ROOT, root)),
+    );
+    const gotMissing = missing.length > 0;
+    if (gotMissing !== testCase.expectMissing) {
+      failed += 1;
+      console.error(
+        `  \u2717 ${testCase.name}: expected missing=${testCase.expectMissing}, got ${gotMissing}`,
+      );
+    } else {
+      console.log(`  \u2713 ${testCase.name}`);
+    }
+  }
+  if (failed > 0) {
+    console.error(`\nself-test FAILED (${failed}/${cases.length})`);
+    return 1;
+  }
+  console.log(`\nself-test PASSED (${cases.length}/${cases.length})`);
+  return 0;
 }
