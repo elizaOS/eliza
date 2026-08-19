@@ -36,6 +36,8 @@ import {
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
+  // Voice's inert off-device diagnostics instantiate this re-export at module
+  // load; keep the class shape while replacing only the shared singleton.
   ElizaClient: class {
     fetch = vi.fn();
   },
@@ -2060,6 +2062,34 @@ describe("ChatOverlay", () => {
     // balloons up into the home widgets.
     expect(grabber.className).toContain("before:-top-6");
     expect(grabber.className).not.toContain("before:-top-16");
+    expect(grabber.className).toContain("inset-x-[4.5rem]");
+    expect(grabber.className).not.toContain("inset-x-6");
+  });
+
+  it("keeps the collapsed grabber and chat actions as exclusive gesture owners", () => {
+    const parentPointerDown = vi.fn();
+    render(
+      <div onPointerDown={parentPointerDown}>
+        <ChatOverlay controller={makeController()} />
+      </div>,
+    );
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 51,
+      pointerType: "mouse",
+    });
+    expect(parentPointerDown).not.toHaveBeenCalled();
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, {
+      button: 0,
+      pointerId: 52,
+      pointerType: "mouse",
+      clientY: 420,
+    });
+    expect(parentPointerDown).not.toHaveBeenCalled();
   });
 
   it("mounts an inert transcript preview during an upward drag before release", async () => {
@@ -4202,6 +4232,21 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     bigPullUp();
     expect(sheet.getAttribute("data-maximized")).toBe("true");
     expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
+  });
+
+  it("fades the fullscreen transcript with its scroll mask instead of a painted rectangle", () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+
+    bigPullUp();
+
+    const viewport = screen.getByTestId("chat-thread-scroll");
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(viewport.className.split(/\s+/)).toContain("scroll-fade");
+    expect(viewport.className.split(/\s+/)).not.toContain("scroll-fade-b");
+    expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
+    expect(screen.queryByTestId("chat-sheet-top-sheen")).toBeNull();
+    expect(surface.style.backgroundImage).toBe("none");
   });
 
   it("snaps to full-screen at 90% while held and reverses below the same line", async () => {

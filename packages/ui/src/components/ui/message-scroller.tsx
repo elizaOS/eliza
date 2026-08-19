@@ -73,13 +73,21 @@ function MessageScroller({
 
 function MessageScrollerViewport({
   className,
+  fade = "bottom",
   ...props
-}: React.ComponentProps<typeof MessageScrollerPrimitive.Viewport>) {
+}: React.ComponentProps<typeof MessageScrollerPrimitive.Viewport> & {
+  fade?: "both" | "bottom" | "none";
+}) {
   return (
     <MessageScrollerPrimitive.Viewport
       data-slot="message-scroller-viewport"
       className={cn(
-        "size-full min-h-0 min-w-0 scroll-fade-b overflow-y-auto overscroll-contain [contain:content]",
+        "size-full min-h-0 min-w-0 overflow-y-auto overscroll-contain [contain:content]",
+        fade === "both"
+          ? "scroll-fade"
+          : fade === "bottom"
+            ? "scroll-fade-b"
+            : undefined,
         className,
       )}
       {...props}
