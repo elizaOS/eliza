@@ -554,9 +554,9 @@ export interface TrajectoryLlmCall extends CoreTrajectoryLlmCallRecord {
   stepId: string;
   timestamp: number;
   model: string;
-  systemPrompt: string;
-  userPrompt: string;
-  response: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+  response?: string;
   temperature: number;
   maxTokens: number;
   purpose: string;
