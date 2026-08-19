@@ -1,5 +1,6 @@
 // Coordinates cloud DB ensure agent sandbox schema behavior shared by repositories and services.
 import { sql } from "drizzle-orm";
+import { isCloudflareWorkerRuntime } from "../lib/cache/redis-factory";
 import { getCloudAwareEnv } from "../lib/runtime/cloud-bindings";
 import { applyDatabaseUrlFallback } from "./database-url";
 import { dbWrite } from "./helpers";
@@ -558,10 +559,23 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
  *   - ENVIRONMENT === "local" (the dev script sets this), or
  *   - SKIP_AGENT_SANDBOX_ENSURE === "1" (escape hatch for tests/CI).
  */
-function shouldSkipEnsure(): boolean {
+export function shouldSkipEnsure(): boolean {
   const env = getCloudAwareEnv();
   if (env.SKIP_AGENT_SANDBOX_ENSURE === "1") return true;
   if (env.ENVIRONMENT === "local") return true;
+  // workerd: this guard issues ~40 sequential DDL/DO statements, each on a
+  // fresh maxUses=1 connection through Hyperdrive, inside whatever request
+  // (or waitUntil budget) happened to touch an agent-sandboxes repository
+  // first. It cannot reliably finish there: observed live on staging
+  // (2026-08-19) as EVERY cold shared-agent scope hydration failing with the
+  // guard's own "Failed query: ALTER TABLE agent_sandboxes ..." — which kept
+  // the scope cache permanently cold and turned the retryable first-turn
+  // warming 503 into a recurring per-conversation stall. Schema convergence
+  // belongs to environments that can run it to completion (Node daemons,
+  // deploy-time db:migrate); a Worker that needs it can opt in explicitly.
+  if (isCloudflareWorkerRuntime() && env.AGENT_SANDBOX_ENSURE_IN_WORKER !== "1") {
+    return true;
+  }
   return false;
 }
 
