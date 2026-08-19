@@ -14,12 +14,12 @@ import dns, { type LookupAddress } from "node:dns";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
-import zlib from "node:zlib";
 import { isMobilePlatform } from "@elizaos/shared";
-import { creditDecodedBodyBytes } from "./mobile-dns-decode-budget.ts";
+import { decodeMobileFetchBody } from "./mobile-dns-decode-budget.ts";
 
 export {
   creditDecodedBodyBytes,
+  decodeMobileFetchBody,
   MAX_MOBILE_DNS_DECODED_BYTES,
   MobileFetchDecodeBudgetError,
 } from "./mobile-dns-decode-budget.ts";
@@ -272,14 +272,7 @@ async function fetchViaNode(
         }
 
         const enc = String(res.headers["content-encoding"] ?? "").toLowerCase();
-        const decoded =
-          enc === "gzip"
-            ? res.pipe(zlib.createGunzip())
-            : enc === "deflate"
-              ? res.pipe(zlib.createInflate())
-              : enc === "br"
-                ? res.pipe(zlib.createBrotliDecompress())
-                : res;
+        const decoded = decodeMobileFetchBody(res, enc);
 
         const respHeaders = new Headers();
         for (const [k, v] of Object.entries(res.headers)) {
@@ -299,27 +292,15 @@ async function fetchViaNode(
 
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
-            const budget = { bytes: 0 };
-            const inflateBudget = decoded !== res;
             decoded.on("data", (chunk: Buffer) => {
-              if (inflateBudget) {
-                try {
-                  creditDecodedBodyBytes(budget, chunk.length);
-                } catch (error) {
-                  // error-policy:J3 untrusted gzip/deflate/br inflate becomes a
-                  // typed stream error; never enqueue past the decoded budget.
-                  res.destroy();
-                  decoded.destroy();
-                  controller.error(error);
-                  return;
-                }
-              }
               controller.enqueue(new Uint8Array(chunk));
             });
             decoded.on("end", () => controller.close());
+            // error-policy:J1 translate Node decode failures to the Response body.
             decoded.on("error", (err: Error) => controller.error(err));
           },
           cancel() {
+            decoded.destroy();
             res.destroy();
           },
         });

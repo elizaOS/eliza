@@ -2,12 +2,14 @@
  * Deterministic coverage for the mobile DNS-pinned fetch decode budget.
  * The harness is real zlib (gzip of zeros) with no network and no mocked
  * collaborators. `configureMobileDnsIfNeeded` is a no-op off mobile, so tests
- * exercise the exported credit helper and a replica of the inflate path.
+ * exercise the production decoder used by the fetch wrapper.
  */
+import { Readable } from "node:stream";
 import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   creditDecodedBodyBytes,
+  decodeMobileFetchBody,
   MAX_MOBILE_DNS_DECODED_BYTES,
   MobileFetchDecodeBudgetError,
 } from "./mobile-dns-decode-budget.ts";
@@ -20,24 +22,13 @@ async function gunzipWithBudget(
   compressed: Buffer,
   maxBytes: number,
 ): Promise<Buffer> {
-  const gunzip = zlib.createGunzip();
   const chunks: Buffer[] = [];
-  const budget = { bytes: 0 };
-  await new Promise<void>((resolve, reject) => {
-    gunzip.on("data", (chunk: Buffer) => {
-      try {
-        creditDecodedBodyBytes(budget, chunk.length, maxBytes);
-      } catch (error) {
-        gunzip.destroy();
-        reject(error);
-        return;
-      }
-      chunks.push(chunk);
-    });
-    gunzip.on("end", () => resolve());
-    gunzip.on("error", reject);
-    gunzip.end(compressed);
-  });
+  const decoded = decodeMobileFetchBody(
+    Readable.from([compressed]),
+    "gzip",
+    maxBytes,
+  );
+  for await (const chunk of decoded) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks);
 }
 
@@ -79,5 +70,22 @@ describe("mobile DNS fetch decode budget", () => {
 
   it("keeps the production cap above typical API bodies and below multi-GiB inflates", () => {
     expect(MAX_MOBILE_DNS_DECODED_BYTES).toBe(64 * 1024 * 1024);
+  });
+
+  it("passes an uncompressed stream through without applying the inflate cap", () => {
+    const source = Readable.from([Buffer.alloc(16)]);
+    expect(decodeMobileFetchBody(source, "identity", 1)).toBe(source);
+  });
+
+  it("forwards malformed compressed-body failures to the consumer", async () => {
+    const decoded = decodeMobileFetchBody(
+      Readable.from([Buffer.from("not gzip")]),
+      "gzip",
+    );
+    await expect(async () => {
+      for await (const _chunk of decoded) {
+        // Drain the production stream so decoder errors reach the consumer.
+      }
+    }).toThrow();
   });
 });
