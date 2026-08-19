@@ -16,6 +16,8 @@ export interface LocalAsrRecorder {
    * `null` once the recorder has been stopped / cancelled (the context closes).
    */
   analyser: AnalyserNode | null;
+  /** Browser-selected input identity returned by the live MediaStream track. */
+  inputDevice: { deviceId: string; label: string };
 }
 
 export interface LocalAsrAutoStopOptions {
@@ -36,6 +38,8 @@ export interface LocalAsrAutoStopOptions {
 export interface LocalAsrRecorderOptions {
   autoStop?: LocalAsrAutoStopOptions;
   onAutoStop?: () => void;
+  /** Exact browser media-device id for hardware acceptance lanes. */
+  deviceId?: string;
 }
 
 /** Fully-resolved auto-stop config (every {@link LocalAsrAutoStopOptions} field set). */
@@ -435,6 +439,7 @@ export async function startLocalAsrRecorder(
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
+        ...(options.deviceId ? { deviceId: { exact: options.deviceId } } : {}),
       },
     });
   } catch (err) {
@@ -458,6 +463,23 @@ export async function startLocalAsrRecorder(
           ? stream.getTracks().length
           : undefined,
   });
+  const inputTrack =
+    typeof stream.getAudioTracks === "function"
+      ? stream.getAudioTracks()[0]
+      : stream.getTracks().find((track) => track.kind === "audio");
+  const inputSettings = inputTrack?.getSettings?.() ?? {};
+  const inputDevice = {
+    deviceId:
+      typeof inputSettings.deviceId === "string" ? inputSettings.deviceId : "",
+    label: inputTrack?.label ?? "",
+  };
+  if (options.deviceId && inputDevice.deviceId !== options.deviceId) {
+    for (const track of stream.getTracks()) track.stop();
+    throw new Error(
+      `Microphone device binding mismatch: requested ${options.deviceId}, ` +
+        `selected ${inputDevice.deviceId || "<missing>"}`,
+    );
+  }
   const context = new AudioContextCtor();
   voiceCaptureDebug(
     context.state === "running" ? "ctx:running" : `ctx:${context.state}`,
@@ -603,6 +625,7 @@ export async function startLocalAsrRecorder(
   };
 
   return {
+    inputDevice,
     get analyser() {
       return analyser;
     },

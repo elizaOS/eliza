@@ -109,6 +109,33 @@ const CELLS = [
     probe: "webLiveRailway",
   },
   {
+    id: "web.failure-paths",
+    title:
+      "Web visible voice failure states: mic denied, silent capture, and TTS network drop",
+    platform: "web",
+    dimensions: {
+      transcriptionState: "off",
+      chimeIn: "should-respond",
+      wakewordContext: "idle-wake",
+      noiseRejection: "quiet",
+      voices: "owner",
+    },
+    class: "voice-three-state-failures",
+    command: [
+      "bun",
+      "run",
+      "--cwd",
+      "packages/app",
+      "test:e2e",
+      "test/ui-smoke/voice-realaudio.spec.ts",
+      "--grep",
+      "voice failure paths",
+    ],
+    env: UI_SMOKE_MATRIX_ENV,
+    evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
+    probe: "web",
+  },
+  {
     id: "web.fake-mic.transcript-roundtrip",
     title:
       "Web fake-device transcript capture -> record -> player -> chat attachment + voice-control bridge parity",
@@ -788,6 +815,13 @@ function probeCell(cell) {
             "packaged macOS Electrobun launcher is missing; build/redeploy the latest desktop app before capture",
         };
       }
+      if (!process.env.ELIZA_VOICE_CAPTURE_SESSION_ID?.trim()) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_CAPTURE_SESSION_ID is required for synchronized hardware capture",
+        };
+      }
       return {
         available: true,
         reason:
@@ -818,6 +852,13 @@ function probeCell(cell) {
           available: false,
           reason:
             "packaged Windows Electrobun launcher is missing; build/redeploy the latest desktop app before capture",
+        };
+      }
+      if (!process.env.ELIZA_VOICE_CAPTURE_SESSION_ID?.trim()) {
+        return {
+          available: false,
+          reason:
+            "ELIZA_VOICE_CAPTURE_SESSION_ID is required for synchronized hardware capture",
         };
       }
       return {
