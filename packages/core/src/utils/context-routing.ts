@@ -188,13 +188,6 @@ export function mergeContextRouting(
 	) {
 		losingPrimaries.push(stateRouting.primaryContext);
 	}
-	if (
-		messageRouting.primaryContext &&
-		messageRouting.primaryContext !== primaryContext
-	) {
-		losingPrimaries.push(messageRouting.primaryContext);
-	}
-
 	const mergedSecondary = dedupeStringValues([
 		...(stateRouting.secondaryContexts || []),
 		...(messageRouting.secondaryContexts || []),

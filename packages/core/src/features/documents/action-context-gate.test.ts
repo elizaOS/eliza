@@ -261,7 +261,10 @@ describe("DOCUMENT handler operation gate on app-path merged routing", () => {
 			const service = makeService();
 			const runtime = makeRuntime(service);
 			const state = makeKnowledgeState();
-			const message = makeMessage("what do we know about the launch?", "general");
+			const message = makeMessage(
+				"what do we know about the launch?",
+				"general",
+			);
 			const res = await documentAction.handler?.(
 				runtime,
 				message,
@@ -269,7 +272,9 @@ describe("DOCUMENT handler operation gate on app-path merged routing", () => {
 				options({ action, ...extraParams }),
 			);
 			expect(service[method]).toHaveBeenCalledTimes(1);
-			expect(res?.values).not.toMatchObject({ error: "knowledge_context_read_only" });
+			expect(res?.values).not.toMatchObject({
+				error: "knowledge_context_read_only",
+			});
 		},
 	);
 
