@@ -35,10 +35,20 @@ const getPaymentStatus = mock(async (trackId: string) => ({
   currency: "USD",
   transactions: [],
 }));
+const createInvoice = mock(async (input: { callbackUrl?: string }) => ({
+  trackId: "trk_created",
+  payLink: "https://pay.example.test/trk_created",
+  amount: 25,
+  currency: "USD",
+  expiresAt: new Date(Date.now() + 60_000),
+  input,
+}));
 
 beforeEach(() => {
   oxaPayService.getPaymentStatus = getPaymentStatus;
+  oxaPayService.createInvoice = createInvoice as typeof oxaPayService.createInvoice;
   getPaymentStatus.mockClear();
+  createInvoice.mockClear();
 });
 
 describe("OxaPay payment adapter", () => {
@@ -65,6 +75,34 @@ describe("OxaPay payment adapter", () => {
     expect(result.currency).toBe("USD");
     expect(result.proof.provider).toBe("oxapay");
     expect(result.proof).not.toHaveProperty("payload");
+  });
+
+  test("parseWebhook: accepts exact USD with trailing zeros and rejects sub-cent values", async () => {
+    const body = JSON.stringify({ orderId: "pr_abc123", trackId: "trk_999", status: "paid" });
+    getPaymentStatus.mockResolvedValueOnce({
+      trackId: "trk_999",
+      orderId: "pr_abc123",
+      status: "paid",
+      amount: 25,
+      amountText: "25.000000",
+      currency: "USD",
+      transactions: [],
+    });
+    await expect(
+      adapter.parseWebhook!({ rawBody: body, signature: await sign(body) }),
+    ).resolves.toMatchObject({ amountCents: 2500 });
+    getPaymentStatus.mockResolvedValueOnce({
+      trackId: "trk_999",
+      orderId: "pr_abc123",
+      status: "paid",
+      amount: 25.001,
+      amountText: "25.001",
+      currency: "USD",
+      transactions: [],
+    });
+    await expect(
+      adapter.parseWebhook!({ rawBody: body, signature: await sign(body) }),
+    ).rejects.toThrow("does not match");
   });
 
   test("parseWebhook: rejects a paid inquiry bound to another order or track", async () => {
@@ -128,5 +166,25 @@ describe("OxaPay payment adapter", () => {
         request: { id: "x", provider: "stripe", amountCents: 100n } as never,
       }),
     ).rejects.toThrow(/non-oxapay/i);
+  });
+
+  test("createIntent ignores caller metadata for the signed settlement callback", async () => {
+    process.env.OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL =
+      "https://api.example.test/api/v1/oxapay/webhook";
+    await adapter.createIntent({
+      request: {
+        id: "pr_callback",
+        provider: "oxapay",
+        amountCents: 2500,
+        currency: "USD",
+        expiresAt: new Date(Date.now() + 60_000),
+        metadata: { callback_url: "https://attacker.example/capture" },
+      } as never,
+    });
+    expect(createInvoice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        callbackUrl: "https://api.example.test/api/v1/oxapay/webhook",
+      }),
+    );
   });
 });

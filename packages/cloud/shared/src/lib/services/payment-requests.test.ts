@@ -124,6 +124,31 @@ class ExpireScopingRepository extends PaymentRequestsRepository {
 }
 
 describe("createPaymentRequestsService", () => {
+  test("rejects non-USD credit top-up requests before creating provider state", async () => {
+    const repository = new GuardedPaymentRequestsRepository();
+    const service = createPaymentRequestsService({
+      repository,
+      adapters: [
+        {
+          provider: "stripe",
+          async createIntent() {
+            return { providerIntent: {} };
+          },
+        },
+      ],
+    });
+    await expect(
+      service.create({
+        organizationId: "org-1",
+        provider: "stripe",
+        amountCents: 500,
+        currency: "JPY",
+        paymentContext: { kind: "any_payer" },
+      }),
+    ).rejects.toThrow("require USD");
+    expect(repository.createCalls).toBe(0);
+  });
+
   test("rejects invalid expiration values before creating a row", async () => {
     for (const expiresInMs of [Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_VALUE]) {
       const repository = new GuardedPaymentRequestsRepository();

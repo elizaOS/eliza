@@ -14,7 +14,7 @@
 import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "../../../db/schemas/payment-requests";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
-import { isOxaPayConfigured, oxaPayService } from "../oxapay";
+import { isOxaPayConfigured, OxaPayApiError, oxaPayService } from "../oxapay";
 import { type PaymentProviderAdapter, type PaymentRequestRow } from "../payment-requests";
 import { IgnoredWebhookEvent } from "../payment-webhook-errors";
 import { oxapayInvoiceLifetimeSeconds } from "./checkout-lifetime";
@@ -61,9 +61,11 @@ function payloadString(payload: Record<string, unknown>, ...keys: string[]): str
 function amountToCents(value: unknown): number | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
   const text = String(value);
-  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(text);
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(text);
   if (!match) return undefined;
-  const cents = Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0"));
+  const fractional = match[2] ?? "";
+  if (fractional.slice(2).replaceAll("0", "").length > 0) return undefined;
+  const cents = Number(match[1]) * 100 + Number(fractional.slice(0, 2).padEnd(2, "0"));
   return Number.isSafeInteger(cents) && cents > 0 ? cents : undefined;
 }
 
@@ -99,7 +101,6 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
       // So resolve it here and fail invoice creation loudly if we cannot.
       const env = getCloudAwareEnv();
       const callbackUrl =
-        readMetaString(request, "callback_url") ??
         env.OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL ??
         (env.ELIZA_CLOUD_URL
           ? `${env.ELIZA_CLOUD_URL}/api/v1/oxapay/webhook`
@@ -187,7 +188,9 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
           !amountCents ||
           !inquiry.currency
         ) {
-          throw new Error("OxaPay payment inquiry does not match the paid callback identity");
+          throw new OxaPayApiError(
+            "OxaPay payment inquiry does not match the paid callback identity",
+          );
         }
         return {
           paymentRequestId: orderId,

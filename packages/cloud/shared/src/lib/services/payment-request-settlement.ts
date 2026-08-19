@@ -183,8 +183,11 @@ function validateSettlementAmount(
     throw new PaymentProviderEventConflictError("Provider currency is required for settlement");
   }
   const currency = normalizedCurrency(event.currency);
-  if (currency !== normalizedCurrency(request.currency)) {
-    throw new PaymentProviderEventConflictError("Provider currency does not match server quote");
+  const requestCurrency = normalizedCurrency(request.currency);
+  if (requestCurrency !== "USD" || currency !== "USD") {
+    throw new PaymentProviderEventConflictError(
+      "Credit top-up settlement requires a USD server quote and provider payment",
+    );
   }
   return { amountCents: event.amountCents, currency };
 }
@@ -253,7 +256,8 @@ export async function processPaymentProviderEvent(
     throw new PaymentProviderEventConflictError("payloadDigest must be a SHA-256 hex digest");
   }
 
-  return writeTransaction(async (tx) => {
+  let organizationIdToInvalidate: string | null = null;
+  const processed = await writeTransaction(async (tx) => {
     const [request] = await tx
       .select()
       .from(paymentRequests)
@@ -267,6 +271,9 @@ export async function processPaymentProviderEvent(
     const occurredAt = new Date();
     const amount =
       event.disposition === "settled" ? validateSettlementAmount(event, request) : null;
+    if (event.disposition === "settled") {
+      organizationIdToInvalidate = request.organization_id;
+    }
     const callbackPayload: Record<string, unknown> =
       event.disposition === "settled"
         ? {
@@ -378,8 +385,12 @@ export async function processPaymentProviderEvent(
           amountCents: amount?.amountCents,
           currency: amount?.currency,
         },
-        stripePaymentIntentId: `payment-request:${request.organization_id}:${event.provider}:${request.id}`,
+        stripePaymentIntentId:
+          event.provider === "stripe"
+            ? event.providerTxRef
+            : `payment-request:${request.organization_id}:${event.provider}:${request.id}`,
         db: tx,
+        deferCacheInvalidation: true,
       });
       const creditMetadata = credit.transaction.metadata;
       if (
@@ -444,6 +455,16 @@ export async function processPaymentProviderEvent(
         redacted_payload: callbackPayload,
         occurred_at: occurredAt,
       });
+    } else if (request.status === "settled") {
+      await tx
+        .update(paymentRequestEvents)
+        .set({
+          callback_state: "superseded",
+          callback_claimed_until: null,
+          callback_next_attempt_at: null,
+        })
+        .where(eq(paymentRequestEvents.id, eventRow.id));
+      eventRow.callback_state = "superseded";
     }
 
     return {
@@ -452,6 +473,10 @@ export async function processPaymentProviderEvent(
       replay,
     };
   });
+  if (organizationIdToInvalidate) {
+    await creditsService.invalidateCreditCaches(organizationIdToInvalidate);
+  }
+  return processed;
 }
 
 export async function markPaymentCallbackAttempt(

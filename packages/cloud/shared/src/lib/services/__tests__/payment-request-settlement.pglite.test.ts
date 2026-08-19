@@ -181,9 +181,11 @@ async function moneyRows() {
     amount: string;
     type: string;
     metadata: Record<string, unknown>;
+    stripe_payment_intent_id: string | null;
   }>(
     dbWrite,
-    sql`SELECT organization_id, amount, type, metadata FROM credit_transactions ORDER BY created_at`,
+    sql`SELECT organization_id, amount, type, metadata, stripe_payment_intent_id
+        FROM credit_transactions ORDER BY created_at`,
   );
   const request = await sqlRows<{ status: string; settlement_tx_ref: string | null }>(
     dbWrite,
@@ -217,8 +219,28 @@ describe("durable payment request settlement", () => {
       organization_id: ORG_A,
       amount: "25.000000",
       type: "credit",
+      stripe_payment_intent_id: "pi_a",
     });
     expect(rows.request[0]).toMatchObject({ status: "settled", settlement_tx_ref: "pi_a" });
+  });
+
+  test("invalidates credit caches only after the settlement transaction commits", async () => {
+    await insertRequest({ txRef: "pi_a" });
+    const realInvalidate = creditsService.invalidateCreditCaches;
+    let observedBalance: string | null = null;
+    creditsService.invalidateCreditCaches = async (organizationId: string) => {
+      const rows = await sqlRows<{ credit_balance: string }>(
+        dbWrite,
+        sql`SELECT credit_balance FROM organizations WHERE id=${organizationId}`,
+      );
+      observedBalance = rows[0]?.credit_balance ?? null;
+    };
+    try {
+      await processPaymentProviderEvent(stripeEvent());
+      expect(observedBalance).toBe("25.000000");
+    } finally {
+      creditsService.invalidateCreditCaches = realInvalidate;
+    }
   });
 
   test("failure after the ledger write rolls back and the same event retries cleanly", async () => {
@@ -275,6 +297,15 @@ describe("durable payment request settlement", () => {
     const rows = await moneyRows();
     expect(rows.request[0]?.status).toBe("settled");
     expect(rows.credits).toHaveLength(1);
+    const lateFailureOutbox = await sqlRows<{ callback_state: string }>(
+      dbWrite,
+      sql`SELECT callback_state FROM payment_request_events
+          WHERE provider_event_id='evt_late_failed'`,
+    );
+    expect(lateFailureOutbox[0]?.callback_state).toBe("superseded");
+    expect(await dispatchPaymentCallbacks({ provider: "stripe", limit: 10 })).toMatchObject({
+      claimed: 0,
+    });
   });
 
   test("provider event replay is payload-bound", async () => {
@@ -326,8 +357,13 @@ describe("durable payment request settlement", () => {
       "amount does not match",
     );
     await expect(processPaymentProviderEvent(stripeEvent({ currency: "eur" }))).rejects.toThrow(
-      "currency does not match",
+      "requires a USD",
     );
+    await dbWrite.execute(sql`UPDATE payment_requests SET currency='jpy' WHERE id=${REQUEST_A}`);
+    await expect(
+      processPaymentProviderEvent(stripeEvent({ currency: "jpy", digest: "e".repeat(64) })),
+    ).rejects.toThrow("requires a USD");
+    await dbWrite.execute(sql`UPDATE payment_requests SET currency='usd' WHERE id=${REQUEST_A}`);
 
     await processPaymentProviderEvent(stripeEvent());
     await insertRequest({ id: REQUEST_B, orgId: ORG_B, txRef: "pi_a" });

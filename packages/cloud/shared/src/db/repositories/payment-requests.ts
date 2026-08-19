@@ -118,7 +118,9 @@ function toDomain(row: PaymentRequestDbRow): PaymentRequestRow {
     paymentContext: row.payment_context,
     payerIdentityId: row.payer_identity_id,
     payerUserId: row.payer_user_id,
-    payerOrganizationId: row.organization_id,
+    // The beneficiary organization is not necessarily the hosted checkout
+    // payer. No payer organization is known until a verified-payer flow exists.
+    payerOrganizationId: null,
     status: row.status,
     hostedUrl: row.hosted_url,
     callbackUrl: row.callback_url,

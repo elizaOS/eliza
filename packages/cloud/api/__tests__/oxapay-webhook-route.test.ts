@@ -33,6 +33,7 @@ const dispatchPaymentCallbacks = mock(async () => ({
   dispatched: 1,
   failed: 0,
 }));
+const digest = mock(async () => "a".repeat(64));
 const seenProviderEvents = new Set<string>();
 const processPaymentProviderEvent = mock(
   async (event: {
@@ -106,7 +107,7 @@ const app = createOxaPayWebhookApp({
   adapter: createOxaPayPaymentAdapter(),
   processProviderEvent: processPaymentProviderEvent,
   dispatchCallbacks: dispatchPaymentCallbacks,
-  digest: async () => "a".repeat(64),
+  digest,
 });
 
 async function sign(body: string, secret: string = SECRET): Promise<string> {
@@ -166,6 +167,7 @@ beforeEach(() => {
   markFailed.mockClear();
   processPaymentProviderEvent.mockClear();
   dispatchPaymentCallbacks.mockClear();
+  digest.mockClear();
   seenProviderEvents.clear();
   busEvents = [];
 });
@@ -274,6 +276,35 @@ describe("OxaPay payment_requests webhook route", () => {
     await expect(replay.text()).resolves.toBe("ok");
     expect(markSettled).toHaveBeenCalledTimes(2);
     expect(busEvents).toHaveLength(1);
+  });
+
+  test("semantically identical OxaPay redeliveries use the same durable digest", async () => {
+    const firstBody = JSON.stringify({
+      orderId: "pr_semantic",
+      trackId: "trk_semantic",
+      status: "paid",
+      amount: "0.5",
+      currency: "POL",
+      audit: "first",
+    });
+    const secondBody = JSON.stringify({
+      audit: "changed",
+      currency: "USDT",
+      amount: "999",
+      status: "paid",
+      trackId: "trk_semantic",
+      orderId: "pr_semantic",
+    });
+    for (const body of [firstBody, secondBody]) {
+      const response = await app.fetch(
+        oxaPayRequest(body, { hmac: await sign(body) }),
+        env,
+      );
+      expect(response.status).toBe(200);
+    }
+    expect(digest).toHaveBeenCalledTimes(2);
+    const digestCalls = digest.mock.calls as unknown as Array<[string]>;
+    expect(digestCalls[0]?.[0]).toBe(digestCalls[1]?.[0]);
   });
 
   test("failed invoice marks the request failed — no credit path touched", async () => {

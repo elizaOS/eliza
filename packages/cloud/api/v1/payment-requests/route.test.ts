@@ -100,4 +100,16 @@ describe("POST /api/v1/payment-requests agent identity", () => {
     });
     expect(createPaymentRequest).not.toHaveBeenCalled();
   });
+
+  test("rejects unsupported payer claims and the first out-of-range ledger cent", async () => {
+    for (const body of [
+      { paymentContext: "verified_payer" },
+      { amountCents: 100_000_000 },
+      { currency: "JPY" },
+    ]) {
+      const response = await app.fetch(createRequest(body));
+      expect(response.status).toBe(400);
+    }
+    expect(createPaymentRequest).not.toHaveBeenCalled();
+  });
 });

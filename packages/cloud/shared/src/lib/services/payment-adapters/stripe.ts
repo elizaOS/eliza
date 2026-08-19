@@ -14,7 +14,6 @@ import type Stripe from "stripe";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { requireStripe } from "../../stripe";
 import { logger } from "../../utils/logger";
-import { paymentMethodsService } from "../payment-methods";
 import { type PaymentProviderAdapter, type PaymentRequestRow } from "../payment-requests";
 import { IgnoredWebhookEvent } from "../payment-webhook-errors";
 import { stripeCheckoutExpiresAtSeconds } from "./checkout-lifetime";
@@ -42,25 +41,6 @@ function readMetadata(request: PaymentRequestRow): RequestMetadata {
   };
 }
 
-async function resolveCustomerId(request: PaymentRequestRow): Promise<string | undefined> {
-  if (!request.payerOrganizationId) return undefined;
-  try {
-    const list = await paymentMethodsService.listPaymentMethods(request.payerOrganizationId);
-    const customer = list[0]?.customer;
-    if (typeof customer === "string") return customer;
-    if (customer && typeof customer === "object" && "id" in customer) {
-      return (customer as { id: string }).id;
-    }
-  } catch (error) {
-    logger.warn("[StripePaymentAdapter] Failed to resolve existing Stripe customer", {
-      paymentRequestId: request.id,
-      organizationId: request.payerOrganizationId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-  return undefined;
-}
-
 export function createStripePaymentAdapter(): PaymentProviderAdapter {
   return {
     provider: "stripe",
@@ -81,8 +61,6 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
       }
 
       const stripe = requireStripe();
-      const customerId = await resolveCustomerId(request);
-
       const sharedMetadata = {
         payment_request_id: request.id,
         provider: "stripe",
@@ -118,8 +96,7 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
         success_url: meta.successUrl,
         cancel_url: meta.cancelUrl,
         client_reference_id: request.id,
-        ...(customerId ? { customer: customerId } : {}),
-        ...(!customerId && meta.customerEmail ? { customer_email: meta.customerEmail } : {}),
+        ...(meta.customerEmail ? { customer_email: meta.customerEmail } : {}),
         metadata: sharedMetadata,
         payment_intent_data: { metadata: sharedMetadata },
         expires_at: sessionExpiresAtSeconds,

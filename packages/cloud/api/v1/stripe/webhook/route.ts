@@ -111,7 +111,7 @@ app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
     await paymentCallbackBus.publish(processed.callback);
     await dispatchPaymentCallbacks({
       provider: "stripe",
-      providerEventId: parsed.providerEventId,
+      providerEventId: processed.callback.providerEventId,
       limit: 1,
     });
   }

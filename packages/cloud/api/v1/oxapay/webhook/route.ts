@@ -138,13 +138,21 @@ export function createOxaPayWebhookApp(
 
     let processed: Awaited<ReturnType<typeof processPaymentProviderEvent>>;
     try {
+      const semanticDelivery = JSON.stringify({
+        providerEventId: parsed.providerEventId,
+        paymentRequestId: parsed.paymentRequestId,
+        disposition: parsed.status,
+        providerTxRef: parsed.txRef,
+        amountCents: parsed.amountCents ?? null,
+        currency: parsed.currency?.toUpperCase() ?? null,
+      });
       processed = await dependencies.processProviderEvent({
         provider: "oxapay",
         providerEventId: parsed.providerEventId,
         paymentRequestId: parsed.paymentRequestId,
         disposition: parsed.status,
         providerTxRef: parsed.txRef,
-        payloadDigest: await dependencies.digest(rawBody),
+        payloadDigest: await dependencies.digest(semanticDelivery),
         amountCents: parsed.amountCents,
         currency: parsed.currency,
         proof: parsed.proof,
@@ -171,7 +179,7 @@ export function createOxaPayWebhookApp(
       await paymentCallbackBus.publish(processed.callback);
       await dependencies.dispatchCallbacks({
         provider: "oxapay",
-        providerEventId: parsed.providerEventId,
+        providerEventId: processed.callback.providerEventId,
         limit: 1,
       });
     }

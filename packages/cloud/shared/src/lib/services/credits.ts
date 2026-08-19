@@ -295,6 +295,12 @@ export interface AddCreditsParams {
    * caller must hold a DB-level lock across the balance mutation.
    */
   db?: SqlExecutor;
+  /**
+   * Internal: the transaction owner will invalidate credit caches only after
+   * its outer transaction commits. Never use this without a post-commit call
+   * to `invalidateCreditCaches`.
+   */
+  deferCacheInvalidation?: boolean;
 }
 
 /**
@@ -642,7 +648,15 @@ export class CreditsService {
     transaction: CreditTransaction;
     newBalance: number;
   }> {
-    const { organizationId, amount, description, metadata, stripePaymentIntentId, db } = params;
+    const {
+      organizationId,
+      amount,
+      description,
+      metadata,
+      stripePaymentIntentId,
+      db,
+      deferCacheInvalidation = false,
+    } = params;
 
     // IDEMPOTENCY: If stripePaymentIntentId is provided, check for existing transaction
     // This prevents race conditions when both synchronous and webhook calls try to add credits
@@ -676,17 +690,21 @@ export class CreditsService {
       stripePaymentIntentId,
       db,
       transactionType: "credit",
-    }).then(async (result) => {
-      invalidateOrganizationCache(organizationId).catch((error) => {
-        logger.error("[CreditsService] Failed to invalidate org cache:", error);
-      });
-      return result;
     });
 
-    // Invalidate balance cache immediately after transaction
-    await CacheInvalidation.onCreditMutation(organizationId);
+    if (!deferCacheInvalidation) {
+      await this.invalidateCreditCaches(organizationId);
+    }
 
     return result;
+  }
+
+  /** Invalidates organization and balance caches after the owning DB commit. */
+  async invalidateCreditCaches(organizationId: string): Promise<void> {
+    await invalidateOrganizationCache(organizationId).catch((error) => {
+      logger.error("[CreditsService] Failed to invalidate org cache:", error);
+    });
+    await CacheInvalidation.onCreditMutation(organizationId);
   }
 
   async deductCredits(params: DeductCreditsParams): Promise<{
