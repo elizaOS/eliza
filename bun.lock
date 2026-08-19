@@ -1597,6 +1597,7 @@
       "name": "@elizaos/plugin-computeruse",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/shared": "workspace:*",
         "@nut-tree-fork/nut-js": "^4.2.6",
         "puppeteer-core": "^24.9.0",
       },
