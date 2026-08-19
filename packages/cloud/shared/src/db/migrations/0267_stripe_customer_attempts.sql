@@ -480,10 +480,16 @@ BEGIN
       AND conname = 'stripe_customer_legacy_quarantine_attempt_tenant_fk' AND convalidated
   ) THEN RAISE EXCEPTION 'Stripe Customer authority constraint collision'; END IF;
 
+  -- PostgreSQL 18 represents NOT NULL constraints in pg_constraint as
+  -- contype='n'; PostgreSQL 16 and PGlite do not. Column nullability is
+  -- validated above through pg_attribute, so exclude only that portable
+  -- duplicate representation while still rejecting every other extra
+  -- constraint type.
   IF (SELECT count(*) FROM pg_constraint
-        WHERE conrelid='stripe_customer_attempts'::regclass) <> 10
+        WHERE conrelid='stripe_customer_attempts'::regclass AND contype <> 'n') <> 10
     OR (SELECT count(*) FROM pg_constraint
-        WHERE conrelid='stripe_customer_legacy_quarantines'::regclass) <> 7
+        WHERE conrelid='stripe_customer_legacy_quarantines'::regclass
+          AND contype <> 'n') <> 7
     OR NOT EXISTS (SELECT 1 FROM pg_constraint
       WHERE conrelid='stripe_customer_attempts'::regclass
         AND conname='stripe_customer_attempts_pkey' AND contype='p' AND conkey=ARRAY[1]::smallint[])

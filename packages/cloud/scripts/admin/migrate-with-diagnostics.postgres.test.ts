@@ -22,6 +22,10 @@ const MIGRATIONS_DIR = path.join(
   "packages/cloud/shared/src/db/migrations",
 );
 const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
+const STRIPE_CUSTOMER_MIGRATION_PATH = path.join(
+  MIGRATIONS_DIR,
+  "0267_stripe_customer_attempts.sql",
+);
 const ADD_COLUMN_CREATED_AT = 1_785_384_000_000;
 const CATALOG_GUARD_CREATED_AT = 1_786_478_400_000;
 const HISTORICAL_DRIFT_CREATED_AT = 1_770_518_468_000;
@@ -753,6 +757,67 @@ describe.skipIf(!ENABLED)(
       }
       await admin.end();
     }, 300_000);
+
+    test("accepts portable Stripe Customer authority catalogs and rejects semantic drift", async () => {
+      const database = await createDatabase();
+      await database.client.query(`
+        CREATE TABLE organizations (
+          id uuid PRIMARY KEY,
+          name text NOT NULL,
+          slug text NOT NULL UNIQUE,
+          stripe_customer_id text,
+          billing_email text,
+          updated_at timestamp with time zone NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX organizations_stripe_customer_authority_unique
+          ON organizations(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+        CREATE TABLE auto_top_up_attempts (
+          id uuid PRIMARY KEY,
+          organization_id uuid NOT NULL REFERENCES organizations(id),
+          stripe_customer_id_snapshot text NOT NULL,
+          provider_request_started_at timestamp with time zone
+        );
+      `);
+      const migration = await readFile(STRIPE_CUSTOMER_MIGRATION_PATH, "utf8");
+      const statements = migration
+        .split("--> statement-breakpoint")
+        .filter((statement) => statement.trim());
+      await database.client.query(migration);
+      await database.client.query(migration);
+
+      const catalog = await database.client.query<{
+        attempts: string;
+        quarantines: string;
+      }>(`
+        SELECT
+          count(*) FILTER (
+            WHERE conrelid='stripe_customer_attempts'::regclass AND contype <> 'n'
+          )::text AS attempts,
+          count(*) FILTER (
+            WHERE conrelid='stripe_customer_legacy_quarantines'::regclass AND contype <> 'n'
+          )::text AS quarantines
+        FROM pg_constraint
+      `);
+      expect(catalog.rows[0]).toEqual({ attempts: "10", quarantines: "7" });
+
+      const postcondition = statements.at(-1);
+      if (!postcondition)
+        throw new Error("Migration has no catalog postcondition");
+      await database.client.query(`ALTER TABLE stripe_customer_attempts
+        ADD CONSTRAINT stripe_customer_attempts_unexpected_check CHECK (generation < 1000000)`);
+      await expect(database.client.query(postcondition)).rejects.toThrow(
+        /exact constraint collision/i,
+      );
+      await database.client.query(`ALTER TABLE stripe_customer_attempts
+        DROP CONSTRAINT stripe_customer_attempts_unexpected_check`);
+      await database.client.query(
+        "ALTER TABLE stripe_customer_attempts ALTER COLUMN status DROP NOT NULL",
+      );
+      await expect(database.client.query(postcondition)).rejects.toThrow(
+        /column collision/i,
+      );
+      await database.client.end();
+    }, 120_000);
 
     test("applies the append-only fix-forward once and passes the reusable catalog preflight", async () => {
       const database = await createDatabase();
