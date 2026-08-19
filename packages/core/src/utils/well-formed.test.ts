@@ -4,8 +4,7 @@
  * slice produced a lone leading surrogate that Cerebras's strict JSON parser
  * rejected with `wrong_api_format`), and the sanitizers must turn any lone
  * surrogate into U+FFFD so a serialized request body never carries a bare
- * \uD8xx escape. Also covers fail-closed depth / cycle / visit bounds on
- * `deepToWellFormedUnicode` (origin hung the model-call path with RangeError).
+ * \uD8xx escape. Also covers fail-closed depth, cycle, and visit bounds.
  */
 
 import { describe, expect, it } from "vitest";

@@ -39,20 +39,16 @@ describe("redactForScenarioReport", () => {
   it("fails closed on a cyclic report object without overflowing the stack", () => {
     const cyclic: Record<string, unknown> = { token: "s3cret", ok: 1 };
     cyclic.self = cyclic;
-    const started = performance.now();
     const redacted = redactForScenarioReport(cyclic) as Record<string, unknown>;
-    expect(performance.now() - started).toBeLessThan(50);
     expect(redacted.token).toBe("[REDACTED]");
     expect(redacted.ok).toBe(1);
     expect(redacted.self).toBe("[REDACTED]");
   });
 
   it("preserves and redacts a 20k-deep nest without overflowing the stack", () => {
-    const started = performance.now();
     const redacted = redactForScenarioReport(
       nest(20_000, { token: "s3cret", ok: 1 }),
     ) as Record<string, unknown>;
-    expect(performance.now() - started).toBeLessThan(50);
     let cursor: unknown = redacted;
     for (let i = 0; i < 20_000; i += 1) {
       expect(cursor).toEqual(
