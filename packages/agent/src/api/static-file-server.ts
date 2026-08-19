@@ -14,6 +14,35 @@ import { isCloudProvisionedContainer, resolveApiToken } from "@elizaos/shared";
 import { getOrReadCachedFile } from "./memory-bounds.ts";
 import { findOwnPackageRoot } from "./server-helpers.ts";
 
+function resolveRealPathSync(p: string): string {
+  const absolute = path.resolve(p);
+  try {
+    return fs.realpathSync(absolute);
+  } catch {
+    // missing leaf — ancestor walk
+  }
+  const tail: string[] = [];
+  let current = absolute;
+  while (true) {
+    const parent = path.dirname(current);
+    if (parent === current) return absolute;
+    tail.unshift(path.basename(current));
+    try {
+      return path.join(fs.realpathSync(parent), ...tail);
+    } catch {
+      current = parent;
+    }
+  }
+}
+
+function isWithin(child: string, parent: string): boolean {
+  const resolvedChild = path.resolve(child);
+  const resolvedParent = path.resolve(parent);
+  if (resolvedChild === resolvedParent) return true;
+  const rel = path.relative(resolvedParent, resolvedChild);
+  return rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
 // One-time warning when an operator opts into embedding the API token in served
 // HTML outside a cloud-provisioned container (see ELIZA_FORCE_INJECT_TOKEN below).
 let warnedForceInjectToken = false;
@@ -290,19 +319,18 @@ export function serveStaticUi(
 
   const relativePath = decodedPath.replace(/^\/+/, "");
   const candidatePath = path.resolve(root, relativePath);
-  if (
-    candidatePath !== root &&
-    !candidatePath.startsWith(`${root}${path.sep}`)
-  ) {
+  const realCandidate = resolveRealPathSync(candidatePath);
+  const realRoot = resolveRealPathSync(root);
+  if (realCandidate !== realRoot && !isWithin(realCandidate, realRoot)) {
     sendJsonError(res, "Forbidden", 403);
     return true;
   }
 
   try {
-    const stat = fs.statSync(candidatePath);
+    const stat = fs.statSync(realCandidate);
     if (stat.isFile()) {
-      const ext = path.extname(candidatePath).toLowerCase();
-      const body = getCachedFile(candidatePath, stat.mtimeMs);
+      const ext = path.extname(realCandidate).toLowerCase();
+      const body = getCachedFile(realCandidate, stat.mtimeMs);
       const isPreviewOrBinaryAsset =
         relativePath.startsWith("vrms/previews/") ||
         relativePath.startsWith("vrms/backgrounds/") ||

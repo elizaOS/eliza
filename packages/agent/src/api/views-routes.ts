@@ -79,6 +79,35 @@ import { viewSearchIndex } from "./views-search-index.ts";
 
 const VIEW_TYPE_ERROR = "viewType must be one of: gui, tui, xr";
 
+async function resolveRealPath(p: string): Promise<string> {
+  const absolute = path.resolve(p);
+  try {
+    return await fs.realpath(absolute);
+  } catch {
+    // missing leaf — ancestor walk so symlink dir cannot hide behind tail
+  }
+  const tail: string[] = [];
+  let current = absolute;
+  while (true) {
+    const parent = path.dirname(current);
+    if (parent === current) return absolute;
+    tail.unshift(path.basename(current));
+    try {
+      return path.join(await fs.realpath(parent), ...tail);
+    } catch {
+      current = parent;
+    }
+  }
+}
+
+function isWithin(child: string, parent: string): boolean {
+  const resolvedChild = path.resolve(child);
+  const resolvedParent = path.resolve(parent);
+  if (resolvedChild === resolvedParent) return true;
+  const rel = path.relative(resolvedParent, resolvedChild);
+  return rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
 /**
  * Parse the view-catalog `viewType` query. Omitted/empty keeps the historical
  * GUI default (`listViews` / `getView` treat undefined as gui). A known
@@ -936,13 +965,14 @@ export async function handleViewsRoutes(
     }
 
     const bundleDir = path.dirname(bundlePath);
+    const realBundleDir = await resolveRealPath(bundleDir);
     const assetPath = path.resolve(bundleDir, decodedSubResource);
-    const relative = path.relative(bundleDir, assetPath);
+    const realAssetPath = await resolveRealPath(assetPath);
+    // Confinement via canonical paths — lexical relative is bypassable through a
+    // directory symlink inside the bundle dir.
     if (
-      relative === ".." ||
-      relative.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relative) ||
-      relative === ""
+      realAssetPath !== realBundleDir &&
+      !isWithin(realAssetPath, realBundleDir)
     ) {
       error(res, "Malformed view asset path", 400);
       return true;
@@ -950,7 +980,7 @@ export async function handleViewsRoutes(
 
     let stat: import("node:fs").Stats;
     try {
-      stat = await fs.stat(assetPath);
+      stat = await fs.stat(realAssetPath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         error(res, `View asset "${decodedSubResource}" not found`, 404);
@@ -983,10 +1013,11 @@ export async function handleViewsRoutes(
 
     let data: Buffer;
     try {
-      data = method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(assetPath);
+      data =
+        method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(realAssetPath);
     } catch (err) {
       logger.error(
-        { src: "ViewsRoutes", viewId: id, assetPath, err },
+        { src: "ViewsRoutes", viewId: id, assetPath: realAssetPath, err },
         `[ViewsRoutes] Failed to read asset "${decodedSubResource}" for view "${id}"`,
       );
       error(res, `Failed to read asset for view "${id}"`, 500);
@@ -1001,7 +1032,7 @@ export async function handleViewsRoutes(
       end?: (chunk?: unknown) => void;
     };
     raw.writeHead?.(200, {
-      "Content-Type": contentTypeForViewAsset(assetPath),
+      "Content-Type": contentTypeForViewAsset(realAssetPath),
       "Content-Length": stat.size,
       "Cache-Control": "no-cache",
       ETag: etag,
