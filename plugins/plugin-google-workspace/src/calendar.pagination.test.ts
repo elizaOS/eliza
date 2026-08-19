@@ -29,6 +29,8 @@ describe("listEvents pagination", () => {
 
     expect(events.map((e) => e.id)).toEqual(["e1", "e2", "e3"]);
     expect(list).toHaveBeenCalledTimes(3);
+    expect(list).toHaveBeenNthCalledWith(2, expect.objectContaining({ pageToken: "c1" }));
+    expect(list).toHaveBeenNthCalledWith(3, expect.objectContaining({ pageToken: "c2" }));
   });
 
   it("rejects a repeated event-list page token instead of looping forever", async () => {
@@ -56,6 +58,28 @@ describe("listEvents pagination", () => {
       code: "GOOGLE_CALENDAR_PAGINATION_LIMIT_EXCEEDED",
     });
     expect(list).toHaveBeenCalledTimes(1_000);
+    expect(list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: "unique-token-999" })
+    );
+  });
+
+  it("accepts a terminal response on the exact final allowed page", async () => {
+    let page = 0;
+    const list = vi.fn(async () => {
+      page += 1;
+      return {
+        data: {
+          items: page === 1_000 ? [{ id: "last-event" }] : [],
+          ...(page < 1_000 && { nextPageToken: `unique-token-${page}` }),
+        },
+      };
+    });
+    const client = clientFor({ events: { list } });
+
+    await expect(client.listEvents({ accountId: "acct-1" })).resolves.toMatchObject([
+      { id: "last-event" },
+    ]);
+    expect(list).toHaveBeenCalledTimes(1_000);
   });
 });
 
@@ -71,6 +95,7 @@ describe("listCalendars pagination", () => {
 
     expect(calendars.map((c) => c.calendarId)).toEqual(["cal-1", "cal-2"]);
     expect(list).toHaveBeenCalledTimes(2);
+    expect(list).toHaveBeenNthCalledWith(2, expect.objectContaining({ pageToken: "c1" }));
   });
 
   it("bounds calendar-list pagination against a provider that never repeats but never stops", async () => {
