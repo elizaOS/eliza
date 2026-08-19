@@ -39,6 +39,7 @@ import { z } from "zod";
 import type { AnalyzerExecutor } from "../analyzers/index.ts";
 import { analyzeArtifacts } from "../analyzers/runner.ts";
 import {
+  assertSafeCertificationOutput,
   createBundle,
   type EvidenceBundle,
   verifyBundle,
@@ -699,6 +700,7 @@ export async function orchestrateCertify(
   const certPath = path.resolve(
     options.certOut ?? path.join(bundleDir, "certification.json"),
   );
+  assertSafeCertificationOutput(bundleDir, certPath);
   writeOwnedFileAtomic(certPath, `${JSON.stringify(certification, null, 2)}\n`);
   steps.push({
     step: "sign",

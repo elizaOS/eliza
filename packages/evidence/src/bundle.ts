@@ -271,6 +271,44 @@ export function writeOwnedFileAtomic(
   }
 }
 
+function physicalPath(filePath: string): string {
+  let cursor = path.resolve(filePath);
+  const missing: string[] = [];
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    missing.push(path.basename(cursor));
+    cursor = parent;
+  }
+  const existing = fs.existsSync(cursor) ? fs.realpathSync(cursor) : cursor;
+  return path.join(existing, ...missing.reverse());
+}
+
+/** Allow only the reserved certification envelope leaf inside a bundle. */
+export function assertSafeCertificationOutput(
+  bundleDir: string,
+  outputPath: string,
+): void {
+  const physicalBundle = physicalPath(bundleDir);
+  const physicalOutput = physicalPath(outputPath);
+  const relative = path.relative(physicalBundle, physicalOutput);
+  const insideBundle =
+    relative === "" ||
+    (relative !== ".." && !relative.startsWith(`..${path.sep}`));
+  if (
+    insideBundle &&
+    physicalOutput !== path.join(physicalBundle, "certification.json")
+  ) {
+    throw new EvidenceError(
+      `certification output may not replace bundle contents: ${outputPath}`,
+      {
+        code: "CERTIFICATION_OUTPUT_UNSAFE",
+        context: { bundleDir, outputPath },
+      },
+    );
+  }
+}
+
 /** Copy one single-link regular file through a stable no-follow descriptor. */
 function materialize(sourcePath: string, destPath: string): void {
   const sourceLstat = fs.lstatSync(sourcePath, { bigint: true });

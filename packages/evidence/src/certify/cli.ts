@@ -13,7 +13,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { verifyBundle, writeOwnedFileAtomic } from "../bundle.ts";
+import {
+  assertSafeCertificationOutput,
+  verifyBundle,
+  writeOwnedFileAtomic,
+} from "../bundle.ts";
 import { canonicalJsonBytes } from "../canonical.ts";
 import { EvidenceError } from "../errors.ts";
 import { parseMeta, TIERS, type Tier } from "../schema.ts";
@@ -280,6 +284,7 @@ async function runSign(argv: string[], io: CliIo): Promise<number> {
   const certification = signCertification(payload, key);
   const outPath =
     parsed.flags.get("--out") ?? path.join(bundleDir, "certification.json");
+  assertSafeCertificationOutput(bundleDir, outPath);
   writeOwnedFileAtomic(outPath, canonicalJsonBytes(certification));
 
   const counts = { pass: 0, fail: 0, waived: 0 };

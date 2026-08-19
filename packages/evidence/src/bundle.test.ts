@@ -12,6 +12,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BundleProvenance } from "./bundle.ts";
 import {
+  assertSafeCertificationOutput,
   createBundle,
   formatRunId,
   verifyBundle,
@@ -264,6 +265,40 @@ describe("EvidenceBundle", () => {
     expect(fs.lstatSync(symlinkLeaf).isSymbolicLink()).toBe(false);
     expect(fs.statSync(symlinkLeaf).nlink).toBe(1);
     expect(fs.statSync(hardlinkLeaf).nlink).toBe(1);
+  });
+
+  it("reserves every in-bundle leaf except certification.json for signing", () => {
+    const bundleDir = tmpDir();
+    const alias = path.join(tmpDir(), "bundle-alias");
+    fs.symlinkSync(bundleDir, alias, "dir");
+    const outside = path.join(tmpDir(), "certification.json");
+    expect(() =>
+      assertSafeCertificationOutput(
+        bundleDir,
+        path.join(bundleDir, "certification.json"),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertSafeCertificationOutput(bundleDir, outside),
+    ).not.toThrow();
+    expect(() =>
+      assertSafeCertificationOutput(
+        bundleDir,
+        path.join(alias, "manifest.json"),
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "CERTIFICATION_OUTPUT_UNSAFE" }),
+    );
+    for (const relative of ["manifest.json", "meta.json", "visual/proof.png"]) {
+      expect(() =>
+        assertSafeCertificationOutput(
+          bundleDir,
+          path.join(bundleDir, relative),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ code: "CERTIFICATION_OUTPUT_UNSAFE" }),
+      );
+    }
   });
 
   it("produces byte-identical manifests across two runs with the same inputs", async () => {
