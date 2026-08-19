@@ -661,8 +661,6 @@ export class CanvasWeb extends WebPlugin {
   }): Promise<void> {
     const ctx = this.getContext(options.canvasId, options.drawOptions?.layerId);
 
-    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
-
     const img = new Image();
 
     if (typeof options.image === "string") {
@@ -671,10 +669,19 @@ export class CanvasWeb extends WebPlugin {
       img.src = `data:image/${options.image.format};base64,${options.image.base64}`;
     }
 
+    // Resolve the image load BEFORE pushing any save()/draw-option state.
+    // applyDrawOptions() runs ctx.save() and mutates ctx (globalAlpha,
+    // blendMode, shadow, transform); holding that frame across the await
+    // would leak the mutated state onto every subsequent draw whenever the
+    // load rejects (bad URL/base64, network, CORS — all normal runtime
+    // conditions). Applying draw options only after a successful load keeps
+    // save()/restore() balanced on both the success and failure paths.
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
       img.onerror = () => reject(new Error("Failed to load image"));
     });
+
+    this.applyDrawOptions(ctx, options.canvasId, options.drawOptions);
 
     if (options.srcRect) {
       ctx.drawImage(
