@@ -3672,12 +3672,38 @@ export class OrchestratorTaskService extends Service {
         }
       ).sendMessageToTarget;
       if (typeof send !== "function") return;
+      // Same request-terminal claim as the park notice: the task_complete
+      // relay and this notice raced and BOTH delivered ("…every criterion
+      // passed. live at <url>" followed 27s later by "it's all set. you can
+      // find…", live 2026-08-19). Whichever claims first is the single
+      // completion message; denial gags the other. Ledger absent → fail-open.
+      const router = this.runtime.getService?.(
+        SUB_AGENT_ROUTER_SERVICE_TYPE,
+      ) as RequestVoiceLedgerRouter | null;
+      let suppressed = false;
+      if (typeof router?.claimRequestTerminal === "function") {
+        const requestKey =
+          requestVoiceKeyForMeta({
+            ...(doc.task.metadata ?? {}),
+            taskId,
+          }) ?? `task:${taskId}`;
+        try {
+          suppressed = terminalClaimDenied(
+            router.claimRequestTerminal(requestKey, taskId, "completed", false),
+          );
+        } catch {
+          // error-policy:J4 ledger failure degrades to sending (dedupe lost,
+          // never the notice).
+          suppressed = false;
+        }
+      }
       await this.store.updateTask(taskId, {
         metadata: {
           ...doc.task.metadata,
           verifyRecoveryNotifiedAt: nowIso(),
         },
       });
+      if (suppressed) return;
       const label = doc.task.title.trim() || "the coding task";
       const deploy = resolveAppDeployConfig();
       const workdir = doc.sessions.at(-1)?.workdir;
