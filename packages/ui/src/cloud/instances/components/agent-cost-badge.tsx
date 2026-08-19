@@ -79,7 +79,7 @@ export function AgentCostBadge({ status, executionTier }: AgentCostBadgeProps) {
             <p className="text-white/60">
               {t("cloud.containers.costBadge.deactivatedDetail", {
                 defaultValue:
-                  "Not running — no hourly cost. Data is kept in an encrypted backup.",
+                  "Not running — no hourly cost. Your agent data is retained.",
               })}
             </p>
           </>

@@ -147,4 +147,20 @@ describe("AgentDetailPage product detail", () => {
     expect(screen.queryByText("Shared Agent")).toBeNull();
     expect(screen.queryByText("Free")).toBeNull();
   });
+
+  it("keeps backing-system failures out of the product error state", () => {
+    renderPage({
+      ...baseAgent,
+      status: "error",
+      errorCount: 2,
+      errorMessage: "Container runtime image unavailable",
+    });
+
+    expect(screen.getByText("This agent needs attention")).toBeTruthy();
+    expect(screen.getByText(/contact support/i)).toBeTruthy();
+    expect(
+      screen.queryByText("Container runtime image unavailable"),
+    ).toBeNull();
+    expect(document.body.textContent).not.toMatch(/container|runtime/i);
+  });
 });
