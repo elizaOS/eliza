@@ -14,6 +14,8 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
+import { convergeAgentSandboxSchema } from "@elizaos/cloud-shared/db/ensure-agent-sandbox-schema";
+import { PgDialect } from "drizzle-orm/pg-core";
 import pg from "pg";
 import {
   type CleanupFailure,
@@ -104,6 +106,21 @@ type IdentityResultReporter = (
   config: DatabaseIdentityConfig,
   result: IdentityPreflightResult,
 ) => Promise<void>;
+
+type PostMigrationConvergence = (client: MigrationClient) => Promise<void>;
+
+/** Executes the historical agent-sandbox drift repair on the locked migration session. */
+export async function convergeAgentSandboxSchemaOnMigrationClient(
+  migrationClient: MigrationClient,
+): Promise<void> {
+  const dialect = new PgDialect();
+  await convergeAgentSandboxSchema({
+    execute: async (statement) => {
+      const query = dialect.sqlToQuery(statement);
+      await migrationClient.query(query.sql, query.params);
+    },
+  });
+}
 
 // Historical SQL files were edited after deployment, so their stored hashes
 // and some deployed schemas have no matching ledger row. The catalog-guard
@@ -523,6 +540,7 @@ export async function runMigrations(
   retryOptions: LockRetryOptions,
   identityConfig?: DatabaseIdentityConfig,
   reportIdentityResult?: IdentityResultReporter,
+  postMigrationConvergence?: PostMigrationConvergence,
 ): Promise<void> {
   let lockHeld = false;
   await runWithCleanup(
@@ -569,6 +587,8 @@ export async function runMigrations(
       for (const migration of pending) {
         await applyMigration(client, migration, retryOptions);
       }
+
+      await postMigrationConvergence?.(client);
 
       console.log("[db:migrate] migrations complete");
     },
@@ -626,6 +646,7 @@ async function main(): Promise<void> {
         );
       }
     },
+    convergeAgentSandboxSchemaOnMigrationClient,
   );
 }
 

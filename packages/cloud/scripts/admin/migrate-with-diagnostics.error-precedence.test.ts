@@ -4,7 +4,11 @@
  */
 
 import { expect, spyOn, test } from "bun:test";
-import { applyMigration, runMigrations } from "./migrate-with-diagnostics";
+import {
+  applyMigration,
+  convergeAgentSandboxSchemaOnMigrationClient,
+  runMigrations,
+} from "./migrate-with-diagnostics";
 
 const OPTIONS = {
   timeoutMs: 1,
@@ -101,4 +105,96 @@ test("unlock and close failures cannot replace the migration failure", async () 
       line.includes("preserving the primary migration failure"),
     ),
   ).toHaveLength(2);
+});
+
+test("deploy-time convergence runs before success and fails the migration gate closed", async () => {
+  const convergenceFailure = new Error("agent-sandbox schema did not converge");
+  const queries: string[] = [];
+  let convergenceCalls = 0;
+  const client = {
+    backend: "postgres" as const,
+    query: async <T = unknown>(text: string): Promise<{ rows: T[] }> => {
+      queries.push(text);
+      if (text.includes("pg_advisory_unlock")) {
+        return { rows: [{ unlocked: true }] as T[] };
+      }
+      return { rows: [] };
+    },
+    end: async () => {},
+  };
+  const outputLog = spyOn(console, "log").mockImplementation(() => {});
+  const checkpointMigration = {
+    entry: {
+      idx: 194,
+      version: "7",
+      when: 1_900_000_000_194,
+      tag: "0194_job_execution_interruptions_catalog_guard",
+      breakpoints: true,
+    },
+    hash: "checkpoint-hash",
+    statements: ["SELECT 1"],
+  };
+
+  try {
+    await expect(
+      runMigrations(
+        client,
+        [checkpointMigration],
+        OPTIONS,
+        undefined,
+        undefined,
+        async (lockedClient) => {
+          convergenceCalls += 1;
+          expect(lockedClient).toBe(client);
+          expect(
+            queries.some((query) => query.includes("pg_advisory_lock")),
+          ).toBe(true);
+          expect(
+            queries.some((query) => query.includes("pg_advisory_unlock")),
+          ).toBe(false);
+          throw convergenceFailure;
+        },
+      ),
+    ).rejects.toBe(convergenceFailure);
+  } finally {
+    outputLog.mockRestore();
+  }
+
+  expect(convergenceCalls).toBe(1);
+  expect(queries.some((query) => query.includes("CREATE SCHEMA"))).toBe(true);
+  expect(queries.some((query) => query.includes("pg_advisory_unlock"))).toBe(
+    true,
+  );
+});
+
+test("the migration-session adapter executes the complete convergence batch", async () => {
+  const queries: Array<{ text: string; params?: unknown[] }> = [];
+  const client = {
+    backend: "postgres" as const,
+    query: async <T = unknown>(
+      text: string,
+      params?: unknown[],
+    ): Promise<{ rows: T[] }> => {
+      queries.push({ text, params });
+      return { rows: [] };
+    },
+    end: async () => {},
+  };
+
+  await convergeAgentSandboxSchemaOnMigrationClient(client);
+
+  expect(queries.length).toBeGreaterThan(30);
+  expect(
+    queries.some(({ text }) => text.includes('ALTER TABLE "agent_sandboxes"')),
+  ).toBe(true);
+  expect(
+    queries.some(({ text }) =>
+      text.includes('CREATE TABLE IF NOT EXISTS "agent_sandbox_backups"'),
+    ),
+  ).toBe(true);
+  expect(
+    queries.some(({ text }) =>
+      text.includes('CREATE TABLE IF NOT EXISTS "agent_pairing_tokens"'),
+    ),
+  ).toBe(true);
 });
