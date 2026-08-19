@@ -22,6 +22,13 @@ async function __hono_GET(
 ) {
   const searchParams = new URL(request.url).searchParams;
   const baseUrl = env?.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
+  const targetOrigin = (() => {
+    try {
+      return new URL(baseUrl).origin;
+    } catch {
+      return null;
+    }
+  })();
   const githubConnected = searchParams.get("github_connected");
   const githubError = searchParams.get("github_error");
   const connectionId = searchParams.get("connection_id");
@@ -69,6 +76,7 @@ async function __hono_GET(
         },
         postMessage,
         returnUrl,
+      targetOrigin,
       });
     }
     return Response.redirect(
@@ -94,6 +102,7 @@ async function __hono_GET(
         },
         postMessage,
         returnUrl,
+      targetOrigin,
       });
     }
     return Response.redirect(
@@ -119,6 +128,7 @@ async function __hono_GET(
       },
       postMessage,
       returnUrl,
+      targetOrigin,
     });
   }
 

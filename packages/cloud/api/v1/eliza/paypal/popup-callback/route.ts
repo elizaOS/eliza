@@ -40,7 +40,7 @@ app.get("/", (c) => {
   const errorDescription = c.req.query("error_description") ?? "";
   const agentAppOrigin = (c.env.AGENT_APP_ORIGIN as string | undefined)?.trim();
   const targetOrigin =
-    agentAppOrigin && agentAppOrigin.length > 0 ? agentAppOrigin : "*";
+    agentAppOrigin && agentAppOrigin.length > 0 ? agentAppOrigin : "";
 
   const payload = JSON.stringify({
     type: "agent-paypal-oauth",
@@ -72,7 +72,7 @@ app.get("/", (c) => {
       (function () {
         var payload = ${payload};
         try {
-          if (window.opener && !window.opener.closed) {
+          if (targetOrigin && window.opener && !window.opener.closed) {
             window.opener.postMessage(payload, '${escapeForJsString(targetOrigin)}');
           }
         } catch (err) {

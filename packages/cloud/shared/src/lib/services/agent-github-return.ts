@@ -84,6 +84,7 @@ export function createLifeOpsGithubReturnResponse(args: {
   detail: LifeOpsGithubReturnDetail;
   postMessage?: boolean;
   returnUrl?: string | null;
+  targetOrigin?: string | null;
 }): Response {
   const payload = {
     type: LIFEOPS_GITHUB_POST_MESSAGE_TYPE,
@@ -166,9 +167,10 @@ export function createLifeOpsGithubReturnResponse(args: {
         const payload = ${serializeInlineScriptValue(payload)};
         const postMessageToOpener = ${args.postMessage === true ? "true" : "false"};
         const deepLink = ${serializeInlineScriptValue(deepLink)};
-        if (postMessageToOpener && window.opener && !window.opener.closed) {
+        const targetOrigin = ${serializeInlineScriptValue(args.targetOrigin ?? null)};
+        if (postMessageToOpener && targetOrigin && window.opener && !window.opener.closed) {
           try {
-            window.opener.postMessage(payload, "*");
+            window.opener.postMessage(payload, targetOrigin);
           } catch {}
         }
         if (typeof deepLink === "string" && deepLink.length > 0) {

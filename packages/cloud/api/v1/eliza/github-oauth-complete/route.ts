@@ -60,6 +60,14 @@ app.get("/", async (c) => {
   const postMessage = requestedPostMessage === "1";
   const returnUrl = c.req.query("return_url") ?? null;
 
+  const targetOrigin = (() => {
+    try {
+      return new URL(baseUrl).origin;
+    } catch {
+      return null;
+    }
+  })();
+
   const respond = (args: {
     status: "connected" | "error";
     githubUsername?: string | null;
@@ -91,6 +99,7 @@ app.get("/", async (c) => {
         },
         postMessage,
         returnUrl,
+        targetOrigin,
       });
     }
     if (args.status === "connected") {

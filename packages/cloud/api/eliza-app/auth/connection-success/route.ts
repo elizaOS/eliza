@@ -3,6 +3,16 @@ import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+function escapeForJsString(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/</g, "\\x3c")
+    .replace(/>/g, "\\x3e")
+    .replace(/\r?\n/g, "");
+}
+
 const PLATFORM_MESSAGES: Record<string, string> = {
   discord: "head back to Discord and send me a message.",
   telegram: "head back to Telegram and send me a message.",
@@ -83,6 +93,7 @@ function buildHtml(platform: string): string {
 function buildElizaAppHtml(
   provider: string,
   connectionId: string | null,
+  targetOrigin: string,
 ): string {
   const providerLabel = PROVIDER_LABELS[provider] ?? "Your account";
   const payload = JSON.stringify({
@@ -166,9 +177,10 @@ function buildElizaAppHtml(
   <script>
     (function () {
       const payload = ${payload};
-      if (window.opener && !window.opener.closed) {
+      var targetOrigin = '${escapeForJsString(targetOrigin)}';
+      if (targetOrigin && window.opener && !window.opener.closed) {
         try {
-          window.opener.postMessage(payload, "*");
+          window.opener.postMessage(payload, targetOrigin);
           setTimeout(function () {
             window.close();
           }, 150);
@@ -189,7 +201,8 @@ app.get("/", (c) => {
   if (source === "eliza-app") {
     const provider = c.req.query("platform") || "connection";
     const connectionId = c.req.query("connection_id") ?? null;
-    return c.body(buildElizaAppHtml(provider, connectionId), 200, {
+    const targetOrigin = (c.env.AGENT_APP_ORIGIN as string | undefined)?.trim() ?? "";
+    return c.body(buildElizaAppHtml(provider, connectionId, targetOrigin), 200, {
       "Content-Type": "text/html; charset=utf-8",
     });
   }
