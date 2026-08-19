@@ -132,6 +132,31 @@ describe("template value builders", () => {
       }
     }
   });
+
+  it("keeps the minimal templates on the npm latest tag deliberately", () => {
+    // min-plugin and min-project are NOT rendered by this CLI's replacement
+    // machinery: min-plugin is scaffolded by the runtime plugin-manager
+    // create flow (packages/core plugin-handlers/create.ts), which
+    // substitutes only the name/display placeholders — a version token here
+    // would land raw in scaffolds and break `bun install` — and min-project
+    // currently has no runtime scaffolder at all. Their minimal surfaces are
+    // v1-compatible: a standalone min-plugin scaffold passes all four
+    // SCAFFOLD.md verification commands against @elizaos/core@1.7.2 (#22412
+    // evidence), so `latest` is coherent today. If either template starts
+    // using v2-only core APIs, teach its scaffolder to substitute a version
+    // BEFORE tokenizing this pin — do not just copy the fullstack fix.
+    const templatesRoot = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "templates",
+    );
+    for (const template of ["min-plugin", "min-project"]) {
+      const parsed = JSON.parse(
+        readFileSync(join(templatesRoot, template, "package.json"), "utf8"),
+      ) as { dependencies?: Record<string, string> };
+      expect(parsed.dependencies?.["@elizaos/core"]).toBe("latest");
+    }
+  });
 });
 
 describe("getTemplateReplacementEntries", () => {
