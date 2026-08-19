@@ -303,6 +303,30 @@ describe("ChatOverlay first-run gating", () => {
     expect(controller.send).toHaveBeenCalledWith("Hello again");
   });
 
+  it("never lets the desktop pill host expand into a full-window chat surface", () => {
+    const onStateChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        fillHostAtHalf
+        initialMode="half"
+        onStateChange={onStateChange}
+      />,
+    );
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 760, pointerId: 17 });
+    fireEvent.pointerMove(grabber, { clientY: 400, pointerId: 17 });
+    fireEvent.pointerMove(grabber, { clientY: 40, pointerId: 17 });
+    fireEvent.pointerMove(grabber, { clientY: 0, pointerId: 17 });
+    fireEvent.pointerUp(grabber, { clientY: 0, pointerId: 17 });
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
+    expect(onStateChange).not.toHaveBeenCalledWith("MAXIMIZED");
+  });
+
   it("ignores an outside tap while onboarding is active", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");

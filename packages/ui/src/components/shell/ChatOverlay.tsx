@@ -1564,6 +1564,12 @@ export function ChatOverlay({
   // leave-full transition resets it. First-run deliberately stays in the shared
   // half-height conversation rather than opening a maximized dashboard.
   const [maximized, setMaximized] = React.useState(false);
+  // The desktop pill deliberately reuses this mobile/web composer, but it must
+  // never inherit the phone's edge-to-edge detent. A MAXIMIZED renderer state
+  // makes the transparent native host claim the complete work area, blocking
+  // every app behind a mostly empty black window. Desktop still gets the same
+  // input, half, and inset-full conversation states.
+  const maximizeAllowed = !fillHostAtHalf;
   // Live mirror for threshold commits and reversals that can occur in one
   // pointer event before React has flushed the maximized state update.
   const maximizedRef = React.useRef(maximized);
@@ -2940,7 +2946,8 @@ export function ChatOverlay({
   // FULL-SCREEN derived gate: maximized only takes effect AT the full detent, so
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
   // panel styles + a zero top margin.
-  const fullBleed = maximized && expanded && sheetOpen && !pilled;
+  const fullBleed =
+    maximizeAllowed && maximized && expanded && sheetOpen && !pilled;
   // Only the panel MAX-HEIGHT stays full-screen-sized for the whole restore drag,
   // so the height can track the finger without the max-height clamping it shorter
   // on the first frame (a vertical pop). Every other property (side inset, bottom
@@ -3591,6 +3598,7 @@ export function ChatOverlay({
   // called from the pull-gesture release path (maybeMaximizeOnRelease) once the
   // peak visible panel height clears the same 90% line.
   const maximizeFromPull = React.useCallback(() => {
+    if (!maximizeAllowed) return;
     // Snap the morph fully open BEFORE flipping to full-bleed so no in-flight
     // pill-open spring can leak a sub-1 scale into the maximized frame (top gap).
     draggingRef.current = false;
@@ -3614,6 +3622,7 @@ export function ChatOverlay({
     overpullCapT.set(0);
     detentHaptic();
   }, [
+    maximizeAllowed,
     openProgress,
     reduce,
     threadHeight,
@@ -3776,7 +3785,7 @@ export function ChatOverlay({
         if (pilled) goToDetent("collapsed");
         else if (!sheetOpen) goToDetent("half");
         else if (!expanded) goToDetent(freeBelowHalf ? "half" : "full");
-        else if (!maximized) maximizeFromPull();
+        else if (!maximized && maximizeAllowed) maximizeFromPull();
       } else {
         if (maximized) restoreFromMaximized();
         else if (expanded) goToDetent("half");
@@ -3791,6 +3800,7 @@ export function ChatOverlay({
       sheetOpen,
       expanded,
       maximized,
+      maximizeAllowed,
       freeH,
       halfH,
       goToDetent,
@@ -4887,8 +4897,9 @@ export function ChatOverlay({
       const restoreOverpullT = restoreGestureRef.current
         ? clamp01(1 - Math.max(0, -offset) / maxOverPull)
         : null;
-      const overpullT =
-        restoreOverpullT ?? Math.max(rawOverpullT, measuredOverpullT);
+      const overpullT = maximizeAllowed
+        ? (restoreOverpullT ?? Math.max(rawOverpullT, measuredOverpullT))
+        : 0;
       // The snap line is a TOP-edge contract: once the window reaches the top
       // 10% of the viewport, it fills the rest. Include the small safe-area gap
       // below the bottom-anchored panel in this reach measurement; comparing the
@@ -4930,6 +4941,7 @@ export function ChatOverlay({
       // settles at the inset FULL detent instead.
       if (
         crossedFullscreenLine &&
+        maximizeAllowed &&
         !maximizedRef.current &&
         fullscreenCrossContRef.current == null &&
         !restoreGestureRef.current &&
@@ -5030,6 +5042,7 @@ export function ChatOverlay({
       setDragPreviewMounted,
       getPanelElement,
       keyboardBlocksMaximize,
+      maximizeAllowed,
     ],
   );
 
@@ -5040,6 +5053,7 @@ export function ChatOverlay({
   // traversed the whole viewport. That legacy long-haul intent still fills the
   // screen on release; ordinary window drags use the visible 90% line.
   const maybeMaximizeOnRelease = React.useCallback((): boolean => {
+    if (!maximizeAllowed) return false;
     if (pinnedOpen) return false;
     if (maximizeReversedRef.current) return false;
     // A real keyboard blocks the release-time maximize too (mirrors the mid-drag
@@ -5057,6 +5071,7 @@ export function ChatOverlay({
     }
     return false;
   }, [
+    maximizeAllowed,
     pinnedOpen,
     keyboardBlocksMaximize,
     viewportH,

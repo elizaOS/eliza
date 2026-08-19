@@ -352,26 +352,26 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
       {!selection.cloudRuntimeLocked ? (
         <SettingsGroup
-        title={t("providerswitcher.accountsGroupTitle", {
-          defaultValue: "Accounts",
-        })}
-        description={t("providerswitcher.accountsGroupDescription", {
-          defaultValue:
-            "Connect provider accounts without scattering provider pickers across the page.",
-        })}
-        bare
-      >
-        <AccountManagementPanel
-          activeChatProviderId={activeChatProviderId}
-          activeSubscriptionId={
-            isSubscriptionProviderSelectionId(resolvedSelectedId)
-              ? resolvedSelectedId
-              : null
-          }
-          cloudCallsDisabled={selection.cloudCallsDisabled}
-          onSelectChatProvider={onSelectChatProvider}
-          onSelectSubscription={selection.handleSelectSubscription}
-        />
+          title={t("providerswitcher.accountsGroupTitle", {
+            defaultValue: "Accounts",
+          })}
+          description={t("providerswitcher.accountsGroupDescription", {
+            defaultValue:
+              "Connect provider accounts without scattering provider pickers across the page.",
+          })}
+          bare
+        >
+          <AccountManagementPanel
+            activeChatProviderId={activeChatProviderId}
+            activeSubscriptionId={
+              isSubscriptionProviderSelectionId(resolvedSelectedId)
+                ? resolvedSelectedId
+                : null
+            }
+            cloudCallsDisabled={selection.cloudCallsDisabled}
+            onSelectChatProvider={onSelectChatProvider}
+            onSelectSubscription={selection.handleSelectSubscription}
+          />
         </SettingsGroup>
       ) : null}
 
@@ -419,43 +419,43 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
       {!selection.cloudRuntimeLocked ? (
         <SettingsGroup
-        title={t("providerswitcher.advancedGroupTitle", {
-          defaultValue: "Advanced",
-        })}
-        bare
-      >
-        <AdvancedSettingsDisclosure
-          title={t("providerswitcher.advancedDisclosureTitle", {
-            defaultValue: "Custom providers & model overrides",
+          title={t("providerswitcher.advancedGroupTitle", {
+            defaultValue: "Advanced",
           })}
-          lazy
+          bare
         >
-          <div className="flex flex-col gap-3">
-            {keyEntries.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {keyEntries.map(renderChip)}
-              </div>
-            ) : null}
+          <AdvancedSettingsDisclosure
+            title={t("providerswitcher.advancedDisclosureTitle", {
+              defaultValue: "Custom providers & model overrides",
+            })}
+            lazy
+          >
+            <div className="flex flex-col gap-3">
+              {keyEntries.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {keyEntries.map(renderChip)}
+                </div>
+              ) : null}
 
-            {selectedPanelProvider ? (
-              <ApiKeyPanel
-                selectedProvider={selectedPanelProvider}
-                panelLabel={apiKeyPanelLabel}
-                visibleProviderPanelId={visibleProviderPanelId}
-                resolvedSelectedId={resolvedSelectedId}
-                cloudCallsDisabled={selection.cloudCallsDisabled}
-                onSwitchProvider={onSwitchProvider}
-                pluginSaving={pluginSaving}
-                pluginSaveSuccess={pluginSaveSuccess}
-                handlePluginConfigSave={handlePluginConfigSave}
-                loadPlugins={loadPlugins}
-              />
-            ) : null}
+              {selectedPanelProvider ? (
+                <ApiKeyPanel
+                  selectedProvider={selectedPanelProvider}
+                  panelLabel={apiKeyPanelLabel}
+                  visibleProviderPanelId={visibleProviderPanelId}
+                  resolvedSelectedId={resolvedSelectedId}
+                  cloudCallsDisabled={selection.cloudCallsDisabled}
+                  onSwitchProvider={onSwitchProvider}
+                  pluginSaving={pluginSaving}
+                  pluginSaveSuccess={pluginSaveSuccess}
+                  handlePluginConfigSave={handlePluginConfigSave}
+                  loadPlugins={loadPlugins}
+                />
+              ) : null}
 
-            <ProvidersList />
-            <RoutingMatrix />
-          </div>
-        </AdvancedSettingsDisclosure>
+              <ProvidersList />
+              <RoutingMatrix />
+            </div>
+          </AdvancedSettingsDisclosure>
         </SettingsGroup>
       ) : null}
     </SettingsStack>

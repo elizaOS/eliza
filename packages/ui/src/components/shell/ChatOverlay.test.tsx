@@ -36,6 +36,9 @@ import {
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
+  ElizaClient: class {
+    fetch = vi.fn();
+  },
   client: {
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
     // Shell capability gates consult the configured agent base before mounting
