@@ -59,6 +59,7 @@ describe("e2e _helpers isLocalTarget", () => {
 
     expect(sameOriginBrowserHeaders({ Cookie: "session=test" })).toEqual({
       Origin: "https://staging-api.elizacloud.ai",
+      "x-eliza-csrf": "1",
       Cookie: "session=test",
     });
   });
@@ -68,10 +69,14 @@ describe("e2e _helpers isLocalTarget", () => {
 
     expect(
       sameOriginBrowserHeaders({ Origin: "https://attacker.example" }),
-    ).toEqual({ Origin: "https://attacker.example" });
+    ).toEqual({ Origin: "https://attacker.example", "x-eliza-csrf": "1" });
     expect(
       sameOriginBrowserHeaders({ origin: "https://attacker.example" }),
-    ).toEqual({ origin: "https://attacker.example" });
+    ).toEqual({ origin: "https://attacker.example", "x-eliza-csrf": "1" });
+    // The marker itself is also caller-overridable for negative coverage.
+    expect(
+      sameOriginBrowserHeaders({ "x-eliza-csrf": "" }).Origin,
+    ).toBeDefined();
   });
 
   test("does not add Origin to ordinary API helper requests", async () => {
