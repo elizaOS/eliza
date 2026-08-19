@@ -72,12 +72,14 @@ import {
   getCloudAuthToken,
   refreshCloudStewardSession,
 } from "../api/client-cloud";
+import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
 import { APP_RESUME_EVENT } from "../events";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import {
   claimCloudLoginWindow,
+  prepareDesktopCloudLoginSession,
   releaseClaimedCloudLoginWindow,
 } from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
@@ -1541,6 +1543,11 @@ export function useFirstRunConductor(): void {
       // THIS path only — a greeting was genuinely shown, so silently yanking
       // the conversation would read as broken.
       const seedSignInGreetingAndPoll = () => {
+        const cloudApiBase =
+          getBootConfig().cloudApiBase?.trim() || "https://eliza.app";
+        void prepareDesktopCloudLoginSession(cloudApiBase, () =>
+          client.cloudLoginDirect(cloudApiBase),
+        );
         seedTurn(makeTurn("first-run:greeting", CLOUD_SIGN_IN_GREETING));
         seedTurn(makeTurn("first-run:cloud-oauth", CLOUD_SIGN_IN_CHOICE));
         startTokenPoll();

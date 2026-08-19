@@ -59,6 +59,12 @@ const mocks = vi.hoisted(() => ({
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
     getRestAuthToken: vi.fn(() => null),
+    cloudLoginDirect: vi.fn(async (cloudApiBase: string) => ({
+      ok: true,
+      apiBase: cloudApiBase,
+      browserUrl: "https://eliza.app/auth/cli-login?session=prepared",
+      sessionId: "prepared",
+    })),
     fetch: vi.fn(async () => {
       throw new Error("no network in test");
     }),
@@ -145,7 +151,10 @@ import {
   ConversationMessagesCtx,
   type ConversationMessagesValue,
 } from "../state/ConversationMessagesContext.hooks";
-import { CLOUD_LOGIN_POPUP_NAME } from "../state/cloud-login-launch";
+import {
+  __resetPreparedDesktopCloudLoginSessionForTests,
+  CLOUD_LOGIN_POPUP_NAME,
+} from "../state/cloud-login-launch";
 import type { AppContextValue } from "../state/internal";
 import { classifyDeviceRamTier } from "./device-ram-tier";
 import {
@@ -174,6 +183,9 @@ import {
 const PERSONAL_ELIZA_ID = "personal:11111111-1111-5111-8111-111111111111";
 const PERSONAL_ELIZA_API_BASE =
   "https://eliza.app/api/v1/eliza/agents/personal%3A11111111-1111-5111-8111-111111111111";
+const windowWithElectrobun = window as Window & {
+  __electrobunWindowId?: number;
+};
 
 // This jsdom env exposes `window.localStorage` as an object without methods;
 // install a real in-memory Storage (mirrors `first-run.test.ts`) so the finish
@@ -326,6 +338,12 @@ beforeEach(() => {
     data: [],
   });
   mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
+  mocks.client.cloudLoginDirect.mockResolvedValue({
+    ok: true,
+    apiBase: "https://eliza.app",
+    browserUrl: "https://eliza.app/auth/cli-login?session=prepared",
+    sessionId: "prepared",
+  });
   mocks.refreshCloudStewardSession.mockResolvedValue(null);
   mocks.preOpenCloudLoginWindow.mockReturnValue(null);
   localStorage.setItem("steward_session_token", "cloud-token");
@@ -342,6 +360,8 @@ afterEach(() => {
   cleanup();
   __setAppValueForTests(null);
   resetTutorialState();
+  delete windowWithElectrobun.__electrobunWindowId;
+  __resetPreparedDesktopCloudLoginSessionForTests();
   ensureLocalStorage().clear();
   // Drop the steward-authed marker cookie some cloud-only tests plant — a
   // leaked cookie would flip later mounts into the silent recovery branch.
@@ -1435,6 +1455,23 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // a sign-in tap.
     await new Promise((resolve) => setTimeout(resolve, 25));
     expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("prepares the desktop login session while the sign-in CTA is visible", async () => {
+    localStorage.removeItem("steward_session_token");
+    windowWithElectrobun.__electrobunWindowId = 1;
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+
+    await waitForTurn(turn, "first-run:cloud-oauth");
+    await waitFor(() => {
+      expect(mocks.client.cloudLoginDirect).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.client.cloudLoginDirect).toHaveBeenCalledWith(
+      "https://eliza.app",
+    );
+    expect(spies.handleInteractiveCloudLogin).not.toHaveBeenCalled();
     unmount();
   });
 
