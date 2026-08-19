@@ -3,9 +3,14 @@
  * selections: parseJSON strips code fences and surrounding prose then parses with
  * JSON5 leniency, and validateJsonSchema gates a value against a JSON Schema via
  * Ajv. Used on the untrusted-model-output boundary in the selection flow.
+ *
+ * MCP tool `inputSchema` is attacker-controlled. Compile it on a fresh Ajv
+ * (untrusted `$id` must not poison a process-wide cache) after the budget in
+ * `mcp-schema-budget.ts` rejects the allOf/$ref RangeError bomb.
  */
 import Ajv from "ajv";
 import JSON5 from "json5";
+import { assertMcpJsonSchemaBudget, McpSchemaTooComplexError } from "./mcp-schema-budget";
 
 export function parseJSON<T>(input: string): T {
   let cleanedInput = input.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
@@ -21,10 +26,6 @@ export function parseJSON<T>(input: string): T {
 
   return JSON5.parse(cleanedInput) as T;
 }
-
-const ajv = new Ajv({
-  allErrors: true,
-});
 
 interface AjvErrorLike {
   readonly instancePath?: string;
@@ -46,16 +47,33 @@ export function validateJsonSchema<T>(
   data: unknown,
   schema: Readonly<Record<string, unknown>>
 ): { success: true; data: T } | { success: false; error: string } {
-  const validate = ajv.compile(schema);
-  const valid = validate(data);
-
-  if (!valid) {
-    const errors = validate.errors ?? [];
-    const errorMessage = formatAjvErrors(errors);
-    return { success: false, error: errorMessage };
+  try {
+    assertMcpJsonSchemaBudget(schema);
+  } catch (error) {
+    // error-policy:J3 untrusted MCP inputSchema — reject as invalid, never compile
+    if (error instanceof McpSchemaTooComplexError) {
+      return { success: false, error: error.message };
+    }
+    throw error;
   }
 
-  return { success: true, data: data as T };
+  try {
+    const isolated = new Ajv({ allErrors: true });
+    const validate = isolated.compile(schema);
+    const valid = validate(data);
+
+    if (!valid) {
+      const errors = validate.errors ?? [];
+      const errorMessage = formatAjvErrors(errors);
+      return { success: false, error: errorMessage };
+    }
+
+    return { success: true, data: data as T };
+  } catch (error) {
+    // error-policy:J3 Ajv.compile of untrusted schema must not 500 the loop
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `schema compile failed: ${message}` };
+  }
 }
 
 export function stringifyJSON(value: unknown): string {
