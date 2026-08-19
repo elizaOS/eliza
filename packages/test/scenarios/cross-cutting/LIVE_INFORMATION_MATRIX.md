@@ -18,7 +18,8 @@ The `--provider` flag fails when the requested backend is unavailable and
 cannot be combined with deterministic mode.
 
 ```bash
-bun --conditions eliza-source --tsconfig-override tsconfig.json \
+SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1 \
+  bun --conditions eliza-source --tsconfig-override tsconfig.json \
   packages/scenario-runner/src/cli.ts run packages/test/scenarios \
   --scenario cross.live-information-routing --lane live-only \
   --provider openai --run-dir /tmp/live-info-openai/run \
@@ -45,6 +46,12 @@ The report stages are deliberately separate:
 - `responseJudge` checks grounding and honest failure replies.
 - The final check proves that both capability families and a failed fetch were
   observed.
+
+The HTTP 503 assertion uses the structured `ActionResult.data.status` emitted
+by `WEB_FETCH`. Its SSRF rejection result does not currently expose a structured
+code, so that assertion is intentionally bound to the exact
+`blocked host or disallowed redirect` text emitted by the production action;
+the action's own guarded-fetch tests remain the producer-side contract.
 
 For every backend, manually review the viewer, report, native JSONL and privacy
 manifest, trajectory tool arguments/results, final replies, and terminal

@@ -133,7 +133,9 @@ describe("WEB_FETCH action", () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("blocked host");
+    expect(result.text).toBe(
+      "Refusing to fetch https://api.example.test/data: blocked host or disallowed redirect.",
+    );
     expect(result.text).not.toContain("Invalid IP address");
   });
 
