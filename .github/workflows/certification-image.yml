@@ -81,7 +81,7 @@ jobs:
           sudo docker image prune -a -f || true
           df -h /
 
-      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
