@@ -10,10 +10,10 @@
  * This is the headless equivalent of the legacy `finishRemote` step that used to
  * live in the full-screen onboarding controller, with one deliberate
  * improvement: it PROBES the remote's first-run status first and only writes
- * when the host has not finished its own first-run. Connecting to an
- * already-configured host therefore adopts it as-is instead of clobbering its
- * deployment target — the destructive overwrite the unconditional legacy POST
- * could cause.
+ * after an authoritative `complete: false` response. Probe failures propagate
+ * without attempting the unauthenticated completion route: otherwise a 401,
+ * rate limit, or transient outage could be mistaken for a fresh host and
+ * clobber an already-configured host's deployment target.
  *
  * It is intentionally dependency-injected (the client surface is the only
  * dependency) so it can be unit-tested without the React shell or a live server.
@@ -82,16 +82,7 @@ export async function adoptRemoteAgentFirstRun(
   client: RemoteFirstRunClient,
   input: AdoptRemoteAgentFirstRunInput,
 ): Promise<AdoptRemoteAgentFirstRunResult> {
-  let alreadyComplete = false;
-  try {
-    alreadyComplete = (await client.getFirstRunStatus()).complete === true;
-  } catch {
-    // error-policy:J4 a fresh host with no persisted first-run state, or one
-    // whose build predates the status route, is the expected "needs adoption"
-    // shape — fall through to the completion write below. A genuinely
-    // unreachable remote re-fails there, so the failure still surfaces.
-    alreadyComplete = false;
-  }
+  const alreadyComplete = (await client.getFirstRunStatus()).complete === true;
 
   if (alreadyComplete) {
     return { alreadyComplete: true };
