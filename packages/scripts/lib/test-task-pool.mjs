@@ -39,12 +39,32 @@ import { parseCanonicalInt } from "./cli-numbers.mjs";
 import { resolveTestSerialPackages } from "./script-metadata.mjs";
 
 /**
- * Packages whose `test` script must not run concurrently with others, even in
- * the PR lane. Membership is declared per-package via `elizaos.scripts.testSerial`
- * (a shared DB harness or fixed-port contention makes concurrency unsafe) and
- * resolved here through the discovery seam — no plugin names live in this file.
+ * Create a memoized serial-package resolver without invoking its discovery
+ * dependency during construction.
+ *
+ * @param {() => Set<string>} load
+ * @returns {() => Set<string>}
  */
-export const SERIALIZE_PACKAGES = resolveTestSerialPackages();
+export function createSerialPackageResolver(load = resolveTestSerialPackages) {
+  let cached;
+  return () => {
+    cached ??= load();
+    return cached;
+  };
+}
+
+const resolveSerialPackages = createSerialPackageResolver();
+
+/**
+ * Resolve packages whose `test` script must stay serial. Resolution is lazy so
+ * importing the task-pool's pure CLI helpers cannot touch workspace state
+ * before the executable validates its arguments.
+ *
+ * @returns {Set<string>}
+ */
+export function serialPackages() {
+  return resolveSerialPackages();
+}
 
 /**
  * Whether a discovered test task may run concurrently with other tasks.
@@ -59,7 +79,7 @@ export function isParallelSafeTask({ scriptName, lane, packageName }) {
   if (scriptName !== "test") {
     return false;
   }
-  if (packageName && SERIALIZE_PACKAGES.has(packageName)) {
+  if (packageName && serialPackages().has(packageName)) {
     return false;
   }
   return true;
