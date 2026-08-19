@@ -56,12 +56,14 @@ export class WhatsAppPairingSession {
   private qrAttempts = 0;
   private readonly MAX_QR_ATTEMPTS = 5;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopped = false;
 
   constructor(options: WhatsAppPairingOptions) {
     this.options = options;
   }
 
   async start(): Promise<void> {
+    this.stopped = false;
     this.setStatus("initializing");
 
     const baileys = await import("@whiskeysockets/baileys");
@@ -82,6 +84,12 @@ export class WhatsAppPairingSession {
     const pino = (await import("pino")).default;
     const baileysLogger = pino({ level: "silent" });
 
+    // stop() may have run while the awaits above were in flight -- don't
+    // resurrect a socket for a session the caller already tore down.
+    if (this.stopped) {
+      return;
+    }
+
     this.socket = makeWASocket({
       version,
       auth: state,
@@ -93,6 +101,7 @@ export class WhatsAppPairingSession {
     this.socket.ev.on("creds.update", saveCreds);
 
     this.socket.ev.on("connection.update", async (update) => {
+      if (this.stopped) return;
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
@@ -169,6 +178,7 @@ export class WhatsAppPairingSession {
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.restartTimer) {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
