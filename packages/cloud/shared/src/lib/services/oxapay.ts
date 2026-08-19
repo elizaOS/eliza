@@ -13,8 +13,10 @@ export interface OxaPayInvoiceResult {
 
 export interface OxaPayPaymentStatus {
   trackId: string;
+  orderId: string;
   status: string;
   amount: number;
+  amountText: string;
   currency: string;
   transactions: Array<{
     txHash: string;
@@ -116,7 +118,7 @@ class OxaPayService {
    * This returns a payLink that redirects users to OxaPay's hosted payment page.
    */
   async createInvoice(params: {
-    amount: number;
+    amount: number | string;
     currency?: string;
     payCurrency?: string;
     network?: OxaPayNetwork;
@@ -194,7 +196,7 @@ class OxaPayService {
     return {
       trackId: data.trackId,
       payLink: data.payLink,
-      amount,
+      amount: Number(amount),
       currency,
       expiresAt: new Date(Date.now() + lifetime * 1000),
     };
@@ -212,6 +214,7 @@ class OxaPayService {
       status: string;
       amount: string;
       currency: string;
+      orderId?: string;
       txID?: string;
       payAmount?: string;
       payCurrency?: string;
@@ -268,8 +271,10 @@ class OxaPayService {
 
     return {
       trackId: data.trackId,
+      orderId: data.orderId ?? "",
       status: data.status,
       amount: invoiceAmount,
+      amountText: data.amount.trim(),
       currency: data.currency,
       transactions: data.txID
         ? [

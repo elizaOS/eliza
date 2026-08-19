@@ -285,7 +285,8 @@ export interface AffiliateInferenceFallbackParams {
  */
 export interface AddCreditsParams {
   organizationId: string;
-  amount: number;
+  /** Exact USD decimal; strings avoid binary floating-point money conversion. */
+  amount: number | string;
   description: string;
   metadata?: Record<string, unknown>;
   stripePaymentIntentId?: string;
@@ -1039,7 +1040,7 @@ export class CreditsService {
   }> {
     const { organizationId, amount, description, metadata, stripePaymentIntentId } = params;
 
-    if (amount <= 0) {
+    if (new Decimal(String(amount)).lessThanOrEqualTo(0)) {
       throw new Error("Refund amount must be positive");
     }
 

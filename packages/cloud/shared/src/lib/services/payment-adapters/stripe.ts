@@ -177,16 +177,35 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
             typeof session.payment_intent === "string"
               ? session.payment_intent
               : (session.payment_intent?.id ?? undefined);
+          if (session.payment_status !== "paid") {
+            throw new IgnoredWebhookEvent(
+              `Stripe ${event.type} session is not paid (id=${event.id})`,
+            );
+          }
+          if (!Number.isSafeInteger(session.amount_total) || (session.amount_total ?? 0) <= 0) {
+            throw new Error(`Stripe ${event.type} event has an invalid amount_total`);
+          }
+          if (typeof session.currency !== "string" || !session.currency.trim()) {
+            throw new Error(`Stripe ${event.type} event has no currency`);
+          }
+          if (!txRef) {
+            throw new Error(`Stripe ${event.type} event has no payment intent`);
+          }
           return {
             paymentRequestId,
             status: "settled" as const,
+            providerEventId: event.id,
             txRef,
+            amountCents: session.amount_total ?? undefined,
+            currency: session.currency,
             proof: {
               stripe_event_id: event.id,
               stripe_event_type: event.type,
               stripe_session_id: session.id,
               stripe_payment_intent_id: txRef ?? null,
               stripe_amount_total: session.amount_total ?? null,
+              stripe_currency: session.currency,
+              stripe_payment_status: session.payment_status,
             },
           };
         }
@@ -201,11 +220,13 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
           return {
             paymentRequestId,
             status: "failed" as const,
+            providerEventId: event.id,
             txRef: intent.id,
             proof: {
               stripe_event_id: event.id,
               stripe_event_type: event.type,
               stripe_payment_intent_id: intent.id,
+              stripe_session_id: intent.metadata?.stripe_session_id ?? null,
               stripe_failure_code: intent.last_payment_error?.code ?? null,
               stripe_failure_message: intent.last_payment_error?.message ?? null,
             },

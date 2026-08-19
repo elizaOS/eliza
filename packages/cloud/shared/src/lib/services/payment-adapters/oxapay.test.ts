@@ -1,5 +1,6 @@
 // Exercises oxapay behavior with deterministic cloud-shared lib fixtures.
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { oxaPayService } from "../oxapay";
 import { IgnoredWebhookEvent } from "../payment-webhook-errors";
 import { createOxaPayPaymentAdapter } from "./oxapay";
 
@@ -25,6 +26,20 @@ beforeAll(() => {
 });
 
 const adapter = createOxaPayPaymentAdapter();
+const getPaymentStatus = mock(async (trackId: string) => ({
+  trackId,
+  orderId: "pr_abc123",
+  status: "paid",
+  amount: 25,
+  amountText: "25.00",
+  currency: "USD",
+  transactions: [],
+}));
+
+beforeEach(() => {
+  oxaPayService.getPaymentStatus = getPaymentStatus;
+  getPaymentStatus.mockClear();
+});
 
 describe("OxaPay payment adapter", () => {
   test("provider is oxapay", () => {
@@ -36,12 +51,40 @@ describe("OxaPay payment adapter", () => {
       orderId: "pr_abc123",
       trackId: "trk_999",
       status: "paid",
+      amount: "12.5",
+      currency: "POL",
     });
     const result = await adapter.parseWebhook!({ rawBody: body, signature: await sign(body) });
     expect(result.paymentRequestId).toBe("pr_abc123");
     expect(result.status).toBe("settled");
     expect(result.txRef).toBe("trk_999");
+    expect(result.amountCents).toBe(2500);
+    expect(result.currency).toBe("USD");
+    expect(result.providerEventId).toBe("trk_999:paid");
+    expect(result.amountCents).toBe(2500);
+    expect(result.currency).toBe("USD");
     expect(result.proof.provider).toBe("oxapay");
+    expect(result.proof).not.toHaveProperty("payload");
+  });
+
+  test("parseWebhook: rejects a paid inquiry bound to another order or track", async () => {
+    const body = JSON.stringify({ orderId: "pr_abc123", trackId: "trk_999", status: "paid" });
+    for (const mismatch of [
+      { trackId: "trk_other", orderId: "pr_abc123" },
+      { trackId: "trk_999", orderId: "pr_other" },
+    ]) {
+      getPaymentStatus.mockResolvedValueOnce({
+        ...mismatch,
+        status: "paid",
+        amount: 25,
+        amountText: "25.00",
+        currency: "USD",
+        transactions: [],
+      });
+      await expect(
+        adapter.parseWebhook!({ rawBody: body, signature: await sign(body) }),
+      ).rejects.toThrow("does not match");
+    }
   });
 
   test("parseWebhook: valid signature + failed → failed", async () => {

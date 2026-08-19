@@ -3,6 +3,7 @@ import type {
   PaymentRequestRow,
   PaymentRequestsRepository,
 } from "../../db/repositories/payment-requests";
+import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "../../db/schemas/payment-requests";
 
 export { IgnoredWebhookEvent } from "./payment-webhook-errors";
 
@@ -74,7 +75,10 @@ export interface PaymentProviderAdapter {
   parseWebhook?(args: { rawBody: string; signature: string | null }): Promise<{
     paymentRequestId: string;
     status: "settled" | "failed";
+    providerEventId: string;
     txRef?: string;
+    amountCents?: number;
+    currency?: string;
     proof: Record<string, unknown>;
   }>;
 }
@@ -131,8 +135,12 @@ function validateCreateInput(input: CreatePaymentRequestInput): void {
   if (!SUPPORTED_PROVIDERS.includes(input.provider)) {
     throw new Error(`Unsupported provider: ${input.provider}`);
   }
-  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
-    throw new Error("amountCents must be a positive integer");
+  if (
+    !Number.isSafeInteger(input.amountCents) ||
+    input.amountCents <= 0 ||
+    input.amountCents > MAX_PAYMENT_REQUEST_LEDGER_CENTS
+  ) {
+    throw new Error("amountCents must be a positive safe integer within the credit ledger range");
   }
   if (!input.paymentContext || typeof input.paymentContext.kind !== "string") {
     throw new Error("paymentContext is required");
