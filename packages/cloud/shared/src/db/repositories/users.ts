@@ -563,6 +563,16 @@ export class UsersRepository {
   }
 
   /**
+   * Finds a user by ID from primary storage.
+   *
+   * Lifecycle mutations use this reader when the current organization and
+   * identity binding determine which durable authorization fences must move.
+   */
+  async findByIdForWrite(id: string): Promise<User | undefined> {
+    return await this.findUserByPredicate(dbWrite, eq(users.id, id));
+  }
+
+  /**
    * Finds a user by email address.
    */
   async findByEmail(email: string): Promise<User | undefined> {
