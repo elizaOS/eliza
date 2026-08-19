@@ -499,6 +499,12 @@ type TrajectoryLoggerLike = {
 	) => Promise<void> | void;
 	releaseTrajectoryOwnership?: (stepIdOrTrajectoryId: string) => void;
 	flushWriteQueue?: (trajectoryId: string) => Promise<void> | void;
+	applyReward?: (params: {
+		trajectoryId: string;
+		idempotencyKey: string;
+		reward: number;
+		component: string;
+	}) => Promise<boolean>;
 	logLlmCall?: (params: { stepId: string } & TrajectoryLlmCallDetails) => void;
 	/**
 	 * Optional. When implemented (DatabaseTrajectoryLogger does), lets a caller
@@ -1120,6 +1126,7 @@ export function resolveTrajectoryLogger(
 		if (typeof candidate.endTrajectory === "function") score += 10;
 		if (typeof candidate.logLlmCall === "function") score += 10;
 		if (typeof candidate.flushWriteQueue === "function") score += 2;
+		if (typeof candidate.applyReward === "function") score += 20;
 		if (score > bestScore) {
 			best = candidate;
 			bestScore = score;

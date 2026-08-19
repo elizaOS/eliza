@@ -1926,7 +1926,6 @@ export const lifeBriefItemEngagements = appLifeopsPgSchema.table(
     createdAt: text("created_at").notNull(),
   },
   (t) => [
-    unique().on(t.agentId, t.briefingId, t.itemId, t.eventType, t.eventAt),
     index("idx_life_brief_item_engagements_item").on(
       t.agentId,
       t.itemId,

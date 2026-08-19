@@ -315,6 +315,77 @@ describe("trajectories trace_id join key (real PGLite)", () => {
 		]);
 	});
 
+	it("applies one delayed reward without reopening a completed trajectory", async () => {
+		const trajectoryId = await service.startTrajectory(serviceRuntime.agentId, {
+			source: "morning-brief",
+		});
+		await service.endTrajectory(trajectoryId, "completed");
+
+		const outcomes = await Promise.all(
+			Array.from({ length: 8 }, () =>
+				service.applyReward({
+					trajectoryId,
+					idempotencyKey: "brief-engagement:event-1",
+					reward: 0.75,
+					component: "briefEngagementReward",
+				}),
+			),
+		);
+		// Every caller observes a settled receipt, while the reward is added once.
+		expect(outcomes.filter(Boolean)).toHaveLength(8);
+		const detail = await service.getTrajectoryDetail(trajectoryId);
+		expect(detail).toMatchObject({
+			totalReward: 0.75,
+			metrics: { finalStatus: "completed" },
+			rewardComponents: {
+				components: { briefEngagementReward: 0.75 },
+			},
+			metadata: {
+				appliedRewardKeys: ["brief-engagement:event-1"],
+			},
+		});
+	});
+
+	it("serializes different delayed reward keys across service instances", async () => {
+		const trajectoryId = await service.startTrajectory(serviceRuntime.agentId, {
+			source: "morning-brief-cross-process",
+		});
+		await service.endTrajectory(trajectoryId, "completed");
+		const otherService = new TrajectoriesService(serviceRuntime);
+		otherService.setEnabled(true);
+		await otherService.initialize();
+
+		expect(
+			await Promise.all([
+				service.applyReward({
+					trajectoryId,
+					idempotencyKey: "brief-engagement:event-a",
+					reward: 0.75,
+					component: "briefEngagementReward",
+				}),
+				otherService.applyReward({
+					trajectoryId,
+					idempotencyKey: "brief-engagement:event-b",
+					reward: 0.5,
+					component: "briefEngagementReward",
+				}),
+			]),
+		).toEqual([true, true]);
+		const detail = await service.getTrajectoryDetail(trajectoryId);
+		expect(detail).toMatchObject({
+			totalReward: 1.25,
+			rewardComponents: {
+				components: { briefEngagementReward: 1.25 },
+			},
+		});
+		expect(detail?.metadata.appliedRewardKeys).toEqual(
+			expect.arrayContaining([
+				"brief-engagement:event-a",
+				"brief-engagement:event-b",
+			]),
+		);
+	});
+
 	// Emit-first paths (the agent API chat route and connectors) emit
 	// MESSAGE_RECEIVED before messageService.handleMessage mints the turn's
 	// traceId, so the plugin handler is the first touchpoint and must mint +

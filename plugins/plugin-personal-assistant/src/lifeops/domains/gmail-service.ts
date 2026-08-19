@@ -36,6 +36,7 @@ import type {
   SendLifeOpsGmailReplyRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
 } from "../../contracts/index.js";
+import { settleBriefEngagementReward } from "../briefing/engagement-reward.js";
 import {
   accountIdForGrant,
   googleSendEmailInput,
@@ -129,6 +130,11 @@ function externalMessageIdFromInput(messageId: string): string {
     : messageId;
 }
 
+/** Canonical source id emitted by GoogleGmailAdapter into BRIEF's MessageRef. */
+export function gmailBriefSourceId(externalMessageId: string): string {
+  return `gmail:${externalMessageIdFromInput(externalMessageId)}`;
+}
+
 function isDestructiveGmailOperation(operation: string): boolean {
   return (
     operation === "trash" ||
@@ -208,6 +214,42 @@ export class GmailDomain {
     private readonly ctx: LifeOpsContext,
     private readonly deps: GmailDomainDeps,
   ) {}
+
+  private async attributeBriefMessageOutcome(args: {
+    messageId: string;
+    eventType: "opened" | "replied";
+    domainEventId: string;
+    weight: number;
+  }): Promise<void> {
+    const eventAt = new Date().toISOString();
+    try {
+      const engagement = await this.ctx.repository.attributeBriefItemEngagement(
+        {
+          agentId: this.ctx.agentId(),
+          source: "inbox",
+          sourceId: args.messageId,
+          eventType: args.eventType,
+          eventAt,
+          domainEventId: args.domainEventId,
+          weight: args.weight,
+        },
+      );
+      if (engagement) {
+        await settleBriefEngagementReward({
+          runtime: this.ctx.runtime,
+          repository: this.ctx.repository,
+          engagement,
+        });
+      }
+    } catch (error) {
+      // error-policy:J7 the Gmail mutation already committed; learning state
+      // is durable/retryable and cannot change the connector result.
+      this.ctx.runtime.reportError("GmailDomain.attributeBriefOutcome", error, {
+        messageId: args.messageId,
+        eventType: args.eventType,
+      });
+    }
+  }
 
   private async syncGmailMessages(args: {
     requestUrl: URL;
@@ -714,6 +756,17 @@ export class GmailDomain {
       },
     );
 
+    if (executionMode === "execute" && operation === "mark_read") {
+      for (const message of messages) {
+        await this.attributeBriefMessageOutcome({
+          messageId: gmailBriefSourceId(message.externalId),
+          eventType: "opened",
+          domainEventId: `gmail_mark_read:${grant.id}:${message.externalId}`,
+          weight: 0.25,
+        });
+      }
+    }
+
     return {
       ok: true,
       operation,
@@ -899,7 +952,7 @@ export class GmailDomain {
       request.grantId,
     );
     const sendEmail = requireGoogleServiceMethod(this.ctx.runtime, "sendEmail");
-    await sendEmail(
+    const sent = await sendEmail(
       googleSendEmailInput({
         accountId: accountIdForGrant(grant),
         to: request.to?.length
@@ -915,6 +968,12 @@ export class GmailDomain {
         threadId: read.message.threadId,
       }),
     );
+    await this.attributeBriefMessageOutcome({
+      messageId: gmailBriefSourceId(read.message.externalId),
+      eventType: "replied",
+      domainEventId: `gmail_reply:${grant.id}:${sent.id}`,
+      weight: 1,
+    });
     return { ok: true };
   }
 

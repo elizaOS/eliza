@@ -14,6 +14,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
+import { runWithTrajectoryContext } from "@elizaos/core";
 import {
   afterAll,
   beforeAll,
@@ -23,6 +24,8 @@ import {
   it,
   vi,
 } from "vitest";
+import { TrajectoriesService } from "../../../packages/core/src/features/trajectories/TrajectoriesService.ts";
+import { GoogleGmailAdapter } from "../../plugin-google-workspace/src/lifeops-message-adapter.ts";
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
@@ -36,9 +39,13 @@ vi.mock("@elizaos/agent", async (importOriginal) => ({
 import {
   __resetBriefComposersForTests,
   briefAction,
+  mapCalendarFeedEventToBriefingItem,
   setBriefComposers,
 } from "../src/actions/brief.js";
 import { structureBriefingItems } from "../src/lifeops/briefing/editorial-judgment.js";
+import { settleBriefEngagementReward } from "../src/lifeops/briefing/engagement-reward.js";
+import { CalendarDomain } from "../src/lifeops/domains/calendar-service.js";
+import { gmailBriefSourceId } from "../src/lifeops/domains/gmail-service.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { executeRawSql } from "../src/lifeops/sql.js";
 import type {
@@ -137,25 +144,35 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     return repository.listBriefItemEngagements(runtime.agentId);
   }
 
-  it("records one rendered impression per surfaced item only after a delivered compose", async () => {
-    const result = await callBrief(
-      runtime,
-      { action: "compose_morning", format: "json" },
-      async () => undefined,
+  it("records only item titles actually present in the delivered narrative", async () => {
+    vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+      "Board prep with investor questions comes first. Industry Roundup via gmail can wait.",
+    );
+    const result = await runWithTrajectoryContext(
+      {
+        trajectoryId: "morning-brief-trajectory",
+        trajectoryStepId: "morning-brief-step",
+        purpose: "action",
+      },
+      () =>
+        callBrief(
+          runtime,
+          { action: "compose_morning", format: "narrative" },
+          async () => undefined,
+        ),
     );
     expect(result).toMatchObject({ success: true });
     const briefing = briefingFromResult(result);
 
     const rows = await allRows();
-    const surfaced = briefing.editorial.decisions.filter(
-      (decision) => decision.action !== "omit",
-    );
-    expect(rows).toHaveLength(surfaced.length);
+    expect(rows).toHaveLength(2);
     expect(rows.every((row) => row.eventType === "rendered")).toBe(true);
     expect(rows.every((row) => row.briefingId === briefing.id)).toBe(true);
     expect(rows[0]?.metadata).toMatchObject({
       briefingKind: "morning",
       period: "today",
+      trajectoryId: "morning-brief-trajectory",
+      trajectoryStepId: "morning-brief-step",
     });
 
     // No callback -> nothing was shown to the owner -> no impressions.
@@ -164,7 +181,16 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
       format: "json",
     });
     expect(undelivered).toMatchObject({ success: true });
-    expect(await allRows()).toHaveLength(surfaced.length);
+    expect(await allRows()).toHaveLength(2);
+
+    // A JSON callback exposes only the generic confirmation in chat. The
+    // structured action result is not proof that every item was rendered.
+    await callBrief(
+      runtime,
+      { action: "compose_morning", format: "json" },
+      async () => undefined,
+    );
+    expect(await allRows()).toHaveLength(2);
   });
 
   async function seedRendered(itemClass: "newsletter" | "calendar") {
@@ -175,6 +201,8 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     const [item] = structureBriefingItems(source);
     if (!item) throw new Error("fixture produced no structured item");
     for (let day = 1; day <= 5; day += 1) {
+      const eventAt = new Date(Date.now() - (6 - day) * 24 * 60 * 60 * 1_000);
+      eventAt.setUTCHours(12, 0, 0, 0);
       await repository.recordBriefItemEngagement({
         agentId: runtime.agentId,
         briefingId: `seed-brief-${itemClass}-${day}`,
@@ -184,7 +212,7 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
         sourceId: item.sourceId,
         itemClass: item.itemClass,
         eventType: "rendered",
-        eventAt: `2026-07-0${day}T12:00:00.000Z`,
+        eventAt: eventAt.toISOString(),
         weight: 0,
         metadata: { briefingKind: "morning", period: "today" },
       });
@@ -205,7 +233,7 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
       sourceId: calendar.sourceId,
       itemClass: calendar.itemClass,
       eventType: "completed",
-      eventAt: "2026-07-05T18:00:00.000Z",
+      eventAt: new Date().toISOString(),
       weight: 1,
       metadata: {},
     });
@@ -232,6 +260,8 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
       itemClass: NEWSLETTER_CLASS,
       itemId: newsletter.itemId,
     });
+
+    await repository.finalizeExpiredBriefItemEngagements(runtime.agentId);
 
     // The next composed brief demotes the class through the real summary load.
     const composed = await callBrief(
@@ -300,5 +330,519 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     expect(
       (await allRows()).filter((row) => row.eventType === "demoted"),
     ).toHaveLength(0);
+  });
+
+  it("does not let lifetime demotion history poison the current recency window", async () => {
+    const item = await seedRendered("newsletter");
+    const oldAt = new Date(
+      Date.now() - 60 * 24 * 60 * 60 * 1_000,
+    ).toISOString();
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "old-lifetime-brief",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "demoted",
+      eventAt: oldAt,
+      weight: -1,
+      metadata: {},
+    });
+    const briefing = briefingFromResult(
+      await callBrief(
+        runtime,
+        { action: "compose_morning", format: "json" },
+        async () => undefined,
+      ),
+    );
+    expect(briefing.editorial.demotedItemClasses).not.toContain(
+      NEWSLETTER_CLASS,
+    );
+  });
+
+  it("attributes a committed same-day completion once and finalizes only expired unacted deliveries", async () => {
+    const [calendar, inbox] = structureBriefingItems(sections);
+    if (!calendar || !inbox) throw new Error("fixture items missing");
+    for (const item of [calendar, inbox]) {
+      await repository.recordBriefItemEngagement({
+        agentId: runtime.agentId,
+        briefingId: "brief-feedback-window",
+        itemId: item.itemId,
+        source: item.source,
+        kind: item.kind,
+        sourceId: item.sourceId,
+        itemClass: item.itemClass,
+        eventType: "rendered",
+        eventAt: "2026-08-14T08:00:00.000Z",
+        weight: 0,
+        metadata: { trajectoryId: "trajectory-morning-brief" },
+      });
+    }
+
+    const writes = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        repository.attributeBriefItemEngagement({
+          agentId: runtime.agentId,
+          source: calendar.source,
+          sourceId: calendar.sourceId,
+          eventType: "kept",
+          eventAt: "2026-08-14T17:00:00.000Z",
+          domainEventId: "calendar-event-ended:board-prep",
+          weight: 0.75,
+        }),
+      ),
+    );
+    expect(writes.every((row) => row?.id === writes[0]?.id)).toBe(true);
+    const engagement = writes[0];
+    if (!engagement) throw new Error("completion was not attributed");
+    const applyReward = vi.fn(async () => true);
+    const logger = {
+      applyReward,
+    };
+    const rewardRuntime = {
+      ...runtime,
+      getService: () => logger,
+      getServicesByType: () => [logger],
+    } as unknown as IAgentRuntime;
+    const settlements = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        settleBriefEngagementReward({
+          runtime: rewardRuntime,
+          repository,
+          engagement,
+        }),
+      ),
+    );
+    expect(settlements.filter(Boolean)).toHaveLength(1);
+    expect(applyReward).toHaveBeenCalledTimes(1);
+    expect(applyReward).toHaveBeenCalledWith({
+      trajectoryId: "trajectory-morning-brief",
+      idempotencyKey: `brief-engagement:${engagement.id}`,
+      reward: 0.75,
+      component: "briefEngagementReward",
+    });
+
+    expect(
+      await repository.finalizeExpiredBriefItemEngagements(runtime.agentId, {
+        asOfIso: "2026-08-15T09:00:00.000Z",
+      }),
+    ).toBe(1);
+    expect(
+      await repository.finalizeExpiredBriefItemEngagements(runtime.agentId, {
+        asOfIso: "2026-08-15T09:00:00.000Z",
+      }),
+    ).toBe(0);
+    const outcomes = (await allRows()).filter(
+      (row) => row.eventType !== "rendered",
+    );
+    expect(outcomes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemId: calendar.itemId,
+          eventType: "kept",
+          metadata: expect.objectContaining({
+            trajectoryId: "trajectory-morning-brief",
+            domainEventId: "calendar-event-ended:board-prep",
+          }),
+        }),
+        expect.objectContaining({
+          itemId: inbox.itemId,
+          eventType: "ignored",
+        }),
+      ]),
+    );
+  });
+
+  it("releases a false reward settlement claim so a later retry can succeed", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const engagement = await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-reward-retry",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "kept",
+      eventAt: "2026-08-17T17:00:00.000Z",
+      weight: 0.75,
+      metadata: { trajectoryId: "retry-trajectory" },
+    });
+    const applyReward = vi
+      .fn<() => Promise<boolean>>()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    const rewardRuntime = {
+      ...runtime,
+      getService: () => ({ applyReward }),
+      getServicesByType: () => [{ applyReward }],
+    } as unknown as IAgentRuntime;
+
+    expect(
+      await settleBriefEngagementReward({
+        runtime: rewardRuntime,
+        repository,
+        engagement,
+      }),
+    ).toBe(false);
+    expect(
+      await settleBriefEngagementReward({
+        runtime: rewardRuntime,
+        repository,
+        engagement,
+      }),
+    ).toBe(true);
+    expect(applyReward).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers an abandoned reward lease without letting its old owner erase the takeover", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const engagement = await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-reward-lease",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "kept",
+      eventAt: "2026-08-17T17:00:00.000Z",
+      weight: 0.75,
+      metadata: { trajectoryId: "lease-trajectory" },
+    });
+    const first = await repository.claimBriefEngagementReward(engagement, {
+      nowIso: "2026-08-17T17:00:00.000Z",
+      leaseSeconds: 60,
+    });
+    expect(first).not.toBeNull();
+    expect(
+      await repository.claimBriefEngagementReward(engagement, {
+        nowIso: "2026-08-17T17:00:30.000Z",
+        leaseSeconds: 60,
+      }),
+    ).toBeNull();
+    const takeover = await repository.claimBriefEngagementReward(engagement, {
+      nowIso: "2026-08-17T17:01:01.000Z",
+      leaseSeconds: 60,
+    });
+    expect(takeover).not.toBeNull();
+    if (!first || !takeover) throw new Error("reward lease fixture failed");
+    await repository.releaseBriefEngagementRewardClaim(engagement, first);
+    await repository.completeBriefEngagementRewardClaim(engagement, takeover);
+    expect(
+      await repository.claimBriefEngagementReward(engagement, {
+        nowIso: "2026-08-18T17:00:00.000Z",
+      }),
+    ).toBeNull();
+    const marker = (
+      await repository.listBriefItemEngagements(runtime.agentId, {
+        includeOperational: true,
+      })
+    ).find((row) => row.eventType === "rewarded");
+    expect(marker?.metadata).toMatchObject({
+      engagementEventId: engagement.id,
+      rewardState: "completed",
+      trajectoryRewardKey: `brief-engagement:${engagement.id}`,
+    });
+  });
+
+  it("uses a rolling delivery window across UTC midnight and ignores late actions", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-timezone-boundary",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "rendered",
+      eventAt: "2026-08-17T23:45:00.000Z",
+      weight: 0,
+      metadata: {},
+    });
+    expect(
+      await repository.attributeBriefItemEngagement({
+        agentId: runtime.agentId,
+        source: item.source,
+        sourceId: item.sourceId,
+        eventType: "kept",
+        eventAt: "2026-08-18T00:15:00.000Z",
+        domainEventId: "meeting-kept:cross-midnight",
+        weight: 0.75,
+      }),
+    ).not.toBeNull();
+
+    await executeRawSql(
+      runtime,
+      "DELETE FROM app_lifeops.life_brief_item_engagements WHERE event_type = 'kept'",
+    );
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-timezone-boundary",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "kept",
+      eventAt: "2026-08-19T00:00:00.000Z",
+      weight: 0.75,
+      metadata: { domainEventId: "meeting-kept:late" },
+    });
+    expect(
+      await repository.finalizeExpiredBriefItemEngagements(runtime.agentId, {
+        asOfIso: "2026-08-19T00:01:00.000Z",
+      }),
+    ).toBe(1);
+    expect(
+      (await allRows()).some(
+        (row) =>
+          row.briefingId === "brief-timezone-boundary" &&
+          row.eventType === "ignored",
+      ),
+    ).toBe(true);
+  });
+
+  it("preserves distinct domain events at an identical type and timestamp", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-domain-event-collapse",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "rendered",
+      eventAt: "2026-08-17T08:00:00.000Z",
+      weight: 0,
+      metadata: {},
+    });
+    for (const domainEventId of ["provider-event-a", "provider-event-b"]) {
+      await repository.attributeBriefItemEngagement({
+        agentId: runtime.agentId,
+        source: item.source,
+        sourceId: item.sourceId,
+        eventType: "rescheduled",
+        eventAt: "2026-08-17T09:00:00.000Z",
+        domainEventId,
+        weight: 1,
+      });
+    }
+    const rows = (await allRows()).filter(
+      (row) => row.eventType === "rescheduled",
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.metadata.domainEventId).sort()).toEqual([
+      "provider-event-a",
+      "provider-event-b",
+    ]);
+  });
+
+  it("keeps the Gmail adapter MessageRef id identical to mutation attribution", async () => {
+    const externalId = "provider-message-42";
+    const gmailService = {
+      listGmailTriageMessages: vi.fn(async () => [
+        {
+          externalId,
+          threadId: "provider-thread-9",
+          from: "Alex",
+          fromEmail: "alex@example.com",
+          to: ["owner@example.com"],
+          subject: "Decision needed",
+          snippet: "Please approve today",
+          receivedAt: "2026-08-17T08:00:00.000Z",
+          isUnread: true,
+          likelyReplyNeeded: true,
+          labels: ["INBOX", "UNREAD"],
+          htmlLink: null,
+          metadata: {},
+        },
+      ]),
+      searchGmailMessages: vi.fn(),
+      sendGmailReply: vi.fn(),
+      sendGmailMessage: vi.fn(),
+      modifyGmailMessages: vi.fn(),
+      createGmailFilterForSender: vi.fn(),
+    };
+    const adapterRuntime = {
+      ...runtime,
+      getService: (name: string) =>
+        name === "google" ? gmailService : runtime.getService(name),
+    } as unknown as IAgentRuntime;
+    const [ref] = await new GoogleGmailAdapter().listMessages(adapterRuntime, {
+      limit: 1,
+    });
+    if (!ref) throw new Error("Gmail adapter produced no MessageRef");
+    const [item] = structureBriefingItems({
+      inbox: [
+        {
+          id: ref.id,
+          channel: ref.source,
+          senderName: ref.from.displayName ?? ref.from.identifier,
+          snippet: ref.snippet,
+          urgency: "unknown",
+          classification: "unread",
+        },
+      ],
+    });
+    if (!item) throw new Error("brief item mapping failed");
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-real-gmail-adapter",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "rendered",
+      eventAt: "2026-08-17T08:01:00.000Z",
+      weight: 0,
+      metadata: {},
+    });
+    expect(ref.id).toBe(gmailBriefSourceId(externalId));
+    expect(
+      await repository.attributeBriefItemEngagement({
+        agentId: runtime.agentId,
+        source: "inbox",
+        sourceId: gmailBriefSourceId(externalId),
+        eventType: "opened",
+        eventAt: "2026-08-17T08:02:00.000Z",
+        domainEventId: "gmail-mark-read-provider-receipt",
+        weight: 0.25,
+      }),
+    ).toMatchObject({ itemId: item.itemId, eventType: "opened" });
+  });
+
+  it("keeps the calendar feed event id identical through a real update bridge", async () => {
+    const providerEvent = {
+      id: "provider-calendar-event-7",
+      title: "Board prep",
+      startAt: "2026-08-17T08:00:00.000Z",
+      endAt: "2026-08-17T09:00:00.000Z",
+    };
+    const briefingItem = mapCalendarFeedEventToBriefingItem(providerEvent, {
+      startAt: providerEvent.startAt,
+      endAt: providerEvent.endAt,
+    });
+    const [item] = structureBriefingItems({ calendar: [briefingItem] });
+    if (!item) throw new Error("calendar brief mapping failed");
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-real-calendar-feed",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "rendered",
+      eventAt: new Date(Date.now() - 1_000).toISOString(),
+      weight: 0,
+      metadata: {},
+    });
+    const calendarService = {
+      updateCalendarEvent: vi.fn(async () => ({
+        ...providerEvent,
+        startAt: new Date().toISOString(),
+      })),
+    };
+    const bridgeRuntime = {
+      ...runtime,
+      getService: (name: string) =>
+        name === "calendar" ? calendarService : runtime.getService(name),
+      getServicesByType: () => [],
+    } as unknown as IAgentRuntime;
+    const domain = new CalendarDomain({
+      runtime: bridgeRuntime,
+      repository,
+      agentId: () => runtime.agentId,
+    } as never);
+    await domain.updateCalendarEvent(new URL("http://127.0.0.1"), {
+      eventId: providerEvent.id,
+      startAt: new Date().toISOString(),
+      idempotencyKey: "calendar-provider-update-receipt",
+    });
+    expect(
+      (await allRows()).find(
+        (row) =>
+          row.sourceId === providerEvent.id && row.eventType === "rescheduled",
+      ),
+    ).toMatchObject({ itemId: item.itemId });
+  });
+
+  it("links delivered morning-brief output to a real trajectory and settles reward end to end", async () => {
+    const service = new TrajectoriesService(runtime);
+    service.setEnabled(true);
+    await service.initialize();
+    const trajectoryId = await service.startTrajectory(runtime.agentId, {
+      source: "morning-brief-integration",
+    });
+    const stepId = service.startStep(trajectoryId, { timestamp: Date.now() });
+    vi.spyOn(runtime, "useModel").mockResolvedValueOnce(
+      "Board prep with investor questions comes first.",
+    );
+    await runWithTrajectoryContext(
+      { trajectoryId, trajectoryStepId: stepId, purpose: "action" },
+      () =>
+        callBrief(
+          runtime,
+          { action: "compose_morning", format: "narrative" },
+          async () => undefined,
+        ),
+    );
+    service.completeStep(trajectoryId, stepId, {
+      actionType: "action",
+      actionName: "BRIEF",
+      parameters: {},
+      success: true,
+    });
+    await service.flushWriteQueue(trajectoryId);
+    await service.endTrajectory(trajectoryId, "completed");
+
+    const rendered = (await allRows()).find(
+      (row) => row.itemId === "calendar:board-prep",
+    );
+    expect(rendered?.metadata).toMatchObject({
+      trajectoryId,
+      trajectoryStepId: stepId,
+    });
+    if (!rendered) throw new Error("rendered row missing");
+    const engagement = await repository.attributeBriefItemEngagement({
+      agentId: runtime.agentId,
+      source: rendered.source,
+      sourceId: rendered.sourceId,
+      eventType: "kept",
+      eventAt: new Date(Date.parse(rendered.eventAt) + 60_000).toISOString(),
+      domainEventId: "meeting-kept:real-trajectory",
+      weight: 0.75,
+    });
+    if (!engagement) throw new Error("engagement attribution missing");
+    const rewardRuntime = {
+      ...runtime,
+      getService: () => service,
+      getServicesByType: () => [service],
+    } as unknown as IAgentRuntime;
+    expect(
+      await settleBriefEngagementReward({
+        runtime: rewardRuntime,
+        repository,
+        engagement,
+      }),
+    ).toBe(true);
+    const trajectory = await service.getTrajectoryDetail(trajectoryId);
+    expect(trajectory).toMatchObject({
+      metrics: { finalStatus: "completed" },
+      totalReward: 0.75,
+      rewardComponents: {
+        components: { briefEngagementReward: 0.75 },
+      },
+    });
   });
 });
