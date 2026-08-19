@@ -284,8 +284,9 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 		expect(result).toMatchObject({
 			success: true,
 			transcriptVisibility: "internal",
-			turnComplete: false,
+			modelReplyRequired: true,
 		});
+		expect(result).not.toHaveProperty("turnComplete");
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(result).not.toHaveProperty("verifiedUserFacing");
 		expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
