@@ -95,7 +95,7 @@ const DEPLOY_RE =
 // "create a checklist app" classifies correctly (a bare `build\s+a\s+app` never
 // matches grammatical English and silently regressed those to coding).
 const APP_BUILD_RE =
-  /\b(website|web\s*site|landing\s+page|web\s+app|webapp|frontend\s+app|(?:build|create|make)\s+an?\s+(?:\w+[ -]){0,2}(?:site|page|app|application)\b)/i;
+  /\b(website|web\s*site|web\s?page|landing\s+page|web\s+app|webapp|frontend\s+app|(?:build|create|make)\s+(?:me\s+)?an?\s+(?:[\w'-]+[ -]){0,5}(?:site|page|app|application)\b)/i;
 
 /**
  * Classify a task from its goal text. Defaults to `coding` — the safest

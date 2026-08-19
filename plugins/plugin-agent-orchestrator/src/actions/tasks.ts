@@ -6,7 +6,11 @@
 
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
-import { resolve as nodePathResolve } from "node:path";
+import {
+  join as nodePathJoin,
+  resolve as nodePathResolve,
+  sep as nodePathSep,
+} from "node:path";
 import type {
   Action,
   ActionResult,
@@ -36,7 +40,11 @@ import {
   type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
 import { markSessionAdministrativelyStopped } from "../services/admin-stop-marker.js";
-import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
+import {
+  augmentTaskWithDeployGuidance,
+  isAppBuildTask,
+  resolveAppDeployConfig,
+} from "../services/app-deploy-guidance.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
 import {
   collisionProviderFromWorkspaceService,
@@ -1320,6 +1328,16 @@ async function runCreateLegacy(
       // sendPrompt (smithers or direct), so the AcpService initialTask deploy
       // injection never fires here. Re-attach the contract on the task text
       // itself; the helper is gated + idempotent so non-app tasks pass through.
+      if (!createProvisionedWorkspaceId) {
+        const slugDir = appBuildSlugWorkdir(task, label, sessionWorkdir);
+        if (slugDir) {
+          sessionWorkdir = slugDir;
+          isolateWorkdir = false;
+          logger(runtime).info(
+            `[TASKS:create] app build runs in its served slug dir: ${slugDir}`,
+          );
+        }
+      }
       const createTaskForChild =
         createProvisionedWorkspaceId && createRequestedRepo
           ? withProvisionedRepoContract(task, createRequestedRepo)
@@ -2182,6 +2200,49 @@ const PLACEHOLDER_REPO_OWNERS = new Set([
   "placeholder",
 ]);
 
+/**
+ * The slug directory a NEW app build should run in on a custom static host.
+ * The publish guidance already tells children "write the files into
+ * <appsDir>/<slug>/" and small models drop files at the route root anyway
+ * (live 2026-08-18: countdown.html at the host checkout root, invisible to
+ * /apps/). Pointing the session cwd AT the served slug directory makes
+ * placement correct by construction. Returns undefined when the ask is not a
+ * hosted-app build, the deploy target is not a custom host, or the resolved
+ * workdir is not the checkout that contains the apps dir. Edits keep the
+ * route root (the deploy-contract regex requires a build/create verb).
+ */
+function appBuildSlugWorkdir(
+  task: string,
+  label: string,
+  resolvedWorkdir: string | undefined,
+): string | undefined {
+  if (!resolvedWorkdir || !isAppBuildTask(task)) return undefined;
+  const deploy = resolveAppDeployConfig();
+  if (deploy.target !== "custom" || !deploy.customAppsDir) return undefined;
+  const appsDir = nodePathResolve(deploy.customAppsDir);
+  const workdir = nodePathResolve(resolvedWorkdir);
+  if (appsDir !== workdir && !appsDir.startsWith(workdir + nodePathSep)) {
+    return undefined;
+  }
+  const baseSlug =
+    label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40)
+      .replace(/-+$/g, "") || "app";
+  let slug = baseSlug;
+  for (let n = 2; n <= 9; n++) {
+    const candidate = nodePathJoin(appsDir, slug);
+    if (!fs.existsSync(candidate) || fs.readdirSync(candidate).length === 0) {
+      fs.mkdirSync(candidate, { recursive: true });
+      return candidate;
+    }
+    slug = `${baseSlug}-${n}`;
+  }
+  return undefined;
+}
+
 /** The registered workspace whose path is `workdir`, if any. Planner-supplied
  *  workdirs on repo-targeted asks are usually context junk (a stale workspace
  *  path copied from room history — live 2026-08-18); only a path the registry
@@ -2584,6 +2645,20 @@ async function runSpawnAgent(
           }`;
           return { success: false, text, error: new Error(text) };
         }
+      }
+    }
+    if (!provisionedWorkspaceId) {
+      const slugDir = appBuildSlugWorkdir(
+        task,
+        typeof params.label === "string" && params.label ? params.label : task,
+        effectiveWorkdir,
+      );
+      if (slugDir) {
+        effectiveWorkdir = slugDir;
+        isolateWorkdir = false;
+        logger(runtime).info(
+          `[TASKS:spawn_agent] app build runs in its served slug dir: ${slugDir}`,
+        );
       }
     }
     const spawnTaskForChild =

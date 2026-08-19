@@ -1094,17 +1094,23 @@ export class TrajectoriesService extends Service {
 	private reportLateCapture(
 		stepId: string,
 		captureType: "llm" | "provider",
+		ageMs?: number,
 	): void {
+		// Context inline in the message: the pretty transport drops structured
+		// warn payloads, and diagnosing this race blind cost two wrong fixes
+		// (30s grace, then 120s). The age names the class directly.
+		const age =
+			typeof ageMs === "number" ? `${Math.round(ageMs / 1000)}s` : "unknown";
 		const error = new ElizaError(
-			"Trajectory capture arrived after terminalization",
+			`Trajectory capture arrived after terminalization (step=${stepId.slice(0, 12)} type=${captureType} age=${age})`,
 			{
 				code: "TRAJECTORY_OWNER_CLOSED",
-				context: { stepId, captureType },
+				context: { stepId, captureType, ageMs },
 			},
 		);
 		logger.warn(
-			{ err: error, stepId, captureType },
-			"[trajectory-logger] Rejected late trajectory capture",
+			{ err: error, stepId, captureType, ageMs },
+			`[trajectory-logger] Rejected late trajectory capture (step=${stepId.slice(0, 12)} type=${captureType} age=${age})`,
 		);
 		this.runtime.reportError("TrajectoriesService.lateCapture", error, {
 			stepId,
@@ -1940,7 +1946,11 @@ export class TrajectoriesService extends Service {
 		if (!this.acceptsNewCapture()) return;
 		if (isEmbeddingLlmCall(params)) return;
 		if (this.stepClosedBeyondGrace(params.stepId)) {
-			this.reportLateCapture(params.stepId, "llm");
+			this.reportLateCapture(
+				params.stepId,
+				"llm",
+				Date.now() - (this.closedStepIds.get(params.stepId) ?? Date.now()),
+			);
 			return;
 		}
 
@@ -2029,7 +2039,13 @@ export class TrajectoriesService extends Service {
 			) {
 				this.rememberClosedStep(params.stepId);
 				this.releaseTrajectoryRouting(trajectoryId);
-				this.reportLateCapture(params.stepId, "llm");
+				this.reportLateCapture(
+					params.stepId,
+					"llm",
+					typeof trajectory.endTime === "number"
+						? Date.now() - trajectory.endTime
+						: undefined,
+				);
 				return;
 			}
 
@@ -2257,7 +2273,11 @@ export class TrajectoriesService extends Service {
 					}
 				: arg1;
 		if (this.stepClosedBeyondGrace(params.stepId)) {
-			this.reportLateCapture(params.stepId, "provider");
+			this.reportLateCapture(
+				params.stepId,
+				"provider",
+				Date.now() - (this.closedStepIds.get(params.stepId) ?? Date.now()),
+			);
 			return;
 		}
 
@@ -2334,7 +2354,13 @@ export class TrajectoriesService extends Service {
 			) {
 				this.rememberClosedStep(params.stepId);
 				this.releaseTrajectoryRouting(trajectoryId);
-				this.reportLateCapture(params.stepId, "provider");
+				this.reportLateCapture(
+					params.stepId,
+					"provider",
+					typeof trajectory.endTime === "number"
+						? Date.now() - trajectory.endTime
+						: undefined,
+				);
 				return;
 			}
 

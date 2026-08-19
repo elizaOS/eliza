@@ -56,6 +56,18 @@ describe("detectTaskType", () => {
     expect(detectTaskType("build an app that tracks expenses")).toBe(
       "app-build",
     );
+    // Single-word "webpage" and descriptor-laden phrasing must classify too —
+    // the old 2-word window + missing "webpage" literal parked a real page
+    // build under coding criteria ("the change is summarized in the diff"),
+    // failing every verify attempt (live 2026-08-18: countdown page).
+    expect(
+      detectTaskType(
+        "Create a simple, clean New Year's countdown webpage. Include HTML, CSS, and JavaScript",
+      ),
+    ).toBe("app-build");
+    expect(detectTaskType("make me a lil new years countdown page")).toBe(
+      "app-build",
+    );
     expect(detectTaskType("create an app for my book club")).toBe("app-build");
     expect(detectTaskType("make an app that shows the weather")).toBe(
       "app-build",
@@ -108,8 +120,14 @@ describe("staticAcceptanceCriteria", () => {
     expect(coding).not.toEqual(viewCreate);
     expect(appBuild).not.toEqual(viewCreate);
 
-    // app-build is the coding superset plus the live-URL check.
-    expect(appBuild).toEqual([...coding, "the live URL is reachable"]);
+    // app-build is serve-focused (NOT the coding superset) — a one-file app
+    // has no test/typecheck surface, so inheriting coding checks manufactured
+    // criteria no static deliverable could satisfy (#20794).
+    expect(appBuild).toEqual([
+      "the live URL is reachable",
+      "the deliverable file exists in the workdir",
+      "the page serves the requested content",
+    ]);
     // view-create is its own distinct set (no overlap with coding's checks).
     expect(viewCreate.some((c) => coding.includes(c))).toBe(false);
   });
