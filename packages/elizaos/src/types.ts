@@ -77,6 +77,7 @@ export interface FullstackTemplateValues extends Record<string, string> {
   bugReportUrl: string;
   bundleId: string;
   docsUrl: string;
+  elizaVersion: string;
   fileExtension: string;
   hashtag: string;
   orgName: string;
