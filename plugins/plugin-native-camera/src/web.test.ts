@@ -513,6 +513,160 @@ describe("CameraWeb recording lifecycle releases the microphone", () => {
     expect(audioTrack.stop).toHaveBeenCalledTimes(1);
   });
 
+  it("aborts and releases the mic when stopPreview races mic acquisition", async () => {
+    const audioTrack = makeAudioTrack();
+    let resolveMic!: (stream: MediaStream) => void;
+    const micPromise = new Promise<MediaStream>((res) => {
+      resolveMic = res;
+    });
+    const getUserMedia = vi.fn((constraints: MediaStreamConstraints) => {
+      if (constraints.audio === true && !constraints.video) {
+        return micPromise;
+      }
+      return Promise.resolve(makeMediaStream());
+    });
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { mediaDevices: { getUserMedia } },
+    });
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+
+    const recording = camera.startRecording({ audio: true });
+
+    // Preview is torn down while the microphone prompt is still pending.
+    await camera.stopPreview();
+
+    // The mic only resolves after the camera stream is gone.
+    resolveMic({
+      getTracks: () => [audioTrack],
+      getVideoTracks: () => [],
+      getAudioTracks: () => [audioTrack],
+    } as unknown as MediaStream);
+
+    await expect(recording).rejects.toThrow(
+      "Preview stopped before recording could start",
+    );
+    // The mic acquired after preview teardown must be stopped, not orphaned.
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a concurrent startRecording without acquiring a second mic", async () => {
+    const firstMic = makeAudioTrack();
+    const secondMic = makeAudioTrack();
+    const { getUserMedia } = installCameraAndMic([firstMic, secondMic]);
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+
+    const first = camera.startRecording({ audio: true });
+    const second = camera.startRecording({ audio: true });
+
+    // The synchronous starting guard rejects the second call before it can
+    // request a microphone.
+    await expect(second).rejects.toThrow("Recording already in progress");
+    await expect(first).resolves.toBeUndefined();
+
+    const micCalls = getUserMedia.mock.calls.filter(([constraints]) => {
+      const c = constraints as MediaStreamConstraints;
+      return c.audio === true && !c.video;
+    });
+    expect(micCalls).toHaveLength(1);
+    expect(secondMic.stop).not.toHaveBeenCalled();
+
+    await camera.stopRecording();
+    expect(firstMic.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the mic and clears state when recorder.start() throws", async () => {
+    const audioTrack = makeAudioTrack();
+    installCameraAndMic([audioTrack]);
+    // Some browsers throw a synchronous DOMException from start() after the
+    // recorder was constructed and the mic was already acquired.
+    (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder =
+      class {
+        static isTypeSupported = () => true;
+        mimeType = "video/webm";
+        onstop: (() => void) | null = null;
+        ondataavailable: ((event: unknown) => void) | null = null;
+        onerror: ((event: unknown) => void) | null = null;
+        start() {
+          throw new DOMException("start failed", "InvalidStateError");
+        }
+        stop() {}
+      };
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+
+    await expect(camera.startRecording({ audio: true })).rejects.toThrow(
+      "start failed",
+    );
+
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+    // The instance is not wedged: recording state is cleared for a retry.
+    expect((await camera.getRecordingState()).isRecording).toBe(false);
+  });
+
+  it("releases the mic when recorder.stop() throws before onstop", async () => {
+    const audioTrack = makeAudioTrack();
+    installCameraAndMic([audioTrack]);
+    (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder =
+      class {
+        static isTypeSupported = () => true;
+        mimeType = "video/webm";
+        onstop: (() => void) | null = null;
+        ondataavailable: ((event: unknown) => void) | null = null;
+        onerror: ((event: unknown) => void) | null = null;
+        start() {}
+        stop() {
+          throw new DOMException("stop failed", "InvalidStateError");
+        }
+      };
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+    await camera.startRecording({ audio: true });
+
+    expect(audioTrack.stop).not.toHaveBeenCalled();
+
+    await expect(camera.stopRecording()).rejects.toThrow("stop failed");
+    // A failed stop still releases the mic and clears recording state.
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+    expect((await camera.getRecordingState()).isRecording).toBe(false);
+  });
+
+  it("completes preview teardown when stop() throws mid-recording", async () => {
+    const audioTrack = makeAudioTrack();
+    installCameraAndMic([audioTrack]);
+    (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder =
+      class {
+        static isTypeSupported = () => true;
+        mimeType = "video/webm";
+        onstop: (() => void) | null = null;
+        ondataavailable: ((event: unknown) => void) | null = null;
+        onerror: ((event: unknown) => void) | null = null;
+        start() {}
+        stop() {
+          throw new DOMException("stop failed", "InvalidStateError");
+        }
+      };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+    await camera.startRecording({ audio: true });
+
+    // stopPreview() must not reject on a failed recording stop; it forces the
+    // finalizer and continues releasing the camera and microphone.
+    await expect(camera.stopPreview()).resolves.toBeUndefined();
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+    expect((await camera.getRecordingState()).isRecording).toBe(false);
+
+    errorSpy.mockRestore();
+  });
+
   it("releases the mic when the recorder emits an error", async () => {
     const audioTrack = makeAudioTrack();
     installCameraAndMic([audioTrack]);
