@@ -336,6 +336,31 @@ export async function processPaymentProviderEvent(
             "Provider transaction was replayed with a different settlement binding",
           );
         }
+        if (
+          request.status !== "settled" ||
+          request.settlement_tx_ref !== event.providerTxRef ||
+          !request.settled_at ||
+          !request.settlement_proof ||
+          !existingTransaction.provider_event_id ||
+          !existingTransaction.payload_digest ||
+          !amount
+        ) {
+          throw new PaymentProviderEventConflictError(
+            "Existing provider transaction has incomplete settlement authority",
+          );
+        }
+        await projectPaymentRequestReceipt(tx, {
+          organizationId: request.organization_id,
+          paymentRequestId: request.id,
+          provider: event.provider,
+          providerTxRef: event.providerTxRef,
+          providerEventId: existingTransaction.provider_event_id,
+          amountCents: amount.amountCents,
+          currency: amount.currency,
+          settledAt: request.settled_at,
+          payloadDigest: existingTransaction.payload_digest,
+          settlementProof: request.settlement_proof,
+        });
         return {
           callback: callbackFromPayload(payload, existingTransaction.callback_state),
           callbackState: existingTransaction.callback_state ?? "pending",

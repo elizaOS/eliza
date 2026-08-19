@@ -62,10 +62,14 @@ export const paymentRequestReceipts = pgTable(
       table.organization_id,
       table.created_at,
     ),
-    request_organization_fk: foreignKey({
-      name: "payment_request_receipts_request_organization_fkey",
-      columns: [table.payment_request_id, table.organization_id],
-      foreignColumns: [paymentRequests.id, paymentRequests.organization_id],
+    request_organization_provider_fk: foreignKey({
+      name: "payment_request_receipts_request_organization_provider_fkey",
+      columns: [table.payment_request_id, table.organization_id, table.provider],
+      foreignColumns: [
+        paymentRequests.id,
+        paymentRequests.organization_id,
+        paymentRequests.provider,
+      ],
     }).onDelete("restrict"),
     shape_check: check(
       "payment_request_receipts_shape_check",

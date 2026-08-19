@@ -1,7 +1,7 @@
 -- Provider payment receipts are immutable projections, not tax or legal invoices.
 
-CREATE UNIQUE INDEX IF NOT EXISTS "payment_requests_id_organization_unique"
-  ON "payment_requests" ("id", "organization_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "payment_requests_id_organization_provider_unique"
+  ON "payment_requests" ("id", "organization_id", "provider");
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "payment_request_receipts" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -24,9 +24,9 @@ CREATE TABLE IF NOT EXISTS "payment_request_receipts" (
     UNIQUE ("organization_id", "payment_request_id", "provider", "provider_tx_ref"),
   CONSTRAINT "payment_request_receipts_provider_transaction_unique"
     UNIQUE ("provider", "provider_tx_ref"),
-  CONSTRAINT "payment_request_receipts_request_organization_fkey"
-    FOREIGN KEY ("payment_request_id", "organization_id")
-    REFERENCES "payment_requests" ("id", "organization_id") ON DELETE RESTRICT,
+  CONSTRAINT "payment_request_receipts_request_organization_provider_fkey"
+    FOREIGN KEY ("payment_request_id", "organization_id", "provider")
+    REFERENCES "payment_requests" ("id", "organization_id", "provider") ON DELETE RESTRICT,
   CONSTRAINT "payment_request_receipts_shape_check" CHECK ((
     "receipt_type" = 'provider_payment_receipt'
     AND "provider" IN ('stripe', 'oxapay')
@@ -41,3 +41,46 @@ CREATE TABLE IF NOT EXISTS "payment_request_receipts" (
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "payment_request_receipts_org_created_idx"
   ON "payment_request_receipts" ("organization_id", "created_at");
+--> statement-breakpoint
+INSERT INTO "payment_request_receipts" (
+  "organization_id", "payment_request_id", "provider", "provider_tx_ref",
+  "provider_event_id", "amount_cents", "currency", "settled_at",
+  "payload_digest", "settlement_proof"
+)
+SELECT
+  request."organization_id", request."id", request."provider", request."settlement_tx_ref",
+  event."provider_event_id", request."amount_cents", upper(request."currency"),
+  request."settled_at", event."payload_digest", request."settlement_proof"
+FROM "payment_requests" AS request
+JOIN "payment_request_events" AS event
+  ON event."payment_request_id" = request."id"
+ AND event."event_name" = 'webhook.received'
+ AND event."provider_disposition" = 'settled'
+ AND event."provider" = request."provider"
+ AND event."provider_tx_ref" = request."settlement_tx_ref"
+WHERE request."status" = 'settled'
+  AND request."provider" IN ('stripe', 'oxapay')
+ON CONFLICT DO NOTHING;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION "reject_payment_request_receipt_mutation"()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'payment request receipt is immutable' USING ERRCODE = '55000';
+END;
+$$;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS "payment_request_receipts_immutable"
+  ON "payment_request_receipts";
+--> statement-breakpoint
+CREATE TRIGGER "payment_request_receipts_immutable"
+  BEFORE UPDATE OR DELETE ON "payment_request_receipts"
+  FOR EACH ROW EXECUTE FUNCTION "reject_payment_request_receipt_mutation"();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS "payment_request_receipts_truncate_guard"
+  ON "payment_request_receipts";
+--> statement-breakpoint
+CREATE TRIGGER "payment_request_receipts_truncate_guard"
+  BEFORE TRUNCATE ON "payment_request_receipts"
+  FOR EACH STATEMENT EXECUTE FUNCTION "reject_payment_request_receipt_mutation"();

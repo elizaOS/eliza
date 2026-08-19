@@ -3,6 +3,7 @@
  * PGlite transaction, including rollback and same-key concurrency.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import type { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { sqlRows } from "../../../db/execute-helpers";
 
@@ -17,6 +18,14 @@ let processPaymentProviderEvent: typeof import("../payment-request-settlement").
 let dispatchPaymentCallbacks: typeof import("../payment-request-settlement").dispatchPaymentCallbacks;
 let formatUsdFromCents: typeof import("../payment-request-settlement").formatUsdFromCents;
 let creditsService: typeof import("../credits").creditsService;
+let pglite: PGlite;
+let receiptMigration: string;
+
+async function applyReceiptMigration(): Promise<void> {
+  for (const statement of receiptMigration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await pglite.exec(statement);
+  }
+}
 
 beforeAll(async () => {
   process.env.DATABASE_URL = "pglite://memory";
@@ -29,8 +38,9 @@ beforeAll(async () => {
   ));
   ({ creditsService } = await import("../credits"));
 
-  const pglite = client.getPgliteClientForTests();
-  if (!pglite) throw new Error("PGlite test client was not initialized");
+  const testClient = client.getPgliteClientForTests();
+  if (!testClient) throw new Error("PGlite test client was not initialized");
+  pglite = testClient;
   await pglite.exec(`
     CREATE TABLE organizations (
       id uuid PRIMARY KEY,
@@ -93,12 +103,10 @@ beforeAll(async () => {
   for (const statement of migration.split("--> statement-breakpoint")) {
     if (statement.trim()) await pglite.exec(statement);
   }
-  const receiptMigration = await Bun.file(
+  receiptMigration = await Bun.file(
     new URL("../../../db/migrations/0262_payment_request_receipts.sql", import.meta.url),
   ).text();
-  for (const statement of receiptMigration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await pglite.exec(statement);
-  }
+  await applyReceiptMigration();
 });
 
 afterAll(async () => {
@@ -106,7 +114,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await dbWrite.execute(sql`DELETE FROM payment_request_receipts`);
+  await dbWrite.execute(sql`DROP TABLE IF EXISTS payment_request_receipts`);
   await dbWrite.execute(sql`DELETE FROM payment_request_events`);
   await dbWrite.execute(sql`DELETE FROM credit_transactions`);
   await dbWrite.execute(sql`DELETE FROM payment_requests`);
@@ -117,6 +125,7 @@ beforeEach(async () => {
     VALUES ('${ORG_A}', 'A', 'a', 0), ('${ORG_B}', 'B', 'b', 0)
   `),
   );
+  await applyReceiptMigration();
 });
 
 async function insertRequest(input?: {
@@ -425,6 +434,68 @@ describe("durable payment request settlement", () => {
       processPaymentProviderEvent(stripeEvent({ digest: "d".repeat(64) })),
     ).rejects.toThrow("different payload binding");
     expect((await moneyRows()).credits).toHaveLength(1);
+  });
+
+  test("distinct transaction replay repairs one receipt from persisted settlement authority", async () => {
+    await insertRequest({ txRef: "pi_a" });
+    const canonical = stripeEvent();
+    const callback = {
+      name: "PaymentSettled",
+      paymentRequestId: REQUEST_A,
+      provider: "stripe",
+      providerEventId: canonical.providerEventId,
+      txRef: canonical.providerTxRef,
+      amountCents: canonical.amountCents,
+      currency: "USD",
+      occurredAt: "2026-08-19T08:00:00.000Z",
+    };
+    await dbWrite.execute(sql`
+      UPDATE payment_requests
+      SET status='settled', settled_at='2026-08-19T08:00:00.000Z',
+          settlement_tx_ref=${canonical.providerTxRef}, settlement_proof=${canonical.proof}
+      WHERE id=${REQUEST_A}
+    `);
+    await dbWrite.execute(sql`
+      INSERT INTO payment_request_events (
+        payment_request_id, event_name, redacted_payload, provider, provider_event_id,
+        provider_tx_ref, provider_disposition, payload_digest, callback_state, occurred_at
+      ) VALUES (
+        ${REQUEST_A}, 'webhook.received', ${callback}, 'stripe', ${canonical.providerEventId},
+        ${canonical.providerTxRef}, 'settled', ${canonical.payloadDigest}, 'dispatched',
+        '2026-08-19T08:00:00.000Z'
+      )
+    `);
+
+    expect(await receiptRows()).toHaveLength(0);
+    const distinctWithUnretainedField = stripeEvent({
+      eventId: "evt_distinct_b",
+      digest: "b".repeat(64),
+    });
+    await Promise.all([
+      processPaymentProviderEvent({
+        ...distinctWithUnretainedField,
+        proof: { ...distinctWithUnretainedField.proof, raw_webhook: "must-not-copy" },
+      }),
+      processPaymentProviderEvent(
+        stripeEvent({ eventId: "evt_distinct_c", digest: "c".repeat(64) }),
+      ),
+    ]);
+
+    expect(await receiptRows()).toEqual([
+      expect.objectContaining({
+        payment_request_id: REQUEST_A,
+        provider_event_id: canonical.providerEventId,
+        payload_digest: canonical.payloadDigest,
+        settlement_proof: canonical.proof,
+      }),
+    ]);
+    expect(JSON.stringify(await receiptRows())).not.toContain("must-not-copy");
+    const events = await sqlRows<{ provider_event_id: string }>(
+      dbWrite,
+      sql`SELECT provider_event_id FROM payment_request_events
+          WHERE event_name='webhook.received'`,
+    );
+    expect(events).toEqual([{ provider_event_id: canonical.providerEventId }]);
   });
 
   test("receipt replay conflicts roll back credit fulfillment", async () => {
