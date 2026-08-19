@@ -80,8 +80,14 @@ const CACHE_TTL = {
  * Cooldown period after a catalog fetch error before retrying (5 minutes).
  * Prevents hammering the API when it returns errors (e.g. 429 rate-limit).
  */
-const FETCH_ERROR_COOLDOWN = 1000 * 60 * 5;
-const MAX_CATALOG_PAGES = 100;
+ const FETCH_ERROR_COOLDOWN = 1000 * 60 * 5;
+ const MAX_CATALOG_PAGES = 100;
+ /**
+  * Bound every registry call so a stalled ClawHub connection fails closed
+  * instead of hanging the catalog sync task or a user-facing SKILL action
+  * indefinitely. Mirrors the marketplace install's FETCH_TIMEOUT_MS.
+  */
+ const REGISTRY_FETCH_TIMEOUT_MS = 30_000;
 
 class CatalogPaginationError extends Error {
 	constructor(message: string) {
@@ -1861,9 +1867,10 @@ export class AgentSkillsService extends Service {
 					requestedCursors.add(cursor);
 				}
 				const url = `${this.apiBase}/api/v1/skills?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-				const response = await fetch(url, {
-					headers: { Accept: "application/json" },
-				});
+			const response = await fetch(url, {
+				headers: { Accept: "application/json" },
+				signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
+			});
 
 				if (!response.ok) {
 					if (response.status === 429) {
@@ -1955,6 +1962,7 @@ export class AgentSkillsService extends Service {
 			const url = `${this.apiBase}/api/v1/search?q=${encodeURIComponent(query)}&limit=${limit}`;
 			const response = await fetch(url, {
 				headers: { Accept: "application/json" },
+				signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
 			});
 
 			if (!response.ok) {
@@ -1995,6 +2003,7 @@ export class AgentSkillsService extends Service {
 			const url = `${this.apiBase}/api/v1/skills/${safeSlug}`;
 			const response = await fetch(url, {
 				headers: { Accept: "application/json" },
+				signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
 			});
 
 			if (!response.ok) {
@@ -2207,7 +2216,9 @@ export class AgentSkillsService extends Service {
 
 			// Download
 			const downloadUrl = `${this.apiBase}/api/v1/download?slug=${safeSlug}&version=${resolvedVersion}`;
-			const response = await fetch(downloadUrl);
+			const response = await fetch(downloadUrl, {
+				signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
+			});
 
 			if (!response.ok) {
 				throw new Error(`Download failed: ${response.status}`);
@@ -2326,7 +2337,9 @@ export class AgentSkillsService extends Service {
 
 			// Download SKILL.md
 			const skillMdUrl = `${rawBase}SKILL.md`;
-			const response = await fetch(skillMdUrl);
+			const response = await fetch(skillMdUrl, {
+				signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
+			});
 
 			if (!response.ok) {
 				throw new Error(
@@ -2344,7 +2357,9 @@ export class AgentSkillsService extends Service {
 			// Try to fetch README.md if it exists (optional)
 			try {
 				const readmeUrl = `${rawBase}README.md`;
-				const readmeResponse = await fetch(readmeUrl);
+				const readmeResponse = await fetch(readmeUrl, {
+					signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
+				});
 				if (readmeResponse.ok) {
 					const readmeContent = await readCappedSkillText(readmeResponse);
 					files.push({ name: "README.md", content: readmeContent });
@@ -2400,7 +2415,9 @@ export class AgentSkillsService extends Service {
 		options: InstallSkillOptions & { slug?: string } = {},
 	): Promise<boolean> {
 		try {
-			const response = await fetch(url);
+			const response = await fetch(url, {
+				signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
+			});
 
 			if (!response.ok) {
 				throw new Error(`Failed to fetch: ${response.status}`);
