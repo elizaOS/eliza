@@ -31,6 +31,10 @@ const IOS_BG_TASK_IDENTIFIERS = [
 ];
 export const IOS_APNS_ENABLED_KEY = "ELIZA_APNS_ENABLED";
 export const IOS_HEALTHKIT_ENABLED_KEY = "ELIZA_HEALTHKIT_ENABLED";
+export const IOS_MICROPHONE_USAGE_DESCRIPTION =
+  "Eliza uses the microphone only during a voice session you start.";
+export const IOS_SPEECH_RECOGNITION_USAGE_DESCRIPTION =
+  "Eliza transcribes speech during a voice session you start.";
 
 /** Parse the one exact build flag shared by the renderer and native plist. */
 export function readIosApnsBuildFlag(raw) {
@@ -56,10 +60,7 @@ export function resolveIosPermissionKeys({ appName }) {
       "NSCameraUsageDescription",
       "This app uses your camera to capture photos and video when you ask it to.",
     ],
-    [
-      "NSMicrophoneUsageDescription",
-      "This app needs microphone access for voice wake, talk mode, and video capture.",
-    ],
+    ["NSMicrophoneUsageDescription", IOS_MICROPHONE_USAGE_DESCRIPTION],
     [
       "NSLocationWhenInUseUsageDescription",
       "This app uses your location to provide location-aware responses when you allow it.",
@@ -86,7 +87,7 @@ export function resolveIosPermissionKeys({ appName }) {
     ],
     [
       "NSSpeechRecognitionUsageDescription",
-      "This app uses on-device speech recognition to listen for voice commands and wake words.",
+      IOS_SPEECH_RECOGNITION_USAGE_DESCRIPTION,
     ],
     [
       "NSLocalNetworkUsageDescription",

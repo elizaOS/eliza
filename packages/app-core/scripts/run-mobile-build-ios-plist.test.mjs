@@ -5,6 +5,8 @@ import {
   ensurePlistArrayStrings,
   IOS_APNS_ENABLED_KEY,
   IOS_HEALTHKIT_ENABLED_KEY,
+  IOS_MICROPHONE_USAGE_DESCRIPTION,
+  IOS_SPEECH_RECOGNITION_USAGE_DESCRIPTION,
   mergeIosInfoPlist,
   readIosApnsBuildFlag,
   readIosHealthKitBuildFlag,
@@ -69,6 +71,9 @@ describe("iOS Info.plist overlay helpers", () => {
         `<key>${IOS_HEALTHKIT_ENABLED_KEY}</key>\\s*<string>0</string>`,
       ),
     );
+    expect(merged.content).toContain(IOS_MICROPHONE_USAGE_DESCRIPTION);
+    expect(merged.content).toContain(IOS_SPEECH_RECOGNITION_USAGE_DESCRIPTION);
+    expect(merged.content).not.toMatch(/wake word|always listen/i);
   });
 
   it("keeps every missing overlay key out of nested plist dictionaries", () => {

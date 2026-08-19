@@ -27,22 +27,27 @@ import { ensurePlistUrlScheme } from "../../app-core/scripts/lib/ios-plist-url-s
 import { readAppIdentity } from "../../app-core/scripts/lib/read-app-identity.mjs";
 import {
   IOS_APNS_ENABLED_KEY,
+  IOS_MICROPHONE_USAGE_DESCRIPTION,
+  IOS_SPEECH_RECOGNITION_USAGE_DESCRIPTION,
   readIosApnsBuildFlag,
 } from "../../app-core/scripts/mobile/ios-plist.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(__dirname, "..");
 
-const MIC_PURPOSE = "Eliza listens when you talk to your agent.";
-const SPEECH_PURPOSE =
-  "Eliza transcribes your speech so you can talk to the agent.";
 const APNS_ENABLED_KEY = IOS_APNS_ENABLED_KEY;
 
 const KEYS =
   /** @type {Array<{ key: string; value: string | string[] | boolean }>} */ ([
     { key: "UIBackgroundModes", value: ["audio"] },
-    { key: "NSMicrophoneUsageDescription", value: MIC_PURPOSE },
-    { key: "NSSpeechRecognitionUsageDescription", value: SPEECH_PURPOSE },
+    {
+      key: "NSMicrophoneUsageDescription",
+      value: IOS_MICROPHONE_USAGE_DESCRIPTION,
+    },
+    {
+      key: "NSSpeechRecognitionUsageDescription",
+      value: IOS_SPEECH_RECOGNITION_USAGE_DESCRIPTION,
+    },
     // Live Activities for the voice/dictation session (#12185 D10). Kept in
     // sync with the app-core merger (scripts/mobile/ios-plist.mjs) so the two
     // plist patchers agree.

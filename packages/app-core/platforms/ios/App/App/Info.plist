@@ -121,7 +121,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app uses your location to provide location-aware responses when you allow it.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>This app needs microphone access for voice wake, talk mode, and video capture.</string>
+	<string>Eliza uses the microphone only during a voice session you start.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>This app saves captured photos and videos to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -131,7 +131,7 @@
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>This app uses on-device speech recognition to listen for voice commands and wake words.</string>
+	<string>Eliza transcribes speech during a voice session you start.</string>
 	<key>NSScreenCaptureDescription</key>
 	<string>Captures the Eliza app window when you ask it to see what's on the screen.</string>
 	<key>NSAppleEventsUsageDescription</key>

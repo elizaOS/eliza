@@ -35,6 +35,13 @@ describe("patch-ios-plist", () => {
     expect(next).toContain("<string>audio</string>");
     expect(next).toContain("NSMicrophoneUsageDescription");
     expect(next).toContain("NSSpeechRecognitionUsageDescription");
+    expect(next).toContain(
+      "Eliza uses the microphone only during a voice session you start.",
+    );
+    expect(next).toContain(
+      "Eliza transcribes speech during a voice session you start.",
+    );
+    expect(next).not.toMatch(/wake word|always listen/i);
     expect(next).toMatch(
       /<key>ELIZA_APNS_ENABLED<\/key>\s*<string>0<\/string>/,
     );
