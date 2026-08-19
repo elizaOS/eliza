@@ -76,6 +76,29 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     await playback.stop();
   });
 
+  it("sends pause, resume, and flush controls to the AudioWorklet sink", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
+    const ctx = new FakePlaybackWorkletAudioContext();
+    const playback = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+    });
+    const worklet = FakeVoiceAudioWorkletNode.instances[0];
+
+    playback.pause();
+    playback.resume();
+    playback.pause();
+    playback.flush();
+
+    expect(worklet?.postedMessages).toEqual([
+      { type: "pause" },
+      { type: "resume" },
+      { type: "pause" },
+      { type: "flush" },
+    ]);
+    expect(playback.paused).toBe(false);
+    await playback.stop();
+  });
+
   it("closes the context when the static AudioWorklet module fails to load", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
     const ctx = new FakePlaybackWorkletAudioContext();
@@ -153,6 +176,49 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     pb.flush();
     const out = scriptNodeOf(ctx).render(50);
     expect(out.every((v) => v === 0)).toBe(true);
+    await pb.stop();
+  });
+
+  it("pause() preserves queued audio and resume() continues from the same sample", async () => {
+    const ctx = new FakePlaybackAudioContext();
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+    });
+    await pb.unlock();
+    pb.enqueue(pcmFrame(0.5, 8));
+
+    pb.pause();
+    expect(pb.paused).toBe(true);
+    expect(
+      scriptNodeOf(ctx)
+        .render(4)
+        .every((value) => value === 0),
+    ).toBe(true);
+
+    pb.resume();
+    expect(pb.paused).toBe(false);
+    const resumed = scriptNodeOf(ctx).render(8);
+    for (const value of resumed) expect(value).toBeCloseTo(0.5, 2);
+    await pb.stop();
+  });
+
+  it("flush() clears a provisional pause and discards the retained queue", async () => {
+    const ctx = new FakePlaybackAudioContext();
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+    });
+    await pb.unlock();
+    pb.enqueue(pcmFrame(0.5, 8));
+    pb.pause();
+
+    pb.flush();
+
+    expect(pb.paused).toBe(false);
+    expect(
+      scriptNodeOf(ctx)
+        .render(8)
+        .every((value) => value === 0),
+    ).toBe(true);
     await pb.stop();
   });
 

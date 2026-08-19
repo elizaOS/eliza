@@ -522,6 +522,107 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.stop();
   });
 
+  it("provisionally pauses on local speech and resumes retained audio after no server confirmation", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "n",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+      provisionalBargeIn: { confirmationTimeoutMs: 350 },
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-local" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-local" });
+    sock.emitAudio(floatSpeaking(200));
+
+    vi.useFakeTimers();
+    try {
+      micCtx.scriptNode?.feed(new Float32Array(4096).fill(0.1));
+      expect(marks.map((mark) => mark.name)).toContain("local_speech_start");
+      expect(
+        playbackScriptNodeOf(pbCtx)
+          .render(100)
+          .every((v) => v === 0),
+      ).toBe(true);
+      expect(sock.sentControls().some((frame) => frame.t === "barge_in")).toBe(
+        false,
+      );
+
+      await vi.advanceTimersByTimeAsync(350);
+      const resumed = playbackScriptNodeOf(pbCtx).render(100);
+      expect(resumed.some((value) => value !== 0)).toBe(true);
+      expect(marks.map((mark) => mark.name)).toContain(
+        "local_speech_start_unconfirmed",
+      );
+    } finally {
+      vi.useRealTimers();
+      await client.stop();
+    }
+  });
+
+  it("flushes provisionally paused audio when server STT confirms speech", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "n",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-confirm" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-confirm" });
+    sock.emitAudio(floatSpeaking(200));
+    micCtx.scriptNode?.feed(new Float32Array(4096).fill(0.1));
+
+    sock.emitControl({
+      t: "stt_partial",
+      text: "wait",
+      traceId: "T-confirm",
+    });
+
+    expect(
+      playbackScriptNodeOf(pbCtx)
+        .render(200)
+        .every((v) => v === 0),
+    ).toBe(true);
+    expect(marks.map((mark) => mark.name)).toContain(
+      "local_speech_start_confirmed",
+    );
+    expect(sock.sentControls().some((frame) => frame.t === "barge_in")).toBe(
+      false,
+    );
+    await client.stop();
+  });
+
   it("re-mints a FRESH token on a non-clean close (revoked/expired can't reconnect)", async () => {
     const mint = makeMintFetch([{ token: "tok-A" }, { token: "tok-B" }]);
     const ws = makeWsFactory();

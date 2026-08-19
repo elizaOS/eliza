@@ -28,9 +28,10 @@
  *   - voice-session-state (the §7.4 machine, mapped into the unified voice
  *     status via toContinuousStatus)
  *
- * Barge-in: `bargeIn()` flushes local playback IMMEDIATELY and sends
- * `{t:"barge_in"}`; it does NOT wait for the server `interrupted` event to stop
- * audible output, but reconciles state when that event arrives.
+ * Barge-in: explicit `bargeIn()` flushes local playback IMMEDIATELY and sends
+ * `{t:"barge_in"}`. Acoustic onset provisionally pauses (without consuming)
+ * playback while server STT confirms; confirmation flushes, while a bounded
+ * timeout resumes the retained queue after a false trigger.
  *
  * Trace: the client carries `traceId` from server events onto client playout
  * marks (`onTraceMark`). A mark never reached is reported as
@@ -66,6 +67,7 @@ import {
   type VoiceSessionCodec,
   type VoiceSessionMintResponse,
 } from "./voice-session-protocol";
+import type { ProvisionalSpeechStartConfig } from "./voice-session-provisional-speech-start";
 import {
   applyClientAction,
   applyServerEvent,
@@ -139,6 +141,15 @@ export interface VoiceTraceMark {
   atMs: number;
 }
 
+export interface ProvisionalBargeInOptions {
+  /** Enabled by default for the already flag-gated realtime route. */
+  enabled?: boolean;
+  /** Resume retained playback unless the server confirms by this deadline. Default 350ms. */
+  confirmationTimeoutMs?: number;
+  /** Conservative local onset thresholds; remote STT remains authoritative. */
+  detector?: ProvisionalSpeechStartConfig;
+}
+
 export interface VoiceSessionClientOptions {
   agentId: string;
   conversationId: string;
@@ -188,6 +199,11 @@ export interface VoiceSessionClientOptions {
   onError?: (error: Error) => void;
   /** Monotonic clock for trace marks (tests inject). */
   now?: () => number;
+  /**
+   * Local provisional speech-start policy. This only pauses playback; it never
+   * sends barge_in or cancels remote work before server confirmation.
+   */
+  provisionalBargeIn?: ProvisionalBargeInOptions;
 
   /**
    * Max reconnect (re-mint) attempts per outage before giving up. Default 5.
@@ -311,6 +327,11 @@ export function createVoiceSessionClient(
   const epochNow = options.epochNow ?? Date.now;
   const preLiveMaxAttempts = Math.max(1, options.preLiveMaxAttempts ?? 3);
   const preLiveRetryDelayMs = Math.max(0, options.preLiveRetryDelayMs ?? 500);
+  const provisionalBargeInEnabled = options.provisionalBargeIn?.enabled ?? true;
+  const provisionalBargeInConfirmationTimeoutMs = Math.max(
+    0,
+    options.provisionalBargeIn?.confirmationTimeoutMs ?? 350,
+  );
 
   let state: VoiceSessionMachineState = { ...INITIAL_VOICE_SESSION_STATE };
   let connPhase: ConnectionPhase = "idle";
@@ -335,6 +356,8 @@ export function createVoiceSessionClient(
   let captureSocket: VoiceWebSocketLike | null = null;
   let captureAbort: AbortController | null = null;
   let microphoneMuted = false;
+  let provisionalBargeInTimer: ReturnType<typeof setTimeout> | null = null;
+  let provisionalBargeInPlayback: VoiceSessionPlayback | null = null;
   // Whether the caller explicitly stopped us (clean bye) — suppresses reconnect.
   let intentionalClose = false;
 
@@ -350,6 +373,54 @@ export function createVoiceSessionClient(
       // error-policy:J7 trace-mark listeners are diagnostics; a throwing listener must never break audio or transport.
       void ignoredError;
     }
+  };
+
+  const clearProvisionalBargeInTimer = (): void => {
+    if (provisionalBargeInTimer === null) return;
+    clearTimeout(provisionalBargeInTimer);
+    provisionalBargeInTimer = null;
+  };
+
+  const releaseProvisionalBargeIn = (markName?: string): void => {
+    clearProvisionalBargeInTimer();
+    const pausedPlayback = provisionalBargeInPlayback;
+    provisionalBargeInPlayback = null;
+    if (!pausedPlayback) return;
+    pausedPlayback?.resume();
+    if (markName) mark(markName, state.traceId);
+  };
+
+  const confirmProvisionalBargeIn = (traceId: string): void => {
+    if (!provisionalBargeInPlayback) return;
+    clearProvisionalBargeInTimer();
+    const pausedPlayback = provisionalBargeInPlayback;
+    provisionalBargeInPlayback = null;
+    // Confirmation makes the interruption authoritative locally. `flush()`
+    // also releases the provisional pause so a replacement turn can play.
+    pausedPlayback.flush();
+    mark("local_speech_start_confirmed", traceId);
+  };
+
+  const beginProvisionalBargeIn = (): void => {
+    const currentPlayback = playback;
+    if (
+      !provisionalBargeInEnabled ||
+      state.phase !== "speaking" ||
+      !currentPlayback?.unlocked ||
+      provisionalBargeInPlayback
+    ) {
+      return;
+    }
+    currentPlayback.pause();
+    provisionalBargeInPlayback = currentPlayback;
+    mark("local_speech_start", state.traceId);
+    provisionalBargeInTimer = setTimeout(() => {
+      provisionalBargeInTimer = null;
+      if (provisionalBargeInPlayback !== currentPlayback) return;
+      provisionalBargeInPlayback = null;
+      currentPlayback.resume();
+      mark("local_speech_start_unconfirmed", state.traceId);
+    }, provisionalBargeInConfirmationTimeoutMs);
   };
 
   const emitError = (error: Error): void => {
@@ -556,6 +627,14 @@ export function createVoiceSessionClient(
       return;
     }
 
+    if (
+      event.t === "stt_partial" ||
+      event.t === "stt_final" ||
+      event.t === "interrupted"
+    ) {
+      confirmProvisionalBargeIn(event.traceId);
+    }
+
     setState(applyServerEvent(state, event));
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
     options.onServerEvent?.(event);
@@ -588,6 +667,7 @@ export function createVoiceSessionClient(
         mark("speaking_start", event.traceId);
         break;
       case "speaking_end":
+        releaseProvisionalBargeIn("local_speech_start_unconfirmed");
         mark("speaking_end", event.traceId);
         // Turn complete → loop back to listening once emitted.
         setState(loopToListening(state));
@@ -659,6 +739,22 @@ export function createVoiceSessionClient(
         onError: (err) => {
           if (isLifecycleCurrent(generation) && ws === socket) emitError(err);
         },
+        ...(provisionalBargeInEnabled
+          ? {
+              onProvisionalSpeechStart: beginProvisionalBargeIn,
+              ...(options.provisionalBargeIn?.detector
+                ? {
+                    provisionalSpeechStart: options.provisionalBargeIn.detector,
+                  }
+                : {}),
+              isProvisionalSpeechStartEnabled: () =>
+                isLifecycleCurrent(generation) &&
+                ws === socket &&
+                state.phase === "speaking" &&
+                Boolean(playback?.unlocked),
+              now,
+            }
+          : {}),
         getUserMedia: options.getUserMedia,
         createAudioContext: options.createMicAudioContext,
         signal: captureController.signal,
@@ -862,6 +958,7 @@ export function createVoiceSessionClient(
   ): Promise<void> {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
     clearRotationTimer();
+    releaseProvisionalBargeIn();
     // The transport is already gone, so publish that fact before a browser
     // driver is allowed to delay microphone teardown. Later retry attempts
     // re-arm the caller's connect watchdog from inside the loop.
@@ -961,6 +1058,8 @@ export function createVoiceSessionClient(
     disposed = true;
     intentionalClose = true;
     microphoneMuted = false;
+    clearProvisionalBargeInTimer();
+    provisionalBargeInPlayback = null;
     const stoppedGeneration = ++lifecycleGeneration;
     lifecycleAbort?.abort();
     lifecycleAbort = null;
@@ -1030,6 +1129,8 @@ export function createVoiceSessionClient(
       lastLiveAtMs = null;
       everLiveThisLifecycle = false;
       microphoneMuted = false;
+      clearProvisionalBargeInTimer();
+      provisionalBargeInPlayback = null;
       setState({ ...INITIAL_VOICE_SESSION_STATE, phase: "connecting" });
       // Create playback up front so an early user-gesture unlock is possible and
       // downlink frames after `ready` have a sink.
@@ -1088,6 +1189,8 @@ export function createVoiceSessionClient(
       if (disposed) return;
       // Flush local audible output IMMEDIATELY — do NOT wait for the server
       // `interrupted` event. Then optimistically fold state and notify server.
+      clearProvisionalBargeInTimer();
+      provisionalBargeInPlayback = null;
       playback?.flush();
       setState(applyClientAction(state, { type: "client/local_barge_in" }));
       sendControl({ t: "barge_in" });

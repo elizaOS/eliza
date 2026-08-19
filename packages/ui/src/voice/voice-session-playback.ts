@@ -13,6 +13,8 @@
  *   - `enqueue(bytes)` pushes a downlink frame; playback pulls at the context
  *     rate. `flush()` empties the queue immediately for barge-in (do NOT wait
  *     for the server `interrupted` event to stop audible output).
+ *   - `pause()` stops consuming queued audio for provisional acoustic barge-in;
+ *     `resume()` continues from the same sample if the server does not confirm.
  *   - iOS autoplay: the AudioContext starts suspended until a user gesture calls
  *     `unlock()`. `enqueue` before unlock buffers; nothing is dropped, but a
  *     caller should surface "tap to enable sound" via `needsUnlock`.
@@ -181,9 +183,15 @@ export interface VoiceSessionPlayback {
   readonly unlocked: boolean;
   /** True if audio has been enqueued while still suspended (surface a prompt). */
   readonly needsUnlock: boolean;
+  /** Whether playout is provisionally silent without consuming queued audio. */
+  readonly paused: boolean;
   readonly backend: "audioworklet" | "scriptprocessor";
   /** Push a pcm16 downlink frame for streaming playback. */
   enqueue(bytes: Uint8Array): void;
+  /** Provisionally silence playback while retaining the queue. Idempotent. */
+  pause(): void;
+  /** Continue retained playback after an unconfirmed local speech trigger. */
+  resume(): void;
   /** Empty the playback queue IMMEDIATELY (barge-in). */
   flush(): void;
   /** Resume the AudioContext on a user gesture (iOS autoplay unlock). */
@@ -228,6 +236,7 @@ export async function createVoiceSessionPlayback(
       : null;
 
   let stopped = false;
+  let paused = false;
   let needsUnlock = false;
   const setNeedsUnlock = (next: boolean): void => {
     if (needsUnlock === next) return;
@@ -282,6 +291,13 @@ export async function createVoiceSessionPlayback(
       scriptNode.onaudioprocess = (event) => {
         const outBuf = event.outputBuffer;
         const ch = outBuf.getChannelData(0);
+        if (paused) {
+          ch.fill(0);
+          for (let c = 1; c < outBuf.numberOfChannels; c += 1) {
+            outBuf.getChannelData(c).fill(0);
+          }
+          return;
+        }
         for (let i = 0; i < ch.length; i += 1) {
           while (jsQueue.length > 0 && jsReadOffset >= jsQueue[0].length) {
             jsQueue.shift();
@@ -389,6 +405,9 @@ export async function createVoiceSessionPlayback(
     get needsUnlock() {
       return needsUnlock;
     },
+    get paused() {
+      return paused;
+    },
     get backend() {
       return backend;
     },
@@ -404,8 +423,23 @@ export async function createVoiceSessionPlayback(
       }
       pushSamples(samples);
     },
+    pause() {
+      if (stopped || paused) return;
+      paused = true;
+      if (backend === "audioworklet" && workletNode) {
+        workletNode.port.postMessage({ type: "pause" });
+      }
+    },
+    resume() {
+      if (stopped || !paused) return;
+      paused = false;
+      if (backend === "audioworklet" && workletNode) {
+        workletNode.port.postMessage({ type: "resume" });
+      }
+    },
     flush() {
       // Immediate silence for barge-in — clear BOTH the deferred and live queues.
+      paused = false;
       preUnlockQueue.length = 0;
       // A flush discards every frame that was waiting for a gesture, so the UI
       // must not keep advertising an unlock for audio that no longer exists.

@@ -6,6 +6,7 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
     this.queue = [];
     this.readOffset = 0;
     this.hadAudio = false;
+    this.paused = false;
     this.port.onmessage = (event) => {
       const data = event.data;
       if (!data) return;
@@ -15,6 +16,11 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
       } else if (data.type === "flush") {
         this.queue = [];
         this.readOffset = 0;
+        this.paused = false;
+      } else if (data.type === "pause") {
+        this.paused = true;
+      } else if (data.type === "resume") {
+        this.paused = false;
       }
     };
   }
@@ -23,6 +29,10 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
     const output = outputs[0];
     const firstChannel = output[0];
     if (!firstChannel) return true;
+    if (this.paused) {
+      for (const channel of output) channel.fill(0);
+      return true;
+    }
     for (let i = 0; i < firstChannel.length; i += 1) {
       while (
         this.queue.length > 0 &&
