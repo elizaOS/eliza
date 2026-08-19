@@ -64,10 +64,15 @@ describe("view action handoff", () => {
           values: {
             ...showCalendar.values,
             completedActionDelivered: true,
+            completedActionHandoffId: "handoff-calendar",
           },
         },
       ]),
-    ).toEqual({ viewId: "calendar", completedActionDelivered: true });
+    ).toEqual({
+      viewId: "calendar",
+      completedActionDelivered: true,
+      completedActionHandoffId: "handoff-calendar",
+    });
   });
 
   it("ignores inherited handoff fields and delivery confirmations", () => {
@@ -150,6 +155,29 @@ describe("view action handoff", () => {
       viewId: "cloud-apps",
       viewPath: "/cloud-apps",
       source: "agent",
+    });
+  });
+
+  it("carries renderer handoff identity through direct terminal dispatch", () => {
+    const dispatch = vi.fn();
+    expect(
+      dispatchViewActionHandoffDirect(
+        [
+          {
+            ...showCalendar,
+            values: {
+              ...showCalendar.values,
+              completedActionHandoffId: "handoff-calendar",
+            },
+          },
+        ],
+        dispatch,
+      ),
+    ).toBe(true);
+    expect(dispatch).toHaveBeenCalledWith({
+      viewId: "calendar",
+      source: "agent",
+      completedActionHandoffId: "handoff-calendar",
     });
   });
 

@@ -122,7 +122,13 @@ async function handoffCompletedAction(
     // can belong to another device and is unavailable to REST-only native
     // renderers. The shell resolves the canonical path from the view id.
     try {
-      if (!viewHandoff.completedActionDelivered) {
+      // A renderer-observed handoff id is stronger than the server's legacy
+      // synchronous socket-count marker: always offer the terminal path and let
+      // the mounted shell deduplicate whichever transport it handled first.
+      if (
+        viewHandoff.completedActionHandoffId ||
+        !viewHandoff.completedActionDelivered
+      ) {
         dispatchViewActionHandoffDirect(actionResults);
       }
     } catch (err) {

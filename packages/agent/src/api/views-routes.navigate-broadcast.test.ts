@@ -207,18 +207,44 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     const { ctx, json, broadcastWsToClientId } = makeNavigateCtx("calendar", {
       clientId: "seeker-rest-client",
       delivery: "completed-action",
+      completedActionHandoffId: "handoff-1234",
     });
 
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
     expect(broadcastWsToClientId).toHaveBeenCalledTimes(1);
+    expect(broadcastWsToClientId).toHaveBeenCalledWith(
+      "seeker-rest-client",
+      expect.objectContaining({ completedActionHandoffId: "handoff-1234" }),
+    );
     expect(json).toHaveBeenCalledWith(
       ctx.res,
-      expect.objectContaining({ completedActionDelivered: true }),
+      expect.objectContaining({
+        completedActionDelivered: true,
+        completedActionHandoffId: "handoff-1234",
+      }),
     );
     expect(broadcastWsToClientId.mock.invocationCallOrder[0]).toBeLessThan(
       json.mock.invocationCallOrder[0],
     );
+  });
+
+  it("drops an invalid completed-action handoff id at the HTTP boundary", async () => {
+    const { ctx, json, broadcastWsToClientId } = makeNavigateCtx("calendar", {
+      clientId: "seeker-rest-client",
+      delivery: "completed-action",
+      completedActionHandoffId: "not valid because spaces",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    const frame = broadcastWsToClientId.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(frame).not.toHaveProperty("completedActionHandoffId");
+    const response = json.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(response).not.toHaveProperty("completedActionHandoffId");
   });
 
   it("keeps the completed-action fallback when targeted delivery throws", async () => {

@@ -945,6 +945,46 @@ describe("useChatSend action handoff", () => {
     window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
   });
 
+  it("retains terminal fallback when send-count delivery has a renderer handoff id", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Opening Calendar.",
+      completed: true,
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: {
+            mode: "show",
+            viewId: "calendar",
+            completedActionDelivered: true,
+            completedActionHandoffId: "handoff-not-yet-observed",
+          },
+        },
+      ],
+    });
+    const navigations: CustomEvent[] = [];
+    const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("open calendar", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(navigations).toHaveLength(1);
+    expect(navigations[0]?.detail).toMatchObject({
+      viewId: "calendar",
+      completedActionHandoffId: "handoff-not-yet-observed",
+    });
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+  });
+
   it("invalidates mounted views after a successful REST-streamed action", async () => {
     mocks.client.sendConversationMessageStream.mockResolvedValue({
       text: 'Created sticky note "LP3 Demo Proof".',

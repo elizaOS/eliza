@@ -119,6 +119,8 @@ export interface NavigateViewDetail {
   alwaysOnTop?: boolean;
   /** Opaque payload handed to the target view on navigation (deep-link state). */
   payload?: unknown;
+  /** Idempotency key shared by early WS and terminal chat navigation delivery. */
+  completedActionHandoffId?: string;
 }
 
 export type NavigateViewEvent = CustomEvent<NavigateViewDetail>;
@@ -242,6 +244,8 @@ export interface ShellNavigateViewPayload {
   alwaysOnTop?: boolean;
   /** Opaque target-view deep-link state, validated by the receiving view. */
   payload?: unknown;
+  /** Idempotency key shared by early WS and terminal chat navigation delivery. */
+  completedActionHandoffId?: string;
 }
 
 export type ShellNavigateViewWsFrame = ShellNavigateViewPayload & {
@@ -250,6 +254,17 @@ export type ShellNavigateViewWsFrame = ShellNavigateViewPayload & {
 
 function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+const COMPLETED_ACTION_HANDOFF_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+
+export function normalizeCompletedActionHandoffId(
+  value: unknown,
+): string | undefined {
+  return typeof value === "string" &&
+    COMPLETED_ACTION_HANDOFF_ID_PATTERN.test(value)
+    ? value
+    : undefined;
 }
 
 function readViewType(value: unknown): ShellNavigateViewType | undefined {
@@ -268,6 +283,10 @@ export function normalizeShellNavigateViewPayload(
       )
     : undefined;
 
+  const completedActionHandoffId = normalizeCompletedActionHandoffId(
+    data.completedActionHandoffId,
+  );
+
   return {
     viewId: typeof data.viewId === "string" ? data.viewId : undefined,
     viewPath: typeof data.viewPath === "string" ? data.viewPath : undefined,
@@ -284,6 +303,7 @@ export function normalizeShellNavigateViewPayload(
     placement: readNonEmptyString(data.placement),
     alwaysOnTop: data.alwaysOnTop === true,
     ...(Object.hasOwn(data, "payload") ? { payload: data.payload } : {}),
+    ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
   };
 }
 
