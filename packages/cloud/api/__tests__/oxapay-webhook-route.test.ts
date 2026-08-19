@@ -158,7 +158,7 @@ beforeEach(() => {
     trackId,
     orderId: trackId.replace("trk_", "pr_"),
     status: "paid",
-    amount: 25,
+    amount: "25",
     amountText: "25.00",
     currency: "USD",
     transactions: [],

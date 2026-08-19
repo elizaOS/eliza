@@ -132,7 +132,7 @@ class OxaPayService {
    * This returns a payLink that redirects users to OxaPay's hosted payment page.
    */
   async createInvoice(params: {
-    amount: string | number;
+    amount: string;
     currency?: string;
     payCurrency?: string;
     network?: OxaPayNetwork;

@@ -1,14 +1,4 @@
-/**
- * Fail-closed invoice-amount parsing in oxaPayService.getPaymentStatus (#13415).
- *
- * The inquiry response's `amount` string is the USD value the caller credits on
- * a confirmed payment (crypto-payments confirmPayment). The old
- * `Number.parseFloat(data.amount) || 0` coercion turned a malformed or missing
- * amount into $0, letting a CONFIRMED payment settle while crediting nothing.
- * These tests pin the strict behavior: non-finite/non-positive invoice amounts
- * throw OxaPayApiError; the audit-only native pay amount degrades to undefined
- * without failing the inquiry.
- */
+/** Pins exact decimal request and fail-closed inquiry contracts at the OxaPay boundary. */
 
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { OxaPayApiError, oxaPayService } from "./oxapay";
@@ -131,5 +121,28 @@ describe("oxaPayService.getPaymentStatus — invoice amount fail-closed", () => 
     const status = await oxaPayService.getPaymentStatus("trk_1");
     expect(status.amount).toBe("25");
     expect(status.transactions[0].nativeAmount).toBeUndefined();
+  });
+});
+
+describe("oxaPayService.createInvoice — exact decimal request", () => {
+  test("sends and returns the caller's exact decimal without Number conversion", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          result: 100,
+          trackId: "trk_exact",
+          payLink: "https://pay.example.test/trk_exact",
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const amount = "10.123456789012345678";
+    const invoice = await oxaPayService.createInvoice({ amount });
+
+    expect(requestBody?.amount).toBe(amount);
+    expect(invoice.amount).toBe(amount);
   });
 });
