@@ -180,6 +180,7 @@ import {
   APP_LOG_PREFIX,
   APP_NAMESPACE,
   APP_URL_SCHEME,
+  resolveDesktopHostBootConfig,
   resolveInjectedAppApiBase,
 } from "./app-config";
 import { cachedDynamicImport } from "./app-module-cache";
@@ -197,7 +198,6 @@ import {
 import { shouldStartFnHoldMonitor } from "./desktop-fn-hold-policy";
 import {
   decideChatOverlayToggle,
-  resolveDesktopHostPlatform,
   shouldEnableDesktopPushToTalk,
 } from "./desktop-hotkey";
 import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
@@ -833,6 +833,12 @@ function buildAppBootConfig(): AppBootConfig {
 
   return {
     ...current,
+    desktopHost: isElectrobunRuntime()
+      ? resolveDesktopHostBootConfig(
+          typeof window === "undefined" ? "" : window.location.search,
+          current.desktopHost,
+        )
+      : undefined,
     branding: APP_BRANDING,
     defaultApps: APP_CONFIG.defaultApps,
     assetBaseUrl:
@@ -2448,12 +2454,10 @@ async function initializeDesktopShell(): Promise<void> {
   // The detached macOS pill is explicit-control-only: no invisible key
   // listener may start voice behind another app. Other workstation hosts
   // retain their configurable ambient PTT path.
-  if (
-    shouldEnableDesktopPushToTalk(
-      isChatOverlayWindowShell(windowShellRoute),
-      resolveDesktopHostPlatform(navigator.platform),
-    )
-  ) {
+  const desktopPushToTalkEnabled = shouldEnableDesktopPushToTalk(
+    getBootConfig().desktopHost,
+  );
+  if (desktopPushToTalkEnabled) {
     // Global push-to-talk toggle (#20483). Electrobun's GlobalShortcut is
     // trigger-only (no key-up), so the OS-wide voice hotkey is press-to-start /
     // press-again-to-send rather than a held quasimode. Best-effort: a rejected
@@ -2562,7 +2566,7 @@ async function initializeDesktopShell(): Promise<void> {
         dispatchAppEvent(COMMAND_PALETTE_EVENT);
       } else if (id === "chat-overlay") {
         void summonChatOverlay();
-      } else if (id === "push-to-talk") {
+      } else if (id === "push-to-talk" && desktopPushToTalkEnabled) {
         dispatchAppEvent(PUSH_TO_TALK_TOGGLE_EVENT);
       }
     },

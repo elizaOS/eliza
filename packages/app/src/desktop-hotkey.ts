@@ -8,6 +8,9 @@
  * toggle logic is unit-testable without the Electrobun bridge.
  */
 
+import type { DesktopHostConfig } from "@elizaos/ui/config";
+import { shouldUseClickOnlyChatOverlayPill } from "@elizaos/ui/platform/desktop-pill-policy";
+
 export interface DesktopWindowState {
   focused: boolean;
   visible: boolean;
@@ -15,27 +18,14 @@ export interface DesktopWindowState {
 
 export type ChatOverlayToggleAction = "show" | "hide";
 
-export type DesktopHostPlatform = "darwin" | "linux" | "win32" | "unknown";
-
-/** Normalize the renderer's browser-platform string into the native host OS. */
-export function resolveDesktopHostPlatform(
-  navigatorPlatform: string,
-): DesktopHostPlatform {
-  if (/Mac/i.test(navigatorPlatform)) return "darwin";
-  if (/Win/i.test(navigatorPlatform)) return "win32";
-  if (/Linux/i.test(navigatorPlatform)) return "linux";
-  return "unknown";
-}
-
 /**
  * Only the macOS detached pill is explicit-control-only. Linux kiosk and
  * Windows/Linux overlay windows retain the established ambient PTT contract.
  */
 export function shouldEnableDesktopPushToTalk(
-  chatOverlayShell: boolean,
-  hostPlatform: DesktopHostPlatform,
+  desktopHost: DesktopHostConfig | undefined,
 ): boolean {
-  return !(chatOverlayShell && hostPlatform === "darwin");
+  return !shouldUseClickOnlyChatOverlayPill(desktopHost);
 }
 
 /**

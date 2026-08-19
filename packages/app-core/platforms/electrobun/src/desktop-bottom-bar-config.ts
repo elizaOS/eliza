@@ -67,6 +67,27 @@ export function appendChatOverlayShellModeParam(
   }
 }
 
+/** Tag every renderer transport with the native host identity it cannot infer. */
+export function appendDesktopHostConfigParams(
+  rendererUrl: string,
+  presentation: DesktopShellWindowPresentation,
+  platform: typeof process.platform,
+): string {
+  const desktopPlatform =
+    platform === "darwin" || platform === "linux" || platform === "win32"
+      ? platform
+      : null;
+  if (!desktopPlatform) return rendererUrl;
+  try {
+    const url = new URL(rendererUrl);
+    url.searchParams.set("elizaDesktopPlatform", desktopPlatform);
+    url.searchParams.set("elizaDesktopSurface", presentation.mode);
+    return url.toString();
+  } catch {
+    return rendererUrl;
+  }
+}
+
 export interface ScreenWorkArea {
   x: number;
   y: number;

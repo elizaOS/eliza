@@ -8,20 +8,8 @@
 import { describe, expect, it } from "vitest";
 import {
   decideChatOverlayToggle,
-  resolveDesktopHostPlatform,
   shouldEnableDesktopPushToTalk,
 } from "./desktop-hotkey";
-
-describe("resolveDesktopHostPlatform", () => {
-  it.each([
-    ["MacIntel", "darwin"],
-    ["Win32", "win32"],
-    ["Linux x86_64", "linux"],
-    ["", "unknown"],
-  ] as const)("maps %s to %s", (input, expected) => {
-    expect(resolveDesktopHostPlatform(input)).toBe(expected);
-  });
-});
 
 describe("decideChatOverlayToggle", () => {
   it("dismisses when the overlay is focused AND visible", () => {
@@ -48,17 +36,30 @@ describe("decideChatOverlayToggle", () => {
 
 describe("shouldEnableDesktopPushToTalk", () => {
   it("requires visible voice controls only in the macOS detached pill", () => {
-    expect(shouldEnableDesktopPushToTalk(true, "darwin")).toBe(false);
+    expect(
+      shouldEnableDesktopPushToTalk({
+        platform: "darwin",
+        surface: "bottom-bar",
+      }),
+    ).toBe(false);
   });
 
-  it.each(["linux", "win32", "unknown"] as const)(
+  it.each(["linux", "win32"] as const)(
     "preserves ambient PTT in a %s chat-overlay shell",
     (platform) => {
-      expect(shouldEnableDesktopPushToTalk(true, platform)).toBe(true);
+      expect(
+        shouldEnableDesktopPushToTalk({ platform, surface: "bottom-bar" }),
+      ).toBe(true);
     },
   );
 
   it("preserves ambient PTT for ordinary macOS workstation windows", () => {
-    expect(shouldEnableDesktopPushToTalk(false, "darwin")).toBe(true);
+    expect(
+      shouldEnableDesktopPushToTalk({ platform: "darwin", surface: "default" }),
+    ).toBe(true);
+  });
+
+  it("fails open for hosts without a typed native capability", () => {
+    expect(shouldEnableDesktopPushToTalk(undefined)).toBe(true);
   });
 });

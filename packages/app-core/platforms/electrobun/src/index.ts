@@ -44,6 +44,7 @@ import { readNavigationEventUrl } from "./cloud-auth-window";
 import { hydrateCloudOnlyEnv } from "./cloud-only-boot";
 import {
   appendChatOverlayShellModeParam,
+  appendDesktopHostConfigParams,
   computeBottomBarFrame,
   resolveDesktopShellWindowPresentation,
 } from "./desktop-bottom-bar-config";
@@ -1096,13 +1097,18 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   const bottomBar = presentation.mode === "bottom-bar";
   const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
   const requestedShellMode = readRendererShellMode();
-  const rendererUrl = kiosk
+  const shellRendererUrl = kiosk
     ? appendKioskShellModeParam(baseRendererUrl)
     : bottomBar
       ? appendChatOverlayShellModeParam(baseRendererUrl)
       : requestedShellMode && requestedShellMode !== "full"
         ? appendShellModeParam(baseRendererUrl, requestedShellMode)
         : baseRendererUrl;
+  const rendererUrl = appendDesktopHostConfigParams(
+    shellRendererUrl,
+    presentation,
+    process.platform,
+  );
   const buildInfo = await BuildConfig.get();
   const mainWindowPartition = resolveMainWindowPartition(process.env, {
     platform: process.platform,

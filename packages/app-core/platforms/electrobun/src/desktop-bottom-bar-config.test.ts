@@ -4,6 +4,7 @@ import {
   AUTH_GATE_BOTTOM_BAR_HEIGHT,
   AUTH_GATE_BOTTOM_BAR_WIDTH,
   appendChatOverlayShellModeParam,
+  appendDesktopHostConfigParams,
   computeBottomBarFrame,
   computeBottomBarSurfaceFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
@@ -71,6 +72,57 @@ describe("desktop bottom-bar config", () => {
           ELIZAOS_ALWAYS_ON_VOICE: "1",
         }),
       ).toContain("elizaOSAlwaysOnVoice=1");
+    });
+  });
+
+  describe("appendDesktopHostConfigParams", () => {
+    it("publishes one typed macOS bottom-bar identity on the renderer URL", () => {
+      const presentation = resolveDesktopShellWindowPresentation(
+        {},
+        [],
+        "darwin",
+      );
+      const tagged = new URL(
+        appendDesktopHostConfigParams(
+          "http://localhost:2138/?apiBase=local#/chat",
+          presentation,
+          "darwin",
+        ),
+      );
+      expect(tagged.searchParams.get("apiBase")).toBe("local");
+      expect(tagged.searchParams.get("elizaDesktopPlatform")).toBe("darwin");
+      expect(tagged.searchParams.get("elizaDesktopSurface")).toBe("bottom-bar");
+      expect(tagged.hash).toBe("#/chat");
+    });
+
+    it("publishes default and kiosk surfaces without guessing from the browser", () => {
+      for (const [presentation, expected] of [
+        [
+          resolveDesktopShellWindowPresentation(
+            { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
+            [],
+            "win32",
+          ),
+          "default",
+        ],
+        [
+          resolveDesktopShellWindowPresentation(
+            { ELIZAOS_SHELL_MODE: "kiosk" },
+            [],
+            "linux",
+          ),
+          "kiosk",
+        ],
+      ] as const) {
+        const tagged = new URL(
+          appendDesktopHostConfigParams(
+            "http://localhost:2138/",
+            presentation,
+            presentation.mode === "default" ? "win32" : "linux",
+          ),
+        );
+        expect(tagged.searchParams.get("elizaDesktopSurface")).toBe(expected);
+      }
     });
   });
 

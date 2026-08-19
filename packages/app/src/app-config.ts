@@ -7,6 +7,7 @@
  * rebrand.
  */
 import { resolveAppBranding } from "@elizaos/app-core";
+import type { DesktopHostConfig } from "@elizaos/ui/config";
 import appConfig from "../app.config";
 
 export const APP_CONFIG = appConfig;
@@ -37,4 +38,22 @@ export function resolveInjectedAppApiBase(input: {
       ? input.brandedApiBase
       : undefined)
   );
+}
+
+/** Resolve only a complete native-owned desktop identity from boot or URL. */
+export function resolveDesktopHostBootConfig(
+  search: string,
+  injected?: DesktopHostConfig,
+): DesktopHostConfig | undefined {
+  if (injected) return injected;
+  const params = new URLSearchParams(search);
+  const platform = params.get("elizaDesktopPlatform");
+  const surface = params.get("elizaDesktopSurface");
+  if (
+    (platform === "darwin" || platform === "linux" || platform === "win32") &&
+    (surface === "bottom-bar" || surface === "default" || surface === "kiosk")
+  ) {
+    return { platform, surface };
+  }
+  return undefined;
 }
