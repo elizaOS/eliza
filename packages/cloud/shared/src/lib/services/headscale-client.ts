@@ -44,6 +44,19 @@ function escapeRegExp(value: string): string {
 /** Default pre-auth key TTL (minutes) when `HEADSCALE_PREAUTH_TTL_MIN` is unset. */
 export const DEFAULT_PREAUTH_TTL_MIN = 1440;
 
+/** Exact positive-decimal minutes. Rejects exponent, hex, fraction, and 0-prefix. */
+const PREAUTH_TTL_MINUTES_GRAMMAR = /^[1-9]\d*$/;
+
+/**
+ * Operational ceiling (30 days). Longer reusable keys baked into Docker env
+ * become multi-millennial credentials; larger values also overflow TimeClip
+ * in `new Date(Date.now() + ms).toISOString()`.
+ */
+export const MAX_PREAUTH_TTL_MIN = 43_200;
+
+/** ECMA-262 TimeClip magnitude. */
+const ECMA_TIME_CLIP_MS = 8.64e15;
+
 /**
  * Pre-auth key TTL window (ms): how long a freshly-created key stays valid for a
  * container to boot AND finish VPN enrollment. 10 min proved too tight on slow
@@ -59,20 +72,34 @@ export const DEFAULT_PREAUTH_TTL_MIN = 1440;
  * fix an already-baked expired key on its own (the durable fix is the
  * reconnect-first + re-key entrypoint), but it widens the window in which a
  * freshly provisioned agent can survive a delayed first boot or an early
- * reboot. Env-overridable via `HEADSCALE_PREAUTH_TTL_MIN` so it survives a
- * daemon redeploy and ops can retune without a code change.
+ * reboot. Env-overridable via `HEADSCALE_PREAUTH_TTL_MIN` (exact positive
+ * decimal minutes in `[1, MAX_PREAUTH_TTL_MIN]`) so it survives a daemon
+ * redeploy and ops can retune without a code change.
  */
 export function resolvePreAuthTtlMs(): number {
-  const raw = process.env.HEADSCALE_PREAUTH_TTL_MIN ?? "";
+  const fallback = DEFAULT_PREAUTH_TTL_MIN * 60 * 1000;
+  const raw = (process.env.HEADSCALE_PREAUTH_TTL_MIN ?? "").trim();
+  if (!PREAUTH_TTL_MINUTES_GRAMMAR.test(raw)) {
+    return fallback;
+  }
   const minutes = Number(raw);
+  if (!Number.isSafeInteger(minutes) || minutes < 1 || minutes > MAX_PREAUTH_TTL_MIN) {
+    return fallback;
+  }
   const ms = minutes * 60 * 1000;
+  const expirationMs = Date.now() + ms;
   if (
-    !Number.isFinite(minutes) ||
-    minutes <= 0 ||
     !Number.isFinite(ms) ||
-    ms > Number.MAX_SAFE_INTEGER
+    !Number.isFinite(expirationMs) ||
+    Math.abs(expirationMs) > ECMA_TIME_CLIP_MS
   ) {
-    return DEFAULT_PREAUTH_TTL_MIN * 60 * 1000;
+    return fallback;
+  }
+  try {
+    new Date(expirationMs).toISOString();
+  } catch {
+    // error-policy:J3 out-of-range Date is invalid TTL, not a crash.
+    return fallback;
   }
   return ms;
 }
