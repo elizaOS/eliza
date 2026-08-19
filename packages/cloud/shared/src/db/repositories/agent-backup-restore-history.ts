@@ -427,23 +427,6 @@ export async function recordAgentVaultKeySeedReceipt(
     ) {
       conflict("Vault seed source is absent or lacks restorable manifest-v3 authority");
     }
-    // Locked between the backup and the lease so both writers take the same
-    // order (commitAgentBackupRestore does backup -> authority -> lease ->
-    // sandbox); any other position deadlocks the two against each other.
-    const [authority] = await tx
-      .select()
-      .from(agentBackupCatalogAuthorities)
-      .where(
-        and(
-          eq(agentBackupCatalogAuthorities.organization_id, input.organizationId),
-          eq(agentBackupCatalogAuthorities.agent_id, input.agentId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!authority) {
-      conflict("Vault seed catalogue authority is absent");
-    }
     const [lease] = await tx
       .select()
       .from(agentBackupRestoreLeases)
@@ -468,8 +451,7 @@ export async function recordAgentVaultKeySeedReceipt(
       lease.operation_id !== backup.backup_operation_id ||
       lease.activation_generation !== backup.lifecycle_generation ||
       lease.lifecycle_revision !== backup.lifecycle_revision ||
-      lease.expected_manifest_sha256 !== backup.manifest_digest ||
-      lease.catalog_epoch !== authority.catalog_revision
+      lease.expected_manifest_sha256 !== backup.manifest_digest
     ) {
       conflict("Vault seed lost its exact live restore lease");
     }
@@ -516,6 +498,24 @@ export async function recordAgentVaultKeySeedReceipt(
       nodeId: sandbox.activation_node_id,
       nodeIncarnation: input.targetNodeIncarnation,
     });
+    // Backup writers that also fence a live sandbox take sandbox and node
+    // authority before the per-agent catalogue authority. Keeping this global
+    // order aligned with reservation/capture and vault-key rotation prevents
+    // sandbox <-> catalogue-authority AB-BA deadlocks.
+    const [authority] = await tx
+      .select()
+      .from(agentBackupCatalogAuthorities)
+      .where(
+        and(
+          eq(agentBackupCatalogAuthorities.organization_id, input.organizationId),
+          eq(agentBackupCatalogAuthorities.agent_id, input.agentId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!authority || lease.catalog_epoch !== authority.catalog_revision) {
+      conflict("Vault seed lost its exact live restore lease");
+    }
     const finalDatabaseNow = await readPostLockDatabaseNow(tx);
     if (lease.expires_at.getTime() <= finalDatabaseNow.getTime()) {
       conflict("Vault seed lease expired while mutable authorities were revalidated");
@@ -657,20 +657,6 @@ export async function commitAgentBackupRestore(
       conflict("Final restore source is absent, already finalized, or no longer restorable");
     }
     assertAgentBackupCatalogTransition({ from: backup.catalog_state, to: "restore_verified" });
-    const [authority] = await tx
-      .select()
-      .from(agentBackupCatalogAuthorities)
-      .where(
-        and(
-          eq(agentBackupCatalogAuthorities.organization_id, input.organizationId),
-          eq(agentBackupCatalogAuthorities.agent_id, input.agentId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!authority || authority.restore_generation >= MAX_SIGNED_BIGINT) {
-      conflict("Restore generation authority is absent or exhausted");
-    }
     const [seed] = await tx
       .select()
       .from(agentVaultKeySeedReceipts)
@@ -738,8 +724,7 @@ export async function commitAgentBackupRestore(
       lease.operation_id !== seed.operation_id ||
       lease.activation_generation !== seed.source_activation_generation ||
       lease.lifecycle_revision !== seed.source_lifecycle_revision ||
-      lease.expected_manifest_sha256 !== seed.manifest_sha256 ||
-      lease.catalog_epoch !== authority.catalog_revision
+      lease.expected_manifest_sha256 !== seed.manifest_sha256
     ) {
       conflict("Final restore lost its exact live restore lease");
     }
@@ -782,6 +767,27 @@ export async function commitAgentBackupRestore(
       nodeId: publication.node_id,
       nodeIncarnation: publication.node_incarnation,
     });
+    // Match every sandbox-bearing backup writer: sandbox and node authority
+    // precede catalogue authority. Writers without a sandbox still serialize
+    // on the already-locked backup row before reaching this authority.
+    const [authority] = await tx
+      .select()
+      .from(agentBackupCatalogAuthorities)
+      .where(
+        and(
+          eq(agentBackupCatalogAuthorities.organization_id, input.organizationId),
+          eq(agentBackupCatalogAuthorities.agent_id, input.agentId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !authority ||
+      authority.restore_generation >= MAX_SIGNED_BIGINT ||
+      lease.catalog_epoch !== authority.catalog_revision
+    ) {
+      conflict("Restore generation authority is absent, stale, or exhausted");
+    }
     const verifiedAt = await readPostLockDatabaseNow(tx);
     if (lease.expires_at.getTime() <= verifiedAt.getTime()) {
       conflict("Final restore lease expired while mutable authorities were revalidated");

@@ -16,9 +16,9 @@ const MIGRATION_NAMES = [
 const MIGRATIONS = MIGRATION_NAMES.map((name) =>
   readFileSync(join(MIGRATIONS_DIR, `${name}.sql`), "utf8"),
 );
-// Applied after the 0246-0250 stack rather than inside it. 0253 drops the global
+// Applied after the 0246-0250 stack rather than inside it. 0259 drops the global
 // incarnation unique that 0246's own backfill arbitrates on, so 0246 is not
-// re-runnable once 0253 has landed -- a sequence the journal-based migrator
+// re-runnable once 0259 has landed -- a sequence the journal-based migrator
 // never produces, and one the replay proofs below must therefore not simulate.
 const REARM_MIGRATION = readFileSync(
   join(MIGRATIONS_DIR, "0259_agent_node_incarnation_rearm.sql"),
@@ -359,7 +359,7 @@ describe("0246-0250 immutable restore history migrations", () => {
   });
 });
 
-describe("0253 node incarnation re-arm", () => {
+describe("0259 node incarnation re-arm", () => {
   const REPLACEMENT_NODE = "00000000-0000-4000-8000-00000000a016";
 
   async function reRegisterSameBootUnderNewRecord(database: PGlite): Promise<void> {
@@ -382,7 +382,7 @@ describe("0253 node incarnation re-arm", () => {
     }
   });
 
-  test("0253 lets the same boot re-attest under a new record and keeps both rows", async () => {
+  test("0259 lets the same boot re-attest under a new record and keeps both rows", async () => {
     const database = await databaseWithFoundation();
     try {
       await applyMigrations(database);
@@ -404,7 +404,7 @@ describe("0253 node incarnation re-arm", () => {
     }
   });
 
-  test("0253 is idempotent and still refuses an identity rewrite on the same record", async () => {
+  test("0259 is idempotent and still refuses an identity rewrite on the same record", async () => {
     const database = await databaseWithFoundation();
     try {
       await applyMigrations(database);

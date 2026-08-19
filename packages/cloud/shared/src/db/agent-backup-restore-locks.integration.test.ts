@@ -1,12 +1,12 @@
 /** Real-PostgreSQL proofs for restore clock and catalogue lock ordering. */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pushSchema } from "drizzle-kit/api";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { Client } from "pg";
 import {
   acquireEphemeralPostgres,
@@ -17,6 +17,12 @@ import {
   agentBackupObjects,
   agentBackupRestoreLeases,
 } from "./schemas/agent-backup-catalog";
+import {
+  agentActivationPublications,
+  agentBackupRestoreReceipts,
+  agentNodeIncarnationHistories,
+  agentVaultKeySeedReceipts,
+} from "./schemas/agent-backup-restore-history";
 import { agentSandboxBackups, agentSandboxes } from "./schemas/agent-sandboxes";
 import {
   agentVaultKeyAuthorities,
@@ -77,6 +83,19 @@ const CLOCK_LEASE_ID = "00000000-0000-4000-8000-00000000b208";
 const CLOCK_FENCE = "00000000-0000-4000-8000-00000000b209";
 const RECEIPT_SHA = "b".repeat(64);
 
+const WRITER_BACKUP_ID = "00000000-0000-4000-8000-00000000b301";
+const WRITER_OPERATION_ID = "00000000-0000-4000-8000-00000000b302";
+const WRITER_ATTEMPT_ID = "00000000-0000-4000-8000-00000000b303";
+const WRITER_LEASE_ID = "00000000-0000-4000-8000-00000000b304";
+const WRITER_FENCE = "00000000-0000-4000-8000-00000000b305";
+const WRITER_SEED_ID = "00000000-0000-4000-8000-00000000b306";
+const WRITER_PUBLICATION_ID = "00000000-0000-4000-8000-00000000b307";
+const WRITER_FINAL_ID = "00000000-0000-4000-8000-00000000b308";
+const WRITER_TARGET_GENERATION = "00000000-0000-4000-8000-00000000b309";
+const WRITER_VAULT_GENERATION = "00000000-0000-4000-8000-00000000b30a";
+const WRITER_RESERVE_ONE = "00000000-0000-4000-8000-00000000b30b";
+const WRITER_RESERVE_TWO = "00000000-0000-4000-8000-00000000b30c";
+
 let postgres: EphemeralPostgres | null = await acquireEphemeralPostgres();
 let isolatedDatabaseName: string | null = null;
 let isolatedDsn: string | null = null;
@@ -101,6 +120,15 @@ let releaseAgentBackupRestoreLease:
   | undefined;
 let agentBackupObjectInventoryDigest:
   | typeof import("./repositories/agent-backup-catalog").agentBackupObjectInventoryDigest
+  | undefined;
+let recordAgentActivationPublication:
+  | typeof import("./repositories/agent-backup-restore-history").recordAgentActivationPublication
+  | undefined;
+let recordAgentVaultKeySeedReceipt:
+  | typeof import("./repositories/agent-backup-restore-history").recordAgentVaultKeySeedReceipt
+  | undefined;
+let commitAgentBackupRestore:
+  | typeof import("./repositories/agent-backup-restore-history").commitAgentBackupRestore
   | undefined;
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
@@ -191,10 +219,11 @@ if (!postgres) {
   process.env.TEST_DATABASE_URL = isolated.dsn;
   process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
   process.env.MOCK_REDIS = "1";
-  const [clientModule, repositoryModule, leaseModule] = await Promise.all([
+  const [clientModule, repositoryModule, leaseModule, restoreHistoryModule] = await Promise.all([
     import("./client"),
     import("./repositories/agent-backup-catalog"),
     import("./repositories/agent-backup-restore-lease"),
+    import("./repositories/agent-backup-restore-history"),
   ]);
   closeDatabaseConnectionsForTests = clientModule.closeDatabaseConnectionsForTests;
   dbWrite = clientModule.dbWrite;
@@ -205,6 +234,9 @@ if (!postgres) {
   agentBackupObjectInventoryDigest = repositoryModule.agentBackupObjectInventoryDigest;
   acquireAgentBackupRestoreLease = leaseModule.acquireAgentBackupRestoreLease;
   releaseAgentBackupRestoreLease = leaseModule.releaseAgentBackupRestoreLease;
+  recordAgentActivationPublication = restoreHistoryModule.recordAgentActivationPublication;
+  recordAgentVaultKeySeedReceipt = restoreHistoryModule.recordAgentVaultKeySeedReceipt;
+  commitAgentBackupRestore = restoreHistoryModule.commitAgentBackupRestore;
 }
 
 afterAll(async () => {
@@ -235,6 +267,10 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         agentSandboxBackups,
         agentBackupObjects,
         agentBackupRestoreLeases,
+        agentNodeIncarnationHistories,
+        agentActivationPublications,
+        agentVaultKeySeedReceipts,
+        agentBackupRestoreReceipts,
         agentVaultKeyGenerations,
         agentVaultKeyAuthorities,
         agentVaultKeyBackupBindings,
@@ -311,6 +347,60 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       activation_completed_at: new Date("2026-08-17T00:00:02.000Z"),
     });
   }, 60_000);
+
+  afterEach(async () => {
+    if (!dbWrite) return;
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_generation: ACTIVATION_GENERATION,
+        activation_lifecycle_revision: 0n,
+        activation_purpose: "provision",
+        activation_phase: "active",
+        activation_backup_id: null,
+        activation_backup_hash: null,
+        activation_receipt_hash: SHA,
+        activation_container_id: SOURCE_CONTAINER_ID,
+        activation_node_id: "robot-node-lock",
+        activation_boot_id: NODE_INCARNATION,
+        activation_image_digest: `sha256:${SHA}`,
+        activation_token_hash: SHA,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await dbWrite
+      .delete(agentBackupRestoreReceipts)
+      .where(eq(agentBackupRestoreReceipts.id, WRITER_FINAL_ID));
+    await dbWrite
+      .delete(agentVaultKeySeedReceipts)
+      .where(eq(agentVaultKeySeedReceipts.id, WRITER_SEED_ID));
+    await dbWrite
+      .delete(agentActivationPublications)
+      .where(eq(agentActivationPublications.id, WRITER_PUBLICATION_ID));
+    await dbWrite
+      .delete(agentBackupRestoreLeases)
+      .where(eq(agentBackupRestoreLeases.id, WRITER_LEASE_ID));
+    await dbWrite
+      .delete(agentVaultKeyBackupBindings)
+      .where(eq(agentVaultKeyBackupBindings.backup_id, WRITER_BACKUP_ID));
+    await dbWrite
+      .delete(agentSandboxBackups)
+      .where(
+        inArray(agentSandboxBackups.backup_operation_id, [
+          WRITER_OPERATION_ID,
+          WRITER_RESERVE_ONE,
+          WRITER_RESERVE_TWO,
+        ]),
+      );
+    await dbWrite
+      .delete(agentVaultKeyAuthorities)
+      .where(eq(agentVaultKeyAuthorities.current_generation_id, WRITER_VAULT_GENERATION));
+    await dbWrite
+      .delete(agentVaultKeyGenerations)
+      .where(eq(agentVaultKeyGenerations.generation_id, WRITER_VAULT_GENERATION));
+    await dbWrite
+      .delete(agentNodeIncarnationHistories)
+      .where(eq(agentNodeIncarnationHistories.docker_node_record_id, NODE_RECORD_ID));
+  });
 
   test("reservation replay and actual restore acquisition share backup-before-authority order", async () => {
     const reserve = reserveAgentBackupOperation;
@@ -467,6 +557,277 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       await Promise.allSettled([capture.end(), observer.end()]);
     }
   }, 30_000);
+
+  test("restore receipt writers cannot deadlock a concurrent sandbox-first reservation", async () => {
+    const reserve = reserveAgentBackupOperation;
+    const publish = recordAgentActivationPublication;
+    const seed = recordAgentVaultKeySeedReceipt;
+    const finalize = commitAgentBackupRestore;
+    if (!isolatedDsn || !dbWrite || !reserve || !publish || !seed || !finalize) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+
+    await dbWrite
+      .insert(agentBackupCatalogAuthorities)
+      .values({ organization_id: ORG_ID, agent_id: AGENT_ID })
+      .onConflictDoNothing();
+    const [initialAuthority] = await dbWrite
+      .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
+      .from(agentBackupCatalogAuthorities)
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    if (!initialAuthority) throw new Error("writer fixture catalogue authority is missing");
+
+    await dbWrite.insert(agentVaultKeyGenerations).values({
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      generation_id: WRITER_VAULT_GENERATION,
+      source_activation_generation: ACTIVATION_GENERATION,
+      supersedes_generation_id: null,
+      format: "kms-aead-vault-passphrase-v1",
+      kms_key_id: `org:${ORG_ID}/writer-lock/dek/v1`,
+      kms_key_version: 1n,
+      kms_context: "{}",
+      kms_context_derivation: "elizaos.agent-vault-key.kms-context.v1",
+      wrapped_ciphertext_base64: Buffer.alloc(32, 0x11).toString("base64"),
+      wrapped_nonce_base64: Buffer.alloc(12, 0x22).toString("base64"),
+      wrapped_auth_tag_base64: Buffer.alloc(16, 0x33).toString("base64"),
+      wrapped_envelope_sha256: SHA,
+      authority_receipt_derivation: "elizaos.agent-vault-key.authority-receipt.v1",
+      authority_receipt_digest: RECEIPT_SHA,
+    });
+    await dbWrite.insert(agentVaultKeyAuthorities).values({
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      current_generation_id: WRITER_VAULT_GENERATION,
+    });
+    await dbWrite.insert(agentSandboxBackups).values({
+      id: WRITER_BACKUP_ID,
+      sandbox_record_id: null,
+      snapshot_type: "auto",
+      state_data: { memories: [], config: {}, workspaceFiles: {} },
+      state_data_storage: "inline",
+      size_bytes: 92,
+      backup_kind: "full",
+      backup_operation_id: WRITER_OPERATION_ID,
+      catalog_version: 2,
+      catalog_state: "protected",
+      catalog_payload_digest: SHA,
+      catalog_revision: initialAuthority.revision,
+      catalog_organization_id: ORG_ID,
+      catalog_agent_id: AGENT_ID,
+      lifecycle_generation: ACTIVATION_GENERATION,
+      lifecycle_revision: 0n,
+      source_provider: "operator-onboarded",
+      source_node_record_id: NODE_RECORD_ID,
+      source_node_id: "robot-node-lock",
+      source_node_incarnation: NODE_INCARNATION,
+      source_provider_server_id: null,
+      source_provider_handle: "container-generation-lock",
+      source_container_id: SOURCE_CONTAINER_ID,
+      retention_reason: "schedule",
+      retention_until: new Date("2026-12-01T00:00:00.000Z"),
+      manifest_format: "elizaos.agent-backup",
+      manifest_version: 3,
+      manifest_digest: SHA,
+      manifest_canonical_draft: "{}",
+      manifest_object_count: 1,
+      object_inventory_digest: SHA,
+      image_digest: `sha256:${SHA}`,
+      database_schema_version: "1",
+      plugin_set_digest: SHA,
+      watermark_digest: SHA,
+      raw_size_bytes: 1,
+      compressed_size_bytes: 1,
+      encrypted_size_bytes: 92,
+      kms_key_id: `org:${ORG_ID}/writer-lock/backup/v1`,
+      kms_key_version: 1,
+      operation_key_bundle_generation_id: WRITER_VAULT_GENERATION,
+      operation_key_bundle_format: "kms-aead-operation-key-bundle-v1",
+      operation_key_bundle_ref: `backup-key-bundle:${WRITER_OPERATION_ID}`,
+      operation_key_bundle_ciphertext_base64: Buffer.alloc(92, 0x42).toString("base64"),
+      operation_key_bundle_sha256: SHA,
+      operation_key_bundle_size_bytes: 92,
+      operation_key_bundle_context: "{}",
+      operation_key_bundle_context_derivation:
+        "elizaos.agent-backup.operation-key-bundle-context.v1",
+      operation_key_bundle_local_receipt_derivation:
+        "elizaos.kms-aead-operation-key-bundle.local-receipt.v1",
+      operation_key_bundle_local_receipt_digest: SHA,
+      vault_key_generation_id: WRITER_VAULT_GENERATION,
+      vault_key_authority_receipt_digest: RECEIPT_SHA,
+    });
+    await dbWrite.insert(agentVaultKeyBackupBindings).values({
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      backup_id: WRITER_BACKUP_ID,
+      operation_id: WRITER_OPERATION_ID,
+      source_activation_generation: ACTIVATION_GENERATION,
+      source_lifecycle_revision: 0n,
+      manifest_sha256: SHA,
+      vault_key_generation_id: WRITER_VAULT_GENERATION,
+      vault_key_authority_receipt_digest: RECEIPT_SHA,
+    });
+    await dbWrite.insert(agentBackupRestoreLeases).values({
+      id: WRITER_LEASE_ID,
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      backup_id: WRITER_BACKUP_ID,
+      operation_id: WRITER_OPERATION_ID,
+      activation_generation: ACTIVATION_GENERATION,
+      lifecycle_revision: 0n,
+      expected_manifest_sha256: SHA,
+      copy_role: "primary",
+      restore_attempt_id: WRITER_ATTEMPT_ID,
+      owner_id: "writer-lock-owner",
+      generation: WRITER_FENCE,
+      catalog_epoch: initialAuthority.revision,
+      expires_at: new Date(Date.now() + 300_000),
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_generation: WRITER_TARGET_GENERATION,
+        activation_lifecycle_revision: 0n,
+        activation_purpose: "restore",
+        activation_phase: "active",
+        activation_backup_id: WRITER_BACKUP_ID,
+        activation_backup_hash: SHA,
+        activation_receipt_hash: SHA,
+        activation_container_id: SOURCE_CONTAINER_ID,
+        activation_node_id: "robot-node-lock",
+        activation_boot_id: NODE_INCARNATION,
+        activation_image_digest: `sha256:${SHA}`,
+        activation_token_hash: SHA,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+
+    await publish({
+      publicationId: WRITER_PUBLICATION_ID,
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      activationGeneration: WRITER_TARGET_GENERATION,
+      expectedActivationReceiptSha256: SHA,
+      expectedContainerId: SOURCE_CONTAINER_ID,
+      expectedNodeRecordId: NODE_RECORD_ID,
+      expectedNodeIncarnation: NODE_INCARNATION,
+      expectedTokenSha256: SHA,
+    });
+
+    const reservationInput = (operationId: string) => ({
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      sandboxRecordId: AGENT_ID,
+      operationId,
+      activationGeneration: WRITER_TARGET_GENERATION,
+      lifecycleRevision: "0",
+      snapshotType: "manual" as const,
+      backupKind: "full" as const,
+      sourceProvider: "operator-onboarded" as const,
+      sourceNodeRecordId: NODE_RECORD_ID,
+      sourceNodeId: "robot-node-lock",
+      sourceNodeIncarnation: NODE_INCARNATION,
+      sourceProviderServerId: null,
+      sourceProviderHandle: "container-generation-lock",
+      sourceContainerId: SOURCE_CONTAINER_ID,
+      retentionReason: "manual" as const,
+      retentionUntil: new Date("2026-12-02T00:00:00.000Z"),
+    });
+
+    const interleaveWithReservation = async (
+      operationId: string,
+      writer: () => Promise<unknown>,
+    ): Promise<void> => {
+      const blocker = new Client({ connectionString: isolatedDsn });
+      const observer = new Client({ connectionString: isolatedDsn });
+      await Promise.all([blocker.connect(), observer.connect()]);
+      let writerError: unknown;
+      let writerPromise: Promise<void> | undefined;
+      let reservationError: unknown;
+      let reservationPromise: Promise<void> | undefined;
+      try {
+        await blocker.query("BEGIN");
+        const blockerPid = await blocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+        await blocker.query(
+          "SELECT organization_id FROM agent_backup_catalog_authorities " +
+            "WHERE organization_id = $1 AND agent_id = $2 FOR UPDATE",
+          [ORG_ID, AGENT_ID],
+        );
+        writerPromise = writer().then(
+          () => undefined,
+          (error: unknown) => {
+            writerError = error;
+          },
+        );
+        const writerPid = await waitUntilBlockedBy(observer, blockerPid.rows[0]!.pid);
+        reservationPromise = reserve(reservationInput(operationId)).then(
+          () => undefined,
+          (error: unknown) => {
+            reservationError = error;
+          },
+        );
+        await waitUntilBlockedBy(observer, writerPid);
+        await blocker.query("COMMIT");
+        await Promise.all([writerPromise, reservationPromise]);
+        if (writerError) throw writerError;
+        if (reservationError) throw reservationError;
+      } finally {
+        await blocker.query("ROLLBACK");
+        if (writerPromise) await writerPromise;
+        if (reservationPromise) await reservationPromise;
+        await Promise.allSettled([blocker.end(), observer.end()]);
+      }
+    };
+
+    await interleaveWithReservation(WRITER_RESERVE_ONE, () =>
+      seed({
+        receiptId: WRITER_SEED_ID,
+        receiptDigest: RECEIPT_SHA,
+        organizationId: ORG_ID,
+        agentId: AGENT_ID,
+        backupId: WRITER_BACKUP_ID,
+        restoreAttemptId: WRITER_ATTEMPT_ID,
+        leaseId: WRITER_LEASE_ID,
+        leaseOwnerId: "writer-lock-owner",
+        leaseFencingToken: WRITER_FENCE,
+        targetActivationGeneration: WRITER_TARGET_GENERATION,
+        targetNodeRecordId: NODE_RECORD_ID,
+        targetNodeIncarnation: NODE_INCARNATION,
+      }),
+    );
+
+    const [currentAuthority] = await dbWrite
+      .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
+      .from(agentBackupCatalogAuthorities)
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    if (!currentAuthority) throw new Error("writer fixture catalogue authority disappeared");
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ catalog_epoch: currentAuthority.revision })
+      .where(eq(agentBackupRestoreLeases.id, WRITER_LEASE_ID));
+
+    await interleaveWithReservation(WRITER_RESERVE_TWO, () =>
+      finalize({
+        receiptId: WRITER_FINAL_ID,
+        receiptDigest: SHA,
+        organizationId: ORG_ID,
+        agentId: AGENT_ID,
+        backupId: WRITER_BACKUP_ID,
+        restoreAttemptId: WRITER_ATTEMPT_ID,
+        seedReceiptId: WRITER_SEED_ID,
+        seedReceiptDigest: RECEIPT_SHA,
+        activationPublicationId: WRITER_PUBLICATION_ID,
+        targetActivationGeneration: WRITER_TARGET_GENERATION,
+        expectedActivationReceiptSha256: SHA,
+      }),
+    );
+
+    expect(
+      await dbWrite
+        .select({ id: agentBackupRestoreReceipts.id })
+        .from(agentBackupRestoreReceipts)
+        .where(eq(agentBackupRestoreReceipts.id, WRITER_FINAL_ID)),
+    ).toHaveLength(1);
+  }, 60_000);
 
   test("direct expiration wins or fences a racing restore acquisition and replays", async () => {
     const reserve = reserveAgentBackupOperation;
@@ -762,7 +1123,8 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
           catalog_agent_id uuid NOT NULL, backup_operation_id uuid NOT NULL,
           lifecycle_generation uuid NOT NULL, lifecycle_revision numeric(20, 0) NOT NULL,
           manifest_digest text NOT NULL, manifest_version integer, catalog_state text,
-          vault_key_generation_id uuid, vault_key_authority_receipt_digest text
+          vault_key_generation_id uuid, vault_key_authority_receipt_digest text,
+          UNIQUE (id, catalog_organization_id, catalog_agent_id)
         );
         INSERT INTO organizations VALUES ('${CLOCK_ORG_ID}');
         INSERT INTO agent_backup_catalog_authorities
