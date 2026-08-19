@@ -1616,7 +1616,7 @@ async function runCreateLegacy(
       },
       failFallback,
     );
-    await callbackText(callback, textOut);
+    await callbackText(callback, textOut, { voiced: true });
     return {
       success: false,
       text: textOut,
@@ -1674,7 +1674,7 @@ async function runCreateLegacy(
     createdFallback,
   );
   const proseText = composeCreateText(createdProse);
-  await callbackText(callback, proseText);
+  await callbackText(callback, proseText, { voiced: true });
 
   // The creation ack is the complete answer to a single-operation turn:
   // verified + turnComplete make the callback the sole delivery instead of

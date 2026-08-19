@@ -327,7 +327,11 @@ function normalizeCerebrasModelId(modelName: string): string {
 function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   if (!modelName) return false;
   const id = normalizeCerebrasModelId(modelName);
-  return id === "gpt-oss-120b" || id === "zai-glm-4.7";
+  // gemma-4-31b is also a Cerebras reasoning model (emits reasoning_content;
+  // accepts reasoning_effort — verified live HTTP 200 on 2026-08-19). Without
+  // the bounded default an uncapped reasoning budget can consume the whole
+  // completion and return empty visible content on capped calls.
+  return id === "gpt-oss-120b" || id === "zai-glm-4.7" || id === "gemma-4-31b";
 }
 
 function isOpenCodeGoEndpoint(value: string | undefined): boolean {

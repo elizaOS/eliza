@@ -535,8 +535,15 @@ export async function awaitCodingSupervisionBound(
 export async function callbackText(
   callback: HandlerCallback | undefined,
   text: string,
+  options: { voiced?: boolean } = {},
 ): Promise<void> {
-  if (callback) await callback({ text });
+  if (!callback) return;
+  // Text already phrased in the agent's voice (phraseForUser) must carry the
+  // agentVoiced stamp, or the delivery boundary re-voices it with a SECOND
+  // model call — doubling ack latency, which is exactly how a spawn ack loses
+  // the delivery race against a fast child's completion relay (live
+  // 2026-08-18: "Created task agent." arrived AFTER the task's own output).
+  await callback(options.voiced ? { text, agentVoiced: true } : { text });
 }
 
 export function errorResult(error: string, text?: string): ActionResult {
