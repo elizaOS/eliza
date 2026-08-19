@@ -2719,7 +2719,7 @@ function appendStateProviderEvents(
 }
 
 type V5PlannerActionSurfaceSummary = {
-	mode: "full" | "tiered";
+	mode: "full" | "tiered" | "relay-delivery";
 	candidateActionCount: number;
 	catalogParentCount: number;
 	exposedActionCount: number;
@@ -3253,6 +3253,39 @@ function buildV5PlannerActionSurface(params: {
 		typeof process !== "undefined"
 			? process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase()
 			: undefined;
+	// A task_complete relay's only job is delivering the finished result. Any
+	// catalog tool on this synthetic turn invites task-management
+	// improvisation over the completed work (live 2026-08-19: the planner
+	// ARCHIVED the just-completed task and told the user "Archived" instead
+	// of relaying the result). Protocol tools (REPLY/IGNORE/STOP) remain.
+	// Blocked/question/coordination relays keep the full surface — those turns
+	// may legitimately act (answer a child, coordinate a sibling).
+	if (
+		isSubAgentCompletionArtifact(params.message) &&
+		String(params.message.content?.text ?? "")
+			.slice(0, 400)
+			.includes("task_complete")
+	) {
+		return {
+			exposedActionNames: new Set<string>(),
+			summary: {
+				mode: "relay-delivery",
+				candidateActionCount: params.actions.length,
+				catalogParentCount: 0,
+				exposedActionCount: 0,
+				tierAParents: [],
+				tierAChildrenByParent: {},
+				tierBParents: [],
+				omittedParentCount: 0,
+				omittedParentNamesPreview: [],
+				actionSurfaceHash: "relay-delivery",
+				warnings: 0,
+				queryTokens: [],
+				candidateActions: [],
+				parentActionHints: [],
+			},
+		};
+	}
 	const forceFullSurface =
 		fullSurfaceFlag === "1" ||
 		fullSurfaceFlag === "true" ||
