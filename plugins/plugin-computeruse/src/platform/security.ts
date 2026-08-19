@@ -318,6 +318,33 @@ function errnoCode(error: unknown): string {
     : "";
 }
 
+async function pathContainsSymlink(absolutePath: string): Promise<boolean> {
+  const root = path.parse(absolutePath).root;
+  const segments = path
+    .relative(root, absolutePath)
+    .split(path.sep)
+    .filter(Boolean);
+  let current = root;
+
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) {
+        return true;
+      }
+    } catch (error) {
+      // error-policy:J3 an absent component means the remaining lexical tail
+      // is absent too; every existing component checked so far was non-symlink.
+      if (errnoCode(error) === "ENOENT") {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Resolve and re-validate file paths after lstat/realpath to reduce TOCTOU /
  * symlink escapes (GHSA-qmf5-p9x5-9xr5).
@@ -334,6 +361,15 @@ export async function resolveSafeFileTarget(
   const resolved = path.resolve(filePath);
 
   try {
+    // Inspect every existing lexical component before canonicalizing. Checking
+    // only the longest existing descendant misses a symlink earlier in the
+    // path when the symlink target already contains later components.
+    if (await pathContainsSymlink(resolved)) {
+      return {
+        allowed: false,
+        reason: "Symbolic links are not allowed for file operations.",
+      };
+    }
     const stat = await lstat(resolved);
     if (stat.isSymbolicLink()) {
       return {
@@ -351,50 +387,55 @@ export async function resolveSafeFileTarget(
     // error-policy:J3 errno-narrowed realpath probe — only ENOENT (the file
     // does not exist yet) degrades to static path validation; every other
     // failure returns an explicit not-allowed result below.
-    if (errnoCode(error) === "ENOENT" && operation === "read") {
+    if (errnoCode(error) === "ENOENT") {
+      // Walk up to the longest existing parent and realpath that, then
+      // rejoin the tail so a workspace symlink-to-elsewhere cannot hide
+      // behind a not-yet-created descendant. Mirrors
+      // plugins/plugin-coding-tools/src/lib/path-utils.ts#resolveRealPath.
+      const tail: string[] = [path.basename(resolved)];
+      let current = path.dirname(resolved);
+      while (true) {
+        try {
+          const currentStat = await lstat(current);
+          if (currentStat.isSymbolicLink()) {
+            return {
+              allowed: false,
+              reason: "Parent path is a symbolic link.",
+            };
+          }
+          const currentReal = await realpath(current);
+          const target = path.join(currentReal, ...tail);
+          const parentCheck = validateFilePath(target, operation);
+          if (!parentCheck.allowed) {
+            return parentCheck;
+          }
+          return { allowed: true, resolvedPath: target };
+        } catch (parentError) {
+          // error-policy:J3 only ENOENT walks further up; every other
+          // failure fails closed.
+          if (errnoCode(parentError) === "ENOENT") {
+            const parent = path.dirname(current);
+            if (parent === current) {
+              break;
+            }
+            tail.unshift(path.basename(current));
+            current = parent;
+            continue;
+          }
+          return {
+            allowed: false,
+            reason:
+              parentError instanceof Error
+                ? parentError.message
+                : String(parentError),
+          };
+        }
+      }
       const fallback = validateFilePath(resolved, operation);
       if (!fallback.allowed) {
         return fallback;
       }
       return { allowed: true, resolvedPath: resolved };
-    }
-
-    if (errnoCode(error) === "ENOENT" && operation === "write") {
-      const parent = path.dirname(resolved);
-      try {
-        const parentStat = await lstat(parent);
-        if (parentStat.isSymbolicLink()) {
-          return {
-            allowed: false,
-            reason: "Parent path is a symbolic link.",
-          };
-        }
-        const parentReal = await realpath(parent);
-        const target = path.join(parentReal, path.basename(resolved));
-        const parentCheck = validateFilePath(target, operation);
-        if (!parentCheck.allowed) {
-          return parentCheck;
-        }
-        return { allowed: true, resolvedPath: target };
-      } catch (parentError) {
-        // error-policy:J3 errno-narrowed parent-dir probe — only ENOENT
-        // degrades to static validation; every other failure returns an
-        // explicit not-allowed result below.
-        if (errnoCode(parentError) === "ENOENT") {
-          const fallback = validateFilePath(resolved, operation);
-          if (!fallback.allowed) {
-            return fallback;
-          }
-          return { allowed: true, resolvedPath: resolved };
-        }
-        return {
-          allowed: false,
-          reason:
-            parentError instanceof Error
-              ? parentError.message
-              : String(parentError),
-        };
-      }
     }
 
     return {
