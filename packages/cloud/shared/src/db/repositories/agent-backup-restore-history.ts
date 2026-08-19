@@ -77,11 +77,24 @@ async function lockCurrentNodeHistory(
       provider_server_id: node.provider_server_id,
       host_key_fingerprint: node.host_key_fingerprint,
     })
-    .onConflictDoNothing({ target: agentNodeIncarnationHistories.node_incarnation });
+    .onConflictDoNothing({
+      target: [
+        agentNodeIncarnationHistories.docker_node_record_id,
+        agentNodeIncarnationHistories.node_incarnation,
+      ],
+    });
+  // Read back on the same composite key the insert arbitrates on. A boot id is
+  // unique per node record, not globally (0259), so selecting on the incarnation
+  // alone would pick an arbitrary record's row once a host re-registers.
   const [history] = await tx
     .select()
     .from(agentNodeIncarnationHistories)
-    .where(eq(agentNodeIncarnationHistories.node_incarnation, input.nodeIncarnation))
+    .where(
+      and(
+        eq(agentNodeIncarnationHistories.docker_node_record_id, node.id),
+        eq(agentNodeIncarnationHistories.node_incarnation, input.nodeIncarnation),
+      ),
+    )
     .limit(1);
   if (
     !history ||
@@ -485,6 +498,24 @@ export async function recordAgentVaultKeySeedReceipt(
       nodeId: sandbox.activation_node_id,
       nodeIncarnation: input.targetNodeIncarnation,
     });
+    // Backup writers that also fence a live sandbox take sandbox and node
+    // authority before the per-agent catalogue authority. Keeping this global
+    // order aligned with reservation/capture and vault-key rotation prevents
+    // sandbox <-> catalogue-authority AB-BA deadlocks.
+    const [authority] = await tx
+      .select()
+      .from(agentBackupCatalogAuthorities)
+      .where(
+        and(
+          eq(agentBackupCatalogAuthorities.organization_id, input.organizationId),
+          eq(agentBackupCatalogAuthorities.agent_id, input.agentId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!authority || lease.catalog_epoch !== authority.catalog_revision) {
+      conflict("Vault seed lost its exact live restore lease");
+    }
     const finalDatabaseNow = await readPostLockDatabaseNow(tx);
     if (lease.expires_at.getTime() <= finalDatabaseNow.getTime()) {
       conflict("Vault seed lease expired while mutable authorities were revalidated");
@@ -626,20 +657,6 @@ export async function commitAgentBackupRestore(
       conflict("Final restore source is absent, already finalized, or no longer restorable");
     }
     assertAgentBackupCatalogTransition({ from: backup.catalog_state, to: "restore_verified" });
-    const [authority] = await tx
-      .select()
-      .from(agentBackupCatalogAuthorities)
-      .where(
-        and(
-          eq(agentBackupCatalogAuthorities.organization_id, input.organizationId),
-          eq(agentBackupCatalogAuthorities.agent_id, input.agentId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!authority || authority.restore_generation >= MAX_SIGNED_BIGINT) {
-      conflict("Restore generation authority is absent or exhausted");
-    }
     const [seed] = await tx
       .select()
       .from(agentVaultKeySeedReceipts)
@@ -707,8 +724,7 @@ export async function commitAgentBackupRestore(
       lease.operation_id !== seed.operation_id ||
       lease.activation_generation !== seed.source_activation_generation ||
       lease.lifecycle_revision !== seed.source_lifecycle_revision ||
-      lease.expected_manifest_sha256 !== seed.manifest_sha256 ||
-      lease.catalog_epoch !== authority.catalog_revision
+      lease.expected_manifest_sha256 !== seed.manifest_sha256
     ) {
       conflict("Final restore lost its exact live restore lease");
     }
@@ -739,6 +755,38 @@ export async function commitAgentBackupRestore(
       sandbox.activation_lifecycle_revision !== publication.lifecycle_revision
     ) {
       conflict("Final restore lost exact current sandbox activation authority");
+    }
+    // The permanent receipt attests a restore onto a specific boot. Row-lock the
+    // node and re-prove that boot is still the live one, exactly as the seed
+    // writer does before its own append-only write: a target that reboots
+    // between publication and commit otherwise earns a receipt naming an
+    // incarnation that no longer exists, which authorizeAgentActivationDispatch
+    // already refuses to dispatch onto.
+    await lockCurrentNodeHistory(tx, {
+      nodeRecordId: publication.docker_node_record_id,
+      nodeId: publication.node_id,
+      nodeIncarnation: publication.node_incarnation,
+    });
+    // Match every sandbox-bearing backup writer: sandbox and node authority
+    // precede catalogue authority. Writers without a sandbox still serialize
+    // on the already-locked backup row before reaching this authority.
+    const [authority] = await tx
+      .select()
+      .from(agentBackupCatalogAuthorities)
+      .where(
+        and(
+          eq(agentBackupCatalogAuthorities.organization_id, input.organizationId),
+          eq(agentBackupCatalogAuthorities.agent_id, input.agentId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !authority ||
+      authority.restore_generation >= MAX_SIGNED_BIGINT ||
+      lease.catalog_epoch !== authority.catalog_revision
+    ) {
+      conflict("Restore generation authority is absent, stale, or exhausted");
     }
     const verifiedAt = await readPostLockDatabaseNow(tx);
     if (lease.expires_at.getTime() <= verifiedAt.getTime()) {

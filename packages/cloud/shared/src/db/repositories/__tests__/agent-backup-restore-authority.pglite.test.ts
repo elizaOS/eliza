@@ -1163,6 +1163,30 @@ describe("strict restore catalogue authority", () => {
         targetNodeIncarnation: "00000000-0000-4000-8000-00000000d050",
       }),
     ).rejects.toThrow("unattested, changed, or blocked");
+    // The seed receipt is append-only (0250), so a stale catalogue epoch must be
+    // refused BEFORE the row exists rather than left as an unremovable record.
+    const [epochBefore] = await dbWrite
+      .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
+      .from(agentBackupCatalogAuthorities)
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    if (!epochBefore) throw new Error("Expected vault-created catalogue authority");
+    await dbWrite
+      .update(agentBackupCatalogAuthorities)
+      .set({ catalog_revision: epochBefore.revision + 1n })
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+    await expect(recordAgentVaultKeySeedReceipt(seedInput)).rejects.toThrow(
+      "lost its exact live restore lease",
+    );
+    const [seedAfterStaleEpoch] = await dbWrite
+      .select({ id: agentVaultKeySeedReceipts.id })
+      .from(agentVaultKeySeedReceipts)
+      .where(eq(agentVaultKeySeedReceipts.id, SEED_RECEIPT_ID));
+    expect(seedAfterStaleEpoch).toBeUndefined();
+    await dbWrite
+      .update(agentBackupCatalogAuthorities)
+      .set({ catalog_revision: epochBefore.revision })
+      .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+
     const [seedFirst, seedReplay] = await Promise.all([
       recordAgentVaultKeySeedReceipt(seedInput),
       recordAgentVaultKeySeedReceipt(seedInput),
@@ -1212,6 +1236,20 @@ describe("strict restore catalogue authority", () => {
       .update(agentBackupRestoreLeases)
       .set({ expires_at: originalLeaseExpiry })
       .where(eq(agentBackupRestoreLeases.id, acquired.authority.leaseId));
+
+    // A target that reboots between publication and commit must not earn a
+    // permanent receipt naming an incarnation that no longer exists.
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: "00000000-0000-4000-8000-00000000d055" })
+      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+    await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
+      "Target node incarnation is absent",
+    );
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_incarnation: TARGET_NODE_INCARNATION })
+      .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
 
     await releaseAgentBackupRestoreLease(acquired.authority);
     await expect(commitAgentBackupRestore(finalInput)).rejects.toThrow(
