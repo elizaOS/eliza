@@ -251,7 +251,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
       label: "direct account request switched to dedicated",
       initialBase: STAGING_CONTROL_PLANE,
       switchedBase: DEDICATED_STAGING_BASE,
-      expectedToken: "rejected-token",
+      expectedToken: null,
     },
   ])(
     "uses the request-time client scope for a $label 401",
@@ -286,14 +286,15 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
       native: true,
     },
   ])(
-    "keeps Steward storage outside the dedicated-client cleanup scope for an $label 401",
+    "preserves a different Steward token after an $label 401",
     async ({ baseUrl, native }) => {
       platform.native = native;
       setPageLocation("localhost");
-      localStorage.setItem(STEWARD_TOKEN_KEY, "preserved-token");
-      const fetchSpy = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValueOnce(jsonResponse({ error: "unauthorized" }, 401));
+      const fetchSpy = mockTrustedShellResponse(
+        { error: "unauthorized" },
+        401,
+        () => localStorage.setItem(STEWARD_TOKEN_KEY, "preserved-token"),
+      );
       const client = new ElizaClient(baseUrl, "client-token");
 
       await client.getCloudStatus().catch(() => undefined);

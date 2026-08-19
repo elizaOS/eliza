@@ -759,8 +759,10 @@ export function useCloudState({
       // reached the working device-code flow. Instead, drain the stale token
       // below and fall through to the device-code flow on the same click.
       if (canUseMountedStewardLoginSurface()) {
-        closePrePoppedWindow();
+        let fallThroughToLegacyLogin = false;
         try {
+          const reusedStoredCredential = hasUsableStoredStewardToken();
+          if (!reusedStoredCredential) closePrePoppedWindow();
           await launchStewardLogin();
           // Gate the connected state + success toast on an ACTUAL authed status
           // call. `launchStewardLogin` short-circuits on a stored token; if that
@@ -768,29 +770,55 @@ export function useCloudState({
           // declaring "connected" + toasting here would be a false success that
           // 401s the agent picker in a loop. Only celebrate a verified session;
           // otherwise surface the re-auth path the login UI already renders.
-          const connected = await pollCloudCredits();
-          // error-policy:J4 wallet config is a secondary panel; a failed load
-          // must not undo a verified login. The wallet section renders its own
-          // unavailable state from the empty config.
-          await loadWalletConfig().catch(() => undefined);
-          if (connected) {
-            setElizaCloudConnected(true);
-            setElizaCloudLoginError(null);
-          } else {
-            setElizaCloudLoginError(
-              "Could not verify your Eliza Cloud session. Please sign in again.",
-            );
+          let connected = await pollCloudCredits();
+          // A direct identity 401 clears only the exact rejected Steward
+          // credential. When launchStewardLogin reused that credential, invoke
+          // the mounted sign-in surface now and verify the replacement on this
+          // same click instead of making the button appear inert.
+          if (
+            !connected &&
+            reusedStoredCredential &&
+            !readStoredStewardToken()?.trim()
+          ) {
+            if (hasStewardLoginLauncher()) {
+              closePrePoppedWindow();
+              await launchStewardLogin();
+              connected = await pollCloudCredits();
+            } else {
+              // The opaque token was the only reason this branch was usable.
+              // With it authoritatively rejected and no in-app provider,
+              // preserve the prepared popup and continue into device-code
+              // login below instead of requiring a second click.
+              fallThroughToLegacyLogin = true;
+            }
+          }
+          if (!fallThroughToLegacyLogin) {
+            closePrePoppedWindow();
+            // error-policy:J4 wallet config is a secondary panel; a failed
+            // load must not undo a verified login. The wallet section renders
+            // its own unavailable state from the empty config.
+            await loadWalletConfig().catch(() => undefined);
+            if (connected) {
+              setElizaCloudConnected(true);
+              setElizaCloudLoginError(null);
+            } else {
+              setElizaCloudLoginError(
+                "Could not verify your Eliza Cloud session. Please sign in again.",
+              );
+            }
           }
         } catch (err) {
           setElizaCloudLoginError(
             err instanceof Error ? err.message : "Eliza Cloud login failed",
           );
         } finally {
-          elizaCloudLoginBusyRef.current = false;
-          setElizaCloudLoginBusy(false);
-          completeLogin();
+          if (!fallThroughToLegacyLogin) {
+            elizaCloudLoginBusyRef.current = false;
+            setElizaCloudLoginBusy(false);
+            completeLogin();
+          }
         }
-        return loginCompletion;
+        if (!fallThroughToLegacyLogin) return loginCompletion;
       }
 
       // A stored-but-stale Steward JWT with no launcher mounted: drain it so it

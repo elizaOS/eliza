@@ -46,6 +46,7 @@ import {
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
 } from "../utils/cloud-agent-base";
+import { isTerminalDedicatedCloudAgentErrorState as classifyTerminalDedicatedCloudAgentErrorState } from "./dedicated-cloud-agent-error";
 import {
   asApiLikeError,
   deriveFirstRunResumeFieldsFromConfig,
@@ -119,23 +120,17 @@ class ApiHangTimeoutError extends Error {
  * `cloud` runtime mode pinned every launch (icon tap, devicectl, XCUITest) to
  * a dead dedicated agent, 503ing /api/auth/status until the 90s budget fired.
  */
-const DEDICATED_CLOUD_AGENT_ERROR_STATE_FRAGMENT = "Agent is in an error state";
-
 /**
  * True when the failure is the dedicated-agent proxy's terminal
  * sandbox-error 503 for the currently pinned dedicated cloud agent base.
  */
 export function isTerminalDedicatedCloudAgentErrorState(args: {
   status: number | undefined;
+  code?: string;
   message: string | null | undefined;
   clientBaseUrl: string;
 }): boolean {
-  return (
-    args.status === 503 &&
-    typeof args.message === "string" &&
-    args.message.includes(DEDICATED_CLOUD_AGENT_ERROR_STATE_FRAGMENT) &&
-    isDedicatedCloudAgentBase(args.clientBaseUrl)
-  );
+  return classifyTerminalDedicatedCloudAgentErrorState(args);
 }
 
 /**
@@ -1070,6 +1065,7 @@ export async function runPollingBackend(
       if (
         isTerminalDedicatedCloudAgentErrorState({
           status: ae?.status,
+          code: ae?.code,
           message: terminalMessage,
           clientBaseUrl: client.getBaseUrl(),
         })

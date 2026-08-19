@@ -31,10 +31,14 @@ const clientMock = vi.hoisted(() => ({
   startAgent: vi.fn(),
   listConversations: vi.fn(),
   fetch: vi.fn(),
+  getBaseUrl: vi.fn(),
+  setBaseUrl: vi.fn(),
+  setToken: vi.fn(),
 }));
 
 const persistenceMock = vi.hoisted(() => ({
   loadPersistedActiveServer: vi.fn(),
+  clearPersistedActiveServer: vi.fn(),
 }));
 
 vi.mock("../api", () => ({
@@ -43,6 +47,7 @@ vi.mock("../api", () => ({
 
 vi.mock("./persistence", () => ({
   loadPersistedActiveServer: persistenceMock.loadPersistedActiveServer,
+  clearPersistedActiveServer: persistenceMock.clearPersistedActiveServer,
 }));
 
 function createDeps() {
@@ -51,6 +56,7 @@ function createDeps() {
     setConnected: vi.fn(),
     setStartupError: vi.fn(),
     setFirstRunLoading: vi.fn(),
+    setFirstRunComplete: vi.fn(),
     setAuthRequired: vi.fn(),
     setPairingEnabled: vi.fn(),
     setPairingExpiresAt: vi.fn(),
@@ -74,6 +80,9 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     clientMock.getBootProgress.mockResolvedValue(null);
     clientMock.getStatus.mockResolvedValue(RUNNING_STATUS);
     clientMock.hasToken.mockReturnValue(true);
+    clientMock.getBaseUrl.mockReturnValue(
+      "https://agent-123.cloud.eliza.app/api/v1/eliza/agents/agent-123",
+    );
     clientMock.fetch.mockResolvedValue({
       state: "starting",
       canRespond: false,
@@ -170,6 +179,40 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
       ([e]) => e.type === "AGENT_RUNNING",
     );
     expect(runningDispatches).toHaveLength(1);
+  });
+
+  it("clears a terminal failed agent and returns directly to agent selection", async () => {
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Failed Cloud Agent",
+    });
+    clientMock.listConversations.mockRejectedValue({
+      status: 503,
+      code: "agent_error_state",
+      message: "machine-readable failure",
+    });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    );
+
+    expect(persistenceMock.clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
+    expect(clientMock.setToken).toHaveBeenCalledWith(null);
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(false);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "CLOUD_AGENT_SELECTION_REQUIRED",
+    });
+    expect(deps.setStartupError).not.toHaveBeenCalled();
   });
 
   it("advances from the genuine proxy status when conversations are slow or unavailable", async () => {

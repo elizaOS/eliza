@@ -279,6 +279,7 @@ export interface StartupCoordinatorView {
 
 export interface ApiLikeError {
   kind?: string;
+  code?: string;
   status?: number;
   path?: string;
   message?: string;

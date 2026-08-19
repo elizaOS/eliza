@@ -171,6 +171,37 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     expect(result).toBeNull(); // already has messages
   });
 
+  it("selects the restored conversation before its Cloud messages finish loading", async () => {
+    let resolveMessages!: (value: { messages: ConversationMessage[] }) => void;
+    const messagesPending = new Promise<{ messages: ConversationMessage[] }>(
+      (resolve) => {
+        resolveMessages = resolve;
+      },
+    );
+    const client = makeFakeClient({
+      listConversations: vi.fn(async () => ({
+        conversations: [{ ...CONVERSATION }],
+      })),
+      getConversationMessages: vi.fn(() => messagesPending),
+    });
+    const { deps, setActiveConversationId, setConversationMessages } =
+      makeDeps(client);
+
+    const hydration = hydrateInitialConversation(deps);
+    await vi.waitFor(() =>
+      expect(setActiveConversationId).toHaveBeenCalledWith("c1"),
+    );
+    expect(setConversationMessages).not.toHaveBeenCalled();
+
+    resolveMessages({
+      messages: [{ id: "m1", role: "user", text: "hello", timestamp: 1 }],
+    });
+    await expect(hydration).resolves.toBeNull();
+    expect(setConversationMessages).toHaveBeenCalledWith([
+      { id: "m1", role: "user", text: "hello", timestamp: 1 },
+    ]);
+  });
+
   it("leaves the thread holder UNKNOWN when the restore fetch fails (placeholder [] must never feed draft cleanup)", async () => {
     const client = makeFakeClient({
       listConversations: vi.fn(async () => ({

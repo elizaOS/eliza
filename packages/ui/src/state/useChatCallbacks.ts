@@ -140,6 +140,17 @@ function conversationRecency(conversation: Conversation): number {
   return Number.isNaN(updated) ? 0 : updated;
 }
 
+function selectInitialRestoredConversation(
+  conversations: Conversation[],
+): Conversation {
+  const savedConversationId = loadActiveConversationId();
+  return (
+    conversations.find(
+      (conversation) => conversation.id === savedConversationId,
+    ) ?? conversations[0]
+  );
+}
+
 async function resolveRestoredConversationWithMessages(
   api: HydrateConversationClient,
   conversations: Conversation[],
@@ -150,11 +161,7 @@ async function resolveRestoredConversationWithMessages(
    *  proof the conversation is empty, so it must never feed draft cleanup. */
   messagesLoaded: boolean;
 }> {
-  const savedConversationId = loadActiveConversationId();
-  const restoredConversation =
-    conversations.find(
-      (conversation) => conversation.id === savedConversationId,
-    ) ?? conversations[0];
+  const restoredConversation = selectInitialRestoredConversation(conversations);
   let restoredMessages: ConversationMessage[] = [];
   try {
     restoredMessages = filterRenderableConversationMessages(
@@ -263,6 +270,18 @@ export async function hydrateInitialConversation(
     }
     setConversations(conversations);
     if (conversations.length > 0) {
+      // Select the restored row as soon as the list arrives. Direct Cloud
+      // hydration intentionally does not block shell paint, so waiting for the
+      // messages request here left the sidebar populated while the pane stayed
+      // on "Start a conversation" until a manual click.
+      const initialConversation =
+        selectInitialRestoredConversation(conversations);
+      setActiveConversationId(initialConversation.id);
+      activeConversationIdRef.current = initialConversation.id;
+      api.sendWsMessage({
+        type: "active-conversation",
+        conversationId: initialConversation.id,
+      });
       const {
         conversation: restoredConversation,
         messages: nextMessages,
@@ -271,12 +290,14 @@ export async function hydrateInitialConversation(
       if (!isCurrentHydration()) {
         return null;
       }
-      setActiveConversationId(restoredConversation.id);
-      activeConversationIdRef.current = restoredConversation.id;
-      api.sendWsMessage({
-        type: "active-conversation",
-        conversationId: restoredConversation.id,
-      });
+      if (restoredConversation.id !== initialConversation.id) {
+        setActiveConversationId(restoredConversation.id);
+        activeConversationIdRef.current = restoredConversation.id;
+        api.sendWsMessage({
+          type: "active-conversation",
+          conversationId: restoredConversation.id,
+        });
+      }
       try {
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);

@@ -34,6 +34,10 @@ const clientMock = vi.hoisted(() => ({
   selectOrProvisionCloudAgent: vi.fn(),
 }));
 
+const targetClientMock = vi.hoisted(() => ({
+  listConversations: vi.fn(),
+}));
+
 const cloudAuthMock = vi.hoisted(() => ({
   token: "tok" as string | null,
 }));
@@ -76,6 +80,9 @@ vi.mock("../../state", () => ({
 
 vi.mock("../../api", () => ({
   client: clientMock,
+  ElizaClient: vi.fn(function MockElizaClient() {
+    return targetClientMock;
+  }),
 }));
 
 vi.mock("../../api/client-cloud", () => ({
@@ -306,6 +313,8 @@ function resetClientMocks() {
   clientMock.resumeCloudCompatAgent.mockReset();
   clientMock.getCloudCompatJobStatus.mockReset();
   clientMock.getCloudCompatAgentStatus.mockReset();
+  targetClientMock.listConversations.mockReset();
+  targetClientMock.listConversations.mockResolvedValue({ conversations: [] });
   persistenceMock.loadPersistedActiveServer.mockReset();
   persistenceMock.savePersistedActiveServer.mockReset();
   // deleteAgent now guards on window.confirm; default it to accept so the
@@ -551,6 +560,7 @@ describe("CloudAgentsSection waking on switch", () => {
     await waitFor(() => expect(reloadSpy).toHaveBeenCalled());
     expect(clientMock.resumeCloudCompatAgent).not.toHaveBeenCalled();
     expect(clientMock.getCloudCompatAgentStatus).not.toHaveBeenCalled();
+    expect(targetClientMock.listConversations).toHaveBeenCalledTimes(1);
     const bound = loadAgentProfileRegistry().profiles.find(
       (profile) => profile.cloudAgentId === agentId,
     );
@@ -562,6 +572,42 @@ describe("CloudAgentsSection waking on switch", () => {
         accessToken: "tok",
       }),
     );
+  });
+
+  it("keeps the current agent active when a running target does not answer", async () => {
+    targetClientMock.listConversations.mockRejectedValue(
+      Object.assign(new Error("unreachable"), { status: 503 }),
+    );
+    await renderWithAgents([agent({ status: "running" })]);
+
+    fireEvent.click(screen.getByText("Use"));
+
+    await waitFor(() =>
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        "Could not connect to Old Name. Your current agent is still active.",
+        "error",
+        5000,
+      ),
+    );
+    expect(persistenceMock.savePersistedActiveServer).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses a failed target without probing or changing persistence", async () => {
+    await renderWithAgents([
+      agent({ status: "error", error_message: "container failed" }),
+    ]);
+
+    fireEvent.click(screen.getByText("Use"));
+
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "container failed",
+      "error",
+      5000,
+    );
+    expect(targetClientMock.listConversations).not.toHaveBeenCalled();
+    expect(persistenceMock.savePersistedActiveServer).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
   });
 
   it("surfaces an error and does not bind when the resume call is rejected", async () => {
