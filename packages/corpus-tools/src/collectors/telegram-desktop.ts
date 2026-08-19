@@ -23,14 +23,15 @@ import {
 import {
   readTelegramDesktopJson,
   type TelegramShardWriteStats,
-  writeAtomicTextIfChanged,
+  withTelegramOutputLock,
+  writeTelegramArtifact,
   writeTelegramShards,
 } from "./telegram-desktop-io.ts";
 
 export type { TelegramShardWriteStats } from "./telegram-desktop-io.ts";
 
-const DEFAULT_MAX_INPUT_BYTES = 512 * 1024 * 1024;
-const MAX_MAX_INPUT_BYTES = 1024 * 1024 * 1024;
+const DEFAULT_MAX_INPUT_BYTES = 64 * 1024 * 1024;
+const MAX_MAX_INPUT_BYTES = 64 * 1024 * 1024;
 const DEFAULT_MAX_CHATS = 100_000;
 const MAX_MAX_CHATS = 250_000;
 const DEFAULT_MAX_MESSAGES = 5_000_000;
@@ -40,10 +41,10 @@ const MAX_TEXT_PARTS = 100_000;
 const DM_TYPES = new Set([
   "saved_messages",
   "replies",
-  "verification_codes",
   "personal_chat",
   "bot_chat",
 ]);
+const CREDENTIAL_TYPES = new Set(["verification_codes"]);
 const GROUP_TYPES = new Set([
   "private_group",
   "private_supergroup",
@@ -85,7 +86,7 @@ export interface TelegramDesktopCollectorOptions {
   allowedGroupPeerIds?: readonly string[];
   /** Channel ids admitted into the corpus. Channels are denied when omitted. */
   allowedChannelPeerIds?: readonly string[];
-  /** Input safety bound, configurable only up to one GiB. */
+  /** Input safety bound, configurable only up to the 64 MiB parse ceiling. */
   maxInputBytes?: number;
   /** Chat-count safety bound. */
   maxChats?: number;
@@ -110,6 +111,8 @@ export interface TelegramDesktopSummary {
   deniedChannelMessages: number;
   unsupportedSecretChats: number;
   unsupportedSecretMessages: number;
+  unsupportedCredentialChats: number;
+  unsupportedCredentialMessages: number;
   unsupportedMessages: number;
   unsupportedDeletedMessages: number;
   unsupportedServiceMessages: number;
@@ -256,8 +259,11 @@ function canonicalAllowlist(
   return result;
 }
 
-function classifyChat(type: string): TelegramPeerKind | "secret" {
+function classifyChat(
+  type: string,
+): TelegramPeerKind | "secret" | "credential" {
   if (DM_TYPES.has(type)) return "dm";
+  if (CREDENTIAL_TYPES.has(type)) return "credential";
   if (GROUP_TYPES.has(type)) return "group";
   if (CHANNEL_TYPES.has(type)) return "channel";
   if (SECRET_TYPES.has(type)) return "secret";
@@ -526,6 +532,8 @@ function initialSummary(): TelegramDesktopSummary {
     deniedChannelMessages: 0,
     unsupportedSecretChats: 0,
     unsupportedSecretMessages: 0,
+    unsupportedCredentialChats: 0,
+    unsupportedCredentialMessages: 0,
     unsupportedMessages: 0,
     unsupportedDeletedMessages: 0,
     unsupportedServiceMessages: 0,
@@ -653,6 +661,11 @@ export async function collectTelegramDesktopExport(
       ctx.summary.unsupportedSecretMessages += messages.length;
       continue;
     }
+    if (kind === "credential") {
+      ctx.summary.unsupportedCredentialChats += 1;
+      ctx.summary.unsupportedCredentialMessages += messages.length;
+      continue;
+    }
     if (kind === "group" && !ctx.allowedGroups.has(peerId)) {
       ctx.summary.deniedGroupChats += 1;
       ctx.summary.deniedGroupMessages += messages.length;
@@ -677,23 +690,40 @@ export async function collectTelegramDesktopExport(
     normalized.push(...mapped);
   }
 
-  const { paths: shardPaths, stats: writeStats } = await writeTelegramShards(
-    normalized,
-    options.outDir,
-    ownerAccountId,
-  );
-  ctx.summary.shardCount = shardPaths.length;
-  const { manifest, issues } = await buildCorpusManifest(
-    options.outDir,
-    CORPUS_ANCHOR_ISO,
-  );
-  await writeAtomicTextIfChanged(
-    path.join(options.outDir, "manifest.json"),
-    `${JSON.stringify(manifest, null, 2)}\n`,
-  );
-  await writeAtomicTextIfChanged(
-    path.join(options.outDir, "telegram-desktop-summary.json"),
-    `${JSON.stringify(ctx.summary, null, 2)}\n`,
-  );
-  return { summary: ctx.summary, writeStats, manifest, issues, shardPaths };
+  return withTelegramOutputLock(options.outDir, async (assertRootIdentity) => {
+    await assertRootIdentity();
+    const { paths: shardPaths, stats: writeStats } = await writeTelegramShards(
+      normalized,
+      options.outDir,
+      ownerAccountId,
+    );
+    await assertRootIdentity();
+    ctx.summary.shardCount = shardPaths.length;
+    const { manifest, issues } = await buildCorpusManifest(
+      options.outDir,
+      CORPUS_ANCHOR_ISO,
+    );
+    await assertRootIdentity();
+    if (issues.length > 0) {
+      throw telegramInputError(
+        "TELEGRAM_EXPORT_MANIFEST_INVALID",
+        "Telegram output failed corpus manifest validation",
+        { issueCount: issues.length, issues },
+      );
+    }
+    await writeTelegramArtifact(
+      path.join(options.outDir, "telegram", ownerAccountId, "summary.json"),
+      `${JSON.stringify(ctx.summary, null, 2)}\n`,
+      assertRootIdentity,
+    );
+    await assertRootIdentity();
+    // The manifest is the generation commit marker and is installed last.
+    await writeTelegramArtifact(
+      path.join(options.outDir, "manifest.json"),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      assertRootIdentity,
+    );
+    await assertRootIdentity();
+    return { summary: ctx.summary, writeStats, manifest, issues, shardPaths };
+  });
 }

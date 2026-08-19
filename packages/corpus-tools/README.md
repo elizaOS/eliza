@@ -89,6 +89,13 @@ rerun. Service, deleted, secret-chat, and media-only records are counted but
 not fabricated into text messages. Export media paths are never opened, so
 metadata alone never produces an attachment SHA-256.
 
+Telegram's `verification_codes` dialog is always excluded and counted as
+credential material. Input is capped at 64 MiB and read only through that byte
+boundary before parsing. Publications use an output-root lock, account-owned
+`telegram/<account>/summary.json` files, and a manifest installed last as the
+generation commit marker; a concurrent writer or manifest validation issue
+fails the collection instead of returning partial success.
+
 ```bash
 bun run --cwd packages/corpus-tools test
 bun run --cwd packages/corpus-tools typecheck

@@ -7,10 +7,15 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { validateCorpusTarget } from "../validator.ts";
 import { collectTelegramDesktopExport } from "./telegram-desktop.ts";
-import { writeTelegramShards } from "./telegram-desktop-io.ts";
+import {
+  readTelegramDesktopJson,
+  withTelegramOutputLock,
+  writeTelegramArtifact,
+  writeTelegramShards,
+} from "./telegram-desktop-io.ts";
 
 const FIXTURE_PATH = path.join(
   import.meta.dirname,
@@ -53,6 +58,7 @@ async function collectFixture(exportPath: string, outDir: string) {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) await fs.rm(dir, { recursive: true, force: true });
@@ -78,6 +84,8 @@ describe("collectTelegramDesktopExport", () => {
     expect(result.summary.deniedChannelMessages).toBe(1);
     expect(result.summary.unsupportedSecretChats).toBe(1);
     expect(result.summary.unsupportedSecretMessages).toBe(2);
+    expect(result.summary.unsupportedCredentialChats).toBe(1);
+    expect(result.summary.unsupportedCredentialMessages).toBe(1);
     expect(result.summary.unsupportedMessages).toBe(0);
     expect(result.summary.unsupportedDeletedMessages).toBe(1);
     expect(result.summary.unsupportedServiceMessages).toBe(1);
@@ -110,6 +118,13 @@ describe("collectTelegramDesktopExport", () => {
     });
     expect(august[2].attachments).toEqual([]);
     expect(JSON.stringify(august[2])).not.toContain("sha256");
+    expect(
+      (
+        await Promise.all(
+          result.shardPaths.map((shardPath) => fs.readFile(shardPath, "utf8")),
+        )
+      ).join("\n"),
+    ).not.toContain("12345");
 
     const september = (
       await fs.readFile(
@@ -159,6 +174,7 @@ describe("collectTelegramDesktopExport", () => {
     expect(result.manifest.totals.messages).toBe(3);
     expect(await fs.readdir(path.join(outDir, "telegram", OWNER))).toEqual([
       "2024-08.jsonl",
+      "summary.json",
     ]);
   });
 
@@ -235,7 +251,7 @@ describe("collectTelegramDesktopExport", () => {
     expect(first.writeStats).toEqual({ written: 3, reused: 0, removed: 0 });
     const artifactPaths = [
       path.join(outDir, "manifest.json"),
-      path.join(outDir, "telegram-desktop-summary.json"),
+      path.join(outDir, "telegram", OWNER, "summary.json"),
       ...first.shardPaths,
     ];
     const firstBytes = await Promise.all(
@@ -301,7 +317,7 @@ describe("collectTelegramDesktopExport", () => {
     const artifactPaths = [
       ...result.shardPaths,
       path.join(outDir, "manifest.json"),
-      path.join(outDir, "telegram-desktop-summary.json"),
+      path.join(outDir, "telegram", OWNER, "summary.json"),
     ];
 
     for (const artifactPath of artifactPaths) {
@@ -354,6 +370,88 @@ describe("collectTelegramDesktopExport", () => {
         code: "TELEGRAM_EXPORT_BAD_PATH",
       });
     }
+  });
+
+  it("reads at most the configured byte limit plus one", async () => {
+    const inputDir = await makeTempDir();
+    const inputPath = path.join(inputDir, "result.json");
+    const exactBody = '{"bounded":true}';
+    const exactBytes = Buffer.byteLength(exactBody);
+    await fs.writeFile(inputPath, exactBody);
+
+    await expect(
+      readTelegramDesktopJson(inputPath, exactBytes),
+    ).resolves.toEqual({ bounded: true });
+    await fs.appendFile(inputPath, " ");
+    await expect(
+      readTelegramDesktopJson(inputPath, exactBytes),
+    ).rejects.toMatchObject({ code: "TELEGRAM_EXPORT_INPUT_TOO_LARGE" });
+  });
+
+  it("fails closed when another account or process owns the output lock", async () => {
+    const outDir = await makeTempDir();
+    await withTelegramOutputLock(outDir, async () => {
+      await expect(
+        withTelegramOutputLock(outDir, async () => "different-account"),
+      ).rejects.toMatchObject({ code: "TELEGRAM_EXPORT_OUTPUT_BUSY" });
+    });
+  });
+
+  it("rejects a root swap between shard publication and artifact install", async () => {
+    if (process.platform === "win32") return;
+    const outDir = await makeTempDir();
+    const heldDir = `${outDir}-held`;
+    tempDirs.push(heldDir);
+    const outside = await makeTempDir();
+
+    await expect(
+      withTelegramOutputLock(outDir, async (assertRootIdentity) => {
+        await writeTelegramShards([], outDir, OWNER);
+        await fs.rename(outDir, heldDir);
+        await fs.symlink(outside, outDir);
+        await writeTelegramArtifact(
+          path.join(outDir, "manifest.json"),
+          "private manifest bytes\n",
+          assertRootIdentity,
+        );
+      }),
+    ).rejects.toMatchObject({ code: "TELEGRAM_EXPORT_OUTPUT_CHANGED" });
+    expect(await fs.readdir(outside)).toEqual([]);
+  });
+
+  it("keeps summaries account-owned across serialized publications", async () => {
+    const outDir = await makeTempDir();
+    await collectFixture(FIXTURE_PATH, outDir);
+    const secondExport = await mutateFixture((input) => {
+      const personal = input.personal_information as Record<string, unknown>;
+      personal.user_id = 101;
+    });
+    await collectTelegramDesktopExport({
+      exportPath: secondExport,
+      ownerAccountId: "101",
+      outDir,
+    });
+
+    await expect(
+      fs.readFile(path.join(outDir, "telegram", OWNER, "summary.json"), "utf8"),
+    ).resolves.toContain('"schemaVersion": 1');
+    await expect(
+      fs.readFile(path.join(outDir, "telegram", "101", "summary.json"), "utf8"),
+    ).resolves.toContain('"schemaVersion": 1');
+  });
+
+  it("propagates manifest validation failures instead of reporting success", async () => {
+    const outDir = await makeTempDir();
+    const invalidDir = path.join(outDir, "telegram", "999");
+    await fs.mkdir(invalidDir, { recursive: true });
+    await fs.writeFile(path.join(invalidDir, "2024-08.jsonl"), "not-json\n");
+
+    await expect(collectFixture(FIXTURE_PATH, outDir)).rejects.toMatchObject({
+      code: "TELEGRAM_EXPORT_MANIFEST_INVALID",
+    });
+    await expect(
+      fs.access(path.join(outDir, "manifest.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("enforces owner, count, identity, and allowlist boundaries", async () => {
@@ -450,5 +548,69 @@ describe("collectTelegramDesktopExport", () => {
       code: "TELEGRAM_EXPORT_BAD_OUTPUT_PATH",
     });
     expect(await fs.readdir(outside)).toEqual([]);
+  });
+
+  it("fails closed when the shard directory is swapped during stale discovery", async () => {
+    if (process.platform === "win32") return;
+    const outDir = await makeTempDir();
+    const shardDir = path.join(outDir, "telegram", OWNER);
+    const heldDir = path.join(outDir, "held-account");
+    const outside = await makeTempDir();
+    await fs.mkdir(shardDir, { recursive: true });
+    await fs.writeFile(path.join(shardDir, "2024-01.jsonl"), "owned\n");
+    const outsideShard = path.join(outside, "2024-01.jsonl");
+    await fs.writeFile(outsideShard, "outside\n");
+    const originalReaddir = fs.readdir.bind(fs);
+    let swapped = false;
+    vi.spyOn(fs, "readdir").mockImplementation((async (
+      ...args: Parameters<typeof fs.readdir>
+    ) => {
+      if (!swapped && String(args[0]) === shardDir) {
+        swapped = true;
+        await fs.rename(shardDir, heldDir);
+        await fs.symlink(outside, shardDir);
+      }
+      return originalReaddir(...args);
+    }) as typeof fs.readdir);
+
+    await expect(writeTelegramShards([], outDir, OWNER)).rejects.toMatchObject({
+      code: "TELEGRAM_EXPORT_OUTPUT_CHANGED",
+    });
+    await expect(fs.readFile(outsideShard, "utf8")).resolves.toBe("outside\n");
+  });
+
+  it("fails closed when the shard directory is swapped at final install", async () => {
+    if (process.platform === "win32") return;
+    const outDir = await makeTempDir();
+    const shardDir = path.join(outDir, "telegram", OWNER);
+    const heldDir = path.join(outDir, "held-account");
+    const outside = await makeTempDir();
+    const originalRename = fs.rename.bind(fs);
+    let swapped = false;
+    vi.spyOn(fs, "rename").mockImplementation(async (oldPath, newPath) => {
+      if (
+        !swapped &&
+        String(oldPath).startsWith(`${shardDir}${path.sep}`) &&
+        String(oldPath).endsWith(".tmp") &&
+        String(newPath).endsWith(".jsonl")
+      ) {
+        swapped = true;
+        await originalRename(shardDir, heldDir);
+        await fs.symlink(outside, shardDir);
+      }
+      await originalRename(oldPath, newPath);
+    });
+
+    await expect(collectFixture(FIXTURE_PATH, outDir)).rejects.toMatchObject({
+      code: "TELEGRAM_EXPORT_OUTPUT_CHANGED",
+    });
+    expect(await fs.readdir(outside)).toEqual([]);
+    const strandedTemps = (await fs.readdir(heldDir)).filter((name) =>
+      name.endsWith(".tmp"),
+    );
+    expect(strandedTemps.length).toBeGreaterThan(0);
+    for (const tempName of strandedTemps) {
+      expect((await fs.stat(path.join(heldDir, tempName))).size).toBe(0);
+    }
   });
 });

@@ -178,6 +178,23 @@
           { "id": 1, "type": "message" },
           { "id": 2, "type": "service" }
         ]
+      },
+      {
+        "name": "Telegram",
+        "type": "verification_codes",
+        "id": 777000,
+        "messages": [
+          {
+            "id": 1,
+            "type": "message",
+            "date": "2024-10-02T00:00:00",
+            "date_unixtime": "1727827200",
+            "from": "Telegram",
+            "from_id": "user777000",
+            "text": "Login code: 12345. Do not give this code to anyone.",
+            "text_entities": []
+          }
+        ]
       }
     ]
   },

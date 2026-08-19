@@ -6,6 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { constants, promises as fs } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 import type { CorpusMessage } from "../schema.ts";
@@ -19,6 +20,15 @@ export interface TelegramShardWriteStats {
 const PRIVATE_DIRECTORY_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
 const OWNED_SHARD_NAME = /^\d{4}-(0[1-9]|1[0-2])\.jsonl$/;
+const OUTPUT_LOCK_NAME = ".telegram-desktop-collector.lock";
+
+interface DirectoryGuard {
+  directory: string;
+  location: string;
+  handle: FileHandle;
+  device: number;
+  inode: number;
+}
 
 function inputError(
   code: string,
@@ -76,7 +86,19 @@ export async function readTelegramDesktopJson(
         { maxInputBytes },
       );
     }
-    bytes = await input.readFile();
+    const boundedBytes = Buffer.allocUnsafe(maxInputBytes + 1);
+    let totalBytes = 0;
+    while (totalBytes < boundedBytes.byteLength) {
+      const { bytesRead } = await input.read(
+        boundedBytes,
+        totalBytes,
+        boundedBytes.byteLength - totalBytes,
+        totalBytes,
+      );
+      if (bytesRead === 0) break;
+      totalBytes += bytesRead;
+    }
+    bytes = boundedBytes.subarray(0, totalBytes);
   } catch (error) {
     if (error instanceof ElizaError) throw error;
     // error-policy:J2 wrap input read failures without fabricating an empty export.
@@ -109,10 +131,10 @@ export async function readTelegramDesktopJson(
   }
 }
 
-async function ensureDirectory(
+async function openDirectoryGuard(
   directory: string,
   location: string,
-): Promise<void> {
+): Promise<DirectoryGuard> {
   await fs.mkdir(directory, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
   let handle: Awaited<ReturnType<typeof fs.open>>;
   try {
@@ -142,7 +164,15 @@ async function ensureDirectory(
     if (process.platform !== "win32") {
       await handle.chmod(PRIVATE_DIRECTORY_MODE);
     }
+    return {
+      directory,
+      location,
+      handle,
+      device: entry.dev,
+      inode: entry.ino,
+    };
   } catch (error) {
+    await handle.close();
     if (error instanceof ElizaError) throw error;
     // error-policy:J2 preserve output-inspection context and its filesystem cause.
     throw inputError(
@@ -151,8 +181,59 @@ async function ensureDirectory(
       { location },
       error,
     );
-  } finally {
-    await handle.close();
+  }
+}
+
+async function assertDirectoryIdentity(guard: DirectoryGuard): Promise<void> {
+  try {
+    const entry = await fs.lstat(guard.directory);
+    if (
+      entry.isSymbolicLink() ||
+      !entry.isDirectory() ||
+      entry.dev !== guard.device ||
+      entry.ino !== guard.inode
+    ) {
+      throw inputError(
+        "TELEGRAM_EXPORT_OUTPUT_CHANGED",
+        `${guard.location} changed while Telegram output was being written`,
+        { location: guard.location },
+      );
+    }
+    const heldEntry = await guard.handle.stat();
+    if (
+      !heldEntry.isDirectory() ||
+      heldEntry.dev !== guard.device ||
+      heldEntry.ino !== guard.inode
+    ) {
+      throw inputError(
+        "TELEGRAM_EXPORT_OUTPUT_CHANGED",
+        `${guard.location} no longer matches its validated directory handle`,
+        { location: guard.location },
+      );
+    }
+  } catch (error) {
+    if (error instanceof ElizaError) throw error;
+    // error-policy:J2 reject output replacement instead of following its new path.
+    throw inputError(
+      "TELEGRAM_EXPORT_OUTPUT_CHANGED",
+      `${guard.location} could not be revalidated during Telegram output`,
+      { location: guard.location },
+      error,
+    );
+  }
+}
+
+async function closeDirectoryGuard(guard: DirectoryGuard): Promise<void> {
+  try {
+    await guard.handle.close();
+  } catch (error) {
+    // error-policy:J2 a guard-close failure makes output completion indeterminate.
+    throw inputError(
+      "TELEGRAM_EXPORT_WRITE_FAILED",
+      `${guard.location} validation handle could not be closed`,
+      { location: guard.location },
+      error,
+    );
   }
 }
 
@@ -199,43 +280,147 @@ async function readExistingRegularFile(
   }
 }
 
-export async function writeAtomicTextIfChanged(
+async function writeAtomicTextIfChanged(
   filePath: string,
   body: string,
+  parent: DirectoryGuard,
 ): Promise<"written" | "reused"> {
+  await assertDirectoryIdentity(parent);
   const existing = await readExistingRegularFile(filePath);
+  await assertDirectoryIdentity(parent);
   if (existing === body) return "reused";
   const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
-  await fs.writeFile(tempPath, body, {
-    encoding: "utf8",
-    flag: "wx",
-    mode: PRIVATE_FILE_MODE,
-  });
+  let tempHandle: FileHandle | undefined;
+  let installed = false;
   try {
+    await assertDirectoryIdentity(parent);
+    tempHandle = await fs.open(
+      tempPath,
+      constants.O_WRONLY |
+        constants.O_CREAT |
+        constants.O_EXCL |
+        constants.O_NOFOLLOW,
+      PRIVATE_FILE_MODE,
+    );
+    await tempHandle.writeFile(body, "utf8");
+    await tempHandle.sync();
+    await assertDirectoryIdentity(parent);
     await fs.rename(tempPath, filePath);
+    installed = true;
+    await assertDirectoryIdentity(parent);
   } catch (error) {
-    // error-policy:J2 preserve the atomic-write cause after cleaning private bytes.
+    let cleanupError: unknown;
     try {
-      await fs.unlink(tempPath);
-    } catch (cleanupError) {
-      // error-policy:J2 preserve both the install and cleanup causes.
-      if (!isRecord(cleanupError) || cleanupError.code !== "ENOENT") {
-        throw inputError(
-          "TELEGRAM_EXPORT_WRITE_FAILED",
-          "collector output failed and its temporary file could not be removed",
-          { filePath, tempPath },
-          new AggregateError([error, cleanupError]),
-        );
+      await tempHandle?.truncate(0);
+      await tempHandle?.sync();
+    } catch (truncateError) {
+      cleanupError = truncateError;
+    }
+    let identityError: unknown;
+    try {
+      await assertDirectoryIdentity(parent);
+    } catch (changedError) {
+      identityError = changedError;
+    }
+    if (!installed && !identityError) {
+      try {
+        await fs.unlink(tempPath);
+      } catch (unlinkError) {
+        if (!isRecord(unlinkError) || unlinkError.code !== "ENOENT") {
+          cleanupError ??= unlinkError;
+        }
       }
     }
+    if (identityError && !cleanupError) throw identityError;
+    if (cleanupError) {
+      // error-policy:J2 preserve output and cleanup failures without retaining bytes.
+      throw inputError(
+        "TELEGRAM_EXPORT_WRITE_FAILED",
+        "collector output failed and its temporary bytes could not be cleared",
+        { filePath, tempPath },
+        new AggregateError([error, cleanupError, identityError]),
+      );
+    }
+    // error-policy:J2 preserve the atomic install failure after clearing bytes.
     throw inputError(
       "TELEGRAM_EXPORT_WRITE_FAILED",
       "collector output could not be installed atomically",
       { filePath },
       error,
     );
+  } finally {
+    await tempHandle?.close();
   }
   return "written";
+}
+
+/** Writes a collector-owned root artifact under a continuously held directory identity. */
+export async function writeTelegramArtifact(
+  filePath: string,
+  body: string,
+  assertAncestorIdentity: () => Promise<void>,
+): Promise<"written" | "reused"> {
+  await assertAncestorIdentity();
+  const parent = await openDirectoryGuard(
+    path.dirname(filePath),
+    "Telegram corpus output directory",
+  );
+  try {
+    const result = await writeAtomicTextIfChanged(filePath, body, parent);
+    await assertAncestorIdentity();
+    return result;
+  } finally {
+    await closeDirectoryGuard(parent);
+  }
+}
+
+/**
+ * Serializes one complete Telegram publication for an output root. The lock
+ * fails closed instead of waiting, so a crashed or concurrent writer cannot
+ * silently publish a mixed manifest, summary, and shard generation.
+ */
+export async function withTelegramOutputLock<T>(
+  outDir: string,
+  operation: (assertRootIdentity: () => Promise<void>) => Promise<T>,
+): Promise<T> {
+  const root = await openDirectoryGuard(outDir, "outDir");
+  const lockPath = path.join(outDir, OUTPUT_LOCK_NAME);
+  let locked = false;
+  try {
+    await assertDirectoryIdentity(root);
+    try {
+      await fs.mkdir(lockPath, { mode: PRIVATE_DIRECTORY_MODE });
+      locked = true;
+    } catch (error) {
+      if (isRecord(error) && error.code === "EEXIST") {
+        throw inputError(
+          "TELEGRAM_EXPORT_OUTPUT_BUSY",
+          "another Telegram collector owns this output directory",
+          { outDir },
+          error,
+        );
+      }
+      // error-policy:J2 preserve unexpected lock acquisition failures.
+      throw inputError(
+        "TELEGRAM_EXPORT_WRITE_FAILED",
+        "Telegram output lock could not be acquired",
+        { outDir },
+        error,
+      );
+    }
+    await assertDirectoryIdentity(root);
+    return await operation(() => assertDirectoryIdentity(root));
+  } finally {
+    try {
+      if (locked) {
+        await assertDirectoryIdentity(root);
+        await fs.rmdir(lockPath);
+        await assertDirectoryIdentity(root);
+      }
+    } finally {
+      await closeDirectoryGuard(root);
+    }
+  }
 }
 
 function monthOf(ts: number): string {
@@ -248,48 +433,78 @@ export async function writeTelegramShards(
   outDir: string,
   ownerAccountId: string,
 ): Promise<{ paths: string[]; stats: TelegramShardWriteStats }> {
-  await ensureDirectory(outDir, "outDir");
-  const platformDir = path.join(outDir, "telegram");
-  await ensureDirectory(platformDir, "telegram output directory");
-  const shardDir = path.join(platformDir, ownerAccountId);
-  await ensureDirectory(shardDir, "Telegram account output directory");
+  const outGuard = await openDirectoryGuard(outDir, "outDir");
+  let platformGuard: DirectoryGuard | undefined;
+  let shardGuard: DirectoryGuard | undefined;
+  try {
+    await assertDirectoryIdentity(outGuard);
+    const platformDir = path.join(outDir, "telegram");
+    platformGuard = await openDirectoryGuard(
+      platformDir,
+      "telegram output directory",
+    );
+    await assertDirectoryIdentity(outGuard);
+    const shardDir = path.join(platformDir, ownerAccountId);
+    shardGuard = await openDirectoryGuard(
+      shardDir,
+      "Telegram account output directory",
+    );
+    await assertDirectoryIdentity(platformGuard);
 
-  const buckets = new Map<string, CorpusMessage[]>();
-  for (const message of messages) {
-    const month = monthOf(message.ts);
-    const bucket = buckets.get(month) ?? [];
-    bucket.push(message);
-    buckets.set(month, bucket);
-  }
-
-  const stats: TelegramShardWriteStats = { written: 0, reused: 0, removed: 0 };
-  const paths: string[] = [];
-  const wantedNames = new Set<string>();
-  for (const [month, bucket] of [...buckets.entries()].sort()) {
-    bucket.sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
-    const fileName = `${month}.jsonl`;
-    wantedNames.add(fileName);
-    const shardPath = path.join(shardDir, fileName);
-    const body = `${bucket.map((message) => JSON.stringify(message)).join("\n")}\n`;
-    const outcome = await writeAtomicTextIfChanged(shardPath, body);
-    stats[outcome] += 1;
-    paths.push(shardPath);
-  }
-
-  for (const entry of await fs.readdir(shardDir, { withFileTypes: true })) {
-    if (!OWNED_SHARD_NAME.test(entry.name) || wantedNames.has(entry.name)) {
-      continue;
+    const buckets = new Map<string, CorpusMessage[]>();
+    for (const message of messages) {
+      const month = monthOf(message.ts);
+      const bucket = buckets.get(month) ?? [];
+      bucket.push(message);
+      buckets.set(month, bucket);
     }
-    const stalePath = path.join(shardDir, entry.name);
-    if (!entry.isFile() || entry.isSymbolicLink()) {
-      throw inputError(
-        "TELEGRAM_EXPORT_BAD_OUTPUT_PATH",
-        "stale shard target must be a regular file",
-        { stalePath },
+
+    const stats: TelegramShardWriteStats = {
+      written: 0,
+      reused: 0,
+      removed: 0,
+    };
+    const paths: string[] = [];
+    const wantedNames = new Set<string>();
+    for (const [month, bucket] of [...buckets.entries()].sort()) {
+      bucket.sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
+      const fileName = `${month}.jsonl`;
+      wantedNames.add(fileName);
+      const shardPath = path.join(shardDir, fileName);
+      const body = `${bucket.map((message) => JSON.stringify(message)).join("\n")}\n`;
+      const outcome = await writeAtomicTextIfChanged(
+        shardPath,
+        body,
+        shardGuard,
       );
+      stats[outcome] += 1;
+      paths.push(shardPath);
     }
-    await fs.unlink(stalePath);
-    stats.removed += 1;
+
+    await assertDirectoryIdentity(shardGuard);
+    const existingEntries = await fs.readdir(shardDir, { withFileTypes: true });
+    await assertDirectoryIdentity(shardGuard);
+    for (const entry of existingEntries) {
+      if (!OWNED_SHARD_NAME.test(entry.name) || wantedNames.has(entry.name)) {
+        continue;
+      }
+      const stalePath = path.join(shardDir, entry.name);
+      if (!entry.isFile() || entry.isSymbolicLink()) {
+        throw inputError(
+          "TELEGRAM_EXPORT_BAD_OUTPUT_PATH",
+          "stale shard target must be a regular file",
+          { stalePath },
+        );
+      }
+      await assertDirectoryIdentity(shardGuard);
+      await fs.unlink(stalePath);
+      await assertDirectoryIdentity(shardGuard);
+      stats.removed += 1;
+    }
+    return { paths, stats };
+  } finally {
+    if (shardGuard) await closeDirectoryGuard(shardGuard);
+    if (platformGuard) await closeDirectoryGuard(platformGuard);
+    await closeDirectoryGuard(outGuard);
   }
-  return { paths, stats };
 }
