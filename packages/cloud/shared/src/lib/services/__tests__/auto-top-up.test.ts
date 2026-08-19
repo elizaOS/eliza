@@ -89,6 +89,11 @@ mock.module("../../utils/logger", () => ({
   },
 }));
 
+const ensureStripeCustomer = mock(async () => "cus_123");
+mock.module("../stripe-customer-authority", () => ({
+  stripeCustomerAuthorityService: { ensure: ensureStripeCustomer },
+}));
+
 const { AutoTopUpService, CorruptAutoTopUpNumberError, parseAutoTopUpNumber } = await import(
   "../auto-top-up"
 );
@@ -219,6 +224,8 @@ function repository(overrides: Partial<RepositoryDependency> = {}): RepositoryDe
     findById: mock(async () => null),
     findBlockingByOrganization: mock(async () => null),
     findByPaymentIntentId: mock(async () => null),
+    customerReconciliationMayBeNeeded: mock(async () => true),
+    customerSnapshotHasAuthority: mock(async () => true),
     claimEligibleAttempt: mock(async () => ({
       outcome: "not_eligible" as const,
       organizationId: ORG_ID,

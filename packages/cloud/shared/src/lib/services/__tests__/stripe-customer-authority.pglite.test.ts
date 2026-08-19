@@ -17,6 +17,13 @@ let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTest
 let AuthorityService: typeof import("../stripe-customer-authority").StripeCustomerAuthorityService;
 let pglite: PGlite;
 
+const isolatedAuthorityBase = `CREATE TABLE organizations (
+  id uuid PRIMARY KEY, stripe_customer_id text, updated_at timestamptz NOT NULL DEFAULT now()
+); CREATE TABLE auto_top_up_attempts (
+  id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id),
+  stripe_customer_id_snapshot text NOT NULL, provider_request_started_at timestamptz
+)`;
+
 class MockStripeCustomers implements StripeCustomerProvider {
   readonly candidates: StripeCustomerCandidate[] = [];
   createCalls = 0;
@@ -98,6 +105,12 @@ beforeAll(async () => {
     );
     CREATE UNIQUE INDEX organizations_stripe_customer_authority_unique
       ON organizations(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+    CREATE TABLE auto_top_up_attempts (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id),
+      stripe_customer_id_snapshot text NOT NULL,
+      provider_request_started_at timestamptz
+    );
   `);
   const migration = await Bun.file(
     new URL("../../../db/migrations/0267_stripe_customer_attempts.sql", import.meta.url),
@@ -784,9 +797,7 @@ describe("Stripe Customer durable authority", () => {
   test("migration rejects a same-name index collision instead of accepting partial authority", async () => {
     const isolated = new PGlite();
     try {
-      await isolated.exec(`CREATE TABLE organizations (
-        id uuid PRIMARY KEY, stripe_customer_id text, updated_at timestamptz NOT NULL DEFAULT now()
-      )`);
+      await isolated.exec(isolatedAuthorityBase);
       const migration = await Bun.file(
         new URL("../../../db/migrations/0267_stripe_customer_attempts.sql", import.meta.url),
       ).text();
@@ -808,9 +819,7 @@ describe("Stripe Customer durable authority", () => {
   test("migration replay rejects a missing authority postcondition", async () => {
     const isolated = new PGlite();
     try {
-      await isolated.exec(`CREATE TABLE organizations (
-        id uuid PRIMARY KEY, stripe_customer_id text, updated_at timestamptz NOT NULL DEFAULT now()
-      )`);
+      await isolated.exec(isolatedAuthorityBase);
       const migration = await Bun.file(
         new URL("../../../db/migrations/0267_stripe_customer_attempts.sql", import.meta.url),
       ).text();
@@ -848,13 +857,15 @@ describe("Stripe Customer durable authority", () => {
        CREATE TRIGGER stripe_customer_attempt_authority_guard AFTER INSERT OR UPDATE
          ON stripe_customer_attempts FOR EACH ROW
          EXECUTE FUNCTION guard_stripe_customer_attempt_authority()`,
+      `DROP TRIGGER auto_top_up_stripe_customer_authority_guard ON auto_top_up_attempts;
+       CREATE TRIGGER auto_top_up_stripe_customer_authority_guard AFTER INSERT OR UPDATE
+         ON auto_top_up_attempts FOR EACH ROW
+         EXECUTE FUNCTION guard_auto_top_up_stripe_customer_authority()`,
     ];
     for (const mutation of cases) {
       const isolated = new PGlite();
       try {
-        await isolated.exec(`CREATE TABLE organizations (
-          id uuid PRIMARY KEY, stripe_customer_id text, updated_at timestamptz NOT NULL DEFAULT now()
-        )`);
+        await isolated.exec(isolatedAuthorityBase);
         const migration = await Bun.file(
           new URL("../../../db/migrations/0267_stripe_customer_attempts.sql", import.meta.url),
         ).text();
@@ -875,9 +886,8 @@ describe("Stripe Customer durable authority", () => {
   test("migration fails closed on a partial authority table object", async () => {
     const isolated = new PGlite();
     try {
-      await isolated.exec(`CREATE TABLE organizations (
-        id uuid PRIMARY KEY, stripe_customer_id text, updated_at timestamptz NOT NULL DEFAULT now()
-      ); CREATE TABLE stripe_customer_attempts (id uuid PRIMARY KEY)`);
+      await isolated.exec(`${isolatedAuthorityBase};
+        CREATE TABLE stripe_customer_attempts (id uuid PRIMARY KEY)`);
       const migration = await Bun.file(
         new URL("../../../db/migrations/0267_stripe_customer_attempts.sql", import.meta.url),
       ).text();

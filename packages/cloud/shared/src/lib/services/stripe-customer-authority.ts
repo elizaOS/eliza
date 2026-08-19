@@ -23,7 +23,8 @@ const WAIT_STEP_MS = 25;
 export type StripeCustomerCallerIntent =
   | "payment_method"
   | "interactive_checkout"
-  | "credit_checkout";
+  | "credit_checkout"
+  | "auto_top_up";
 
 export interface StripeCustomerCandidate {
   id: string;

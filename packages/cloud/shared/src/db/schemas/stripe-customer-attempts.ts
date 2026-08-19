@@ -90,7 +90,7 @@ export const stripeCustomerAttempts = pgTable(
     ),
     caller_intent_check: check(
       "stripe_customer_attempts_caller_intent_check",
-      sql`${table.caller_intent} IN ('payment_method','interactive_checkout','credit_checkout')`,
+      sql`${table.caller_intent} IN ('payment_method','interactive_checkout','credit_checkout','auto_top_up')`,
     ),
     status_check: check(
       "stripe_customer_attempts_status_check",

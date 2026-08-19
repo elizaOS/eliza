@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS "stripe_customer_attempts" (
   CONSTRAINT "stripe_customer_attempts_digest_check" CHECK ("request_digest" ~ '^[0-9a-f]{64}$'),
   CONSTRAINT "stripe_customer_attempts_provider_check" CHECK ("provider" = 'stripe'),
   CONSTRAINT "stripe_customer_attempts_caller_intent_check" CHECK ("caller_intent" IN
-    ('payment_method','interactive_checkout','credit_checkout')),
+    ('payment_method','interactive_checkout','credit_checkout','auto_top_up')),
   CONSTRAINT "stripe_customer_attempts_status_check" CHECK ("status" IN
     ('prepared','provider_started','provider_ambiguous','bound','quarantined','abandoned')),
   CONSTRAINT "stripe_customer_attempts_bound_shape_check" CHECK (
@@ -239,6 +239,51 @@ CREATE OR REPLACE FUNCTION "stripe_customer_attempt_receipt_is_valid"(
         AND attempt_row."provider_receipt"->'metadata'->>'organization_id' = attempt_row."organization_id"::text)
     );
 $$ LANGUAGE sql IMMUTABLE;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION "stripe_customer_binding_is_authoritative"(
+  tenant_id uuid, customer_id text
+) RETURNS boolean AS $$
+  SELECT customer_id IS NOT NULL AND (
+    SELECT count(*) = 1 FROM "stripe_customer_attempts" a
+    WHERE a."organization_id" = tenant_id
+      AND a."status" = 'bound'
+      AND a."provider_customer_id" = customer_id
+      AND "stripe_customer_attempt_receipt_is_valid"(a)
+      AND (
+        a."provider_receipt"->>'binding_kind' = 'attempt_created'
+        OR (
+          a."provider_receipt"->>'binding_kind' = 'legacy_verified'
+          AND EXISTS (
+            SELECT 1 FROM "stripe_customer_legacy_quarantines" q
+            WHERE q."organization_id" = tenant_id
+              AND q."stripe_customer_id" = customer_id
+              AND q."resolved_attempt_id" = a."id"
+              AND q."resolved_by" = 'system:stripe-customer-authority'
+              AND q."resolved_at" IS NOT NULL
+          )
+        )
+      )
+  );
+$$ LANGUAGE sql STABLE;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION "guard_auto_top_up_stripe_customer_authority"() RETURNS trigger AS $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM "organizations" o WHERE o."id" = NEW."organization_id"
+      AND o."stripe_customer_id" = NEW."stripe_customer_id_snapshot"
+  ) OR NOT "stripe_customer_binding_is_authoritative"(
+    NEW."organization_id", NEW."stripe_customer_id_snapshot"
+  ) THEN
+    RAISE EXCEPTION 'Auto top-up Stripe Customer snapshot lacks exact bound authority';
+  END IF;
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS "auto_top_up_stripe_customer_authority_guard" ON "auto_top_up_attempts";
+--> statement-breakpoint
+CREATE TRIGGER "auto_top_up_stripe_customer_authority_guard"
+  BEFORE INSERT OR UPDATE OF "provider_request_started_at", "stripe_customer_id_snapshot", "organization_id"
+  ON "auto_top_up_attempts" FOR EACH ROW
+  EXECUTE FUNCTION "guard_auto_top_up_stripe_customer_authority"();
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION "guard_stripe_customer_attempt_authority"() RETURNS trigger AS $$ BEGIN
   IF TG_OP = 'INSERT' AND (
@@ -473,7 +518,7 @@ BEGIN
     ('stripe_customer_attempts','stripe_customer_attempts_provider_check',
       'check((provider=''stripe''::text))'),
     ('stripe_customer_attempts','stripe_customer_attempts_caller_intent_check',
-      'check((caller_intent=any(array[''payment_method''::text,''interactive_checkout''::text,''credit_checkout''::text])))'),
+      'check((caller_intent=any(array[''payment_method''::text,''interactive_checkout''::text,''credit_checkout''::text,''auto_top_up''::text])))'),
     ('stripe_customer_attempts','stripe_customer_attempts_status_check',
       'check((status=any(array[''prepared''::text,''provider_started''::text,''provider_ambiguous''::text,''bound''::text,''quarantined''::text,''abandoned''::text])))'),
     ('stripe_customer_attempts','stripe_customer_attempts_bound_shape_check',
@@ -560,6 +605,8 @@ BEGIN
     ('stripe_customer_legacy_quarantines','stripe_customer_legacy_quarantine_truncate_guard','prevent_stripe_customer_legacy_quarantine_removal',34,ARRAY[]::name[]),
     ('organizations','organization_stripe_customer_publication_guard','guard_organization_stripe_customer_publication',19,ARRAY['stripe_customer_id']::name[]),
     ('organizations','organization_stripe_customer_insert_guard','guard_organization_stripe_customer_publication',7,ARRAY[]::name[])
+    ,('auto_top_up_attempts','auto_top_up_stripe_customer_authority_guard','guard_auto_top_up_stripe_customer_authority',23,
+      ARRAY['provider_request_started_at','stripe_customer_id_snapshot','organization_id']::name[])
   ) AS triggers(table_name,trigger_name,function_name,trigger_type,column_names) LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
       WHERE t.tgrelid=expected.table_name::regclass AND t.tgname=expected.trigger_name

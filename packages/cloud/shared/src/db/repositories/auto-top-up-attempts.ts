@@ -156,6 +156,7 @@ export type AutoTopUpNotEligibleReason =
   | "disabled"
   | "balance_at_or_above_threshold"
   | "missing_customer"
+  | "unverified_customer_authority"
   | "missing_payment_method"
   | "invalid_balance"
   | "invalid_threshold"
@@ -424,6 +425,42 @@ function assertLeaseWindow(now: Date, leaseExpiresAt: Date): void {
 
 /** Primary-only CQRS repository; recovery reads intentionally never use a lagging replica. */
 export class AutoTopUpAttemptsRepository {
+  /**
+   * Primary-read provider-I/O hint. Eligibility is still rechecked under lock
+   * by claimEligibleAttempt; false-to-true races fail closed in its authority guard.
+   */
+  async customerReconciliationMayBeNeeded(organizationId: string): Promise<boolean> {
+    requiredString(organizationId, "organizationId");
+    const [row] = await dbWrite
+      .select({
+        eligible: sql<boolean>`${organizations.is_active} = true
+          AND ${organizations.auto_top_up_enabled} = true
+          AND ${organizations.credit_balance} < ${organizations.auto_top_up_threshold}
+          AND ${organizations.auto_top_up_threshold} BETWEEN 0 AND 1000
+          AND ${organizations.auto_top_up_amount} BETWEEN 1 AND 1000
+          AND ${organizations.stripe_default_payment_method} IS NOT NULL`,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1);
+    return row?.eligible === true;
+  }
+
+  /**
+   * Primary-read hint for recovery. The database trigger repeats this check at
+   * each attempt mutation, so a false-to-true race cannot authorize provider work.
+   */
+  async customerSnapshotHasAuthority(attemptId: string): Promise<boolean> {
+    requiredString(attemptId, "attemptId");
+    const result = await dbWrite.execute(sql`
+      SELECT "stripe_customer_binding_is_authoritative"(
+        "organization_id", "stripe_customer_id_snapshot"
+      ) AS authoritative
+      FROM "auto_top_up_attempts" WHERE "id"=${attemptId} LIMIT 1
+    `);
+    return result.rows[0]?.authoritative === true;
+  }
+
   /**
    * Read the singleton cutover authority from the primary. Missing state is a
    * fatal migration/configuration error; callers must never infer a mode.
@@ -1062,6 +1099,17 @@ export class AutoTopUpAttemptsRepository {
       const stripeCustomerId = organization.stripe_customer_id;
       if (!stripeCustomerId || stripeCustomerId !== stripeCustomerId.trim()) {
         return disableInvalidConfiguration("missing_customer", {
+          currentBalanceCents,
+          thresholdCents,
+        });
+      }
+      const customerAuthority = await tx.execute(sql`
+        SELECT "stripe_customer_binding_is_authoritative"(
+          ${input.organizationId}::uuid, ${stripeCustomerId}::text
+        ) AS authoritative
+      `);
+      if (customerAuthority.rows[0]?.authoritative !== true) {
+        return notEligible(input.organizationId, "unverified_customer_authority", {
           currentBalanceCents,
           thresholdCents,
         });
