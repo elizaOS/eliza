@@ -433,6 +433,7 @@ async function exchangeCodeForTokens(
     method: "POST",
     headers,
     body,
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
@@ -1046,6 +1047,7 @@ export async function refreshOAuth2Token(
     method: "POST",
     headers,
     body,
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
