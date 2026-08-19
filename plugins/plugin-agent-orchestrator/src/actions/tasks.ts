@@ -1263,7 +1263,13 @@ async function runCreateLegacy(
         : "On it — building that now.",
     );
     earlyAckText = text;
+    logger(runtime).info(
+      `[TASKS:create] ack ready at ${new Date().toISOString()} — invoking callback`,
+    );
     await callbackText(callback, earlyAckText, { voiced: true });
+    logger(runtime).info(
+      `[TASKS:create] ack callback returned at ${new Date().toISOString()}`,
+    );
   }
 
   const settled = await Promise.allSettled(
