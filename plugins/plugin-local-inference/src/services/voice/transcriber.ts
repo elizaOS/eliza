@@ -31,6 +31,8 @@
  * (AGENTS.md §3 + §9).
  */
 
+import { ElizaError } from "@elizaos/core";
+
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
@@ -99,6 +101,11 @@ export function readAsrBackendPreferenceFromEnv(
 
 const WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}'-]*/gu;
 const VAD_PREROLL_MAX_FRAMES = 10;
+const MIN_RESAMPLE_RATE_HZ = 1_000;
+const MAX_RESAMPLE_RATE_HZ = 192_000;
+const MAX_RESAMPLE_DURATION_SECONDS = 120;
+const MAX_RESAMPLE_OUTPUT_SAMPLES =
+	ASR_SAMPLE_RATE * MAX_RESAMPLE_DURATION_SECONDS;
 
 function extractWords(text: string): string[] {
 	const out = text.match(WORD_RE);
@@ -110,39 +117,48 @@ function extractWords(text: string): string[] {
  * frames (commonly 16 / 24 / 48 kHz) to the ASR rate. Not a polyphase
  * filter — adequate for speech ASR; the fused build does its own
  * resampling so this is interim-batch only.
- *
- * `fromRate` is often a WAV/container header. A 1 Hz header on a few
- * thousand samples would allocate tens of millions of output frames.
  */
-export const MIN_RESAMPLE_RATE_HZ = 1_000;
-export const MAX_RESAMPLE_RATE_HZ = 192_000;
-/** Two minutes at 16 kHz — hostile 1 Hz headers cannot allocate past this. */
-export const MAX_RESAMPLE_OUTPUT_SAMPLES = 16_000 * 120;
-
-function requireResampleRate(rate: number, label: string): void {
-	if (
-		!Number.isSafeInteger(rate) ||
-		rate < MIN_RESAMPLE_RATE_HZ ||
-		rate > MAX_RESAMPLE_RATE_HZ
-	) {
-		throw new Error(`[transcriber] resample rejected ${label} rate ${rate}`);
-	}
-}
-
 export function resampleLinear(
 	pcm: Float32Array,
 	fromRate: number,
 	toRate: number,
 ): Float32Array {
-	requireResampleRate(fromRate, "source");
-	requireResampleRate(toRate, "target");
+	for (const [label, rate] of [
+		["source", fromRate],
+		["target", toRate],
+	] as const) {
+		if (
+			!Number.isSafeInteger(rate) ||
+			rate < MIN_RESAMPLE_RATE_HZ ||
+			rate > MAX_RESAMPLE_RATE_HZ
+		) {
+			throw new ElizaError(`Invalid ${label} audio sample rate`, {
+				code: "AUDIO_RESAMPLE_RATE_INVALID",
+				context: { label, rate },
+			});
+		}
+	}
+	const durationSeconds = pcm.length / fromRate;
+	if (durationSeconds > MAX_RESAMPLE_DURATION_SECONDS) {
+		throw new ElizaError(
+			"Audio frame exceeds the resampling duration budget",
+			{
+				code: "AUDIO_RESAMPLE_DURATION_BUDGET_EXCEEDED",
+				context: {
+					durationSeconds,
+					maxDurationSeconds: MAX_RESAMPLE_DURATION_SECONDS,
+				},
+			},
+		);
+	}
 	if (fromRate === toRate || pcm.length === 0) return pcm;
 	const ratio = toRate / fromRate;
 	const outLen = Math.max(1, Math.round(pcm.length * ratio));
-	if (outLen > MAX_RESAMPLE_OUTPUT_SAMPLES) {
-		throw new Error(
-			`[transcriber] resample output ${outLen} exceeds ${MAX_RESAMPLE_OUTPUT_SAMPLES}`,
-		);
+	if (!Number.isSafeInteger(outLen) || outLen > MAX_RESAMPLE_OUTPUT_SAMPLES) {
+		throw new ElizaError("Audio resample output exceeds the sample budget", {
+			code: "AUDIO_RESAMPLE_OUTPUT_BUDGET_EXCEEDED",
+			context: { outLen, maxOutputSamples: MAX_RESAMPLE_OUTPUT_SAMPLES },
+		});
 	}
 	const out = new Float32Array(outLen);
 	for (let i = 0; i < outLen; i++) {
