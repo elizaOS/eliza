@@ -1828,6 +1828,13 @@
       "when": 1792008000000,
       "tag": "0261_stripe_checkout_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 261,
+      "version": "7",
+      "when": 1792094400000,
+      "tag": "0262_payment_request_receipts",
+      "breakpoints": true
     }
   ]
 }

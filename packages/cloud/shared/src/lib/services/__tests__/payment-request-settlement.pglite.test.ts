@@ -1,6 +1,6 @@
 /**
- * Proves unified provider settlement against a real PGlite transaction,
- * including rollback after the ledger write and same-key concurrency.
+ * Proves unified provider settlement and receipt projection against a real
+ * PGlite transaction, including rollback and same-key concurrency.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
@@ -93,6 +93,12 @@ beforeAll(async () => {
   for (const statement of migration.split("--> statement-breakpoint")) {
     if (statement.trim()) await pglite.exec(statement);
   }
+  const receiptMigration = await Bun.file(
+    new URL("../../../db/migrations/0262_payment_request_receipts.sql", import.meta.url),
+  ).text();
+  for (const statement of receiptMigration.split("--> statement-breakpoint")) {
+    if (statement.trim()) await pglite.exec(statement);
+  }
 });
 
 afterAll(async () => {
@@ -100,6 +106,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  await dbWrite.execute(sql`DELETE FROM payment_request_receipts`);
   await dbWrite.execute(sql`DELETE FROM payment_request_events`);
   await dbWrite.execute(sql`DELETE FROM credit_transactions`);
   await dbWrite.execute(sql`DELETE FROM payment_requests`);
@@ -171,6 +178,53 @@ function stripeEvent(input?: {
   };
 }
 
+function oxapayEvent(input?: {
+  requestId?: string;
+  eventId?: string;
+  txRef?: string;
+  amountCents?: number;
+  digest?: string;
+}) {
+  const requestId = input?.requestId ?? REQUEST_B;
+  const txRef = input?.txRef ?? "trk_b";
+  return {
+    provider: "oxapay" as const,
+    providerEventId: input?.eventId ?? "oxa_evt_b",
+    paymentRequestId: requestId,
+    disposition: "settled" as const,
+    providerTxRef: txRef,
+    payloadDigest: input?.digest ?? "b".repeat(64),
+    amountCents: input?.amountCents ?? 4301,
+    currency: "usd",
+    proof: {
+      oxapay_track_id: txRef,
+      oxapay_order_id: requestId,
+      oxapay_status: "paid",
+    },
+  };
+}
+
+async function receiptRows() {
+  return sqlRows<{
+    organization_id: string;
+    payment_request_id: string;
+    receipt_type: string;
+    provider: string;
+    provider_tx_ref: string;
+    provider_event_id: string;
+    amount_cents: string;
+    currency: string;
+    payload_digest: string;
+    settlement_proof: Record<string, unknown>;
+  }>(
+    dbWrite,
+    sql`SELECT organization_id, payment_request_id, receipt_type, provider,
+          provider_tx_ref, provider_event_id, amount_cents::text AS amount_cents,
+          currency, payload_digest, settlement_proof
+        FROM payment_request_receipts ORDER BY organization_id`,
+  );
+}
+
 async function moneyRows() {
   const balance = await sqlRows<{ credit_balance: string }>(
     dbWrite,
@@ -222,6 +276,60 @@ describe("durable payment request settlement", () => {
       stripe_payment_intent_id: "pi_a",
     });
     expect(rows.request[0]).toMatchObject({ status: "settled", settlement_tx_ref: "pi_a" });
+    const receipts = await receiptRows();
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({
+      organization_id: ORG_A,
+      payment_request_id: REQUEST_A,
+      receipt_type: "provider_payment_receipt",
+      provider: "stripe",
+      provider_tx_ref: "pi_a",
+      provider_event_id: "evt_a",
+      amount_cents: "2500",
+      currency: "USD",
+      payload_digest: "a".repeat(64),
+    });
+  });
+
+  test("projects Stripe and OxaPay receipts with organization isolation", async () => {
+    await insertRequest({ txRef: "pi_a" });
+    await insertRequest({
+      id: REQUEST_B,
+      orgId: ORG_B,
+      provider: "oxapay",
+      txRef: "trk_b",
+      amountCents: 4301,
+    });
+
+    await processPaymentProviderEvent(stripeEvent());
+    await processPaymentProviderEvent(oxapayEvent());
+
+    expect(await receiptRows()).toEqual([
+      expect.objectContaining({
+        organization_id: ORG_A,
+        payment_request_id: REQUEST_A,
+        provider: "stripe",
+        provider_tx_ref: "pi_a",
+        amount_cents: "2500",
+        currency: "USD",
+      }),
+      expect.objectContaining({
+        organization_id: ORG_B,
+        payment_request_id: REQUEST_B,
+        provider: "oxapay",
+        provider_tx_ref: "trk_b",
+        amount_cents: "4301",
+        currency: "USD",
+      }),
+    ]);
+    const balances = await sqlRows<{ id: string; credit_balance: string }>(
+      dbWrite,
+      sql`SELECT id, credit_balance FROM organizations ORDER BY id`,
+    );
+    expect(balances).toEqual([
+      { id: ORG_A, credit_balance: "25.000000" },
+      { id: ORG_B, credit_balance: "43.010000" },
+    ]);
   });
 
   test("invalidates credit caches only after the settlement transaction commits", async () => {
@@ -263,6 +371,7 @@ describe("durable payment request settlement", () => {
       expect(rows.balance[0]?.credit_balance).toBe("0.000000");
       expect(rows.credits).toHaveLength(0);
       expect(rows.request[0]?.status).toBe("delivered");
+      expect(await receiptRows()).toHaveLength(0);
 
       await expect(processPaymentProviderEvent(stripeEvent())).resolves.toMatchObject({
         replay: false,
@@ -270,6 +379,7 @@ describe("durable payment request settlement", () => {
       rows = await moneyRows();
       expect(rows.balance[0]?.credit_balance).toBe("25.000000");
       expect(rows.credits).toHaveLength(1);
+      expect(await receiptRows()).toHaveLength(1);
     } finally {
       creditsService.addCredits = realAddCredits;
     }
@@ -315,6 +425,29 @@ describe("durable payment request settlement", () => {
       processPaymentProviderEvent(stripeEvent({ digest: "d".repeat(64) })),
     ).rejects.toThrow("different payload binding");
     expect((await moneyRows()).credits).toHaveLength(1);
+  });
+
+  test("receipt replay conflicts roll back credit fulfillment", async () => {
+    await insertRequest({ txRef: "pi_a" });
+    await dbWrite.execute(sql`
+      INSERT INTO payment_request_receipts (
+        organization_id, payment_request_id, provider, provider_tx_ref,
+        provider_event_id, amount_cents, currency, settled_at, payload_digest,
+        settlement_proof
+      ) VALUES (
+        ${ORG_A}, ${REQUEST_A}, 'stripe', 'pi_a', 'evt_a', 2499, 'USD', now(),
+        ${"a".repeat(64)}, ${stripeEvent().proof}
+      )
+    `);
+
+    await expect(processPaymentProviderEvent(stripeEvent())).rejects.toThrow(
+      "conflicts with immutable settlement metadata",
+    );
+    const money = await moneyRows();
+    expect(money.balance[0]?.credit_balance).toBe("0.000000");
+    expect(money.credits).toHaveLength(0);
+    expect(money.request[0]?.status).toBe("delivered");
+    expect(await receiptRows()).toHaveLength(1);
   });
 
   test("callback outbox claims once and retries a failed SSRF-safe delivery", async () => {
@@ -385,5 +518,8 @@ describe("durable payment request settlement", () => {
       sql`SELECT credit_balance FROM organizations WHERE id=${ORG_B}`,
     );
     expect(other[0]?.credit_balance).toBe("0.000000");
+    expect(
+      (await receiptRows()).filter((receipt) => receipt.organization_id === ORG_B),
+    ).toHaveLength(0);
   });
 });
