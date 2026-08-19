@@ -352,17 +352,37 @@ export function createActiveSessionForwardHandler(
             // planner pipeline runs on this same MESSAGE_RECEIVED and routes
             // the user's redirect; we do not re-deliver to the dead session.
             subAgentInbox.clear(active.id);
-            // error-policy:J6 best-effort session cancel on interrupt; warn only
-            await acp.cancelSession?.(active.id)?.catch?.((err: unknown) =>
+            // Cooperative cancel first; the eliza-code ACP server often never
+            // confirms `session/cancel`, and giving up there let a cancelled
+            // build run to completion and post its result after the user's
+            // cancel (live 2026-08-19). An unconfirmed interrupt escalates to
+            // a hard stop — that is what the user asked for.
+            try {
+              await acp.cancelSession?.(active.id);
+            } catch (err) {
               runtime.logger?.warn?.(
                 {
                   src: SRC,
                   sessionId: active.id,
                   err: err instanceof Error ? err.message : String(err),
                 },
-                "interrupt cancel failed",
-              ),
-            );
+                "interrupt cancel unconfirmed; escalating to hard stop",
+              );
+              // error-policy:J6 best-effort teardown; the stop failure is logged
+              await acp.stopSession?.(active.id)?.catch?.((stopErr: unknown) =>
+                runtime.logger?.warn?.(
+                  {
+                    src: SRC,
+                    sessionId: active.id,
+                    err:
+                      stopErr instanceof Error
+                        ? stopErr.message
+                        : String(stopErr),
+                  },
+                  "interrupt hard stop failed",
+                ),
+              );
+            }
             continue;
           }
           default: {

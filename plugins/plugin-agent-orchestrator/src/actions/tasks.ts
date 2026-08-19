@@ -3222,7 +3222,10 @@ async function runStopAgent(
     const sessions = await Promise.resolve(service.listSessions());
 
     if (all) {
-      await Promise.all(
+      // allSettled: one unstoppable historical row must not fail the whole
+      // sweep into the hedged "may have gone through" reply while the live
+      // sessions DID stop (live 2026-08-19).
+      const settled = await Promise.allSettled(
         sessions.map(async (session) => {
           // Mark BEFORE stopping so the terminal relay sees the stamp when the
           // stopped event lands — the action's own confirmation below is the
@@ -3235,6 +3238,13 @@ async function runStopAgent(
           await service.stopSession(session.id);
         }),
       );
+      for (const outcome of settled) {
+        if (outcome.status === "rejected") {
+          logger(runtime).warn(
+            `[TASKS:stop_agent] one session stop failed: ${outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)}`,
+          );
+        }
+      }
       if (state)
         (
           state as {
