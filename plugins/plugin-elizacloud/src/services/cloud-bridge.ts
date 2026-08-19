@@ -183,6 +183,15 @@ export class CloudBridgeService extends Service {
     });
 
     ws.addEventListener("close", (event) => {
+      // A socket replaced by a newer establishConnection() (see disconnect()'s
+      // ws.close() and the reconnect timer's own establishConnection() call)
+      // can still deliver its "close" event after `this.connections.get(containerId)`
+      // has moved on to the replacement's `conn`. scheduleReconnect() below looks
+      // up that CURRENT entry by containerId, so an unguarded stale close would
+      // mark an already-connected replacement "reconnecting" and schedule an
+      // unnecessary reconnect on top of it.
+      if (this.connections.get(containerId) !== conn) return;
+
       conn.state = "disconnected";
       if (conn.heartbeatTimer) clearInterval(conn.heartbeatTimer);
 
