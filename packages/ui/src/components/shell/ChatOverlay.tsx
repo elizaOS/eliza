@@ -5863,11 +5863,13 @@ export function ChatOverlay({
               // catch light. Depth here is the glass rim, not a drop shadow (the
               // flat system keeps all shadow tokens none).
               boxShadow: surfaceEdgeShadow,
-              // Specular sheen: a soft radial highlight near the top-left (as if
-              // lit from above) over the faint neutral top-edge fade — the glass
-              // catches light instead of just fading. Neutral white only, NOT the
-              // warm `--surface` gradient that read as brown.
-              backgroundImage: `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
+              // Specular sheen belongs to the inset glass slab, where there is
+              // an edge to catch light. Fullscreen is a flat view surface; the
+              // same image became a broad gray glow across its top edge.
+              backgroundImage:
+                firstRunOpen || fullBleed
+                  ? "none"
+                  : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android
@@ -5965,12 +5967,16 @@ export function ChatOverlay({
               }
             }}
           >
-            {/* Specular sheen — a soft light from the top edge, the liquid-glass
-                highlight. Subtle + non-interactive. */}
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-surface to-transparent"
-            />
+            {/* The top-edge sheen belongs only to the inset glass slab.
+                Fullscreen is a flat view surface; carrying this highlight into
+                full-bleed creates an unwanted gray glow across the viewport. */}
+            {!fullBleed ? (
+              <div
+                data-testid="chat-sheet-top-sheen"
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-surface to-transparent"
+              />
+            ) : null}
 
             {/* Top-bar pull-down-to-restore grab zone (#13531). Confined to the
                 safe-area + MAXIMIZE_RESTORE_ZONE_PX strip at the very top so the
@@ -6165,6 +6171,11 @@ export function ChatOverlay({
                       <MessageScrollerViewport
                         id="continuous-thread"
                         data-testid="chat-thread-scroll"
+                        // Fullscreen no longer changes flex-basis while the user
+                        // reads, so its top edge can use the real scroll mask and
+                        // dissolve into the sheet's nuanced surface. Resizable
+                        // detents retain the compositor overlay below.
+                        fade={fullBleed ? "both" : "bottom"}
                         ref={threadRef}
                         preserveScrollOnPrepend={false}
                         onScroll={handleThreadScroll}
@@ -6328,24 +6339,25 @@ export function ChatOverlay({
                     </AnimatePresence>
                   </MessageScroller>
                 </MessageScrollerProvider>
-                <motion.div
-                  data-testid="chat-thread-top-fade"
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
-                  style={{
-                    opacity: threadContentOpacity,
-                    // A fixed compositor layer lets messages dissolve beneath
-                    // the floating grabber without masking the scrolling
-                    // subtree. WebKit re-rasterizes CSS-masked scrollers while
-                    // their flex basis changes, which makes the pull gesture
-                    // stutter. Hold the panel color through the grabber's
-                    // footprint before beginning the dissolve so no glyph can
-                    // ghost through the antialiased rim or the handle itself.
-                    backgroundImage: fullBleed
-                      ? "linear-gradient(to bottom, var(--bg) 0%, var(--bg) 28%, color-mix(in srgb, var(--bg) 72%, transparent) 64%, transparent 100%)"
-                      : "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
-                  }}
-                />
+                {!firstRunOpen && !fullBleed ? (
+                  <motion.div
+                    data-testid="chat-thread-top-fade"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-px top-px z-30 h-12"
+                    style={{
+                      opacity: threadContentOpacity,
+                      // A fixed compositor layer lets messages dissolve beneath
+                      // the floating grabber without masking the scrolling
+                      // subtree. WebKit re-rasterizes CSS-masked scrollers while
+                      // their flex basis changes, which makes the pull gesture
+                      // stutter. Hold the panel color through the grabber's
+                      // footprint before beginning the dissolve so no glyph can
+                      // ghost through the antialiased rim or the handle itself.
+                      backgroundImage:
+                        "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
+                    }}
+                  />
+                ) : null}
               </motion.div>
             ) : null}
             {/* Cloud-agent provisioning status — rendered IN the chat, just

@@ -4234,6 +4234,21 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
   });
 
+  it("fades the fullscreen transcript with its scroll mask instead of a painted rectangle", () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+
+    bigPullUp();
+
+    const viewport = screen.getByTestId("chat-thread-scroll");
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(viewport.className.split(/\s+/)).toContain("scroll-fade");
+    expect(viewport.className.split(/\s+/)).not.toContain("scroll-fade-b");
+    expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
+    expect(screen.queryByTestId("chat-sheet-top-sheen")).toBeNull();
+    expect(surface.style.backgroundImage).toBe("none");
+  });
+
   it("snaps to full-screen at 90% while held and reverses below the same line", async () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
