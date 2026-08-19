@@ -14,7 +14,19 @@ import {
 
 function parseJson(source: string, label: string): unknown {
   try {
-    return JSON.parse(source);
+    const value: unknown = JSON.parse(source);
+    const document = parseDocument(source, {
+      merge: false,
+      prettyErrors: true,
+      strict: true,
+      uniqueKeys: true,
+    });
+    if (document.errors.length > 0) {
+      throw new Error(
+        document.errors.map((diagnostic) => diagnostic.message).join("; "),
+      );
+    }
+    return value;
   } catch (error) {
     throw new Error(`invalid ${label} JSON`, { cause: error });
   }

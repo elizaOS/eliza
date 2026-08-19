@@ -1,6 +1,9 @@
 /** Strict JSON/YAML rule parsing rejects ambiguous or expandable documents. */
 import { describe, expect, it } from "vitest";
-import { parseDeletionRulesDocument } from "./delete-files.ts";
+import {
+  parseDeletionReviewDecisionsDocument,
+  parseDeletionRulesDocument,
+} from "./delete-files.ts";
 
 const validYaml = `
 schemaVersion: 1
@@ -63,5 +66,26 @@ describe("deletion rule documents", () => {
     });
 
     expect(() => parseDeletionRulesDocument(source, "rules.json")).toThrow();
+  });
+
+  it("rejects duplicate JSON keys instead of applying last-wins review semantics", () => {
+    const duplicateRules = JSON.stringify({
+      schemaVersion: 1,
+      rulesetVersion: "delete-v1",
+      attachmentPolicy: {
+        embeddedBytes: "drop",
+        retainMetadata: ["filename", "mimeType", "sha256"],
+      },
+      rules: [],
+    }).replace('"rules":[]', '"rules":[],"rules":[]');
+    expect(() =>
+      parseDeletionRulesDocument(duplicateRules, "rules.json"),
+    ).toThrow("invalid deletion rules JSON");
+
+    const hash = "a".repeat(64);
+    const duplicateDecision = `{"schemaVersion":1,"rulesetVersion":"delete-v1","corpusDigest":"${hash}","rulesSha256":"${hash}","reviewedQueueSha256":"${hash}","approved":true,"reviewedBy":"owner","reviewedAt":"2026-07-10T05:00:00.000Z","decisions":[{"groupId":"${hash}","decision":"keep","decision":"delete"}]}`;
+    expect(() =>
+      parseDeletionReviewDecisionsDocument(duplicateDecision, "decisions.json"),
+    ).toThrow("invalid deletion review decisions JSON");
   });
 });
