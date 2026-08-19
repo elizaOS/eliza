@@ -133,10 +133,14 @@ describe("connector routes", () => {
   });
 
   it("DELETE /api/connectors/:name returns 400 on malformed percent-encoded name", async () => {
+    const saveElizaConfig = vi.fn();
+    const onConnectorDisconnect = vi.fn();
     for (const badName of ["%", "%2", "%ZZ", "%E0%A4"]) {
       const { ctx, captured } = createHarness({
         method: "DELETE",
         pathname: `/api/connectors/${badName}`,
+        saveElizaConfig,
+        onConnectorDisconnect,
       });
       await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
       expect(captured.status).toBe(400);
@@ -144,6 +148,60 @@ describe("connector routes", () => {
         error: "Invalid connector name encoding",
       });
     }
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+    expect(onConnectorDisconnect).not.toHaveBeenCalled();
+  });
+
+  it("preserves encoded connector-name separators without crossing route boundaries", async () => {
+    const saveElizaConfig = vi.fn();
+    const onConnectorDisconnect = vi.fn();
+    const config: ConnectorRouteContext["state"]["config"] = {
+      connectors: {
+        "slack/accounts": { enabled: true },
+        "slack\\accounts": { enabled: true },
+      },
+    };
+
+    for (const encodedName of ["slack%2Faccounts", "slack%5Caccounts"]) {
+      const { ctx, captured } = createHarness({
+        method: "DELETE",
+        pathname: `/api/connectors/${encodedName}`,
+        state: { config },
+        saveElizaConfig,
+        onConnectorDisconnect,
+      });
+      await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+      expect(captured.status).toBe(200);
+    }
+
+    expect(config.connectors).toEqual({});
+    expect(saveElizaConfig).toHaveBeenCalledTimes(2);
+    expect(onConnectorDisconnect).toHaveBeenNthCalledWith(1, "slack/accounts");
+    expect(onConnectorDisconnect).toHaveBeenNthCalledWith(2, "slack\\accounts");
+  });
+
+  it("rejects encoded blocked object keys before deletion side effects", async () => {
+    const saveElizaConfig = vi.fn();
+    const onConnectorDisconnect = vi.fn();
+    for (const badName of [
+      "%5F%5Fproto%5F%5F",
+      "%63onstructor",
+      "%70rototype",
+    ]) {
+      const { ctx, captured } = createHarness({
+        method: "DELETE",
+        pathname: `/api/connectors/${badName}`,
+        saveElizaConfig,
+        onConnectorDisconnect,
+      });
+      await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+      expect(captured.status).toBe(400);
+      expect(captured.body).toEqual({
+        error: "Missing or invalid connector name",
+      });
+    }
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+    expect(onConnectorDisconnect).not.toHaveBeenCalled();
   });
 
   it("DELETE /api/connectors/:name decodes valid percent-encoded connector name", async () => {
