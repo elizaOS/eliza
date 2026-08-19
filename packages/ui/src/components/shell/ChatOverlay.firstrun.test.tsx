@@ -5,7 +5,8 @@
 // the sheet opens pinned at the shared HALF composer detent, every collapse path
 // (Escape, outside tap, drag/close) is a no-op, the drag handle is hidden, the
 // composer is sign-in-first/locked, transcript CHOICE widgets stay interactive,
-// and completion keeps the same half-height surface ready to dismiss to pill.
+// external sign-in minimizes to the pill, and completion opens the conversation
+// at FULL.
 
 import {
   act,
@@ -231,6 +232,16 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.getByTestId("chat-sheet-rim")).toBeTruthy();
     expect(screen.getByTestId("chat-thread-top-fade")).toBeTruthy();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
+  });
+
+  it("keeps first-run onboarding in the overlay's dark color scheme", () => {
+    render(<ChatOverlay controller={makeController()} firstRunOpen />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(sheet.getAttribute("data-theme")).toBe("dark");
+    expect(sheet.style.colorScheme).toBe("dark");
+    expect(surface.style.backgroundColor).toBe("var(--bg)");
   });
 
   it("fills a desktop bottom-bar host so transparent native pixels cannot block other apps", () => {
@@ -572,7 +583,70 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByTestId("onboarding-state-probe")).toBeNull();
   });
 
-  it("settles to half exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
+  it("minimizes for external sign-in, then opens full on authentication", () => {
+    const waitingController = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          content:
+            "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+          createdAt: 2,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    const onStateChange = vi.fn();
+    const { rerender } = render(
+      <ChatOverlay
+        controller={waitingController}
+        firstRunOpen
+        onStateChange={onStateChange}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+    expect(sheet.getAttribute("data-chat-state")).toBe("CLOSED");
+    expect(onStateChange).toHaveBeenLastCalledWith("CLOSED");
+
+    // The minimized state is enforced while external auth owns the interaction.
+    fireEvent.click(screen.getByTestId("chat-pill"));
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+
+    rerender(
+      <ChatOverlay
+        controller={waitingController}
+        firstRunOpen={false}
+        onStateChange={onStateChange}
+      />,
+    );
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
+  });
+
+  it("reopens half when an external sign-in attempt expires with a retry choice", () => {
+    const retryController = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          content:
+            "That sign-in window didn't finish. Otherwise, try again: [CHOICE:first-run id=runtime]",
+          createdAt: 3,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={retryController} firstRunOpen />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+  });
+
+  it("opens full exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
     const controller = makeController();
     const { rerender } = render(
       <ChatOverlay controller={controller} firstRunOpen />,
@@ -585,7 +659,7 @@ describe("ChatOverlay first-run gating", () => {
     // Onboarding completes: firstRunOpen falls true → false.
     rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
     expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
     expect(overlay.getAttribute("data-open")).toBe("true");
 
     // The composer unlocks.
@@ -599,7 +673,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(controller.send).toHaveBeenCalledWith("What should I do next?");
 
     // A later re-render with onboarding still complete must NOT force another
-    // detent change — the half-settle is a one-shot falling edge.
+    // detent change — the full-open is a one-shot falling edge.
     fireEvent.focus(input);
     expect(sheet.getAttribute("data-variant")).toBe("open");
     rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
@@ -629,13 +703,13 @@ describe("ChatOverlay first-run gating", () => {
       <ChatOverlay
         controller={makeController()}
         firstRunOpen={false}
-        releaseFirstRunToHalf
+        releaseFirstRunToFull
         onFirstRunReleaseHandled={onHandled}
       />,
     );
 
     const sheet = screen.getByTestId("chat-sheet");
-    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(onHandled).toHaveBeenCalledTimes(1);
   });

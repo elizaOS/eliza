@@ -1182,7 +1182,7 @@ export function ChatOverlay({
   slash: slashProp,
   firstRunOpen = false,
   initialMode = "input",
-  releaseFirstRunToHalf = false,
+  releaseFirstRunToFull = false,
   fillHostAtHalf = false,
   onFirstRunReleaseHandled,
   onPilledChange,
@@ -1196,11 +1196,10 @@ export function ChatOverlay({
   slash?: SlashCommandController;
   /**
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
-   * false` upstream). The overlay stays at the shared HALF chat detent: setup
-   * and sign-in are transcript turns in this composer, never a full-window
-   * dashboard or a separate web chat. Collapse and maximize remain unavailable
-   * until setup completes, then the same surface remains at half for the user
-   * to dismiss to the pill.
+   * false` upstream). The overlay stays at the shared HALF chat detent while it
+   * owns an onboarding choice. Once external Cloud sign-in starts it minimizes
+   * to the pill so the browser is unobstructed; successful authentication opens
+   * the same conversation at FULL. There is never a separate desktop web chat.
    */
   firstRunOpen?: boolean;
   /** Initial resting detent when a host opens this shared chat surface. */
@@ -1209,7 +1208,7 @@ export function ChatOverlay({
    * One-shot completion intent retained by the parent shell when onboarding
    * completion and a runtime-target remount happen in the same transition.
    */
-  releaseFirstRunToHalf?: boolean;
+  releaseFirstRunToFull?: boolean;
   /** Desktop bottom-bar hosts have no page behind their transparent window. */
   fillHostAtHalf?: boolean;
   /** Acknowledges that the retained completion intent reached this overlay. */
@@ -1488,6 +1487,16 @@ export function ChatOverlay({
     React.useState(false);
   const transcriptionComposerActive =
     transcriptionMode || transcriptionFinishing;
+  const cloudLoginWaiting = React.useMemo(
+    () =>
+      firstRunOpen &&
+      messages.some(
+        (message) =>
+          message.id === "first-run:cloud-login-waiting" &&
+          message.content.startsWith("Waiting for sign-in in the browser"),
+      ),
+    [firstRunOpen, messages],
+  );
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
@@ -1514,9 +1523,10 @@ export function ChatOverlay({
   // detent are all DERIVED from it — so the impossible "open but not open" or
   // pilled-and-full combos can't exist and no transition has to hand-sync two
   // separate states (which is what bred the old stuck states).
-  // Onboarding openness pin: while first-run is active the sheet is
-  // structurally HALF and undismissable (see firstRunOpen docs above).
-  const pinnedOpen = firstRunOpen;
+  // Onboarding owns HALF only while the user is acting inside Eliza. External
+  // Cloud auth deliberately releases that pin and minimizes the native host so
+  // Safari remains readable and clickable during sign-in.
+  const pinnedOpen = firstRunOpen && !cloudLoginWaiting;
   const [mode, setMode] = React.useState<ChatMode>(
     pinnedOpen ? "half" : initialMode,
   );
@@ -1529,7 +1539,11 @@ export function ChatOverlay({
   // sheet could settle collapsed with the options hidden behind the grabber and
   // only a misleading "tap an option above" hint showing). Pin it structurally
   // at HALF, the same shared mobile composer detent used after a normal pull-up.
-  const effectiveMode: ChatMode = pinnedOpen ? "half" : mode;
+  const effectiveMode: ChatMode = cloudLoginWaiting
+    ? "pill"
+    : pinnedOpen
+      ? "half"
+      : mode;
   const pilled = effectiveMode === "pill";
   const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
   const expanded = effectiveMode === "full";
@@ -3812,29 +3826,35 @@ export function ChatOverlay({
     ],
   );
 
-  // First-run onboarding pin + release. While onboarding is active the shared
-  // conversation stays at HALF; setup and sign-in turns never expand the native
-  // host into a dashboard. On completion retain HALF so the user can read the
-  // result, then dismiss it to the pill normally.
+  // First-run onboarding pin + release. In-app choices stay at HALF; external
+  // sign-in minimizes to the pill. Successful authentication opens the shared
+  // conversation at FULL so the continuation is immediately visible.
   const wasFirstRunOpenRef = React.useRef(firstRunOpen);
   React.useEffect(() => {
     const was = wasFirstRunOpenRef.current;
     wasFirstRunOpenRef.current = firstRunOpen;
+    if (cloudLoginWaiting) {
+      setFreeH(null);
+      setMode("pill");
+      setMaximized(false);
+      return;
+    }
     if (firstRunOpen) {
       setFreeH(null);
       setMode("half");
       setMaximized(false);
       return;
     }
-    if (was || releaseFirstRunToHalf) {
-      goToDetent("half");
+    if (was || releaseFirstRunToFull) {
+      goToDetent("full");
       onFirstRunReleaseHandled?.();
     }
   }, [
+    cloudLoginWaiting,
     firstRunOpen,
     goToDetent,
     onFirstRunReleaseHandled,
-    releaseFirstRunToHalf,
+    releaseFirstRunToFull,
   ]);
 
   const openFromGrabber = React.useCallback(() => {
@@ -5701,6 +5721,7 @@ export function ChatOverlay({
           data-revealed={threadPresented ? "true" : "false"}
           data-chat-state={chatState}
           data-header-shown={headerVisible ? "true" : "false"}
+          data-theme="dark"
           // The active conversation id + its position in the most-recent-first
           // list, surfaced so flows like the tutorial can observe a new-chat or a
           // swipe-between-chats without reaching into controller internals.
@@ -5713,6 +5734,10 @@ export function ChatOverlay({
           // maxHeight keeps it from spilling off the top (thread scrolls instead).
           style={{
             ...CHAT_PANEL_THEME,
+            // The desktop overlay is its own dark product surface. Never let
+            // the host appearance, wallpaper, or a light app theme switch its
+            // native controls and form affordances into a light color scheme.
+            colorScheme: "dark",
             // Morph-driven cap: the inset ceiling at rest, growing to the
             // full-bleed ceiling in lock-step with the shape morph (see
             // panelCapH) so an over-pull grows 1:1 under the finger.
@@ -5778,9 +5803,8 @@ export function ChatOverlay({
               // the orange app theme behind. Full-bleed stays fully opaque (it
               // covers the whole screen — there is nothing to see through, and
               // the blur would be wasted battery).
-              backgroundColor: firstRunOpen
-                ? "transparent"
-                : nativeInsetSheet
+              backgroundColor:
+                firstRunOpen || nativeInsetSheet
                   ? "var(--bg)"
                   : surfaceBackgroundColor,
               backdropFilter: cssSheetBackdropActive
@@ -6036,7 +6060,8 @@ export function ChatOverlay({
                 // so no re-render. `shrink min-h-0` lets the panel's `maxHeight` cap
                 // win: a tall detent (or the keyboard) shrinks the thread (it
                 // scrolls) instead of pushing the panel off-screen.
-                // Onboarding (firstRunOpen) mounts locked at the shared HALF detent and
+                // In-app onboarding (`pinnedOpen`) mounts locked at the shared
+                // HALF detent and
                 // never drags, but the `threadHeight` MotionValue that feeds
                 // `threadFlexBasis` starts at 0, so the FIRST paint renders the
                 // thread at 0 height and the composer stacks at the top — then a
@@ -6046,9 +6071,10 @@ export function ChatOverlay({
                 // so pin the flex-basis to the settled open height statically at
                 // render time — first paint already matches the resting layout, no
                 // reflow. Reverts to the live MotionValue the moment onboarding
-                // ends and the sheet becomes interactive.
+                // releases. External browser sign-in is not pinned: it uses the
+                // enforced pill and therefore carries no hidden half-height box.
                 style={{
-                  flexBasis: firstRunOpen ? `${halfH}px` : threadFlexBasis,
+                  flexBasis: pinnedOpen ? `${halfH}px` : threadFlexBasis,
                 }}
               >
                 {/* Message search (#14279): an in-sheet panel that covers the
