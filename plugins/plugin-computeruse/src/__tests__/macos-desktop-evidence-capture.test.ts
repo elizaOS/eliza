@@ -3,7 +3,10 @@
  * requires-device-evidence in the capture harness. Deterministic unit test.
  */
 import { describe, expect, it } from "vitest";
-import { isMacosAccessibilityEvidenceBlocker } from "../../scripts/capture-macos-desktop-evidence.mjs";
+import {
+  isMacosAccessibilityEvidenceBlocker,
+  startMacosBrowserEvidenceServer,
+} from "../../scripts/capture-macos-desktop-evidence.mjs";
 
 describe("macOS desktop evidence capture", () => {
   it("classifies known Accessibility/TCC blockers as missing device evidence", () => {
@@ -33,5 +36,19 @@ describe("macOS desktop evidence capture", () => {
         "primary display screenshot: screenshot quality failed",
       ),
     ).toBe(false);
+  });
+
+  it("serves the browser fixture only on ephemeral loopback and closes it", async () => {
+    const fixture = await startMacosBrowserEvidenceServer();
+    expect(fixture.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+
+    const response = await fetch(fixture.url);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("macOS CUA Evidence");
+
+    await fixture.close();
+    await expect(
+      fetch(fixture.url, { signal: AbortSignal.timeout(1_000) }),
+    ).rejects.toThrow();
   });
 });
