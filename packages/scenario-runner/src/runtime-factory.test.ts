@@ -39,6 +39,15 @@ describe("scenario runtime deterministic model mode", () => {
     });
   });
 
+  it("rejects an explicit live provider when deterministic mode is enabled", () => {
+    expect(() =>
+      resolveScenarioProviderConfig(
+        { preferredProvider: "openai", useDeterministicModel: true },
+        {},
+      ),
+    ).toThrow(/cannot be combined with the deterministic model provider/);
+  });
+
   it("loads scenario test helpers while the model provider comes from core testing", async () => {
     const helpers = await loadScenarioTestMocksForTests();
 

@@ -541,6 +541,11 @@ export function resolveScenarioProviderConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): RuntimeFactoryResult["providerConfig"] | null {
   if (shouldUseDeterministicModel(options, env)) {
+    if (options.preferredProvider) {
+      throw new Error(
+        `[scenario-runner] preferred live provider ${options.preferredProvider} cannot be combined with the deterministic model provider`,
+      );
+    }
     return deterministicModelProviderConfig();
   }
   return selectLiveProvider(options.preferredProvider);
