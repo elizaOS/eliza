@@ -228,9 +228,12 @@ describe("content-keyed staging cache", () => {
     await expect(
       fsp.lstat(path.join(stagedRoot, "node_modules", "escape-link")),
     ).rejects.toMatchObject({ code: "ENOENT" });
+    const stagedInternal = await fsp.realpath(
+      path.join(stagedRoot, "node_modules", "internal-real"),
+    );
     await expect(
       fsp.realpath(path.join(stagedRoot, "node_modules", "internal-link")),
-    ).resolves.toBe(path.join(stagedRoot, "node_modules", "internal-real"));
+    ).resolves.toBe(stagedInternal);
   });
 
   it("non-workspace dist-less plugin stages once, then cache-hits with no rebuild", async () => {
