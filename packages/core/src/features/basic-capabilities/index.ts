@@ -110,6 +110,7 @@ export * from "./providers/index.ts";
 
 import {
 	describeImageCached,
+	MediaFetchError,
 	readResponseWithLimit,
 } from "../../media/index.ts";
 import { recentErrorsProvider } from "../../providers/recent-errors.ts";
@@ -210,7 +211,7 @@ interface PostCreationJson {
 const MAX_POST_GENERATION_ATTEMPTS = 3;
 
 /** Hard cap for any single media fetch — attacker-supplied URLs can lie about size. */
-export const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
 
 async function readBoundedMediaResponse(
 	response: Response,
@@ -221,7 +222,8 @@ async function readBoundedMediaResponse(
 	if (contentLength !== null) {
 		const declared = Number(contentLength);
 		if (Number.isFinite(declared) && declared > MAX_MEDIA_BYTES) {
-			throw new Error(
+			throw new MediaFetchError(
+				"max_bytes",
 				`${label} exceeds size limit ${declared} > ${MAX_MEDIA_BYTES}: ${url}`,
 			);
 		}
