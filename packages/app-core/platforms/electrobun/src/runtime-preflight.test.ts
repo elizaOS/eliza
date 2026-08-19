@@ -16,23 +16,31 @@ type EndpointResponse = {
   body: string;
   contentType?: string;
   requiredBearer?: string;
+  location?: string;
 };
 
 function sendResponse(res: ServerResponse, response: EndpointResponse): void {
   res.writeHead(response.status ?? 200, {
     "content-type": response.contentType ?? "application/json",
+    ...(response.location ? { location: response.location } : {}),
   });
   res.end(response.body);
 }
 
 async function withProbeServer(
   endpoints: Record<string, EndpointResponse>,
-  run: (base: string, requests: string[]) => Promise<void>,
+  run: (
+    base: string,
+    requests: string[],
+    authorizations: Array<string | null>,
+  ) => Promise<void>,
 ): Promise<void> {
   const requests: string[] = [];
+  const authorizations: Array<string | null> = [];
   const server = createServer((req, res) => {
     const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
     requests.push(pathname);
+    authorizations.push(req.headers.authorization ?? null);
     const endpoint = endpoints[pathname];
     if (
       endpoint?.requiredBearer &&
@@ -57,7 +65,7 @@ async function withProbeServer(
     if (!address || typeof address === "string") {
       throw new Error("probe test server did not expose a TCP port");
     }
-    await run(`http://127.0.0.1:${address.port}`, requests);
+    await run(`http://127.0.0.1:${address.port}`, requests, authorizations);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
@@ -93,11 +101,40 @@ describe("probeExternalAgent", () => {
           requiredBearer: "remote-secret",
         },
       },
-      async (base, requests) => {
+      async (base, requests, authorizations) => {
         await expect(probeExternalAgent(base, "remote-secret")).resolves.toBe(
           true,
         );
         expect(requests).toEqual(["/api/health", "/api/status"]);
+        expect(authorizations).toEqual([null, "Bearer remote-secret"]);
+      },
+    );
+  });
+
+  it("rejects redirects without forwarding the persisted bearer credential", async () => {
+    const accessToken = "protected-target-token";
+    await withProbeServer(
+      { "/redirect-target": readyElizaEndpoints["/api/status"] },
+      async (redirectBase, redirectRequests, redirectAuthorizations) => {
+        await withProbeServer(
+          {
+            ...readyElizaEndpoints,
+            "/api/status": {
+              status: 302,
+              body: "",
+              location: `${redirectBase}/redirect-target`,
+            },
+          },
+          async (base, requests, authorizations) => {
+            await expect(probeExternalAgent(base, accessToken)).resolves.toBe(
+              false,
+            );
+            expect(requests).toEqual(["/api/health", "/api/status"]);
+            expect(authorizations).toEqual([null, `Bearer ${accessToken}`]);
+            expect(redirectRequests).toEqual([]);
+            expect(redirectAuthorizations).toEqual([]);
+          },
+        );
       },
     );
   });
