@@ -26,6 +26,7 @@ const realNodeBootstrap = { ...realNodeBootstrapNs };
 const AGENT_IMAGE = "ELIZA_AGENT_IMAGE";
 const AGENT_IMAGE_PLATFORM = "ELIZA_AGENT_IMAGE_PLATFORM";
 const HCLOUD_NETWORK_IDS = "CONTAINERS_HCLOUD_NETWORK_IDS";
+const HCLOUD_FIREWALL_IDS = "CONTAINERS_HCLOUD_FIREWALL_IDS";
 
 function restoreEnv(key: string, value: string | undefined): void {
   if (value === undefined) {
@@ -40,6 +41,7 @@ const mocks = {
   createNode: mock(),
   findAllNodes: mock(),
   createServer: mock(),
+  getServer: mock(),
   listServers: mock(),
   deleteServer: mock(),
   isConfigured: mock(),
@@ -78,6 +80,7 @@ mock.module("./hetzner-cloud-api", () => ({
   },
   getHetznerCloudClient: () => ({
     listServers: mocks.listServers,
+    getServer: mocks.getServer,
     createServer: mocks.createServer,
     deleteServer: mocks.deleteServer,
   }),
@@ -120,21 +123,52 @@ const policy: AutoscalePolicy = {
   defaultCapacity: 8,
 };
 
+function typedHetznerNode(nodeId: string, serverId: number, hostname: string): DockerNode {
+  return {
+    id: `${nodeId}-row`,
+    node_id: nodeId,
+    hostname,
+    ssh_port: 22,
+    ssh_user: "root",
+    capacity: 8,
+    enabled: true,
+    status: "unknown",
+    allocated_count: 0,
+    host_key_fingerprint: null,
+    fleet_kind: "cloud",
+    infrastructure_provider: "hetzner",
+    provider_server_id: String(serverId),
+    node_incarnation: null,
+    metadata: {
+      provider: "hetzner-cloud",
+      autoscaled: true,
+      hcloudServerId: serverId,
+      environment: "local",
+    },
+    created_at: new Date("2026-05-15T12:00:00.000Z"),
+    updated_at: new Date("2026-05-15T12:00:00.000Z"),
+  };
+}
+
 describe("NodeAutoscaler Hetzner provisioning", () => {
   let originalAgentImage: string | undefined;
   let originalAgentImagePlatform: string | undefined;
   let originalHcloudNetworkIds: string | undefined;
+  let originalHcloudFirewallIds: string | undefined;
 
   beforeEach(() => {
     originalAgentImage = process.env[AGENT_IMAGE];
     originalAgentImagePlatform = process.env[AGENT_IMAGE_PLATFORM];
     originalHcloudNetworkIds = process.env[HCLOUD_NETWORK_IDS];
+    originalHcloudFirewallIds = process.env[HCLOUD_FIREWALL_IDS];
     process.env[AGENT_IMAGE] = "ghcr.io/elizaos/eliza:latest";
     process.env[AGENT_IMAGE_PLATFORM] = "linux/arm64";
     delete process.env[HCLOUD_NETWORK_IDS];
+    process.env[HCLOUD_FIREWALL_IDS] = "8101,8102";
     mocks.createNode.mockClear();
     mocks.findAllNodes.mockClear();
     mocks.createServer.mockClear();
+    mocks.getServer.mockClear();
     mocks.listServers.mockClear();
     mocks.deleteServer.mockClear();
     mocks.isConfigured.mockClear();
@@ -161,6 +195,44 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       },
       rootPassword: "root-secret",
     });
+    mocks.getServer.mockImplementation((serverId: number) => {
+      if (serverId === 2020) {
+        return Promise.resolve({
+          id: 2020,
+          name: "node-existing",
+          status: "running",
+          labels: {
+            "managed-by": "eliza-cloud",
+            "node-id": "node-existing",
+            environment: "local",
+            tier: "data-plane",
+          },
+          firewallAttachments: [
+            { id: 8101, status: "applied" },
+            { id: 8102, status: "applied" },
+          ],
+        });
+      }
+      const input = mocks.createServer.mock.calls.at(-1)?.[0] as
+        | {
+            name?: string;
+            labels?: Record<string, string>;
+            firewallIds?: number[];
+          }
+        | undefined;
+      return Promise.resolve({
+        id: serverId,
+        name: input?.name ?? "created-server",
+        status: "running",
+        publicIpv4:
+          serverId === 4242 ? "203.0.113.10" : serverId === 7777 ? "203.0.113.20" : "203.0.113.30",
+        labels: input?.labels,
+        firewallAttachments: (input?.firewallIds ?? []).map((id) => ({
+          id,
+          status: "applied",
+        })),
+      });
+    });
     mocks.listServers.mockResolvedValue([]);
   });
 
@@ -168,6 +240,7 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
     restoreEnv(AGENT_IMAGE, originalAgentImage);
     restoreEnv(AGENT_IMAGE_PLATFORM, originalAgentImagePlatform);
     restoreEnv(HCLOUD_NETWORK_IDS, originalHcloudNetworkIds);
+    restoreEnv(HCLOUD_FIREWALL_IDS, originalHcloudFirewallIds);
   });
 
   test("creates a Hetzner server and registers the autoscaled docker node", async () => {
@@ -203,6 +276,7 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       image: "ubuntu-24.04",
       userData: "#cloud-config\n",
       networkIds: [],
+      firewallIds: [8101, 8102],
       labels: {
         "managed-by": "eliza-cloud",
         "node-id": "node-test",
@@ -247,13 +321,7 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
   });
 
   test("returns the authoritative DB row for an idempotent retry", async () => {
-    mocks.nodes = [
-      {
-        node_id: "node-existing",
-        hostname: "203.0.113.20",
-        metadata: { hcloudServerId: 2020, environment: "local" },
-      } as DockerNode,
-    ];
+    mocks.nodes = [typedHetznerNode("node-existing", 2020, "203.0.113.20")];
     const autoscaler = new NodeAutoscaler(policy);
 
     await expect(
@@ -270,7 +338,285 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       hcloudServerId: 2020,
       idempotent: true,
     });
+    expect(mocks.getServer).toHaveBeenCalledWith(2020);
     expect(mocks.listServers).not.toHaveBeenCalled();
+    expect(mocks.createServer).not.toHaveBeenCalled();
+  });
+
+  test("fails closed when the Hetzner firewall set is absent", async () => {
+    delete process.env[HCLOUD_FIREWALL_IDS];
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-unfenced" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(mocks.listServers).not.toHaveBeenCalled();
+    expect(mocks.createServer).not.toHaveBeenCalled();
+  });
+
+  test.each(["8101,garbage", "8101,8101", "0", "1.5"])(
+    "fails closed on ambiguous Hetzner firewall configuration %s",
+    async (value) => {
+      process.env[HCLOUD_FIREWALL_IDS] = value;
+      const autoscaler = new NodeAutoscaler(policy);
+
+      await expect(
+        autoscaler.provisionNode(
+          { nodeId: "node-bad-firewall-config" },
+          {
+            controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+            registrationUrl: "https://cloud.example.test/register",
+            registrationSecret: "secret",
+          },
+        ),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      expect(mocks.listServers).not.toHaveBeenCalled();
+      expect(mocks.createServer).not.toHaveBeenCalled();
+    },
+  );
+
+  test("rejects firewall drift on an authoritative DB/provider node", async () => {
+    mocks.nodes = [typedHetznerNode("node-drifted", 2020, "203.0.113.21")];
+    mocks.getServer.mockResolvedValueOnce({
+      id: 2020,
+      name: "node-drifted",
+      status: "running",
+      labels: {
+        "managed-by": "eliza-cloud",
+        "node-id": "node-drifted",
+        environment: "local",
+        tier: "data-plane",
+      },
+      firewallAttachments: [{ id: 8101, status: "applied" }],
+    });
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-drifted" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(mocks.createServer).not.toHaveBeenCalled();
+    expect(mocks.createNode).not.toHaveBeenCalled();
+  });
+
+  test("rejects provider label drift on an authoritative DB node", async () => {
+    mocks.nodes = [typedHetznerNode("node-label-drifted", 2020, "203.0.113.23")];
+    mocks.getServer.mockResolvedValueOnce({
+      id: 2020,
+      name: "node-label-drifted",
+      status: "running",
+      labels: {
+        "managed-by": "eliza-cloud",
+        "node-id": "different-node",
+        environment: "local",
+        tier: "data-plane",
+      },
+      firewallAttachments: [
+        { id: 8101, status: "applied" },
+        { id: 8102, status: "applied" },
+      ],
+    });
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-label-drifted" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(mocks.createServer).not.toHaveBeenCalled();
+  });
+
+  test("rejects an ambiguous provider firewall attachment state", async () => {
+    mocks.nodes = [typedHetznerNode("node-firewall-pending", 2020, "203.0.113.24")];
+    mocks.getServer.mockResolvedValueOnce({
+      id: 2020,
+      name: "node-firewall-pending",
+      status: "running",
+      labels: {
+        "managed-by": "eliza-cloud",
+        "node-id": "node-firewall-pending",
+        environment: "local",
+        tier: "data-plane",
+      },
+      firewallAttachments: [
+        { id: 8101, status: "applied" },
+        { id: 8102, status: "pending" },
+      ],
+    });
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-firewall-pending" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(mocks.createServer).not.toHaveBeenCalled();
+  });
+
+  test("rejects a provider firewall attachment with missing state", async () => {
+    mocks.nodes = [typedHetznerNode("node-firewall-missing-state", 2021, "203.0.113.25")];
+    mocks.getServer.mockResolvedValueOnce({
+      id: 2021,
+      name: "node-firewall-missing-state",
+      status: "running",
+      labels: {
+        "managed-by": "eliza-cloud",
+        "node-id": "node-firewall-missing-state",
+        environment: "local",
+        tier: "data-plane",
+      },
+      firewallAttachments: [{ id: 8101 }, { id: 8102, status: "applied" }],
+    });
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-firewall-missing-state" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(mocks.createServer).not.toHaveBeenCalled();
+  });
+
+  test("rejects an orphaned DB node instead of creating a replacement by name", async () => {
+    mocks.nodes = [typedHetznerNode("node-provider-missing", 2020, "203.0.113.22")];
+    mocks.getServer.mockResolvedValueOnce(null);
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-provider-missing" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "not_found" });
+    expect(mocks.createServer).not.toHaveBeenCalled();
+  });
+
+  test("rejects firewall drift before adopting a provider-only node", async () => {
+    mocks.listServers.mockResolvedValueOnce([
+      {
+        id: 3030,
+        name: "node-provider-only",
+        status: "running",
+        labels: {
+          "managed-by": "eliza-cloud",
+          "node-id": "node-provider-only",
+          environment: "local",
+          tier: "data-plane",
+        },
+        firewallAttachments: [{ id: 9999, status: "applied" }],
+      },
+    ]);
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-provider-only" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(mocks.createServer).not.toHaveBeenCalled();
+    expect(mocks.createNode).not.toHaveBeenCalled();
+  });
+
+  test("fails closed on a same-name provider server without exact allocation labels", async () => {
+    mocks.listServers.mockResolvedValueOnce([
+      {
+        id: 3031,
+        name: "node-name-only",
+        status: "running",
+        labels: {
+          "managed-by": "eliza-cloud",
+          environment: "local",
+          tier: "data-plane",
+        },
+        firewallAttachments: [
+          { id: 8101, status: "applied" },
+          { id: 8102, status: "applied" },
+        ],
+      },
+    ]);
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-name-only" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toThrow("same-name Hetzner server");
+
+    expect(mocks.createServer).not.toHaveBeenCalled();
+  });
+
+  test("fails closed on multiple provider allocations for one node label", async () => {
+    mocks.listServers.mockResolvedValueOnce(
+      [3031, 3032].map((id) => ({
+        id,
+        name: `node-duplicate-${id}`,
+        status: "running",
+        labels: {
+          "managed-by": "eliza-cloud",
+          "node-id": "node-duplicate",
+          environment: "local",
+          tier: "data-plane",
+        },
+        firewallAttachments: [
+          { id: 8101, status: "applied" },
+          { id: 8102, status: "applied" },
+        ],
+      })),
+    );
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-duplicate" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toThrow("multiple Hetzner allocations");
     expect(mocks.createServer).not.toHaveBeenCalled();
   });
 
@@ -346,6 +692,217 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
         },
       ),
     ).rejects.toThrow("database unavailable");
+    expect(mocks.deleteServer).toHaveBeenCalledWith(4242);
+  });
+
+  test.each([
+    ["wrong firewall set", { firewallAttachments: [{ id: 9999, status: "applied" }] }],
+    [
+      "missing firewall attachment state",
+      { firewallAttachments: [{ id: 8101 }, { id: 8102, status: "applied" }] },
+    ],
+  ])("cleans up a new server when authoritative read-back has %s", async (_label, override) => {
+    mocks.getServer.mockResolvedValueOnce({
+      id: 4242,
+      name: "node-readback-rejected",
+      status: "running",
+      labels: {
+        "managed-by": "eliza-cloud",
+        "node-id": "node-readback-rejected",
+        environment: "local",
+        tier: "data-plane",
+      },
+      ...override,
+    });
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-readback-rejected" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toBeInstanceOf(Error);
+    expect(mocks.createNode).not.toHaveBeenCalled();
+    expect(mocks.deleteServer).toHaveBeenCalledWith(4242);
+  });
+
+  test.each([
+    ["missing read", null],
+    ["empty attachment read", { firewallAttachments: [] }],
+    [
+      "pending attachment read",
+      {
+        firewallAttachments: [
+          { id: 8101, status: "applied" },
+          { id: 8102, status: "pending" },
+        ],
+      },
+    ],
+  ])("waits for %s to converge before node registration", async (_label, firstRead) => {
+    const sleepCalls: number[] = [];
+    mocks.getServer.mockResolvedValueOnce(
+      firstRead === null
+        ? null
+        : {
+            id: 4242,
+            name: "node-settling",
+            status: "running",
+            labels: {
+              "managed-by": "eliza-cloud",
+              "node-id": "node-settling",
+              environment: "local",
+              tier: "data-plane",
+            },
+            ...firstRead,
+          },
+    );
+    const autoscaler = new NodeAutoscaler(
+      policy,
+      () => Date.parse("2026-05-15T12:00:00Z"),
+      undefined,
+      async (delayMs) => {
+        sleepCalls.push(delayMs);
+      },
+    );
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-settling" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).resolves.toMatchObject({ hcloudServerId: 4242 });
+    expect(mocks.getServer).toHaveBeenCalledTimes(2);
+    expect(sleepCalls).toEqual([1_000]);
+    expect(mocks.createNode).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteServer).not.toHaveBeenCalled();
+  });
+
+  test("deletes only the created ID after bounded perpetual pending state", async () => {
+    const sleepCalls: number[] = [];
+    mocks.getServer.mockResolvedValue({
+      id: 4242,
+      name: "node-never-settles",
+      status: "running",
+      labels: {
+        "managed-by": "eliza-cloud",
+        "node-id": "node-never-settles",
+        environment: "local",
+        tier: "data-plane",
+      },
+      firewallAttachments: [
+        { id: 8101, status: "applied" },
+        { id: 8102, status: "pending" },
+      ],
+    });
+    const autoscaler = new NodeAutoscaler(
+      policy,
+      () => 0,
+      undefined,
+      async (delayMs) => {
+        sleepCalls.push(delayMs);
+      },
+    );
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-never-settles" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toThrow("did not reach the authoritative firewall state after 5 reads");
+    expect(mocks.getServer).toHaveBeenCalledTimes(5);
+    expect(sleepCalls).toEqual([1_000, 1_000, 1_000, 1_000]);
+    expect(mocks.createNode).not.toHaveBeenCalled();
+    expect(mocks.deleteServer).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteServer).toHaveBeenCalledWith(4242);
+  });
+
+  test("rejects a mismatched read-back ID and fences cleanup to the created ID", async () => {
+    mocks.getServer.mockResolvedValueOnce({
+      id: 9999,
+      name: "node-id-mismatch",
+      status: "running",
+      labels: {
+        "managed-by": "eliza-cloud",
+        "node-id": "node-id-mismatch",
+        environment: "local",
+        tier: "data-plane",
+      },
+      firewallAttachments: [
+        { id: 8101, status: "applied" },
+        { id: 8102, status: "applied" },
+      ],
+    });
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-id-mismatch" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toThrow("returned server 9999 for requested server 4242");
+    expect(mocks.createNode).not.toHaveBeenCalled();
+    expect(mocks.deleteServer).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteServer).toHaveBeenCalledWith(4242);
+    expect(mocks.deleteServer).not.toHaveBeenCalledWith(9999);
+  });
+
+  test("rejects a non-canonical created ID before provider read or destructive cleanup", async () => {
+    mocks.createServer.mockResolvedValueOnce({
+      server: {
+        id: "004242",
+        name: "node-invalid-created-id",
+        publicIpv4: "203.0.113.10",
+      },
+      rootPassword: "root-secret",
+    });
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-invalid-created-id" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toThrow("does not have a canonical positive Hetzner server ID");
+    expect(mocks.getServer).not.toHaveBeenCalled();
+    expect(mocks.createNode).not.toHaveBeenCalled();
+    expect(mocks.deleteServer).not.toHaveBeenCalled();
+  });
+
+  test("cleans up a new server when the authoritative read-back fails", async () => {
+    mocks.getServer.mockRejectedValueOnce(new Error("provider read failed"));
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-readback-failed" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toThrow("provider read failed");
+    expect(mocks.createNode).not.toHaveBeenCalled();
     expect(mocks.deleteServer).toHaveBeenCalledWith(4242);
   });
 
@@ -576,12 +1133,15 @@ describe("NodeAutoscaler full provision\u2192healthy\u2192drain loop (#8920)", (
   let idSeq: number;
   let originalAgentImage: string | undefined;
   let originalAgentImagePlatform: string | undefined;
+  let originalHcloudFirewallIds: string | undefined;
 
   beforeEach(() => {
     originalAgentImage = process.env[AGENT_IMAGE];
     originalAgentImagePlatform = process.env[AGENT_IMAGE_PLATFORM];
+    originalHcloudFirewallIds = process.env[HCLOUD_FIREWALL_IDS];
     process.env[AGENT_IMAGE] = "ghcr.io/elizaos/eliza:latest";
     process.env[AGENT_IMAGE_PLATFORM] = "linux/arm64";
+    process.env[HCLOUD_FIREWALL_IDS] = "8101,8102";
     store = [];
     idSeq = 1;
     mocks.buildUserData.mockReturnValue("#cloud-config\n");
@@ -617,6 +1177,7 @@ describe("NodeAutoscaler full provision\u2192healthy\u2192drain loop (#8920)", (
   afterEach(() => {
     restoreEnv(AGENT_IMAGE, originalAgentImage);
     restoreEnv(AGENT_IMAGE_PLATFORM, originalAgentImagePlatform);
+    restoreEnv(HCLOUD_FIREWALL_IDS, originalHcloudFirewallIds);
     mocks.createNode.mockReset();
     mocks.findAllNodes.mockReset();
     mocks.findByNodeId.mockReset();

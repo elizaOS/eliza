@@ -28,6 +28,7 @@ export type { CreateServerInput, CreateVolumeInput, ProvisionedServer } from "./
 const OFFICIAL_HCLOUD_API_BASE = "https://api.hetzner.cloud/v1";
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
+const MAX_LIST_PAGES = 10_000;
 
 export type HetznerCloudErrorCode =
   | "missing_token"
@@ -100,9 +101,12 @@ export interface HetznerServer {
   public_net: {
     ipv4: { ip: string; blocked: boolean } | null;
     ipv6: { ip: string; blocked: boolean } | null;
+    firewalls?: Array<{ id: number; status: string }>;
   };
   /** Canonical public address mapped from `public_net` (satisfies the seam). */
   publicIpv4?: string | null;
+  /** Canonical firewall attachment state mapped from `public_net`. */
+  firewallAttachments?: Array<{ id: number; status: string }>;
   server_type: { id: number; name: string };
   datacenter: { id: number; name: string; location: HetznerLocation };
   labels: Record<string, string>;
@@ -208,20 +212,67 @@ export class HetznerCloudClient implements ComputeProvider {
 
   async listServers(label?: Record<string, string>): Promise<HetznerServer[]> {
     const params = label ? `?label_selector=${encodeLabelSelector(label)}` : "";
-    const data = await this.request<{ servers: HetznerServer[] }>("GET", `/servers${params}`);
-    if (!Array.isArray(data.servers)) {
-      throw new HetznerCloudError(
-        "server_error",
-        "Hetzner Cloud API list servers response is missing the servers array",
-      );
+    const basePath = `/servers${params}`;
+    const servers: HetznerServer[] = [];
+    const serverIds = new Set<number>();
+    // Hetzner's unqualified first response is page 1. Seed it so a malformed
+    // `next_page: 1` cannot make us issue the same credential-bearing request
+    // twice before detecting a pagination cycle.
+    const visitedPages = new Set<number>([1]);
+    let path = basePath;
+
+    for (let pageCount = 0; pageCount < MAX_LIST_PAGES; pageCount += 1) {
+      const data = await this.request<{
+        servers: HetznerServer[];
+        meta?: { pagination?: { next_page?: number | null } };
+      }>("GET", path);
+      if (!Array.isArray(data.servers)) {
+        throw new HetznerCloudError(
+          "server_error",
+          "Hetzner Cloud API list servers response is missing the servers array",
+        );
+      }
+      for (const rawServer of data.servers) {
+        const server = mapHetznerServer(rawServer);
+        if (!Number.isSafeInteger(server.id) || server.id <= 0 || serverIds.has(server.id)) {
+          throw new HetznerCloudError(
+            "server_error",
+            "Hetzner Cloud API list servers response contains an invalid or duplicate server ID",
+          );
+        }
+        serverIds.add(server.id);
+        servers.push(server);
+      }
+
+      const pagination = data.meta?.pagination;
+      if (!pagination || !("next_page" in pagination)) {
+        throw new HetznerCloudError(
+          "server_error",
+          "Hetzner Cloud API list servers response is missing pagination metadata",
+        );
+      }
+      const nextPage = pagination.next_page;
+      if (nextPage == null) return servers;
+      if (!Number.isSafeInteger(nextPage) || nextPage <= 0 || visitedPages.has(nextPage)) {
+        throw new HetznerCloudError(
+          "server_error",
+          "Hetzner Cloud API list servers response contains invalid pagination",
+        );
+      }
+      visitedPages.add(nextPage);
+      path = `${basePath}${basePath.includes("?") ? "&" : "?"}page=${nextPage}`;
     }
-    return data.servers;
+
+    throw new HetznerCloudError(
+      "server_error",
+      `Hetzner Cloud API list servers exceeded ${MAX_LIST_PAGES} pages`,
+    );
   }
 
   async getServer(serverId: number): Promise<HetznerServer | null> {
     try {
       const data = await this.request<{ server: HetznerServer }>("GET", `/servers/${serverId}`);
-      return data.server;
+      return mapHetznerServer(data.server);
     } catch (err) {
       if (err instanceof HetznerCloudError && err.code === "not_found") return null;
       throw err;
@@ -250,6 +301,9 @@ export class HetznerCloudClient implements ComputeProvider {
     if (input.networkIds && input.networkIds.length > 0) {
       body.networks = input.networkIds;
     }
+    if (input.firewallIds && input.firewallIds.length > 0) {
+      body.firewalls = input.firewallIds.map((firewall) => ({ firewall }));
+    }
     if (input.labels && Object.keys(input.labels).length > 0) {
       body.labels = input.labels;
     }
@@ -267,12 +321,7 @@ export class HetznerCloudClient implements ComputeProvider {
     });
 
     return {
-      server: {
-        ...data.server,
-        // Map Hetzner's public_net onto the canonical seam field (ipv4 first,
-        // then ipv6) so consumers don't depend on the provider-specific shape.
-        publicIpv4: data.server.public_net?.ipv4?.ip ?? data.server.public_net?.ipv6?.ip ?? null,
-      },
+      server: mapHetznerServer(data.server),
       rootPassword: data.root_password,
     };
   }
@@ -483,6 +532,38 @@ export class HetznerCloudClient implements ComputeProvider {
 
     return parsed as T;
   }
+}
+
+function mapHetznerServer(server: HetznerServer): HetznerServer {
+  const providerFirewalls = server.public_net?.firewalls;
+  if (providerFirewalls !== undefined && !Array.isArray(providerFirewalls)) {
+    throw new HetznerCloudError(
+      "server_error",
+      "Hetzner Cloud API server response has malformed firewall attachments",
+    );
+  }
+  const firewallAttachments = (providerFirewalls ?? []).map((firewall) => {
+    if (
+      !firewall ||
+      !Number.isSafeInteger(firewall.id) ||
+      firewall.id <= 0 ||
+      typeof firewall.status !== "string" ||
+      firewall.status.length === 0
+    ) {
+      throw new HetznerCloudError(
+        "server_error",
+        "Hetzner Cloud API server response has malformed firewall attachment state",
+      );
+    }
+    return { id: firewall.id, status: firewall.status };
+  });
+  return {
+    ...server,
+    // Map provider-specific network state onto the canonical compute seam so
+    // autoscaler ownership/drift checks do not need a Hetzner-only cast.
+    publicIpv4: server.public_net?.ipv4?.ip ?? server.public_net?.ipv6?.ip ?? null,
+    firewallAttachments,
+  };
 }
 
 // ---------------------------------------------------------------------------
