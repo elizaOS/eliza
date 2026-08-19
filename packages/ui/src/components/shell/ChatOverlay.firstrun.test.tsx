@@ -226,6 +226,40 @@ describe("ChatOverlay first-run gating", () => {
     expect(thread.style.flexBasis).toBe("756px");
   });
 
+  it("does not apply the phone-landscape narrow width to the shallow desktop host", () => {
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 600,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 96,
+    });
+    try {
+      render(
+        <ChatOverlay
+          controller={makeController()}
+          fillHostAtHalf
+          initialMode="input"
+        />,
+      );
+      expect(
+        screen.getByTestId("chat-sheet").parentElement?.style.maxWidth,
+      ).toBe("768px");
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalWidth,
+      });
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: originalHeight,
+      });
+    }
+  });
+
   it("opens pinned at HALF and ignores Escape while onboarding is active", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");

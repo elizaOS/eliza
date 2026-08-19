@@ -2918,10 +2918,9 @@ export function ChatOverlay({
   // it is opened, focused, composing, or working, the normal centered composer
   // returns (so the reading/typing surface is never cramped). Portrait phones
   // and desktop/tablet never satisfy `shortLandscape`, so they are untouched.
-  const shortLandscape = isShortLandscapeViewport(
-    viewport.innerWidth,
-    viewport.innerHeight,
-  );
+  const shortLandscape =
+    !fillHostAtHalf &&
+    isShortLandscapeViewport(viewport.innerWidth, viewport.innerHeight);
   const compactLanding =
     shortLandscape &&
     !sheetOpen &&
