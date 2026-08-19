@@ -13,8 +13,35 @@
  * path.
  */
 
+import * as fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
+
+function resolveRealPathSync(p: string): string {
+  const absolute = path.resolve(p);
+  try {
+    return fs.realpathSync(absolute);
+  } catch {
+    // error-policy:J3 ancestor missing — walk up to longest existing parent
+  }
+  const tail: string[] = [];
+  let current = absolute;
+  while (true) {
+    const parent = path.dirname(current);
+    if (parent === current) return absolute;
+    tail.unshift(path.basename(current));
+    try {
+      return path.join(fs.realpathSync(parent), ...tail);
+    } catch {
+      current = parent;
+    }
+  }
+}
+
+function isWithin(child: string, parent: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
 
 export function localInferenceRoot(): string {
   return path.join(resolveStateDir(), "local-inference");
@@ -40,5 +67,16 @@ export function isWithinElizaRoot(target: string): boolean {
   const root = path.resolve(localInferenceRoot());
   const resolved = path.resolve(target);
   if (resolved === root) return false;
-  return resolved.startsWith(`${root}${path.sep}`);
+  // Lexical fast-path: cheap reject before touching the filesystem.
+  if (!isWithin(resolved, root)) return false;
+  // Physical check: a subdir symlink to /etc would lexically appear inside
+  // but `fs.stat` follows the link, so we must also compare realpaths.
+  try {
+    const realRoot = resolveRealPathSync(root);
+    const realTarget = resolveRealPathSync(resolved);
+    return isWithin(realTarget, realRoot);
+  } catch {
+    // error-policy:J3 realpath failed — fall back to lexical result already computed
+    return true;
+  }
 }

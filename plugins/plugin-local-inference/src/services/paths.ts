@@ -4,8 +4,30 @@
  * so `ELIZA_STATE_DIR` relocates them. Includes the containment check used to
  * keep downloads and registry writes inside the local-inference root.
  */
+import * as fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
+
+function resolveRealPathSync(p: string): string {
+  const absolute = path.resolve(p);
+  try {
+    return fs.realpathSync(absolute);
+  } catch {
+    // error-policy:J3 ancestor missing — walk up to longest existing parent
+  }
+  const tail: string[] = [];
+  let current = absolute;
+  while (true) {
+    const parent = path.dirname(current);
+    if (parent === current) return absolute;
+    tail.unshift(path.basename(current));
+    try {
+      return path.join(fs.realpathSync(parent), ...tail);
+    } catch {
+      current = parent;
+    }
+  }
+}
 
 export function localInferenceRoot(): string {
 	return path.join(resolveStateDir(), "local-inference");
@@ -26,7 +48,15 @@ export function downloadsStagingDir(): string {
 export function isWithinElizaRoot(target: string): boolean {
 	const root = path.resolve(localInferenceRoot());
 	const resolved = path.resolve(target);
-	return isSubpath(resolved, root);
+	if (!isSubpath(resolved, root)) return false;
+	try {
+		const realRoot = resolveRealPathSync(root);
+		const realTarget = resolveRealPathSync(resolved);
+		return isSubpath(realTarget, realRoot);
+	} catch {
+		// error-policy:J3 realpath failed — lexical check already passed
+		return true;
+	}
 }
 
 function isSubpath(target: string, root: string): boolean {

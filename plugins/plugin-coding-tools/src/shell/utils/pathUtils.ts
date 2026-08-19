@@ -6,9 +6,34 @@
  * shell syntax outside quoted data and a pipe into an interpreter or command
  * dispatcher because ShellService then runs the string as `shell -c`.
  */
+import * as fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { analyzeShellCommand } from "../approvals/analysis.js";
+
+function resolveRealPathSync(p: string): string {
+  const absolute = path.resolve(p);
+  try {
+    return fs.realpathSync(absolute);
+  } catch {
+    // error-policy:J3 leaf or ancestor missing — walk up to longest existing
+    // prefix and realpath that, then rejoin the tail so a workspace
+    // directory symlink to an outside folder cannot hide behind a
+    // not-yet-created basename.
+  }
+  const tail: string[] = [];
+  let current = absolute;
+  while (true) {
+    const parent = path.dirname(current);
+    if (parent === current) return absolute;
+    tail.unshift(path.basename(current));
+    try {
+      return path.join(fs.realpathSync(parent), ...tail);
+    } catch {
+      current = parent;
+    }
+  }
+}
 
 export function validatePath(
   commandPath: string,
@@ -18,9 +43,15 @@ export function validatePath(
   const resolvedPath = path.resolve(currentDir, commandPath);
   const normalizedPath = path.normalize(resolvedPath);
   const normalizedAllowed = path.normalize(allowedDir);
-  const relative = path.relative(normalizedAllowed, normalizedPath);
 
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  // Physical containment: resolve symlinks through the longest existing
+  // ancestor so a workspace dir symlink to an outside folder cannot bypass
+  // the lexical `path.relative` check (a -> /etc, a/b lexically passes but
+  // physically is outside).
+  const realPath = resolveRealPathSync(resolvedPath);
+  const realAllowed = resolveRealPathSync(normalizedAllowed);
+  const realRelative = path.relative(realAllowed, realPath);
+  if (realRelative.startsWith("..") || path.isAbsolute(realRelative)) {
     logger.warn(
       `Path validation failed: ${normalizedPath} is outside allowed directory ${normalizedAllowed}`,
     );

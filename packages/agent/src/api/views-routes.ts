@@ -24,6 +24,27 @@ import { promises as fs } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 
+async function resolveRealPath(p: string): Promise<string> {
+	const absolute = path.resolve(p);
+	try {
+		return await fs.realpath(absolute);
+	} catch {
+		// error-policy:J3 ancestor missing — walk up to longest existing parent
+	}
+	const tail: string[] = [];
+	let current = absolute;
+	while (true) {
+		const parent = path.dirname(current);
+		if (parent === current) return absolute;
+		tail.unshift(path.basename(current));
+		try {
+			return path.join(await fs.realpath(parent), ...tail);
+		} catch {
+			current = parent;
+		}
+	}
+}
+
 import {
   EventType,
   type IAgentRuntime,
@@ -946,6 +967,25 @@ export async function handleViewsRoutes(
     ) {
       error(res, "Malformed view asset path", 400);
       return true;
+    }
+
+    // Physical containment: a bundleDir symlink to an outside folder would
+    // lexically appear inside but `fs.stat`/`readFile` follow the link.
+    try {
+      const realBundleDir = await resolveRealPath(bundleDir);
+      const realAssetPath = await resolveRealPath(assetPath);
+      const realRelative = path.relative(realBundleDir, realAssetPath);
+      if (
+        realRelative === ".." ||
+        realRelative.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(realRelative) ||
+        realRelative === ""
+      ) {
+        error(res, "Malformed view asset path", 400);
+        return true;
+      }
+    } catch {
+      // error-policy:J3 realpath failed — lexical gate already passed, continue to stat
     }
 
     let stat: import("node:fs").Stats;
