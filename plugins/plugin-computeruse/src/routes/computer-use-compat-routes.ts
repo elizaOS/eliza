@@ -3,9 +3,8 @@
  * mode. The handlers resolve the service structurally from the active runtime
  * so the plugin bridge does not require a concrete runtime implementation.
  * Local-trust is fail-closed: a missing peer address, a proxy client-IP
- * header, a non-loopback Host, a present Origin that does not match Host
- * (including port), or browser fetch metadata other than same-origin/none
- * must not authorize approval routes.
+ * header, a non-loopback Host, or a cross-site fetch metadata mark must not
+ * authorize approval routes.
  */
 
 import crypto from "node:crypto";

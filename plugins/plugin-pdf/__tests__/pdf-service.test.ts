@@ -4,7 +4,11 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
-import { MAX_PDF_BUFFER_BYTES, PdfService } from "../services/pdf";
+import {
+	MAX_PDF_BUFFER_BYTES,
+	MAX_PDF_PAGES,
+	PdfService,
+} from "../services/pdf";
 
 const getDocumentProxyMock = vi.hoisted(() => vi.fn());
 
@@ -16,6 +20,17 @@ interface MockPageInput {
 	items: unknown;
 	width?: number;
 	height?: number;
+}
+
+function makeDeclaredPdf(numPages: number) {
+	return {
+		numPages,
+		getPage: vi.fn(async () => ({
+			getTextContent: vi.fn(async () => ({ items: [{ str: "p" }] })),
+			getViewport: vi.fn(() => ({ width: 612, height: 792 })),
+		})),
+		getMetadata: vi.fn(async () => ({ info: {} })),
+	};
 }
 
 function makePdf(
@@ -192,6 +207,53 @@ describe("PdfService", () => {
 			);
 		}
 		expect(getDocumentProxyMock).not.toHaveBeenCalled();
+	});
+
+	it("rejects a declared page count above the page budget before getPage", async () => {
+		const pdf = makeDeclaredPdf(MAX_PDF_PAGES + 1);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		await expect(service().convertPdfToText(validPdfBuffer())).rejects.toThrow(
+			`PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`,
+		);
+		await expect(
+			service().convertPdfToTextWithOptions(validPdfBuffer()),
+		).resolves.toEqual({
+			success: false,
+			error: `PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`,
+		});
+		await expect(service().getDocumentInfo(validPdfBuffer())).rejects.toThrow(
+			`PDF page count exceeds maximum of ${MAX_PDF_PAGES} pages`,
+		);
+		expect(pdf.getPage).not.toHaveBeenCalled();
+	});
+
+	it("extracts a last-fit document at the page budget", async () => {
+		const pdf = makeDeclaredPdf(MAX_PDF_PAGES);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		await expect(service().convertPdfToText(validPdfBuffer())).resolves.toBe(
+			Array.from({ length: MAX_PDF_PAGES }, () => "p").join("\n"),
+		);
+		expect(pdf.getPage).toHaveBeenCalledTimes(MAX_PDF_PAGES);
+	});
+
+	it.each([
+		Number.POSITIVE_INFINITY,
+		1e20,
+		0,
+		-1,
+		1.5,
+		Number.NaN,
+	])("rejects a hostile declared page count before getPage: %s", async (numPages) => {
+		const pdf = makeDeclaredPdf(1);
+		pdf.numPages = numPages as number;
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		await expect(service().convertPdfToText(validPdfBuffer())).rejects.toThrow(
+			"PDF page count must be a positive safe integer",
+		);
+		expect(pdf.getPage).not.toHaveBeenCalled();
 	});
 
 	it("rejects oversized PDF inputs before extraction", async () => {

@@ -75,21 +75,68 @@ describe("validateToolSelectionArgument", () => {
     required: ["q"],
   } as const;
 
-  it("validates arguments against the tool input schema", () => {
-    expect(validateToolSelectionArgument({ toolArguments: { q: "hi" } }, schema).success).toBe(
-      true
-    );
-    const bad = validateToolSelectionArgument({ toolArguments: {} }, schema);
+  it("validates arguments against the tool input schema", async () => {
+    expect(
+      (await validateToolSelectionArgument({ toolArguments: { q: "hi" } }, schema)).success
+    ).toBe(true);
+    const bad = await validateToolSelectionArgument({ toolArguments: {} }, schema);
     expect(bad.success).toBe(false);
     if (!bad.success) expect(bad.error).toMatch(/Invalid arguments/);
   });
 
-  it("coerces an empty-string/'{}' toolArguments to an empty object", () => {
+  it("coerces an empty-string/'{}' toolArguments to an empty object", async () => {
     const emptyObjSchema = { type: "object" } as const;
-    expect(validateToolSelectionArgument({ toolArguments: "" }, emptyObjSchema).success).toBe(true);
-    expect(validateToolSelectionArgument({ toolArguments: "{}" }, emptyObjSchema).success).toBe(
-      true
+    expect(
+      (await validateToolSelectionArgument({ toolArguments: "" }, emptyObjSchema)).success
+    ).toBe(true);
+    expect(
+      (await validateToolSelectionArgument({ toolArguments: "{}" }, emptyObjSchema)).success
+    ).toBe(true);
+  });
+
+  it("terminates pathological schema evaluation and remains usable", async () => {
+    const pathological = {
+      type: "object",
+      properties: { value: { type: "string", pattern: "^(a+)+$" } },
+      required: ["value"],
+    } as const;
+
+    const startedAt = performance.now();
+    const rejected = await validateToolSelectionArgument(
+      { toolArguments: { value: `${"a".repeat(80)}!` } },
+      pathological
     );
+    expect(rejected.success).toBe(false);
+    expect(performance.now() - startedAt).toBeLessThan(1000);
+    if (!rejected.success) expect(rejected.error).toMatch(/exceeded 250ms/);
+
+    const recovered = await validateToolSelectionArgument(
+      { toolArguments: { q: "still responsive" } },
+      schema
+    );
+    expect(recovered.success).toBe(true);
+  });
+
+  it("bounds concurrent hostile schema workers", async () => {
+    const pathological = {
+      type: "object",
+      properties: { value: { type: "string", pattern: "^(a+)+$" } },
+      required: ["value"],
+    } as const;
+
+    const results = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        validateToolSelectionArgument(
+          { toolArguments: { value: `${"a".repeat(80)}!` } },
+          pathological
+        )
+      )
+    );
+    expect(
+      results.filter(
+        (result) => !result.success && result.error.includes("validation capacity of 4 exceeded")
+      )
+    ).toHaveLength(8);
   });
 });
 

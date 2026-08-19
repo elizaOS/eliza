@@ -29,6 +29,9 @@ async function request(pathname: string): Promise<CapturedResponse> {
     configurable: true,
   });
   const req = new IncomingMessage(socket);
+  // Bun does not retain the constructor socket on synthetic IncomingMessage
+  // instances, so bind the proven loopback peer explicitly for this auth test.
+  Object.defineProperty(req, "socket", { value: socket, configurable: true });
   req.method = "POST";
   req.url = pathname;
   Object.defineProperty(req, "headers", { value: {}, configurable: true });

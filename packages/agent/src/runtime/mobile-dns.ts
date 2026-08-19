@@ -5,15 +5,24 @@
  * — dns.setServers, a dns.lookup patch backed by an explicit-server resolver, and
  * a globalThis.fetch wrapper that routes external requests through node:http(s)
  * (which honors the custom lookup) — so outbound cloud/inference/connector calls
- * resolve. Idempotent and a no-op off mobile; loopback and IP literals always
- * bypass the overrides.
+ * resolve. Gzip/deflate/br response bodies are credited against a decoded-byte
+ * budget before they enter the Response stream: a tiny compressed bomb otherwise
+ * materializes tens of megabytes in the agent process. Idempotent and a no-op
+ * off mobile; loopback and IP literals always bypass the overrides.
  */
 import dns, { type LookupAddress } from "node:dns";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
-import zlib from "node:zlib";
 import { isMobilePlatform } from "@elizaos/shared";
+import { decodeMobileFetchBody } from "./mobile-dns-decode-budget.ts";
+
+export {
+  creditDecodedBodyBytes,
+  decodeMobileFetchBody,
+  MAX_MOBILE_DNS_DECODED_BYTES,
+  MobileFetchDecodeBudgetError,
+} from "./mobile-dns-decode-budget.ts";
 
 /**
  * Public resolvers the on-device agent dials directly. Android/iOS expose no
@@ -263,14 +272,7 @@ async function fetchViaNode(
         }
 
         const enc = String(res.headers["content-encoding"] ?? "").toLowerCase();
-        const decoded =
-          enc === "gzip"
-            ? res.pipe(zlib.createGunzip())
-            : enc === "deflate"
-              ? res.pipe(zlib.createInflate())
-              : enc === "br"
-                ? res.pipe(zlib.createBrotliDecompress())
-                : res;
+        const decoded = decodeMobileFetchBody(res, enc);
 
         const respHeaders = new Headers();
         for (const [k, v] of Object.entries(res.headers)) {
@@ -290,13 +292,15 @@ async function fetchViaNode(
 
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
-            decoded.on("data", (chunk: Buffer) =>
-              controller.enqueue(new Uint8Array(chunk)),
-            );
+            decoded.on("data", (chunk: Buffer) => {
+              controller.enqueue(new Uint8Array(chunk));
+            });
             decoded.on("end", () => controller.close());
+            // error-policy:J1 translate Node decode failures to the Response body.
             decoded.on("error", (err: Error) => controller.error(err));
           },
           cancel() {
+            decoded.destroy();
             res.destroy();
           },
         });

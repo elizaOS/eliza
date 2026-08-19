@@ -282,6 +282,97 @@ describe("isTrustedLocalRequest — shared host/origin classification", () => {
         ).toBe(false);
       });
 
+      it("rejects same-site fetches from a different local origin", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                origin: "http://localhost:5173",
+                "sec-fetch-site": "same-site",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+      });
+
+      it("requires a browser Origin to match Host hostname and port", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                origin: "http://127.0.0.1:2138",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                origin: "http://localhost:5173",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                origin: "http://localhost:2138",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "[::1]:2138",
+                origin: "http://[::1]:2138",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
+      });
+
+      it("binds a browser Referer to Host but preserves native app origins", () => {
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                referer: "http://localhost:5173/approval",
+              },
+            }),
+            options,
+          ),
+        ).toBe(false);
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "localhost:2138",
+                origin: "capacitor://app",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
+      });
+
       it("rejects a non-loopback Origin", () => {
         expect(
           isTrustedLocalRequest(
