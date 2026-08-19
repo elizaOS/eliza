@@ -300,7 +300,6 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
         hint: "warm + precise",
         postExamples: [
           "Most productivity systems are just a list you actually look at.",
-          '"I\'ll remember" is the least reliable sentence in any language.',
           "You don't need a better app. You need to close 40 tabs.",
           "Spent an hour planning a trip that took four minutes to book. The hour was the fun part.",
           "Made a small thing today. One job, does it fast, no signup wall.",
