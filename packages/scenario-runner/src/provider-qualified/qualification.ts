@@ -26,12 +26,16 @@ import {
   validateProviderQualificationManifestForScenario,
 } from "./manifest.ts";
 import {
+  type ProviderOperationBinding,
+  validateProviderOperationBinding,
+} from "./operation-binding.ts";
+import {
   type VerifiedScenarioTrajectorySet,
   validateVerifiedScenarioTrajectorySet,
 } from "./trajectory-verifier.ts";
 
 export const PROVIDER_OBSERVER_EVIDENCE_SCHEMA =
-  "eliza.provider-qualified-observer-evidence.v1" as const;
+  "eliza.provider-qualified-observer-evidence.v2" as const;
 export const SEMANTIC_JUDGE_EVIDENCE_SCHEMA =
   "eliza.provider-qualified-semantic-evidence.v1" as const;
 
@@ -63,6 +67,7 @@ export interface SignedObservationConnectorBinding {
   provider: string;
   accountRefSha256: string;
   connectionRefSha256: string;
+  operation: ProviderOperationBinding;
 }
 
 export interface ProviderObserverEvidencePayload {
@@ -610,6 +615,7 @@ function parseSignedEvidenceRuntime(
             "provider",
             "accountRefSha256",
             "connectionRefSha256",
+            "operation",
           ]
         : ["observationId", "trajectoryId", "stageId", "stageSha256"];
     for (const [index, value] of values.entries()) {
@@ -617,6 +623,10 @@ function parseSignedEvidenceRuntime(
       const item = runtimeRecord(value, itemPath);
       requireExactKeys(item, itemPath, fields);
       for (const field of fields) {
+        if (field === "operation") {
+          validateProviderOperationBinding(item[field]);
+          continue;
+        }
         if (field.endsWith("Sha256")) {
           runtimeHash(item[field], `${itemPath}.${field}`);
         } else {
@@ -1163,6 +1173,7 @@ function exactObservationAssignment(
 function verifyConnectorBindings(
   assignment: readonly ObservationAssignment[],
   bindings: readonly SignedObservationConnectorBinding[],
+  expectedOperation: ProviderOperationBinding,
   reasons: string[],
 ): void {
   const byObservationId = new Map<string, SignedObservationConnectorBinding>();
@@ -1186,7 +1197,13 @@ function verifyConnectorBindings(
       !binding ||
       binding.provider !== contract.connectorProvider ||
       binding.accountRefSha256 !== contract.accountRefSha256 ||
-      binding.connectionRefSha256 !== contract.connectionRefSha256
+      binding.connectionRefSha256 !== contract.connectionRefSha256 ||
+      binding.operation.schema !== expectedOperation.schema ||
+      binding.operation.kind !== expectedOperation.kind ||
+      binding.operation.providerTargetRefSha256 !==
+        expectedOperation.providerTargetRefSha256 ||
+      binding.operation.operationInputSha256 !==
+        expectedOperation.operationInputSha256
     ) {
       reasons.push(
         `observation:${observation.observationId}:connector-mismatch`,
@@ -1865,6 +1882,7 @@ export function deriveProviderQualification(
   verifyConnectorBindings(
     effectiveAssignment,
     payload.connectorBindings,
+    input.manifest.target.operation,
     reasons,
   );
   verifyObservationFreshness(

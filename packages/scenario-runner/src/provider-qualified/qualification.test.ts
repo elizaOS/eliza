@@ -316,6 +316,7 @@ function fixture(): DeriveProviderQualificationInput & {
         provider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("connection"),
+        operation: manifest.target.operation,
       },
     ],
     stageReferences: [
@@ -520,6 +521,7 @@ function noEffectFixture(): ReturnType<typeof fixture> {
         provider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("connection"),
+        operation: manifest.target.operation,
       },
     ],
     stageReferences: [
@@ -671,6 +673,15 @@ describe("deriveProviderQualification", () => {
     });
     resignProvider(input);
     expect(() => deriveProviderQualification(input)).toThrow(/closed protocol/);
+  });
+
+  it("rejects legacy observer evidence without exact operation binding", () => {
+    const input = fixture();
+    input.signedEvidence.payload.schema =
+      "eliza.provider-qualified-observer-evidence.v1" as typeof input.signedEvidence.payload.schema;
+    expect(() => deriveProviderQualification(input)).toThrow(
+      /signedEvidence\.payload\.schema is unsupported/,
+    );
   });
 
   it("rejects provider-assurance toJSON substitution before signature verification", () => {
@@ -941,6 +952,36 @@ describe("deriveProviderQualification", () => {
         "observation:effect-1:connector-mismatch",
       ]),
     });
+
+    const wrongTarget = fixture();
+    wrongTarget.signedEvidence.payload.connectorBindings[0].operation = {
+      ...wrongTarget.signedEvidence.payload.connectorBindings[0].operation,
+      providerTargetRefSha256: hash("another-provider-target"),
+    };
+    resignProvider(wrongTarget);
+    expect(
+      deriveProviderQualification(wrongTarget).qualification,
+    ).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "observation:effect-1:connector-mismatch",
+      ]),
+    });
+
+    const wrongInput = fixture();
+    wrongInput.signedEvidence.payload.connectorBindings[0].operation = {
+      ...wrongInput.signedEvidence.payload.connectorBindings[0].operation,
+      operationInputSha256: hash("another-operation-input"),
+    };
+    resignProvider(wrongInput);
+    expect(deriveProviderQualification(wrongInput).qualification).toMatchObject(
+      {
+        status: "unqualified",
+        reasons: expect.arrayContaining([
+          "observation:effect-1:connector-mismatch",
+        ]),
+      },
+    );
   });
 
   it("rejects whole-trajectory and stage-level reference substitution", () => {
