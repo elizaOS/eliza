@@ -10,6 +10,7 @@ const migrationSql = await Bun.file(
   new URL("./0268_app_reservation_settlement_authority.sql", import.meta.url),
 ).text();
 let admin: Client;
+const backendPids = new WeakMap<Client, number>();
 
 describeRealPg("0268 app reservation settlement real PostgreSQL concurrency", () => {
   beforeAll(async () => {
@@ -143,22 +144,36 @@ describeRealPg("0268 app reservation settlement real PostgreSQL concurrency", ()
     const client = new Client({ connectionString: dsn });
     await client.connect();
     await client.query(`SET search_path TO ${schemaName}`);
+    const result = await client.query<{ backend_pid: number }>(
+      "SELECT pg_backend_pid()::int AS backend_pid",
+    );
+    const backendPid = result.rows[0]?.backend_pid;
+    if (!Number.isInteger(backendPid)) {
+      await client.end();
+      throw new Error("PostgreSQL connection did not return a backend PID");
+    }
+    backendPids.set(client, backendPid);
     return client;
   }
 
   async function expectBackendBlocked(blocked: Client, blocker: Client): Promise<void> {
+    const blockedPid = backendPids.get(blocked);
+    const blockerPid = backendPids.get(blocker);
+    if (blockedPid === undefined || blockerPid === undefined) {
+      throw new Error("PostgreSQL connection is missing its backend PID");
+    }
     for (let attempt = 0; attempt < 100; attempt++) {
       const result = await admin.query<{ blockers: number[] }>(
         "SELECT pg_blocking_pids($1)::int[] AS blockers",
-        [blocked.processID],
+        [blockedPid],
       );
-      if (result.rows[0]?.blockers.includes(blocker.processID)) {
-        expect(result.rows[0].blockers).toContain(blocker.processID);
+      if (result.rows[0]?.blockers.includes(blockerPid)) {
+        expect(result.rows[0].blockers).toContain(blockerPid);
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    throw new Error(`backend ${blocked.processID} did not block on ${blocker.processID}`);
+    throw new Error(`backend ${blockedPid} did not block on ${blockerPid}`);
   }
 
   test("provider-first and sweep-first differing actuals each commit one exact receipt", async () => {
