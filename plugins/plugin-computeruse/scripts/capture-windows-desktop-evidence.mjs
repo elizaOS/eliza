@@ -8,6 +8,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -407,55 +408,77 @@ async function runNotepadInputCheck(service, displays) {
 }
 
 async function runBrowserCheck(service, outDir, artifacts) {
-  const pageUrl =
-    "data:text/html,<html><head><title>Windows CUA Evidence</title></head><body><main><h1>Windows CUA Evidence</h1><button id='go'>Ready</button><input id='field' value=''></main></body></html>";
-
-  const open = await service.executeCommand("browser_open", { url: pageUrl });
-  if (!open.success)
-    throw new Error(`browser_open failed: ${open.error ?? "unknown"}`);
-  const dom = await service.executeCommand("browser_get_dom");
-  if (
-    !dom.success ||
-    !String(dom.content ?? "").includes("Windows CUA Evidence")
-  ) {
-    throw new Error(
-      `browser_get_dom did not return the evidence page: ${dom.error ?? "unknown"}`,
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(
+      "<!doctype html><html><head><title>Windows CUA Evidence</title></head><body><main><h1>Windows CUA Evidence</h1><button id='go'>Ready</button><input id='field'></main></body></html>",
     );
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("local browser evidence server did not expose a TCP port");
   }
-  const clickables = await service.executeCommand("browser_get_clickables");
-  if (!clickables.success) {
-    throw new Error(
-      `browser_get_clickables failed: ${clickables.error ?? "unknown"}`,
-    );
+  const pageUrl = `http://127.0.0.1:${address.port}/evidence`;
+  let closed = false;
+  try {
+    const open = await service.executeCommand("browser_open", { url: pageUrl });
+    if (!open.success) {
+      throw new Error(`browser_open failed: ${open.error ?? "unknown"}`);
+    }
+    const dom = await service.executeCommand("browser_get_dom");
+    if (
+      !dom.success ||
+      !String(dom.content ?? "").includes("Windows CUA Evidence")
+    ) {
+      throw new Error(
+        `browser_get_dom did not return the evidence page: ${dom.error ?? "unknown"}`,
+      );
+    }
+    const clickables = await service.executeCommand("browser_get_clickables");
+    if (!clickables.success) {
+      throw new Error(
+        `browser_get_clickables failed: ${clickables.error ?? "unknown"}`,
+      );
+    }
+    const screenshot = await service.executeCommand("browser_screenshot");
+    if (!screenshot.success) {
+      throw new Error(
+        `browser_screenshot failed: ${screenshot.error ?? "unknown"}`,
+      );
+    }
+
+    const browserPng = pngBufferFromBase64(screenshot.screenshot);
+    const browserQuality = describePng(browserPng, "browser screenshot");
+    const browserArtifact = path.join(outDir, "browser-evidence.png");
+    await writeFile(browserArtifact, browserPng);
+    artifacts.push(relativeToRepo(browserArtifact));
+
+    const close = await service.executeCommand("browser_close");
+    if (!close.success) {
+      throw new Error(`browser_close failed: ${close.error ?? "unknown"}`);
+    }
+    closed = true;
+
+    return {
+      status: "passed",
+      requiredEvidence: [
+        "browser target opened the ephemeral loopback HTTP evidence page",
+        "browser_get_dom returned the local evidence page",
+        `browser_get_clickables returned ${clickables.count ?? clickables.elements?.length ?? "some"} element(s)`,
+        `browser screenshot artifact ${relativeToRepo(browserArtifact)} (${browserQuality.width}x${browserQuality.height})`,
+        "browser cleanup closed the test browser",
+      ],
+      details: { open: { url: open.url, title: open.title }, browserQuality },
+    };
+  } finally {
+    if (!closed) await service.executeCommand("browser_close");
+    await new Promise((resolve) => server.close(resolve));
   }
-  const screenshot = await service.executeCommand("browser_screenshot");
-  if (!screenshot.success) {
-    throw new Error(
-      `browser_screenshot failed: ${screenshot.error ?? "unknown"}`,
-    );
-  }
-
-  const browserPng = pngBufferFromBase64(screenshot.screenshot);
-  const browserQuality = describePng(browserPng, "browser screenshot");
-  const browserArtifact = path.join(outDir, "browser-evidence.png");
-  await writeFile(browserArtifact, browserPng);
-  artifacts.push(relativeToRepo(browserArtifact));
-
-  const close = await service.executeCommand("browser_close");
-  if (!close.success)
-    throw new Error(`browser_close failed: ${close.error ?? "unknown"}`);
-
-  return {
-    status: "passed",
-    requiredEvidence: [
-      `browser target opened ${open.url ? "the evidence data URL" : "data URL"}`,
-      "browser_get_dom returned the local evidence page",
-      `browser_get_clickables returned ${clickables.count ?? clickables.elements?.length ?? "some"} element(s)`,
-      `browser screenshot artifact ${relativeToRepo(browserArtifact)} (${browserQuality.width}x${browserQuality.height})`,
-      "browser cleanup closed the test browser",
-    ],
-    details: { open: { url: open.url, title: open.title }, browserQuality },
-  };
 }
 
 async function runTerminalSafetyCheck(service) {
