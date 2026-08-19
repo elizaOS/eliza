@@ -309,11 +309,17 @@ export async function findHeroOnDisk(
 
   // Fall back to probing `assets/hero.<ext>` in the plugin dir.
   const packageRoot = path.resolve(entry.pluginDir);
+  const realPackageRoot = resolveRealPathSync(packageRoot);
   for (const ext of HERO_EXTENSIONS) {
     const candidate = path.join(packageRoot, "assets", `hero${ext}`);
-    if (await fileExists(candidate)) {
+    const realCandidate = resolveRealPathSync(candidate);
+    if (
+      (realCandidate === realPackageRoot ||
+        isWithin(realCandidate, realPackageRoot)) &&
+      (await fileExists(realCandidate))
+    ) {
       return {
-        absolutePath: candidate,
+        absolutePath: realCandidate,
         contentType: HERO_CONTENT_TYPES[ext] ?? "image/png",
       };
     }

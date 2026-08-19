@@ -2,7 +2,14 @@
  * Unit tests for symlink-ancestor confinement in resolveSafeFileTarget.
  * Mirrors plugins/plugin-coding-tools/src/lib/path-utils.test.ts ancestor-walk case.
  */
-import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -55,6 +62,30 @@ describe("resolveSafeFileTarget — ancestor-walk confinement", () => {
       expect(result.allowed).toBe(false);
       // Either symlink-parent or confinement failure — both are secure.
       expect(result.allowed).toBe(false);
+    },
+  );
+
+  itSymlink(
+    "blocks a symlink ancestor when an existing descendant hides it",
+    async () => {
+      const root = mkdtempSync(path.join(tmpdir(), "eliza-sec-root-existing-"));
+      const victim = mkdtempSync(
+        path.join(tmpdir(), "eliza-sec-victim-existing-"),
+      );
+      temps.push(root, victim);
+      const realRoot = realpathSync(root);
+      const realVictim = realpathSync(victim);
+      const existing = path.join(realVictim, "existing");
+      mkdirSync(existing);
+      writeFileSync(path.join(existing, "planted.txt"), "outside\n");
+      symlinkSync(realVictim, path.join(realRoot, "escape"), "dir");
+
+      const result = await resolveSafeFileTarget(
+        path.join(realRoot, "escape", "existing", "planted.txt"),
+        "write",
+      );
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toMatch(/symbolic link/i);
     },
   );
 

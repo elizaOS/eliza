@@ -29,6 +29,7 @@ import path from "node:path";
 import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  findHeroOnDisk,
   generateViewHeroSvg,
   getBundleDiskPath,
   getFrameDiskPath,
@@ -782,6 +783,34 @@ describe("stage 5: GET /api/views/:id/hero serves hero image or SVG placeholder"
     expect(svg).toContain("<svg");
     expect(svg).toContain("Smoke View");
   });
+
+  const itSymlink = process.platform === "win32" ? it.skip : it;
+
+  itSymlink(
+    "rejects a fallback hero symlink that escapes the plugin",
+    async () => {
+      const pluginDir = await mkdtemp(
+        path.join(os.tmpdir(), "eliza-hero-root-"),
+      );
+      const outsideDir = await mkdtemp(
+        path.join(os.tmpdir(), "eliza-hero-outside-"),
+      );
+      try {
+        const assetsDir = path.join(pluginDir, "assets");
+        const outsideHero = path.join(outsideDir, "secret.png");
+        await mkdir(assetsDir, { recursive: true });
+        await writeFile(outsideHero, "outside-secret");
+        await symlink(outsideHero, path.join(assetsDir, "hero.png"), "file");
+
+        await expect(
+          findHeroOnDisk({ pluginDir, heroImagePath: undefined }),
+        ).resolves.toBeNull();
+      } finally {
+        await rm(pluginDir, { recursive: true, force: true });
+        await rm(outsideDir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

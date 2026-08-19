@@ -318,6 +318,33 @@ function errnoCode(error: unknown): string {
     : "";
 }
 
+async function pathContainsSymlink(absolutePath: string): Promise<boolean> {
+  const root = path.parse(absolutePath).root;
+  const segments = path
+    .relative(root, absolutePath)
+    .split(path.sep)
+    .filter(Boolean);
+  let current = root;
+
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) {
+        return true;
+      }
+    } catch (error) {
+      // error-policy:J3 an absent component means the remaining lexical tail
+      // is absent too; every existing component checked so far was non-symlink.
+      if (errnoCode(error) === "ENOENT") {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Resolve and re-validate file paths after lstat/realpath to reduce TOCTOU /
  * symlink escapes (GHSA-qmf5-p9x5-9xr5).
@@ -334,6 +361,15 @@ export async function resolveSafeFileTarget(
   const resolved = path.resolve(filePath);
 
   try {
+    // Inspect every existing lexical component before canonicalizing. Checking
+    // only the longest existing descendant misses a symlink earlier in the
+    // path when the symlink target already contains later components.
+    if (await pathContainsSymlink(resolved)) {
+      return {
+        allowed: false,
+        reason: "Symbolic links are not allowed for file operations.",
+      };
+    }
     const stat = await lstat(resolved);
     if (stat.isSymbolicLink()) {
       return {
