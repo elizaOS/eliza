@@ -2319,10 +2319,27 @@ async function resolveRequestedRepo(
   params: Record<string, unknown>,
   requestTexts: ReadonlyArray<string | undefined>,
 ): Promise<string | undefined> {
-  const paramRepo =
+  const rawParamRepo =
     typeof params.repo === "string" && params.repo.trim()
       ? params.repo.trim()
       : undefined;
+  // The planner's repo param is model output and arrives corrupted on asks
+  // that never named a repo (live 2026-08-19: repo="NubsCarson/»,requestedBackend:"
+  // on "make me a lil word counter page" failed the spawn on a clone the user
+  // never asked for). Only a URL or owner/name-shaped value counts; garbage
+  // is dropped so the ask proceeds as the repo-less task it is.
+  const paramRepo =
+    rawParamRepo &&
+    /^(?:https?:\/\/[\w./-]+|git@[\w.-]+:[\w./-]+|[\w.-]+(?:\/[\w.-]+)?)$/.test(
+      rawParamRepo,
+    )
+      ? rawParamRepo
+      : undefined;
+  if (rawParamRepo && !paramRepo) {
+    logger(runtime).warn(
+      `[TASKS] ignoring malformed planner repo param: ${JSON.stringify(rawParamRepo).slice(0, 80)}`,
+    );
+  }
   const text = requestTexts.filter(Boolean).join("\n");
   let candidate = paramRepo;
   if (!candidate) {
