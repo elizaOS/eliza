@@ -1,8 +1,7 @@
 /**
  * Detects backtick-delimited inline code while preserving state across streamed
- * chunks. Fence and inline-span membership is binary-searched over the ordered
- * span list so a document of thousands of fences cannot turn each character
- * into a linear scan (O(n·f) hang on origin).
+ * chunks. Parsing sweeps ordered fence spans once, while arbitrary membership
+ * queries use binary search, so hostile fence-heavy input remains bounded.
  */
 
 import { type FenceSpan, parseFenceSpans } from "./fences.js";
@@ -82,10 +81,15 @@ function parseInlineCodeSpans(
 	let openStart = open ? 0 : -1;
 
 	let i = 0;
+	let fenceIndex = 0;
 	while (i < text.length) {
-		const fence = findFenceSpanAtInclusive(fenceSpans, i);
-		if (fence) {
+		while (fenceIndex < fenceSpans.length && fenceSpans[fenceIndex].end <= i) {
+			fenceIndex += 1;
+		}
+		const fence = fenceSpans[fenceIndex];
+		if (fence && i >= fence.start) {
 			i = fence.end;
+			fenceIndex += 1;
 			continue;
 		}
 
@@ -134,7 +138,7 @@ function findOrderedRange<T>(
 	let lo = 0;
 	let hi = spans.length - 1;
 	while (lo <= hi) {
-		const mid = (lo + hi) >> 1;
+		const mid = lo + Math.floor((hi - lo) / 2);
 		const span = spans[mid];
 		const [start, end] = bounds(span);
 		if (index < start) {

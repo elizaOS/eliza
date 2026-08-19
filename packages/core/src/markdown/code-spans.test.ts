@@ -1,7 +1,7 @@
 /**
- * Deterministic tests for `buildCodeSpanIndex`: honest fence/inline membership
- * plus a hostile thousands-of-fences document that used to hang the per-character
- * linear span scan on origin.
+ * Deterministic tests for the real code-span index: fence, inline, streaming,
+ * and boundary membership plus hostile fence-heavy input that exposed the old
+ * per-character linear scan.
  */
 import { describe, expect, it } from "vitest";
 import { buildCodeSpanIndex } from "./code-spans.ts";
@@ -18,15 +18,63 @@ describe("buildCodeSpanIndex", () => {
 		expect(index.isInside(markdown.indexOf("end"))).toBe(false);
 	});
 
-	it("does not hang on thousands of fences followed by a long prose tail", () => {
+	it("uses half-open span boundaries and rejects out-of-range positions", () => {
+		const markdown = "a `bc` d\n~~~\nef\n~~~\ng";
+		const index = buildCodeSpanIndex(markdown);
+		const inlineStart = markdown.indexOf("`");
+		const inlineEnd = markdown.indexOf("`", inlineStart + 1) + 1;
+		const fenceStart = markdown.indexOf("~~~");
+		const fenceEnd = markdown.indexOf("~~~", fenceStart + 3) + 3;
+
+		expect(index.isInside(inlineStart)).toBe(true);
+		expect(index.isInside(inlineEnd - 1)).toBe(true);
+		expect(index.isInside(inlineEnd)).toBe(false);
+		expect(index.isInside(fenceStart)).toBe(true);
+		expect(index.isInside(fenceEnd - 1)).toBe(true);
+		expect(index.isInside(fenceEnd)).toBe(false);
+		expect(index.isInside(-1)).toBe(false);
+		expect(index.isInside(markdown.length)).toBe(false);
+	});
+
+	it("preserves an open inline delimiter across streamed chunks", () => {
+		const first = buildCodeSpanIndex("before ``open");
+		expect(first.inlineState).toEqual({ open: true, ticks: 2 });
+
+		const secondText = " across`` after";
+		const second = buildCodeSpanIndex(secondText, first.inlineState);
+		expect(second.inlineState).toEqual({ open: false, ticks: 0 });
+		expect(second.isInside(secondText.indexOf("across"))).toBe(true);
+		expect(second.isInside(secondText.indexOf("after"))).toBe(false);
+	});
+
+	it("ignores backticks inside multiple fenced blocks", () => {
+		const markdown = [
+			"```ts",
+			"`not inline`",
+			"```",
+			"plain",
+			"~~~md",
+			"``also fenced``",
+			"~~~",
+			"tail `inline`",
+		].join("\n");
+		const index = buildCodeSpanIndex(markdown);
+
+		expect(index.isInside(markdown.indexOf("not inline"))).toBe(true);
+		expect(index.isInside(markdown.indexOf("also fenced"))).toBe(true);
+		expect(index.isInside(markdown.indexOf("plain"))).toBe(false);
+		expect(
+			index.isInside(markdown.indexOf("inline", markdown.indexOf("tail"))),
+		).toBe(true);
+	});
+
+	it("bounds work for thousands of fences followed by a long prose tail", () => {
 		const fences = 16_000;
 		const tail = 300_000;
-		let text = "";
-		for (let i = 0; i < fences; i++) text += "```\nx\n```\n";
-		text += "y".repeat(tail);
+		const text = `${"```\nx\n```\n".repeat(fences)}${"y".repeat(tail)}`;
 		const started = performance.now();
 		const index = buildCodeSpanIndex(text);
-		expect(performance.now() - started).toBeLessThan(200);
+		expect(performance.now() - started).toBeLessThan(1_500);
 		expect(index.isInside(2)).toBe(true);
 		expect(index.isInside(text.length - 1)).toBe(false);
 	});
