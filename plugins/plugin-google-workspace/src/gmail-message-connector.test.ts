@@ -47,6 +47,10 @@ function runtimeStub(options: {
     registerProvider: vi.fn(),
     evaluatePolicy: vi.fn(),
     listAccounts: vi.fn(async () => options.accounts ?? []),
+    getAccount: vi.fn(
+      async (_provider: string, accountId: string) =>
+        (options.accounts ?? []).find((account) => account.id === accountId) ?? null
+    ),
   };
   const runtime = {
     agentId: "00000000-0000-0000-0000-000000000001",
@@ -210,8 +214,10 @@ describe("gmail send handler", () => {
     );
   });
 
-  it("honors an explicit target accountId over account discovery", async () => {
-    const { runtime, sendGmailMessage } = runtimeStub({ accounts: [] });
+  it("honors an explicit target accountId when it is connected and send-capable", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [{ ...CONNECTED_ACCOUNT, id: "acct_explicit" }],
+    });
     const registration = createGmailMessageConnector(runtime);
 
     const outcome = await invokeSend(
@@ -225,6 +231,32 @@ describe("gmail send handler", () => {
     expect(sendGmailMessage).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: "acct_explicit" })
     );
+  });
+
+  it("rejects an explicit accountId that is not connected and send-capable", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [
+        {
+          id: "acct_readonly",
+          status: "connected",
+          metadata: { grantedCapabilities: ["gmail.read"] },
+        },
+      ],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com", accountId: "acct_readonly" },
+      { text: "hello" }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_ACCOUNT_UNAVAILABLE",
+    });
+    expect(sendGmailMessage).not.toHaveBeenCalled();
   });
 
   it("refuses structurally when no connected account can send", async () => {

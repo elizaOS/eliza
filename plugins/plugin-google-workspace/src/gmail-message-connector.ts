@@ -79,7 +79,19 @@ async function resolveGmailAccountId(
   requested: string | undefined
 ): Promise<{ accountId: string } | { error: SendHandlerOutcome }> {
   if (requested?.trim()) {
-    return { accountId: requested.trim() };
+    const accountId = requested.trim();
+    const accounts = await getConnectorAccountManager(runtime).listAccounts(GOOGLE_SERVICE_NAME);
+    const account = accounts.find((candidate) => candidate.id === accountId);
+    if (!account || !accountSupportsGmailSend(account)) {
+      return {
+        error: {
+          kind: "not_delivered",
+          code: "GMAIL_ACCOUNT_UNAVAILABLE",
+          message: "The requested Google account is not connected with the gmail.send capability.",
+        },
+      };
+    }
+    return { accountId };
   }
   const accounts = (
     await getConnectorAccountManager(runtime).listAccounts(GOOGLE_SERVICE_NAME)
