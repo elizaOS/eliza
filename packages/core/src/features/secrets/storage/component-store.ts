@@ -1,8 +1,9 @@
 /**
- * Component Storage
- *
- * Stores user-level secrets as Components in the ElizaOS database.
- * Each user's secrets are isolated via the component's entityId.
+ * Persists per-user secrets as runtime components.
+ * The SQL adapter uniquely keys components by (entityId, type, worldId,
+ * sourceEntityId), so the secret name must live in `type` (`secret:${key}`).
+ * A type of just `secret` can hold only one row per user and is read as the
+ * pre-keying layout.
  */
 
 import { createUniqueUuid } from "../../../entities.ts";
@@ -20,7 +21,19 @@ import type {
 import { PermissionDeniedError, StorageError } from "../types.ts";
 import { BaseSecretStorage } from "./interface.ts";
 
-const COMPONENT_TYPE = "secret";
+const LEGACY_USER_SECRET_COMPONENT_TYPE = "secret";
+const USER_SECRET_COMPONENT_PREFIX = "secret:";
+
+function userSecretComponentType(key: string): string {
+	return `${USER_SECRET_COMPONENT_PREFIX}${key}`;
+}
+
+function isUserSecretComponentType(type: string): boolean {
+	return (
+		type === LEGACY_USER_SECRET_COMPONENT_TYPE ||
+		type.startsWith(USER_SECRET_COMPONENT_PREFIX)
+	);
+}
 
 /**
  * Component data structure for secret storage
@@ -35,10 +48,11 @@ interface SecretComponentData {
 }
 
 /**
- * Component-based storage for user-level secrets
+ * Component-based storage for user-level secrets.
  *
- * Each secret is stored as a Component with type='secret' and entityId
- * set to the user's ID, providing natural isolation per user.
+ * Each secret is a component on the user entity. `type` is `secret:${key}` so
+ * two keys do not share the SQL natural key. Rows still typed `secret` are
+ * the one-key-per-user layout and stay readable.
  */
 export class ComponentSecretStorage extends BaseSecretStorage {
 	readonly storageType: StorageBackend = "component";
@@ -161,7 +175,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 				roomId: this.runtime.agentId,
 				worldId: this.runtime.agentId,
 				sourceEntityId: context.userId as UUID,
-				type: COMPONENT_TYPE,
+				type: userSecretComponentType(key),
 				data: componentData as Component["data"],
 			};
 
@@ -204,7 +218,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		const metadata: SecretMetadata = {};
 
 		for (const component of components) {
-			if (component.type !== COMPONENT_TYPE) {
+			if (!isUserSecretComponentType(component.type)) {
 				continue;
 			}
 
@@ -278,26 +292,32 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 	}
 
 	/**
-	 * Find a secret component for a user by key
+	 * Find a secret component for a user by key.
+	 * Prefer the keyed type so a same-name legacy `secret` row is not chosen
+	 * over `secret:${key}` after a mixed-layout upgrade.
 	 */
 	private async findSecretComponent(
 		userId: string,
 		key: string,
 	): Promise<Component | null> {
 		const components = await this.runtime.getComponents(userId as UUID);
+		const keyedType = userSecretComponentType(key);
+		let legacy: Component | null = null;
 
 		for (const component of components) {
-			if (component.type !== COMPONENT_TYPE) {
-				continue;
-			}
-
 			const data = component.data as SecretComponentData | undefined;
-			if (data?.key === key) {
+			if (component.type === keyedType) {
 				return component;
+			}
+			if (
+				component.type === LEGACY_USER_SECRET_COMPONENT_TYPE &&
+				data?.key === key
+			) {
+				legacy = component;
 			}
 		}
 
-		return null;
+		return legacy;
 	}
 
 	private assertUserAccess(
@@ -318,7 +338,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		const keys: string[] = [];
 
 		for (const component of components) {
-			if (component.type !== COMPONENT_TYPE) {
+			if (!isUserSecretComponentType(component.type)) {
 				continue;
 			}
 
@@ -339,7 +359,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		let deleted = 0;
 
 		for (const component of components) {
-			if (component.type !== COMPONENT_TYPE) {
+			if (!isUserSecretComponentType(component.type)) {
 				continue;
 			}
 
@@ -361,7 +381,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		let count = 0;
 
 		for (const component of components) {
-			if (component.type === COMPONENT_TYPE) {
+			if (isUserSecretComponentType(component.type)) {
 				count++;
 			}
 		}
