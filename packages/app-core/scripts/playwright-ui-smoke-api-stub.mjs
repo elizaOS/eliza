@@ -3801,6 +3801,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // The computer-use session view polls this route as soon as its real bundle
+  // mounts. A fresh keyless smoke runtime has no sessions, so mirror the real
+  // route's designed-empty response instead of surfacing the catch-all 501 as
+  // a product console error in lifecycle, interaction, and visual coverage.
+  if (req.method === "GET" && url.pathname === "/api/computer-use/sessions") {
+    sendJson(req, res, 200, { sessions: [] });
+    return;
+  }
+
   if (
     req.method === "GET" &&
     url.pathname === "/api/computer-use/approvals/stream"
