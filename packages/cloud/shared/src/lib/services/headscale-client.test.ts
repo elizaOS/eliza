@@ -1,6 +1,13 @@
 // Exercises headscale client behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_PREAUTH_TTL_MIN, HeadscaleClient, resolvePreAuthTtlMs } from "./headscale-client";
+import {
+  DEFAULT_PREAUTH_TTL_MIN,
+  ECMA_TIME_CLIP_MS,
+  HeadscaleClient,
+  MAX_PREAUTH_TTL_MIN,
+  resolvePreAuthExpirationIso,
+  resolvePreAuthTtlMs,
+} from "./headscale-client";
 
 const originalFetch = globalThis.fetch;
 
@@ -43,6 +50,43 @@ describe("resolvePreAuthTtlMs (headscale pre-auth key TTL)", () => {
       expect(resolvePreAuthTtlMs()).toBe(DEFAULT_PREAUTH_TTL_MIN * 60 * 1000);
     }
   });
+
+  it("rejects exponent, hex, fractional, subnormal, and prefix-garbage forms", () => {
+    for (const bad of [
+      "1e3",
+      "1e10",
+      "1e20",
+      "0x10",
+      "1.5",
+      "5e-324",
+      "90abc",
+      "007",
+      "144000000000",
+    ]) {
+      process.env.HEADSCALE_PREAUTH_TTL_MIN = bad;
+      expect(resolvePreAuthTtlMs()).toBe(DEFAULT_PREAUTH_TTL_MIN * 60 * 1000);
+    }
+  });
+
+  it("rejects leading or trailing whitespace instead of trimming it", () => {
+    for (const bad of [" 90", "90 ", " 90 ", "\t90", "90\n", "90\r\n"]) {
+      process.env.HEADSCALE_PREAUTH_TTL_MIN = bad;
+      expect(resolvePreAuthTtlMs()).toBe(DEFAULT_PREAUTH_TTL_MIN * 60 * 1000);
+    }
+  });
+
+  it("honors the operational max and rejects one minute past it", () => {
+    process.env.HEADSCALE_PREAUTH_TTL_MIN = String(MAX_PREAUTH_TTL_MIN);
+    expect(resolvePreAuthTtlMs()).toBe(MAX_PREAUTH_TTL_MIN * 60 * 1000);
+    process.env.HEADSCALE_PREAUTH_TTL_MIN = String(MAX_PREAUTH_TTL_MIN + 1);
+    expect(resolvePreAuthTtlMs()).toBe(DEFAULT_PREAUTH_TTL_MIN * 60 * 1000);
+  });
+
+  it("keeps Date.now() + ttl inside TimeClip", () => {
+    process.env.HEADSCALE_PREAUTH_TTL_MIN = "90";
+    const iso = resolvePreAuthExpirationIso();
+    expect(Number.isFinite(Date.parse(iso))).toBe(true);
+  });
 });
 
 describe("HeadscaleClient upstream errors", () => {
@@ -79,6 +123,73 @@ describe("HeadscaleClient upstream errors", () => {
         "Headscale API POST /api/v1/preauthkey failed: 502 Bad Gateway; error body could not be read",
       cause: expect.objectContaining({ message: "body stream failed" }),
     });
+  });
+
+  it("sends a TimeClip-safe ISO expiration from the env TTL", async () => {
+    const originalTtl = process.env.HEADSCALE_PREAUTH_TTL_MIN;
+    process.env.HEADSCALE_PREAUTH_TTL_MIN = "90";
+    const bodies: Array<{ expiration?: string }> = [];
+    globalThis.fetch = vi.fn(async (_input, init) => {
+      if (init?.body) {
+        bodies.push(JSON.parse(String(init.body)) as { expiration?: string });
+      }
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({
+          preAuthKey: { key: "hskey", expiration: "unused" },
+        }),
+        text: async () => "{}",
+        headers: new Headers({ "content-type": "application/json" }),
+      } as Response;
+    }) as typeof fetch;
+    try {
+      const before = Date.now();
+      const client = new HeadscaleClient({
+        apiUrl: "https://headscale.example",
+        apiKey: "secret",
+        user: "1",
+      });
+      await client.createPreAuthKey();
+      const after = Date.now();
+      expect(bodies).toHaveLength(1);
+      const expiration = Date.parse(bodies[0]?.expiration ?? "");
+      expect(Number.isFinite(expiration)).toBe(true);
+      expect(expiration).toBeGreaterThanOrEqual(before + 90 * 60 * 1000 - 5_000);
+      expect(expiration).toBeLessThanOrEqual(after + 90 * 60 * 1000 + 5_000);
+    } finally {
+      if (originalTtl === undefined) delete process.env.HEADSCALE_PREAUTH_TTL_MIN;
+      else process.env.HEADSCALE_PREAUTH_TTL_MIN = originalTtl;
+    }
+  });
+
+  it("does not fetch when even the fallback expiration is above TimeClip", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    vi.spyOn(Date, "now").mockReturnValue(ECMA_TIME_CLIP_MS - 1000);
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+    await expect(client.createPreAuthKey()).rejects.toThrow(/TimeClip/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch when even the fallback expiration is below TimeClip", async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    vi.spyOn(Date, "now").mockReturnValue(
+      -ECMA_TIME_CLIP_MS - DEFAULT_PREAUTH_TTL_MIN * 60 * 1000 - 1,
+    );
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+    await expect(client.createPreAuthKey()).rejects.toThrow(/TimeClip/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

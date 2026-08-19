@@ -56,6 +56,43 @@ describe("view action handoff", () => {
     ).toEqual({ viewId: "calendar" });
   });
 
+  it("preserves a confirmed originating-renderer delivery marker", () => {
+    expect(
+      findViewActionHandoff([
+        {
+          ...showCalendar,
+          values: {
+            ...showCalendar.values,
+            completedActionDelivered: true,
+          },
+        },
+      ]),
+    ).toEqual({ viewId: "calendar", completedActionDelivered: true });
+  });
+
+  it("ignores inherited handoff fields and delivery confirmations", () => {
+    const inheritedMarker = Object.assign(
+      Object.create({ completedActionDelivered: true }),
+      { mode: "show", viewId: "calendar" },
+    ) as Record<string, unknown>;
+    expect(
+      findViewActionHandoff([{ ...showCalendar, values: inheritedMarker }]),
+    ).toEqual({ viewId: "calendar" });
+
+    const inheritedHandoff = Object.create({
+      mode: "show",
+      viewId: "calendar",
+    }) as Record<string, unknown>;
+    expect(
+      findViewActionHandoff([{ ...showCalendar, values: inheritedHandoff }]),
+    ).toBeNull();
+
+    const inheritedResult = Object.create(
+      showCalendar,
+    ) as ChatActionResultSummary;
+    expect(findViewActionHandoff([inheritedResult])).toBeNull();
+  });
+
   it("dispatches the canonical current view when WebSockets are unavailable", async () => {
     const dispatch = vi.fn();
 

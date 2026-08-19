@@ -10,7 +10,7 @@ function makeClient(request: AgentRequestTransport["request"]): ElizaClient {
   return client;
 }
 
-function makeStalledResponse() {
+function makeStalledResponse(status = 200) {
   let markReadStarted: (() => void) | undefined;
   const readStarted = new Promise<void>((resolve) => {
     markReadStarted = resolve;
@@ -29,7 +29,7 @@ function makeStalledResponse() {
     cancel,
     readStarted,
     response: new Response(body, {
-      status: 200,
+      status,
       headers: { "content-type": "application/json" },
     }),
   };
@@ -79,6 +79,54 @@ describe("ElizaClient JSON response-body lifecycle", () => {
       kind: "network",
       path: "/api/status",
       status: 200,
+      message: "Request aborted",
+      cause: callerReason,
+    });
+    expect(stalled.cancel).toHaveBeenCalledWith(callerReason);
+  });
+
+  it("preserves timeout identity for a stalled non-2xx response body", async () => {
+    const stalled = makeStalledResponse(503);
+    const request = vi.fn<AgentRequestTransport["request"]>(
+      async () => stalled.response,
+    );
+
+    const result = makeClient(request).fetch("/api/status", undefined, {
+      timeoutMs: 20,
+    });
+    await stalled.readStarted;
+
+    await expect(result).rejects.toMatchObject({
+      name: "ApiError",
+      kind: "timeout",
+      path: "/api/status",
+      status: 503,
+      message: "Response body timed out after 20ms",
+    });
+    expect(stalled.cancel).toHaveBeenCalledWith("elizaos-json-body-timeout");
+  });
+
+  it("preserves caller-abort identity for a stalled non-2xx response body", async () => {
+    const stalled = makeStalledResponse(500);
+    const request = vi.fn<AgentRequestTransport["request"]>(
+      async () => stalled.response,
+    );
+    const controller = new AbortController();
+    const callerReason = new Error("navigation replaced");
+
+    const result = makeClient(request).fetch(
+      "/api/status",
+      { signal: controller.signal },
+      { timeoutMs: 1_000 },
+    );
+    await stalled.readStarted;
+    controller.abort(callerReason);
+
+    await expect(result).rejects.toMatchObject({
+      name: "ApiError",
+      kind: "network",
+      path: "/api/status",
+      status: 500,
       message: "Request aborted",
       cause: callerReason,
     });

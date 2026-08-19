@@ -7,8 +7,9 @@
  * separators are selected coarsest-first and oversized pieces recurse through
  * progressively finer separators; a retained separator is embedded in a
  * `RegExp`, so metacharacters must still split literally; custom length metrics
- * apply to separators as well as content; and merging must neither drop content
- * nor carry more than the requested overlap.
+ * apply to separators as well as content; merging must neither drop content
+ * nor carry more than the requested overlap; and the finest separator must not
+ * emit an unpaired UTF-16 surrogate.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -122,6 +123,105 @@ describe("splitText", () => {
 			"cc dd ee",
 			"ee ff",
 		]);
+	});
+
+	it("does not cut a code point at the default document chunk boundary", async () => {
+		// splitChunks uses floor(512 * 3.5) = 1792. text.split("") would emit
+		// the high surrogate of 🎉 as the last unit of chunk 0; embed APIs
+		// reject that JSON as a lone leading surrogate (HTTP 400).
+		const chunkSize = Math.floor(512 * 3.5);
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText(`${"a".repeat(1791)}🎉`);
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe(`${"a".repeat(1791)}🎉`);
+		expect(chunks.some((chunk) => chunk.includes("🎉"))).toBe(true);
+		expect(chunks[0]?.charCodeAt((chunks[0]?.length ?? 0) - 1)).not.toBe(
+			0xd83c,
+		);
+	});
+
+	it("replaces a long run of lone high surrogates", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 50,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText("\uD83C".repeat(40));
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe("\uFFFD".repeat(40));
+	});
+
+	it("replaces a long run of lone low surrogates", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 50,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText("\uDF89".repeat(40));
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe("\uFFFD".repeat(40));
+	});
+
+	it("replaces a lone high surrogate instead of emitting it", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 10,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText("\uD83C");
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe("\uFFFD");
+	});
+
+	it("replaces a lone low surrogate instead of emitting it", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 10,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText("\uDF89");
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe("\uFFFD");
+	});
+
+	it("replaces mixed lone surrogates in a longer document", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 20,
+			chunkOverlap: 0,
+		});
+		const chunks = await splitter.splitText(`aa\uD83Cbb\uDF89cc🎉`);
+		expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+		expect(chunks.join("")).toBe("aa\uFFFDbb\uFFFDcc🎉");
+	});
+
+	it("keeps a well-formed emoji at chunkSize and chunkSize+1", async () => {
+		const text = `${"x".repeat(4)}🎉`;
+		for (const chunkSize of [text.length, text.length + 1]) {
+			const splitter = new RecursiveCharacterTextSplitter({
+				chunkSize,
+				chunkOverlap: 0,
+			});
+			const chunks = await splitter.splitText(text);
+			expect(chunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+			expect(chunks.join("")).toBe(text);
+			expect(chunks.some((chunk) => chunk.includes("🎉"))).toBe(true);
+		}
+	});
+
+	it("emits an emoji whole when it is larger than chunkSize", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 1,
+			chunkOverlap: 0,
+		});
+		const warnSpy = vi
+			.spyOn(logger, "warn")
+			.mockImplementation(() => undefined);
+		try {
+			const chunks = await splitter.splitText("🎉");
+			expect(chunks).toEqual(["🎉"]);
+			expect(chunks[0]?.isWellFormed()).toBe(true);
+		} finally {
+			warnSpy.mockRestore();
+		}
 	});
 
 	it("emits an indivisible piece whole rather than truncating it", async () => {

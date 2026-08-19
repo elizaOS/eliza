@@ -1,0 +1,150 @@
+/**
+ * Overflow coverage for Agent Skills package downloads. The deterministic
+ * stream harness proves exact-cap acceptance, overflow cancellation and lock
+ * release, UTF-8 decoding, and the real direct-URL installer's fail-closed
+ * behavior without touching the network or filesystem.
+ */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemorySkillStore } from "../storage";
+import {
+	MAX_SKILL_PACKAGE_BYTES,
+	readCappedSkillPackage,
+	readCappedSkillText,
+} from "./skill-package-bytes";
+import { AgentSkillsService } from "./skills";
+
+function streamOf(
+	bytes: Uint8Array,
+	chunkSize = 64 * 1024,
+): Response {
+	let offset = 0;
+	return new Response(
+		new ReadableStream<Uint8Array>({
+			pull(controller) {
+				if (offset >= bytes.byteLength) {
+					controller.close();
+					return;
+				}
+				const end = Math.min(offset + chunkSize, bytes.byteLength);
+				controller.enqueue(bytes.subarray(offset, end));
+				offset = end;
+			},
+		}),
+	);
+}
+
+function openOverflowStream(
+	onCancel: () => void | Promise<void>,
+): Response {
+	return new Response(
+		new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array(MAX_SKILL_PACKAGE_BYTES + 1));
+			},
+			cancel() {
+				onCancel();
+			},
+		}),
+	);
+}
+
+function createRuntime(): IAgentRuntime {
+	return {
+		getSetting: vi.fn(() => undefined),
+		logger: {
+			debug: vi.fn(),
+			error: vi.fn(),
+			info: vi.fn(),
+			warn: vi.fn(),
+		},
+	} as unknown as IAgentRuntime;
+}
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+});
+
+describe("readCappedSkillPackage", () => {
+	it("accepts a package at the 10MB cap", async () => {
+		const body = new Uint8Array(MAX_SKILL_PACKAGE_BYTES);
+		body[0] = 80;
+		body[1] = 75;
+		const got = await readCappedSkillPackage(streamOf(body));
+		expect(got.byteLength).toBe(MAX_SKILL_PACKAGE_BYTES);
+		expect(got[0]).toBe(80);
+		expect(got[1]).toBe(75);
+	});
+
+	it("rejects one byte past the cap without retaining the overflow", async () => {
+		const cancel = vi.fn();
+		const response = openOverflowStream(cancel);
+
+		await expect(readCappedSkillPackage(response)).rejects.toMatchObject({
+			message: "Package too large (max 10MB)",
+			code: "SKILL_PACKAGE_TOO_LARGE",
+			context: {
+				maxBytes: MAX_SKILL_PACKAGE_BYTES,
+				receivedBytes: MAX_SKILL_PACKAGE_BYTES + 1,
+			},
+		});
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(response.body?.locked).toBe(false);
+	});
+
+	it("does not let cancellation failure mask the typed size error", async () => {
+		const cancel = vi.fn(async () => {
+			throw new Error("transport cancel failed");
+		});
+
+		await expect(
+			readCappedSkillPackage(openOverflowStream(cancel)),
+		).rejects.toMatchObject({ code: "SKILL_PACKAGE_TOO_LARGE" });
+		expect(cancel).toHaveBeenCalledOnce();
+	});
+
+	it("returns empty bytes for a response without a body", async () => {
+		await expect(
+			readCappedSkillPackage(new Response(null)),
+		).resolves.toEqual(new Uint8Array());
+	});
+
+	it("decodes a capped SKILL.md body as UTF-8", async () => {
+		const text = await readCappedSkillText(
+			new Response("name: demo\n", { headers: { "content-type": "text/markdown" } }),
+		);
+		expect(text).toBe("name: demo\n");
+	});
+
+	it("rejects malformed UTF-8 instead of changing skill instructions", async () => {
+		await expect(
+			readCappedSkillText(new Response(new Uint8Array([0xc3, 0x28]))),
+		).rejects.toMatchObject({
+			code: "SKILL_PACKAGE_INVALID_UTF8",
+			context: { byteLength: 2 },
+			cause: expect.any(TypeError),
+		});
+	});
+
+	it("fails a real direct-URL install and cancels before saving an oversized body", async () => {
+		const cancel = vi.fn();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => openOverflowStream(cancel)),
+		);
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+
+		await expect(
+			service.installFromUrl("https://skills.example/oversized.md", {
+				slug: "oversized",
+			}),
+		).resolves.toBe(false);
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(storage.getPackage("oversized")).toBeUndefined();
+	});
+});

@@ -353,32 +353,41 @@ describe("Google GenAI embeddings", () => {
     expect(mocks.embedContent).not.toHaveBeenCalled();
   });
 
-  it("does NOT truncate a gemini-embedding-2 override to the smaller 2,048 limit for the same input", async () => {
-    // The same provider-tokenized input that exceeds the default model's 2,048
-    // limit remains below gemini-embedding-2's 8,192-token window.
-    mocks.getEmbeddingModel.mockReturnValue("gemini-embedding-2");
-    mocks.countEmbeddingTokens.mockImplementation(
-      async ({ contents }: { contents: string }) => ({
-        totalTokens: contents.length,
-      }),
-    );
-    const input = "a".repeat(3_000);
+  it.each(["gemini-embedding-2", "models/gemini-embedding-2"])(
+    "does NOT truncate a %s override to the smaller 2,048 limit for the same input",
+    async (model) => {
+      // The same provider-tokenized input that exceeds the default model's
+      // 2,048 limit remains below gemini-embedding-2's 8,192-token window.
+      mocks.getEmbeddingModel.mockReturnValue(model);
+      mocks.countEmbeddingTokens.mockImplementation(
+        async ({ contents }: { contents: string }) => ({
+          totalTokens: contents.length,
+        }),
+      );
+      const input = "a".repeat(3_000);
 
-    await handleTextEmbedding(createRuntime(), input);
+      await handleTextEmbedding(createRuntime(), input);
 
-    expect(mocks.embedContent).toHaveBeenCalledTimes(1);
-    const passed = mocks.embedContent.mock.calls[0][0] as {
-      model: string;
-      contents: string;
-    };
-    expect(passed.model).toBe("gemini-embedding-2");
-    expect(passed.contents.length).toBe(3_000);
-  });
+      expect(mocks.embedContent).toHaveBeenCalledTimes(1);
+      const passed = mocks.embedContent.mock.calls[0][0] as {
+        model: string;
+        contents: string;
+      };
+      expect(passed.model).toBe(model);
+      expect(passed.contents.length).toBe(3_000);
+      expect(
+        mocks.countEmbeddingTokens.mock.calls.every(
+          ([request]) => request.model === model,
+        ),
+      ).toBe(true);
+    },
+  );
 
   it("truncates an unmapped override to the safe 2,048-token default limit", async () => {
     // An override id not present in the limit map falls back to the safe 2,048
     // limit rather than inheriting the larger model's window.
-    mocks.getEmbeddingModel.mockReturnValue("some-unknown-embedding-model");
+    const model = "models/some-unknown-embedding-model";
+    mocks.getEmbeddingModel.mockReturnValue(model);
     mocks.countEmbeddingTokens.mockImplementation(
       async ({ contents }: { contents: string }) => ({
         totalTokens: contents.length,
@@ -388,7 +397,11 @@ describe("Google GenAI embeddings", () => {
 
     await handleTextEmbedding(createRuntime(), oversized);
 
-    const passed = mocks.embedContent.mock.calls[0][0] as { contents: string };
+    const passed = mocks.embedContent.mock.calls[0][0] as {
+      model: string;
+      contents: string;
+    };
+    expect(passed.model).toBe(model);
     expect(passed.contents.length).toBe(2_048);
   });
 

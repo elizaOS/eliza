@@ -4,7 +4,7 @@
  * API transport so cookie sessions and native hosts share one security path.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { fetchWithCsrf } from "@elizaos/ui/api/csrf-client";
 
 /**
@@ -35,6 +35,48 @@ function invalidViewListResponse(
 		context,
 		...(options.cause !== undefined ? { cause: options.cause } : {}),
 	});
+}
+
+async function readJsonWithSignal(
+	response: Response,
+	signal: AbortSignal,
+): Promise<unknown> {
+	const reader = response.body?.getReader();
+	if (!reader) return response.json();
+
+	const decoder = new TextDecoder();
+	let text = "";
+	let rejectOnAbort: (() => void) | undefined;
+	const aborted = new Promise<never>((_, reject) => {
+		rejectOnAbort = () => reject(signal.reason);
+		if (signal.aborted) rejectOnAbort();
+		else signal.addEventListener("abort", rejectOnAbort, { once: true });
+	});
+
+	try {
+		while (true) {
+			const { done, value } = await Promise.race([reader.read(), aborted]);
+			if (done) return JSON.parse(text + decoder.decode()) as unknown;
+			if (value) text += decoder.decode(value, { stream: true });
+		}
+	} catch (error) {
+		if (signal.aborted) {
+			try {
+				await reader.cancel(signal.reason);
+			} catch (cancelError) {
+				// error-policy:J6 cancellation may race a closed response body;
+				// preserve the primary timeout or caller-abort reason.
+				logger.debug(
+					{ error: cancelError },
+					"[ViewManager] failed to cancel interrupted list response body",
+				);
+			}
+		}
+		throw error;
+	} finally {
+		if (rejectOnAbort) signal.removeEventListener("abort", rejectOnAbort);
+		reader.releaseLock();
+	}
 }
 
 /** Order + de-duplicate a modality list as gui, xr, tui (matches core). */
@@ -226,22 +268,8 @@ export async function fetchViewEntries(
 		});
 	}
 	let data: unknown;
-	const abortBodyRead = () => {
-		void res.body?.cancel();
-	};
-	let rejectBodyRead: ((reason?: unknown) => void) | undefined;
-	const rejectOnAbort = () => rejectBodyRead?.(signal.reason);
 	try {
-		const aborted = new Promise<never>((_, reject) => {
-			rejectBodyRead = reject;
-			if (signal.aborted) {
-				reject(signal.reason);
-				return;
-			}
-			signal.addEventListener("abort", rejectOnAbort, { once: true });
-		});
-		signal.addEventListener("abort", abortBodyRead, { once: true });
-		data = await Promise.race([res.json(), aborted]);
+		data = await readJsonWithSignal(res, signal);
 	} catch (cause) {
 		if (signal.aborted) throw cause;
 		// error-policy:J2 preserve the JSON parser failure while adding the API
@@ -251,9 +279,6 @@ export async function fetchViewEntries(
 			{ status: res.status, viewType },
 			{ cause },
 		);
-	} finally {
-		signal.removeEventListener("abort", abortBodyRead);
-		signal.removeEventListener("abort", rejectOnAbort);
 	}
 	if (!isRecord(data) || !Array.isArray(data.views)) {
 		return invalidViewListResponse(

@@ -141,6 +141,11 @@ export function findWebBrowserWorkspaceTargetTabId(
 export async function executeWebBrowserWorkspaceUtilityCommand(
   command: BrowserWorkspaceCommand,
 ): Promise<BrowserWorkspaceCommandResult | null> {
+  if (command.subaction === "upload") {
+    throw new Error(
+      "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
+    );
+  }
   return withWebStateLock(async () => {
     if (
       ![
@@ -341,24 +346,9 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         };
       }
       case "upload": {
-        const target = resolveTarget();
-        if (target?.tagName !== "INPUT") {
-          throw new Error(
-            "Eliza browser workspace upload requires a file input target.",
-          );
-        }
-        const files = (command.files ?? []).map((entry) =>
-          path.basename(entry),
+        throw new Error(
+          "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
         );
-        target.setAttribute("data-eliza-uploaded-files", files.join(","));
-        return {
-          mode: "web",
-          subaction: command.subaction,
-          value: {
-            files,
-            selector: buildBrowserWorkspaceElementSelector(target),
-          },
-        };
       }
       case "set": {
         const action = command.setAction ?? "viewport";
@@ -918,6 +908,14 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
 export async function executeWebBrowserWorkspaceDomCommand(
   command: BrowserWorkspaceCommand,
 ): Promise<BrowserWorkspaceCommandResult> {
+  if (
+    command.subaction === "upload" ||
+    command.subaction === "realistic-upload"
+  ) {
+    throw new Error(
+      "Browser workspace upload requires a proof-producing target and an exact consume-once interaction confirmation.",
+    );
+  }
   return withWebStateLock(async () => {
     const id = findWebBrowserWorkspaceTargetTabId(command);
     command = resolveBrowserWorkspaceCommandElementRefs(command, "web", id);

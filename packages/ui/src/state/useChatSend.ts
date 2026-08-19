@@ -114,14 +114,17 @@ async function handoffCompletedAction(
       "agent",
     );
   }
-  if (findViewActionHandoff(actionResults)) {
+  const viewHandoff = findViewActionHandoff(actionResults);
+  if (viewHandoff) {
     // The completed stream result is scoped to this exact caller and contains
     // the validated target returned by the successful VIEWS action. Dispatch it
     // directly instead of consulting process-global `/api/views/current`, which
     // can belong to another device and is unavailable to REST-only native
     // renderers. The shell resolves the canonical path from the view id.
     try {
-      dispatchViewActionHandoffDirect(actionResults);
+      if (!viewHandoff.completedActionDelivered) {
+        dispatchViewActionHandoffDirect(actionResults);
+      }
     } catch (err) {
       // error-policy:J4 the chat turn succeeded, so preserve it while surfacing a
       // distinct navigation failure instead of fabricating an opened view.

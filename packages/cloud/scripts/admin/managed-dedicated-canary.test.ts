@@ -694,6 +694,12 @@ describe("managed dedicated canary", () => {
     expect(validateManagedDedicatedCanaryEvidence(evidence)).toContain(
       "wrong_operation",
     );
+    expect(fixture.staleDeleteBody).toEqual({
+      expectedAgentName: `managed-dedicated-canary-${STALE_SUFFIX}`,
+      expectedCreatedAt: "2026-07-13T08:17:00.000Z",
+      expectedExecutionTier: "dedicated-always",
+      expectedDeployCommit: DEPLOYED_COMMIT,
+    });
     expect(fixture.calls.filter((call) => call.method === "DELETE")).toEqual([
       {
         method: "DELETE",
@@ -703,6 +709,28 @@ describe("managed dedicated canary", () => {
     expect(fixture.calls.filter((call) => call.method === "POST")).toHaveLength(
       0,
     );
+  });
+
+  test("cleanup-only deletion fails closed against the legacy strict request schema", async () => {
+    const { fixture } = await runFixture(
+      {
+        existingCanary: true,
+        existingCanarySuffix: STALE_SUFFIX,
+      },
+      { staleCanarySuffix: STALE_SUFFIX, cleanupOnly: true },
+    );
+    const legacyStrictKeys = new Set([
+      "expectedAgentName",
+      "expectedCreatedAt",
+      "expectedExecutionTier",
+    ]);
+    const legacyUnknownKeys = Object.keys(fixture.staleDeleteBody ?? {}).filter(
+      (key) => !legacyStrictKeys.has(key),
+    );
+
+    // The precondition deliberately rides in the strict JSON body: an older
+    // route rejects this unknown key before reaching its deletion service.
+    expect(legacyUnknownKeys).toEqual(["expectedDeployCommit"]);
   });
 
   test("cleanup-only validation rejects full-canary work and contradictory evidence", async () => {

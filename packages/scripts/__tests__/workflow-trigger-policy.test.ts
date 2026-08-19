@@ -1,4 +1,4 @@
-/** Exercises the repository policy that excludes pull-request workflow runs and restricts branch pushes to develop. */
+/** Exercises the repository policy that excludes pull-request workflow runs, reserves merge-queue admission, and restricts branch pushes to develop. */
 
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -19,7 +19,9 @@ function buildRepo(workflows: Record<string, string>): string {
   return root;
 }
 
-function validateFixture(workflow: string): ReturnType<typeof validateWorkflowTriggerPolicy> {
+function validateFixture(
+  workflow: string,
+): ReturnType<typeof validateWorkflowTriggerPolicy> {
   const root = buildRepo({ "test.yml": workflow });
   try {
     return validateWorkflowTriggerPolicy(root);
@@ -61,14 +63,36 @@ jobs: {}
   test.each([
     "pull_request",
     "pull_request_target",
-    "merge_group",
     "issue_comment",
     "pull_request_review",
     "pull_request_review_comment",
   ])("rejects the PR-adjacent %s trigger", (eventName) => {
     expect(() =>
-      validateFixture(`on:\n  push:\n    branches: [develop]\n  ${eventName}:\njobs: {}\n`),
+      validateFixture(
+        `on:\n  push:\n    branches: [develop]\n  ${eventName}:\njobs: {}\n`,
+      ),
     ).toThrow(/forbidden pull-request event trigger/);
+  });
+
+  test("reserves merge_group for the candidate Biome workflow", () => {
+    expect(() =>
+      validateFixture(
+        `on:\n  push:\n    branches: [develop]\n  merge_group:\njobs: {}\n`,
+      ),
+    ).toThrow(/merge_group is reserved for merge-candidate-biome\.yml/);
+
+    const root = buildRepo({
+      "develop.yml": `on:\n  push:\n    branches: [develop]\njobs: {}\n`,
+      "merge-candidate-biome.yml": `on:\n  merge_group:\n    types: [checks_requested]\njobs: {}\n`,
+    });
+    try {
+      expect(validateWorkflowTriggerPolicy(root)).toEqual({
+        developPushWorkflows: 1,
+        files: 2,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("rejects an unrestricted push", () => {

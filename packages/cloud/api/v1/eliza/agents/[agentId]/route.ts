@@ -56,6 +56,12 @@ const conditionalDeleteSchema = z
       "dedicated-always",
       "custom",
     ]),
+    // Cleanup canaries bind deletion to the serving deployment. Older route
+    // versions keep this request fail-closed because their schema is strict.
+    expectedDeployCommit: z
+      .string()
+      .regex(/^[a-f0-9]{40}$/)
+      .optional(),
   })
   .strict();
 
@@ -439,6 +445,15 @@ app.delete("/", async (c) => {
           return c.json(
             { success: false, error: "Invalid conditional delete request" },
             400,
+          );
+        }
+        if (
+          parsed.data.expectedDeployCommit !== undefined &&
+          parsed.data.expectedDeployCommit !== c.env.ELIZA_DEPLOY_COMMIT
+        ) {
+          return c.json(
+            { success: false, error: "Conditional delete deploy mismatch" },
+            409,
           );
         }
         expectedIdentity = {

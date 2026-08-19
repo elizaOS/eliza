@@ -29,6 +29,7 @@
  * direct `window.__aecLoop.run(...)` call.
  */
 
+import { logger } from "@elizaos/core";
 import { client } from "../api";
 
 declare global {
@@ -255,7 +256,7 @@ async function getJson(path: string, signal: AbortSignal): Promise<unknown> {
   );
 }
 
-async function readAudioBody(
+export async function readAudioBody(
   response: Response,
   label: string,
   signal: AbortSignal,
@@ -264,15 +265,50 @@ async function readAudioBody(
   if (!response.ok) throw new Error(`${label} -> ${response.status}`);
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const combined = AbortSignal.any([signal, timeoutSignal]);
+  const reader = response.body?.getReader();
+  if (!reader) return response.arrayBuffer();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  let rejectOnAbort: (() => void) | undefined;
   const aborted = new Promise<never>((_resolve, reject) => {
-    const rejectWithReason = () => reject(combined.reason);
-    if (combined.aborted) rejectWithReason();
-    else combined.addEventListener("abort", rejectWithReason, { once: true });
+    rejectOnAbort = () => reject(combined.reason);
+    if (combined.aborted) rejectOnAbort();
+    else combined.addEventListener("abort", rejectOnAbort, { once: true });
   });
   try {
-    return await Promise.race([response.arrayBuffer(), aborted]);
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) {
+        const bytes = new Uint8Array(byteLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        return bytes.buffer;
+      }
+      if (value) {
+        chunks.push(value);
+        byteLength += value.byteLength;
+      }
+    }
+  } catch (error) {
+    try {
+      await reader.cancel(
+        combined.aborted ? combined.reason : "elizaos-aec-body-read-failed",
+      );
+    } catch (cancelError) {
+      // error-policy:J6 cancellation may race a closed response body; preserve
+      // the primary timeout, caller abort, or transport read failure.
+      logger.debug(
+        { label, error: cancelError },
+        "[AecLoop] failed to cancel interrupted audio response body",
+      );
+    }
+    throw error;
   } finally {
-    if (combined.aborted) void response.body?.cancel(combined.reason);
+    if (rejectOnAbort) combined.removeEventListener("abort", rejectOnAbort);
+    reader.releaseLock();
   }
 }
 
