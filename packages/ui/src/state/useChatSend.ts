@@ -412,6 +412,12 @@ export interface UseChatSendDeps {
   loadConversationMessages: (
     convId: string,
   ) => Promise<LoadConversationMessagesResult>;
+  /**
+   * Waits for any startup conversation restore to settle before a user turn
+   * claims conversation ownership. Callers without startup hydration may omit
+   * this dependency.
+   */
+  settleConversationHydrationForSend?: () => Promise<void>;
 
   // Cloud state
   elizaCloudEnabled: boolean;
@@ -490,6 +496,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     chatSendNonceRef,
     loadConversations,
     loadConversationMessages,
+    settleConversationHydrationForSend,
     elizaCloudEnabled,
     elizaCloudConnected,
     pollCloudCredits,
@@ -2180,6 +2187,12 @@ export function useChatSend(deps: UseChatSendDeps) {
         return;
       }
 
+      // Direct Cloud paints the shell while its history restore continues in
+      // the background. Let that restore choose the active conversation before
+      // this turn snapshots the target or paints optimistically; otherwise the
+      // late restore can replace the just-sent turn with stale history.
+      await settleConversationHydrationForSend?.();
+
       // Claim + clear the active reply target here — the single chokepoint every
       // real user turn (composer send + overlay/voice send()) funnels through —
       // so one Reply affordance covers all surfaces and a second send never
@@ -2261,6 +2274,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     },
     [
       flushQueuedChatSends,
+      settleConversationHydrationForSend,
       setChatReplyTarget,
       setChatSending,
       setCompanionMessageCutoffTs,

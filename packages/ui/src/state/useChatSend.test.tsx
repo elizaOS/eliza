@@ -314,6 +314,47 @@ describe("useChatSend stop handling", () => {
     });
   });
 
+  it("waits for startup conversation hydration before claiming a cold first send", async () => {
+    const hydration = deferred();
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Hi there",
+      completed: true,
+    });
+    const deps = makeDeps() as UseChatSendDeps & {
+      settleConversationHydrationForSend: () => Promise<void>;
+    };
+    deps.settleConversationHydrationForSend = vi.fn(async () => {
+      await hydration.promise;
+      deps.activeConversationIdRef.current = "conv-restored";
+      deps.conversationsRef.current = [
+        conversation("conv-restored", "room-restored"),
+      ];
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hello");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(deps.settleConversationHydrationForSend).toHaveBeenCalledTimes(1);
+    expect(deps.conversationMessagesRef.current).toEqual([]);
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+
+    await act(async () => {
+      hydration.resolve();
+      await sendPromise;
+    });
+
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls[0]?.slice(0, 2),
+    ).toEqual(["conv-restored", "hello"]);
+  });
+
   it("does NOT surface an error notice when the send is aborted by the user", async () => {
     // A user-initiated stop rejects the stream with AbortError. The send catch
     // has a dedicated abort branch (drop the empty assistant placeholder, return)

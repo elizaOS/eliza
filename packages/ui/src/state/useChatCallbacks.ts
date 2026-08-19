@@ -379,6 +379,38 @@ export async function hydrateInitialConversation(
   }
 }
 
+const CONVERSATION_HYDRATION_SEND_WAIT_MS = 1_000;
+
+/**
+ * Gives an in-flight startup restore a short chance to choose the active
+ * conversation before a user send claims it. A hung restore is invalidated so
+ * it cannot overwrite the user's turn after the bounded wait expires.
+ */
+export async function settleConversationHydrationForSend(
+  hydrationTaskRef: MutableRefObject<Promise<string | null> | null>,
+  conversationHydrationEpochRef: MutableRefObject<number>,
+  timeoutMs = CONVERSATION_HYDRATION_SEND_WAIT_MS,
+): Promise<void> {
+  const task = hydrationTaskRef.current;
+  if (!task) return;
+
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const completed = await Promise.race([
+    task.then(
+      () => true,
+      () => true,
+    ),
+    new Promise<boolean>((resolve) => {
+      timeoutId = setTimeout(() => resolve(false), timeoutMs);
+    }),
+  ]);
+  if (timeoutId) clearTimeout(timeoutId);
+
+  if (hydrationTaskRef.current !== task) return;
+  if (!completed) conversationHydrationEpochRef.current += 1;
+  hydrationTaskRef.current = null;
+}
+
 // ── Deps interface ──────────────────────────────────────────────────
 
 export interface UseChatCallbacksDeps {
@@ -737,33 +769,52 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     [fetchGreeting, seedSyntheticGreeting],
   );
 
-  const hydrateInitialConversationState = useCallback(
-    (): Promise<string | null> =>
-      hydrateInitialConversation({
-        client,
-        conversationHydrationEpochRef,
-        activeConversationIdRef,
-        greetingFiredRef,
-        conversationMessagesRef,
-        loadedConversationIdRef,
-        setConversations,
-        setActiveConversationId,
-        setConversationMessages,
-        uiLanguage,
-        seedSyntheticGreeting,
-      }),
-    [
-      activeConversationIdRef,
+  const conversationHydrationTaskRef = useRef<Promise<string | null> | null>(
+    null,
+  );
+  const hydrateInitialConversationState = useCallback((): Promise<
+    string | null
+  > => {
+    const task = hydrateInitialConversation({
+      client,
       conversationHydrationEpochRef,
-      conversationMessagesRef,
+      activeConversationIdRef,
       greetingFiredRef,
+      conversationMessagesRef,
       loadedConversationIdRef,
-      seedSyntheticGreeting,
-      uiLanguage,
+      setConversations,
       setActiveConversationId,
       setConversationMessages,
-      setConversations,
-    ],
+      uiLanguage,
+      seedSyntheticGreeting,
+    });
+    conversationHydrationTaskRef.current = task;
+    const clearSettledTask = () => {
+      if (conversationHydrationTaskRef.current === task) {
+        conversationHydrationTaskRef.current = null;
+      }
+    };
+    void task.then(clearSettledTask, clearSettledTask);
+    return task;
+  }, [
+    activeConversationIdRef,
+    conversationHydrationEpochRef,
+    conversationMessagesRef,
+    greetingFiredRef,
+    loadedConversationIdRef,
+    seedSyntheticGreeting,
+    uiLanguage,
+    setActiveConversationId,
+    setConversationMessages,
+    setConversations,
+  ]);
+  const settleActiveConversationHydrationForSend = useCallback(
+    () =>
+      settleConversationHydrationForSend(
+        conversationHydrationTaskRef,
+        conversationHydrationEpochRef,
+      ),
+    [conversationHydrationEpochRef],
   );
 
   // Backfill the bootstrap greeting once the agent first becomes ready. The
@@ -833,6 +884,8 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     chatSendNonceRef,
     loadConversations,
     loadConversationMessages,
+    settleConversationHydrationForSend:
+      settleActiveConversationHydrationForSend,
     elizaCloudEnabled,
     elizaCloudConnected,
     pollCloudCredits,
