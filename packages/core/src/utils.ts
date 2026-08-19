@@ -734,6 +734,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	text: string,
 ): T | null {
 	if (!text) return null;
+	if (!isUtf8WithinByteBudget(text, MAX_XML_INPUT_BYTES)) return null;
 
 	let xmlContent: string | null = null;
 	const responseStart = text.indexOf("<response>");
@@ -741,6 +742,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 		const contentStart = responseStart + "<response>".length;
 		const responseEnd = text.indexOf("</response>", contentStart);
 		if (responseEnd !== -1) {
+			if (responseEnd - contentStart > MAX_XML_BODY_BYTES) return null;
 			xmlContent = text.slice(contentStart, responseEnd);
 		}
 	}
@@ -759,6 +761,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 		}
 		xmlContent = firstBlock.content;
 	}
+	if (!isUtf8WithinByteBudget(xmlContent, MAX_XML_BODY_BYTES)) return null;
 
 	const children = extractDirectXmlChildren(xmlContent);
 	// Fail closed: a visit-cap hit is an incomplete parse, not a short
@@ -789,6 +792,14 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	}
 
 	return result as T;
+}
+
+const MAX_XML_INPUT_BYTES = 1024 * 1024;
+const MAX_XML_BODY_BYTES = 256 * 1024;
+
+function isUtf8WithinByteBudget(value: string, maxBytes: number): boolean {
+	if (value.length > maxBytes) return false;
+	return new TextEncoder().encode(value).byteLength <= maxBytes;
 }
 
 function findFirstXmlBlock(
@@ -919,18 +930,13 @@ function findMatchingXmlClose(
 		if (visits > MAX_XML_CLOSE_VISITS || depth > MAX_XML_NEST_DEPTH) {
 			return -1;
 		}
-		const nextOpen = input.indexOf(`<${tag}`, cursor);
+		const nextOpen = findNextExactXmlOpen(input, tag, cursor);
 		const nextClose = input.indexOf(closeSeq, cursor);
 		if (nextClose === -1) return -1;
 		if (nextOpen !== -1 && nextOpen < nextClose) {
 			const nestedTag = readXmlStartTag(input, nextOpen);
 			if (!nestedTag) return -1;
-			// Only a tag whose name EXACTLY matches nests depth. `indexOf(`<${tag}`)`
-			// also matches prefix-extensions (e.g. `<textarea>` while closing
-			// `<text>`), which used to inflate depth so the real close was never
-			// found — the field was dropped and a bogus key promoted. On a mismatch
-			// just skip past this open tag and keep scanning.
-			if (nestedTag.tag === tag && !nestedTag.selfClosing) {
+			if (!nestedTag.selfClosing) {
 				depth += 1;
 			}
 			cursor = nestedTag.end + 1;
@@ -941,6 +947,24 @@ function findMatchingXmlClose(
 		}
 	}
 	return -1;
+}
+
+function findNextExactXmlOpen(
+	input: string,
+	tag: string,
+	start: number,
+): number {
+	const prefix = `<${tag}`;
+	let cursor = start;
+	for (;;) {
+		const found = input.indexOf(prefix, cursor);
+		if (found === -1) return -1;
+		const boundary = input[found + prefix.length];
+		if (boundary === ">" || boundary === "/" || /\s/.test(boundary ?? "")) {
+			return found;
+		}
+		cursor = found + prefix.length;
+	}
 }
 
 function unescapeBasicXmlEntities(value: string): string {

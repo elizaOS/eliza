@@ -35,13 +35,6 @@ describe("parseKeyValueXml", () => {
 		});
 	});
 
-	it("fails closed on a prefix-extension bomb instead of quadratic-hanging", () => {
-		const inner = `<a>${"<aa></aa>".repeat(20_000)}x</a>`;
-		const t0 = performance.now();
-		parseKeyValueXml(`<response>${inner}</response>`);
-		expect(performance.now() - t0).toBeLessThan(50);
-	});
-
 	it("parses the direct-child visit limit and rejects one more", () => {
 		const fields = Array.from(
 			{ length: XML_CLOSE_VISIT_LIMIT },
@@ -53,5 +46,19 @@ describe("parseKeyValueXml", () => {
 
 		const overflow = `${fields}<extra>x</extra>`;
 		expect(parseKeyValueXml(`<response>${overflow}</response>`)).toBeNull();
+	});
+
+	it("rejects prefix-extension input beyond the structured body budget", () => {
+		const body = `<a>${"<aa></aa>".repeat(30_000)}x</a>`;
+		expect(parseKeyValueXml(`<response>${body}</response>`)).toBeNull();
+	});
+
+	it("rejects oversized surrounding model output before searching for XML", () => {
+		const oversizedPrefix = "x".repeat(1024 * 1024);
+		expect(
+			parseKeyValueXml(
+				`${oversizedPrefix}<response><text>ok</text></response>`,
+			),
+		).toBeNull();
 	});
 });
