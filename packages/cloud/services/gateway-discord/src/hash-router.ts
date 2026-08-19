@@ -7,6 +7,7 @@ import HashRing from "hashring";
 import { logger } from "./logger";
 
 const REFRESH_MS = 5_000;
+const ENDPOINT_SLICE_FETCH_TIMEOUT_MS = 10_000;
 
 interface RingState {
   ring: HashRing;
@@ -64,6 +65,7 @@ async function resolvePodIPs(
     const res = await fetch(apiUrl, {
       headers: { Authorization: `Bearer ${token}` },
       tls: { ca: readServiceAccountCaCert() ?? undefined },
+      signal: AbortSignal.timeout(ENDPOINT_SLICE_FETCH_TIMEOUT_MS),
     } as RequestInit);
 
     if (!res.ok) return [];
