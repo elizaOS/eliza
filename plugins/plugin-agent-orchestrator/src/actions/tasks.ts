@@ -1027,8 +1027,16 @@ async function runCreateLegacy(
   // A planner-supplied label is free text; clamp like the labelFrom fallback
   // so listings, room names, and progress lines stay bounded.
   const baseLabelParam = pickString(params, content, "label");
-  const baseLabel = baseLabelParam
-    ? userReferenceLogView(baseLabelParam)
+  // Planner labels are model output and arrive corrupted on occasion — a
+  // task literally titled ",title:" shipped from a JSON-fragment label (live
+  // 2026-08-19). A label with no letters or digits carries no identity; drop
+  // it so labelFrom derives one from the task text instead.
+  const baseLabelSane =
+    baseLabelParam && /[a-z0-9]/i.test(baseLabelParam)
+      ? baseLabelParam
+      : undefined;
+  const baseLabel = baseLabelSane
+    ? userReferenceLogView(baseLabelSane)
     : undefined;
   const extraMetadata = additionalSessionMetadata(params, content);
   const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
