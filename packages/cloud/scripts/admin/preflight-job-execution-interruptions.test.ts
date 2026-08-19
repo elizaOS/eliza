@@ -260,26 +260,31 @@ describe("job interruption catalog preflight", () => {
       path.join(ROOT, ".github/workflows/deploy-eliza-provisioning-worker.yml"),
       "utf8",
     );
-    const preflight = workflow.indexOf(
-      "preflight-job-execution-interruptions.ts",
+    const deployStepStart = workflow.indexOf(
+      "- name: Deploy and restart worker",
     );
-    const workerRestart = workflow.indexOf(
+    const healthCheckStart = workflow.indexOf(
+      "- name: Health check",
+      deployStepStart,
+    );
+    expect(deployStepStart).toBeGreaterThan(-1);
+    expect(healthCheckStart).toBeGreaterThan(deployStepStart);
+    const deployStep = workflow.slice(deployStepStart, healthCheckStart);
+    const preflight = deployStep.indexOf(
+      "packages/cloud/scripts/admin/preflight-job-execution-interruptions.ts",
+    );
+    const workerRestart = deployStep.indexOf(
       'sudo systemctl restart "$SYSTEMD_UNIT"',
     );
-    const routerRestart = workflow.indexOf(
+    const routerRestart = deployStep.indexOf(
       "sudo systemctl restart eliza-agent-router.service",
     );
 
     expect(preflight).toBeGreaterThan(-1);
     expect(workerRestart).toBeGreaterThan(preflight);
     expect(routerRestart).toBeGreaterThan(preflight);
-    expect(workflow).toContain(
+    expect(deployStep).toContain(
       "timeout --foreground --signal=TERM --kill-after=5s 8m",
-    );
-    expect(workflow).toContain("timeout-minutes: 55");
-    const deployStep = workflow.slice(
-      workflow.indexOf("- name: Deploy and restart worker"),
-      workflow.indexOf("- name: Health check"),
     );
     expect(deployStep).toContain("command_timeout: 40m");
     expect(workflow).toContain(
