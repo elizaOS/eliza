@@ -3332,7 +3332,16 @@ export class OrchestratorTaskService extends Service {
     input: CreateTaskInput,
   ): OrchestratorTaskType | undefined {
     switch (input.kind) {
-      case "coding":
+      case "coding": {
+        // "coding" is the planner's default label for EVERY spawn, not a
+        // verification judgment — honoring it on a page-build ask resurrects
+        // the diff-summary criterion no slug-dir app can satisfy (live
+        // 2026-08-19: "make me a lil unit converter page" parked on "the
+        // change is summarized in the diff"). Let goal-text detection decide;
+        // it returns "coding" anyway for genuine repo work.
+        const detected = detectTaskType(input.goal);
+        return detected === "app-build" ? detected : "coding";
+      }
       case "view-create":
       case "app-build":
       case "deploy":

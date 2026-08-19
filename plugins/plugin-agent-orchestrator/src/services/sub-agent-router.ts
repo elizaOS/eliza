@@ -34,6 +34,7 @@ import {
 } from "@elizaos/core";
 import { AGENT_VOICED_METADATA } from "../voice/phrase-for-user.js";
 import type { AcpService } from "./acp-service.js";
+import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
@@ -3875,8 +3876,14 @@ function composeNarration(
   // (loopback dropped, verified downstream); a genuine failure is covered by
   // the separate build-incomplete report.
   if (readSessionRetryCount(session.metadata) > 0) {
+    // Only the operator's own deploy host is a deliverable address here — the
+    // child's prose also mentions asset CDNs (live 2026-08-19: the retry
+    // relay posted raw fonts.googleapis.com links as "the result").
+    const deployBase = resolveAppDeployConfig().customBaseUrl;
     const urls = collectVerifiableUrlCandidates(response).filter(
-      (url) => !isLoopbackUrl(url),
+      (url) =>
+        !isLoopbackUrl(url) &&
+        (deployBase ? url.startsWith(deployBase.replace(/\/+$/, "")) : false),
     );
     if (urls.length > 0) return `${header}\n${urls.join("\n")}`;
     // A recovered retry with no claimed URL still delivered something the
