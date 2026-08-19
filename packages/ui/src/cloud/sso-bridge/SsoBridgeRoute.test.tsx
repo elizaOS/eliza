@@ -130,13 +130,23 @@ describe("SsoBridgeRoute — mint leg (eliza.app auth host)", () => {
     expect(fetchLog).toEqual([]);
   });
 
-  it("a cross-site or absent referrer mints NOTHING — a third-party page cannot use eliza.app as a minting oracle", async () => {
+  it("an absent referrer falls back to app login without minting", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
-    for (const referrer of [
-      "",
-      "https://evil.example/",
-      "https://eliza.app/",
-    ]) {
+    setReferrer("");
+    stubNetwork(() => json(200, { ok: true, code: CODE }));
+    renderBridge("eliza.app", MINT_QS);
+
+    await waitFor(() =>
+      expect(replacedUrls).toEqual([
+        "https://cloud.eliza.app/login?returnTo=%2Fchat",
+      ]),
+    );
+    expect(fetchLog).toEqual([]);
+  });
+
+  it("a cross-site referrer mints NOTHING — a third-party page cannot use eliza.app as a minting oracle", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
+    for (const referrer of ["https://evil.example/", "https://eliza.app/"]) {
       setReferrer(referrer);
       stubNetwork(() => json(200, { ok: true, code: CODE }));
       renderBridge("eliza.app", MINT_QS);

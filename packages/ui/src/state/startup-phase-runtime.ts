@@ -201,9 +201,11 @@ type PassthroughProbe =
   | { kind: "terminal-agent-error" }
   | { kind: "errored"; status: number };
 
-async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
+async function probeCloudProxyPassthrough(
+  signal?: AbortSignal,
+): Promise<PassthroughProbe> {
   try {
-    await client.listConversations();
+    await client.listConversations({ signal });
     return { kind: "serving" };
   } catch (err) {
     const apiError = asApiLikeError(err);
@@ -239,11 +241,13 @@ async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
  * genuinely-serving agent on the boot screen — if status says `canRespond`, the
  * agent is ready and the user should be let into chat (CONVERSATIONS-500).
  */
-async function isCloudProxyStatusReady(): Promise<boolean> {
+async function isCloudProxyStatusReady(signal?: AbortSignal): Promise<boolean> {
   try {
-    const status = await client.fetch<AgentStatus>("/api/status", undefined, {
-      timeoutMs: 30_000,
-    });
+    const status = await client.fetch<AgentStatus>(
+      "/api/status",
+      { signal },
+      { timeoutMs: 30_000 },
+    );
     return status?.state === "running" && status?.canRespond === true;
   } catch {
     return false;
@@ -661,6 +665,12 @@ async function runCloudManagedWarmup(
     dispatch({ type: "AGENT_RUNNING" });
   };
 
+  const advanceAuthGate = (): void => {
+    deps.setConnected(false);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "AGENT_RUNNING" });
+  };
+
   logger.info(
     "[eliza][startup:init] cloud-managed agent; waiting on proxy passthrough to warm before declaring ready",
   );
@@ -687,24 +697,46 @@ async function runCloudManagedWarmup(
     // them concurrently so startup pays one proxy wake, not serial 10-second
     // timeouts. The status request has a 30s budget because production shared
     // runtimes regularly answer just beyond the generic 10s client timeout.
-    const conversationProbe = probeCloudProxyPassthrough();
-    const statusProbe = isCloudProxyStatusReady();
-    const firstPositive = await Promise.race([
+    const conversationAbort = new AbortController();
+    const statusAbort = new AbortController();
+    const conversationProbe = probeCloudProxyPassthrough(
+      conversationAbort.signal,
+    );
+    const statusProbe = isCloudProxyStatusReady(statusAbort.signal);
+    const firstDecisive = await Promise.race([
       conversationProbe.then((probe) =>
-        probe.kind === "serving" ? "conversations" : null,
+        probe.kind === "serving"
+          ? "conversations"
+          : probe.kind === "auth-required"
+            ? "auth-required"
+            : null,
       ),
       statusProbe.then((ready) => (ready ? "status" : null)),
     ]);
     if (cancelled.current || effectRunRef.current !== effectRunId) return;
 
-    if (firstPositive === "status") {
+    if (firstDecisive === "status") {
+      conversationAbort.abort();
+      await conversationProbe;
       await advanceReady("status reports running and canRespond");
       return;
     }
 
-    if (firstPositive === "conversations") {
+    if (firstDecisive === "conversations") {
+      statusAbort.abort();
+      await statusProbe;
       // The passthrough answers → the warmed runtime is genuinely serving.
       await advanceReady("conversations passthrough serving");
+      return;
+    }
+
+    if (firstDecisive === "auth-required") {
+      statusAbort.abort();
+      await statusProbe;
+      // Authentication is a definitive routing result; a concurrent status
+      // probe cannot make the adopted bearer valid. Mount the auth gate now
+      // instead of waiting through the status request's 30-second budget.
+      advanceAuthGate();
       return;
     }
 
@@ -733,9 +765,7 @@ async function runCloudManagedWarmup(
       // the normal auth gate, where managed Cloud recovery can exchange a
       // fresh agent credential; treating this as warmup would hide that gate
       // behind the startup screen until the absolute timeout.
-      deps.setConnected(false);
-      deps.setFirstRunLoading(false);
-      dispatch({ type: "AGENT_RUNNING" });
+      advanceAuthGate();
       return;
     }
 

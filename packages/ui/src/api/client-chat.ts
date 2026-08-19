@@ -332,7 +332,9 @@ declare module "./client-base" {
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
-    listConversations(): Promise<{ conversations: Conversation[] }>;
+    listConversations(options?: {
+      signal?: AbortSignal;
+    }): Promise<{ conversations: Conversation[] }>;
     createConversation(
       title?: string,
       options?: CreateConversationOptions,
@@ -990,7 +992,10 @@ async function invokeLocalDesktopChatRpc<T>(
   return invokeDesktopBridgeRequest<T>(options);
 }
 
-ElizaClient.prototype.listConversations = async function (this: ElizaClient) {
+ElizaClient.prototype.listConversations = async function (
+  this: ElizaClient,
+  options,
+) {
   // Prefer typed Electrobun RPC. The bun-side composer throws
   // AgentNotReadyError if the agent has no port yet; we catch and
   // fall through to HTTP so the sidebar's polling loop sees the same
@@ -1007,7 +1012,9 @@ ElizaClient.prototype.listConversations = async function (this: ElizaClient) {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
   return withConversationListDefaults(
-    await this.fetch<{ conversations: Conversation[] }>("/api/conversations"),
+    await this.fetch<{ conversations: Conversation[] }>("/api/conversations", {
+      signal: options?.signal,
+    }),
   );
 };
 

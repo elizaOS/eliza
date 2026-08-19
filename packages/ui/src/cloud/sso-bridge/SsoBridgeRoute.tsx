@@ -136,9 +136,18 @@ function MintLeg({
     const appOrigin = pairedAppOrigin(hostname);
     if (!appOrigin) return;
 
-    const appInitiated = referrerIsPairedAppOrigin(appOrigin);
+    const referrer = document.referrer;
+    const appInitiated = referrerIsPairedAppOrigin(appOrigin, referrer);
     const remembered = hasRememberedMintIntent(state);
     if (!appInitiated && !remembered) {
+      if (!referrer) {
+        // Referrer-stripping privacy settings make a legitimate app handoff
+        // indistinguishable from a direct visit. Keep minting fail-closed, but
+        // send the user to the app's ordinary login instead of stranding them
+        // on the public homepage.
+        appModeNavigation.replace(appLoginUrl(appOrigin, returnTo));
+        return;
+      }
       // Not a handshake the app origin initiated (direct visit, or a
       // third-party page forcing a signed-in user here): mint nothing.
       setNotInitiated(true);

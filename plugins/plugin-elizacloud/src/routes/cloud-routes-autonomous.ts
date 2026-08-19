@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import type http from "node:http";
 import path from "node:path";
+import { isCliLoginSessionId } from "@elizaos/cloud-sdk";
 import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
@@ -319,7 +321,7 @@ export async function handleCloudRoute(
       sendJsonError(res, urlError);
       return true;
     }
-    const sessionId = crypto.randomUUID();
+    const requestSessionId = crypto.randomUUID();
     const loginCreateSpan = getTelemetrySpan(state, {
       boundary: "cloud",
       operation: "login_create_session",
@@ -333,7 +335,7 @@ export async function handleCloudRoute(
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId }),
+          body: JSON.stringify({ sessionId: requestSessionId }),
         },
         CLOUD_LOGIN_CREATE_TIMEOUT_MS,
       );
@@ -369,6 +371,32 @@ export async function handleCloudRoute(
         errorKind: "http_error",
       });
       sendJsonError(res, "Failed to create auth session with Eliza Cloud", 502);
+      return true;
+    }
+
+    let createData: unknown;
+    try {
+      createData = await createRes.json();
+    } catch (err) {
+      // error-policy:J1 malformed upstream data maps to a gateway failure.
+      loginCreateSpan.failure({
+        error: err,
+        statusCode: 502,
+        errorKind: "invalid_response",
+      });
+      sendJsonError(res, "Eliza Cloud returned an invalid login session", 502);
+      return true;
+    }
+    const sessionId =
+      typeof createData === "object" && createData !== null
+        ? (createData as { sessionId?: unknown }).sessionId
+        : undefined;
+    if (!isCliLoginSessionId(sessionId)) {
+      loginCreateSpan.failure({
+        statusCode: 502,
+        errorKind: "invalid_response",
+      });
+      sendJsonError(res, "Eliza Cloud returned an invalid login session", 502);
       return true;
     }
 
