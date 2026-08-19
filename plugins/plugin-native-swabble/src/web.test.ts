@@ -1,3 +1,7 @@
+/**
+ * Exercises the real SwabbleWeb state machine with deterministic browser API
+ * doubles, including recognition-session ownership and microphone teardown.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SwabbleWeb } from "./web";
@@ -326,7 +330,9 @@ describe("SwabbleWeb fallback", () => {
 
       const plugin = new SwabbleWeb();
       const audioLevels = vi.fn();
+      const states = vi.fn();
       await plugin.addListener("audioLevel", audioLevels);
+      await plugin.addListener("stateChange", states);
       await plugin.start({ config: { triggers: ["eliza"] } });
 
       // The level-meter interval is live before the fatal error.
@@ -335,7 +341,12 @@ describe("SwabbleWeb fallback", () => {
 
       // A non-recoverable recognizer error, followed by the browser's onend.
       FakeRecognition.latest?.onerror?.({ error: "audio-capture" });
+      expect(states).toHaveBeenLastCalledWith({
+        state: "error",
+        reason: "audio-capture",
+      });
       FakeRecognition.latest?.onend?.();
+      expect(states).toHaveBeenLastCalledWith({ state: "idle" });
 
       // The plugin now reports it is not listening.
       await expect(plugin.isListening()).resolves.toEqual({
@@ -419,6 +430,55 @@ describe("SwabbleWeb fallback", () => {
       // A redundant stop() after teardown must be a safe no-op.
       await expect(plugin.stop()).resolves.toBeUndefined();
       expect(stop).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores callbacks from a retired recognizer after a replacement starts", async () => {
+    vi.useFakeTimers();
+    try {
+      FakeAudioContext.instances = [];
+      const firstMic = makeMicStream();
+      const secondMic = makeMicStream();
+      const getUserMedia = vi
+        .fn<() => Promise<MediaStream>>()
+        .mockResolvedValueOnce(firstMic.stream)
+        .mockResolvedValueOnce(secondMic.stream);
+      vi.stubGlobal("AudioContext", FakeAudioContext);
+      setWindow({ SpeechRecognition: FakeRecognition });
+      setNavigator({
+        mediaDevices: { getUserMedia } as unknown as MediaDevices,
+      });
+
+      const plugin = new SwabbleWeb();
+      const errors = vi.fn();
+      const audioLevels = vi.fn();
+      await plugin.addListener("error", errors);
+      await plugin.addListener("audioLevel", audioLevels);
+
+      await plugin.start({ config: { triggers: ["eliza"] } });
+      const firstRecognition = FakeRecognition.latest;
+      await plugin.stop();
+      expect(firstMic.stop).toHaveBeenCalledTimes(1);
+
+      await plugin.start({ config: { triggers: ["eliza"] } });
+      const secondRecognition = FakeRecognition.latest;
+      expect(secondRecognition).not.toBe(firstRecognition);
+
+      firstRecognition?.onerror?.({ error: "not-allowed" });
+      firstRecognition?.onend?.();
+      await expect(plugin.isListening()).resolves.toEqual({ listening: true });
+      expect(errors).not.toHaveBeenCalled();
+      expect(secondRecognition?.abort).not.toHaveBeenCalled();
+      expect(secondMic.stop).not.toHaveBeenCalled();
+
+      audioLevels.mockClear();
+      vi.advanceTimersByTime(100);
+      expect(audioLevels).toHaveBeenCalled();
+
+      await plugin.stop();
+      expect(secondMic.stop).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
