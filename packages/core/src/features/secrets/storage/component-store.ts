@@ -3,7 +3,8 @@
  * The SQL adapter uniquely keys components by (entityId, type, worldId,
  * sourceEntityId), so the secret name must live in `type` (`secret:${key}`).
  * A type of just `secret` can hold only one row per user and is read as the
- * pre-keying layout.
+ * pre-keying layout. `getComponents(entityId)` is not agent-scoped, so reads
+ * and deletes keep only rows whose `agentId` is this runtime.
  */
 
 import { createUniqueUuid } from "../../../entities.ts";
@@ -26,6 +27,10 @@ const USER_SECRET_COMPONENT_PREFIX = "secret:";
 
 function userSecretComponentType(key: string): string {
 	return `${USER_SECRET_COMPONENT_PREFIX}${key}`;
+}
+
+function belongsToRuntimeAgent(component: Component, agentId: UUID): boolean {
+	return component.agentId === agentId;
 }
 
 /**
@@ -240,8 +245,8 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		const metadata: SecretMetadata = {};
 
 		for (const component of components) {
-			const data = readSecretComponentData(component);
-			if (!data || !isUserSecretComponent(component, data)) {
+			const data = this.readOwnUserSecretComponent(component);
+			if (!data) {
 				continue;
 			}
 
@@ -323,6 +328,9 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		let legacy: Component | null = null;
 
 		for (const component of components) {
+			if (!belongsToRuntimeAgent(component, this.runtime.agentId)) {
+				continue;
+			}
 			const data = readSecretComponentData(component);
 			if (data?.key !== key) continue;
 			if (component.type === keyedType) {
@@ -337,6 +345,16 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		}
 
 		return legacy;
+	}
+
+	private readOwnUserSecretComponent(
+		component: Component,
+	): SecretComponentData | undefined {
+		if (!belongsToRuntimeAgent(component, this.runtime.agentId)) {
+			return undefined;
+		}
+		const data = readSecretComponentData(component);
+		return data && isUserSecretComponent(component, data) ? data : undefined;
 	}
 
 	private assertUserAccess(
@@ -357,8 +375,8 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		const keys: string[] = [];
 
 		for (const component of components) {
-			const data = readSecretComponentData(component);
-			if (!data || !isUserSecretComponent(component, data)) {
+			const data = this.readOwnUserSecretComponent(component);
+			if (!data) {
 				continue;
 			}
 			if (data.key) {
@@ -377,8 +395,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		let deleted = 0;
 
 		for (const component of components) {
-			const data = readSecretComponentData(component);
-			if (!data || !isUserSecretComponent(component, data)) {
+			if (!this.readOwnUserSecretComponent(component)) {
 				continue;
 			}
 
@@ -400,8 +417,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		let count = 0;
 
 		for (const component of components) {
-			const data = readSecretComponentData(component);
-			if (data && isUserSecretComponent(component, data)) {
+			if (this.readOwnUserSecretComponent(component)) {
 				count++;
 			}
 		}

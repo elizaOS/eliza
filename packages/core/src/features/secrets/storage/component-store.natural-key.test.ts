@@ -247,4 +247,55 @@ describe("ComponentSecretStorage SQL natural key", () => {
 		await expect(storage.countForUser(USER_ID)).resolves.toBe(0);
 		await expect(storage.deleteAllForUser(USER_ID)).resolves.toBe(0);
 	});
+
+	it("does not read or delete another agent's secret for the same user and key", async () => {
+		const otherAgentId = "00000000-0000-0000-0000-000000000099" as UUID;
+		const { runtime } = makeSqlLikeRuntime();
+		const storage = new ComponentSecretStorage(runtime, keyManager());
+		await storage.initialize();
+		const context = ownerContext();
+		const otherKm = new KeyManager();
+		otherKm.initializeFromPassword(otherAgentId, "test-salt");
+
+		await runtime.createComponent({
+			id: "00000000-0000-0000-0000-0000000000bb" as UUID,
+			createdAt: Date.now(),
+			entityId: USER_ID as UUID,
+			agentId: otherAgentId,
+			roomId: otherAgentId,
+			worldId: otherAgentId,
+			sourceEntityId: USER_ID as UUID,
+			type: "secret:SHARED",
+			data: {
+				key: "SHARED",
+				value: otherKm.encrypt("other-agent-secret"),
+				config: {
+					type: "secret",
+					required: false,
+					description: "other",
+					canGenerate: false,
+					status: "valid",
+					attempts: 0,
+					plugin: "user",
+					level: "user",
+					encrypted: true,
+					ownerId: USER_ID,
+				},
+				updatedAt: Date.now(),
+			},
+		});
+		await expect(
+			storage.set("SHARED", "this-agent-secret", context),
+		).resolves.toBe(true);
+		await expect(storage.get("SHARED", context)).resolves.toBe(
+			"this-agent-secret",
+		);
+		await expect(storage.countForUser(USER_ID)).resolves.toBe(1);
+		await expect(storage.deleteAllForUser(USER_ID)).resolves.toBe(1);
+		await expect(storage.get("SHARED", context)).resolves.toBeNull();
+		const leftover = await runtime.getComponents(USER_ID as UUID);
+		expect(
+			leftover.some((component) => component.agentId === otherAgentId),
+		).toBe(true);
+	});
 });
