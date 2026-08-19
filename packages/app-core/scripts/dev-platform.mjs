@@ -83,7 +83,11 @@ import {
   signalSpawnedProcessGroup,
 } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
-import { stopMacApplicationAtPath } from "./lib/macos-launch-services-lifecycle.mjs";
+import {
+  claimMacApplicationAtPath,
+  inspectMacApplicationsAtPath,
+  stopMacApplication,
+} from "./lib/macos-launch-services-lifecycle.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-dev-banner.mjs";
@@ -653,8 +657,8 @@ async function warmApiRoutes(port) {
 const children = [];
 // Human names for shutdown logging; keyed weakly so tracking stays an array.
 const childNames = new WeakMap();
-// Exact canonical bundle path for the LaunchServices fallback we started.
-let launchServicesAppPath = null;
+// Exact path/PID/launch identity for the LaunchServices fallback we started.
+let launchServicesAppAuthority = null;
 // Same bounded window as dev-ui.mjs (#18435): covers the longest bounded
 // child-side teardown (Discord 10 s drain + 2 s reconcile) with margin.
 const SHUTDOWN_DRAIN_WINDOW_MS = resolveShutdownDrainWindowMs(process.env);
@@ -1088,7 +1092,7 @@ async function launch() {
         return null;
       }
     };
-    const triggerOpen = (reason) => {
+    const triggerOpen = async (reason) => {
       if (scheduledOpen) return;
       scheduledOpen = true;
       const macAppPath = resolveDevMacAppPath();
@@ -1099,11 +1103,18 @@ async function launch() {
         return;
       }
       try {
-        launchServicesAppPath = realpathSync(macAppPath);
+        const canonicalAppPath = realpathSync(macAppPath);
+        const baseline = await inspectMacApplicationsAtPath(canonicalAppPath);
+        if (!baseline.ok) {
+          console.log(
+            `[eliza] LaunchServices ownership preflight failed: ${baseline.error}`,
+          );
+          return;
+        }
         const opener = pushChild(
           "launchservices-open",
           "open",
-          ["-W", launchServicesAppPath],
+          ["-W", canonicalAppPath],
           electrobunDir,
         );
         opener.on("error", (err) => {
@@ -1114,6 +1125,17 @@ async function launch() {
         console.log(
           `[eliza] LaunchServices auto-open (${reason}): open -W ${path.basename(macAppPath)}`,
         );
+        const claimed = await claimMacApplicationAtPath(
+          canonicalAppPath,
+          baseline.applications,
+        );
+        if (claimed.ok) {
+          launchServicesAppAuthority = claimed.authority;
+        } else {
+          console.log(
+            `[eliza] LaunchServices ownership not claimed: ${claimed.error}`,
+          );
+        }
       } catch (err) {
         console.log(
           `[eliza] LaunchServices auto-open threw: ${err instanceof Error ? err.message : String(err)}`,
@@ -1153,7 +1175,7 @@ async function launch() {
         }
       }
       if (Date.now() - startedAt >= fallbackDeadlineMs) {
-        triggerOpen("fallback after 45s with no screenshot server");
+        void triggerOpen("fallback after 45s with no screenshot server");
         return;
       }
       setTimeout(checkAndFallback, 3000);
@@ -1188,8 +1210,8 @@ function shutdownDesktopDev({
   // the window is escalated (loudly, per child), and a bounded kill grace
   // keeps exit from racing the escalation. Already-exited children are
   // skipped inside the drain, preserving the no-stale-tree-signal behavior.
-  const stopLaunchServicesApp = launchServicesAppPath
-    ? stopMacApplicationAtPath(launchServicesAppPath).then((result) => {
+  const stopLaunchServicesApp = launchServicesAppAuthority
+    ? stopMacApplication(launchServicesAppAuthority).then((result) => {
         for (const attempt of [result.graceful, result.forced]) {
           if (!attempt.ok) {
             console.error(

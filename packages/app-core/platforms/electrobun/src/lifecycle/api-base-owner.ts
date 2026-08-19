@@ -35,6 +35,7 @@ import {
   resolveDesktopRuntimeMode,
   resolveDesktopRuntimeModeSignal,
 } from "../api-base";
+import { resolveDesktopShellWindowPresentation } from "../desktop-bottom-bar-config";
 import { getStartupTraceConfig } from "../startup-trace";
 
 interface ApiBaseSnapshot {
@@ -158,7 +159,11 @@ export function injectIntoHtml(html: string): string {
   if (current.base) {
     const baseLiteral = safeJsonForHtml(current.base);
     const tokenLiteral = current.token ? safeJsonForHtml(current.token) : "";
-    const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
+    const desktopHostLiteral = safeJsonForHtml({
+      platform: process.platform,
+      surface: resolveDesktopShellWindowPresentation().mode,
+    });
+    const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""},desktopHost:${desktopHostLiteral}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
     // Desktop cloud-only opt-in: expose the runtime-mode signal as a window global
     // before any renderer JS runs, so the renderer's cloud-only branding
     // (shouldUseCloudOnlyBranding) resolves correctly at module-eval time. Only

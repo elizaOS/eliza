@@ -1,4 +1,6 @@
-/** Defines which detached desktop host deliberately restricts the pill to clicks. */
+/** Defines which typed detached desktop host restricts the pill to clicks. */
+
+import type { AppBootConfig } from "../config/boot-config-store";
 
 /**
  * The click-only pill is a macOS native-host policy, not a property of the
@@ -6,8 +8,9 @@
  * browsers and on Windows/Linux, where push-to-talk gestures remain available.
  */
 export function shouldUseClickOnlyChatOverlayPill(
-  electrobunRuntime: boolean,
-  navigatorPlatform: string,
+  desktopHost: AppBootConfig["desktopHost"],
 ): boolean {
-  return electrobunRuntime && /Mac/i.test(navigatorPlatform);
+  return (
+    desktopHost?.platform === "darwin" && desktopHost.surface === "bottom-bar"
+  );
 }

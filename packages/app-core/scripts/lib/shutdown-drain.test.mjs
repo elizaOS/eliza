@@ -365,9 +365,13 @@ describe("dev-platform supervisor wiring", () => {
   });
 
   it("owns the exact LaunchServices fallback through shutdown", () => {
-    expect(devPlatformSource).toContain('["-W", launchServicesAppPath]');
+    expect(devPlatformSource).toContain('["-W", canonicalAppPath]');
     expect(devPlatformSource).toContain(
-      "stopMacApplicationAtPath(launchServicesAppPath)",
+      "inspectMacApplicationsAtPath(canonicalAppPath)",
+    );
+    expect(devPlatformSource).toContain("claimMacApplicationAtPath(");
+    expect(devPlatformSource).toContain(
+      "stopMacApplication(launchServicesAppAuthority)",
     );
     expect(devPlatformSource).not.toContain("opener.unref()");
   });

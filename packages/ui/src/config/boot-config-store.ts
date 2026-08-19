@@ -115,6 +115,11 @@ export interface AppBootConfig {
   webPushVapidPublicKey?: string;
   /** API auth token used by the browser API client. */
   apiToken?: string;
+  /** Native desktop surface identity injected by the owning host process. */
+  desktopHost?: {
+    platform: "darwin" | "linux" | "win32";
+    surface: "bottom-bar" | "default" | "kiosk";
+  };
   /** Cloud API base URL — replaces window.__ELIZA_CLOUD_API_BASE__. */
   cloudApiBase?: string;
   /** VRM avatar assets — replaces window.__APP_VRM_ASSETS__. */

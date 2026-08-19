@@ -1,7 +1,7 @@
 /**
  * Owns the exact LaunchServices application started by the desktop dev host.
- * Matching is by canonical bundle path, never process name or bundle id, so an
- * installed copy of the same branded app cannot be terminated accidentally.
+ * Authority binds canonical bundle path, PID, and launch timestamp so teardown
+ * cannot target an installed copy, an older dev instance, or a reused PID.
  */
 
 import { spawn } from "node:child_process";
@@ -9,14 +9,11 @@ import { spawn } from "node:child_process";
 const COMMAND_TIMEOUT_MS = 2_000;
 const FORCE_DELAY_MS = 750;
 
-/** Build a JXA command that targets only a running app at `canonicalAppPath`. */
-export function buildMacApplicationTerminationScript(canonicalAppPath, force) {
-  const target = JSON.stringify(canonicalAppPath);
-  const selector = force ? "forceTerminate" : "terminate";
+function macApplicationSelectorScript(canonicalAppPath) {
   return `ObjC.import("AppKit");
-const target = ${target};
+const targetPath = ${JSON.stringify(canonicalAppPath)};
 const apps = $.NSWorkspace.sharedWorkspace.runningApplications;
-let matched = 0;
+const matches = [];
 for (let index = 0; index < Number(apps.count); index += 1) {
   const app = apps.objectAtIndex(index);
   const bundleURL = app.bundleURL;
@@ -25,43 +22,56 @@ for (let index = 0; index < Number(apps.count); index += 1) {
   const canonicalBundlePath = ObjC.unwrap(
     $(bundlePath).stringByResolvingSymlinksInPath,
   );
-  if (canonicalBundlePath === target) {
-    matched += 1;
-    app.${selector};
+  if (canonicalBundlePath !== targetPath) continue;
+  const pid = Number(app.processIdentifier);
+  const launchDate = app.launchDate;
+  const launchTime = launchDate ? Number(launchDate.timeIntervalSince1970) : null;
+  matches.push({ pid, launchTime });
+}`;
+}
+
+/** Build a JXA query for all running apps at one canonical bundle path. */
+export function buildMacApplicationInspectionScript(canonicalAppPath) {
+  return `${macApplicationSelectorScript(canonicalAppPath)}
+JSON.stringify(matches);`;
+}
+
+/** Build a JXA termination command bound to one previously claimed instance. */
+export function buildMacApplicationTerminationScript(authority, force) {
+  const selector = force ? "forceTerminate" : "terminate";
+  return `${macApplicationSelectorScript(authority.canonicalAppPath)}
+let matched = 0;
+for (const candidate of matches) {
+  if (candidate.pid !== ${authority.pid} || candidate.launchTime !== ${authority.launchTime}) continue;
+  for (let index = 0; index < Number(apps.count); index += 1) {
+    const app = apps.objectAtIndex(index);
+    if (Number(app.processIdentifier) === candidate.pid) {
+      matched += 1;
+      app.${selector};
+    }
   }
 }
 JSON.stringify({ matched, force: ${force ? "true" : "false"} });`;
 }
 
-/** Run one bounded exact-path termination request through macOS JXA. */
-export function requestMacApplicationTermination(
-  canonicalAppPath,
-  force,
-  spawnCommand = spawn,
-) {
+function runJxa(script, spawnCommand = spawn) {
   return new Promise((resolve) => {
     let child;
     try {
       child = spawnCommand(
         "/usr/bin/osascript",
-        [
-          "-l",
-          "JavaScript",
-          "-e",
-          buildMacApplicationTerminationScript(canonicalAppPath, force),
-        ],
-        { stdio: ["ignore", "ignore", "pipe"] },
+        ["-l", "JavaScript", "-e", script],
+        { stdio: ["ignore", "pipe", "pipe"] },
       );
     } catch (error) {
-      // error-policy:J1 The supervisor boundary converts a failed helper spawn
-      // into an observable shutdown result instead of abandoning sibling drain.
-      resolve({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      resolve({ ok: false, stdout: "", error: String(error) });
       return;
     }
+    let stdout = "";
     let stderr = "";
+    child.stdout?.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
     child.stderr?.on("data", (chunk) => {
       stderr += String(chunk);
     });
@@ -74,31 +84,112 @@ export function requestMacApplicationTermination(
     };
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      finish({ ok: false, error: "osascript timed out" });
+      finish({ ok: false, stdout, error: "osascript timed out" });
     }, COMMAND_TIMEOUT_MS);
-    child.once("error", (error) => finish({ ok: false, error: error.message }));
+    child.once("error", (error) =>
+      finish({ ok: false, stdout, error: error.message }),
+    );
     child.once("exit", (code) =>
       finish({
         ok: code === 0,
+        stdout: stdout.trim(),
         error: code === 0 ? null : stderr.trim() || `osascript exited ${code}`,
       }),
     );
   });
 }
 
-/** Ask the exact app to quit, then force only that same path if it remains. */
-export async function stopMacApplicationAtPath(
+/** Inspect running instances at a canonical bundle path. */
+export async function inspectMacApplicationsAtPath(
   canonicalAppPath,
+  spawnCommand = spawn,
+) {
+  const result = await runJxa(
+    buildMacApplicationInspectionScript(canonicalAppPath),
+    spawnCommand,
+  );
+  if (!result.ok) return { ok: false, applications: [], error: result.error };
+  try {
+    const parsed = JSON.parse(result.stdout);
+    if (!Array.isArray(parsed))
+      throw new Error("inspection result is not an array");
+    return { ok: true, applications: parsed, error: null };
+  } catch (error) {
+    return { ok: false, applications: [], error: String(error) };
+  }
+}
+
+/** Claim only one newly observed app instance after `open` returns. */
+export async function claimMacApplicationAtPath(
+  canonicalAppPath,
+  baselineApplications,
+  {
+    spawnCommand = spawn,
+    delay = setTimeout,
+    attempts = 20,
+    retryDelayMs = 100,
+  } = {},
+) {
+  const baseline = new Set(
+    baselineApplications.map(({ pid, launchTime }) => `${pid}:${launchTime}`),
+  );
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const inspected = await inspectMacApplicationsAtPath(
+      canonicalAppPath,
+      spawnCommand,
+    );
+    if (!inspected.ok)
+      return { ok: false, authority: null, error: inspected.error };
+    const fresh = inspected.applications.filter(
+      ({ pid, launchTime }) => !baseline.has(`${pid}:${launchTime}`),
+    );
+    if (fresh.length === 1) {
+      return {
+        ok: true,
+        authority: { canonicalAppPath, ...fresh[0] },
+        error: null,
+      };
+    }
+    if (fresh.length > 1) {
+      return {
+        ok: false,
+        authority: null,
+        error: "ambiguous launched app instances",
+      };
+    }
+    if (attempt + 1 < attempts) {
+      await new Promise((resolve) => delay(resolve, retryDelayMs));
+    }
+  }
+  return { ok: false, authority: null, error: "launched app was not observed" };
+}
+
+/** Run one bounded termination request for the exact claimed instance. */
+export async function requestMacApplicationTermination(
+  authority,
+  force,
+  spawnCommand = spawn,
+) {
+  const result = await runJxa(
+    buildMacApplicationTerminationScript(authority, force),
+    spawnCommand,
+  );
+  return { ok: result.ok, error: result.error };
+}
+
+/** Ask the exact claimed app to quit, then force only that same instance. */
+export async function stopMacApplication(
+  authority,
   { spawnCommand = spawn, delay = setTimeout } = {},
 ) {
   const graceful = await requestMacApplicationTermination(
-    canonicalAppPath,
+    authority,
     false,
     spawnCommand,
   );
   await new Promise((resolve) => delay(resolve, FORCE_DELAY_MS));
   const forced = await requestMacApplicationTermination(
-    canonicalAppPath,
+    authority,
     true,
     spawnCommand,
   );

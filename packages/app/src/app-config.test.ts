@@ -1,3 +1,5 @@
+/** Verifies deterministic pre-React desktop API-base selection without a host runtime. */
+
 import { describe, expect, it } from "vitest";
 import { resolveInjectedAppApiBase } from "./app-config";
 

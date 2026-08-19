@@ -324,10 +324,8 @@ function ChatOverlayShell() {
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
   const overlayOpen = controller?.isOpen ?? false;
-  const clickOnlyPill = shouldUseClickOnlyChatOverlayPill(
-    isElectrobunRuntime(),
-    typeof navigator === "undefined" ? "" : navigator.platform,
-  );
+  const { desktopHost } = useBootConfig();
+  const clickOnlyPill = shouldUseClickOnlyChatOverlayPill(desktopHost);
   // Escape collapses the overlay first — while it is open, AssistantOverlay's
   // own Escape handler closes it. Once already collapsed, Escape hides the
   // desktop window entirely (#12184) so the pill dismisses to the background

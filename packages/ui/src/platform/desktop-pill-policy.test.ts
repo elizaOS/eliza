@@ -5,9 +5,24 @@ import { shouldUseClickOnlyChatOverlayPill } from "./desktop-pill-policy";
 
 describe("shouldUseClickOnlyChatOverlayPill", () => {
   it("is click-only only for a native macOS host", () => {
-    expect(shouldUseClickOnlyChatOverlayPill(true, "MacIntel")).toBe(true);
-    expect(shouldUseClickOnlyChatOverlayPill(false, "MacIntel")).toBe(false);
-    expect(shouldUseClickOnlyChatOverlayPill(true, "Win32")).toBe(false);
-    expect(shouldUseClickOnlyChatOverlayPill(true, "Linux x86_64")).toBe(false);
+    expect(
+      shouldUseClickOnlyChatOverlayPill({
+        platform: "darwin",
+        surface: "bottom-bar",
+      }),
+    ).toBe(true);
+    expect(
+      shouldUseClickOnlyChatOverlayPill({
+        platform: "darwin",
+        surface: "default",
+      }),
+    ).toBe(false);
+    expect(
+      shouldUseClickOnlyChatOverlayPill({
+        platform: "win32",
+        surface: "bottom-bar",
+      }),
+    ).toBe(false);
+    expect(shouldUseClickOnlyChatOverlayPill(undefined)).toBe(false);
   });
 });
