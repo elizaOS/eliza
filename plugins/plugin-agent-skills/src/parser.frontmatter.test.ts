@@ -1,5 +1,10 @@
+/**
+ * Verifies line-ending-safe SKILL.md frontmatter parsing directly and through
+ * the deterministic in-memory storage loader used by runtime discovery.
+ */
 import { describe, expect, it } from "vitest";
 import { parseFrontmatter, validateFrontmatter } from "./parser.ts";
+import { loadSkillFromStorage, MemorySkillStore } from "./storage.ts";
 
 describe("parseFrontmatter", () => {
   const lf = [
@@ -24,6 +29,21 @@ describe("parseFrontmatter", () => {
     expect(result.frontmatter).not.toBeNull();
     expect(result.frontmatter?.name).toBe("my-skill");
     expect(result.body.trim()).toBe("Body text");
+  });
+
+  it("loads a CRLF skill through the storage discovery boundary", async () => {
+    const storage = new MemorySkillStore();
+    await storage.initialize();
+    await storage.loadFromContent("my-skill", crlf);
+
+    const skill = await loadSkillFromStorage(storage, "my-skill");
+
+    expect(skill).toMatchObject({
+      slug: "my-skill",
+      name: "my-skill",
+      description: "A clear description here.",
+      content: crlf,
+    });
   });
 
   it("returns null frontmatter when block is missing", () => {
