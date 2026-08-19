@@ -230,7 +230,7 @@ describe("VIEWS action ownership after planner selection", () => {
 		"Pretty close. Uh, can you take me to the notes so we can see all of our notes?",
 		"Wow. That's pretty early. Um, do you want to take us over to the notes page?",
 	])(
-		"keeps planner-selected show/notes navigation attached to its own callback: %s",
+		"returns a model-written reply after planner-selected Notes navigation: %s",
 		async (text) => {
 			const { action, listViews } = makeAction();
 			const useModel = vi
@@ -271,7 +271,7 @@ describe("VIEWS action ownership after planner selection", () => {
 					],
 				})
 				.mockResolvedValue(
-					'```json\n{"response":"i couldn\'t create the note because the content was missing."}\n```',
+					'```json\n{"response":"You\'re in Notes now."}\n```',
 				);
 			const runtime = makeRuntime(action, useModel);
 			const delivered = vi.fn(async () => []);
@@ -298,31 +298,39 @@ describe("VIEWS action ownership after planner selection", () => {
 
 			expect(result.kind).toBe("planned_reply");
 			if (result.kind !== "planned_reply") return;
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.responseMessages).toEqual([]);
+			expect(result.result.responseContent).toMatchObject({
+				text: "You're in Notes now.",
+			});
 			expect(result.result.actionResults).toMatchObject([
 				{
 					success: true,
-					text: "Opened Notes.",
-					userFacingText: "Opened Notes.",
-					verifiedUserFacing: true,
+					transcriptVisibility: "internal",
+					turnComplete: false,
 					values: { mode: "show", viewId: "notes" },
 				},
 			]);
-			expect(settledResults).toHaveLength(1);
-			expect(delivered).toHaveBeenCalledTimes(1);
-			expect(delivered).toHaveBeenCalledWith(
-				{ text: "Opened Notes.", agentVoiced: true },
-				"VIEWS",
+			expect(result.result.actionResults?.[0]).not.toHaveProperty(
+				"userFacingText",
 			);
-			expect(useModel.mock.calls.map(([modelType]) => modelType)).toEqual([
-				ModelType.RESPONSE_HANDLER,
-				ModelType.ACTION_PLANNER,
-			]);
+			expect(result.result.actionResults?.[0]).not.toHaveProperty(
+				"verifiedUserFacing",
+			);
+			expect(settledResults).toHaveLength(1);
+			expect(delivered).not.toHaveBeenCalled();
+			expect(useModel.mock.calls.map(([modelType]) => modelType)).toEqual(
+				expect.arrayContaining([
+					ModelType.RESPONSE_HANDLER,
+					ModelType.ACTION_PLANNER,
+				]),
+			);
+			expect(useModel).toHaveBeenCalledTimes(3);
 			expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledWith(
 				"http://127.0.0.1:3456/api/views/notes/navigate",
 				expect.objectContaining({ method: "POST" }),
 			);
+			expect(
+				vi.mocked(globalThis.fetch).mock.invocationCallOrder[0],
+			).toBeLessThan(useModel.mock.invocationCallOrder[2]);
 			expect(
 				vi
 					.mocked(globalThis.fetch)

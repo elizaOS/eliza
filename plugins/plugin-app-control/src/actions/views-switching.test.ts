@@ -324,8 +324,9 @@ describe("view switching — VIEWS action resolver", () => {
 
 		expect(navigated).toEqual(["calendar"]);
 		expect(navigation?.transcriptVisibility).toBe("internal");
-		expect(navigation?.userFacingText).toBe(navigation?.text);
-		expect(navigation?.verifiedUserFacing).toBe(true);
+		expect(navigation?.userFacingText).toBeUndefined();
+		expect(navigation?.verifiedUserFacing).toBeUndefined();
+		expect(navigation?.turnComplete).toBe(false);
 	});
 
 	describe("ACTIVE navigation — every user-facing view reachable by an explicit command", () => {
@@ -498,7 +499,11 @@ describe("view switching — VIEWS action resolver", () => {
 			);
 
 			expect(result?.success).toBe(false);
-			expect(result?.text).toContain("shell did not confirm");
+			expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+				effect: "view_navigation",
+				status: "unconfirmed",
+				viewId: "calendar",
+			});
 		});
 
 		it("does not accept a prototype-polluted delivery receipt", async () => {
@@ -585,20 +590,16 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(navigated).toEqual(["settings"]);
 		});
 
-		it("owns one canonical completion after a successful view switch", async () => {
+		it("leaves successful view-switch wording to post-tool evaluation", async () => {
 			installNavigateCapture();
 
 			const { result, callback } = await runShow(REGISTRY, "open the calendar");
 
-			expect(callback).toHaveBeenCalledTimes(1);
-			expect(callback).toHaveBeenCalledWith({ text: "Opened Calendar." });
+			expect(callback).not.toHaveBeenCalled();
 			expect(result).toMatchObject({
 				success: true,
-				text: "Opened Calendar.",
 				transcriptVisibility: "internal",
-				userFacingText: "Opened Calendar.",
-				verifiedUserFacing: true,
-				turnComplete: true,
+				turnComplete: false,
 				values: {
 					mode: "show",
 					viewId: "calendar",
@@ -607,9 +608,16 @@ describe("view switching — VIEWS action resolver", () => {
 					label: "Calendar",
 				},
 			});
+			expect(result).not.toHaveProperty("userFacingText");
+			expect(result).not.toHaveProperty("verifiedUserFacing");
+			expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+				effect: "view_navigation",
+				status: "accepted",
+				viewId: "calendar",
+			});
 		});
 
-		it("acknowledges Home without relabeling an explicit Messages destination", async () => {
+		it("preserves Home and Messages labels in internal navigation receipts", async () => {
 			installNavigateCapture();
 			const messagesView = [
 				{
@@ -619,21 +627,25 @@ describe("view switching — VIEWS action resolver", () => {
 			];
 
 			const home = await runShow(messagesView, "go home");
-			expect(home.callback).toHaveBeenCalledWith({ text: "Opened Home." });
+			expect(home.callback).not.toHaveBeenCalled();
 			expect(home.result).toMatchObject({
 				success: true,
-				text: "Opened Home.",
 				values: { viewId: "chat", label: "Home" },
+			});
+			expect(JSON.parse(home.result?.text ?? "{}")).toMatchObject({
+				status: "accepted",
+				label: "Home",
 			});
 
 			const messages = await runShow(messagesView, "open messages");
-			expect(messages.callback).toHaveBeenCalledWith({
-				text: "Opened Messages.",
-			});
+			expect(messages.callback).not.toHaveBeenCalled();
 			expect(messages.result).toMatchObject({
 				success: true,
-				text: "Opened Messages.",
 				values: { viewId: "chat", label: "Messages" },
+			});
+			expect(JSON.parse(messages.result?.text ?? "{}")).toMatchObject({
+				status: "accepted",
+				label: "Messages",
 			});
 		});
 	});
@@ -651,11 +663,15 @@ describe("view switching — VIEWS action resolver", () => {
 
 				expect(result).toMatchObject({
 					success: true,
-					text: "Opened Calendar.",
 					values: {
 						viewId: "simple-calendar",
 						label: "Calendar",
 					},
+				});
+				expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+					status: "accepted",
+					viewId: "simple-calendar",
+					label: "Calendar",
 				});
 				expect(navigated).toEqual(["simple-calendar"]);
 			},

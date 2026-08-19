@@ -1,8 +1,8 @@
 /**
  * Exposes the renderer's current view and the explicit target requested in the
- * current turn. Navigation callbacks own visible acknowledgements, so a
- * server-side "just switched" stamp is state only and never instructs a later
- * message to repeat an old completion.
+ * current turn. Navigation actions expose internal receipts and post-tool
+ * evaluation owns visible wording, so a server-side "just switched" stamp is
+ * state only and never instructs a later message to repeat an old completion.
  */
 import type {
 	IAgentRuntime,
