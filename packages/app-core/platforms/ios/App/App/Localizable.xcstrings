@@ -1,11 +1,11 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Ask" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Preguntar" } } } },
-    "Ask Eliza" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Pregúntale a Eliza" } } } },
-    "Ask Eliza a question or hand off a request to chat." : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Hazle una pregunta a Eliza o pasa una solicitud al chat." } } } },
-    "Ask · Talk" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Preguntar · Hablar" } } } },
-    "Ask or talk to Eliza from your Home and Lock Screen." : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Pregunta o habla con Eliza desde la pantalla de inicio y la pantalla bloqueada." } } } },
+    "Message" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Mensaje" } } } },
+    "Message Eliza" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Escribe a Eliza" } } } },
+    "Message Eliza or hand off a request to chat." : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Escribe a Eliza o pasa una solicitud al chat." } } } },
+    "Message · Talk" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Mensaje · Hablar" } } } },
+    "Message or talk to Eliza from your Home and Lock Screen." : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Escribe o habla con Eliza desde la pantalla de inicio y la pantalla bloqueada." } } } },
     "Eliza Quick Actions" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Acciones rápidas de Eliza" } } } },
     "Ended" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Finalizada" } } } },
     "Error" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Error" } } } },
