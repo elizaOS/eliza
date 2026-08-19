@@ -160,6 +160,7 @@ import {
   toBoolean,
   toNumber,
   toText,
+  withTransaction,
 } from "./sql.js";
 import { buildTelemetryEventFromSignal } from "./telemetry-mapping.js";
 
@@ -2799,29 +2800,40 @@ export class LifeOpsRepository {
 
   async recordBriefItemEngagement(
     input: LifeOpsBriefItemEngagementWrite,
+    tx?: TransactionalDb,
   ): Promise<LifeOpsBriefItemEngagementRecord> {
     const createdAt = input.createdAt ?? isoNow();
+    const domainEventId =
+      typeof input.metadata.domainEventId === "string"
+        ? input.metadata.domainEventId
+        : null;
     const id =
       input.id ??
       `brief_eng_${crypto
         .createHash("sha256")
         .update(
-          [
-            input.agentId,
-            input.briefingId,
-            input.itemId,
-            input.eventType,
-            input.eventAt,
-            typeof input.metadata.domainEventId === "string"
-              ? input.metadata.domainEventId
-              : "",
-          ].join("\0"),
+          domainEventId
+            ? [
+                input.agentId,
+                input.briefingId,
+                input.itemId,
+                input.source,
+                input.sourceId,
+                input.eventType,
+                domainEventId,
+              ].join("\0")
+            : [
+                input.agentId,
+                input.briefingId,
+                input.itemId,
+                input.eventType,
+                input.eventAt,
+                "",
+              ].join("\0"),
         )
         .digest("hex")
         .slice(0, 20)}`;
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_brief_item_engagements (
+    const insertSql = `INSERT INTO app_lifeops.life_brief_item_engagements (
         id, agent_id, briefing_id, item_id, source, kind, source_id,
         item_class, event_type, event_at, weight, metadata_json, created_at
       ) VALUES (
@@ -2846,15 +2858,16 @@ export class LifeOpsRepository {
         source_id = EXCLUDED.source_id,
         item_class = EXCLUDED.item_class,
         weight = EXCLUDED.weight,
-        metadata_json = EXCLUDED.metadata_json`,
-    );
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
+        metadata_json = EXCLUDED.metadata_json`;
+    if (tx) await executeRawSqlTx(tx, insertSql);
+    else await executeRawSql(this.runtime, insertSql);
+    const selectSql = `SELECT *
          FROM app_lifeops.life_brief_item_engagements
         WHERE id = ${sqlQuote(id)}
-        LIMIT 1`,
-    );
+        LIMIT 1`;
+    const rows = tx
+      ? await executeRawSqlTx(tx, selectSql)
+      : await executeRawSql(this.runtime, selectSql);
     const row = rows[0] ? parseBriefItemEngagement(rows[0]) : null;
     if (!row) {
       throw new ElizaError(
@@ -2983,38 +2996,54 @@ export class LifeOpsRepository {
     const windowStart = new Date(
       eventMs - windowHours * 60 * 60 * 1_000,
     ).toISOString();
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_brief_item_engagements
-        WHERE agent_id = ${sqlQuote(input.agentId)}
-          AND source = ${sqlQuote(input.source)}
-          AND source_id = ${sqlQuote(input.sourceId)}
-          AND event_type = 'rendered'
-          AND event_at > ${sqlQuote(windowStart)}
-          AND event_at <= ${sqlQuote(input.eventAt)}
-        ORDER BY event_at DESC, created_at DESC
-        LIMIT 1`,
-    );
-    const rendered = rows[0] ? parseBriefItemEngagement(rows[0]) : null;
-    if (!rendered) return null;
-    return this.recordBriefItemEngagement({
-      agentId: input.agentId,
-      briefingId: rendered.briefingId,
-      itemId: rendered.itemId,
-      source: rendered.source,
-      kind: rendered.kind,
-      sourceId: rendered.sourceId,
-      itemClass: rendered.itemClass,
-      eventType: input.eventType,
-      eventAt: input.eventAt,
-      weight: input.weight,
-      metadata: {
-        ...rendered.metadata,
-        ...(input.metadata ?? {}),
-        domainEventId: input.domainEventId,
-        attributedRenderedEventId: rendered.id,
-      },
+    return withTransaction(this.runtime, async (tx) => {
+      const rows = await executeRawSqlTx(
+        tx,
+        `SELECT *
+           FROM app_lifeops.life_brief_item_engagements
+          WHERE agent_id = ${sqlQuote(input.agentId)}
+            AND source = ${sqlQuote(input.source)}
+            AND source_id = ${sqlQuote(input.sourceId)}
+            AND event_type = 'rendered'
+            AND event_at > ${sqlQuote(windowStart)}
+            AND event_at <= ${sqlQuote(input.eventAt)}
+          ORDER BY event_at DESC, created_at DESC
+          LIMIT 1 FOR UPDATE`,
+      );
+      const rendered = rows[0] ? parseBriefItemEngagement(rows[0]) : null;
+      if (!rendered) return null;
+      const ignored = await executeRawSqlTx(
+        tx,
+        `SELECT id
+           FROM app_lifeops.life_brief_item_engagements
+          WHERE agent_id = ${sqlQuote(input.agentId)}
+            AND briefing_id = ${sqlQuote(rendered.briefingId)}
+            AND item_id = ${sqlQuote(rendered.itemId)}
+            AND event_type = 'ignored'
+          LIMIT 1`,
+      );
+      if (ignored.length > 0) return null;
+      return this.recordBriefItemEngagement(
+        {
+          agentId: input.agentId,
+          briefingId: rendered.briefingId,
+          itemId: rendered.itemId,
+          source: rendered.source,
+          kind: rendered.kind,
+          sourceId: rendered.sourceId,
+          itemClass: rendered.itemClass,
+          eventType: input.eventType,
+          eventAt: input.eventAt,
+          weight: input.weight,
+          metadata: {
+            ...rendered.metadata,
+            ...(input.metadata ?? {}),
+            domainEventId: input.domainEventId,
+            attributedRenderedEventId: rendered.id,
+          },
+        },
+        tx,
+      );
     });
   }
 
@@ -3068,24 +3097,57 @@ export class LifeOpsRepository {
       const expiryAt = new Date(
         Date.parse(rendered.eventAt) + windowHours * 60 * 60 * 1_000,
       ).toISOString();
-      await this.recordBriefItemEngagement({
-        agentId,
-        briefingId: rendered.briefingId,
-        itemId: rendered.itemId,
-        source: rendered.source,
-        kind: rendered.kind,
-        sourceId: rendered.sourceId,
-        itemClass: rendered.itemClass,
-        eventType: "ignored",
-        eventAt: expiryAt,
-        weight: -0.25,
-        metadata: {
-          ...rendered.metadata,
-          attributedRenderedEventId: rendered.id,
-          finalizationWindowHours: windowHours,
-        },
+      const inserted = await withTransaction(this.runtime, async (tx) => {
+        const locked = await executeRawSqlTx(
+          tx,
+          `SELECT id
+             FROM app_lifeops.life_brief_item_engagements
+            WHERE agent_id = ${sqlQuote(agentId)}
+              AND id = ${sqlQuote(rendered.id)}
+            LIMIT 1 FOR UPDATE`,
+        );
+        if (locked.length === 0) return false;
+        const outcomes = await executeRawSqlTx(
+          tx,
+          `SELECT id
+             FROM app_lifeops.life_brief_item_engagements
+            WHERE agent_id = ${sqlQuote(agentId)}
+              AND briefing_id = ${sqlQuote(rendered.briefingId)}
+              AND item_id = ${sqlQuote(rendered.itemId)}
+              AND event_type IN (
+                'opened', 'replied', 'completed', 'rescheduled', 'kept',
+                'dismissed', 'ignored'
+              )
+              AND event_at >= ${sqlQuote(rendered.eventAt)}
+              AND event_at::timestamptz <=
+                ${sqlQuote(rendered.eventAt)}::timestamptz +
+                (${sqlNumber(windowHours)} * INTERVAL '1 hour')
+            LIMIT 1`,
+        );
+        if (outcomes.length > 0) return false;
+        await this.recordBriefItemEngagement(
+          {
+            agentId,
+            briefingId: rendered.briefingId,
+            itemId: rendered.itemId,
+            source: rendered.source,
+            kind: rendered.kind,
+            sourceId: rendered.sourceId,
+            itemClass: rendered.itemClass,
+            eventType: "ignored",
+            eventAt: expiryAt,
+            weight: -0.25,
+            metadata: {
+              ...rendered.metadata,
+              attributedRenderedEventId: rendered.id,
+              finalizationWindowHours: windowHours,
+            },
+          },
+          tx,
+        );
+        return true;
       });
-      finalized += 1;
+      if (inserted) finalized += 1;
     }
     return finalized;
   }

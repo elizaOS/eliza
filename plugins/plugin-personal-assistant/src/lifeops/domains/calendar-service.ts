@@ -143,8 +143,13 @@ export class CalendarDomain {
       this.ctx.runtime,
     ).updateCalendarEvent(requestUrl, request);
     if (request.startAt !== undefined || request.endAt !== undefined) {
-      const eventAt = new Date().toISOString();
       try {
+        const eventAt = new Date(event.updatedAt).toISOString();
+        if (!Number.isFinite(Date.parse(eventAt))) {
+          throw new Error(
+            `[CalendarDomain] Updated event ${event.id} has no authoritative mutation timestamp`,
+          );
+        }
         const engagement =
           await this.ctx.repository.attributeBriefItemEngagement({
             agentId: this.ctx.agentId(),

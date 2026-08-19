@@ -14,7 +14,12 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { runWithTrajectoryContext } from "@elizaos/core";
+import {
+  __resetDefaultTriageServiceForTests,
+  EventType,
+  getDefaultTriageService,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import {
   afterAll,
   beforeAll,
@@ -24,6 +29,8 @@ import {
   it,
   vi,
 } from "vitest";
+import { manageMessageAction } from "../../../packages/core/src/features/messaging/triage/actions/manageMessage.ts";
+import { respondToMessageAction } from "../../../packages/core/src/features/messaging/triage/actions/respondToMessage.ts";
 import { TrajectoriesService } from "../../../packages/core/src/features/trajectories/TrajectoriesService.ts";
 import { GoogleGmailAdapter } from "../../plugin-google-workspace/src/lifeops-message-adapter.ts";
 
@@ -44,6 +51,7 @@ import {
 } from "../src/actions/brief.js";
 import { structureBriefingItems } from "../src/lifeops/briefing/editorial-judgment.js";
 import { settleBriefEngagementReward } from "../src/lifeops/briefing/engagement-reward.js";
+import { handleBriefMessageMutation } from "../src/lifeops/briefing/message-engagement-handler.js";
 import { CalendarDomain } from "../src/lifeops/domains/calendar-service.js";
 import { gmailBriefSourceId } from "../src/lifeops/domains/gmail-service.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
@@ -118,6 +126,10 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     runtime = runtimeResult.runtime;
     await LifeOpsRepository.bootstrapSchema(runtime);
     repository = new LifeOpsRepository(runtime);
+    runtime.registerEvent(
+      EventType.MESSAGE_MUTATED,
+      handleBriefMessageMutation,
+    );
   }, 120_000);
 
   afterAll(async () => {
@@ -126,6 +138,7 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
 
   beforeEach(async () => {
     mocks.hasOwnerAccess.mockReset().mockResolvedValue(true);
+    __resetDefaultTriageServiceForTests();
     __resetBriefComposersForTests();
     setBriefComposers({
       loadCalendar: async () => sections.calendar ?? [],
@@ -455,6 +468,108 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     );
   });
 
+  it("uses a domain receipt as identity across retry timestamps and isolates collision domains", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-domain-retry",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "rendered",
+      eventAt: "2026-08-17T08:00:00.000Z",
+      weight: 0,
+      metadata: {},
+    });
+    const first = await repository.attributeBriefItemEngagement({
+      agentId: runtime.agentId,
+      source: item.source,
+      sourceId: item.sourceId,
+      eventType: "rescheduled",
+      eventAt: "2026-08-17T08:01:00.000Z",
+      domainEventId: "provider-update-42",
+      weight: 1,
+    });
+    const retry = await repository.attributeBriefItemEngagement({
+      agentId: runtime.agentId,
+      source: item.source,
+      sourceId: item.sourceId,
+      eventType: "rescheduled",
+      eventAt: "2026-08-17T08:02:00.000Z",
+      domainEventId: "provider-update-42",
+      weight: 1,
+    });
+    expect(retry?.id).toBe(first?.id);
+
+    const otherSource = await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-domain-retry",
+      itemId: "other-item",
+      source: "inbox",
+      kind: "message",
+      sourceId: "gmail:other",
+      itemClass: "inbox:other",
+      eventType: "replied",
+      eventAt: "2026-08-17T08:02:00.000Z",
+      weight: 1,
+      metadata: { domainEventId: "provider-update-42" },
+    });
+    const otherAgent = await repository.recordBriefItemEngagement({
+      agentId: "00000000-0000-4000-8000-000000000099",
+      briefingId: "brief-domain-retry",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "rescheduled",
+      eventAt: "2026-08-17T08:02:00.000Z",
+      weight: 1,
+      metadata: { domainEventId: "provider-update-42" },
+    });
+    expect(otherSource.id).not.toBe(first?.id);
+    expect(otherAgent.id).not.toBe(first?.id);
+  });
+
+  it("serializes an expiry finalizer against an authoritative outcome", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-finalizer-race",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "rendered",
+      eventAt: "2026-08-17T08:00:00.000Z",
+      weight: 0,
+      metadata: {},
+    });
+    await Promise.all([
+      repository.attributeBriefItemEngagement({
+        agentId: runtime.agentId,
+        source: item.source,
+        sourceId: item.sourceId,
+        eventType: "kept",
+        eventAt: "2026-08-17T08:30:00.000Z",
+        domainEventId: "provider-race-outcome",
+        weight: 0.75,
+      }),
+      repository.finalizeExpiredBriefItemEngagements(runtime.agentId, {
+        asOfIso: "2026-08-18T09:00:00.000Z",
+      }),
+    ]);
+    const outcomes = (await allRows()).filter((row) =>
+      ["kept", "ignored"].includes(row.eventType),
+    );
+    expect(outcomes).toHaveLength(1);
+  });
+
   it("releases a false reward settlement claim so a later retry can succeed", async () => {
     const [item] = structureBriefingItems({ calendar: sections.calendar });
     if (!item) throw new Error("fixture item missing");
@@ -721,6 +836,95 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     ).toMatchObject({ itemId: item.itemId, eventType: "opened" });
   });
 
+  it("attributes Gmail mark-read through the production MESSAGE adapter path", async () => {
+    const externalId = "provider-production-message";
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-production-gmail",
+      itemId: "inbox:gmail:provider-production-message",
+      source: "inbox",
+      kind: "message",
+      sourceId: gmailBriefSourceId(externalId),
+      itemClass: "inbox:reply-needed",
+      eventType: "rendered",
+      eventAt: new Date(Date.now() - 1_000).toISOString(),
+      weight: 0,
+      metadata: {},
+    });
+    const modifyGmailMessages = vi.fn(async () => undefined);
+    const sendGmailReply = vi.fn(async () => ({ messageId: "sent-reply-1" }));
+    const adapterRuntime = {
+      ...runtime,
+      emitEvent: runtime.emitEvent.bind(runtime),
+      reportError: runtime.reportError.bind(runtime),
+      getService: (name: string) =>
+        name === "google"
+          ? {
+              listGmailTriageMessages: vi.fn(async () => [
+                {
+                  externalId,
+                  threadId: "provider-production-thread",
+                  from: "Alex",
+                  fromEmail: "alex@example.com",
+                  to: ["owner@example.com"],
+                  subject: "Production path",
+                  snippet: "Please review",
+                  receivedAt: new Date(Date.now() - 60_000).toISOString(),
+                  isUnread: true,
+                  likelyReplyNeeded: true,
+                  labels: ["INBOX", "UNREAD"],
+                  htmlLink: null,
+                  metadata: {},
+                },
+              ]),
+              searchGmailMessages: vi.fn(),
+              sendGmailReply,
+              sendGmailMessage: vi.fn(),
+              modifyGmailMessages,
+              createGmailFilterForSender: vi.fn(),
+            }
+          : runtime.getService(name),
+    } as unknown as IAgentRuntime;
+    const triageService = getDefaultTriageService();
+    triageService.register(new GoogleGmailAdapter());
+    await triageService.triage(adapterRuntime, { sources: ["gmail"] });
+    const result = await manageMessageAction.handler(
+      adapterRuntime,
+      makeMessage("mark it read"),
+      undefined,
+      {
+        parameters: {
+          messageId: gmailBriefSourceId(externalId),
+          source: "gmail",
+          operation: "mark_read",
+        },
+      } as unknown as HandlerOptions,
+      undefined,
+    );
+    expect(result).toMatchObject({ success: true });
+    expect(modifyGmailMessages).toHaveBeenCalledTimes(1);
+    expect(
+      (await allRows()).filter((row) => row.eventType === "opened"),
+    ).toHaveLength(1);
+    const reply = await respondToMessageAction.handler(
+      adapterRuntime,
+      makeMessage("reply now"),
+      undefined,
+      {
+        parameters: {
+          messageId: gmailBriefSourceId(externalId),
+          body: "Reviewed, thank you.",
+        },
+      } as unknown as HandlerOptions,
+      undefined,
+    );
+    expect(reply).toMatchObject({ success: true });
+    expect(sendGmailReply).toHaveBeenCalledTimes(1);
+    expect(
+      (await allRows()).filter((row) => row.eventType === "replied"),
+    ).toHaveLength(1);
+  });
+
   it("keeps the calendar feed event id identical through a real update bridge", async () => {
     const providerEvent = {
       id: "provider-calendar-event-7",
@@ -748,9 +952,11 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
       metadata: {},
     });
     const calendarService = {
+      mutationUpdatedAt: new Date().toISOString(),
       updateCalendarEvent: vi.fn(async () => ({
         ...providerEvent,
         startAt: new Date().toISOString(),
+        updatedAt: calendarService.mutationUpdatedAt,
       })),
     };
     const bridgeRuntime = {
@@ -767,14 +973,17 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     await domain.updateCalendarEvent(new URL("http://127.0.0.1"), {
       eventId: providerEvent.id,
       startAt: new Date().toISOString(),
-      idempotencyKey: "calendar-provider-update-receipt",
+    });
+    await domain.updateCalendarEvent(new URL("http://127.0.0.1"), {
+      eventId: providerEvent.id,
+      startAt: new Date().toISOString(),
     });
     expect(
-      (await allRows()).find(
+      (await allRows()).filter(
         (row) =>
           row.sourceId === providerEvent.id && row.eventType === "rescheduled",
       ),
-    ).toMatchObject({ itemId: item.itemId });
+    ).toEqual([expect.objectContaining({ itemId: item.itemId })]);
   });
 
   it("links delivered morning-brief output to a real trajectory and settles reward end to end", async () => {

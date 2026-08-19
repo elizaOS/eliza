@@ -40,6 +40,7 @@ export enum EventType {
 	MESSAGE_RECEIVED = "MESSAGE_RECEIVED",
 	MESSAGE_SENT = "MESSAGE_SENT",
 	MESSAGE_DELETED = "MESSAGE_DELETED",
+	MESSAGE_MUTATED = "MESSAGE_MUTATED",
 
 	// Channel events
 	CHANNEL_CLEARED = "CHANNEL_CLEARED",
@@ -203,6 +204,19 @@ export interface MessagePayload extends EventPayload {
 	 * delivery-only producers, where MESSAGE_SENT remains the terminal fallback.
 	 */
 	trajectoryTerminalOwner?: "run";
+}
+
+/**
+ * Authoritative connector mutation receipt emitted after an inbox operation
+ * commits. Consumers may derive diagnostics or learning signals from it, but
+ * must never make the already-committed connector result fail.
+ */
+export interface MessageMutationPayload extends EventPayload {
+	messageSource: string;
+	messageId: string;
+	operation: "mark_read" | "replied";
+	domainEventId: string;
+	committedAt: string;
 }
 
 /**
@@ -786,6 +800,7 @@ export interface EventPayloadMap {
 	[EventType.MESSAGE_RECEIVED]: MessagePayload;
 	[EventType.MESSAGE_SENT]: MessagePayload;
 	[EventType.MESSAGE_DELETED]: MessagePayload;
+	[EventType.MESSAGE_MUTATED]: MessageMutationPayload;
 	[EventType.VOICE_MESSAGE_RECEIVED]: MessagePayload;
 	[EventType.VOICE_MESSAGE_SENT]: MessagePayload;
 	[EventType.VOICE_TURN_OBSERVED]: VoiceTurnObservedPayload;
