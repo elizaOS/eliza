@@ -1030,6 +1030,42 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     ).toEqual([firstReleased]);
   });
 
+  it("makes a released clock-ahead lease immediately eligible", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const engagement = await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-released-clock-ahead",
+      itemId: `${item.itemId}:released-clock-ahead`,
+      source: item.source,
+      kind: item.kind,
+      sourceId: `${item.sourceId}:released-clock-ahead`,
+      itemClass: item.itemClass,
+      eventType: "kept",
+      eventAt: "2025-01-01T00:00:00.000Z",
+      weight: 0.5,
+      metadata: { trajectoryId: "released-clock-ahead-trajectory" },
+    });
+    const claimToken = await repository.claimBriefEngagementReward(engagement, {
+      nowIso: "2025-01-02T00:00:00.000Z",
+    });
+    if (!claimToken) throw new Error("claim fixture failed");
+
+    // The releasing host's wall clock is later than the scanner's explicit
+    // clock below. Released state, rather than that wall clock, controls retry.
+    await repository.releaseBriefEngagementRewardClaim(engagement, claimToken);
+    expect(
+      await repository.listPendingBriefEngagementRewards(runtime.agentId, {
+        nowIso: "2025-01-03T00:00:00.000Z",
+      }),
+    ).toEqual([engagement]);
+    expect(
+      await repository.claimBriefEngagementReward(engagement, {
+        nowIso: "2025-01-03T00:00:00.000Z",
+      }),
+    ).not.toBeNull();
+  });
+
   it("rejects invalid pending-reward limits, scan times, and leases", async () => {
     const rewardIndexes = await executeRawSql(
       runtime,
