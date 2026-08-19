@@ -201,18 +201,31 @@ async function ensureSafariDeveloperPrerequisites() {
   }
 }
 
+export function parseSafariWebExtensionsPlist(stdout) {
+  const entries = new Map();
+  let currentEntry = null;
+  for (const line of stdout.split("\n")) {
+    const entryMatch = line.match(/^ {2}"([^"]+)" => \{$/);
+    if (entryMatch) {
+      currentEntry = entryMatch[1];
+      entries.set(currentEntry, { removed: false });
+      continue;
+    }
+    if (currentEntry && /^ {4}"RemovedDate" => /.test(line)) {
+      entries.get(currentEntry).removed = true;
+    }
+  }
+  return entries;
+}
+
 async function readSafariWebExtensionsPlist() {
   try {
-    const { stdout } = await run(
-      "plutil",
-      ["-convert", "json", "-o", "-", safariExtensionsPlist],
-      {
-        cwd: extensionRoot,
-      },
-    );
-    return JSON.parse(stdout);
+    const { stdout } = await run("plutil", ["-p", safariExtensionsPlist], {
+      cwd: extensionRoot,
+    });
+    return parseSafariWebExtensionsPlist(stdout);
   } catch {
-    return {};
+    return new Map();
   }
 }
 
@@ -249,23 +262,26 @@ async function installTemporarySafariExtension() {
       keystroke "G" using {command down, shift down}
       delay 0.5
       keystroke "${safariDistDir.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"
-      delay 0.5
+      delay 1
       key code 36
-      delay 0.5
-      key code 36
+      delay 1
+      keystroke "o" using {command down}
     end tell
   `);
   await new Promise((resolve) => setTimeout(resolve, 2000));
   const after = await readSafariWebExtensionsPlist();
-  const addedKeys = Object.keys(after).filter(
-    (key) => !Object.hasOwn(before, key),
-  );
-  const browserBridgeKeys = Object.keys(after).filter(
+  const installedKeys = [...after].flatMap(([key, state]) => {
+    const previousState = before.get(key);
+    const newlyActive =
+      !state.removed && (!previousState || previousState.removed);
+    return newlyActive ? [key] : [];
+  });
+  return installedKeys.filter(
     (key) =>
+      key.startsWith("com.apple.Safari.UnpackedExtensions.") ||
       /browserbridge/i.test(key) ||
       key.startsWith(safariBundleIdentifierPrefix),
   );
-  return [...new Set([...addedKeys, ...browserBridgeKeys])];
 }
 
 async function openSafariExtensionsPreferences() {
