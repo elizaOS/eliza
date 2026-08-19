@@ -17,15 +17,174 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze (javascript-typescript)
+    name: Analyze (${{ matrix.shard }})
     # Use an always-provisionable hosted lane so scheduled analysis cannot stall
-    # behind offline fleet capacity. CodeQL sizes its default memory and thread
-    # limits to the hosted runner; extraction exclusions keep that budget focused
-    # on maintained product code.
+    # behind offline fleet capacity. Production-boundary shards keep every query
+    # below the hosted job limit while distinct categories preserve every upload.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: runtime
+            paths:
+              - 'packages/agent/**'
+              - 'packages/auth/**'
+              - 'packages/core/**'
+              - 'packages/logger/**'
+              - 'packages/prompts/**'
+              - 'packages/shared/**'
+              - 'packages/skills/**'
+              - 'packages/vault/**'
+          - shard: product
+            paths:
+              - 'packages/app/**'
+              - 'packages/app-core/**'
+              - 'packages/homepage/**'
+              - 'packages/ui/**'
+          - shard: cloud
+            paths:
+              - 'packages/cloud/**'
+          - shard: platform-ops
+            paths:
+              - 'packages/chip/**'
+              - 'packages/corpus-tools/**'
+              - 'packages/elizaos/**'
+              - 'packages/elizaresearch/**'
+              - 'packages/evidence/**'
+              - 'packages/native/**'
+              - 'packages/os-homepage/**'
+              - 'packages/registry/**'
+              - 'packages/robot/**'
+              - 'packages/scenario-runner/**'
+              - 'packages/scripts/**'
+              - 'packages/training/**'
+              - 'plugins/*.ts'
+              - 'scripts/**'
+          - shard: plugins-a-f
+            paths:
+              - 'plugins/plugin-2004scape/**'
+              - 'plugins/plugin-agent-orchestrator/**'
+              - 'plugins/plugin-agent-skills/**'
+              - 'plugins/plugin-anthropic/**'
+              - 'plugins/plugin-anthropic-proxy/**'
+              - 'plugins/plugin-app-control/**'
+              - 'plugins/plugin-app-manager/**'
+              - 'plugins/plugin-blocker/**'
+              - 'plugins/plugin-bluebubbles/**'
+              - 'plugins/plugin-browser/**'
+              - 'plugins/plugin-calendar/**'
+              - 'plugins/plugin-capacitor-bridge/**'
+              - 'plugins/plugin-clawville/**'
+              - 'plugins/plugin-cli/**'
+              - 'plugins/plugin-cli-inference/**'
+              - 'plugins/plugin-cloud-apps/**'
+              - 'plugins/plugin-codex-cli/**'
+              - 'plugins/plugin-coding-tools/**'
+              - 'plugins/plugin-commands/**'
+              - 'plugins/plugin-companion/**'
+              - 'plugins/plugin-computeruse/**'
+              - 'plugins/plugin-contacts/**'
+              - 'plugins/plugin-defense-of-the-agents/**'
+              - 'plugins/plugin-discord/**'
+              - 'plugins/plugin-documents/**'
+              - 'plugins/plugin-elizacloud/**'
+              - 'plugins/plugin-elizamaker/**'
+              - 'plugins/plugin-embeddings/**'
+              - 'plugins/plugin-feed/**'
+              - 'plugins/plugin-finances/**'
+              - 'plugins/plugin-fish-audio/**'
+              - 'plugins/plugin-form/**'
+          - shard: plugins-g-n
+            paths:
+              - 'plugins/plugin-github/**'
+              - 'plugins/plugin-goals/**'
+              - 'plugins/plugin-google-genai/**'
+              - 'plugins/plugin-google-workspace/**'
+              - 'plugins/plugin-health/**'
+              - 'plugins/plugin-hyperscape/**'
+              - 'plugins/plugin-imessage/**'
+              - 'plugins/plugin-inbox/**'
+              - 'plugins/plugin-inmemorydb/**'
+              - 'plugins/plugin-instagram/**'
+              - 'plugins/plugin-local-inference/**'
+              - 'plugins/plugin-local-storage/**'
+              - 'plugins/plugin-matrix/**'
+              - 'plugins/plugin-mcp/**'
+              - 'plugins/plugin-meetings/**'
+              - 'plugins/plugin-messages/**'
+              - 'plugins/plugin-native-activity-tracker/**'
+              - 'plugins/plugin-native-agent/**'
+              - 'plugins/plugin-native-appblocker/**'
+              - 'plugins/plugin-native-browser-surface/**'
+              - 'plugins/plugin-native-bun-runtime/**'
+              - 'plugins/plugin-native-calendar/**'
+              - 'plugins/plugin-native-camera/**'
+              - 'plugins/plugin-native-canvas/**'
+              - 'plugins/plugin-native-contacts/**'
+              - 'plugins/plugin-native-desktop/**'
+              - 'plugins/plugin-native-eliza-tasks/**'
+              - 'plugins/plugin-native-filesystem/**'
+              - 'plugins/plugin-native-gateway/**'
+              - 'plugins/plugin-native-inference/**'
+              - 'plugins/plugin-native-llama/**'
+              - 'plugins/plugin-native-location/**'
+              - 'plugins/plugin-native-macosalarm/**'
+              - 'plugins/plugin-native-messages/**'
+              - 'plugins/plugin-native-mlkit-text/**'
+              - 'plugins/plugin-native-mobile-agent-bridge/**'
+              - 'plugins/plugin-native-mobile-signals/**'
+              - 'plugins/plugin-native-network-policy/**'
+              - 'plugins/plugin-native-phone/**'
+              - 'plugins/plugin-native-reminders/**'
+              - 'plugins/plugin-native-screencapture/**'
+              - 'plugins/plugin-native-settings/**'
+              - 'plugins/plugin-native-shared-types/**'
+              - 'plugins/plugin-native-swabble/**'
+              - 'plugins/plugin-native-system/**'
+              - 'plugins/plugin-native-talkmode/**'
+              - 'plugins/plugin-native-websiteblocker/**'
+              - 'plugins/plugin-native-wifi/**'
+              - 'plugins/plugin-notes/**'
+          - shard: plugins-o-z
+            paths:
+              - 'plugins/plugin-openai/**'
+              - 'plugins/plugin-pdf/**'
+              - 'plugins/plugin-personal-assistant/**'
+              - 'plugins/plugin-phone/**'
+              - 'plugins/plugin-pty/**'
+              - 'plugins/plugin-registry/**'
+              - 'plugins/plugin-relationships/**'
+              - 'plugins/plugin-reminders/**'
+              - 'plugins/plugin-scape/**'
+              - 'plugins/plugin-scheduling/**'
+              - 'plugins/plugin-shopify-ui/**'
+              - 'plugins/plugin-signal/**'
+              - 'plugins/plugin-slack/**'
+              - 'plugins/plugin-social-alpha/**'
+              - 'plugins/plugin-sql/**'
+              - 'plugins/plugin-steward-app/**'
+              - 'plugins/plugin-task-coordinator/**'
+              - 'plugins/plugin-taskmarket/**'
+              - 'plugins/plugin-telegram/**'
+              - 'plugins/plugin-todos/**'
+              - 'plugins/plugin-training/**'
+              - 'plugins/plugin-trajectory-logger/**'
+              - 'plugins/plugin-video/**'
+              - 'plugins/plugin-vincent/**'
+              - 'plugins/plugin-vision/**'
+              - 'plugins/plugin-wallet/**'
+              - 'plugins/plugin-wallet-ui/**'
+              - 'plugins/plugin-web-search/**'
+              - 'plugins/plugin-wechat/**'
+              - 'plugins/plugin-whatsapp/**'
+              - 'plugins/plugin-wifi/**'
+              - 'plugins/plugin-workflow/**'
+              - 'plugins/plugin-x/**'
+              - 'plugins/plugin-zai/**'
+              - 'plugins/plugin-zerollama/**'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     permissions:
-      actions: read
       contents: read
       security-events: write
     steps:
@@ -43,9 +202,60 @@ jobs:
         with:
           languages: javascript-typescript
           build-mode: none
-          config-file: ./.github/codeql/codeql-config.yml
+          # The action accepts a YAML string. Matrix paths become an inline JSON
+          # array, which is valid YAML and avoids seven drifting config copies.
+          config: |
+            name: elizaOS CodeQL ${{ matrix.shard }}
+            paths: ${{ toJson(matrix.paths) }}
+            paths-ignore:
+              - '**/node_modules/**'
+              - '**/dist/**'
+              - '**/build/**'
+              - '**/.next/**'
+              - '**/.next-build-*/**'
+              - '**/.turbo/**'
+              - '**/coverage/**'
+              - '**/out/**'
+              - '**/.venv/**'
+              - '**/venv/**'
+              - '**/site-packages/**'
+              - '**/storybook-static/**'
+              - '**/dist-mobile/**'
+              - '**/dist-mobile-ios/**'
+              - '**/playwright-report/**'
+              - '**/ios/App/App/public/**'
+              - '**/android/app/src/main/assets/public/**'
+              - '**/platforms/android/app/src/main/assets/public/**'
+              - '**/platforms/*/tmp/**'
+              - '**/*.min.js'
+              - '**/__tests__/**'
+              - '**/__e2e__/**'
+              - '**/test/**'
+              - '**/tests/**'
+              - '**/testing/**'
+              - '**/test-utils/**'
+              - '**/fixture/**'
+              - '**/fixtures/**'
+              - '**/mocks/**'
+              - '**/stories/**'
+              - '**/*.test.ts'
+              - '**/*.test.tsx'
+              - '**/*.test.js'
+              - '**/*.test.jsx'
+              - '**/*.spec.ts'
+              - '**/*.spec.tsx'
+              - '**/*.spec.js'
+              - '**/*.spec.jsx'
+              - '**/*.bench.ts'
+              - '**/*.bench.tsx'
+              - '**/*.stories.ts'
+              - '**/*.stories.tsx'
+              - '**/aesthetic-audit-output-*/**'
+              - 'packages/test/**'
+              - 'packages/app-core/scripts/bun-riscv64/**'
+              - 'packages/scripts/test-console/**'
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd
         with:
-          category: /language:javascript-typescript
+          category: /language:javascript-typescript/shard:${{ matrix.shard }}
