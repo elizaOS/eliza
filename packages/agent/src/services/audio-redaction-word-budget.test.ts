@@ -8,11 +8,13 @@ import { describe, expect, it } from "bun:test";
 import {
   AudioRedactionWordBudgetError,
   assertAudioRedactionInputBudget,
+  assertAudioRedactionWordBudget,
   MAX_AUDIO_REDACTION_MATCH_CANDIDATES,
   MAX_AUDIO_REDACTION_NORMALIZED_CHARS,
   MAX_AUDIO_REDACTION_PII_NORMALIZED_CHARS,
   MAX_AUDIO_REDACTION_PII_SPAN_CHARS,
   MAX_AUDIO_REDACTION_PII_SPANS,
+  MAX_AUDIO_REDACTION_RAW_CHARS,
   MAX_AUDIO_REDACTION_WORD_CHARS,
   MAX_AUDIO_REDACTION_WORDS,
   selectAudioRedactionSentinels,
@@ -188,6 +190,57 @@ describe("selectAudioRedactionSentinels", () => {
     expect(() =>
       assertAudioRedactionInputBudget(words, [{ text: "a" }, { text: "a" }]),
     ).toThrow(/matcher exceeds/);
+  });
+
+  it("fails closed on a punctuation-only raw byte flood that normalizes to zero", () => {
+    // Each token is pure punctuation: it normalizes to zero characters, so it
+    // slips past the per-word (<= MAX_AUDIO_REDACTION_WORD_CHARS) and the
+    // aggregate normalized (stays at 0) budgets, yet its raw length still
+    // forces Unicode normalization over the whole stream.
+    const punctuationToken = "!".repeat(MAX_AUDIO_REDACTION_WORD_CHARS);
+    const wordCount =
+      Math.floor(
+        MAX_AUDIO_REDACTION_RAW_CHARS / MAX_AUDIO_REDACTION_WORD_CHARS,
+      ) + 1;
+    expect(wordCount).toBeLessThanOrEqual(MAX_AUDIO_REDACTION_WORDS);
+    const words = Array.from({ length: wordCount }, (_, index) => ({
+      text: punctuationToken,
+      startMs: index,
+      endMs: index + 1,
+    }));
+    let thrown: unknown;
+    try {
+      assertAudioRedactionWordBudget(words);
+      throw new Error("expected AUDIO_REDACTION_UNBOUNDED");
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(AudioRedactionWordBudgetError);
+    expect((thrown as AudioRedactionWordBudgetError).code).toBe(
+      "AUDIO_REDACTION_UNBOUNDED",
+    );
+    expect((thrown as Error).message).toMatch(/raw timed-word stream exceeds/);
+    expect((thrown as AudioRedactionWordBudgetError).context?.maxRawChars).toBe(
+      MAX_AUDIO_REDACTION_RAW_CHARS,
+    );
+    // The shared final head guards assertAudioRedactionInputBudget too.
+    expect(() => assertAudioRedactionInputBudget(words, [])).toThrow(
+      /raw timed-word stream exceeds/,
+    );
+  });
+
+  it("admits a large in-budget transcript below the raw byte ceiling", () => {
+    // A transcript that already passes the normalized budget must not be newly
+    // rejected by the raw ceiling, which sits well above it.
+    const words = Array.from({ length: 20_000 }, (_, index) => ({
+      text: `token${index}`,
+      startMs: index * 10,
+      endMs: index * 10 + 5,
+    }));
+    const rawChars = words.reduce((sum, word) => sum + word.text.length, 0);
+    expect(rawChars).toBeLessThan(MAX_AUDIO_REDACTION_RAW_CHARS);
+    expect(() => assertAudioRedactionWordBudget(words)).not.toThrow();
+    expect(() => assertAudioRedactionInputBudget(words, [])).not.toThrow();
   });
 
   it("fails closed on an oversized sentinel span plan", () => {

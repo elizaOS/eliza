@@ -10,6 +10,13 @@
 export const MAX_AUDIO_REDACTION_WORDS = 100_000;
 export const MAX_AUDIO_REDACTION_WORD_CHARS = 4_096;
 export const MAX_AUDIO_REDACTION_NORMALIZED_CHARS = 1_000_000;
+// Caps the aggregate *raw* timed-word bytes normalization must scan. The
+// per-word and normalized-aggregate budgets both miss a punctuation-only flood
+// (each word <= 4,096 raw chars, all normalizing to zero) that still forces
+// normalizeSpokenText over the entire raw stream. 4 MiB sits far above the
+// 1,000,000 normalized-char budget legitimate transcripts must already clear,
+// yet far below the ~409.6M-char adversarial ceiling (100,000 x 4,096).
+export const MAX_AUDIO_REDACTION_RAW_CHARS = 4_194_304;
 export const MAX_AUDIO_REDACTION_PII_SPANS = 1_024;
 export const MAX_AUDIO_REDACTION_PII_SPAN_CHARS = 4_096;
 export const MAX_AUDIO_REDACTION_PII_NORMALIZED_CHARS = 262_144;
@@ -70,6 +77,7 @@ function normalizedWordCharsWithinBudget(
     );
   }
   let normalizedChars = 0;
+  let rawChars = 0;
   for (const word of words) {
     if (word.text.length > MAX_AUDIO_REDACTION_WORD_CHARS) {
       throw new AudioRedactionWordBudgetError(
@@ -78,6 +86,17 @@ function normalizedWordCharsWithinBudget(
         {
           wordChars: word.text.length,
           maxWordChars: MAX_AUDIO_REDACTION_WORD_CHARS,
+        },
+      );
+    }
+    rawChars += word.text.length;
+    if (rawChars > MAX_AUDIO_REDACTION_RAW_CHARS) {
+      throw new AudioRedactionWordBudgetError(
+        `audio redaction raw timed-word stream exceeds ${MAX_AUDIO_REDACTION_RAW_CHARS} characters`,
+        "AUDIO_REDACTION_UNBOUNDED",
+        {
+          rawChars,
+          maxRawChars: MAX_AUDIO_REDACTION_RAW_CHARS,
         },
       );
     }
