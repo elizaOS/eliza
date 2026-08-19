@@ -1,3 +1,7 @@
+/**
+ * Deterministic contract tests for App Store Connect provisioning, entitlement
+ * reconciliation, stale-profile replacement, and quarantined profile install.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -16,10 +20,12 @@ import {
   mintDevelopmentProfile,
   profileCoversRequest,
   profileIsUsable,
+  ProvisioningProfileValidationError,
   provision,
   reconcileBundleCapabilities,
   replacementDevelopmentProfileName,
   resolveAscCredentials,
+  validateAndInstallProfile,
   validateBundleIds,
   validateProvisioningEntitlements,
   writeProfile,
@@ -601,6 +607,84 @@ describe("writeProfile", () => {
     expect(() =>
       writeProfile({ id: "P", attributes: { name: "n" } }, tmpDir()),
     ).toThrow(/no profileContent/);
+  });
+
+  it("rejects ASC profile ids that could escape the destination directory", () => {
+    const root = tmpDir();
+    const dir = path.join(root, "profiles");
+    expect(() =>
+      writeProfile(
+        {
+          id: "P",
+          attributes: {
+            uuid: "../escaped",
+            profileContent: Buffer.from("untrusted").toString("base64"),
+          },
+        },
+        dir,
+      ),
+    ).toThrow(/unsafe uuid\/id/);
+    expect(fs.existsSync(path.join(root, "escaped.mobileprovision"))).toBe(
+      false,
+    );
+  });
+});
+
+describe("validateAndInstallProfile", () => {
+  it("never installs rejected bytes and cleans its quarantine", () => {
+    const dir = tmpDir();
+    const profile = {
+      id: "P",
+      attributes: {
+        uuid: "REJECTED",
+        profileContent: Buffer.from("bad-profile").toString("base64"),
+      },
+    };
+    expect(() =>
+      validateAndInstallProfile(profile, {
+        dir,
+        bundleIdentifier: "ai.elizaos.app",
+        requiredEntitlements: {
+          "com.apple.security.application-groups": ["group.ai.elizaos.app"],
+        },
+        decodeProfile: () => ({ Entitlements: {} }),
+      }),
+    ).toThrow(/does not grant target entitlements/);
+    expect(fs.existsSync(path.join(dir, "REJECTED.mobileprovision"))).toBe(
+      false,
+    );
+    expect(
+      fs.readdirSync(dir).filter((name) => name.includes("quarantine")),
+    ).toEqual([]);
+  });
+
+  it("keeps install failures distinct from rejected profile content", () => {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, "COLLIDE.mobileprovision"));
+    let failure;
+    try {
+      validateAndInstallProfile(
+        {
+          id: "P",
+          attributes: {
+            uuid: "COLLIDE",
+            profileContent: Buffer.from("valid-profile").toString("base64"),
+          },
+        },
+        {
+          dir,
+          bundleIdentifier: "ai.elizaos.app",
+          decodeProfile: () => ({ Entitlements: {} }),
+        },
+      );
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).not.toBeInstanceOf(ProvisioningProfileValidationError);
+    expect(
+      fs.readdirSync(dir).filter((name) => name.includes("quarantine")),
+    ).toEqual([]);
   });
 });
 

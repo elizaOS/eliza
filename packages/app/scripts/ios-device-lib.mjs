@@ -10,6 +10,78 @@
  */
 import crypto from "node:crypto";
 
+/** Maintained iOS target names mapped to their checked-in entitlement sources. */
+export const IOS_TARGET_ENTITLEMENT_PATHS = Object.freeze({
+  App: "App.entitlements",
+  DeviceActivityMonitorExtension:
+    "DeviceActivityMonitorExtension/DeviceActivityMonitorExtension.entitlements",
+  DeviceActivityReportExtension:
+    "DeviceActivityReportExtension/DeviceActivityReportExtension.entitlements",
+  ElizaKeyboard: "ElizaKeyboard/ElizaKeyboard.entitlements",
+  ElizaWidgets: "ElizaWidgets/ElizaWidgets.entitlements",
+  WebsiteBlockerContentExtension:
+    "WebsiteBlockerContentExtension/WebsiteBlockerContentExtension.entitlements",
+});
+
+export const IOS_APPEX_TARGET_NAMES = Object.freeze(
+  Object.keys(IOS_TARGET_ENTITLEMENT_PATHS)
+    .filter((targetName) => targetName !== "App")
+    .sort(),
+);
+
+export function entitlementSourceForTarget(targetName) {
+  const source = IOS_TARGET_ENTITLEMENT_PATHS[targetName];
+  if (!source) {
+    throw new Error(
+      `No maintained entitlement source is registered for iOS target ${targetName}.`,
+    );
+  }
+  return source;
+}
+
+export function expectedBundleIdentifierForTarget(targetName, appBundleId) {
+  entitlementSourceForTarget(targetName);
+  return targetName === "App" ? appBundleId : `${appBundleId}.${targetName}`;
+}
+
+/** Validate that a full built product contains exactly the maintained appexes. */
+export function resolveMaintainedIosSigningTargets({
+  appBundleId,
+  appexes,
+  requireAllAppexes = true,
+}) {
+  const targets = [{ targetName: "App", bundleId: appBundleId }];
+  const seen = new Set();
+  for (const appex of appexes) {
+    entitlementSourceForTarget(appex.targetName);
+    if (seen.has(appex.targetName)) {
+      throw new Error(`Duplicate maintained iOS appex ${appex.targetName}.`);
+    }
+    seen.add(appex.targetName);
+    const expected = expectedBundleIdentifierForTarget(
+      appex.targetName,
+      appBundleId,
+    );
+    if (appex.bundleId !== expected) {
+      throw new Error(
+        `iOS target ${appex.targetName} has bundle id ${appex.bundleId}; expected ${expected}.`,
+      );
+    }
+    targets.push({ ...appex, bundleId: expected });
+  }
+  if (requireAllAppexes) {
+    const missing = IOS_APPEX_TARGET_NAMES.filter(
+      (targetName) => !seen.has(targetName),
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Built App.app is missing maintained appexes: ${missing.join(", ")}`,
+      );
+    }
+  }
+  return targets;
+}
+
 // ── XML property-list parse / serialize ─────────────────────────────────
 // Provisioning profiles (`security cms -D`), entitlements plists, and
 // .xctestrun files are all XML plists. We parse the subset Apple emits:
@@ -288,11 +360,18 @@ export function normalizeProvisioningProfile(plist, sourcePath) {
  *
  * @param {ReturnType<typeof normalizeProvisioningProfile>} profile
  * @param {{ bundleId: string, deviceUdid: string | null, now?: Date,
- *           requireGetTaskAllow?: boolean }} target
+ *           requireGetTaskAllow?: boolean,
+ *           requiredEntitlements?: Record<string, unknown> }} target
  */
 export function profileMatchesTarget(
   profile,
-  { bundleId, deviceUdid, now = new Date(), requireGetTaskAllow = false },
+  {
+    bundleId,
+    deviceUdid,
+    now = new Date(),
+    requireGetTaskAllow = false,
+    requiredEntitlements = {},
+  },
 ) {
   const reasons = [];
   const appId = profile.applicationIdentifier;
@@ -326,6 +405,16 @@ export function profileMatchesTarget(
     reasons.push(
       "profile is not a development/debug profile (get-task-allow is not true)",
     );
+  }
+  for (const [key, required] of Object.entries(requiredEntitlements)) {
+    if (
+      !profileEntitlementAuthorizes(key, required, profile.entitlements[key], {
+        appIdPrefix: profile.appIdPrefix,
+        teamId: profile.teamId,
+      })
+    ) {
+      reasons.push(`profile does not grant required entitlement ${key}`);
+    }
   }
   return { ok: reasons.length === 0, reasons };
 }
@@ -434,6 +523,165 @@ export function deriveSigningEntitlements(profile, bundleId) {
   return entitlements;
 }
 
+const PROFILE_DERIVED_SIGNING_KEYS = Object.freeze([
+  "application-identifier",
+  "com.apple.developer.team-identifier",
+  "get-task-allow",
+  "keychain-access-groups",
+]);
+
+function arrayGrantCovers(key, required, granted) {
+  if (!Array.isArray(granted)) return false;
+  if (key === "com.apple.security.application-groups") {
+    return required.every((item) => granted.includes(item));
+  }
+  return required.every(
+    (item) =>
+      granted.includes(item) ||
+      granted.includes("*") ||
+      granted.some(
+        (candidate) =>
+          typeof candidate === "string" &&
+          candidate.endsWith("*") &&
+          typeof item === "string" &&
+          item.startsWith(candidate.slice(0, -1)),
+      ),
+  );
+}
+
+function prefixWithDot(value) {
+  if (!value) return null;
+  return value.endsWith(".") ? value : `${value}.`;
+}
+
+export function resolveTargetEntitlementValue(
+  required,
+  { appIdPrefix, teamId, granted } = {},
+) {
+  if (Array.isArray(required)) {
+    return required.map((item) =>
+      resolveTargetEntitlementValue(item, { appIdPrefix, teamId }),
+    );
+  }
+  if (typeof required !== "string") return required;
+  let resolved = required;
+  const appPrefix = prefixWithDot(appIdPrefix);
+  const teamPrefix = prefixWithDot(teamId);
+  if (appPrefix) {
+    resolved = resolved.replaceAll("$(AppIdentifierPrefix)", appPrefix);
+  }
+  if (teamPrefix) {
+    resolved = resolved.replaceAll("$(TeamIdentifierPrefix)", teamPrefix);
+  }
+  if (/^\$\(.+\)$/.test(resolved)) {
+    return granted === false || granted === "" ? undefined : granted;
+  }
+  return resolved;
+}
+
+/** Whether a profile allowlist value authorizes one target entitlement claim. */
+export function profileEntitlementAuthorizes(
+  key,
+  required,
+  granted,
+  context = {},
+) {
+  const resolved = resolveTargetEntitlementValue(required, {
+    ...context,
+    granted,
+  });
+  if (required !== undefined && resolved === undefined) return false;
+  if (resolved === true) return granted === true;
+  if (Array.isArray(resolved)) {
+    return arrayGrantCovers(key, resolved, granted);
+  }
+  if (
+    key === "application-identifier" &&
+    typeof resolved === "string" &&
+    typeof granted === "string" &&
+    granted.endsWith("*")
+  ) {
+    return resolved.startsWith(granted.slice(0, -1));
+  }
+  return Object.is(resolved, granted);
+}
+
+/**
+ * Build the exact claims for a maintained target. The profile is an allowlist,
+ * not a template: target claims come from source entitlements, while only the
+ * four identity/debug keys that codesign needs are inherited from the profile.
+ */
+export function deriveTargetSigningEntitlements(
+  profile,
+  bundleId,
+  requiredEntitlements = {},
+) {
+  const missing = Object.entries(requiredEntitlements)
+    .filter(
+      ([key, required]) =>
+        !profileEntitlementAuthorizes(
+          key,
+          required,
+          profile.entitlements[key],
+          { appIdPrefix: profile.appIdPrefix, teamId: profile.teamId },
+        ),
+    )
+    .map(([key]) => key);
+  if (missing.length > 0) {
+    throw new Error(
+      `Provisioning profile ${profile.name} does not grant required entitlements for ${bundleId}: ${missing.join(", ")}`,
+    );
+  }
+
+  const claims = {};
+  for (const [key, required] of Object.entries(requiredEntitlements)) {
+    claims[key] = resolveTargetEntitlementValue(required, {
+      appIdPrefix: profile.appIdPrefix,
+      teamId: profile.teamId,
+      granted: profile.entitlements[key],
+    });
+  }
+  const derived = deriveSigningEntitlements(profile, bundleId);
+  for (const key of PROFILE_DERIVED_SIGNING_KEYS.filter(
+    (candidate) => candidate !== "keychain-access-groups",
+  )) {
+    if (
+      claims[key] !== undefined &&
+      derived[key] !== undefined &&
+      JSON.stringify(claims[key]) !== JSON.stringify(derived[key])
+    ) {
+      throw new Error(
+        `Target entitlement ${key} for ${bundleId} conflicts with the concrete profile-derived signing value.`,
+      );
+    }
+    if (derived[key] !== undefined) claims[key] = derived[key];
+  }
+  if (claims["keychain-access-groups"] === undefined && profile.appIdPrefix) {
+    const defaultKeychainGroup = `${profile.appIdPrefix}.${bundleId}`;
+    if (
+      arrayGrantCovers(
+        "keychain-access-groups",
+        [defaultKeychainGroup],
+        profile.entitlements["keychain-access-groups"],
+      )
+    ) {
+      claims["keychain-access-groups"] = [defaultKeychainGroup];
+    }
+  }
+
+  const allowedKeys = new Set([
+    ...Object.keys(requiredEntitlements),
+    ...PROFILE_DERIVED_SIGNING_KEYS,
+  ]);
+  const unintended = Object.keys(claims).filter((key) => !allowedKeys.has(key));
+  if (unintended.length > 0) {
+    throw new Error(
+      `Refusing unintended signing entitlements for ${bundleId}: ${unintended.join(", ")}`,
+    );
+  }
+  return claims;
+}
+
 // ── Codesign ordering ───────────────────────────────────────────────────
 
 /**
@@ -473,8 +721,8 @@ export function buildCodesignPlan(layout) {
  * Build the inner→outer codesign step list for an XCUITest runner .app
  * (AppUITests-Runner.app): frameworks first, then loose dylibs, then the
  * PlugIns/*.xctest bundles, then the runner app itself. Only the runner app
- * carries the profile-derived entitlements — the .xctest bundle and the
- * frameworks are signed identity-only, matching what xcodebuild's own
+ * carries the required profile-derived identity/debug keys — the .xctest
+ * bundle and frameworks are signed identity-only, matching what xcodebuild's own
  * automatic signing produces.
  *
  * @param {{
