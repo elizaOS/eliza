@@ -15,10 +15,17 @@
  * The test uses no agent runtime; AppWorkerHostService.spawn() is
  * called directly with a fixture SpawnOptions. The
  * `startForRegisteredApp` path that pulls from AppRegistryService is covered
- * by the registry-to-worker end-to-end test.
+ * by the registry-to-worker end-to-end test. FS cases include a real
+ * symlink whose lexical name sits inside statePath.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -490,6 +497,54 @@ describe("AppWorkerHostService worker bridge", () => {
 			expect(reply.ok).toBe(false);
 			if (reply.ok) return;
 			expect(reply.reason).toContain("escapes the sandbox statePath");
+		});
+
+		it("fs: rejects a symlink whose lexical name sits inside statePath", async () => {
+			const outside = path.join(
+				tmpdir(),
+				`app-worker-fs-outside-${Date.now()}.txt`,
+			);
+			writeFileSync(outside, "SECRET_PAYLOAD_OUTSIDE_SANDBOX");
+			const link = path.join(stateRoot, "escape-link");
+			symlinkSync(outside, link);
+			try {
+				await service.spawn({
+					slug: "fixture-fs-symlink",
+					isolation: "worker",
+					pluginEntryPath: FIXTURE_PLUGIN_PATH,
+					statePath: stateRoot,
+					requestedPermissions: { fs: { read: ["**"], write: ["**"] } },
+					grantedNamespaces: ["fs"],
+				});
+				const readReply = await service.invoke(
+					"fixture-fs-symlink",
+					"invokeAction",
+					{
+						actionName: "FS_ESCAPE_ATTEMPT",
+						content: { absolutePath: link },
+					},
+				);
+				expect(readReply.ok).toBe(false);
+				if (readReply.ok) return;
+				expect(readReply.reason).toContain("escapes the sandbox statePath");
+				expect(readReply.reason).not.toContain(
+					"SECRET_PAYLOAD_OUTSIDE_SANDBOX",
+				);
+
+				const writeReply = await service.invoke(
+					"fixture-fs-symlink",
+					"invokeAction",
+					{
+						actionName: "FS_WRITE_THEN_READ",
+						content: { relPath: "escape-link", payload: "overwrite" },
+					},
+				);
+				expect(writeReply.ok).toBe(false);
+				if (writeReply.ok) return;
+				expect(writeReply.reason).toContain("escapes the sandbox statePath");
+			} finally {
+				rmSync(outside, { force: true });
+			}
 		});
 	});
 

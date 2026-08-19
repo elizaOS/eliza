@@ -21,9 +21,13 @@
  * host-approved capabilities are exposed: app metadata, gated fs/net,
  * and selected runtime bridge methods. Any other `runtime.*` access is
  * rejected instead of leaking the host runtime into the worker.
+ *
+ * FS paths are fail-closed after `lstat`/`realpath`: a symlink whose
+ * lexical name sits inside `statePath` cannot be used to read or write
+ * a file outside the sandbox.
  */
 
-import { promises as fsPromises } from "node:fs";
+import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import nodePath from "node:path";
 import { isMainThread, parentPort, workerData } from "node:worker_threads";
 
@@ -143,9 +147,10 @@ function hasDeclaredFsOperation(operation: "read" | "write"): boolean {
  *   - the resolved absolute path is contained in `statePath`
  *
  * The gate is intentionally simple: exact-host or `*.suffix` matching for net,
- * and statePath-prefix containment for fs. The manifest-level `fs.read` and
- * `fs.write` declarations currently authorize the operation class; path
- * narrowing is enforced by the per-app statePath sandbox.
+ * and statePath containment for fs after resolving symlinks. The
+ * manifest-level `fs.read` and `fs.write` declarations currently authorize
+ * the operation class; path narrowing is enforced by the per-app statePath
+ * sandbox.
  */
 async function gatedFetch(
 	url: string | URL,
@@ -171,10 +176,30 @@ async function gatedFetch(
 	return fetch(parsed, init);
 }
 
-function checkFsAccess(
+function errnoCode(error: unknown): string {
+	return error && typeof error === "object" && "code" in error
+		? String((error as NodeJS.ErrnoException).code)
+		: "";
+}
+
+function isInsideRoot(root: string, candidate: string): boolean {
+	const relative = nodePath.relative(root, candidate);
+	return (
+		relative === "" ||
+		(!relative.startsWith("..") && !nodePath.isAbsolute(relative))
+	);
+}
+
+function sandboxEscapeError(candidate: string): Error {
+	return new Error(
+		`fs access to ${candidate} escapes the sandbox statePath (${statePath})`,
+	);
+}
+
+async function resolveSandboxPath(
 	absolutePath: string,
 	operation: "read" | "write",
-): void {
+): Promise<string> {
 	if (!grantedSet.has("fs")) {
 		throw new Error(
 			"fs access not granted by user (sandbox: grantedNamespaces does not include 'fs')",
@@ -188,24 +213,100 @@ function checkFsAccess(
 			"fs access requires a statePath to be assigned to the app at spawn time",
 		);
 	}
+
 	const resolved = nodePath.resolve(absolutePath);
-	const root = `${statePath}${nodePath.sep}`;
-	if (resolved !== statePath && !resolved.startsWith(root)) {
-		throw new Error(
-			`fs access to ${resolved} escapes the sandbox statePath (${statePath})`,
-		);
+	let rootReal: string;
+	try {
+		rootReal = await realpath(statePath);
+	} catch (error) {
+		// error-policy:J3 untrusted-input sanitizing — a missing sandbox root
+		// cannot authorize any path; do not fall back to lexical-only allow.
+		if (errnoCode(error) === "ENOENT") {
+			throw new Error(
+				`fs access requires an existing statePath (${statePath})`,
+			);
+		}
+		throw error;
+	}
+
+	if (!isInsideRoot(rootReal, resolved) && !isInsideRoot(statePath, resolved)) {
+		throw sandboxEscapeError(resolved);
+	}
+
+	try {
+		const stat = await lstat(resolved);
+		if (stat.isSymbolicLink()) {
+			throw sandboxEscapeError(resolved);
+		}
+		const canonical = await realpath(resolved);
+		if (!isInsideRoot(rootReal, canonical)) {
+			throw sandboxEscapeError(canonical);
+		}
+		return canonical;
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			/escapes the sandbox statePath/.test(error.message)
+		) {
+			throw error;
+		}
+		if (errnoCode(error) === "ENOENT" && operation === "read") {
+			// error-policy:J3 untrusted-input sanitizing — missing files stay
+			// inside the lexical/real root; the subsequent read surfaces ENOENT.
+			if (
+				!isInsideRoot(rootReal, resolved) &&
+				!isInsideRoot(statePath, resolved)
+			) {
+				throw sandboxEscapeError(resolved);
+			}
+			return resolved;
+		}
+		if (errnoCode(error) === "ENOENT" && operation === "write") {
+			const parent = nodePath.dirname(resolved);
+			try {
+				const parentStat = await lstat(parent);
+				if (parentStat.isSymbolicLink()) {
+					throw sandboxEscapeError(resolved);
+				}
+				const parentReal = await realpath(parent);
+				if (!isInsideRoot(rootReal, parentReal)) {
+					throw sandboxEscapeError(resolved);
+				}
+				return nodePath.join(parentReal, nodePath.basename(resolved));
+			} catch (parentError) {
+				if (
+					parentError instanceof Error &&
+					/escapes the sandbox statePath/.test(parentError.message)
+				) {
+					throw parentError;
+				}
+				// error-policy:J3 untrusted-input sanitizing — a missing parent
+				// is created only when the write target is still inside the root.
+				if (errnoCode(parentError) === "ENOENT") {
+					if (
+						!isInsideRoot(rootReal, resolved) &&
+						!isInsideRoot(statePath, resolved)
+					) {
+						throw sandboxEscapeError(resolved);
+					}
+					return resolved;
+				}
+				throw parentError;
+			}
+		}
+		throw error;
 	}
 }
 
 const gatedFs = {
 	async readFile(path: string): Promise<string> {
-		checkFsAccess(path, "read");
-		return fsPromises.readFile(path, "utf8");
+		const target = await resolveSandboxPath(path, "read");
+		return readFile(target, "utf8");
 	},
 	async writeFile(path: string, content: string): Promise<void> {
-		checkFsAccess(path, "write");
-		await fsPromises.mkdir(nodePath.dirname(path), { recursive: true });
-		await fsPromises.writeFile(path, content, "utf8");
+		const target = await resolveSandboxPath(path, "write");
+		await mkdir(nodePath.dirname(target), { recursive: true });
+		await writeFile(target, content, "utf8");
 	},
 };
 
