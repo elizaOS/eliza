@@ -2421,7 +2421,7 @@ describe("ChatOverlay", () => {
     expect(screen.queryByText("Stop transcribing")).toBeNull();
   });
 
-  it("grows the native input host while the portaled chat-actions menu is open", () => {
+  it("grows only the native input host height while the portaled chat-actions menu is open", () => {
     const onStateChange = vi.fn();
     render(
       <ChatOverlay
@@ -2444,7 +2444,7 @@ describe("ChatOverlay", () => {
     });
 
     expect(screen.getByText("Upload file")).toBeTruthy();
-    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_UNDER_HALF");
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT_MENU");
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
@@ -2472,7 +2472,7 @@ describe("ChatOverlay", () => {
       pointerType: "mouse",
     });
     expect(screen.getByText("Upload file")).toBeTruthy();
-    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_UNDER_HALF");
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT_MENU");
 
     emitDesktopWindowBlur();
 

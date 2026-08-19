@@ -295,6 +295,8 @@ export type ChatState =
   | "OPEN_HALF_OR_OVER"
   | "MAXIMIZED";
 
+export type ChatSurfaceState = ChatState | "INPUT_MENU";
+
 /**
  * The chat's openness as a SINGLE source of truth — one ordered state machine
  * instead of separate `pilled` boolean + `detent` enum that had to be hand-kept
@@ -1222,7 +1224,7 @@ export function ChatOverlay({
   /** Reports the settled visible footprint to transparent desktop hosts. */
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   /** Native hosts use this to grow the transparent pill window with the sheet. */
-  onStateChange?: (state: ChatState) => void;
+  onStateChange?: (state: ChatSurfaceState) => void;
 }): React.JSX.Element {
   const [chatActionsOpen, setChatActionsOpen] = React.useState(false);
   const {
@@ -3107,12 +3109,11 @@ export function ChatOverlay({
           ? "OPEN_HALF_OR_OVER"
           : "OPEN_UNDER_HALF";
   // The actions menu is portaled above the composer. INPUT's shallow 96px
-  // native desktop host would clip that portal at the window boundary, so use
-  // the existing under-half host footprint only for the menu's lifetime. The
-  // renderer remains in INPUT and returns to its narrow non-blocking host as
-  // soon as the menu closes.
-  const nativeSurfaceState: ChatState =
-    chatActionsOpen && chatState === "INPUT" ? "OPEN_UNDER_HALF" : chatState;
+  // native desktop host would clip that portal at the window boundary. The
+  // dedicated INPUT_MENU host adds height only: it retains INPUT's exact width
+  // and bottom anchor so opening the floating menu cannot resize the composer.
+  const nativeSurfaceState: ChatSurfaceState =
+    chatActionsOpen && chatState === "INPUT" ? "INPUT_MENU" : chatState;
   React.useEffect(() => {
     onStateChange?.(nativeSurfaceState);
   }, [nativeSurfaceState, onStateChange]);

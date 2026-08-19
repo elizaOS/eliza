@@ -185,6 +185,15 @@ describe("desktop bottom-bar config", () => {
       );
     });
 
+    it("keeps the composer width and bottom anchor while making room above for its menu", () => {
+      expect(computeBottomBarSurfaceFrame(workArea, "INPUT_MENU")).toEqual({
+        x: 760,
+        y: 704,
+        width: 600,
+        height: 320,
+      });
+    });
+
     it("opens centered phone-width sheets at under-half and half-or-over heights", () => {
       expect(computeBottomBarSurfaceFrame(workArea, "OPEN_UNDER_HALF")).toEqual(
         { x: 740, y: 604, width: 640, height: 420 },
@@ -202,6 +211,7 @@ describe("desktop bottom-bar config", () => {
   });
 
   it("rejects forged native surface states", () => {
+    expect(isBottomBarSurfaceState("INPUT_MENU")).toBe(true);
     expect(isBottomBarSurfaceState("MAXIMIZED")).toBe(true);
     expect(isBottomBarSurfaceState("fullscreen")).toBe(false);
     expect(isBottomBarSurfaceState({ state: "CLOSED" })).toBe(false);
