@@ -4,15 +4,17 @@
  * a chunked response as soon as its running byte total crosses the cap.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MediaFetchError } from "../../media/index.ts";
 import {
 	ContentType,
 	type IAgentRuntime,
 	type Media,
 	type UUID,
 } from "../../types/index.ts";
-import { MAX_MEDIA_BYTES, processAttachments } from "./index.ts";
+import { processAttachments } from "./index.ts";
 
 const agentId = "00000000-0000-0000-0000-0000000000ab" as UUID;
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
 
 function makeRuntime(): IAgentRuntime {
 	return {
@@ -51,12 +53,13 @@ describe("basic-capabilities attachment body limits", () => {
 			vi.fn(async () => response),
 		);
 
-		await expect(
-			processAttachments(
-				[textDocument("https://media.test/declared-too-large.txt")],
-				makeRuntime(),
-			),
-		).rejects.toThrow(/exceeds size limit/);
+		const error = await processAttachments(
+			[textDocument("https://media.test/declared-too-large.txt")],
+			makeRuntime(),
+		).catch((cause: unknown) => cause);
+		expect(error).toBeInstanceOf(MediaFetchError);
+		expect(error).toMatchObject({ code: "max_bytes" });
+		expect((error as Error).message).toMatch(/exceeds size limit/);
 		expect(readerRequests).toBe(0);
 	});
 
@@ -89,12 +92,13 @@ describe("basic-capabilities attachment body limits", () => {
 			),
 		);
 
-		await expect(
-			processAttachments(
-				[textDocument("https://media.test/chunked-too-large.txt")],
-				makeRuntime(),
-			),
-		).rejects.toThrow(/maxBytes/);
+		const error = await processAttachments(
+			[textDocument("https://media.test/chunked-too-large.txt")],
+			makeRuntime(),
+		).catch((cause: unknown) => cause);
+		expect(error).toBeInstanceOf(MediaFetchError);
+		expect(error).toMatchObject({ code: "max_bytes" });
+		expect((error as Error).message).toMatch(/maxBytes/);
 		expect(reads).toBeLessThanOrEqual(3);
 		expect(cancelled).toBe(true);
 	});
