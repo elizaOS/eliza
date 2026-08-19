@@ -21,9 +21,12 @@
  * ## Storage Strategy
  *
  * ### Sessions
- * - Stored as components with type: `form_session:{roomId}`
- * - One active session per user per room
- * - Scoping ensures different rooms have different contexts
+ * - Stored as components with type: `form_session:{roomId}:{sessionId}`
+ * - One active/ready session per user per room, but multiple stashed
+ *   sessions (and a stashed session alongside a new active one) can coexist
+ * - The session id is part of the component type so distinct sessions in the
+ *   same room map to distinct natural keys and never overwrite each other
+ * - Room scoping ensures different rooms have different contexts
  *
  * ### Submissions
  * - Stored as components with type: `form_submission:{formId}:{submissionId}`
@@ -87,6 +90,20 @@ const isFormSession = (data: JsonValue | object): data is FormSession => {
 };
 
 const isLiveSession = (session: FormSession): boolean => !isExpired(session);
+
+/**
+ * Build the component type (natural key suffix) for a session.
+ *
+ * WHY the session id is included:
+ * - The runtime stores/looks up components by the natural key (entityId, type).
+ * - Keying only by room (`form_session:{roomId}`) let a single (entity, room)
+ *   hold just one session component, so stashing a session and then starting a
+ *   new one in the same room silently overwrote and destroyed the stash.
+ * - Including the session id gives every session its own natural key, so a
+ *   stashed session survives new activity in the same room.
+ */
+const sessionComponentType = (roomId: UUID, sessionId: string): string =>
+  `${FORM_SESSION_COMPONENT}:${roomId}:${sessionId}`;
 
 const RESTORABLE_SESSION_STATUSES: FormSession["status"][] = [
   "active",
@@ -182,23 +199,27 @@ export async function getActiveSession(
   entityId: UUID,
   roomId: UUID,
 ): Promise<FormSession | null> {
-  // Component type includes roomId for room-level scoping
-  const component = await runtime.getComponent(
-    entityId,
-    `${FORM_SESSION_COMPONENT}:${roomId}`,
-  );
+  // Session components are now keyed by (roomId, sessionId), so we scan the
+  // entity's session components and match on the session's own roomId rather
+  // than reading a single room-keyed component. startSession enforces at most
+  // one active/ready session per room, so the first match is the active one.
+  const components = await runtime.getComponents(entityId);
 
-  if (!component?.data || !isFormSession(component.data)) return null;
+  for (const component of components) {
+    if (!component.type.startsWith(`${FORM_SESSION_COMPONENT}:`)) continue;
+    if (!component.data || !isFormSession(component.data)) continue;
 
-  const session = component.data;
+    const session = component.data;
 
-  // Only return if active (not stashed, submitted, cancelled, or expired)
-  // WHY: Other statuses require explicit action to restore/continue
-  if (
-    isLiveSession(session) &&
-    (session.status === "active" || session.status === "ready")
-  ) {
-    return session;
+    // Only return if active (not stashed, submitted, cancelled, or expired)
+    // WHY: Other statuses require explicit action to restore/continue
+    if (
+      session.roomId === roomId &&
+      isLiveSession(session) &&
+      (session.status === "active" || session.status === "ready")
+    ) {
+      return session;
+    }
   }
 
   return null;
@@ -325,7 +346,7 @@ export async function saveSession(
   runtime: IAgentRuntime,
   session: FormSession,
 ): Promise<void> {
-  const componentType = `${FORM_SESSION_COMPONENT}:${session.roomId}`;
+  const componentType = sessionComponentType(session.roomId, session.id);
   const existing = await runtime.getComponent(session.entityId, componentType);
   const context = await resolveComponentContext(runtime, session.roomId);
   const resolvedWorldId = existing?.worldId ?? context.worldId;
@@ -366,7 +387,7 @@ export async function deleteSession(
   runtime: IAgentRuntime,
   session: FormSession,
 ): Promise<void> {
-  const componentType = `${FORM_SESSION_COMPONENT}:${session.roomId}`;
+  const componentType = sessionComponentType(session.roomId, session.id);
   const existing = await runtime.getComponent(session.entityId, componentType);
 
   if (existing) {
