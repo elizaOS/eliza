@@ -123,8 +123,11 @@ finalizes, and prints a per-silo summary plus the manifest sha256. `verify`
 re-hashes every artifact and reports `missing` /
 `size-mismatch` / `hash-mismatch` / `unlisted` / `symlink` / `meta-mismatch`
 findings; non-zero exit on any issue. Verification is lstat-based: a verified
-bundle contains no symlinks anywhere — a symlinked artifact would be mutable
-after signing, and a symlinked directory would mount an unswept external tree.
+bundle contains no symlinks or multiply-linked files anywhere — either could
+remain mutable through an external alias after signing, while a symlinked
+directory could mount an unswept external tree. Artifact sources are opened
+without following links, copied through a stable descriptor, and rejected if
+their identity changes during the copy.
 
 The coordinated matrix captures a content-and-filesystem-identity snapshot
 before its lanes run and passes it through `--baseline`; untouched files in

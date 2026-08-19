@@ -205,6 +205,9 @@ function physicalPath(filePath) {
 
 /** Refuse to mutate the verified bundle while writing reviewer output. */
 export function assertSafeOutputDir(outputDir, bundleDir) {
+  if (fs.existsSync(outputDir) && fs.lstatSync(outputDir).isSymbolicLink()) {
+    throw new Error("review output directory must not be a symlink");
+  }
   const physicalOutput = physicalPath(outputDir);
   const physicalBundle = bundleDir ? physicalPath(bundleDir) : null;
   if (
@@ -788,8 +791,10 @@ function openFile(filePath) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  assertSafeOutputDir(options.outputDir, resolveBundleDirForOptions(options));
+  const bundleDir = resolveBundleDirForOptions(options);
+  assertSafeOutputDir(options.outputDir, bundleDir);
   fs.mkdirSync(options.outputDir, { recursive: true });
+  assertSafeOutputDir(options.outputDir, bundleDir);
   fs.rmSync(path.join(options.outputDir, "artifacts"), {
     recursive: true,
     force: true,

@@ -300,7 +300,23 @@ test("rejects a reviewer output symlink into the verified bundle", async () => {
     await symlink(bundle, linkedOutput, "dir");
     assert.throws(
       () => assertSafeOutputDir(linkedOutput, bundle),
-      /must not overlap/,
+      /must not be a symlink/,
+    );
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("rejects a reviewer output symlink before cleanup can escape", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-output-link-"));
+  try {
+    const external = path.join(tmpDir, "external");
+    const linkedOutput = path.join(tmpDir, "linked-output");
+    await mkdir(external);
+    await symlink(external, linkedOutput, "dir");
+    assert.throws(
+      () => assertSafeOutputDir(linkedOutput, null),
+      /must not be a symlink/,
     );
   } finally {
     await rm(tmpDir, { recursive: true, force: true });

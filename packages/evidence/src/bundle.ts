@@ -60,8 +60,8 @@ export interface CreateBundleOptions {
   now?: () => Date;
   /** Override the derived `<utc stamp>-<shortsha>-<tier>` run id (tests). */
   runId?: string;
-  /** `auto` hardlinks and falls back to copy across volumes; `copy` always copies. */
-  linkMode?: "auto" | "copy";
+  /** Retained for source compatibility; evidence materialization is copy-only. */
+  linkMode?: "copy";
 }
 
 /** Options for {@link EvidenceBundle.addArtifact}. */
@@ -97,6 +97,7 @@ export interface VerifyIssue {
     | "hash-mismatch"
     | "unlisted"
     | "symlink"
+    | "hardlink"
     | "meta-mismatch";
   expected?: string;
   actual?: string;
@@ -145,27 +146,105 @@ async function sha256File(
   return { sha256: hash.digest("hex"), bytes };
 }
 
-function materialize(
-  sourcePath: string,
-  destPath: string,
-  linkMode: "auto" | "copy",
-  link: (source: string, dest: string) => void = fs.linkSync,
-): void {
-  if (linkMode === "copy") {
-    fs.copyFileSync(sourcePath, destPath);
-    return;
+function sameFileIdentity(
+  left: fs.BigIntStats,
+  right: fs.BigIntStats,
+): boolean {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs &&
+    left.nlink === right.nlink
+  );
+}
+
+/** Copy one single-link regular file through a stable no-follow descriptor. */
+function materialize(sourcePath: string, destPath: string): void {
+  const sourceLstat = fs.lstatSync(sourcePath, { bigint: true });
+  if (
+    sourceLstat.isSymbolicLink() ||
+    !sourceLstat.isFile() ||
+    sourceLstat.nlink !== 1n
+  ) {
+    throw new EvidenceError(
+      `artifact source is not a single-link regular file: ${sourcePath}`,
+      {
+        code: "ARTIFACT_SOURCE_UNSAFE",
+        context: { sourcePath, nlink: sourceLstat.nlink.toString() },
+      },
+    );
   }
+  const source = fs.openSync(
+    sourcePath,
+    fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+  );
+  let destination: number | undefined;
+  let destinationCreated = false;
   try {
-    link(sourcePath, destPath);
-  } catch (error) {
-    // Not error suppression: EXDEV (silo on a different volume than the
-    // bundle) is an expected condition that selects the copy strategy — the
-    // artifact is still fully materialized and hashed, nothing is lost or
-    // defaulted. Every other failure rethrows untouched.
-    if ((error as NodeJS.ErrnoException).code !== "EXDEV") {
-      throw error;
+    const before = fs.fstatSync(source, { bigint: true });
+    if (
+      !before.isFile() ||
+      before.nlink !== 1n ||
+      !sameFileIdentity(sourceLstat, before)
+    ) {
+      throw new EvidenceError(
+        `artifact source changed before copy: ${sourcePath}`,
+        { code: "ARTIFACT_SOURCE_UNSTABLE", context: { sourcePath } },
+      );
     }
-    fs.copyFileSync(sourcePath, destPath);
+    destination = fs.openSync(
+      destPath,
+      fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY,
+      0o600,
+    );
+    destinationCreated = true;
+    const chunk = Buffer.allocUnsafe(1024 * 1024);
+    let total = 0n;
+    for (;;) {
+      const bytesRead = fs.readSync(source, chunk, 0, chunk.length, null);
+      if (bytesRead === 0) break;
+      let offset = 0;
+      while (offset < bytesRead) {
+        const written = fs.writeSync(
+          destination,
+          chunk,
+          offset,
+          bytesRead - offset,
+        );
+        if (written === 0) {
+          throw new EvidenceError(
+            `artifact destination stopped accepting bytes: ${destPath}`,
+            { code: "ARTIFACT_COPY_FAILED", context: { destPath } },
+          );
+        }
+        offset += written;
+      }
+      total += BigInt(bytesRead);
+    }
+    fs.fsyncSync(destination);
+    const after = fs.fstatSync(source, { bigint: true });
+    if (
+      after.nlink !== 1n ||
+      total !== after.size ||
+      !sameFileIdentity(before, after)
+    ) {
+      throw new EvidenceError(
+        `artifact source changed while being copied: ${sourcePath}`,
+        { code: "ARTIFACT_SOURCE_UNSTABLE", context: { sourcePath } },
+      );
+    }
+  } catch (error) {
+    if (destination !== undefined) {
+      fs.closeSync(destination);
+      destination = undefined;
+    }
+    if (destinationCreated) fs.rmSync(destPath, { force: true });
+    throw error;
+  } finally {
+    if (destination !== undefined) fs.closeSync(destination);
+    fs.closeSync(source);
   }
 }
 
@@ -203,24 +282,14 @@ export class EvidenceBundle {
   readonly runId: string;
   readonly dir: string;
   private readonly now: () => Date;
-  private readonly linkMode: "auto" | "copy";
   private readonly provenance: BundleProvenance;
   private readonly startedAt: string;
   private readonly entries: ArtifactEntry[] = [];
   private readonly claimedPaths = new Set<string>();
   private finalized = false;
-  /** Test-only seam for simulating cross-volume link failures (EXDEV). */
-  private readonly link?: (source: string, dest: string) => void;
-
-  constructor(
-    options: CreateBundleOptions & {
-      link?: (source: string, dest: string) => void;
-    },
-  ) {
+  constructor(options: CreateBundleOptions) {
     this.now = options.now ?? (() => new Date());
-    this.linkMode = options.linkMode ?? "copy";
     this.provenance = options.provenance;
-    this.link = options.link;
     const started = this.now();
     this.startedAt = started.toISOString();
     this.runId =
@@ -275,9 +344,9 @@ export class EvidenceBundle {
         { code: "ARTIFACT_PLACEMENT_AMBIGUOUS", context: { filePath } },
       );
     }
-    let stat: fs.Stats;
+    let stat: fs.BigIntStats;
     try {
-      stat = fs.statSync(filePath);
+      stat = fs.lstatSync(filePath, { bigint: true });
     } catch (error) {
       // error-policy:J2 context-adding rethrow — a vanished source file must
       // fail the ingest, not silently shrink the bundle.
@@ -287,11 +356,14 @@ export class EvidenceBundle {
         context: { filePath },
       });
     }
-    if (!stat.isFile()) {
-      throw new EvidenceError(`artifact source is not a file: ${filePath}`, {
-        code: "ARTIFACT_MISSING",
-        context: { filePath },
-      });
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1n) {
+      throw new EvidenceError(
+        `artifact source is not a single-link regular file: ${filePath}`,
+        {
+          code: "ARTIFACT_SOURCE_UNSAFE",
+          context: { filePath },
+        },
+      );
     }
     const rel = options.relativePath ?? path.basename(filePath);
     // NFC-normalize at ingress: macOS reports NFD filenames, linux NFC; the
@@ -313,7 +385,7 @@ export class EvidenceBundle {
     }
     const destPath = path.join(this.dir, ...bundlePath.split("/"));
     fs.mkdirSync(path.dirname(destPath), { recursive: true });
-    materialize(filePath, destPath, this.linkMode, this.link);
+    materialize(filePath, destPath);
     const { sha256, bytes } = await sha256File(destPath);
     const entry: ArtifactEntry = {
       path: bundlePath,
@@ -391,7 +463,7 @@ export function createBundle(options: CreateBundleOptions): EvidenceBundle {
 function* walkEntries(
   root: string,
   relBase = "",
-): Generator<{ rel: string; kind: "file" | "symlink" }> {
+): Generator<{ rel: string; kind: "file" | "symlink"; nlink?: number }> {
   const entries = fs.readdirSync(root, { withFileTypes: true });
   for (const entry of entries) {
     const rel = relBase === "" ? entry.name : `${relBase}/${entry.name}`;
@@ -400,7 +472,11 @@ function* walkEntries(
     } else if (entry.isDirectory()) {
       yield* walkEntries(path.join(root, entry.name), rel);
     } else if (entry.isFile()) {
-      yield { rel, kind: "file" };
+      yield {
+        rel,
+        kind: "file",
+        nlink: fs.lstatSync(path.join(root, entry.name)).nlink,
+      };
     }
   }
 }
@@ -443,6 +519,7 @@ export async function verifyBundle(dir: string): Promise<VerifyReport> {
 
   const issues: VerifyIssue[] = [];
   const symlinkFlagged = new Set<string>();
+  const hardlinkFlagged = new Set<string>();
   let verifiedCount = 0;
   for (const artifact of manifest.artifacts) {
     const artifactPath = path.join(dir, ...artifact.path.split("/"));
@@ -465,6 +542,11 @@ export async function verifyBundle(dir: string): Promise<VerifyReport> {
     }
     if (!stat.isFile()) {
       issues.push({ path: artifact.path, issue: "missing" });
+      continue;
+    }
+    if (stat.nlink !== 1) {
+      issues.push({ path: artifact.path, issue: "hardlink" });
+      hardlinkFlagged.add(artifact.path);
       continue;
     }
     if (stat.size !== artifact.bytes) {
@@ -523,6 +605,9 @@ export async function verifyBundle(dir: string): Promise<VerifyReport> {
         issues.push({ path: entry.rel, issue: "symlink" });
       }
       continue;
+    }
+    if (entry.nlink !== 1 && !hardlinkFlagged.has(entry.rel)) {
+      issues.push({ path: entry.rel, issue: "hardlink" });
     }
     if (ENVELOPE_FILES.has(entry.rel)) continue;
     if (!listed.has(entry.rel)) {

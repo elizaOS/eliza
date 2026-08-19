@@ -224,7 +224,7 @@ describe("ingestAllSilos", () => {
       assertSafeBundleOutput(repo, path.join(repo, "e2e-recordings", "runs")),
     ).toThrow();
 
-    fs.rmSync(path.join(repo, "e2e-recordings"));
+    fs.rmSync(path.join(repo, "e2e-recordings"), { recursive: true });
     fs.mkdirSync(path.join(repo, "packages/app/test-results"), {
       recursive: true,
     });
@@ -237,6 +237,38 @@ describe("ingestAllSilos", () => {
     expect(() => assertSafeBundleOutput(repo, repo)).toThrow(
       /overlaps canonical evidence root/,
     );
+  });
+
+  it("rejects hardlinked files that can expose bytes outside a silo", () => {
+    const repo = tmpDir();
+    const external = path.join(tmpDir(), "external-secret.log");
+    fs.writeFileSync(external, "not producer evidence");
+    const producer = path.join(repo, "packages/app/test-results/leak.log");
+    fs.mkdirSync(path.dirname(producer), { recursive: true });
+    fs.linkSync(external, producer);
+
+    expect(() => captureSiloSnapshot(repo)).toThrow(
+      expect.objectContaining({ code: "SILO_SOURCE_UNSAFE" }),
+    );
+  });
+
+  it("rejects direct-library self-ingest when the bundle is under a producer", async () => {
+    const repo = tmpDir();
+    write(repo, "packages/app/test-results/current.log", "current");
+    const bundle = createBundle({
+      rootDir: path.join(repo, "packages/app/test-results/evidence-runs"),
+      provenance: {
+        commit: "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "fix/self-ingest",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: { node: "v24" },
+      },
+    });
+
+    await expect(ingestAllSilos(bundle, repo)).rejects.toMatchObject({
+      code: "BUNDLE_OUTPUT_UNSAFE",
+    });
   });
 
   it("excludes unchanged stale files and includes only exact-run deltas", async () => {
@@ -301,6 +333,29 @@ describe("ingestAllSilos", () => {
     const { manifest } = await bundle.finalize();
     expect(manifest.artifacts).toEqual([]);
     expect(results.every((result) => result.artifactCount === 0)).toBe(true);
+  });
+
+  it("does not relabel a file deleted during the run as current evidence", async () => {
+    const repo = tmpDir();
+    const deleted = path.join(repo, "packages/app/test-results/deleted.log");
+    write(repo, "packages/app/test-results/deleted.log", "old");
+    const baseline = captureSiloSnapshot(repo);
+    fs.rmSync(deleted);
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: {
+        commit: "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "fix/delete",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: { node: "v24" },
+      },
+    });
+    const results = await ingestAllSilos(bundle, repo, baseline);
+    expect((await bundle.finalize()).manifest.artifacts).toEqual([]);
+    expect(
+      results.find((result) => result.silo === "playwright-test-results"),
+    ).toMatchObject({ status: "ingested", artifactCount: 0 });
   });
 
   it("ingests every fixture silo with honest per-silo counts", async () => {

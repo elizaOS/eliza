@@ -23,9 +23,10 @@ root [`CLAUDE.md`](../../CLAUDE.md).
   serialization is a certification-breaking change.
 - **Provenance is bound.** `finalize()` writes + hashes `meta.json` before
   building the manifest and embeds `metaSha256`; `verifyBundle` re-checks it
-  (`meta-mismatch`). A verified bundle contains no symlinks anywhere —
-  verification is lstat-based and reports `symlink` findings instead of
-  following links (mutable-after-signing / unswept-tree exploits).
+  (`meta-mismatch`). Artifact materialization is descriptor-stable and
+  copy-only. A verified bundle contains no symlinks or multiply-linked files
+  anywhere — verification reports `symlink` / `hardlink` findings instead of
+  accepting mutable-after-signing or unswept-tree aliases.
 - **One producer inventory.** Ingestors (`src/ingest.ts`) name every canonical
   producer root and only discover + copy. Normal review verifies and reads the
   resulting bundle; raw directory crawling exists only behind explicit

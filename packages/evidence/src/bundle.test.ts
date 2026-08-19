@@ -2,9 +2,7 @@
  * Real-filesystem tests for the bundle builder and verifier: byte-stable
  * manifests under an injected clock, copy materialization, path
  * collision/traversal refusal, single-use lifecycle, and tamper detection.
- * Everything runs against tmp dirs — no mocks of the code under test; the
- * only injected seam is the link function (the EXDEV condition cannot be
- * created portably inside one tmp volume).
+ * Everything runs against real files in temporary directories.
  */
 
 import { createHash } from "node:crypto";
@@ -13,12 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BundleProvenance } from "./bundle.ts";
-import {
-  createBundle,
-  EvidenceBundle,
-  formatRunId,
-  verifyBundle,
-} from "./bundle.ts";
+import { createBundle, formatRunId, verifyBundle } from "./bundle.ts";
 import { EvidenceError, EvidenceValidationError } from "./errors.ts";
 
 const COMMIT = "abcdef0123456789abcdef0123456789abcdef01";
@@ -246,52 +239,80 @@ describe("EvidenceBundle", () => {
     expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
   });
 
-  it("falls back to copy when the link fails with EXDEV", async () => {
+  it("rejects symlink and hardlink sources instead of copying external bytes", async () => {
     const sources = tmpDir();
-    const exdev = Object.assign(new Error("cross-device link"), {
-      code: "EXDEV",
-    });
-    const bundle = new EvidenceBundle({
+    const external = writeFixture(tmpDir(), "outside.log", "outside");
+    const symlinkPath = path.join(sources, "linked.log");
+    const hardlinkPath = path.join(sources, "hardlinked.log");
+    fs.symlinkSync(external, symlinkPath);
+    fs.linkSync(external, hardlinkPath);
+    const bundle = createBundle({
       rootDir: tmpDir(),
       provenance: PROVENANCE,
       now: fixedClock(),
-      linkMode: "auto",
-      link: () => {
-        throw exdev;
-      },
     });
-    const sourcePath = writeFixture(sources, "video.mp4", "mp4-bytes");
-    const entry = await bundle.addArtifact(sourcePath, {
-      kind: "video",
-      source: "e2e-recordings",
-      producedBy: "run-all.mjs",
-    });
-    const stored = path.join(bundle.dir, ...entry.path.split("/"));
-    expect(fs.statSync(stored).ino).not.toBe(fs.statSync(sourcePath).ino);
-    expect(fs.readFileSync(stored, "utf8")).toBe("mp4-bytes");
+    for (const sourcePath of [symlinkPath, hardlinkPath]) {
+      await expect(
+        bundle.addArtifact(sourcePath, {
+          kind: "log",
+          source: "test",
+          producedBy: "test",
+        }),
+      ).rejects.toMatchObject({ code: "ARTIFACT_SOURCE_UNSAFE" });
+    }
   });
 
-  it("rethrows non-EXDEV link failures", async () => {
+  it("rejects a source changed through the open descriptor during copy", async () => {
     const sources = tmpDir();
-    const eperm = Object.assign(new Error("operation not permitted"), {
-      code: "EPERM",
-    });
-    const bundle = new EvidenceBundle({
+    const sourcePath = writeFixture(sources, "changing.log", "before");
+    const bundle = createBundle({
       rootDir: tmpDir(),
       provenance: PROVENANCE,
       now: fixedClock(),
-      linkMode: "auto",
-      link: () => {
-        throw eperm;
-      },
     });
+    const originalRead = fs.readSync;
+    let changed = false;
+    fs.readSync = ((...args: Parameters<typeof fs.readSync>) => {
+      const count = originalRead(...args);
+      if (!changed && count > 0) {
+        changed = true;
+        fs.writeFileSync(sourcePath, "after!");
+      }
+      return count;
+    }) as typeof fs.readSync;
+    try {
+      await expect(
+        bundle.addArtifact(sourcePath, {
+          kind: "log",
+          source: "test",
+          producedBy: "test",
+        }),
+      ).rejects.toMatchObject({ code: "ARTIFACT_SOURCE_UNSTABLE" });
+      expect(
+        fs.existsSync(path.join(bundle.dir, "misc/test/changing.log")),
+      ).toBe(false);
+    } finally {
+      fs.readSync = originalRead;
+    }
+  });
+
+  it("does not delete a pre-existing destination when exclusive copy fails", async () => {
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    const destination = path.join(bundle.dir, "misc/test/existing.log");
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, "keep-me");
     await expect(
-      bundle.addArtifact(writeFixture(sources, "x.png", "x"), {
-        kind: "screenshot",
-        source: "s",
-        producedBy: "p",
+      bundle.addArtifact(writeFixture(tmpDir(), "existing.log", "new"), {
+        kind: "log",
+        source: "test",
+        producedBy: "test",
       }),
-    ).rejects.toBe(eperm);
+    ).rejects.toMatchObject({ code: "EEXIST" });
+    expect(fs.readFileSync(destination, "utf8")).toBe("keep-me");
   });
 
   it("throws typed errors for missing sources, collisions, and traversal", async () => {
@@ -527,6 +548,37 @@ describe("verifyBundle", () => {
     expect(
       report.issues.filter((i) => i.path === "lanes/e2e/logs/server.log"),
     ).toHaveLength(1);
+  });
+
+  it("rejects hardlinked artifacts and envelope files", async () => {
+    const sources = tmpDir();
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: PROVENANCE,
+      now: fixedClock(),
+    });
+    const entry = await bundle.addArtifact(
+      writeFixture(sources, "proof.log", "proof"),
+      { kind: "log", source: "test", producedBy: "test" },
+    );
+    const finalized = await bundle.finalize();
+    const artifactPath = path.join(bundle.dir, ...entry.path.split("/"));
+    fs.linkSync(artifactPath, path.join(tmpDir(), "artifact-alias.log"));
+    fs.linkSync(
+      finalized.manifestPath,
+      path.join(tmpDir(), "manifest-alias.json"),
+    );
+
+    const report = await verifyBundle(bundle.dir);
+    expect(report.ok).toBe(false);
+    expect(report.issues).toContainEqual({
+      path: entry.path,
+      issue: "hardlink",
+    });
+    expect(report.issues).toContainEqual({
+      path: "manifest.json",
+      issue: "hardlink",
+    });
   });
 
   it("still reports a plain unlisted regular file as unlisted (control)", async () => {

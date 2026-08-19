@@ -69,7 +69,8 @@ function sameIdentity(left: fs.BigIntStats, right: fs.BigIntStats): boolean {
     left.ino === right.ino &&
     left.size === right.size &&
     left.mtimeNs === right.mtimeNs &&
-    left.ctimeNs === right.ctimeNs
+    left.ctimeNs === right.ctimeNs &&
+    left.nlink === right.nlink
   );
 }
 
@@ -79,13 +80,17 @@ function captureStableFile(
   stagingDir?: string,
 ): StableCapture {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const sourceLstat = fs.lstatSync(filePath);
-    if (sourceLstat.isSymbolicLink() || !sourceLstat.isFile()) {
+    const sourceLstat = fs.lstatSync(filePath, { bigint: true });
+    if (
+      sourceLstat.isSymbolicLink() ||
+      !sourceLstat.isFile() ||
+      sourceLstat.nlink !== 1n
+    ) {
       throw new EvidenceError(
-        `evidence source is not a regular file: ${filePath}`,
+        `evidence source is not a single-link regular file: ${filePath}`,
         {
           code: "SILO_SOURCE_UNSAFE",
-          context: { filePath },
+          context: { filePath, nlink: sourceLstat.nlink.toString() },
         },
       );
     }
@@ -102,9 +107,13 @@ function captureStableFile(
     let stagedDescriptor: number | undefined;
     try {
       const before = fs.fstatSync(descriptor, { bigint: true });
-      if (!before.isFile()) {
+      if (
+        !before.isFile() ||
+        before.nlink !== 1n ||
+        !sameIdentity(sourceLstat, before)
+      ) {
         throw new EvidenceError(
-          `evidence source is not a regular file: ${filePath}`,
+          `evidence source changed before capture: ${filePath}`,
           {
             code: "SILO_SOURCE_UNSAFE",
             context: { filePath },
@@ -204,7 +213,18 @@ function classifyByExtension(relPath: string): ArtifactKind {
   );
 }
 
-function* walkSiloFiles(root: string, relBase = ""): Generator<string> {
+function walkSiloFiles(root: string, relBase = ""): string[] {
+  const before = fs.lstatSync(root, { bigint: true });
+  if (before.isSymbolicLink() || !before.isDirectory()) {
+    throw new EvidenceError(
+      `unsafe directory in evidence producer tree: ${root}`,
+      {
+        code: "SILO_SOURCE_UNSAFE",
+        context: { root },
+      },
+    );
+  }
+  const files: string[] = [];
   const entries = fs.readdirSync(root, { withFileTypes: true });
   for (const entry of entries) {
     const rel = relBase === "" ? entry.name : `${relBase}/${entry.name}`;
@@ -216,11 +236,19 @@ function* walkSiloFiles(root: string, relBase = ""): Generator<string> {
       });
     } else if (stat.isDirectory()) {
       if (SKIP_DIR_NAMES.has(entry.name)) continue;
-      yield* walkSiloFiles(full, rel);
+      files.push(...walkSiloFiles(full, rel));
     } else if (stat.isFile()) {
-      yield rel;
+      files.push(rel);
     }
   }
+  const after = fs.lstatSync(root, { bigint: true });
+  if (!after.isDirectory() || !sameIdentity(before, after)) {
+    throw new EvidenceError(
+      `evidence producer directory changed while being inventoried: ${root}`,
+      { code: "SILO_SOURCE_UNSTABLE", context: { root } },
+    );
+  }
+  return files;
 }
 
 function assertCanonicalRoot(repoRoot: string, rootDir: string): void {
@@ -282,7 +310,9 @@ async function ingestSilo(
     }
     for (const rel of walkSiloFiles(rootDir)) {
       const sourcePath = path.join(rootDir, ...rel.split("/"));
+      assertCanonicalRoot(repoRoot, sourcePath);
       const captured = captureStableFile(sourcePath, stagingDir);
+      assertCanonicalRoot(repoRoot, sourcePath);
       const previous =
         baseline?.files[snapshotKey(definition.silo, root.label, rel)];
       if (previous !== undefined) {
@@ -492,6 +522,7 @@ export async function ingestAllSilos(
   repoRoot: string,
   baseline?: SiloSnapshot,
 ): Promise<IngestResult[]> {
+  assertSafeBundleOutput(repoRoot, bundle.dir);
   const stagingDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-evidence-ingest-"),
   );
@@ -521,6 +552,7 @@ export async function ingestNamedSilo(
       context: { silo, known: [...SILO_NAMES] },
     });
   }
+  assertSafeBundleOutput(repoRoot, bundle.dir);
   const stagingDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-evidence-ingest-"),
   );
