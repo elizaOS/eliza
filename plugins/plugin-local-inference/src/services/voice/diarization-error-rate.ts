@@ -48,9 +48,9 @@ export const MIN_DER_FRAME_MS = 1;
 /** Longest accepted reference/hypothesis timeline. Voice scenarios are
  * minutes; this also rejects nonsensical timestamp magnitudes early. */
 export const MAX_DER_DURATION_MS = 4 * 60 * 60 * 1000;
-/** Maximum frames swept by one score. At the default 10ms resolution this
- * still admits the full four-hour timeline. */
-export const MAX_DER_FRAMES = 1_500_000;
+/** Maximum frames swept by one score. This bounds the two arrays of per-frame
+ * speaker Sets before allocation, independently of the timeline ceiling. */
+export const MAX_DER_FRAMES = 100_000;
 /** Maximum combined reference and hypothesis segments. */
 export const MAX_DER_SEGMENTS = 100_000;
 /** Maximum combined distinct labels used to size the mapping matrix. */
