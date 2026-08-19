@@ -219,45 +219,62 @@ export interface KillResult {
  * routes through the approval manager like every other non-read verb. Uses
  * `execFile` (no shell) so the target can't inject a command.
  *
- *   - Windows: `taskkill /F /PID <n>` or `/F /IM <name>.exe`.
- *   - macOS / Linux: `kill -9 <pid>` or `pkill -f <name>`.
+ *   - Windows: `taskkill /F /PID <n>` or `/F /IM <exact>.exe`.
+ *   - macOS / Linux: `kill -9 <pid>` or `pkill -x <exact name>`.
+ *     Never `pkill -f`: that treats the target as a regex over the full
+ *     command line, so `.` or `eliza` would match this process and others.
  *
  * Rejects when the target does not exist (non-zero exit) so the caller gets
  * clear feedback rather than a silent no-op.
  */
-export function killApp(target: string): Promise<KillResult> {
+
+const SAFE_PROCESS_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\.exe)?$/i;
+
+export function resolveKillInvocation(
+  target: string,
+  os: NodeJS.Platform,
+): { command: string; args: string[]; isPid: boolean; value: string } {
   const value = String(target ?? "").trim();
   if (!value) {
-    return Promise.reject(
-      new Error("kill_app requires a non-empty target (pid or app name)"),
-    );
+    throw new Error("kill_app requires a non-empty target (pid or app name)");
   }
   const isPid = /^\d+$/.test(value);
-  const os = currentPlatform();
-  let command: string;
-  let args: string[];
-  if (os === "win32") {
-    command = "taskkill";
-    args = isPid
-      ? ["/F", "/PID", value]
-      : [
-          "/F",
-          "/IM",
-          value.toLowerCase().endsWith(".exe") ? value : `${value}.exe`,
-        ];
-  } else if (os === "darwin" || os === "linux") {
-    if (isPid) {
-      command = "kill";
-      args = ["-9", value];
-    } else {
-      command = "pkill";
-      args = ["-f", value];
+  if (isPid) {
+    // `kill -9 0` signals the whole process group. Require a real pid.
+    if (value === "0") {
+      throw new Error("kill_app refuses pid 0 (process-group signal)");
     }
-  } else {
-    return Promise.reject(
-      new Error(`kill_app unsupported on platform "${os}"`),
+    if (os === "win32") {
+      return { command: "taskkill", args: ["/F", "/PID", value], isPid, value };
+    }
+    if (os === "darwin" || os === "linux") {
+      return { command: "kill", args: ["-9", value], isPid, value };
+    }
+    throw new Error(`kill_app unsupported on platform "${os}"`);
+  }
+  if (!SAFE_PROCESS_NAME.test(value)) {
+    throw new Error(
+      "kill_app process name must be a single exact executable name",
     );
   }
+  if (os === "win32") {
+    const image = value.toLowerCase().endsWith(".exe") ? value : `${value}.exe`;
+    return { command: "taskkill", args: ["/F", "/IM", image], isPid, value };
+  }
+  if (os === "darwin" || os === "linux") {
+    return { command: "pkill", args: ["-x", value], isPid, value };
+  }
+  throw new Error(`kill_app unsupported on platform "${os}"`);
+}
+
+export function killApp(target: string): Promise<KillResult> {
+  let invocation: ReturnType<typeof resolveKillInvocation>;
+  try {
+    invocation = resolveKillInvocation(target, currentPlatform());
+  } catch (err) {
+    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+  }
+  const { command, args, isPid, value } = invocation;
   return new Promise<KillResult>((resolve, reject) => {
     execFile(command, args, { timeout: OPEN_TIMEOUT_MS }, (err) => {
       if (err) {
