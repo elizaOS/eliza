@@ -1541,11 +1541,7 @@ export function ChatOverlay({
   // sheet could settle collapsed with the options hidden behind the grabber and
   // only a misleading "tap an option above" hint showing). Pin it structurally
   // at HALF, the same shared mobile composer detent used after a normal pull-up.
-  const effectiveMode: ChatMode = cloudLoginWaiting
-    ? "input"
-    : pinnedOpen
-      ? "half"
-      : mode;
+  const effectiveMode: ChatMode = pinnedOpen ? "half" : mode;
   const pilled = effectiveMode === "pill";
   const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
   const expanded = effectiveMode === "full";
@@ -2395,27 +2391,6 @@ export function ChatOverlay({
   const renderThreadLine = React.useCallback(
     (m: ShellMessage, index: number) => {
       const messageData = shellToChatMessageData(m);
-      const firstRunChoiceRegions =
-        firstRunOpen && isFirstRunShellMessage(m)
-          ? findChoiceRegions(m.content)
-          : [];
-      const detachedChoice =
-        firstRunChoiceRegions.length === 1 &&
-        firstRunChoiceRegions[0].options.length === 1
-          ? firstRunChoiceRegions[0]
-          : null;
-      const bubbleMessage = detachedChoice
-        ? {
-            ...messageData,
-            text: `${m.content.slice(0, detachedChoice.start)}${m.content.slice(detachedChoice.end)}`.trim(),
-          }
-        : messageData;
-      const detachedChoiceMessage = detachedChoice
-        ? {
-            ...messageData,
-            text: m.content.slice(detachedChoice.start, detachedChoice.end),
-          }
-        : null;
       const isLastAssistant =
         index === visibleMessages.length - 1 && m.role === "assistant";
       const isInFlight =
@@ -2440,11 +2415,6 @@ export function ChatOverlay({
           className={cn("w-full", firstRunOpen && index > 0 && "mt-2")}
         >
           <ChatMessage
-            afterBubbleContent={
-              detachedChoiceMessage
-                ? renderRowBody(detachedChoiceMessage, undefined)
-                : undefined
-            }
             actionAccessory={
               m.id === speakingSourceMessageId ? (
                 <SpeakingStatusAccessory />
@@ -2455,7 +2425,7 @@ export function ChatOverlay({
             // optimistic turn. Overlay rows must therefore be visible on their
             // first frame so the handoff never exposes only the prior transcript.
             agentName={agentName}
-            message={bubbleMessage}
+            message={messageData}
             reduceMotion={reduce}
             onCopy={handleCopyMessage}
             onLongPressCopy={handleLongPressCopy}
@@ -6566,9 +6536,12 @@ export function ChatOverlay({
                   ref={inputRef}
                   rows={1}
                   value={draft}
-                  // Onboarding is sign-in-first: lock the composer until the user
-                  // signs in, so they can't type into a chat that isn't ready yet.
-                  disabled={firstRunOpen}
+                  // Onboarding is sign-in-first: before launch the composer is
+                  // disabled. While the external browser owns sign-in it is
+                  // read-only instead, so clicking the familiar compact composer
+                  // can reopen the transcript and its recovery action.
+                  disabled={firstRunOpen && !cloudLoginWaiting}
+                  readOnly={cloudLoginWaiting}
                   onChange={(e) => {
                     const nextDraft = e.target.value;
                     resetMessageHistory();

@@ -445,7 +445,7 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByText("Agent")).toBeNull();
   });
 
-  it("renders one fallback sign-in turn if onboarding opens before the conductor seeds messages", () => {
+  it("renders the established greeting and sign-in bubbles if onboarding opens before the conductor seeds messages", () => {
     vi.useFakeTimers();
     seedAppStoreWithActionSpy();
     try {
@@ -457,13 +457,16 @@ describe("ChatOverlay first-run gating", () => {
         vi.advanceTimersByTime(600);
       });
 
-      expect(screen.getByTestId("thread-line").textContent).toContain(
+      expect(screen.getAllByTestId("thread-line")[0]?.textContent).toContain(
         FIRST_RUN_GREETING,
       );
+      expect(screen.getAllByTestId("thread-line")[1]?.textContent).toContain(
+        FIRST_RUN_SIGN_IN_PROMPT,
+      );
       expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
-      // The first Cloud prompt is one ordinary assistant row: its action is
-      // part of the shared transcript, never a special panel below composer.
-      expect(screen.getAllByTestId("thread-line")).toHaveLength(1);
+      // Both prompts are ordinary assistant rows in the shared transcript,
+      // never a special setup panel below the composer.
+      expect(screen.getAllByTestId("thread-line")).toHaveLength(2);
       expect(
         screen.getByTestId("choice-__first_run__:runtime:cloud"),
       ).toBeTruthy();
@@ -533,8 +536,6 @@ describe("ChatOverlay first-run gating", () => {
           id: "first-run:cloud-oauth",
           role: "assistant",
           content: [
-            FIRST_RUN_GREETING,
-            "",
             FIRST_RUN_SIGN_IN_PROMPT,
             "",
             "[CHOICE:first-run id=runtime]",
@@ -549,8 +550,8 @@ describe("ChatOverlay first-run gating", () => {
     render(<ChatOverlay controller={controller} firstRunOpen />);
 
     const signIn = screen.getByText("Sign in to Eliza Cloud");
-    expect(signIn.closest('[data-chat-message-bubble="true"]')).toBeNull();
-    expect(screen.getAllByTestId("thread-line").at(-1)?.textContent).toContain(
+    expect(signIn.closest('[data-chat-message-bubble="true"]')).toBeTruthy();
+    expect(screen.getAllByTestId("thread-line")[0]?.textContent).toContain(
       FIRST_RUN_GREETING,
     );
     expect(screen.getAllByTestId("thread-line").at(-1)?.textContent).toContain(
@@ -618,9 +619,11 @@ describe("ChatOverlay first-run gating", () => {
       "true",
     );
 
-    // The compact state is enforced while external auth owns the interaction.
+    // The compact composer is an initial state, not a trap: focus reopens the
+    // shared transcript where the immediate retry action lives.
     fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
-    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
 
     rerender(
       <ChatOverlay
