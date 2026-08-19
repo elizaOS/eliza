@@ -2950,7 +2950,7 @@ export class LifeOpsRepository {
    */
   async listPendingBriefEngagementRewards(
     agentId: string,
-    options: { limit?: number } = {},
+    options: { limit?: number; nowIso?: string } = {},
   ): Promise<LifeOpsBriefItemEngagementRecord[]> {
     const limit = options.limit ?? 250;
     if (!Number.isInteger(limit) || limit <= 0 || limit > 1_000) {
@@ -2959,6 +2959,16 @@ export class LifeOpsRepository {
         {
           code: "LIFEOPS_BRIEF_REWARD_BATCH_LIMIT_INVALID",
           context: { limit },
+        },
+      );
+    }
+    const nowIso = options.nowIso ?? isoNow();
+    if (!Number.isFinite(Date.parse(nowIso))) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Invalid pending reward scan time",
+        {
+          code: "LIFEOPS_BRIEF_REWARD_SCAN_TIME_INVALID",
+          context: { nowIso },
         },
       );
     }
@@ -2972,13 +2982,17 @@ export class LifeOpsRepository {
             'dismissed', 'ignored'
           )
           AND outcome.weight <> 0
+          AND NULLIF(BTRIM(outcome.metadata_json::jsonb ->> 'trajectoryId'), '') IS NOT NULL
           AND NOT EXISTS (
             SELECT 1
               FROM app_lifeops.life_brief_item_engagements receipt
              WHERE receipt.agent_id = outcome.agent_id
                AND receipt.event_type = 'rewarded'
                AND receipt.metadata_json::jsonb ->> 'engagementEventId' = outcome.id
-               AND receipt.metadata_json::jsonb ->> 'rewardState' = 'completed'
+               AND (
+                 receipt.metadata_json::jsonb ->> 'rewardState' = 'completed'
+                 OR receipt.event_at > ${sqlQuote(nowIso)}
+               )
           )
         ORDER BY outcome.event_at ASC, outcome.created_at ASC, outcome.id ASC
         LIMIT ${sqlInteger(limit)}`,

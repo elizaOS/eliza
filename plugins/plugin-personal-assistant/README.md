@@ -254,8 +254,9 @@ receipt: an abandoned claim can be taken after its lease, and a crash after the
 trajectory update is recovered by observing the already-applied receipt.
 Recovery scans a bounded pending-outcome batch independently of the editorial
 30-day window, so a long outage cannot strand an old reward. Completed receipts,
-zero-weight outcomes, and operational lease markers are excluded from that
-batch; operational markers are also excluded from editorial history reads.
+zero-weight outcomes, trajectory-less legacy rows, and outcomes with active
+leases are excluded from that batch; an expired lease re-enters in chronological
+order. Operational markers are also excluded from editorial history reads.
 
 ## Plugin dependencies
 

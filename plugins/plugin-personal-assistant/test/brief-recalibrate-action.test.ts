@@ -812,6 +812,78 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     ).toEqual([]);
   });
 
+  it("does not let active leases or trajectory-less history starve a bounded reward batch", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const record = async (args: {
+      suffix: string;
+      eventAt: string;
+      trajectoryId?: string;
+    }) =>
+      repository.recordBriefItemEngagement({
+        agentId: runtime.agentId,
+        briefingId: `brief-starvation-${args.suffix}`,
+        itemId: `${item.itemId}:${args.suffix}`,
+        source: item.source,
+        kind: item.kind,
+        sourceId: `${item.sourceId}:${args.suffix}`,
+        itemClass: item.itemClass,
+        eventType: "kept",
+        eventAt: args.eventAt,
+        weight: 0.5,
+        metadata: args.trajectoryId ? { trajectoryId: args.trajectoryId } : {},
+      });
+    await record({
+      suffix: "missing-trajectory",
+      eventAt: "2025-01-01T00:00:00.000Z",
+    });
+    const activelyClaimed = await record({
+      suffix: "active-claim",
+      eventAt: "2025-02-01T00:00:00.000Z",
+      trajectoryId: "active-claim-trajectory",
+    });
+    expect(
+      await repository.claimBriefEngagementReward(activelyClaimed, {
+        nowIso: "2099-01-01T00:00:00.000Z",
+        leaseSeconds: 60,
+      }),
+    ).not.toBeNull();
+    const recoverable = await record({
+      suffix: "recoverable",
+      eventAt: "2025-03-01T00:00:00.000Z",
+      trajectoryId: "recoverable-trajectory",
+    });
+    const applyReward = vi.fn(async () => true);
+    const rewardRuntime = {
+      ...runtime,
+      getService: () => ({ applyReward }),
+      getServicesByType: () => [{ applyReward }],
+    } as unknown as IAgentRuntime;
+
+    expect(
+      await retryBriefEngagementRewards({
+        runtime: rewardRuntime,
+        repository,
+        batchLimit: 1,
+      }),
+    ).toBe(1);
+    expect(applyReward).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: `brief-engagement:${recoverable.id}`,
+      }),
+    );
+    expect(
+      await repository.listPendingBriefEngagementRewards(runtime.agentId, {
+        nowIso: "2099-01-01T00:00:30.000Z",
+      }),
+    ).toEqual([]);
+    expect(
+      await repository.listPendingBriefEngagementRewards(runtime.agentId, {
+        nowIso: "2099-01-01T00:01:01.000Z",
+      }),
+    ).toEqual([activelyClaimed]);
+  });
+
   it("uses a rolling delivery window across UTC midnight and ignores late actions", async () => {
     const [item] = structureBriefingItems({ calendar: sections.calendar });
     if (!item) throw new Error("fixture item missing");

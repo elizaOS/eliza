@@ -1937,6 +1937,12 @@ export const lifeBriefItemEngagements = appLifeopsPgSchema.table(
       t.eventAt,
     ),
     index("idx_life_brief_item_engagements_brief").on(t.agentId, t.briefingId),
+    index("idx_life_brief_item_engagements_reward_queue").on(
+      t.agentId,
+      t.eventType,
+      t.eventAt,
+      t.createdAt,
+    ),
   ],
 );
 
