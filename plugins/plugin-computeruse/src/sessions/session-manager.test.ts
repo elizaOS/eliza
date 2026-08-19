@@ -48,6 +48,33 @@ describe("ComputerUseSessionManager", () => {
     expect(second.id).not.toBe(first.id);
   });
 
+  it("keeps the host lease renewable after a different session closes", () => {
+    let now = Date.parse("2026-08-19T00:00:00.000Z");
+    let id = 0;
+    const manager = new ComputerUseSessionManager({
+      now: () => now,
+      idFactory: () => `session-${++id}`,
+      executor: async () => ({ success: true }),
+    });
+    const host = manager.create({
+      target: { kind: "host" },
+      leaseTtlMs: 5_000,
+    });
+    const isolated = manager.create({
+      target: { kind: "browser", targetId: "browser-one" },
+    });
+
+    manager.close(isolated.id);
+    now += 2_000;
+    expect(manager.renewHostLease(host.id, 5_000).leaseExpiresAt).toBe(
+      "2026-08-19T00:00:07.000Z",
+    );
+    now += 5_001;
+
+    expect(manager.get(host.id)?.status).toBe("closed");
+    expect(manager.create({ target: { kind: "host" } }).status).toBe("idle");
+  });
+
   it("expires and renews host leases deterministically", () => {
     let now = Date.parse("2026-08-19T00:00:00.000Z");
     let id = 0;
