@@ -65,6 +65,10 @@ mock.module("@/db/client", () => ({
   runWithDbCacheAsync: async <T>(fn: () => Promise<T>) => await fn(),
 }));
 mock.module("@/lib/runtime/cloud-bindings", () => ({
+  getCloudAwareEnv: () => process.env,
+  getCloudBinding: () => undefined,
+  hasCloudBindingsContext: () => false,
+  runWithCloudBindings: <T>(_env: unknown, fn: () => T) => fn(),
   runWithCloudBindingsAsync: async <T>(_env: unknown, fn: () => Promise<T>) =>
     await fn(),
 }));
@@ -255,7 +259,12 @@ mock.module("@/lib/mobile-push/apns-provider", () => ({
   },
 }));
 mock.module("@/lib/utils/logger", () => ({
-  logger: { warn: loggerWarn },
+  logger: {
+    debug: () => undefined,
+    error: () => undefined,
+    info: () => undefined,
+    warn: loggerWarn,
+  },
 }));
 
 const { SharedRuntimeConversation } = await import(
