@@ -8,6 +8,9 @@
  * Consumed by @elizaos/agent's API server. The AppManager service, plugin
  * manager, favorites store, and runtime arrive through AppsRouteContext so
  * tests can substitute mocks (see apps-routes.test.ts).
+ *
+ * `/api/apps/hero/:slug` is reachable without an owner role. SVG heroes are
+ * XML and can carry script; they must not execute on the dashboard origin.
  */
 import type { Dirent } from "node:fs";
 import { promises as fs } from "node:fs";
@@ -186,6 +189,26 @@ interface LocalAppPackageJson {
   };
 }
 
+function heroResponseHeaders(
+  contentType: string,
+  byteLength: number,
+): Record<string, string | number> {
+  const headers: Record<string, string | number> = {
+    "Content-Type": contentType,
+    "Content-Length": byteLength,
+    "Cache-Control": "public, max-age=300",
+    "X-Content-Type-Options": "nosniff",
+  };
+  const mime = (contentType.split(";")[0] ?? "").trim().toLowerCase();
+  if (mime === "image/svg+xml") {
+    // Same stored-XSS rule as the content-addressed media store: SVG is an
+    // XML document. Navigating to /api/apps/hero/<slug> must download, not
+    // execute, plugin-supplied or generated markup on the dashboard origin.
+    headers["Content-Disposition"] = "attachment";
+  }
+  return headers;
+}
+
 async function streamAppHero(
   res: http.ServerResponse,
   absolutePath: string,
@@ -211,16 +234,13 @@ async function streamAppHero(
     setHeader?: (name: string, value: string | number) => void;
     end?: (chunk?: unknown) => void;
   };
+  const headers = heroResponseHeaders(contentType, data.byteLength);
   if (typeof response.writeHead === "function") {
-    response.writeHead(200, {
-      "Content-Type": contentType,
-      "Content-Length": data.byteLength,
-      "Cache-Control": "public, max-age=300",
-    });
+    response.writeHead(200, headers);
   } else if (typeof response.setHeader === "function") {
-    response.setHeader("Content-Type", contentType);
-    response.setHeader("Content-Length", data.byteLength);
-    response.setHeader("Cache-Control", "public, max-age=300");
+    for (const [name, value] of Object.entries(headers)) {
+      response.setHeader(name, value);
+    }
   }
   response.end?.(data);
 }
@@ -235,16 +255,13 @@ function sendGeneratedAppHero(res: http.ServerResponse, svg: string): void {
     setHeader?: (name: string, value: string | number) => void;
     end?: (chunk?: unknown) => void;
   };
+  const headers = heroResponseHeaders("image/svg+xml", data.byteLength);
   if (typeof response.writeHead === "function") {
-    response.writeHead(200, {
-      "Content-Type": "image/svg+xml",
-      "Content-Length": data.byteLength,
-      "Cache-Control": "public, max-age=300",
-    });
+    response.writeHead(200, headers);
   } else if (typeof response.setHeader === "function") {
-    response.setHeader("Content-Type", "image/svg+xml");
-    response.setHeader("Content-Length", data.byteLength);
-    response.setHeader("Cache-Control", "public, max-age=300");
+    for (const [name, value] of Object.entries(headers)) {
+      response.setHeader(name, value);
+    }
   }
   response.end?.(data);
 }

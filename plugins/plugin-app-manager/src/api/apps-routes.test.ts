@@ -407,4 +407,113 @@ describe("handleAppsRoutes", () => {
       await rm(packageDir, { recursive: true, force: true });
     }
   });
+
+  it("serves plugin SVG heroes as attachments so they cannot execute on the dashboard origin", async () => {
+    const packageDir = await mkdtemp(
+      path.join(os.tmpdir(), "app-manager-hero-svg-"),
+    );
+    try {
+      await mkdir(path.join(packageDir, "assets"));
+      await writeFile(
+        path.join(packageDir, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/plugin-demo",
+          elizaos: { app: { heroImage: "assets/hero.svg" } },
+        }),
+      );
+      await writeFile(
+        path.join(packageDir, "assets", "hero.svg"),
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>document.cookie</script></svg>',
+      );
+
+      const getPluginManager = () =>
+        ({
+          installPlugin: vi.fn(),
+          getInstalledPlugins: vi.fn(async () => []),
+          searchPlugins: vi.fn(async () => []),
+          refreshRegistry: vi.fn(
+            async () =>
+              new Map([
+                [
+                  "@elizaos/plugin-demo",
+                  {
+                    name: "@elizaos/plugin-demo",
+                    npm: { package: "@elizaos/plugin-demo" },
+                    localPath: packageDir,
+                    appMeta: { heroImage: "assets/hero.svg" },
+                  },
+                ],
+              ]),
+          ),
+        }) as never;
+
+      const result = await callRoute({
+        method: "GET",
+        pathname: "/api/apps/hero/demo",
+        appManager: createAppManager(),
+        getPluginManager,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
+      expect(result.res.headers["Content-Type"]).toBe("image/svg+xml");
+      expect(result.res.headers["Content-Disposition"]).toBe("attachment");
+      expect(result.res.headers["X-Content-Type-Options"]).toBe("nosniff");
+      expect(String(result.res.body)).toContain("<script>");
+    } finally {
+      await rm(packageDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps raster hero images inline", async () => {
+    const packageDir = await mkdtemp(
+      path.join(os.tmpdir(), "app-manager-hero-png-"),
+    );
+    try {
+      await mkdir(path.join(packageDir, "assets"));
+      await writeFile(
+        path.join(packageDir, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/plugin-demo",
+          elizaos: { app: { heroImage: "assets/hero.png" } },
+        }),
+      );
+      await writeFile(path.join(packageDir, "assets", "hero.png"), "png");
+
+      const getPluginManager = () =>
+        ({
+          installPlugin: vi.fn(),
+          getInstalledPlugins: vi.fn(async () => []),
+          searchPlugins: vi.fn(async () => []),
+          refreshRegistry: vi.fn(
+            async () =>
+              new Map([
+                [
+                  "@elizaos/plugin-demo",
+                  {
+                    name: "@elizaos/plugin-demo",
+                    npm: { package: "@elizaos/plugin-demo" },
+                    localPath: packageDir,
+                    appMeta: { heroImage: "assets/hero.png" },
+                  },
+                ],
+              ]),
+          ),
+        }) as never;
+
+      const result = await callRoute({
+        method: "GET",
+        pathname: "/api/apps/hero/demo",
+        appManager: createAppManager(),
+        getPluginManager,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
+      expect(result.res.headers["Content-Type"]).toBe("image/png");
+      expect(result.res.headers["Content-Disposition"]).toBeUndefined();
+    } finally {
+      await rm(packageDir, { recursive: true, force: true });
+    }
+  });
 });
