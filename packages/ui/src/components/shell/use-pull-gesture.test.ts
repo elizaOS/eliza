@@ -139,6 +139,44 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     expect(onDrag).toHaveBeenCalledWith(50);
   });
 
+  it("keeps native-window drags continuous when client coordinates jump during resize", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onDrag = vi.fn();
+    const onSettleFree = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        coordinateSpace: "screen",
+        onDrag,
+        onSettleFree,
+        velocityThreshold: 999,
+      }),
+    );
+    const b = result.current;
+
+    b.onPointerDown(
+      pointer(100, 300, 1, undefined, { screenX: 500, screenY: 700 }),
+    );
+    // The native window expanded upward by 600px, changing clientY even though
+    // the physical pointer moved only 80px upward on screen.
+    b.onPointerMove(
+      pointer(100, 820, 1, undefined, { screenX: 500, screenY: 620 }),
+    );
+    b.onPointerUp(
+      pointer(100, 820, 1, undefined, { screenX: 500, screenY: 620 }),
+    );
+
+    expect(onDrag).toHaveBeenLastCalledWith(80);
+    expect(onSettleFree).toHaveBeenCalledWith("up");
+  });
+
   it("captures immediately for a vertical pull handle that also supports swipes", () => {
     const setPointerCapture = vi.fn();
     const currentTarget = {

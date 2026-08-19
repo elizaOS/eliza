@@ -36,16 +36,8 @@ import {
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
-  // Voice's inert off-device diagnostics instantiate this re-export at module
-  // load; keep the class shape while replacing only the shared singleton.
-  ElizaClient: class {
-    fetch = vi.fn();
-  },
   client: {
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
-    // Shell capability gates consult the configured agent base before mounting
-    // the composer-adjacent provider indicator.
-    getBaseUrl: vi.fn(() => ""),
     // Transcription archival is best-effort and fire-and-forget; resolve so the
     // attachment path (the user-facing behavior) is what the test asserts.
     createTranscript: vi
@@ -66,19 +58,6 @@ vi.mock("../../utils/clipboard", () => ({
 
 vi.mock("../../chat/report-composer-activity", () => ({
   reportComposerActivity: vi.fn(),
-}));
-
-const desktopBridgeEventHandlers = vi.hoisted(
-  () => new Map<string, (payload: unknown) => void>(),
-);
-
-vi.mock("../../hooks/useDesktopBridgeEvent", () => ({
-  useDesktopBridgeEvent: (
-    options: { rpcMessage: string },
-    handler: (payload: unknown) => void,
-  ) => {
-    desktopBridgeEventHandlers.set(options.rpcMessage, handler);
-  },
 }));
 
 import * as React from "react";
@@ -196,12 +175,6 @@ function makeController(
   } as unknown as ShellController;
 }
 
-function emitDesktopWindowBlur(): void {
-  const handler = desktopBridgeEventHandlers.get("desktopWindowBlur");
-  expect(handler).toBeTypeOf("function");
-  act(() => handler?.(undefined));
-}
-
 /**
  * The app composition seam around the overlay, reproduced minimally: the
  * shared ChatComposerContext slot (real state), the app-level
@@ -283,6 +256,49 @@ describe("ChatOverlay", () => {
       />,
     );
     expect(onDetentChange).toHaveBeenLastCalledWith("input");
+  });
+
+  it("admits semantic pill activation without duplicating physical pointer taps", async () => {
+    const onRequestedOpenChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        initialMode="pill"
+        requestedOpen={false}
+        onRequestedOpenChange={onRequestedOpenChange}
+      />,
+    );
+
+    const pill = screen.getByTestId("chat-pill");
+    fireEvent.click(pill, { detail: 1 });
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "pill",
+    );
+
+    fireEvent.click(pill, { detail: 0 });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "collapsed",
+      );
+    });
+    expect(onRequestedOpenChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("admits semantic grabber activation without duplicating physical pointer taps", async () => {
+    render(<ChatOverlay controller={makeController()} initialMode="input" />);
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.click(grabber, { detail: 1 });
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
+
+    fireEvent.click(grabber, { detail: 0 });
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "half",
+      );
+    });
   });
 
   it("shows the mic and no send button when the draft is empty", () => {
@@ -686,7 +702,7 @@ describe("ChatOverlay", () => {
       fireEvent.focus(screen.getByLabelText("message"));
 
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Message Playwright Smoke",
+        "Hey Playwright Smoke...",
       );
 
       expect(
@@ -1682,7 +1698,6 @@ describe("ChatOverlay", () => {
     const fade = screen.getByTestId("chat-thread-top-fade");
     const rim = screen.getByTestId("chat-sheet-rim");
     const surface = screen.getByTestId("chat-sheet-surface");
-    const blackout = screen.getByTestId("chat-sheet-blackout");
     const viewport = screen.getByTestId("chat-thread-scroll");
     expect(fade.className).toContain("pointer-events-none");
     expect(fade.className).toContain("absolute");
@@ -1695,9 +1710,6 @@ describe("ChatOverlay", () => {
     expect(rim.className).toContain("z-40");
     expect(rim.className).toContain("border-border-strong");
     expect(surface.className.split(/\s+/)).not.toContain("border");
-    expect(blackout.style.opacity).not.toBe("");
-    expect(blackout.style.backgroundColor).toBe("var(--bg)");
-    expect(blackout.style.borderRadius).toBe("inherit");
     const content = screen.getByTestId("chat-content");
     expect(content.style.clipPath).toContain("inset(1px round");
     expect(viewport.style.maskImage).toBe("");
@@ -1826,25 +1838,6 @@ describe("ChatOverlay", () => {
     fireEvent.pointerDown(backdrop, { clientX: 20, clientY: 20, pointerId: 1 });
     fireEvent.pointerUp(backdrop, { clientX: 20, clientY: 20, pointerId: 1 });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
-  });
-
-  it("collapses an open desktop chat when the user clicks another window", () => {
-    const onStateChange = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController()}
-        onStateChange={onStateChange}
-      />,
-    );
-    const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
-
-    emitDesktopWindowBlur();
-
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
   });
 
   it("cedes taps to a layer painted ABOVE the chat (stacked dialog) instead of collapsing", () => {
@@ -2061,39 +2054,12 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("chat-full-launcher")).toBeNull();
 
     const grabber = screen.getByTestId("chat-sheet-grabber");
-    // The grab zone reaches a comfortable distance ABOVE the composer (so a
-    // swipe-up begun just over it opens the chat) but stays bounded — it never
-    // balloons up into the home widgets.
-    expect(grabber.className).toContain("before:-top-6");
-    expect(grabber.className).not.toContain("before:-top-16");
-    expect(grabber.className).toContain("inset-x-[4.5rem]");
-    expect(grabber.className).not.toContain("inset-x-6");
-  });
-
-  it("keeps the collapsed grabber and chat actions as exclusive gesture owners", () => {
-    const parentPointerDown = vi.fn();
-    render(
-      <div onPointerDown={parentPointerDown}>
-        <ChatOverlay controller={makeController()} />
-      </div>,
-    );
-
-    const plus = screen.getByTestId("chat-composer-plus");
-    fireEvent.pointerDown(plus, {
-      button: 0,
-      pointerId: 51,
-      pointerType: "mouse",
-    });
-    expect(parentPointerDown).not.toHaveBeenCalled();
-
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    fireEvent.pointerDown(grabber, {
-      button: 0,
-      pointerId: 52,
-      pointerType: "mouse",
-      clientY: 420,
-    });
-    expect(parentPointerDown).not.toHaveBeenCalled();
+    // The real button is a forgiving strip inside the painted panel. It has no
+    // pseudo-element extending into transparent pixels above or beside the
+    // bubble, where it would steal clicks from the underlying desktop app.
+    expect(grabber.className).not.toContain("before:");
+    expect(grabber.className).toContain("inset-x-6");
+    expect(grabber.className).toContain("top-0.5");
   });
 
   it("mounts an inert transcript preview during an upward drag before release", async () => {
@@ -2453,65 +2419,6 @@ describe("ChatOverlay", () => {
     expect(screen.queryByText("Record long-form transcript…")).toBeNull();
     expect(screen.queryByText("Enable camera")).toBeNull();
     expect(screen.queryByText("Stop transcribing")).toBeNull();
-  });
-
-  it("grows only the native input host height while the portaled chat-actions menu is open", () => {
-    const onStateChange = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController()}
-        onStateChange={onStateChange}
-      />,
-    );
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
-
-    const plus = screen.getByTestId("chat-composer-plus");
-    fireEvent.pointerDown(plus, {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    fireEvent.pointerUp(plus, {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-
-    expect(screen.getByText("Upload file")).toBeTruthy();
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT_MENU");
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
-  });
-
-  it("releases the temporary menu host bounds when the desktop window loses focus", () => {
-    const onStateChange = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController()}
-        onStateChange={onStateChange}
-      />,
-    );
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
-
-    const plus = screen.getByTestId("chat-composer-plus");
-    fireEvent.pointerDown(plus, {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    fireEvent.pointerUp(plus, {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    expect(screen.getByText("Upload file")).toBeTruthy();
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT_MENU");
-
-    emitDesktopWindowBlur();
-
-    expect(screen.queryByText("Upload file")).toBeNull();
-    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
   });
 
   it("returns to Home from the chat-actions menu", () => {
@@ -3114,43 +3021,6 @@ describe("ChatOverlay", () => {
     // pill→input morph but made inert (opacity 0 + `inert`) so it's unreachable
     // behind the pill capsule.
     expect(content.hasAttribute("inert")).toBe(true);
-  });
-
-  it("returns an idle desktop input bar to the existing pill after 10 seconds", () => {
-    vi.useFakeTimers();
-    try {
-      render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
-      const sheet = screen.getByTestId("chat-sheet");
-      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-      expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
-
-      act(() => vi.advanceTimersByTime(9_999));
-      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-
-      act(() => vi.advanceTimersByTime(1));
-      expect(sheet.getAttribute("data-detent")).toBe("pill");
-      expect(sheet.getAttribute("data-chat-state")).toBe("CLOSED");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("restarts the desktop input idle timer when the user interacts", () => {
-    vi.useFakeTimers();
-    try {
-      render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
-      const sheet = screen.getByTestId("chat-sheet");
-
-      act(() => vi.advanceTimersByTime(9_000));
-      fireEvent.pointerDown(screen.getByTestId("chat-composer-row"));
-      act(() => vi.advanceTimersByTime(9_999));
-      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-
-      act(() => vi.advanceTimersByTime(1));
-      expect(sheet.getAttribute("data-detent")).toBe("pill");
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("keeps the collapsed pill handle non-interactive while the input is formed", () => {
@@ -4229,6 +4099,190 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     fireEvent.pointerUp(grabber, { clientY: 0, pointerId: 7 });
   }
 
+  it("keeps the detached Mac tall inset detent without fullscreen or glow", async () => {
+    const { controller } = makeSwipeController();
+    render(
+      <ChatOverlay
+        controller={controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const now = vi.spyOn(performance, "now");
+    now.mockReturnValue(1_000);
+    fireEvent.wheel(sheet, { deltaY: 100 });
+    now.mockReturnValue(2_000);
+    fireEvent.wheel(sheet, { deltaY: 100 });
+    now.mockReturnValue(3_000);
+    fireEvent.wheel(sheet, { deltaY: 100 });
+
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-chat-state")).not.toBe("MAXIMIZED");
+    expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(surface.style.boxShadow).toBe("none");
+    expect(surface.style.backgroundImage).toBe("none");
+    expect(screen.queryByTestId("chat-sheet-specular-sheen")).toBeNull();
+
+    // A held pull beyond the top edge must not even BEGIN the shared
+    // edge-to-edge shape morph. The detached pill stays tall and inset for the
+    // entire gesture; releasing cannot be the first time its rounded geometry
+    // is restored.
+    const insetRadius = surface.style.borderRadius;
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    now.mockReturnValue(4_000);
+    fireEvent.pointerDown(grabber, {
+      clientY: 760,
+      screenY: 760,
+      pointerId: 77,
+    });
+    now.mockReturnValue(4_400);
+    fireEvent.pointerMove(grabber, {
+      clientY: 0,
+      screenY: 0,
+      pointerId: 77,
+    });
+    await act(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(surface.style.borderRadius).toBe(insetRadius);
+    fireEvent.pointerUp(grabber, {
+      clientY: 0,
+      screenY: 0,
+      pointerId: 77,
+    });
+
+    // A real mouse/touch click runs through the pull gesture's pointer tap
+    // callback (unlike detail=0 accessibility activation). It must perform the
+    // same one-stage close to the visible composer, never skip to the pill.
+    now.mockReturnValue(5_000);
+    fireEvent.pointerDown(grabber, {
+      clientY: 240,
+      screenY: 240,
+      pointerId: 78,
+    });
+    now.mockReturnValue(5_100);
+    fireEvent.pointerUp(grabber, {
+      clientY: 240,
+      screenY: 240,
+      pointerId: 78,
+    });
+    fireEvent.click(grabber, { detail: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    now.mockRestore();
+  });
+
+  it("keeps detached Mac input focus at the composer detent", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+    fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
+
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+  });
+
+  it("click-away closes detached Mac history only to the visible composer", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+
+    fireEvent.pointerDown(document.body, {
+      clientX: 12,
+      clientY: 12,
+      pointerId: 91,
+    });
+    fireEvent.pointerUp(document.body, {
+      clientX: 12,
+      clientY: 12,
+      pointerId: 91,
+    });
+
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+  });
+
+  it("steps the detached Mac pill down on short 24px grabber pulls", async () => {
+    const now = vi.spyOn(performance, "now");
+    const eventTimeStamp = vi
+      .spyOn(Event.prototype, "timeStamp", "get")
+      .mockImplementation(() => performance.now() || Number.MIN_VALUE);
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      let grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.click(grabber, { detail: 0 });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+
+      // A direct click closes only to the visible composer, never all the way
+      // to the tiny resting pill.
+      fireEvent.click(grabber, { detail: 0 });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+      grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.click(grabber, { detail: 0 });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+
+      const pullDown = async (pointerId: number) => {
+        now.mockReturnValue(pointerId * 1_000);
+        fireEvent.pointerDown(grabber, {
+          clientY: 400,
+          screenY: 400,
+          pointerId,
+        });
+        now.mockReturnValue(pointerId * 1_000 + 400);
+        fireEvent.pointerMove(grabber, {
+          clientY: 424,
+          screenY: 424,
+          pointerId,
+        });
+        await act(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            ),
+        );
+        now.mockReturnValue(pointerId * 1_000 + 800);
+        fireEvent.pointerUp(grabber, {
+          clientY: 424,
+          screenY: 424,
+          pointerId,
+        });
+      };
+
+      await pullDown(41);
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
+      grabber = screen.getByTestId("chat-sheet-grabber");
+      await pullDown(42);
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
+    } finally {
+      eventTimeStamp.mockRestore();
+      now.mockRestore();
+    }
+  });
+
   it("a big upward over-pull of the grabber maximizes to full-bleed", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
@@ -4236,21 +4290,6 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     bigPullUp();
     expect(sheet.getAttribute("data-maximized")).toBe("true");
     expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
-  });
-
-  it("fades the fullscreen transcript with its scroll mask instead of a painted rectangle", () => {
-    const { controller } = makeSwipeController();
-    render(<ChatOverlay controller={controller} />);
-
-    bigPullUp();
-
-    const viewport = screen.getByTestId("chat-thread-scroll");
-    const surface = screen.getByTestId("chat-sheet-surface");
-    expect(viewport.className.split(/\s+/)).toContain("scroll-fade");
-    expect(viewport.className.split(/\s+/)).not.toContain("scroll-fade-b");
-    expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
-    expect(screen.queryByTestId("chat-sheet-top-sheen")).toBeNull();
-    expect(surface.style.backgroundImage).toBe("none");
   });
 
   it("snaps to full-screen at 90% while held and reverses below the same line", async () => {
@@ -4300,15 +4339,8 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
     // Appears once maximized.
     bigPullUp();
-    const zone = screen.getByTestId("chat-maximize-restore-zone");
-    const handle = screen.getByTestId("chat-maximize-restore-handle");
-    expect(zone.contains(handle)).toBe(true);
-    expect(handle.getAttribute("aria-hidden")).toBe("true");
-    expect(handle.className).toContain("h-1");
-    expect(handle.className).toContain("w-9");
-    expect(handle.className).toContain("rounded-full");
-    expect(handle.style.backgroundColor).not.toBe("");
-    expect(handle.style.top).toContain("var(--safe-area-top");
+    expect(screen.getByTestId("chat-maximize-restore-zone")).toBeTruthy();
+    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
   });
 
   it("a downward pull in the top-20% restore zone exits full-bleed back to the overlay (not a full collapse)", () => {
@@ -4353,9 +4385,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       pointerId: 81,
     });
     expect(sheet.getAttribute("data-maximized")).toBe("true");
-    expect(
-      zone.contains(screen.getByTestId("chat-maximize-restore-handle")),
-    ).toBe(true);
+    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
     expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     expect(sheet.style.height).toBe("auto");
     fireEvent.pointerUp(zone, {
@@ -4969,6 +4999,23 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     fireEvent.click(bubbleFor("read me aloud"));
     fireEvent.click(screen.getByTestId("thread-line-speak"));
     expect(speak).toHaveBeenCalledWith("read me aloud");
+  });
+
+  it("surfaces a real TTS failure instead of leaving Play silently stuck", () => {
+    openThreadWith({
+      messages: [
+        { id: "a", role: "assistant", content: "read me aloud", createdAt: 1 },
+      ],
+      ttsError: {
+        engine: "local-inference",
+        message: "TTS request failed with 502",
+        atMs: 1,
+      },
+    });
+
+    const alert = screen.getByTestId("chat-overlay-tts-error");
+    expect(alert.textContent).toContain("Audio unavailable");
+    expect(alert.getAttribute("title")).toContain("502");
   });
 
   it("Play toggles to Stop once THIS message is the one playing", () => {

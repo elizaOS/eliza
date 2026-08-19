@@ -83,7 +83,6 @@ import {
   reportUserViewSwitch,
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
-import { markCompletedActionNavigationHandled } from "./completed-action-navigation";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
@@ -105,6 +104,16 @@ import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
+import {
+  CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+  CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+  type ChatOverlayMaterialSize,
+  type ChatOverlayWindowSizeClass,
+  readChatOverlayAuthSize,
+  readChatOverlayStageSize,
+  useChatOverlayWindowInteractiveSize,
+  useChatOverlayWindowSize,
+} from "./components/shell/chat-overlay-window-bounds";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
@@ -132,7 +141,6 @@ import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
-  CHAT_OPEN_EVENT,
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
@@ -321,17 +329,124 @@ function ChatOverlayShell() {
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
-  const overlayOpen = controller?.isOpen ?? false;
-  // Escape collapses the overlay first — while it is open, AssistantOverlay's
-  // own Escape handler closes it. Once already collapsed, Escape hides the
-  // desktop window entirely (#12184) so the pill dismisses to the background
-  // like a summoned panel. Desktop-only (web has no window to hide).
+  const [windowExpanded, setWindowExpanded] = useState(
+    controller?.isOpen ?? false,
+  );
+  // NSWindow geometry is not a compositor animation. Hold a stable envelope
+  // around each visual state while the renderer's springs move inside it.
+  const [windowSizeClass, setWindowSizeClass] =
+    useState<ChatOverlayWindowSizeClass>("resting");
+  const windowSizeClassRef = useRef<ChatOverlayWindowSizeClass>("resting");
+  const [stageSize] = useState(readChatOverlayStageSize);
+  const [authSize] = useState(readChatOverlayAuthSize);
+  const setActionNotice = useAppSelector((state) => state.setActionNotice);
+  const handleWindowBoundsFailure = useCallback((): void => {
+    if (windowExpanded) {
+      controller?.close();
+      setWindowExpanded(false);
+    }
+    setActionNotice(
+      "Desktop chat window resize failed. Close and reopen Eliza to retry.",
+      "error",
+      6_000,
+    );
+  }, [controller, setActionNotice, windowExpanded]);
+  const reportNativeWindowSize = useChatOverlayWindowSize(
+    handleWindowBoundsFailure,
+  );
+  const reportNativeInteractiveSize = useChatOverlayWindowInteractiveSize(
+    handleWindowBoundsFailure,
+  );
+  useEffect(() => {
+    if (controller?.authGate.gated) {
+      reportNativeWindowSize(authSize);
+      reportNativeInteractiveSize(authSize);
+      return;
+    }
+    if (windowSizeClass === "sheet") {
+      reportNativeWindowSize(stageSize);
+      return;
+    }
+    reportNativeWindowSize(
+      windowSizeClass === "input"
+        ? {
+            width: Math.max(
+              CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+              stageSize.width - 24,
+            ),
+            height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+          }
+        : {
+            width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+            height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+          },
+    );
+    if (windowSizeClass === "resting") {
+      reportNativeInteractiveSize({
+        width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+        height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+      });
+    }
+  }, [
+    authSize,
+    controller?.authGate.gated,
+    reportNativeWindowSize,
+    reportNativeInteractiveSize,
+    stageSize,
+    windowSizeClass,
+  ]);
+  const reportWindowMaterialSize = useCallback(
+    (size: ChatOverlayMaterialSize): void => {
+      reportNativeInteractiveSize(size);
+      if (
+        controller?.authGate.gated ||
+        windowSizeClassRef.current !== "input"
+      ) {
+        return;
+      }
+      const inputWidth = Math.max(
+        CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+        stageSize.width - 24,
+      );
+      if (size.width < inputWidth) return;
+      reportNativeWindowSize({
+        width: inputWidth,
+        height: Math.max(CHAT_OVERLAY_RESTING_WINDOW_HEIGHT, size.height),
+      });
+    },
+    [
+      controller?.authGate.gated,
+      reportNativeWindowSize,
+      reportNativeInteractiveSize,
+      stageSize.width,
+    ],
+  );
+  const handleWindowSizeClassChange = useCallback(
+    (sizeClass: ChatOverlayWindowSizeClass): void => {
+      // A material ResizeObserver callback can run in the same frame as a
+      // detent change. Update the measurement gate synchronously so an input
+      // frame cannot supersede the native sheet envelope while React commits.
+      windowSizeClassRef.current = sizeClass;
+      setWindowSizeClass(sizeClass);
+    },
+    [],
+  );
+  const handleRequestedOpenChange = useCallback(
+    (open: boolean): void => {
+      if (open) controller?.open();
+      else controller?.close();
+    },
+    [controller],
+  );
+  // The canonical overlay consumes the first Escape to return to its pill.
+  // Once the real presentation reports pill, a second Escape hides the native
+  // window so transparent pixels never remain above other applications.
   useEffect(() => {
     if (typeof document === "undefined" || !isElectrobunRuntime()) {
       return undefined;
     }
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape" || overlayOpen) return;
+      if (event.key !== "Escape" || windowExpanded) return;
       void invokeDesktopBridgeRequest<void>({
         rpcMethod: "desktopHideWindow",
         ipcChannel: "desktop:hideWindow",
@@ -339,15 +454,39 @@ function ChatOverlayShell() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [overlayOpen]);
+  }, [windowExpanded]);
   return (
     <>
       <GlassStyles />
       <div
         data-testid="chat-overlay-shell"
-        className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
+        className="pointer-events-none fixed bottom-0 left-1/2 bg-transparent"
+        style={{
+          width: stageSize.width,
+          height: stageSize.height,
+          transform: "translateX(-50%)",
+        }}
       >
-        <ShellFoundationMount useWebChatPanel />
+        {controller?.authGate.gated ? (
+          <div className="flex h-full w-full items-end justify-center">
+            <HomePill
+              phase={controller.phase}
+              signingIn={controller.signingIn}
+              onOpen={controller.requestSignIn}
+              onClose={controller.close}
+            />
+          </div>
+        ) : (
+          <ChatOverlayMount
+            initialMode="pill"
+            desktopOverlayHost
+            requestedOpen={controller?.isOpen}
+            onRequestedOpenChange={handleRequestedOpenChange}
+            onWindowExpandedChange={setWindowExpanded}
+            onWindowSizeClassChange={handleWindowSizeClassChange}
+            onWindowMaterialSizeChange={reportWindowMaterialSize}
+          />
+        )}
       </div>
     </>
   );
@@ -1798,27 +1937,7 @@ function ShellFoundationMount({
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
   const shellPhase = controller?.phase;
-  const firstRunComplete = useAppSelector((state) => state.firstRunComplete);
-  const firstRunPinnedOpen = firstRunComplete === false;
-  // Completion updates the store before the half-height overlay can release
-  // its first-run pin. Keep that mounted instance through the edge so its
-  // shared transcript stays visible until the user deliberately folds to the
-  // pill; a completed relaunch starts with both values false.
-  const firstRunWasPinnedOpenRef = useRef(firstRunPinnedOpen);
-  const firstRunJustCompleted =
-    firstRunWasPinnedOpenRef.current && !firstRunPinnedOpen;
-  const [keepChatOpenAfterFirstRun, setKeepChatOpenAfterFirstRun] =
-    useState(false);
-  useEffect(() => {
-    if (firstRunJustCompleted) setKeepChatOpenAfterFirstRun(true);
-    firstRunWasPinnedOpenRef.current = firstRunPinnedOpen;
-  }, [firstRunJustCompleted, firstRunPinnedOpen]);
-  const shouldMountWebChatPanel =
-    useWebChatPanel &&
-    (shellIsOpen ||
-      firstRunPinnedOpen ||
-      firstRunJustCompleted ||
-      keepChatOpenAfterFirstRun);
+  const [shellPreviewHovered, setShellPreviewHovered] = useState(false);
   const [shellPreviewHostReady, setShellPreviewHostReady] = useState(false);
   const [shellHostDetent, setShellHostDetent] = useState<
     "pill" | "input" | "half" | "full"
@@ -1931,7 +2050,7 @@ function ShellFoundationMount({
     // While the shared mobile sheet is open, its five-state callback owns the
     // exact native frame (including full work-area maximization). The legacy
     // expanded/hover RPC remains the compatibility path for the resting pill.
-    if (shouldMountWebChatPanel) return undefined;
+    if (useWebChatPanel && shellIsOpen) return undefined;
     let cancelled = false;
     setShellPreviewHostReady(false);
 
@@ -1944,7 +2063,8 @@ function ShellFoundationMount({
           expanded: shellIsOpen && shellHostDetent !== "input",
           hovered:
             useWebChatPanel &&
-            (shellPhase === "listening" ||
+            (shellPreviewHovered ||
+              shellPhase === "listening" ||
               (shellIsOpen && shellHostDetent === "input")),
         },
         timeoutMs: 1_000,
@@ -1952,7 +2072,7 @@ function ShellFoundationMount({
       if (
         !cancelled &&
         useWebChatPanel &&
-        shellPhase === "listening" &&
+        (shellPreviewHovered || shellPhase === "listening") &&
         !shellIsOpen
       ) {
         // Paint hover and Fn-listening lanes only after the native host is
@@ -1967,10 +2087,10 @@ function ShellFoundationMount({
     };
   }, [
     hasController,
-    shouldMountWebChatPanel,
     shellHostDetent,
     shellIsOpen,
     shellPhase,
+    shellPreviewHovered,
     useWebChatPanel,
   ]);
   useEffect(() => {
@@ -1987,33 +2107,18 @@ function ShellFoundationMount({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [shellIsOpen, useWebChatPanel]);
-  const openSharedDesktopComposer = useCallback(() => {
-    focusComposerOnOpenRef.current = useWebChatPanel;
-    if (useWebChatPanel) setShellHostDetent("input");
-    controller?.open();
-  }, [controller, useWebChatPanel]);
-  useEffect(() => {
-    if (!useWebChatPanel || typeof window === "undefined") return undefined;
-    window.addEventListener(CHAT_OPEN_EVENT, openSharedDesktopComposer);
-    return () =>
-      window.removeEventListener(CHAT_OPEN_EVENT, openSharedDesktopComposer);
-  }, [openSharedDesktopComposer, useWebChatPanel]);
   const closeWebChatWhenPilled = useCallback(
     (pilled: boolean) => {
-      if (!pilled) return;
-      setKeepChatOpenAfterFirstRun(false);
-      controller?.close();
+      if (pilled) controller?.close();
     },
     [controller],
   );
   if (!controller) return null;
 
-  if (shouldMountWebChatPanel) {
+  if (useWebChatPanel && shellIsOpen) {
     return (
       <ChatOverlayMount
-        initialMode="input"
-        fillHostAtHalf
-        releaseFirstRunToFull={false}
+        releaseFirstRunToHalf={false}
         onFirstRunReleaseHandled={() => {}}
         onPilledChange={closeWebChatWhenPilled}
         onDetentChange={setShellHostDetent}
@@ -2026,10 +2131,13 @@ function ShellFoundationMount({
     <>
       <HomePill
         phase={controller.phase}
-        open={controller.isOpen}
         speaking={controller.speaking}
         signingIn={controller.signingIn}
-        onOpen={openSharedDesktopComposer}
+        onOpen={() => {
+          focusComposerOnOpenRef.current = useWebChatPanel;
+          if (useWebChatPanel) setShellHostDetent("input");
+          controller.open();
+        }}
         onClose={controller.close}
         onHoldStart={() => {
           if (controller.authGate.gated) {
@@ -2051,7 +2159,9 @@ function ShellFoundationMount({
           controller.stopRecording();
         }}
         onHoldCancel={controller.cancelRecording}
-        showComposerPreview={!useWebChatPanel}
+        onPreviewHoverChange={
+          useWebChatPanel ? setShellPreviewHovered : undefined
+        }
         previewHostReady={!useWebChatPanel || shellPreviewHostReady}
       />
       {!useWebChatPanel ? (
@@ -2090,21 +2200,31 @@ function ShellFoundationMount({
  * provider is present.
  */
 function ChatOverlayMount({
-  initialMode,
-  fillHostAtHalf = false,
-  releaseFirstRunToFull,
+  releaseFirstRunToHalf = false,
   onFirstRunReleaseHandled,
   onPilledChange,
   onDetentChange,
   onStateChange,
+  initialMode,
+  requestedOpen,
+  onRequestedOpenChange,
+  onWindowExpandedChange,
+  onWindowSizeClassChange,
+  onWindowMaterialSizeChange,
+  desktopOverlayHost,
 }: {
-  initialMode?: "input" | "half";
-  fillHostAtHalf?: boolean;
-  releaseFirstRunToFull: boolean;
-  onFirstRunReleaseHandled: () => void;
+  releaseFirstRunToHalf?: boolean;
+  onFirstRunReleaseHandled?: () => void;
   onPilledChange?: (pilled: boolean) => void;
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
+  initialMode?: "pill" | "input";
+  requestedOpen?: boolean;
+  onRequestedOpenChange?: (open: boolean) => void;
+  onWindowExpandedChange?: (expanded: boolean) => void;
+  onWindowSizeClassChange?: (sizeClass: ChatOverlayWindowSizeClass) => void;
+  onWindowMaterialSizeChange?: (size: ChatOverlayMaterialSize) => void;
+  desktopOverlayHost?: boolean;
 }): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
@@ -2123,7 +2243,7 @@ function ChatOverlayMount({
     isAuthorized: atLeast("USER"),
   });
   if (!controller) return null;
-  // The live agent's name drives the composer placeholder ("Ask {name}").
+  // The live agent's name drives the composer placeholder ("Hey {name}...").
   // Character name wins (what the user configured), then the running agent's
   // reported name; "Eliza" is the default the overlay falls back to.
   const agentName =
@@ -2133,14 +2253,19 @@ function ChatOverlayMount({
       controller={controller}
       agentName={agentName}
       slash={slash}
-      initialMode={initialMode}
-      fillHostAtHalf={fillHostAtHalf}
       firstRunOpen={firstRunComplete === false}
-      releaseFirstRunToFull={releaseFirstRunToFull}
+      releaseFirstRunToHalf={releaseFirstRunToHalf}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
       onPilledChange={onPilledChange}
       onDetentChange={onDetentChange}
       onStateChange={onStateChange}
+      initialMode={initialMode}
+      requestedOpen={requestedOpen}
+      onRequestedOpenChange={onRequestedOpenChange}
+      onWindowExpandedChange={onWindowExpandedChange}
+      onWindowSizeClassChange={onWindowSizeClassChange}
+      onWindowMaterialSizeChange={onWindowMaterialSizeChange}
+      desktopOverlayHost={desktopOverlayHost}
     />
   );
 }
@@ -2283,7 +2408,7 @@ function AppContent() {
   );
   // Runtime-target adoption can remount the shell on the exact render where
   // first-run completes. Retain that completion edge above the remount and let
-  // the next ChatOverlay acknowledge it after applying the FULL detent.
+  // the next ChatOverlay acknowledge it after applying the HALF detent.
   const firstRunWasIncompleteRef = useRef(firstRunComplete === false);
   const firstRunReleasePendingRef = useRef(false);
   if (firstRunComplete === false) {
@@ -2383,7 +2508,7 @@ function AppContent() {
   });
   // The first-run chat must survive its completion edge. Completion starts an
   // auth probe, but replacing the already-painted shell with StartupScreen
-  // remounts ChatOverlay and loses its first-run -> FULL transition state. Remember
+  // remounts ChatOverlay and loses its FULL -> HALF transition state. Remember
   // only a shell painted while first-run owned the login surface, and forget
   // it as soon as that probe resolves so a later credential refetch still
   // returns to the startup/auth boundary instead of exposing the shell.
@@ -2730,12 +2855,9 @@ function AppContent() {
         setSettingsNavigatePayload(detail.payload);
         setSettingsNavigateSequence((sequence) => sequence + 1);
         setTab("settings");
-        markCompletedActionNavigationHandled(event, detail);
         return;
       }
-      if (baseHandler(event)) {
-        markCompletedActionNavigationHandled(event, detail);
-      }
+      baseHandler(event);
     };
     window.addEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
     return () =>
@@ -3279,7 +3401,7 @@ function AppContent() {
           behind stays live.
         */}
         <ChatOverlayMount
-          releaseFirstRunToFull={firstRunReleasePendingRef.current}
+          releaseFirstRunToHalf={firstRunReleasePendingRef.current}
           onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
         />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is

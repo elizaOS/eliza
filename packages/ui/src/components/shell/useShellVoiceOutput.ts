@@ -7,6 +7,7 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
+import type { VoiceTtsError } from "../../voice/voice-chat-types";
 
 /** `useVoiceChat` requires a transcript sink; the overlay owns input elsewhere. */
 const NOOP_TRANSCRIPT = (): void => {};
@@ -50,6 +51,8 @@ export interface ShellVoiceOutput {
   needsAudioUnlock: boolean;
   /** Resume the audio context in response to a user gesture (enable sound). */
   unlockAudio: () => void;
+  /** Configured TTS failed; surfaces the real playback failure to the shell. */
+  ttsError: VoiceTtsError | null;
   /**
    * The resolved speech-to-text provider from the loaded voice config, or
    * `undefined` while the config has not loaded yet. Surfaced so the overlay's
@@ -120,6 +123,7 @@ export function useShellVoiceOutput(
     isSpeaking,
     needsAudioUnlock,
     unlockAudio,
+    ttsError,
   } = useVoiceChat({
     voiceConfig: playbackVoiceConfig,
     cloudConnected,
@@ -236,6 +240,7 @@ export function useShellVoiceOutput(
     // coalesce to keep this hook's (and ShellController's) non-optional contract.
     needsAudioUnlock: needsAudioUnlock ?? false,
     unlockAudio: unlockAudio ?? (() => {}),
+    ttsError: ttsError ?? null,
     asrProvider: voiceConfig.asr?.provider,
   };
 }

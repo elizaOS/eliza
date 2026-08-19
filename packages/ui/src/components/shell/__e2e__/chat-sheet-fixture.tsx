@@ -19,6 +19,7 @@ declare global {
     __emitVoiceFinal?: (text: string) => void;
     __growLastAssistant?: (extra: string) => void;
     __setFirstRun?: (value: boolean) => void;
+    __underlayPointerCount?: number;
   }
 }
 
@@ -85,6 +86,10 @@ const params =
   typeof location !== "undefined"
     ? new URLSearchParams(location.search)
     : new URLSearchParams();
+// The detached-pill E2E mounts the exact same ChatOverlay with only the host
+// boundary props Electrobun supplies. The normal chat-sheet matrix remains the
+// default, so this fixture never becomes a second UI implementation.
+const desktopOverlayHost = params.has("desktop-overlay");
 const startEmpty = params.has("empty");
 // `?firstrun` pins the sheet at FULL and freezes the composer (in-chat
 // onboarding). `?few` seeds only a couple of short messages so the bottom-anchor
@@ -525,11 +530,32 @@ function Harness(): React.JSX.Element {
         overflow: "hidden",
       }}
     >
+      <iframe
+        title="Underlying clickable surface"
+        data-testid="underlay-click-target"
+        sandbox="allow-scripts allow-same-origin"
+        srcDoc={`<!doctype html><html><head><style>html,body,button{position:fixed;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;background:transparent}</style></head><body><button type="button" aria-label="Underlying clickable surface"></button><script>document.querySelector('button').addEventListener('pointerdown',()=>{parent.__underlayPointerCount=(parent.__underlayPointerCount||0)+1})</script></body></html>`}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          zIndex: 0,
+          border: 0,
+          background: "transparent",
+        }}
+      />
       {/* Fake view content behind the overlay — proves the glass + dimming read
           over a real surface, and gives a click-out target. */}
       <div
         data-testid="view-content"
-        style={{ padding: "48px 28px", maxWidth: 720 }}
+        style={{
+          position: "relative",
+          zIndex: 1,
+          pointerEvents: "none",
+          padding: "48px 28px",
+          maxWidth: 720,
+        }}
       >
         <h1 style={{ fontSize: 30, fontWeight: 600, margin: 0 }}>Workspace</h1>
         <p style={{ opacity: 0.7, marginTop: 12, lineHeight: 1.6 }}>
@@ -558,6 +584,8 @@ function Harness(): React.JSX.Element {
       <ChatOverlay
         controller={controller}
         firstRunOpen={firstRunOpen}
+        desktopOverlayHost={desktopOverlayHost}
+        initialMode={desktopOverlayHost ? "pill" : "input"}
       />
     </div>
   );
