@@ -288,6 +288,35 @@ describe("replyClaimsCompletedSideEffect", () => {
 			replyClaimsCompletedSideEffect("Done. Your reminders are set."),
 		).toBe(true);
 	});
+
+	it("does not treat a read/navigation acknowledgement as a committed mutation (#22609)", () => {
+		// Live VIEWS synthesis: the Notes route opened, and the model closed with
+		// a bare completion opener that names a tracked noun but reports only a
+		// read/navigation effect. "loaded/visible/shown/on screen" is not a
+		// save/schedule write, so the whole reply must NOT be flagged as a
+		// fabricated side effect — including the quantified variants.
+		for (const reply of [
+			"Done — your notes are loaded.",
+			"Done — your notes are visible.",
+			"Done — 3 notes are visible.",
+			"Done — your 3 notes are now visible.",
+			"Done — showing your notes.",
+			"Done — your notes are on screen.",
+			"Done — the reminders view is open.",
+		]) {
+			expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+		}
+		// A genuine committed-mutation verb in the same sentence still fires,
+		// even behind the same generic "Done —" opener.
+		for (const reply of [
+			"Done — I saved your note.",
+			"Done — your reminders are set.",
+			"Done — your 3 reminders are now scheduled.",
+			"Done — your notes are visible and I archived the old ones.",
+		]) {
+			expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+		}
+	});
 });
 
 describe(CLAIM_EVALUATOR_NAME, () => {

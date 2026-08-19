@@ -82,6 +82,7 @@ const CACHE_TTL = {
  */
 const FETCH_ERROR_COOLDOWN = 1000 * 60 * 5;
 const MAX_CATALOG_PAGES = 100;
+const DEFAULT_REGISTRY_FETCH_TIMEOUT_MS = 30_000;
 
 class CatalogPaginationError extends Error {
 	constructor(message: string) {
@@ -131,6 +132,8 @@ export interface AgentSkillsServiceConfig {
 	skillsDir?: string;
 	/** Registry API URL */
 	registryUrl?: string;
+	/** Remote request deadline in milliseconds. Set to null to disable. */
+	fetchTimeoutMs?: number | null;
 	/** Sync the remote skill catalog during service initialization */
 	syncCatalogOnStart?: boolean;
 	/** Auto-load installed skills on init */
@@ -241,6 +244,7 @@ export class AgentSkillsService extends Service {
 	private lastFetchErrorAt: number = 0;
 	// Duration of the current cooldown (may be overridden by Retry-After header on 429).
 	private fetchCooldownMs: number = FETCH_ERROR_COOLDOWN;
+	private readonly fetchTimeoutMs: number | null;
 
 	constructor(
 		protected runtime: IAgentRuntime,
@@ -272,6 +276,19 @@ export class AgentSkillsService extends Service {
 			config?.registryUrl ||
 			(typeof registrySetting === "string" ? registrySetting : null) ||
 			CLAWHUB_API;
+
+		const configuredFetchTimeout = config?.fetchTimeoutMs;
+		if (
+			configuredFetchTimeout !== undefined &&
+			configuredFetchTimeout !== null &&
+			(!Number.isFinite(configuredFetchTimeout) || configuredFetchTimeout <= 0)
+		) {
+			throw new Error("fetchTimeoutMs must be a positive finite number or null");
+		}
+		this.fetchTimeoutMs =
+			configuredFetchTimeout === undefined
+				? DEFAULT_REGISTRY_FETCH_TIMEOUT_MS
+				: configuredFetchTimeout;
 
 		// Registry I/O is opt-in during startup. getSetting() may preserve the
 		// string or coerce it to a boolean, so accept both explicit true forms.
@@ -1813,6 +1830,22 @@ export class AgentSkillsService extends Service {
 		return [...this.bundledSkillsDirs];
 	}
 
+	/** Apply the configured deadline across fetch and response-body consumption. */
+	private fetchSkillResource(
+		input: string | URL,
+		init: RequestInit = {},
+	): Promise<Response> {
+		const timeoutSignal =
+			this.fetchTimeoutMs === null
+				? undefined
+				: AbortSignal.timeout(this.fetchTimeoutMs);
+		const signal =
+			timeoutSignal && init.signal
+				? AbortSignal.any([init.signal, timeoutSignal])
+				: (timeoutSignal ?? init.signal);
+		return fetch(input, { ...init, signal });
+	}
+
 	// ============================================================
 	// REGISTRY OPERATIONS (ClawHub Integration)
 	// ============================================================
@@ -1861,7 +1894,7 @@ export class AgentSkillsService extends Service {
 					requestedCursors.add(cursor);
 				}
 				const url = `${this.apiBase}/api/v1/skills?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-				const response = await fetch(url, {
+				const response = await this.fetchSkillResource(url, {
 					headers: { Accept: "application/json" },
 				});
 
@@ -1953,7 +1986,7 @@ export class AgentSkillsService extends Service {
 
 		try {
 			const url = `${this.apiBase}/api/v1/search?q=${encodeURIComponent(query)}&limit=${limit}`;
-			const response = await fetch(url, {
+			const response = await this.fetchSkillResource(url, {
 				headers: { Accept: "application/json" },
 			});
 
@@ -1993,7 +2026,7 @@ export class AgentSkillsService extends Service {
 
 		try {
 			const url = `${this.apiBase}/api/v1/skills/${safeSlug}`;
-			const response = await fetch(url, {
+			const response = await this.fetchSkillResource(url, {
 				headers: { Accept: "application/json" },
 			});
 
@@ -2207,7 +2240,7 @@ export class AgentSkillsService extends Service {
 
 			// Download
 			const downloadUrl = `${this.apiBase}/api/v1/download?slug=${safeSlug}&version=${resolvedVersion}`;
-			const response = await fetch(downloadUrl);
+			const response = await this.fetchSkillResource(downloadUrl);
 
 			if (!response.ok) {
 				throw new Error(`Download failed: ${response.status}`);
@@ -2326,7 +2359,7 @@ export class AgentSkillsService extends Service {
 
 			// Download SKILL.md
 			const skillMdUrl = `${rawBase}SKILL.md`;
-			const response = await fetch(skillMdUrl);
+			const response = await this.fetchSkillResource(skillMdUrl);
 
 			if (!response.ok) {
 				throw new Error(
@@ -2344,13 +2377,14 @@ export class AgentSkillsService extends Service {
 			// Try to fetch README.md if it exists (optional)
 			try {
 				const readmeUrl = `${rawBase}README.md`;
-				const readmeResponse = await fetch(readmeUrl);
+				const readmeResponse = await this.fetchSkillResource(readmeUrl);
 				if (readmeResponse.ok) {
 					const readmeContent = await readCappedSkillText(readmeResponse);
 					files.push({ name: "README.md", content: readmeContent });
 				}
 			} catch {
-				// README is optional, ignore errors
+				// error-policy:J4 README enrichment is optional; a timeout or missing
+				// file leaves the installed skill visibly without that extra file.
 			}
 
 			// Save to storage
@@ -2400,7 +2434,7 @@ export class AgentSkillsService extends Service {
 		options: InstallSkillOptions & { slug?: string } = {},
 	): Promise<boolean> {
 		try {
-			const response = await fetch(url);
+			const response = await this.fetchSkillResource(url);
 
 			if (!response.ok) {
 				throw new Error(`Failed to fetch: ${response.status}`);

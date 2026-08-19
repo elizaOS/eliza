@@ -1,6 +1,6 @@
 # M6 — Gemma KV geometry, flash-attention, and kernel re-opt status
 
-> Milestone **M6** of the [Gemma 4 cutover](../docs/gemma4-cutover-plan.md):
+> Milestone **M6** of the [Gemma 4 cutover](../../docs/gemma4-cutover-plan.md):
 > kernel re-optimization for Gemma's geometry. This doc is the *measured*
 > evidence behind the plan's claim that **QJL/Polar KV-quant is low-ROI on Gemma
 > and the head_dim=128 KV kernels are dimensionally inapplicable** — plus the FA

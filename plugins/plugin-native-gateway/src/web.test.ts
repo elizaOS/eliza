@@ -12,6 +12,8 @@ type Listener = (event: unknown) => void;
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
+  static deferClose = false;
+  static constructorError: Error | null = null;
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
   static readonly CLOSED = 3;
@@ -19,8 +21,12 @@ class FakeWebSocket {
   readyState = FakeWebSocket.CONNECTING;
   readonly sent: string[] = [];
   private readonly listeners = new Map<string, Listener[]>();
+  private deferredClose: { code: number; reason: string } | null = null;
 
   constructor(readonly url: string) {
+    if (FakeWebSocket.constructorError) {
+      throw FakeWebSocket.constructorError;
+    }
     FakeWebSocket.instances.push(this);
   }
 
@@ -36,7 +42,21 @@ class FakeWebSocket {
 
   close(code = 1000, reason = "closed"): void {
     this.readyState = FakeWebSocket.CLOSED;
+    if (FakeWebSocket.deferClose) {
+      this.deferredClose = { code, reason };
+      return;
+    }
     this.emit("close", { code, reason });
+  }
+
+  // Fires a close() that was deferred above, simulating a stale socket's
+  // "close" event arriving after a replacement connection has already begun.
+  flushClose(): void {
+    if (this.deferredClose) {
+      const close = this.deferredClose;
+      this.deferredClose = null;
+      this.emit("close", close);
+    }
   }
 
   open(): void {
@@ -46,6 +66,10 @@ class FakeWebSocket {
 
   message(data: unknown): void {
     this.emit("message", { data });
+  }
+
+  error(error: unknown): void {
+    this.emit("error", error);
   }
 
   private emit(eventName: string, event: unknown): void {
@@ -65,6 +89,8 @@ function parseSent(
 describe("GatewayWeb", () => {
   beforeEach(() => {
     FakeWebSocket.instances = [];
+    FakeWebSocket.deferClose = false;
+    FakeWebSocket.constructorError = null;
     Object.assign(FakeWebSocket, {
       CONNECTING: 0,
       OPEN: 1,
@@ -77,6 +103,7 @@ describe("GatewayWeb", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -275,5 +302,411 @@ describe("GatewayWeb", () => {
         message: "Not connected to gateway",
       },
     });
+  });
+
+  it("ignores a stale close event from a socket replaced by a newer connect()", async () => {
+    const gateway = new GatewayWeb();
+    const states: unknown[] = [];
+    await gateway.addListener("stateChange", (event) => {
+      states.push(event);
+    });
+
+    const first = gateway.connect({ url: "ws://localhost:1234/first" });
+    const firstSocket = FakeWebSocket.instances[0];
+    firstSocket.open();
+    firstSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(firstSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await first;
+
+    const firstReply = gateway.send({ method: "chat.send" });
+    const firstReplyRejected = expect(firstReply).rejects.toThrow(
+      "Connection replaced",
+    );
+
+    // The first socket's close() is called (by the second connect()) but its
+    // "close" event doesn't fire until after the replacement is already open
+    // and connected -- reproducing the real out-of-order delivery this guards
+    // against, not just a same-tick call.
+    FakeWebSocket.deferClose = true;
+    const second = gateway.connect({ url: "ws://localhost:1234/second" });
+    await firstReplyRejected;
+    const secondSocket = FakeWebSocket.instances[1];
+    secondSocket.open();
+    secondSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(secondSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await expect(second).resolves.toMatchObject({ connected: true });
+
+    states.length = 0;
+    firstSocket.flushClose();
+
+    // The stale close must not tear down the active (second) connection: no
+    // "reconnecting"/"disconnected" state change, and no spurious third
+    // socket created by scheduleReconnect().
+    expect(states).toEqual([]);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    // The second connection's own pending/reply plumbing must still work --
+    // the stale close must not have nulled out `this.ws` or rejected requests
+    // in flight on it.
+    const reply = gateway.send({ method: "chat.send" });
+    secondSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(secondSocket, 1).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await expect(reply).resolves.toMatchObject({ ok: true });
+
+    await gateway.disconnect();
+  });
+
+  it("settles a superseded handshake and ignores every stale socket event", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gateway = new GatewayWeb();
+    const events: unknown[] = [];
+    await gateway.addListener("gatewayEvent", (event) => {
+      events.push(event);
+    });
+
+    FakeWebSocket.deferClose = true;
+    const first = gateway.connect({ url: "ws://localhost:1234/first" });
+    const firstRejected = expect(first).rejects.toThrow("Connection replaced");
+    const firstSocket = FakeWebSocket.instances[0];
+
+    const second = gateway.connect({ url: "ws://localhost:1234/second" });
+    await firstRejected;
+    const secondSocket = FakeWebSocket.instances[1];
+
+    firstSocket.open();
+    firstSocket.message(
+      JSON.stringify({
+        type: "event",
+        event: "chat.delta",
+        payload: { stale: true },
+        seq: 1,
+      }),
+    );
+    firstSocket.error(new Error("stale socket error"));
+
+    expect(firstSocket.sent).toEqual([]);
+    expect(secondSocket.sent).toEqual([]);
+    expect(events).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+
+    secondSocket.open();
+    secondSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(secondSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await expect(second).resolves.toMatchObject({ connected: true });
+
+    await gateway.disconnect();
+  });
+
+  it("cancels a queued automatic reconnect when connect() is called explicitly", async () => {
+    vi.useFakeTimers();
+    const gateway = new GatewayWeb();
+    const first = gateway.connect({ url: "ws://localhost:1234/first" });
+    const firstSocket = FakeWebSocket.instances[0];
+    firstSocket.open();
+    firstSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(firstSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await first;
+
+    firstSocket.close(1006, "network lost");
+    const second = gateway.connect({ url: "ws://localhost:1234/second" });
+    const secondSocket = FakeWebSocket.instances[1];
+    secondSocket.open();
+    secondSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(secondSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await second;
+    await vi.advanceTimersByTimeAsync(800);
+
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(await gateway.isConnected()).toEqual({ connected: true });
+
+    await gateway.disconnect();
+  });
+
+  it("rejects an in-progress handshake when disconnected before open", async () => {
+    const gateway = new GatewayWeb();
+    const connecting = gateway.connect({ url: "ws://localhost:1234" });
+    const rejected = expect(connecting).rejects.toThrow("Client disconnect");
+
+    await gateway.disconnect();
+
+    await rejected;
+    expect(await gateway.isConnected()).toEqual({ connected: false });
+  });
+
+  it("cancels a superseded connect timeout without tearing down its replacement", async () => {
+    vi.useFakeTimers();
+    const gateway = new GatewayWeb();
+    const first = gateway.connect({ url: "ws://localhost:1234/first" });
+    const firstRejected = expect(first).rejects.toThrow("Connection replaced");
+
+    const second = gateway.connect({ url: "ws://localhost:1234/second" });
+    await firstRejected;
+    const secondSocket = FakeWebSocket.instances[1];
+    secondSocket.open();
+    secondSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(secondSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await second;
+
+    // The first connect's deadline must not fire against the now-active socket.
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(await gateway.isConnected()).toEqual({ connected: true });
+    expect(FakeWebSocket.instances).toHaveLength(2);
+  });
+
+  // Regression for #22594: a socket that errors/closes before it ever reaches
+  // `open` (the normal browser behavior for a refused/unreachable gateway) must
+  // reject connect() and must NOT spin an unbounded background reconnect loop
+  // behind a promise the caller can never observe. Before the fix, connect()
+  // stayed pending forever while fresh sockets were opened indefinitely.
+  it("rejects connect() when the socket closes before it opens", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gateway = new GatewayWeb();
+    const states: unknown[] = [];
+    await gateway.addListener("stateChange", (event) => {
+      states.push(event);
+    });
+
+    const connected = gateway.connect({ url: "ws://localhost:9/socket" });
+    let settled = "pending";
+    connected.then(
+      () => {
+        settled = "resolved";
+      },
+      () => {
+        settled = "rejected";
+      },
+    );
+    const socket = FakeWebSocket.instances[0];
+    expect(socket).toBeDefined();
+
+    // Refused/unreachable gateway: 'error' then 'close', never 'open'.
+    socket.error(new Error("connection refused"));
+    socket.close(1006, "connection refused");
+
+    await expect(connected).rejects.toThrow(
+      /Connection failed: connection refused/,
+    );
+    expect(settled).toBe("rejected");
+    // No background reconnect socket must be created, even long after backoff.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(states).toEqual([
+      { state: "connecting" },
+      {
+        state: "disconnected",
+        reason: "Connection failed: connection refused",
+      },
+    ]);
+    warn.mockRestore();
+  });
+
+  it("rejects and cleans up when WebSocket construction throws", async () => {
+    vi.useFakeTimers();
+    FakeWebSocket.constructorError = new Error("blocked by browser policy");
+    const gateway = new GatewayWeb();
+    const states: unknown[] = [];
+    await gateway.addListener("stateChange", (event) => {
+      states.push(event);
+    });
+
+    await expect(
+      gateway.connect({ url: "wss://gateway.example/socket" }),
+    ).rejects.toThrow("blocked by browser policy");
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    expect(await gateway.isConnected()).toEqual({ connected: false });
+    expect(states).toEqual([
+      { state: "connecting" },
+      { state: "disconnected", reason: "blocked by browser policy" },
+    ]);
+  });
+
+  it("rejects connect() after the handshake timeout when the socket never opens", async () => {
+    vi.useFakeTimers();
+    const gateway = new GatewayWeb();
+    const states: unknown[] = [];
+    await gateway.addListener("stateChange", (event) => {
+      states.push(event);
+    });
+    const connected = gateway.connect({ url: "ws://localhost:9/socket" });
+    let settled = "pending";
+    connected.then(
+      () => {
+        settled = "resolved";
+      },
+      () => {
+        settled = "rejected";
+      },
+    );
+
+    // The socket neither opens nor closes; only the bounded connect timeout
+    // can settle the promise.
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(settled).toBe("pending");
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(connected).rejects.toThrow(/Connection timeout/);
+    expect(settled).toBe("rejected");
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(states).toEqual([
+      { state: "connecting" },
+      { state: "disconnected", reason: "Connection timeout" },
+    ]);
+  });
+
+  it("does not spawn an unbounded reconnect loop after an initial-connect failure", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gateway = new GatewayWeb();
+    const connected = gateway.connect({ url: "ws://localhost:9/socket" });
+    connected.catch(() => {
+      // observed below; prevents an unhandled rejection
+    });
+
+    FakeWebSocket.instances[0].close(1006, "connection refused");
+
+    // Advance far past many exponential-backoff windows (800ms → 15s cap).
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    await expect(connected).rejects.toThrow(/Connection failed/);
+    await expect(gateway.isConnected()).resolves.toEqual({ connected: false });
+    warn.mockRestore();
+  });
+
+  it("resolves a normal handshake and still reconnects after a post-connect drop", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gateway = new GatewayWeb();
+    const states: unknown[] = [];
+    await gateway.addListener("stateChange", (event) => {
+      states.push(event);
+    });
+
+    const connected = gateway.connect({ url: "wss://gateway.example/socket" });
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    const connectFrame = parseSent(socket, 0);
+    socket.message(
+      JSON.stringify({
+        type: "res",
+        id: connectFrame.id,
+        ok: true,
+        payload: { protocol: 3 },
+      }),
+    );
+    await expect(connected).resolves.toMatchObject({
+      connected: true,
+      protocol: 3,
+    });
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    // A drop AFTER a successful handshake must still reconnect (unchanged).
+    socket.close(1006, "network blip");
+    expect(states[states.length - 1]).toEqual({
+      state: "reconnecting",
+      reason: "network blip",
+    });
+    await vi.advanceTimersByTimeAsync(1_000); // first backoff is 800ms
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const socket2 = FakeWebSocket.instances[1];
+    socket2.open();
+    expect(parseSent(socket2, 0)).toMatchObject({ method: "connect" });
+    warn.mockRestore();
+  });
+
+  it("retries when a post-connect replacement socket stalls during handshake", async () => {
+    vi.useFakeTimers();
+    const gateway = new GatewayWeb();
+    const connected = gateway.connect({ url: "wss://gateway.example/socket" });
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    socket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(socket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await connected;
+
+    socket.close(1006, "network blip");
+    await vi.advanceTimersByTimeAsync(800);
+    const stalledSocket = FakeWebSocket.instances[1];
+    stalledSocket.open();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(1_360);
+    expect(FakeWebSocket.instances).toHaveLength(3);
+    expect(await gateway.isConnected()).toEqual({ connected: false });
+  });
+
+  it("retries when WebSocket construction throws during reconnect", async () => {
+    vi.useFakeTimers();
+    const gateway = new GatewayWeb();
+    const connected = gateway.connect({ url: "wss://gateway.example/socket" });
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    socket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(socket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await connected;
+
+    FakeWebSocket.constructorError = new Error("temporarily blocked");
+    socket.close(1006, "network blip");
+    await vi.advanceTimersByTimeAsync(800);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    FakeWebSocket.constructorError = null;
+    await vi.advanceTimersByTimeAsync(1_360);
+    expect(FakeWebSocket.instances).toHaveLength(2);
   });
 });

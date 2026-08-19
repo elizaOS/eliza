@@ -5251,6 +5251,7 @@
   "memoryviewer.loadOlder": "古いものを読み込む",
   "memoryviewer.searchMemoryText": "メモリテキストを検索…",
   "memoryviewer.pageRange": "{{start}}–{{end}} / {{total}}",
+  "memoryviewer.pageRangeIncomplete": "{{start}}–{{end}} / {{total}}件以上",
   "memoryviewer.prev": "前へ",
   "memoryviewer.next": "次へ",
   "memoryviewer.total": "合計",

@@ -26,6 +26,7 @@ import { logger } from "../utils/logger";
 import { callbackRoomBelongsToOrganization } from "./callback-channel-authz";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { x402FacilitatorService } from "./x402-facilitator";
+import { buildX402PaymentRequired } from "./x402-payment-required";
 
 const KIND = "x402_payment_request";
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -267,18 +268,6 @@ function buildExtensions(network: NetworkConfig): PaymentRequiredExtensions | un
         validBefore: now + 300,
       },
     },
-  };
-}
-
-function buildPaymentRequired(
-  requirements: PaymentRequirements,
-  extensions?: PaymentRequiredExtensions,
-) {
-  return {
-    x402Version: 2,
-    error: "payment_required",
-    accepts: [requirements],
-    ...(extensions && { extensions }),
   };
 }
 
@@ -528,7 +517,9 @@ async function recordAppScopedPaymentEarnings(
 class X402PaymentRequestsService {
   async create(input: CreatePaymentRequestInput): Promise<{
     paymentRequest: X402PaymentRequestView;
-    paymentRequired: ReturnType<typeof buildPaymentRequired>;
+    paymentRequired: ReturnType<
+      typeof buildX402PaymentRequired<PaymentRequirements, PaymentRequiredExtensions>
+    >;
     paymentRequiredHeader: string;
   }> {
     if (!Number.isFinite(input.amountUsd) || input.amountUsd <= 0) {
@@ -623,7 +614,7 @@ class X402PaymentRequestsService {
       },
     };
 
-    const paymentRequired = buildPaymentRequired(requirements, extensions);
+    const paymentRequired = buildX402PaymentRequired(requirements, extensions);
     const payment = await cryptoPaymentsRepository.create({
       id,
       organization_id: input.organizationId,

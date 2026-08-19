@@ -334,7 +334,7 @@ For issues and feature requests, please:
 
 ## Contributing
 
-Contributions are welcome! Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for more information.
+Contributions are welcome! Please see the [CONTRIBUTING.md](../../../../../CONTRIBUTING.md) file for more information.
 
 ## Credits
 

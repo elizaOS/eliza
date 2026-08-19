@@ -827,7 +827,9 @@ function selectResponseFieldsForChannel(
 ): ResponseHandlerFieldShape[] {
 	if (!isDirectResponseChannel(channelType)) return fields;
 	return fields.filter(
-		(field) => !DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name),
+		(field) =>
+			!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name) ||
+			(channelType === "VOICE_DM" && field.name === "shouldRespond"),
 	);
 }
 
@@ -999,9 +1001,12 @@ export function buildResponseGrammar(
 		fields.length === baseFields.length
 			? suppliedFieldSignature
 			: `${suppliedFieldSignature}|selected:${deriveFieldSignature(fields)}`;
-	const channelProfile = isDirectResponseChannel(options.channelType)
-		? "direct"
-		: "default";
+	const channelProfile =
+		options.channelType === "VOICE_DM"
+			? "voice-direct"
+			: isDirectResponseChannel(options.channelType)
+				? "direct"
+				: "default";
 
 	const cacheKey = [
 		"stage1",

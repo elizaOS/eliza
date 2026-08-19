@@ -295,10 +295,26 @@ describe("room messages-scan coalescing", () => {
 			unique: false,
 			textContains: "message 3",
 		});
-		expect(counts.messagesScans).toBe(3);
+		const cursor = await runtime.getMemories({
+			tableName: "messages",
+			roomId: ROOM_ID,
+			limit: 5,
+			unique: false,
+			cursor: {
+				createdAt: rows[15]?.createdAt as number,
+				id: rows[15]?.id as UUID,
+			},
+		});
+		expect(counts.messagesScans).toBe(4);
 		expect(ascending[0]?.id).toBe(rows[0]?.id); // oldest-first honored
 		expect(keyword.every((m) => m.content.text?.includes("message 3"))).toBe(
 			true,
+		);
+		expect(cursor.map((memory) => memory.id)).toEqual(
+			rows
+				.slice(10, 15)
+				.reverse()
+				.map((memory) => memory.id),
 		);
 	});
 });

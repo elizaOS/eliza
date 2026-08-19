@@ -14,7 +14,9 @@ import process from "node:process";
 import { Readable } from "node:stream";
 import {
 	ChannelType,
+	compareMemoryIds,
 	createMessageMemory,
+	ElizaError,
 	type GenerateTextParams,
 	type IAgentRuntime,
 	type Memory,
@@ -1139,6 +1141,7 @@ function parsePositiveInteger(value: string | null, fallback: number): number {
 
 const MEMORY_BROWSE_DEFAULT_LIMIT = 50;
 const MEMORY_BROWSE_MAX_LIMIT = 200;
+const MEMORY_BROWSE_MAX_SCAN_ROWS = 25_000;
 const MEMORY_FEED_DEFAULT_LIMIT = 50;
 const MEMORY_FEED_MAX_LIMIT = 100;
 const MEMORY_TABLE_NAMES = [
@@ -1169,10 +1172,14 @@ function memoryCreatedAt(memory: { createdAt?: number }): number {
 
 /** Newest-first comparator shared by the browse/feed list routes. */
 function byNewestFirst(
-	a: { createdAt?: number },
-	b: { createdAt?: number },
+	a: { createdAt?: number; id?: string; _table?: string },
+	b: { createdAt?: number; id?: string; _table?: string },
 ): number {
-	return memoryCreatedAt(b) - memoryCreatedAt(a);
+	const timestampOrder = memoryCreatedAt(b) - memoryCreatedAt(a);
+	if (timestampOrder !== 0) return timestampOrder;
+	const idOrder = compareMemoryIds(b.id ?? "", a.id ?? "");
+	if (idOrder !== 0) return idOrder;
+	return (a._table ?? "").localeCompare(b._table ?? "");
 }
 
 function memoryToBrowseItem(memory: TaggedMemory): MemoryBrowseItem {
@@ -1224,43 +1231,145 @@ async function fetchMemoriesFromTables(
 		entityIds?: UUID[];
 		roomId?: UUID;
 		tables?: readonly string[];
-		limit?: number;
+		target: number;
 		before?: number;
+		searchQuery?: string;
 	},
 ): Promise<TaggedMemory[]> {
 	const tables = params.tables ?? MEMORY_TABLE_NAMES;
-	const perTableLimit = Math.max(
-		Math.ceil((params.limit ?? MEMORY_BROWSE_DEFAULT_LIMIT) * 2),
-		200,
+	const entityIds = params.entityIds?.length
+		? new Set<string>(params.entityIds)
+		: undefined;
+	const searchQuery = params.searchQuery?.trim() ?? "";
+	const searchTerms = searchQuery.split(/\s+/).filter(Boolean);
+	const textContains = searchTerms.length === 1 ? searchTerms[0] : undefined;
+	const maxScannedRowsPerTable = Math.max(
+		1,
+		Math.floor(MEMORY_BROWSE_MAX_SCAN_ROWS / Math.max(tables.length, 1)),
 	);
 	const perTableMemories = await Promise.all(
 		tables.map(async (tableName) => {
-			const memories = await runtime.getMemories({
-				agentId: runtime.agentId as UUID,
-				roomId: params.roomId,
-				tableName,
-				limit: perTableLimit,
-				includeEmbedding: false,
-			});
-			return memories.map((m) => Object.assign(m, { _table: tableName }));
+			const eligible: TaggedMemory[] = [];
+			let cursor: { createdAt: number; id: UUID } | undefined;
+			let batchSize = 200;
+			let scannedRows = 0;
+			for (;;) {
+				const queryLimit = Math.min(
+					batchSize,
+					maxScannedRowsPerTable - scannedRows,
+				);
+				if (queryLimit <= 0) {
+					throw new ElizaError(
+						"Memory browse exceeded its bounded scan budget before proving the page",
+						{
+							code: "MEMORY_BROWSE_SCAN_LIMIT",
+							context: {
+								tableName,
+								scannedRows,
+								maxScannedRows: maxScannedRowsPerTable,
+								target: params.target,
+							},
+						},
+					);
+				}
+				const memories = await runtime.getMemories({
+					agentId: runtime.agentId as UUID,
+					roomId: params.roomId,
+					tableName,
+					limit: queryLimit,
+					cursor,
+					end: params.before,
+					textContains,
+					includeEmbedding: false,
+				});
+				scannedRows += memories.length;
+
+				let nextCursor = cursor;
+				for (const memory of memories) {
+					if (!memory.id) {
+						throw new ElizaError(
+							"A paged memory row did not contain the required id",
+							{
+								code: "MEMORY_BROWSE_CURSOR_MISSING_ID",
+								context: { tableName },
+							},
+						);
+					}
+					const candidate = {
+						createdAt: memoryCreatedAt(memory),
+						id: memory.id,
+					};
+					if (
+						nextCursor &&
+						(candidate.createdAt > nextCursor.createdAt ||
+							(candidate.createdAt === nextCursor.createdAt &&
+								compareMemoryIds(candidate.id, nextCursor.id) >= 0))
+					) {
+						throw new ElizaError(
+							"Memory adapter did not advance the requested keyset cursor",
+							{
+								code: "MEMORY_BROWSE_CURSOR_NO_PROGRESS",
+								context: {
+									tableName,
+									cursorCreatedAt: nextCursor.createdAt,
+									cursorId: nextCursor.id,
+									returnedCreatedAt: candidate.createdAt,
+									returnedId: candidate.id,
+								},
+							},
+						);
+					}
+					nextCursor = candidate;
+				}
+				for (const memory of memories) {
+					const tagged = { ...memory, _table: tableName };
+					if (!hasBrowsableContent(tagged)) continue;
+					if (
+						entityIds &&
+						(!tagged.entityId || !entityIds.has(tagged.entityId))
+					) {
+						continue;
+					}
+					if (
+						params.before !== undefined &&
+						memoryCreatedAt(tagged) >= params.before
+					) {
+						continue;
+					}
+					if (
+						searchQuery &&
+						!matchesMemoryKeyword(
+							(tagged.content as { text?: string } | undefined)?.text ?? "",
+							searchQuery,
+						)
+					) {
+						continue;
+					}
+					eligible.push(tagged);
+				}
+				if (memories.length < queryLimit || eligible.length >= params.target) {
+					return eligible;
+				}
+				if (scannedRows >= maxScannedRowsPerTable) {
+					throw new ElizaError(
+						"Memory browse exceeded its bounded scan budget before proving the page",
+						{
+							code: "MEMORY_BROWSE_SCAN_LIMIT",
+							context: {
+								tableName,
+								scannedRows,
+								maxScannedRows: maxScannedRowsPerTable,
+								target: params.target,
+							},
+						},
+					);
+				}
+				cursor = nextCursor;
+				batchSize = Math.min(batchSize * 2, 5_000);
+			}
 		}),
 	);
-	const allMemories: TaggedMemory[] = perTableMemories.flat();
-
-	let filtered = allMemories;
-	const entitySet = params.entityIds;
-	if (entitySet && entitySet.length > 0) {
-		const ids = new Set<string>(entitySet);
-		filtered = allMemories.filter((m) => m.entityId && ids.has(m.entityId));
-	}
-
-	filtered = filtered.filter(hasBrowsableContent);
-
-	const beforeTs = params.before;
-	if (beforeTs !== undefined) {
-		return filtered.filter((m) => memoryCreatedAt(m) < beforeTs);
-	}
-	return filtered;
+	return perTableMemories.flat();
 }
 
 async function handleMemoriesFeedRoute(
@@ -1282,7 +1391,7 @@ async function handleMemoriesFeedRoute(
 
 	const allMemories = await fetchMemoriesFromTables(runtime, {
 		tables,
-		limit: limit * 2,
+		target: limit + 1,
 		before,
 	});
 
@@ -1326,25 +1435,22 @@ async function handleMemoriesBrowseRoute(
 		tables,
 		entityIds,
 		roomId: roomIdParam ? (roomIdParam as UUID) : undefined,
-		limit: limit + offset + 100,
+		target: limit + offset + 1,
+		searchQuery,
 	});
 
 	allMemories.sort(byNewestFirst);
 
-	let filtered = allMemories;
-	if (searchQuery) {
-		filtered = allMemories.filter((m) => {
-			const text = (m.content as { text?: string } | undefined)?.text ?? "";
-			return matchesMemoryKeyword(text, searchQuery);
-		});
-	}
-
-	const total = filtered.length;
-	const page = filtered.slice(offset, offset + limit).map(memoryToBrowseItem);
+	const total = allMemories.length;
+	const page = allMemories
+		.slice(offset, offset + limit)
+		.map(memoryToBrowseItem);
 
 	return jsonResponse(200, {
 		memories: page,
 		total,
+		totalIsExact: false,
+		hasMore: allMemories.length > offset + limit,
 		limit,
 		offset,
 	});

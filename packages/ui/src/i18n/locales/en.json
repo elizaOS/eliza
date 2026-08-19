@@ -5774,6 +5774,7 @@
   "memoryviewer.loadOlder": "Load older",
   "memoryviewer.searchMemoryText": "Search memory text…",
   "memoryviewer.pageRange": "{{start}}–{{end}} of {{total}}",
+  "memoryviewer.pageRangeIncomplete": "{{start}}–{{end}} of at least {{total}}",
   "memoryviewer.prev": "Prev",
   "memoryviewer.next": "Next",
   "memoryviewer.total": "Total",

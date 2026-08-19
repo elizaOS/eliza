@@ -18,8 +18,12 @@ import {
 } from "@/lib/mobile-push/types";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
-import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
+import type {
+  SharedRuntimeChannel,
+  SharedTurnMessage,
+} from "@/lib/services/shared-runtime/run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
+import { parseSharedRuntimeChannel } from "@/lib/services/shared-runtime/shared-runtime-channel";
 import type {
   SharedRuntimeHistoryStore,
   SharedTurnClaimStore,
@@ -40,29 +44,37 @@ type ConversationRequest =
       operation: "bridge";
       agent: CachedAgentSandbox;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
+      channel?: SharedRuntimeChannel;
     }
   | {
       operation: "personal-bridge";
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
+      channel?: SharedRuntimeChannel;
     }
   | {
       operation: "stream";
       agent: CachedAgentSandbox;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
+      channel?: SharedRuntimeChannel;
     }
   | {
       operation: "personal-stream";
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
+      traceId?: string;
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
+      channel?: SharedRuntimeChannel;
     }
   | {
       operation: "prewarm";
@@ -444,13 +456,11 @@ export class SharedRuntimeConversation {
         import("@/lib/services/shared-runtime/shared-runtime-chat"),
         import("@/lib/services/shared-runtime/cached-agent-dates"),
       ];
-      if (this.env.SHARED_ELIZA_AGENT_RUNTIME === "true") {
-        imports.push(
-          import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
-            ({ prewarmSharedElizaRuntime }) => prewarmSharedElizaRuntime(),
-          ),
-        );
-      }
+      imports.push(
+        import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
+          ({ prewarmSharedElizaRuntime }) => prewarmSharedElizaRuntime(),
+        ),
+      );
       await Promise.all(imports);
     });
   }
@@ -1038,6 +1048,22 @@ export class SharedRuntimeConversation {
 
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
+    const suppliedChannel = "channel" in payload ? payload.channel : undefined;
+    const channel =
+      suppliedChannel === undefined
+        ? undefined
+        : parseSharedRuntimeChannel(suppliedChannel);
+    if (suppliedChannel !== undefined && channel === null) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid Shared runtime channel",
+          code: "invalid_channel",
+        },
+        { status: 400 },
+      );
+    }
+    const validatedChannel = channel ?? undefined;
     // Deletion fence: once the agent behind this room is purged, every later
     // operation (save, hydration, history read, forwarded turn) fails closed
     // instead of re-creating state for a deleted agent. The `delete` op stays
@@ -1623,23 +1649,20 @@ export class SharedRuntimeConversation {
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
-      const executionEngine =
-        this.env.SHARED_ELIZA_AGENT_RUNTIME === "true"
-          ? ("eliza-runtime" as const)
-          : ("direct-model" as const);
       if (
         payload.operation === "stream" ||
         payload.operation === "personal-stream"
       ) {
         return await sharedRuntimeChatService.stream(agent, payload.rpc, {
           abortSignal: request.signal,
+          traceId: payload.traceId,
           executionCtx,
           historyStore,
           turnClaims,
           funding: personal ? "platform" : "organization-credits",
           trustedMessageRole: payload.trustedMessageRole,
           trustedUserUtterance: payload.trustedUserUtterance,
-          executionEngine,
+          channel: validatedChannel,
           mobilePushDispatch: personal
             ? async (message: MobilePushMessage) => {
                 this.enqueueMobilePush(message);
@@ -1648,13 +1671,14 @@ export class SharedRuntimeConversation {
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
+        traceId: payload.traceId,
         executionCtx,
         historyStore,
         turnClaims,
         funding: personal ? "platform" : "organization-credits",
         trustedMessageRole: payload.trustedMessageRole,
         trustedUserUtterance: payload.trustedUserUtterance,
-        executionEngine,
+        channel: validatedChannel,
         mobilePushDispatch: personal
           ? async (message: MobilePushMessage) => {
               this.enqueueMobilePush(message);

@@ -79,6 +79,7 @@ describe("eliza sse bridge", () => {
     );
 
     expect(observed).toHaveLength(1);
+    expect(observed[0]).toMatchObject({ status: 200 });
     expect(observed[0]?.elapsedMs).toBeGreaterThanOrEqual(0);
     expect(observed[0]?.serverTiming).toBe("turn_hydrate;dur=12.3, turn_admission;dur=4.5");
   });
@@ -548,10 +549,13 @@ describe("eliza sse bridge", () => {
     expect(deltas).toEqual([]);
   });
 
-  test("propagates the voice trace header", async () => {
-    let seenHeader: string | null = null;
+  test("propagates both voice and standard trace headers", async () => {
+    let seenVoiceHeader: string | null = null;
+    let seenStandardHeader: string | null = null;
     const fetchImpl = (async (_url: string, init: RequestInit) => {
-      seenHeader = new Headers(init.headers).get(VOICE_TRACE_HEADER);
+      const headers = new Headers(init.headers);
+      seenVoiceHeader = headers.get(VOICE_TRACE_HEADER);
+      seenStandardHeader = headers.get("X-Eliza-Trace-Id");
       return sseResponse(["data: [DONE]\n\n"]);
     }) as unknown as typeof fetch;
     await streamElizaConversation(
@@ -568,7 +572,29 @@ describe("eliza sse bridge", () => {
       },
       () => {},
     );
-    expect(seenHeader).toBe("trace-XYZ");
+    expect(seenVoiceHeader).toBe("trace-XYZ");
+    expect(seenStandardHeader).toBe("trace-XYZ");
+  });
+
+  test("does not let a timing observer failure break a healthy stream", async () => {
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "hi",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-observer",
+        signal: new AbortController().signal,
+        fetchImpl: (async () => sseResponse(["data: [DONE]\n\n"])) as unknown as typeof fetch,
+        onResponseHeaders: () => {
+          throw new Error("diagnostics unavailable");
+        },
+      },
+      () => undefined,
+    );
+    expect(result).toEqual({ completed: true, aborted: false });
   });
 
   test("uses the canonical persisted message route with minted agent + conversation identity", async () => {

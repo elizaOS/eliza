@@ -4,6 +4,7 @@
  * shapes the message service returns. Consumed by the runtime message handler.
  */
 
+import type { InferenceTurnSummary } from "../inference-timing";
 import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type {
 	ActionResult,
@@ -52,6 +53,12 @@ export interface MessageProcessingOptions {
 	 * mistaken for a delivery-only trajectory terminal.
 	 */
 	onTrajectoryTerminalOwner?: (owner: "run") => void;
+	/**
+	 * Receives the exact closed turn timing summary synchronously after response
+	 * delivery. Hosting boundaries can export edge telemetry before disposing an
+	 * ephemeral runtime; callback failures are diagnostic-only.
+	 */
+	onInferenceTimingSummary?: (summary: InferenceTurnSummary) => void;
 	/**
 	 * When true, do not discard responses when a newer message is being processed (same as BASIC_CAPABILITIES_KEEP_RESP).
 	 * @default resolved from runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") if not set

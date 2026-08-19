@@ -11,8 +11,8 @@
 This is the implementation plan for taking the `verify/` harness from its
 current state (Metal: 5/5 shaders verified on M4 Max; Vulkan: 3/5 turbo*
 shaders verified on Intel ARL + lavapipe; QJL/Polar Vulkan + every other
-backend: unverified) to full coverage of the device matrix declared in
-[`../DEVICE_SUPPORT_GAP_2026-05-10.md`](../DEVICE_SUPPORT_GAP_2026-05-10.md).
+backend: unverified) to full coverage of the device matrix declared in the 2026-05-10 device-support
+gap note (never committed to this repository).
 
 For each unverified backend × kernel combo: the bind-set / fixture /
 host change required, with file-path pointers and effort estimate.
@@ -160,7 +160,7 @@ GPU-runner or the existing device-lab.
 **Current state.** No on-device runner. `vulkan_verify` is a
 desktop/lavapipe binary; cross-compile against the NDK Vulkan headers
 already works (the cmake flags in
-[`../../app-core/scripts/build-llama-cpp-mtp.mjs:670–689`](../../app-core/scripts/build-llama-cpp-mtp.mjs)
+[`../../app-core/scripts/build-llama-cpp-mtp.mjs:670–689`](../../../../packages/app-core/scripts/build-llama-cpp-mtp.mjs)
 do exactly this for `android-arm64-vulkan`), but the `verify/Makefile`
 doesn't have an `android-vulkan` recipe.
 
@@ -205,9 +205,7 @@ Exynos-based Galaxy.
 
 **Status:** blocks `2b` Metal claim on iOS
 hardware. **Has a hard prerequisite:** the `ios-arm64-metal` archive
-must actually be linked into the app first (see
-[`../DEVICE_SUPPORT_GAP_2026-05-10.md`](../DEVICE_SUPPORT_GAP_2026-05-10.md)
-blocker #1).
+must actually be linked into the app first (see the uncommitted 2026-05-10 device-support gap note, blocker #1).
 
 **Current state.** `metal_verify.mm` is a CLI binary that links
 `-framework Metal` — it does not run on iOS where there is no shell.
@@ -232,7 +230,7 @@ blocker #1).
 **Status:** blocks `27b-256k` tier entirely (no target exists today).
 
 **Current state.** `SUPPORTED_TARGETS` in
-[`../../app-core/scripts/build-llama-cpp-mtp.mjs:82`](../../app-core/scripts/build-llama-cpp-mtp.mjs)
+[`../../app-core/scripts/build-llama-cpp-mtp.mjs:82`](../../../../packages/app-core/scripts/build-llama-cpp-mtp.mjs)
 has no `linux-aarch64-*` triple. `parseTarget` would happily split
 `linux-aarch64-cuda` into the right shape, but the array doesn't
 include it.

@@ -17,8 +17,8 @@ import {
   createLifeOpsTaskDefinition,
   LifeOpsRepository,
 } from "./repository.js";
+import { LifeOpsService } from "./service.js";
 
-const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const OWNER_B = "22222222-2222-4222-8222-222222222222";
 
 function makeDefinition(
@@ -62,19 +62,29 @@ async function expectConflict(promise: Promise<unknown>): Promise<void> {
 describe("LifeOps definition persistence — owner scope and revision predicates", () => {
   let runtimeResult: RealTestRuntimeResult;
   let repository: LifeOpsRepository;
+  let service: LifeOpsService;
   let agentId: string;
+  let ownerA: string;
   let defA: LifeOpsTaskDefinition;
   let defB: LifeOpsTaskDefinition;
+  let crossDomain: LifeOpsTaskDefinition;
 
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     agentId = runtimeResult.runtime.agentId;
     repository = new LifeOpsRepository(runtimeResult.runtime);
+    service = new LifeOpsService(runtimeResult.runtime);
+    ownerA = service.ownerEntityId();
     // Duplicate titles on purpose: title text must never disambiguate owners.
-    defA = makeDefinition(agentId, OWNER_A, "water the plants");
+    defA = makeDefinition(agentId, ownerA, "water the plants");
     defB = makeDefinition(agentId, OWNER_B, "water the plants");
+    crossDomain = {
+      ...makeDefinition(agentId, ownerA, "cross-domain poison"),
+      domain: "agent_ops",
+    };
     await repository.createDefinition(defA);
     await repository.createDefinition(defB);
+    await repository.createDefinition(crossDomain);
   }, 120_000);
 
   afterAll(async () => {
@@ -83,29 +93,34 @@ describe("LifeOps definition persistence — owner scope and revision predicates
 
   it("scoped list returns only the requesting owner's definitions", async () => {
     const forA = await repository.listDefinitions(agentId, {
+      domain: "user_lifeops",
       subjectType: "owner",
-      subjectId: OWNER_A,
+      subjectId: ownerA,
     });
     expect(forA.map((d) => d.id)).toEqual([defA.id]);
     const forB = await repository.listDefinitions(agentId, {
+      domain: "user_lifeops",
       subjectType: "owner",
       subjectId: OWNER_B,
     });
     expect(forB.map((d) => d.id)).toEqual([defB.id]);
     const activeForA = await repository.listActiveDefinitions(agentId, {
+      domain: "user_lifeops",
       subjectType: "owner",
-      subjectId: OWNER_A,
+      subjectId: ownerA,
     });
     expect(activeForA.map((d) => d.id)).toEqual([defA.id]);
   });
 
   it("scoped get denies cross-owner reads by id", async () => {
     const crossRead = await repository.getDefinition(agentId, defB.id, {
+      domain: "user_lifeops",
       subjectType: "owner",
-      subjectId: OWNER_A,
+      subjectId: ownerA,
     });
     expect(crossRead).toBeNull();
     const ownRead = await repository.getDefinition(agentId, defB.id, {
+      domain: "user_lifeops",
       subjectType: "owner",
       subjectId: OWNER_B,
     });
@@ -115,7 +130,7 @@ describe("LifeOps definition persistence — owner scope and revision predicates
   it("update cannot land on another owner's row even with the victim's id", async () => {
     const forged: LifeOpsTaskDefinition = {
       ...defB,
-      subjectId: OWNER_A,
+      subjectId: ownerA,
       title: "hijacked",
       updatedAt: new Date().toISOString(),
     };
@@ -123,6 +138,60 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     const untouched = await repository.getDefinition(agentId, defB.id);
     expect(untouched?.title).toBe("water the plants");
     expect(untouched?.subjectId).toBe(OWNER_B);
+  });
+
+  it("domain is part of read and mutation identity", async () => {
+    const ownerDefinitions = await repository.listDefinitions(agentId, {
+      domain: "user_lifeops",
+      subjectType: "owner",
+      subjectId: ownerA,
+    });
+    expect(ownerDefinitions.map((definition) => definition.id)).toEqual([
+      defA.id,
+    ]);
+    expect(
+      await repository.getDefinition(agentId, crossDomain.id, {
+        domain: "user_lifeops",
+        subjectType: "owner",
+        subjectId: ownerA,
+      }),
+    ).toBeNull();
+    await expectConflict(
+      repository.updateDefinition({
+        ...crossDomain,
+        domain: "user_lifeops",
+        title: "cross-domain overwrite",
+      }),
+    );
+    await expectConflict(
+      repository.deleteDefinition(agentId, crossDomain.id, {
+        scope: {
+          domain: "user_lifeops",
+          subjectType: "owner",
+          subjectId: ownerA,
+        },
+      }),
+    );
+    expect(
+      await repository.getDefinition(agentId, crossDomain.id),
+    ).not.toBeNull();
+  });
+
+  it("production service list/get/update/delete deny foreign subject and domain rows", async () => {
+    const visible = await service.listDefinitions();
+    expect(visible.map((record) => record.definition.id)).toEqual([defA.id]);
+    for (const hiddenId of [defB.id, crossDomain.id]) {
+      await expect(service.getDefinition(hiddenId)).rejects.toMatchObject({
+        status: 404,
+      });
+      await expect(
+        service.updateDefinition(hiddenId, { title: "unauthorized" }),
+      ).rejects.toMatchObject({ status: 404 });
+      await expect(service.deleteDefinition(hiddenId)).rejects.toMatchObject({
+        status: 404,
+      });
+      expect(await repository.getDefinition(agentId, hiddenId)).not.toBeNull();
+    }
   });
 
   it("stale expectedUpdatedAt yields a typed conflict and leaves the row intact", async () => {
@@ -154,7 +223,11 @@ describe("LifeOps definition persistence — owner scope and revision predicates
   it("delete scoped to another owner conflicts and cascades nothing", async () => {
     await expectConflict(
       repository.deleteDefinition(agentId, defB.id, {
-        scope: { subjectType: "owner", subjectId: OWNER_A },
+        scope: {
+          domain: "user_lifeops",
+          subjectType: "owner",
+          subjectId: ownerA,
+        },
       }),
     );
     expect(await repository.getDefinition(agentId, defB.id)).not.toBeNull();
@@ -165,19 +238,31 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     if (!current) throw new Error("definition B missing");
     await expectConflict(
       repository.deleteDefinition(agentId, defB.id, {
-        scope: { subjectType: "owner", subjectId: OWNER_B },
+        scope: {
+          domain: "user_lifeops",
+          subjectType: "owner",
+          subjectId: OWNER_B,
+        },
         expectedUpdatedAt: "2000-01-01T00:00:00.000Z",
       }),
     );
     await repository.deleteDefinition(agentId, defB.id, {
-      scope: { subjectType: "owner", subjectId: OWNER_B },
+      scope: {
+        domain: "user_lifeops",
+        subjectType: "owner",
+        subjectId: OWNER_B,
+      },
       expectedUpdatedAt: current.updatedAt,
     });
     expect(await repository.getDefinition(agentId, defB.id)).toBeNull();
     // A repeated delete (retry after success) must conflict, not fabricate success.
     await expectConflict(
       repository.deleteDefinition(agentId, defB.id, {
-        scope: { subjectType: "owner", subjectId: OWNER_B },
+        scope: {
+          domain: "user_lifeops",
+          subjectType: "owner",
+          subjectId: OWNER_B,
+        },
         expectedUpdatedAt: current.updatedAt,
       }),
     );
@@ -190,8 +275,9 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     );
     // Owner A's duplicate-titled definition is untouched by B's delete.
     const survivors = await repository.listDefinitions(agentId, {
+      domain: "user_lifeops",
       subjectType: "owner",
-      subjectId: OWNER_A,
+      subjectId: ownerA,
     });
     expect(survivors.map((d) => d.id)).toEqual([defA.id]);
   });

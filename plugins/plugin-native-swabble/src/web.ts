@@ -1,3 +1,7 @@
+/**
+ * Implements browser speech recognition and Electrobun audio capture for the
+ * Swabble Capacitor surface, with session-owned callback and resource cleanup.
+ */
 import { WebPlugin } from "@capacitor/core";
 import type {
   SpeechRecognitionCtor,
@@ -389,19 +393,28 @@ export class SwabbleWeb extends WebPlugin {
     recognition.lang = config.locale || "en-US";
 
     recognition.onstart = () => {
+      if (this.recognition !== recognition) return;
       this.isActive = true;
       this.notifyListeners("stateChange", { state: "listening" });
     };
 
     recognition.onend = () => {
+      if (this.recognition !== recognition) return;
       if (this.isActive) {
-        this.recognition?.start();
+        recognition.start();
       } else {
+        // Terminal end (stop() or a fatal error already cleared isActive):
+        // release the level-meter mic so no capture outlives the idle state.
+        this.recognition = null;
+        this.stopAudioLevelMonitoring();
         this.notifyListeners("stateChange", { state: "idle" });
       }
     };
 
     recognition.onerror = (event: { error: string }) => {
+      // Browser callbacks can arrive after stop() and a subsequent start().
+      // A retired recognizer must never tear down or restart its replacement.
+      if (this.recognition !== recognition) return;
       const recoverable =
         event.error === "no-speech" || event.error === "aborted";
       this.notifyListeners("error", {
@@ -410,7 +423,12 @@ export class SwabbleWeb extends WebPlugin {
         recoverable,
       });
       if (!recoverable) {
+        // A non-recoverable error ends capture without a consumer stop():
+        // tear the level meter down here so its microphone track and 100 ms
+        // interval do not outlive the error state. Keep this recognizer owned
+        // until its required end event arrives, unless start() replaces it.
         this.isActive = false;
+        this.stopAudioLevelMonitoring();
         this.notifyListeners("stateChange", {
           state: "error",
           reason: event.error,
@@ -418,8 +436,10 @@ export class SwabbleWeb extends WebPlugin {
       }
     };
 
-    recognition.onresult = (event: SpeechRecognitionResultEvent) =>
+    recognition.onresult = (event: SpeechRecognitionResultEvent) => {
+      if (this.recognition !== recognition) return;
       this.handleSpeechResult(event);
+    };
 
     this.recognition = recognition;
     await this.startAudioLevelMonitoring();
@@ -525,9 +545,10 @@ export class SwabbleWeb extends WebPlugin {
       return;
     }
 
-    if (this.recognition) {
-      this.recognition.stop();
-      this.recognition = null;
+    const recognition = this.recognition;
+    this.recognition = null;
+    if (recognition) {
+      recognition.stop();
     }
     this.stopAudioLevelMonitoring();
     this.notifyListeners("stateChange", { state: "idle" });

@@ -19,6 +19,7 @@ import {
   type Component,
   type Content,
   canRequesterMutateDocument,
+  compareMemoryIds,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
@@ -775,6 +776,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     limit?: number;
     count?: number;
     offset?: number;
+    cursor?: { createdAt: number; id: UUID };
     unique?: boolean;
     tableName: string;
     start?: number;
@@ -788,6 +790,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     includeEmbedding?: boolean;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
+    if (params.cursor && params.offset !== undefined) {
+      throw new Error("getMemories cursor and offset are mutually exclusive");
+    }
     const textContains = params.textContains?.trim().toLowerCase();
     let memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (params.entityId && m.entityId !== params.entityId) return false;
@@ -820,8 +825,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
       const aId = typeof a.id === "string" ? a.id : "";
       const bId = typeof b.id === "string" ? b.id : "";
-      return direction === "asc" ? aId.localeCompare(bId) : bId.localeCompare(aId);
+      return direction === "asc" ? compareMemoryIds(aId, bId) : compareMemoryIds(bId, aId);
     });
+
+    if (params.cursor) {
+      const cursor = params.cursor;
+      memories = memories.filter((memory) => {
+        const createdAt = typeof memory.createdAt === "number" ? memory.createdAt : 0;
+        const id = typeof memory.id === "string" ? memory.id : "";
+        if (createdAt !== cursor.createdAt) {
+          return direction === "asc" ? createdAt > cursor.createdAt : createdAt < cursor.createdAt;
+        }
+        const idOrder = compareMemoryIds(id, cursor.id);
+        return direction === "asc" ? idOrder > 0 : idOrder < 0;
+      });
+    }
 
     const offset = typeof params.offset === "number" ? params.offset : 0;
     const limit = params.limit ?? params.count;

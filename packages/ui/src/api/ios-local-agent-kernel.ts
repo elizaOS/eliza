@@ -833,6 +833,8 @@ function handleLocalMemoriesRoute(
     return json({
       memories: items.slice(offset, offset + limit),
       total: items.length,
+      totalIsExact: true,
+      hasMore: offset + limit < items.length,
       limit,
       offset,
     });
@@ -857,7 +859,15 @@ function handleLocalMemoriesRoute(
     );
     const offset = positiveIntegerParam(url.searchParams.get("offset"), 0);
     // No entity graph in iOS local mode — no memory is attributed to an entity.
-    return json({ entityId, memories: [], total: 0, limit, offset });
+    return json({
+      entityId,
+      memories: [],
+      total: 0,
+      totalIsExact: true,
+      hasMore: false,
+      limit,
+      offset,
+    });
   }
 
   return null;

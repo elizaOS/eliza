@@ -22,6 +22,10 @@ import type {
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { resolveStewardCredentialsPath } from "../config/paths.ts";
+import {
+  assertSolanaBase58CharBudget,
+  assertSolanaSecretCharBudget,
+} from "./solana-secret-budget.ts";
 import { computeValueUsd } from "./wallet-dex-prices.ts";
 
 type StewardAgentPayload = {
@@ -333,6 +337,7 @@ function base58Encode(data: Buffer | Uint8Array): string {
 }
 
 function base58Decode(str: string): Buffer {
+  assertSolanaBase58CharBudget(str);
   if (str.length === 0) return Buffer.alloc(0);
   let num = 0n;
   for (const c of str) {
@@ -355,6 +360,7 @@ const PLACEHOLDER_RE =
   /^\[?\s*(REDACTED|PLACEHOLDER|T(?:O)D(?:O)|CHANGEME|EMPTY)\s*]?$/i;
 
 function decodeSolanaPrivateKey(key: string): Buffer {
+  assertSolanaSecretCharBudget(key);
   if (PLACEHOLDER_RE.test(key)) {
     throw new Error("placeholder value");
   }

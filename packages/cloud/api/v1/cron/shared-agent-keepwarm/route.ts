@@ -63,9 +63,7 @@ async function runKeepwarm(c: AppContext) {
       warmed++;
     }
 
-    if (c.env.SHARED_ELIZA_AGENT_RUNTIME === "true") {
-      await prewarmSharedElizaRuntime();
-    }
+    await prewarmSharedElizaRuntime();
 
     logger.info("[SharedKeepwarm Cron] swept recently active shared agents", {
       candidates: agentIds.length,

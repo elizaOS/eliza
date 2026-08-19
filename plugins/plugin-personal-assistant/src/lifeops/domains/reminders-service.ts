@@ -240,6 +240,7 @@ import {
   runTelemetryRetention,
 } from "../telemetry-retention.js";
 import { addMinutes, getLocalDateKey, getZonedDateParts } from "../time.js";
+import { callerDefinitionScopes } from "./definition-authorization.js";
 import { resolveReminderNotificationPriority } from "./reminder-notification-priority.js";
 
 export { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
@@ -1788,10 +1789,15 @@ export class RemindersDomain {
     definitionId: string,
     now = new Date(),
   ): Promise<LifeOpsDefinitionRecord> {
-    const definition = await this.ctx.repository.getDefinition(
-      this.ctx.agentId(),
-      definitionId,
-    );
+    let definition: LifeOpsTaskDefinition | null = null;
+    for (const scope of callerDefinitionScopes(this.ctx)) {
+      definition = await this.ctx.repository.getDefinition(
+        this.ctx.agentId(),
+        definitionId,
+        scope,
+      );
+      if (definition) break;
+    }
     if (!definition) {
       fail(404, "life-ops definition not found");
     }

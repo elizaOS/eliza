@@ -5244,6 +5244,7 @@
   "memoryviewer.loadOlder": "Mag-load ng mas luma",
   "memoryviewer.searchMemoryText": "Maghanap sa teksto ng alaala…",
   "memoryviewer.pageRange": "{{start}}–{{end}} sa {{total}}",
+  "memoryviewer.pageRangeIncomplete": "{{start}}–{{end}} sa hindi bababa sa {{total}}",
   "memoryviewer.prev": "Nakaraan",
   "memoryviewer.next": "Susunod",
   "memoryviewer.total": "Kabuuan",

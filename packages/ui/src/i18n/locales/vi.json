@@ -5244,6 +5244,7 @@
   "memoryviewer.loadOlder": "Tải cũ hơn",
   "memoryviewer.searchMemoryText": "Tìm kiếm văn bản bộ nhớ…",
   "memoryviewer.pageRange": "{{start}}–{{end}} trong {{total}}",
+  "memoryviewer.pageRangeIncomplete": "{{start}}–{{end}} trong ít nhất {{total}}",
   "memoryviewer.prev": "Trước",
   "memoryviewer.next": "Tiếp",
   "memoryviewer.total": "Tổng",

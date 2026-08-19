@@ -18,7 +18,7 @@ runtime (`@elizaos/app-core`). It owns:
 ## Server / client split
 
 The UI client mirror lives in
-[`packages/ui/src/services/local-inference/`](../../../../ui/src/services/local-inference/README.md).
+[`packages/ui/src/services/local-inference/`](../../../../packages/ui/src/services/local-inference/README.md).
 That mirror exists because UI code (panels, hooks, the iOS/Android local
 agent kernel) needs access to the **catalog**, **recommendation**, and
 the **type contract** for status payloads, but must not pull in the
