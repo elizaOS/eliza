@@ -2,11 +2,69 @@
  * Internal file primitives (read/write/list) behind path-security checks. Not
  * exposed as an agent action — the FILE action owns user-facing file access;
  * these back internal computer-use flows only.
+ *
+ * Byte-bearing reads and writes fail closed before allocating more than
+ * {@link MAX_FILE_OP_BYTES}. `readFile` still returns at most
+ * {@link READ_FILE_CHAR_LIMIT} characters, but it no longer slurp-then-slices
+ * the whole guest file first.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { FileActionResult, FileEntry } from "../types.js";
 import { resolveSafeFileTarget } from "./security.js";
+
+/** Same working-set ceiling as the clipboard path (`CLIPBOARD_MAX_BYTES`). */
+export const MAX_FILE_OP_BYTES = 10 * 1024 * 1024;
+export const READ_FILE_CHAR_LIMIT = 10_000;
+
+function decodedBase64Budget(encoded: string): number {
+  const n = encoded.length;
+  let pad = 0;
+  if (n >= 2 && encoded.endsWith("==")) pad = 2;
+  else if (n >= 1 && encoded.endsWith("=")) pad = 1;
+  return Math.floor(n / 4) * 3 - pad;
+}
+
+function budgetExceeded(op: string): FileActionResult {
+  return {
+    success: false,
+    error: `${op} exceeds the ${MAX_FILE_OP_BYTES}-byte file-op budget.`,
+  };
+}
+
+function invalidByteCount(name: string): FileActionResult {
+  return {
+    success: false,
+    error: `${name} must be a non-negative safe integer.`,
+  };
+}
+
+function parseByteCount(
+  value: unknown,
+  name: string,
+): { ok: true; value?: number } | { ok: false; result: FileActionResult } {
+  if (value === undefined) return { ok: true, value: undefined };
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    return { ok: false, result: invalidByteCount(name) };
+  }
+  return { ok: true, value };
+}
+
+async function readExactWindow(
+  resolvedPath: string,
+  start: number,
+  take: number,
+): Promise<Buffer> {
+  const buf = Buffer.alloc(take);
+  if (take === 0) return buf;
+  const handle = await fs.open(resolvedPath, "r");
+  try {
+    await handle.read(buf, 0, take, start);
+  } finally {
+    await handle.close();
+  }
+  return buf;
+}
 
 export async function readFile(
   targetPath: string,
@@ -18,11 +76,17 @@ export async function readFile(
   }
 
   try {
-    const content = await fs.readFile(check.resolvedPath, { encoding });
+    const stat = await fs.stat(check.resolvedPath);
+    if (!stat.isFile()) {
+      return { success: false, error: "Path is not a regular file." };
+    }
+    const maxBytes = READ_FILE_CHAR_LIMIT * 4;
+    const take = Math.min(stat.size, maxBytes);
+    const buf = await readExactWindow(check.resolvedPath, 0, take);
     return {
       success: true,
       path: check.resolvedPath,
-      content: String(content).slice(0, 10000),
+      content: buf.toString(encoding).slice(0, READ_FILE_CHAR_LIMIT),
     };
   } catch (error) {
     // error-policy:J1 file-op boundary — the failure returns as a structured
@@ -44,6 +108,9 @@ export async function writeFile(
   }
 
   try {
+    if (Buffer.byteLength(content, "utf8") > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("write");
+    }
     await fs.mkdir(path.dirname(check.resolvedPath), { recursive: true });
     await fs.writeFile(check.resolvedPath, content, "utf8");
     return {
@@ -72,6 +139,10 @@ export async function editFile(
   }
 
   try {
+    const stat = await fs.stat(check.resolvedPath);
+    if (stat.size > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("edit");
+    }
     const content = await fs.readFile(check.resolvedPath, "utf8");
     if (!content.includes(oldText)) {
       return {
@@ -79,11 +150,11 @@ export async function editFile(
         error: "Old text not found in file.",
       };
     }
-    await fs.writeFile(
-      check.resolvedPath,
-      content.replace(oldText, newText),
-      "utf8",
-    );
+    const next = content.replace(oldText, newText);
+    if (Buffer.byteLength(next, "utf8") > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("edit");
+    }
+    await fs.writeFile(check.resolvedPath, next, "utf8");
     return {
       success: true,
       path: check.resolvedPath,
@@ -109,6 +180,22 @@ export async function appendFile(
   }
 
   try {
+    const incoming = Buffer.byteLength(content, "utf8");
+    if (incoming > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("append");
+    }
+    let existing = 0;
+    try {
+      existing = (await fs.stat(check.resolvedPath)).size;
+    } catch (error) {
+      // error-policy:J3 missing target is a create-on-append; other stat
+      // failures must not be disguised as an empty file.
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code !== "ENOENT") throw error;
+    }
+    if (existing + incoming > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("append");
+    }
     await fs.mkdir(path.dirname(check.resolvedPath), { recursive: true });
     await fs.appendFile(check.resolvedPath, content, "utf8");
     return {
@@ -272,16 +359,25 @@ export async function readBytes(
   if (!check.allowed || !check.resolvedPath) {
     return { success: false, error: check.reason ?? "Path not allowed." };
   }
+  const parsedOffset = parseByteCount(offset, "offset");
+  if (!parsedOffset.ok) return parsedOffset.result;
+  const parsedLength = parseByteCount(length, "length");
+  if (!parsedLength.ok) return parsedLength.result;
   try {
-    let buf = await fs.readFile(check.resolvedPath);
-    if (typeof offset === "number" || typeof length === "number") {
-      const start = Math.max(0, Math.floor(offset ?? 0));
-      const end =
-        typeof length === "number"
-          ? start + Math.max(0, Math.floor(length))
-          : undefined;
-      buf = buf.subarray(start, end);
+    const stat = await fs.stat(check.resolvedPath);
+    if (!stat.isFile()) {
+      return { success: false, error: "Path is not a regular file." };
     }
+    const start = parsedOffset.value ?? 0;
+    const remaining = Math.max(0, stat.size - start);
+    const take =
+      parsedLength.value === undefined
+        ? remaining
+        : Math.min(parsedLength.value, remaining);
+    if (take > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("read_bytes");
+    }
+    const buf = await readExactWindow(check.resolvedPath, start, take);
     return {
       success: true,
       path: check.resolvedPath,
@@ -308,7 +404,14 @@ export async function writeBytes(
     return { success: false, error: check.reason ?? "Path not allowed." };
   }
   try {
-    const buf = Buffer.from(base64 ?? "", "base64");
+    const encoded = base64 ?? "";
+    if (decodedBase64Budget(encoded) > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("write_bytes");
+    }
+    const buf = Buffer.from(encoded, "base64");
+    if (buf.length > MAX_FILE_OP_BYTES) {
+      return budgetExceeded("write_bytes");
+    }
     await fs.mkdir(path.dirname(check.resolvedPath), { recursive: true });
     await fs.writeFile(check.resolvedPath, buf);
     return {
