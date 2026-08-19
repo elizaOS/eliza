@@ -1049,7 +1049,9 @@ type CandidatePattern = {
 	score: number;
 };
 
-function buildCandidatePatterns(candidateActions: string[]): CandidatePattern[] {
+function buildCandidatePatterns(
+	candidateActions: string[],
+): CandidatePattern[] {
 	const patterns: CandidatePattern[] = [];
 
 	for (const candidateAction of candidateActions) {
