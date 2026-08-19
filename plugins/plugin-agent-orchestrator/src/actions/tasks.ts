@@ -2341,7 +2341,35 @@ async function resolveRequestedRepo(
     );
   }
   const text = requestTexts.filter(Boolean).join("\n");
-  let candidate = paramRepo;
+  // A shape-valid repo param can still be invented: the planner fabricated
+  // https://github.com/NubsCarson/recipe-box-app.git for "make me a lil
+  // recipe box page" and the spawn died on a clone the user never asked for
+  // (live 2026-08-19). A repo is only honored when the USER's text grounds
+  // it — a repo/git keyword, or the repo's own name appearing in the ask.
+  let groundedParamRepo = paramRepo;
+  if (paramRepo) {
+    const lowerText = text.toLowerCase();
+    const repoName = paramRepo
+      .replace(/^https?:\/\/[^/]+\//i, "")
+      .replace(/^git@[\w.-]+:/i, "")
+      .replace(/\.git$/i, "")
+      .split("/")
+      .pop();
+    const grounded =
+      /\b(?:repo|repository|github|gitlab|bitbucket|clone|\.git|branch|pull request|pr)\b/i.test(
+        text,
+      ) ||
+      (repoName !== undefined &&
+        repoName.length > 2 &&
+        lowerText.includes(repoName.toLowerCase()));
+    if (!grounded) {
+      logger(runtime).warn(
+        `[TASKS] ignoring ungrounded planner repo param (user text names no repo): ${paramRepo.slice(0, 80)}`,
+      );
+      groundedParamRepo = undefined;
+    }
+  }
+  let candidate = groundedParamRepo;
   if (!candidate) {
     const url = text.match(
       /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+\/[\w.-]+(?:\.git)?/i,
