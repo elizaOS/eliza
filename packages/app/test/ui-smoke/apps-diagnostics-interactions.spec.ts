@@ -6,6 +6,7 @@
 
 import { expect, test } from "@playwright/test";
 import {
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -68,6 +69,11 @@ test("memory viewer queries memory data and the Browse toggle switches the surfa
   page,
 }, testInfo) => {
   const memoryRequests: string[] = [];
+
+  // This test owns the memory surface itself. Hide the shell's independent
+  // chat overlay so pointer interception cannot turn the pagination contract
+  // into a test of chat-overlay geometry.
+  await hideChatOverlay(page);
 
   await page.route("**/api/memories/browse**", async (route) => {
     const memories = Array.from({ length: 50 }, (_, index) => ({
