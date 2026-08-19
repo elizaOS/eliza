@@ -3319,7 +3319,11 @@ export class LifeOpsRepository {
       this.runtime,
       `UPDATE app_lifeops.life_brief_item_engagements
           SET event_at = ${sqlQuote(releasedAt)},
-              created_at = ${sqlQuote(releasedAt)},
+              created_at = CASE
+                WHEN created_at::timestamptz >= ${sqlQuote(releasedAt)}::timestamptz
+                  THEN (created_at::timestamptz + INTERVAL '1 microsecond')::text
+                ELSE ${sqlQuote(releasedAt)}
+              END,
               metadata_json = ${sqlJson({
                 engagementEventId: engagement.id,
                 rewardState: "released",

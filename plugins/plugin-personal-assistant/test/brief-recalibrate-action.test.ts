@@ -942,6 +942,51 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     expect(recoverable.id).not.toBe(oldest.id);
   });
 
+  it("keeps released retry order monotonic across equal or backward clocks", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const record = (suffix: string) =>
+      repository.recordBriefItemEngagement({
+        agentId: runtime.agentId,
+        briefingId: `brief-retry-clock-${suffix}`,
+        itemId: `${item.itemId}:${suffix}`,
+        source: item.source,
+        kind: item.kind,
+        sourceId: `${item.sourceId}:${suffix}`,
+        itemClass: item.itemClass,
+        eventType: "kept",
+        eventAt: "2025-01-01T00:00:00.000Z",
+        weight: 0.5,
+        metadata: { trajectoryId: `${suffix}-trajectory` },
+      });
+    const oldest = await record("oldest");
+    const newer = await record("newer");
+    const futureAttempt = "2099-01-01T00:00:00.000Z";
+    const oldestToken = await repository.claimBriefEngagementReward(oldest, {
+      nowIso: futureAttempt,
+    });
+    const newerToken = await repository.claimBriefEngagementReward(newer, {
+      nowIso: futureAttempt,
+    });
+    if (!oldestToken || !newerToken) throw new Error("claim fixture failed");
+    await executeRawSql(
+      runtime,
+      `UPDATE app_lifeops.life_brief_item_engagements
+          SET event_at = '2020-01-01T00:00:00.000Z'
+        WHERE event_type = 'rewarded'
+          AND agent_id = '${runtime.agentId}'`,
+    );
+
+    await repository.releaseBriefEngagementRewardClaim(oldest, oldestToken);
+
+    expect(
+      await repository.listPendingBriefEngagementRewards(runtime.agentId, {
+        limit: 1,
+        nowIso: "2100-01-01T00:00:00.000Z",
+      }),
+    ).toEqual([newer]);
+  });
+
   it("rejects invalid pending-reward limits, scan times, and leases", async () => {
     const rewardIndexes = await executeRawSql(
       runtime,
