@@ -5,6 +5,7 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import {
+  MAX_SCREEN_TILES,
   reconstructAbsoluteCoords,
   type ScreenTile,
   tileScreenshot,
@@ -346,6 +347,18 @@ describe("tileScreenshot — overlap math", () => {
         { maxEdge: 16, overlapFraction: 0.1 },
       ),
     ).rejects.toThrow(/maxEdge/);
+  });
+
+  it("fails closed on a hostile width/height that would emit tens of thousands of tiles", async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const started = performance.now();
+    await expect(
+      tileScreenshot(
+        { displayId: "x", width: 20_000, height: 20_000, pngBytes: png },
+        { maxEdge: 64, overlapFraction: 0 },
+      ),
+    ).rejects.toThrow(new RegExp(`exceeds ${MAX_SCREEN_TILES}`));
+    expect(performance.now() - started).toBeLessThan(50);
   });
 });
 
