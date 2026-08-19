@@ -369,13 +369,34 @@ describe("transcriber helpers", () => {
 		expect(down.length).toBe(Math.round((pcm.length * 16000) / 48000));
 	});
 
-	it("resampleLinear fails closed on a 1 Hz header instead of allocating millions of frames", () => {
-		const pcm = new Float32Array(8_000);
-		const started = performance.now();
-		expect(() => resampleLinear(pcm, 1, 16_000)).toThrow(
-			/rejected source rate/,
+	it.each([0, 1, 999, 192_001, 16_000.5, Number.NaN, Number.POSITIVE_INFINITY])(
+		"resampleLinear rejects unsafe source rate %s before allocating output",
+		(fromRate) => {
+			expect(() =>
+				resampleLinear(new Float32Array([0.25]), fromRate, 16_000),
+			).toThrow(/rejected source rate/);
+		},
+	);
+
+	it.each([0, 999, 192_001, 16_000.5, Number.NaN, Number.NEGATIVE_INFINITY])(
+		"resampleLinear rejects unsafe target rate %s",
+		(toRate) => {
+			expect(() =>
+				resampleLinear(new Float32Array([0.25]), 16_000, toRate),
+			).toThrow(/rejected target rate/);
+		},
+	);
+
+	it("resampleLinear accepts boundary rates and rejects oversized output", () => {
+		expect(resampleLinear(new Float32Array([0.25]), 1_000, 1_000)).toHaveLength(
+			1,
 		);
-		expect(performance.now() - started).toBeLessThan(50);
+		expect(
+			resampleLinear(new Float32Array([0.25]), 192_000, 192_000),
+		).toHaveLength(1);
+		expect(() =>
+			resampleLinear(new Float32Array(120_001), 1_000, 16_000),
+		).toThrow(/resample output .* exceeds/);
 	});
 });
 

@@ -121,7 +121,7 @@ export const MAX_RESAMPLE_OUTPUT_SAMPLES = 16_000 * 120;
 
 function requireResampleRate(rate: number, label: string): void {
 	if (
-		!Number.isFinite(rate) ||
+		!Number.isSafeInteger(rate) ||
 		rate < MIN_RESAMPLE_RATE_HZ ||
 		rate > MAX_RESAMPLE_RATE_HZ
 	) {

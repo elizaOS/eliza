@@ -63,6 +63,7 @@ import {
   type TextToSpeechParams,
   type TranscriptionParams,
 } from "@elizaos/core";
+import { resampleAospLinear } from "./aosp-audio-resample.js";
 // @elizaos/shared/local-inference is intentionally not imported here: every
 // AOSP TTS path flows through `makeAospFusedKokoroTextToSpeechHandler` below,
 // which dlopens `libelizainference.so` via bun:ffi and synthesizes Kokoro
@@ -2745,52 +2746,6 @@ function decodeMonoPcm16WavBytes(bytes: Uint8Array): {
   return { samples, sampleRate };
 }
 
-const MIN_AOSP_RESAMPLE_RATE_HZ = 1_000;
-const MAX_AOSP_RESAMPLE_RATE_HZ = 192_000;
-const MAX_AOSP_RESAMPLE_OUTPUT_SAMPLES = 16_000 * 120;
-
-function resampleLinear(
-  samples: Float32Array,
-  fromHz: number,
-  toHz: number,
-): Float32Array {
-  if (
-    !Number.isFinite(fromHz) ||
-    fromHz < MIN_AOSP_RESAMPLE_RATE_HZ ||
-    fromHz > MAX_AOSP_RESAMPLE_RATE_HZ
-  ) {
-    throw new Error(
-      `[aosp-local-inference] resample rejected source rate ${fromHz}`,
-    );
-  }
-  if (
-    !Number.isFinite(toHz) ||
-    toHz < MIN_AOSP_RESAMPLE_RATE_HZ ||
-    toHz > MAX_AOSP_RESAMPLE_RATE_HZ
-  ) {
-    throw new Error(
-      `[aosp-local-inference] resample rejected target rate ${toHz}`,
-    );
-  }
-  if (fromHz === toHz) return samples;
-  const ratio = toHz / fromHz;
-  const outLen = Math.max(1, Math.round(samples.length * ratio));
-  if (outLen > MAX_AOSP_RESAMPLE_OUTPUT_SAMPLES) {
-    throw new Error(
-      `[aosp-local-inference] resample output ${outLen} exceeds ${MAX_AOSP_RESAMPLE_OUTPUT_SAMPLES}`,
-    );
-  }
-  const out = new Float32Array(outLen);
-  for (let i = 0; i < out.length; i++) {
-    const src = i / ratio;
-    const i0 = Math.floor(src);
-    const i1 = Math.min(samples.length - 1, i0 + 1);
-    const f = src - i0;
-    out[i] = (samples[i0] ?? 0) * (1 - f) + (samples[i1] ?? 0) * f;
-  }
-  return out;
-}
-
 function bytesFromTranscriptionInput(
   value: Uint8Array | ArrayBuffer | Buffer,
 ): Uint8Array {
@@ -2937,7 +2892,7 @@ async function transcribeWithAospElizaInference(
       );
     }
     assertNotAborted(signal);
-    const pcm16k = resampleLinear(audio.samples, audio.sampleRate, 16000);
+    const pcm16k = resampleAospLinear(audio.samples, audio.sampleRate, 16000);
     const pcmBytes = Buffer.from(
       pcm16k.buffer,
       pcm16k.byteOffset,
