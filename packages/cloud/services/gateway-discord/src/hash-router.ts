@@ -8,14 +8,17 @@ import { logger } from "./logger";
 
 const REFRESH_MS = 5_000;
 const ENDPOINT_SLICE_FETCH_TIMEOUT_MS = 10_000;
+const MAX_STALE_RING_MS = 30_000;
 
 interface RingState {
   ring: HashRing;
   podIPs: string[];
   lastRefresh: number;
+  lastAttempt: number;
 }
 
 const rings = new Map<string, RingState>();
+const refreshes = new Map<string, Promise<RingState | undefined>>();
 
 function parseServerUrl(serverUrl: string): {
   serviceName: string;
@@ -52,23 +55,24 @@ interface EndpointSliceList {
   }>;
 }
 
+type PodIPResolution = { ok: true; podIPs: string[] } | { ok: false };
+
 async function resolvePodIPs(
   serviceName: string,
   namespace: string,
-): Promise<string[]> {
+): Promise<PodIPResolution> {
   const apiUrl = `https://kubernetes.default.svc/apis/discovery.k8s.io/v1/namespaces/${namespace}/endpointslices?labelSelector=kubernetes.io/service-name=${serviceName}`;
 
-  const token = readServiceAccountToken();
-  if (!token) return [];
-
   try {
+    const token = readServiceAccountToken();
+    if (!token) return { ok: false };
     const res = await fetch(apiUrl, {
       headers: { Authorization: `Bearer ${token}` },
       tls: { ca: readServiceAccountCaCert() ?? undefined },
       signal: AbortSignal.timeout(ENDPOINT_SLICE_FETCH_TIMEOUT_MS),
     } as RequestInit);
 
-    if (!res.ok) return [];
+    if (!res.ok) return { ok: false };
 
     const data = (await res.json()) as EndpointSliceList;
     const ips: string[] = [];
@@ -80,13 +84,15 @@ async function resolvePodIPs(
         }
       }
     }
-    return ips;
+    return { ok: true, podIPs: ips };
   } catch (err) {
+    // error-policy:J3 Kubernetes discovery failures remain distinct from an
+    // authoritative empty EndpointSlice response so callers can retain cache.
     logger.error("[hash-router] EndpointSlice resolution failed", {
       serviceName,
       error: err instanceof Error ? err.message : String(err),
     });
-    return [];
+    return { ok: false };
   }
 }
 
@@ -113,7 +119,9 @@ function updateRing(
   }
 
   if (existing && sameIPs(existing.podIPs, podIPs)) {
-    existing.lastRefresh = Date.now();
+    const now = Date.now();
+    existing.lastRefresh = now;
+    existing.lastAttempt = now;
     return existing;
   }
 
@@ -128,13 +136,73 @@ function updateRing(
     });
   }
 
+  const now = Date.now();
   const state: RingState = {
     ring: new HashRing(podIPs, "md5", { "max cache size": 1000 }),
     podIPs,
-    lastRefresh: Date.now(),
+    lastRefresh: now,
+    lastAttempt: now,
   };
   rings.set(serviceName, state);
   return state;
+}
+
+function retainUsableStaleRing(
+  serviceName: string,
+  existing: RingState | undefined,
+): RingState | undefined {
+  if (!existing) return undefined;
+  const staleForMs = Date.now() - existing.lastRefresh;
+  if (staleForMs <= MAX_STALE_RING_MS) {
+    return existing;
+  }
+  logger.warn("[hash-router] Discovery failed, dropping stale ring", {
+    serviceName,
+    staleForMs,
+  });
+  rings.delete(serviceName);
+  return undefined;
+}
+
+function refreshRing(
+  serviceName: string,
+  namespace: string,
+): Promise<RingState | undefined> {
+  const refreshKey = `${namespace}/${serviceName}`;
+  const inFlight = refreshes.get(refreshKey);
+  if (inFlight) return inFlight;
+
+  const current = rings.get(serviceName);
+  if (current) current.lastAttempt = Date.now();
+
+  let refresh!: Promise<RingState | undefined>;
+  refresh = (async () => {
+    try {
+      const resolution = await resolvePodIPs(serviceName, namespace);
+      return resolution.ok
+        ? updateRing(serviceName, resolution.podIPs, rings.get(serviceName))
+        : retainUsableStaleRing(serviceName, rings.get(serviceName));
+    } finally {
+      if (refreshes.get(refreshKey) === refresh) {
+        refreshes.delete(refreshKey);
+      }
+    }
+  })();
+  refreshes.set(refreshKey, refresh);
+  return refresh;
+}
+
+function observeRefresh(
+  promise: Promise<RingState | undefined>,
+  serviceName: string,
+): void {
+  // error-policy:J5 The background stale-ring refresh is observed here.
+  void promise.catch((err) => {
+    logger.error("[hash-router] Background refresh failed", {
+      serviceName,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 }
 
 export async function getHashTargets(
@@ -152,9 +220,10 @@ export async function getHashTargets(
   let entry = rings.get(serviceName);
   const now = Date.now();
 
-  if (!entry || now - entry.lastRefresh > REFRESH_MS) {
-    const podIPs = await resolvePodIPs(serviceName, namespace);
-    entry = updateRing(serviceName, podIPs, entry);
+  if (!entry || now - entry.lastRefresh > MAX_STALE_RING_MS) {
+    entry = await refreshRing(serviceName, namespace);
+  } else if (now - entry.lastAttempt > REFRESH_MS) {
+    observeRefresh(refreshRing(serviceName, namespace), serviceName);
   }
 
   if (!entry) return [];
@@ -169,6 +238,5 @@ export async function refreshHashRing(serverUrl: string): Promise<void> {
   }
 
   const { serviceName, namespace } = parseServerUrl(serverUrl);
-  const podIPs = await resolvePodIPs(serviceName, namespace);
-  updateRing(serviceName, podIPs, rings.get(serviceName));
+  await refreshRing(serviceName, namespace);
 }
