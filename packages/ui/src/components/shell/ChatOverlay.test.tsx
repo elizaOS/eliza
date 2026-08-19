@@ -36,6 +36,9 @@ import {
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
+  // Voice's inert off-device diagnostics instantiate this re-export at module
+  // load; keep the class shape while replacing only the shared singleton.
+  ElizaClient: class {},
   client: {
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
     // Transcription archival is best-effort and fire-and-forget; resolve so the
@@ -2058,8 +2061,37 @@ describe("ChatOverlay", () => {
     // pseudo-element extending into transparent pixels above or beside the
     // bubble, where it would steal clicks from the underlying desktop app.
     expect(grabber.className).not.toContain("before:");
-    expect(grabber.className).toContain("inset-x-6");
     expect(grabber.className).toContain("top-0.5");
+    // Input mode leaves real gutters above both edge controls, while the whole
+    // target remains confined to the visible composer surface.
+    expect(grabber.className).toContain("inset-x-[4.5rem]");
+    expect(grabber.className).not.toContain("inset-x-6");
+  });
+
+  it("keeps the collapsed grabber and chat actions as exclusive gesture owners", () => {
+    const parentPointerDown = vi.fn();
+    render(
+      <div onPointerDown={parentPointerDown}>
+        <ChatOverlay controller={makeController()} />
+      </div>,
+    );
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 51,
+      pointerType: "mouse",
+    });
+    expect(parentPointerDown).not.toHaveBeenCalled();
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, {
+      button: 0,
+      pointerId: 52,
+      pointerType: "mouse",
+      clientY: 420,
+    });
+    expect(parentPointerDown).not.toHaveBeenCalled();
   });
 
   it("mounts an inert transcript preview during an upward drag before release", async () => {
