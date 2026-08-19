@@ -1,5 +1,6 @@
 /** Exercises the real Cloud login create/poll boundary with deterministic fetch responses. */
 
+import { logger } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./validate-url.js", () => ({
@@ -12,11 +13,13 @@ const SERVER_SESSION_ID = "11111111-2222-4333-8444-555555555555";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("cloudLogin server-minted sessions", () => {
-  it("opens and polls the authoritative server session without proposing an id", async () => {
+  it("opens and polls the authoritative session while sending a compatibility proposal", async () => {
     const requests: Array<{ url: string; body?: BodyInit | null }> = [];
+    const logSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -54,6 +57,7 @@ describe("cloudLogin server-minted sessions", () => {
     expect(onBrowserUrl).toHaveBeenCalledWith(
       `https://cloud.example.com/auth/cli-login?session=${SERVER_SESSION_ID}`,
     );
+    expect(logSpy.mock.calls.flat().join(" ")).not.toContain(SERVER_SESSION_ID);
     expect(result.apiKey).toBe("elizakey_test");
   });
 

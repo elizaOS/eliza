@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 describe("POST /api/cloud/login", () => {
-  it("returns the upstream server-minted session and sends no proposed id", async () => {
+  it("returns the upstream server-minted session and sends a compatibility proposal", async () => {
     let requestBody: BodyInit | null | undefined;
     vi.stubGlobal(
       "fetch",

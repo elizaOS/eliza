@@ -114,7 +114,7 @@ export async function cloudLogin(
   }
 
   const browserUrl = `${baseUrl}/auth/cli-login?session=${encodeURIComponent(sessionId)}`;
-  logger.info(`[cloud-auth] Browser URL: ${browserUrl}`);
+  logger.info("[cloud-auth] Browser sign-in URL ready");
   options.onBrowserUrl?.(browserUrl);
 
   const deadline = Date.now() + timeoutMs;
