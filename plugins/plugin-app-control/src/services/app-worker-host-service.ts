@@ -28,6 +28,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import {
+	ElizaError,
 	type IAgentRuntime,
 	logger,
 	resolveStateDir,
@@ -57,6 +58,8 @@ export interface InvokeResult<T = unknown> {
 export interface InvokeFailure {
 	ok: false;
 	reason: string;
+	code?: string;
+	context?: Record<string, unknown>;
 	durationMs: number;
 }
 
@@ -429,6 +432,8 @@ export class AppWorkerHostService extends Service {
 					ok: boolean;
 					result?: unknown;
 					reason?: string;
+					code?: string;
+					context?: Record<string, unknown>;
 					kind?: "no-worker-surface" | "error";
 				};
 				if (msg.id === 0) {
@@ -452,7 +457,13 @@ export class AppWorkerHostService extends Service {
 					pending.resolve({ ok: true, result: msg.result });
 				} else {
 					pending.reject(
-						new Error(msg.reason ?? "Worker returned ok:false with no reason"),
+						new ElizaError(
+							msg.reason ?? "Worker returned ok:false with no reason",
+							{
+								code: msg.code ?? "APP_WORKER_RPC_FAILED",
+								...(msg.context ? { context: msg.context } : {}),
+							},
+						),
 					);
 				}
 			};
@@ -576,6 +587,12 @@ export class AppWorkerHostService extends Service {
 			return {
 				ok: false,
 				reason: error instanceof Error ? error.message : String(error),
+				...(error instanceof ElizaError
+					? {
+							code: error.code,
+							...(error.context ? { context: error.context } : {}),
+						}
+					: {}),
 				durationMs: performance.now() - startedAt,
 			};
 		}
