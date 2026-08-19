@@ -16,6 +16,28 @@ describe("classifyDestructiveCommand — fires", () => {
     expect(classifyDestructiveCommand("rm -fr build").destructive).toBe(true);
     expect(classifyDestructiveCommand("rm -R cache").destructive).toBe(true);
   });
+  it("GNU long-form --recursive/--force fire like their short flags", () => {
+    const recursive = classifyDestructiveCommand("rm --recursive build");
+    expect(recursive.destructive).toBe(true);
+    expect(recursive.reason).toBe("recursive delete");
+    expect(recursive.targets).toContain("build");
+
+    const mixed = classifyDestructiveCommand("rm -R --force cache");
+    expect(mixed.destructive).toBe(true);
+    expect(mixed.reason).toBe("recursive delete");
+    expect(mixed.targets).toContain("cache");
+
+    const both = classifyDestructiveCommand("rm --recursive --force ./data");
+    expect(both.destructive).toBe(true);
+    expect(both.reason).toBe("recursive delete");
+    expect(both.targets).toContain("./data");
+  });
+  it("forced glob delete via long-form --force", () => {
+    const v = classifyDestructiveCommand("rm --force /var/log/*.log");
+    expect(v.destructive).toBe(true);
+    expect(v.reason).toBe("forced glob delete");
+    expect(v.targets).toContain("/var/log/*.log");
+  });
   it.each([
     ["Remove-Item -LiteralPath C:\\temp\\old -Recurse -Force"],
     ["remove-item C:\\temp\\old -Rec -Force"],
@@ -67,6 +89,8 @@ describe("classifyDestructiveCommand — must NOT fire", () => {
     ["ls -la /tmp"],
     ["rm single-file.txt"],
     ["rm -f one-exact-file.log"],
+    ["rm --force one-exact-file.log"],
+    ["git rm --recursive old-module"],
     ["Remove-Item one-exact-file.log"],
     ["git rm old.ts"],
     ["df -h / && du -sh /home"],

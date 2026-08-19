@@ -18,6 +18,19 @@ export interface DestructiveVerdict {
 
 const RECURSIVE_RM_FLAG = /^-[a-z]*[rR][a-z]*$/;
 const FORCE_ONLY_FLAG = /^-[a-z]*f[a-z]*$/;
+
+// GNU coreutils accepts long options as equivalents of the bundled short
+// flags. `rm --recursive` is the same delete as `rm -r`, and `rm --force` is
+// the same as `rm -f`; the short-flag regexes above cannot match them because
+// the second leading dash breaks `^-[a-z]*`. A recursive rm fires the gate
+// unconditionally; a force-only rm fires only against a glob, mirroring the
+// short-flag semantics so a single-file `rm --force x` still does not fire.
+function isRecursiveRmFlag(arg: string): boolean {
+  return arg === "--recursive" || RECURSIVE_RM_FLAG.test(arg);
+}
+function isForceRmFlag(arg: string): boolean {
+  return arg === "--force" || FORCE_ONLY_FLAG.test(arg);
+}
 const POWERSHELL_RECURSE_FLAG = /^-(?:r|re|rec|recu|recur|recurs|recurse)$/i;
 const POWERSHELL_REMOVE_ITEM_BINS = new Set([
   "remove-item",
@@ -88,13 +101,13 @@ export function classifyDestructiveCommand(
     const rest = argv.slice(i + 1);
 
     if (bin === "rm") {
-      const recursive = rest.some((a) => RECURSIVE_RM_FLAG.test(a));
+      const recursive = rest.some((a) => isRecursiveRmFlag(a));
       if (recursive) {
         const targets = rest.filter((a) => !a.startsWith("-"));
         return { destructive: true, reason: "recursive delete", targets };
       }
       // rm -f on a glob is bulk too; single explicit path is not.
-      const force = rest.some((a) => FORCE_ONLY_FLAG.test(a));
+      const force = rest.some((a) => isForceRmFlag(a));
       const paths = rest.filter((a) => !a.startsWith("-"));
       if (force && paths.some((p) => p.includes("*"))) {
         return {
