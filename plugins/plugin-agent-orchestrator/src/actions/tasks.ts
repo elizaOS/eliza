@@ -1150,6 +1150,7 @@ async function runCreateLegacy(
   // this ack lost the delivery race to fast workers' completion relays
   // (live 2026-08-19: three separate orderings observed).
   let earlyAckText: string | undefined;
+  let ackPostedOutOfBand = false;
   if (!syntheticRespawnInbound && callback) {
     const ackTitles = tasks.map(
       (part, index) =>
@@ -1189,6 +1190,7 @@ async function runCreateLegacy(
         { source: ackSource, roomId: String(message.roomId) },
         { text: earlyAckText, source: ackSource, agentVoiced: true },
       ).catch(() => undefined);
+      ackPostedOutOfBand = true;
       // Record (never re-send) so settle binds its receipt to this text
       // instead of synthesizing a duplicate delivery from result.text.
       await callback({
@@ -1822,8 +1824,12 @@ async function runCreateLegacy(
   return {
     success: true,
     text: proseText,
-    userFacingText: proseText,
-    verifiedUserFacing: true,
+    // When the ack already posted out-of-band, re-claiming it as the turn's
+    // user-facing text redelivers it at settle (live 2026-08-19: doubled
+    // "On it" twice in a row). The planner keeps the grounding text either way.
+    ...(ackPostedOutOfBand
+      ? {}
+      : { userFacingText: proseText, verifiedUserFacing: true }),
     turnComplete: true,
     data: {
       agents: results,
