@@ -296,7 +296,11 @@ export class SandboxRegistry {
           | RespError
           | undefined;
         if (firstErr) {
-          finish(new Error(`Redis error: ${firstErr.message}`));
+          finish(
+            new ElizaError(`Redis error: ${firstErr.message}`, {
+              code: firstErr.code,
+            }),
+          );
           return;
         }
         // Strip the AUTH/SELECT preamble replies; return only command results.
@@ -308,7 +312,10 @@ export class SandboxRegistry {
 
 /** A RESP `-ERR ...` reply, kept distinct so callers can detect failures. */
 class RespError {
-  constructor(public readonly message: string) {}
+  constructor(
+    public readonly message: string,
+    public readonly code = "SANDBOX_REGISTRY_TCP_REPLY_INVALID",
+  ) {}
 }
 
 /** Encode commands as a single RESP2 buffer (inline pipelining). */
@@ -412,7 +419,10 @@ class RespReplyParser {
           : Number.NaN;
         if (!Number.isSafeInteger(length) || length > MAX_REGISTRY_TCP_BYTES) {
           this.replies.push(
-            new RespError(`bulk string length ${line} exceeds TCP budget`),
+            new RespError(
+              `bulk string length ${line} exceeds TCP budget`,
+              "SANDBOX_REGISTRY_TCP_REPLY_TOO_LARGE",
+            ),
           );
           return { replies: this.replies };
         }

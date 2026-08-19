@@ -140,16 +140,13 @@ export function resampleLinear(
 	}
 	const durationSeconds = pcm.length / fromRate;
 	if (durationSeconds > MAX_RESAMPLE_DURATION_SECONDS) {
-		throw new ElizaError(
-			"Audio frame exceeds the resampling duration budget",
-			{
-				code: "AUDIO_RESAMPLE_DURATION_BUDGET_EXCEEDED",
-				context: {
-					durationSeconds,
-					maxDurationSeconds: MAX_RESAMPLE_DURATION_SECONDS,
-				},
+		throw new ElizaError("Audio frame exceeds the resampling duration budget", {
+			code: "AUDIO_RESAMPLE_DURATION_BUDGET_EXCEEDED",
+			context: {
+				durationSeconds,
+				maxDurationSeconds: MAX_RESAMPLE_DURATION_SECONDS,
 			},
-		);
+		});
 	}
 	if (fromRate === toRate || pcm.length === 0) return pcm;
 	const ratio = toRate / fromRate;

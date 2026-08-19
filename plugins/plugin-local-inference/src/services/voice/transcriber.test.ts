@@ -370,7 +370,9 @@ describe("transcriber helpers", () => {
 	});
 
 	it("rejects hostile sample rates before sizing an output buffer", () => {
-		expect(() => resampleLinear(new Float32Array(8_000), 1, 16_000)).toThrowError(
+		expect(() =>
+			resampleLinear(new Float32Array(8_000), 1, 16_000),
+		).toThrowError(
 			expect.objectContaining({ code: "AUDIO_RESAMPLE_RATE_INVALID" }),
 		);
 	});
