@@ -177,6 +177,34 @@ describe("workspace in-place fast-path", () => {
 });
 
 describe("content-keyed staging cache", () => {
+  it("does not stage bytes or links that escape the plugin tree", async () => {
+    const name = "stage-cache-symlink-confinement-fixture";
+    const installPath = await createSourceFixture(tmpDir, name, "confined");
+    const outsidePath = path.join(tmpDir, "outside-secret.txt");
+    await fsp.writeFile(outsidePath, "host-only");
+    await fsp.writeFile(path.join(installPath, "inside.txt"), "plugin-owned");
+    await fsp.symlink("inside.txt", path.join(installPath, "inside-link.txt"));
+    await fsp.symlink(
+      "../outside-secret.txt",
+      path.join(installPath, "escape.txt"),
+    );
+
+    const stagedRoot = await stageColdPluginImportRoot(
+      coldStageParams(installPath, name),
+    );
+
+    await expect(
+      fsp.lstat(path.join(stagedRoot, "escape.txt")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      fsp.readFile(path.join(stagedRoot, "inside-link.txt"), "utf8"),
+    ).resolves.toBe("plugin-owned");
+    const stagedLink = await fsp.lstat(
+      path.join(stagedRoot, "inside-link.txt"),
+    );
+    expect(stagedLink.isSymbolicLink()).toBe(true);
+  });
+
   it("non-workspace dist-less plugin stages once, then cache-hits with no rebuild", async () => {
     const name = "stage-cache-hit-fixture";
     const installPath = await createSourceFixture(tmpDir, name, "cache-hit");
