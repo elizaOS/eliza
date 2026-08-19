@@ -159,6 +159,11 @@ describe("getAllRetweeters", () => {
 
     expect(result.map((r) => r.rest_id)).toEqual(["user-1", "user-2"]);
     expect(tweetRetweetedBy).toHaveBeenCalledTimes(2);
+    expect(tweetRetweetedBy).toHaveBeenNthCalledWith(
+      2,
+      "tweet-1",
+      expect.objectContaining({ pagination_token: "c1" }),
+    );
   });
 
   it("completes on a terminal page whose previous_token is a novel value", async () => {
@@ -174,6 +179,11 @@ describe("getAllRetweeters", () => {
 
     expect(result.map((r) => r.rest_id)).toEqual(["user-1", "user-2"]);
     expect(tweetRetweetedBy).toHaveBeenCalledTimes(2);
+    expect(tweetRetweetedBy).toHaveBeenNthCalledWith(
+      2,
+      "tweet-1",
+      expect.objectContaining({ pagination_token: "c1" }),
+    );
   });
 
   it("caps total pages so a provider that never repeats but never stops still terminates", async () => {
