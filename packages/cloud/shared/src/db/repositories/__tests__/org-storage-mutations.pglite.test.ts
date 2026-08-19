@@ -93,11 +93,26 @@ beforeAll(async () => {
 }, TIMEOUT);
 
 beforeEach(async () => {
+  // The production receipt table rejects DELETE/TRUNCATE. This database-owner-only
+  // fixture reset bypasses just its statement guard; migration tests exercise the guard itself.
   await dbWrite.execute(
-    sql.raw(`TRUNCATE org_storage_read_operations, org_storage_gc_outbox,
-      org_storage_delete_operations, org_storage_put_operations, org_storage_objects,
-      org_storage_quota, credit_transactions, users, organizations CASCADE`),
+    sql.raw(
+      "ALTER TABLE org_storage_read_operations DISABLE TRIGGER org_storage_read_truncate_guard_trigger",
+    ),
   );
+  try {
+    await dbWrite.execute(
+      sql.raw(`TRUNCATE org_storage_read_operations, org_storage_gc_outbox,
+        org_storage_delete_operations, org_storage_put_operations, org_storage_objects,
+        org_storage_quota, credit_transactions, users, organizations CASCADE`),
+    );
+  } finally {
+    await dbWrite.execute(
+      sql.raw(
+        "ALTER TABLE org_storage_read_operations ENABLE TRIGGER org_storage_read_truncate_guard_trigger",
+      ),
+    );
+  }
   await dbWrite.execute(sql`INSERT INTO organizations (id) VALUES (${ORG})`);
   await dbWrite.execute(sql`INSERT INTO organizations (id) VALUES (${OTHER_ORG})`);
   await dbWrite.execute(

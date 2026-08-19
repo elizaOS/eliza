@@ -50,10 +50,23 @@ CREATE TABLE "org_storage_read_operations" (
     AND "method" IN ('get','head','list','presign')
     AND "state" IN ('prepared','provider_succeeded','committed','failed')
     AND "price_usd" >= 0 AND "access_count" >= 0
+    AND ("state" <> 'prepared' OR (
+      "object_generation" IS NULL AND "provider_key" IS NULL
+      AND "result_size_bytes" IS NULL AND "result_content_type" IS NULL
+      AND "result_etag" IS NULL AND "response_status" IS NULL
+      AND "response_json" IS NULL AND "provider_succeeded_at" IS NULL
+      AND "completed_at" IS NULL AND "credit_transaction_id" IS NULL
+      AND "last_access_at" IS NULL AND "access_count" = 0
+    ))
     AND ("state" = 'prepared' OR ("response_status" IS NOT NULL AND "response_json" IS NOT NULL))
     AND ("state" NOT IN ('provider_succeeded','committed') OR "provider_succeeded_at" IS NOT NULL)
     AND ("state" NOT IN ('committed','failed') OR "completed_at" IS NOT NULL)
-    AND ("state" <> 'failed' OR "credit_transaction_id" IS NULL)
+    AND ("state" <> 'provider_succeeded' OR (
+      "credit_transaction_id" IS NULL AND "completed_at" IS NULL
+    ))
+    AND ("state" = 'committed' OR (
+      "credit_transaction_id" IS NULL AND "last_access_at" IS NULL AND "access_count" = 0
+    ))
     AND ("state" <> 'committed' OR (
       ("price_usd" = 0 AND "credit_transaction_id" IS NULL)
       OR ("price_usd" > 0 AND "credit_transaction_id" IS NOT NULL)
@@ -91,6 +104,16 @@ RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.state <> 'prepared' THEN
     RAISE EXCEPTION 'storage read must start prepared' USING ERRCODE = '23514';
+  END IF;
+  IF NEW.object_generation IS NOT NULL OR NEW.provider_key IS NOT NULL
+      OR NEW.result_size_bytes IS NOT NULL OR NEW.result_content_type IS NOT NULL
+      OR NEW.result_etag IS NOT NULL OR NEW.response_status IS NOT NULL
+      OR NEW.response_json IS NOT NULL OR NEW.credit_transaction_id IS NOT NULL
+      OR NEW.provider_succeeded_at IS NOT NULL OR NEW.completed_at IS NOT NULL
+      OR NEW.capability_revoked_at IS NOT NULL OR NEW.last_access_at IS NOT NULL
+      OR NEW.access_count <> 0 THEN
+    RAISE EXCEPTION 'storage read birth result authority must be empty'
+      USING ERRCODE = '23514';
   END IF;
   -- Serialize request creation against tenant reassignment. The user row is
   -- always locked before the read receipt exists, while later settlement only
@@ -143,6 +166,11 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'invalid storage read state transition' USING ERRCODE = '23514';
   END IF;
+  IF NEW.credit_transaction_id IS DISTINCT FROM OLD.credit_transaction_id
+      AND NOT (OLD.state = 'provider_succeeded' AND NEW.state = 'committed'
+        AND NEW.price_usd > 0 AND NEW.credit_transaction_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'storage read debit attaches only at paid commit' USING ERRCODE = '23514';
+  END IF;
   IF OLD.state <> 'prepared' AND ROW(NEW.object_id, NEW.object_generation,
       NEW.provider_key, NEW.result_size_bytes, NEW.result_content_type,
       NEW.result_etag, NEW.provider_succeeded_at)
@@ -193,6 +221,21 @@ $$;
 CREATE TRIGGER "org_storage_read_operation_guard_trigger"
 BEFORE UPDATE ON "org_storage_read_operations"
 FOR EACH ROW EXECUTE FUNCTION "org_storage_read_operation_guard"();
+--> statement-breakpoint
+CREATE FUNCTION "org_storage_read_delete_guard"()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'storage read receipts are immutable audit history' USING ERRCODE = '23514';
+END;
+$$;
+--> statement-breakpoint
+CREATE TRIGGER "org_storage_read_delete_guard_trigger"
+BEFORE DELETE ON "org_storage_read_operations"
+FOR EACH ROW EXECUTE FUNCTION "org_storage_read_delete_guard"();
+--> statement-breakpoint
+CREATE TRIGGER "org_storage_read_truncate_guard_trigger"
+BEFORE TRUNCATE ON "org_storage_read_operations"
+FOR EACH STATEMENT EXECUTE FUNCTION "org_storage_read_delete_guard"();
 --> statement-breakpoint
 CREATE FUNCTION "org_storage_read_credit_guard"()
 RETURNS trigger LANGUAGE plpgsql AS $$

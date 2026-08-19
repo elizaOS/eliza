@@ -109,13 +109,27 @@ export const orgStorageReadOperations = pgTable(
         AND ${table.method} IN ('get', 'head', 'list', 'presign')
         AND ${table.state} IN ('prepared', 'provider_succeeded', 'committed', 'failed')
         AND ${table.price_usd} >= 0 AND ${table.access_count} >= 0
+        AND (${table.state} <> 'prepared' OR (
+          ${table.object_generation} IS NULL AND ${table.provider_key} IS NULL
+          AND ${table.result_size_bytes} IS NULL AND ${table.result_content_type} IS NULL
+          AND ${table.result_etag} IS NULL AND ${table.response_status} IS NULL
+          AND ${table.response_json} IS NULL AND ${table.provider_succeeded_at} IS NULL
+          AND ${table.completed_at} IS NULL AND ${table.credit_transaction_id} IS NULL
+          AND ${table.last_access_at} IS NULL AND ${table.access_count} = 0
+        ))
         AND (${table.state} = 'prepared' OR (
           ${table.response_status} IS NOT NULL AND ${table.response_json} IS NOT NULL
         ))
         AND (${table.state} NOT IN ('provider_succeeded', 'committed')
           OR ${table.provider_succeeded_at} IS NOT NULL)
         AND (${table.state} NOT IN ('committed', 'failed') OR ${table.completed_at} IS NOT NULL)
-        AND (${table.state} <> 'failed' OR ${table.credit_transaction_id} IS NULL)
+        AND (${table.state} <> 'provider_succeeded' OR (
+          ${table.credit_transaction_id} IS NULL AND ${table.completed_at} IS NULL
+        ))
+        AND (${table.state} = 'committed' OR (
+          ${table.credit_transaction_id} IS NULL
+          AND ${table.last_access_at} IS NULL AND ${table.access_count} = 0
+        ))
         AND (${table.state} <> 'committed' OR (
           (${table.price_usd} = 0 AND ${table.credit_transaction_id} IS NULL)
           OR (${table.price_usd} > 0 AND ${table.credit_transaction_id} IS NOT NULL)

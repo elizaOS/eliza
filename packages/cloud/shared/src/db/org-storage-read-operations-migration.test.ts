@@ -130,6 +130,55 @@ describe("0266 durable storage read authority", () => {
         [ORG, USER, "c".repeat(64), "d".repeat(64)],
       ),
     ).rejects.toThrow("storage read must start prepared");
+    const forbiddenBirthFields = [
+      ["response_status", "200"],
+      ["response_json", "'{}'"],
+      ["object_generation", "1"],
+      ["provider_key", "'provider-result'"],
+      ["result_size_bytes", "1"],
+      ["result_content_type", "'application/octet-stream'"],
+      ["result_etag", "'etag'"],
+      ["provider_succeeded_at", "now()"],
+      ["completed_at", "now()"],
+      ["credit_transaction_id", "gen_random_uuid()"],
+      ["capability_revoked_at", "now()"],
+      ["last_access_at", "now()"],
+      ["access_count", "1"],
+    ] as const;
+    for (const [index, [column, expression]] of forbiddenBirthFields.entries()) {
+      const hash = index.toString(16).repeat(64);
+      const digest = ((index + 1) % 16).toString(16).repeat(64);
+      await expect(
+        db.query(
+          `INSERT INTO org_storage_read_operations (
+            organization_id, user_id, idempotency_key_hash, request_digest,
+            method, price_usd, "${column}"
+          ) VALUES ($1, $2, $3, $4, 'list', 0, ${expression})`,
+          [ORG, USER, hash, digest],
+        ),
+      ).rejects.toThrow("storage read birth result authority must be empty");
+    }
+    const root = await db.query<{ id: string }>(
+      `INSERT INTO org_storage_read_operations (
+        organization_id, user_id, object_id, idempotency_key_hash, request_digest,
+        method, price_usd, capability_id, capability_host, capability_issued_at,
+        capability_expires_at, retain_until
+      ) VALUES ($1, $2, $3, $4, $5, 'presign', 0,
+        '00000000-0000-4000-8000-000000021050', 'blob.example.test', now(),
+        now() + interval '5 minutes', now() + interval '5 minutes') RETURNING id`,
+      [ORG, USER, OBJECT, "e".repeat(64), "f".repeat(64)],
+    );
+    const renewal = await db.query<{ state: string }>(
+      `INSERT INTO org_storage_read_operations (
+        organization_id, user_id, object_id, idempotency_key_hash, request_digest,
+        renewal_root_id, renewal_generation, method, price_usd, capability_id,
+        capability_host, capability_issued_at, capability_expires_at, retain_until
+      ) VALUES ($1, $2, $3, $4, $5, $6, 1, 'presign', 0,
+        '00000000-0000-4000-8000-000000021051', 'blob.example.test', now(),
+        now() + interval '5 minutes', now() + interval '5 minutes') RETURNING state`,
+      [ORG, USER, OBJECT, "1".repeat(64), "2".repeat(64), root.rows[0]!.id],
+    );
+    expect(renewal.rows).toEqual([{ state: "prepared" }]);
     const inserted = await insertPrepared(db, { method: "list", price: "0" });
     await expect(
       db.query(
@@ -169,13 +218,6 @@ describe("0266 durable storage read authority", () => {
     const db = await database();
     const inserted = await insertPrepared(db, { method: "get", price: "0.250000" });
     const id = inserted.rows[0]!.id;
-    await db.query(
-      `UPDATE org_storage_read_operations SET state = 'provider_succeeded', object_id = $2,
-        object_generation = 1, provider_key = 'opaque-provider-generation', result_size_bytes = 7,
-        result_content_type = 'audio/ogg', result_etag = 'etag-1', response_status = 200,
-        response_json = '{"size":7}', provider_succeeded_at = now() WHERE id = $1`,
-      [id, OBJECT],
-    );
     const credit = await db.query<{ id: string }>(
       `INSERT INTO credit_transactions (
         organization_id, user_id, amount, type, metadata, settled_at
@@ -193,6 +235,29 @@ describe("0266 durable storage read authority", () => {
       ],
     );
     const creditId = credit.rows[0]!.id;
+    await expect(
+      db.query(`UPDATE org_storage_read_operations SET credit_transaction_id = $2 WHERE id = $1`, [
+        id,
+        creditId,
+      ]),
+    ).rejects.toThrow("storage read debit attaches only at paid commit");
+    await expect(
+      db.query(
+        `UPDATE org_storage_read_operations SET state = 'provider_succeeded', object_id = $2,
+          object_generation = 1, provider_key = 'opaque-provider-generation',
+          result_size_bytes = 7, result_content_type = 'audio/ogg', result_etag = 'etag-1',
+          response_status = 200, response_json = '{"size":7}', provider_succeeded_at = now(),
+          credit_transaction_id = $3 WHERE id = $1`,
+        [id, OBJECT, creditId],
+      ),
+    ).rejects.toThrow("storage read debit attaches only at paid commit");
+    await db.query(
+      `UPDATE org_storage_read_operations SET state = 'provider_succeeded', object_id = $2,
+        object_generation = 1, provider_key = 'opaque-provider-generation', result_size_bytes = 7,
+        result_content_type = 'audio/ogg', result_etag = 'etag-1', response_status = 200,
+        response_json = '{"size":7}', provider_succeeded_at = now() WHERE id = $1`,
+      [id, OBJECT],
+    );
     await db.query(
       `UPDATE org_storage_read_operations SET state = 'committed',
         credit_transaction_id = $2, completed_at = now() WHERE id = $1`,
@@ -201,6 +266,12 @@ describe("0266 durable storage read authority", () => {
     await expect(
       db.query(`UPDATE credit_transactions SET amount = -0.1 WHERE id = $1`, [creditId]),
     ).rejects.toThrow("attached storage read credit is immutable");
+    await expect(
+      db.query(`DELETE FROM org_storage_read_operations WHERE id = $1`, [id]),
+    ).rejects.toThrow("storage read receipts are immutable audit history");
+    await expect(db.exec(`TRUNCATE org_storage_read_operations`)).rejects.toThrow(
+      "storage read receipts are immutable audit history",
+    );
     await expect(
       db.query(`DELETE FROM credit_transactions WHERE id = $1`, [creditId]),
     ).rejects.toThrow("attached storage read credit is immutable");
