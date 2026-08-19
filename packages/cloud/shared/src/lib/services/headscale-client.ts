@@ -55,7 +55,7 @@ const PREAUTH_TTL_MINUTES_GRAMMAR = /^[1-9]\d*$/;
 export const MAX_PREAUTH_TTL_MIN = 43_200;
 
 /** ECMA-262 TimeClip magnitude. */
-const ECMA_TIME_CLIP_MS = 8.64e15;
+export const ECMA_TIME_CLIP_MS = 8.64e15;
 
 /**
  * Pre-auth key TTL window (ms): how long a freshly-created key stays valid for a
@@ -78,7 +78,8 @@ const ECMA_TIME_CLIP_MS = 8.64e15;
  */
 export function resolvePreAuthTtlMs(): number {
   const fallback = DEFAULT_PREAUTH_TTL_MIN * 60 * 1000;
-  const raw = (process.env.HEADSCALE_PREAUTH_TTL_MIN ?? "").trim();
+  // Literal grammar: do not trim. Padded " 90 " is not an exact positive decimal.
+  const raw = process.env.HEADSCALE_PREAUTH_TTL_MIN ?? "";
   if (!PREAUTH_TTL_MINUTES_GRAMMAR.test(raw)) {
     return fallback;
   }
@@ -87,21 +88,43 @@ export function resolvePreAuthTtlMs(): number {
     return fallback;
   }
   const ms = minutes * 60 * 1000;
-  const expirationMs = Date.now() + ms;
-  if (
-    !Number.isFinite(ms) ||
-    !Number.isFinite(expirationMs) ||
-    Math.abs(expirationMs) > ECMA_TIME_CLIP_MS
-  ) {
-    return fallback;
-  }
-  try {
-    new Date(expirationMs).toISOString();
-  } catch {
-    // error-policy:J3 out-of-range Date is invalid TTL, not a crash.
+  if (!Number.isFinite(ms)) {
     return fallback;
   }
   return ms;
+}
+
+function isoExpirationOrThrow(nowMs: number, ttlMs: number): string {
+  const expirationMs = nowMs + ttlMs;
+  if (!Number.isFinite(expirationMs) || Math.abs(expirationMs) > ECMA_TIME_CLIP_MS) {
+    throw new Error("[headscale] pre-auth expiration is outside TimeClip");
+  }
+  try {
+    return new Date(expirationMs).toISOString();
+  } catch (error) {
+    // error-policy:J2 TimeClip-invalid Date must not reach Headscale.
+    throw new Error("[headscale] pre-auth expiration is outside TimeClip", {
+      cause: error,
+    });
+  }
+}
+
+/**
+ * Build the ISO expiration used by {@link HeadscaleClient.createPreAuthKey}.
+ * Tries the env TTL, then the 24h fallback. Throws (fetch must not run) if
+ * even the fallback instant is outside TimeClip.
+ */
+export function resolvePreAuthExpirationIso(nowMs: number = Date.now()): string {
+  const envTtl = resolvePreAuthTtlMs();
+  const fallback = DEFAULT_PREAUTH_TTL_MIN * 60 * 1000;
+  try {
+    return isoExpirationOrThrow(nowMs, envTtl);
+  } catch (error) {
+    if (envTtl === fallback) {
+      throw error;
+    }
+    return isoExpirationOrThrow(nowMs, fallback);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +361,7 @@ export class HeadscaleClient {
     // VPN enrollment; 10 min was too tight on slow boots (key expired mid-
     // registration -> container re-auth loop). Default 24h, env-overridable
     // via HEADSCALE_PREAUTH_TTL_MIN (see resolvePreAuthTtlMs).
-    const expirationTime = expiration ?? new Date(Date.now() + resolvePreAuthTtlMs()).toISOString();
+    const expirationTime = expiration ?? resolvePreAuthExpirationIso();
 
     const userId = ensureUser ? await this.ensureUser(user) : await this.resolveUserId(user);
 
