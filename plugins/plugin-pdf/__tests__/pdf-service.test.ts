@@ -106,6 +106,75 @@ describe("PdfService", () => {
 		expect(pdf.getPage).toHaveBeenNthCalledWith(2, 3);
 	});
 
+	it("rejects a range that begins entirely past the document instead of clamping to the last page", async () => {
+		const pdf = makePdf([
+			{ items: [{ str: "one" }] },
+			{ items: [{ str: "two" }] },
+			{ items: [{ str: "three" }] },
+		]);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		const result = await service().convertPdfToTextWithOptions(validPdfBuffer(), {
+			startPage: 5,
+			endPage: 10,
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.text).toBeUndefined();
+		expect(result.error).toBe("startPage 5 exceeds document page count 3");
+		expect(pdf.getPage).not.toHaveBeenCalled();
+	});
+
+	it("names startPage as the cause when startPage exceeds page count and no endPage is supplied", async () => {
+		const pdf = makePdf([
+			{ items: [{ str: "one" }] },
+			{ items: [{ str: "two" }] },
+			{ items: [{ str: "three" }] },
+		]);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		const result = await service().convertPdfToTextWithOptions(validPdfBuffer(), {
+			startPage: 5,
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.error).toBe("startPage 5 exceeds document page count 3");
+		expect(result.error).not.toContain("endPage");
+		expect(pdf.getPage).not.toHaveBeenCalled();
+	});
+
+	it("still clamps an oversized endPage down to the last page for an in-range startPage", async () => {
+		const pdf = makePdf([
+			{ items: [{ str: "one" }] },
+			{ items: [{ str: "two" }] },
+			{ items: [{ str: "three" }] },
+		]);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		await expect(
+			service().convertPdfToTextWithOptions(validPdfBuffer(), {
+				startPage: 2,
+				endPage: 99,
+			})
+		).resolves.toEqual({ success: true, text: "two\nthree", pageCount: 3 });
+	});
+
+	it("accepts an in-range start/end page range unchanged", async () => {
+		const pdf = makePdf([
+			{ items: [{ str: "one" }] },
+			{ items: [{ str: "two" }] },
+			{ items: [{ str: "three" }] },
+		]);
+		getDocumentProxyMock.mockResolvedValue(pdf);
+
+		await expect(
+			service().convertPdfToTextWithOptions(validPdfBuffer(), {
+				startPage: 2,
+				endPage: 3,
+			})
+		).resolves.toEqual({ success: true, text: "two\nthree", pageCount: 3 });
+	});
+
 	it("can preserve item whitespace and skip cleanup when requested", async () => {
 		getDocumentProxyMock.mockResolvedValue(
 			makePdf([{ items: [{ str: "A  " }, { str: "\u0000B" }] }])
@@ -281,7 +350,6 @@ describe("PdfService", () => {
 		[{ startPage: 1.5 }, "startPage must be a positive finite integer"],
 		[{ startPage: Number.NaN }, "startPage must be a positive finite integer"],
 		[{ endPage: Number.POSITIVE_INFINITY }, "endPage must be a positive finite integer"],
-		[{ startPage: 3, endPage: 2 }, "endPage must be greater than or equal to startPage"],
 	])("returns structured errors for hostile extraction options %#", async (options, error) => {
 		getDocumentProxyMock.mockResolvedValue(makePdf([{ items: [{ str: "one" }] }]));
 
@@ -290,6 +358,23 @@ describe("PdfService", () => {
 		).resolves.toEqual({
 			success: false,
 			error,
+		});
+	});
+
+	it("rejects an in-range startPage with an explicit endPage below it", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([
+				{ items: [{ str: "one" }] },
+				{ items: [{ str: "two" }] },
+				{ items: [{ str: "three" }] },
+			])
+		);
+
+		await expect(
+			service().convertPdfToTextWithOptions(validPdfBuffer(), { startPage: 3, endPage: 2 })
+		).resolves.toEqual({
+			success: false,
+			error: "endPage must be greater than or equal to startPage",
 		});
 	});
 

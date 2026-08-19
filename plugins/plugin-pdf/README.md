@@ -72,6 +72,13 @@ if (result.success) {
 }
 ```
 
+Page ranges are validated against the document. A `startPage` beyond the last
+page returns `success: false` with an error naming the requested page and the
+document's page count rather than silently clamping to (and returning) the last
+page's text. An oversized `endPage` on an in-range `startPage` is clamped down
+to the final page, so `{ startPage: 2, endPage: 99 }` on a 3-page document
+extracts pages 2–3.
+
 **`getDocumentInfo(pdfBuffer: Buffer): Promise<PdfDocumentInfo>`**
 
 Returns full document information: page count, per-page dimensions + text, and metadata (title, author, subject, keywords, creator, producer, creation/modification dates).
