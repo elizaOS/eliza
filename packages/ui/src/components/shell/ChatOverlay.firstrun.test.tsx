@@ -215,6 +215,17 @@ describe("ChatOverlay first-run gating", () => {
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
 
+  it("fills a desktop bottom-bar host so transparent native pixels cannot block other apps", () => {
+    render(
+      <ChatOverlay controller={makeController()} firstRunOpen fillHostAtHalf />,
+    );
+
+    const sheet = screen.getByTestId("chat-sheet");
+    const thread = screen.getByTestId("chat-thread");
+    expect(sheet.style.maxHeight).toBe("768px");
+    expect(thread.style.flexBasis).toBe("768px");
+  });
+
   it("opens pinned at HALF and ignores Escape while onboarding is active", () => {
     render(<ChatOverlay controller={makeController()} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");
