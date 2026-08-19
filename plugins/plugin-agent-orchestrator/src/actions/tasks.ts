@@ -1233,6 +1233,31 @@ async function runCreateLegacy(
     };
   }
 
+  // Ack BEFORE the lanes run. The lane loop awaits the entire durable run,
+  // so with fast workers the completion relay overtook the "ack" and users
+  // read the result before "On it — building that now." (live 2026-08-19:
+  // gratitude-journal). Failure legs still report after this, which is the
+  // truthful order: acknowledged, then what happened.
+  let earlyAckText: string | undefined;
+  if (!syntheticRespawnInbound && callback) {
+    const ackTitles = tasks.map(
+      (part, index) =>
+        baseLabel ?? labelFrom(parseAgentPrefix(part, baseAgentType).task, index),
+    );
+    const { text } = await phraseForUser(
+      runtime,
+      {
+        intent: "confirm",
+        facts: { createdCount: tasks.length, titles: ackTitles },
+      },
+      tasks.length > 1
+        ? `On it — starting ${tasks.length} builds.`
+        : "On it — building that now.",
+    );
+    earlyAckText = text;
+    await callbackText(callback, earlyAckText, { voiced: true });
+  }
+
   const settled = await Promise.allSettled(
     tasks.map(async (part, index) => {
       const parsed = parseAgentPrefix(part, baseAgentType);
@@ -1736,21 +1761,10 @@ async function runCreateLegacy(
     };
   }
 
-  // Canonical text is assigned BEFORE the callback so the settle wrapper's
-  // receipt binding sees result.text === delivered callback text.
-  const { text: createdProse } = await phraseForUser(
-    runtime,
-    {
-      intent: "confirm",
-      facts: {
-        createdCount: results.length,
-        titles: results.map((item) => String(item.label)),
-      },
-    },
-    createdFallback,
-  );
-  const proseText = composeCreateText(createdProse);
-  await callbackText(callback, proseText, { voiced: true });
+  // The visible ack already went out BEFORE the lanes ran (earlyAckText).
+  // Re-sending here would double-bubble; the widget appendix rides on the
+  // result text for the app UI's task card without another chat message.
+  const proseText = composeCreateText(earlyAckText ?? createdFallback);
 
   // The creation ack is the complete answer to a single-operation turn:
   // verified + turnComplete make the callback the sole delivery instead of
