@@ -874,28 +874,6 @@ export class CanvasWeb extends WebPlugin {
   async navigate(options: NavigateOptions): Promise<void> {
     const placement = options.placement || "inline";
 
-    this.destroyWebView();
-    try {
-      const base =
-        typeof window !== "undefined" && window.location?.href
-          ? window.location.href
-          : undefined;
-      const parsed = new URL(options.url, base);
-      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-        this.webViewOrigin = parsed.origin;
-      } else if (options.url === "about:blank") {
-        this.webViewOrigin =
-          typeof window !== "undefined" && window.location?.origin
-            ? window.location.origin
-            : null;
-      } else {
-        this.webViewOrigin = null;
-      }
-    } catch {
-      // error-policy:J3 invalid navigation URL fails closed
-      this.webViewOrigin = null;
-    }
-
     // Intercept eliza:// deep links immediately
     if (options.url.startsWith("eliza://")) {
       const parsed = new URL(options.url);
@@ -910,6 +888,14 @@ export class CanvasWeb extends WebPlugin {
       });
       return;
     }
+
+    const navigation = this.resolveWebViewNavigation(options.url);
+    if (navigation.protocol === "javascript:") {
+      throw new Error("javascript: web view URLs are not allowed");
+    }
+
+    this.destroyWebView();
+    this.webViewOrigin = navigation.origin;
 
     if (placement === "popup") {
       const popup = window.open(
@@ -1196,6 +1182,69 @@ export class CanvasWeb extends WebPlugin {
     throw new Error("Cannot determine web view target origin");
   }
 
+  private resolveWebViewNavigation(url: string): {
+    origin: string | null;
+    protocol: string | null;
+  } {
+    try {
+      const base =
+        typeof window !== "undefined" && window.location?.href
+          ? window.location.href
+          : undefined;
+      const parsed = new URL(url, base);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return { origin: parsed.origin, protocol: parsed.protocol };
+      }
+
+      // A blob URL created by an HTTP(S) document carries that creator origin
+      // and can therefore be addressed with an exact targetOrigin.
+      if (parsed.protocol === "blob:" && parsed.origin !== "null") {
+        const creator = new URL(parsed.origin);
+        if (creator.protocol === "http:" || creator.protocol === "https:") {
+          return { origin: creator.origin, protocol: parsed.protocol };
+        }
+      }
+
+      // about:blank inherits its creator's origin. Accept every URL that
+      // matches about:blank, including query/fragment variants, but only when
+      // the creator itself has a tuple HTTP(S) origin.
+      if (
+        parsed.protocol === "about:" &&
+        parsed.pathname === "blank" &&
+        !parsed.host &&
+        !parsed.username &&
+        !parsed.password
+      ) {
+        const creatorOrigin = window.location?.origin;
+        if (creatorOrigin && creatorOrigin !== "null") {
+          const creator = new URL(creatorOrigin);
+          if (creator.protocol === "http:" || creator.protocol === "https:") {
+            return { origin: creator.origin, protocol: parsed.protocol };
+          }
+        }
+      }
+
+      return { origin: null, protocol: parsed.protocol };
+    } catch {
+      // error-policy:J3 malformed URLs remain displayable only if the browser
+      // accepts them, but all messaging fails closed because no origin is set.
+      return { origin: null, protocol: null };
+    }
+  }
+
+  private messageOriginMatches(
+    expectedOrigin: string,
+    actualOrigin: string,
+  ): boolean {
+    try {
+      // Normalizing both strings handles default ports and the browser's
+      // currently inconsistent Unicode/punycode serialization for IDN origins.
+      return new URL(actualOrigin).origin === expectedOrigin;
+    } catch {
+      return false;
+    }
+  }
+
   private evalViaPostMessage(
     target: Window,
     script: string,
@@ -1212,7 +1261,12 @@ export class CanvasWeb extends WebPlugin {
         // A WindowProxy keeps its identity when its document navigates. Check
         // both source and origin so a later cross-origin document cannot
         // complete an eval intended for the original navigation origin.
-        if (event.source !== target || event.origin !== targetOrigin) return;
+        if (
+          event.source !== target ||
+          !this.messageOriginMatches(targetOrigin, event.origin)
+        ) {
+          return;
+        }
         const data = event.data;
         if (!data || typeof data !== "object") return;
         const msg = data as WebViewIncomingMessage;
@@ -1237,7 +1291,13 @@ export class CanvasWeb extends WebPlugin {
       const iframeSrc = this.webViewIframe?.contentWindow;
       const popupSrc = this.webViewPopup;
       if (event.source !== iframeSrc && event.source !== popupSrc) return;
-      if (!this.webViewOrigin || event.origin !== this.webViewOrigin) return;
+      const expectedOrigin = this.webViewOrigin;
+      if (
+        !expectedOrigin ||
+        !this.messageOriginMatches(expectedOrigin, event.origin)
+      ) {
+        return;
+      }
 
       const msg = event.data as WebViewIncomingMessage;
       if (!msg || typeof msg.type !== "string") return;
