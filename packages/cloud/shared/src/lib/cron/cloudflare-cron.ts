@@ -90,7 +90,17 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/reconcile-video-generations",
   ],
   "0 */6 * * *": [
-    "/api/cron/cleanup-anonymous-sessions",
+    // #22508: DELIBERATELY NOT SCHEDULED. The route 404s today because it is
+    // GET-only, which has masked a defect: its second query filters on
+    // user_identities.is_anonymous without joining user_identities, so
+    // Postgres raises 42P01 — but only after an unbounded per-row DELETE
+    // FROM users and a DELETE FROM anonymous_sessions have already
+    // committed, with no enclosing transaction. Registering the POST verb
+    // would turn a dormant broken job into a live destructive one. Fix the
+    // query and bound the deletes before putting it back on a schedule.
+    // #22508: the route existed and was mounted but was never in any schedule,
+    // so expired CLI auth sessions accumulated forever.
+    "/api/cron/cleanup-cli-sessions",
     "/api/v1/cron/agent-backups",
     // #9939: reap shared bridge rows leaked by a failed/timed-out handoff.
     "/api/v1/cron/reap-orphan-shared-bridges",
