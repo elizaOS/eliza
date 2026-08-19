@@ -656,11 +656,12 @@ export async function runViewsShow({
 	return {
 		success: result.ok,
 		text: result.text,
-		// Navigation has already been handed to the shell. Requiring post-tool
-		// evaluation keeps success/failure wording model-owned and prevents a
-		// pre-navigation canned acknowledgement from replacing the final reply.
+		// Navigation has already been handed to the shell. A confirmed success
+		// requests exactly one post-tool model reply so the acknowledgement stays
+		// natural and model-owned without an evaluator/planner retry loop. Failed or
+		// unconfirmed navigation retains full evaluation and recovery.
 		transcriptVisibility: "internal",
-		turnComplete: false,
+		...(result.ok ? { modelReplyRequired: true } : { turnComplete: false }),
 		values: {
 			mode: "show",
 			viewId: view.id,

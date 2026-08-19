@@ -326,7 +326,8 @@ describe("view switching — VIEWS action resolver", () => {
 		expect(navigation?.transcriptVisibility).toBe("internal");
 		expect(navigation?.userFacingText).toBeUndefined();
 		expect(navigation?.verifiedUserFacing).toBeUndefined();
-		expect(navigation?.turnComplete).toBe(false);
+		expect(navigation?.modelReplyRequired).toBe(true);
+		expect(navigation?.turnComplete).toBeUndefined();
 	});
 
 	describe("ACTIVE navigation — every user-facing view reachable by an explicit command", () => {
@@ -590,7 +591,7 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(navigated).toEqual(["settings"]);
 		});
 
-		it("leaves successful view-switch wording to post-tool evaluation", async () => {
+		it("leaves successful view-switch wording to one post-tool model reply", async () => {
 			installNavigateCapture();
 
 			const { result, callback } = await runShow(REGISTRY, "open the calendar");
@@ -599,7 +600,7 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result).toMatchObject({
 				success: true,
 				transcriptVisibility: "internal",
-				turnComplete: false,
+				modelReplyRequired: true,
 				values: {
 					mode: "show",
 					viewId: "calendar",
@@ -610,6 +611,7 @@ describe("view switching — VIEWS action resolver", () => {
 			});
 			expect(result).not.toHaveProperty("userFacingText");
 			expect(result).not.toHaveProperty("verifiedUserFacing");
+			expect(result).not.toHaveProperty("turnComplete");
 			expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
 				effect: "view_navigation",
 				status: "accepted",

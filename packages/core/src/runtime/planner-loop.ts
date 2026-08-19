@@ -482,6 +482,11 @@ async function runPlannerLoopIterations(
 	// achieve the goal (e.g. read-then-act, multi-step deploy). When the
 	// field is absent the gate's other preconditions are honored as before.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	// A successful sole action may request one natural, model-authored terminal
+	// reply after its effect completes. This is deliberately narrower than the
+	// evaluator's general CONTINUE path: only an explicit final-scope tool call
+	// can arm it, and any subsequent tool call disarms it.
+	let pendingRequiredModelReply = false;
 	// Captures the most recent terminal-only refusal text the planner produced
 	// across iterations gated by `requireNonTerminalToolCall`. When Stage 1
 	// asserts `requiresTool=true` but no exposed tool can fulfill the request,
@@ -593,6 +598,9 @@ async function runPlannerLoopIterations(
 			// "not complete" blocks. This keeps backward compat with planner
 			// outputs that don't carry either signal.
 			lastPlannerExplicitCompleted = plannerOutput.completed;
+			if (pendingRequiredModelReply && plannerOutput.toolCalls.length > 0) {
+				pendingRequiredModelReply = false;
+			}
 
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
@@ -685,6 +693,67 @@ async function runPlannerLoopIterations(
 					});
 					continue;
 				}
+				const requiredModelReply = pendingRequiredModelReply
+					? userSafeCapturedAnswerCandidate(plannerOutput.messageToUser)
+					: undefined;
+				if (requiredModelReply) {
+					pendingRequiredModelReply = false;
+					trajectory.steps.push({
+						iteration,
+						thought: plannerOutput.thought,
+						terminalMessage: requiredModelReply,
+						terminalOnly: true,
+					});
+					trajectory.context = appendTerminalPlannerOutputEvent({
+						context: trajectory.context,
+						iteration,
+						message: requiredModelReply,
+					});
+					const gated: EvaluatorOutput = {
+						success: true,
+						decision: "FINISH",
+						thought: MODEL_REPLY_GATED_EVALUATOR_THOUGHT,
+						messageToUser: requiredModelReply,
+					};
+					trajectory.evaluatorOutputs.push(
+						projectToolDiagnosticValue(
+							gated,
+							redactDiagnosticText,
+						) as EvaluatorOutput,
+					);
+					trajectory.context = appendEvaluationEvent({
+						context: trajectory.context,
+						iteration,
+						evaluator: gated,
+						redactDiagnosticText,
+					});
+					const gateStartedAt = Date.now();
+					await recordGatedEvaluationStage({
+						runtime: params.runtime,
+						recorder: params.recorder,
+						trajectoryId: params.trajectoryId,
+						parentStageId: params.parentStageId,
+						iteration,
+						startedAt: gateStartedAt,
+						endedAt: Date.now(),
+						output: gated,
+						reason: "post_tool_model_reply",
+						logger: params.runtime.logger,
+					});
+					return {
+						status: "finished",
+						trajectory,
+						evaluator: gated,
+						finalMessage: userSafeFinalMessage(
+							terminalMessageWithFailureAuthority(
+								trajectory,
+								requiredModelReply,
+							),
+							trajectory,
+						),
+					};
+				}
+				pendingRequiredModelReply = false;
 				trajectory.steps.push({
 					iteration,
 					thought: plannerOutput.thought,
@@ -1274,6 +1343,19 @@ async function runPlannerLoopIterations(
 		// file write (before the build's SHELL run / verification).
 		if (codingDrainQueue) {
 			trajectory.plannedQueue.length = 0;
+			continue;
+		}
+
+		if (
+			latestResult?.success === true &&
+			latestResult.modelReplyRequired === true &&
+			trajectory.plannedQueue.length === 0 &&
+			failures.length === 0 &&
+			lastPlannerExplicitCompleted === true &&
+			completedToolStepCount(trajectory) === 1 &&
+			!latestUnresolvedFailedNonTerminalToolStep(trajectory)
+		) {
+			pendingRequiredModelReply = true;
 			continue;
 		}
 
@@ -5299,7 +5381,8 @@ type GatedEvaluatorDecision = {
 	reason:
 		| "explicit_terminal_reply"
 		| "action_terminal_result"
-		| "action_terminal_failure";
+		| "action_terminal_failure"
+		| "post_tool_model_reply";
 };
 
 function tryGateEvaluator(args: {
@@ -5423,6 +5506,9 @@ function selectGatedEvaluatorReply(
  * cheaply. */
 export const GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a clean planner messageToUser; evaluator LLM call skipped.";
+
+export const MODEL_REPLY_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: successful final-scope action received one safe model-authored reply; evaluator LLM call skipped.";
 
 export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";
@@ -5831,6 +5917,7 @@ export function actionResultToPlannerToolResult(
 		error: result.error,
 		failureProvenance: result.failureProvenance,
 		turnComplete: result.turnComplete,
+		modelReplyRequired: result.modelReplyRequired,
 		continueChain: result.continueChain,
 	};
 	if (options.summary) {

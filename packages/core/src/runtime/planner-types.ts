@@ -197,6 +197,11 @@ export interface PlannerToolResult {
 	 */
 	turnComplete?: boolean;
 	/**
+	 * Requests one safe model-authored terminal reply after a successful sole
+	 * action whose planner call explicitly declared final scope.
+	 */
+	modelReplyRequired?: boolean;
+	/**
 	 * Explicit chain-control override. `false` unconditionally aborts the
 	 * remaining planner queue, including for legacy failure and fire-and-forget
 	 * results. It is distinct from the conservative `turnComplete` fast path.
