@@ -13,6 +13,8 @@ import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { TWITTER_API_BASE, TWITTER_UPLOAD_BASE } from "../../../utils/twitter-api";
 import { withRetry } from "../rate-limit";
+import { safeFetch } from "../../../security/safe-fetch";
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
 
 // Wrapped with retry logic for social media provider
 async function twitterApiRequest<T>(
@@ -44,8 +46,13 @@ async function uploadMedia(accessToken: string, media: MediaAttachment): Promise
   } else if (media.base64) {
     mediaData = Buffer.from(media.base64, "base64");
   } else if (media.url) {
-    const response = await fetch(media.url);
-    mediaData = Buffer.from(await response.arrayBuffer());
+    const response = await safeFetch(media.url, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) throw new Error(`Media fetch failed: ${response.status}`);
+    const hdrLen = response.headers.get("content-length");
+    if (hdrLen && Number(hdrLen) > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${hdrLen} > ${MAX_MEDIA_BYTES}`);
+    const ab = await response.arrayBuffer();
+    if (ab.byteLength > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${ab.byteLength} > ${MAX_MEDIA_BYTES}`);
+    mediaData = Buffer.from(ab);
   } else {
     throw new Error("No media data provided");
   }

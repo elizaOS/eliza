@@ -15,8 +15,11 @@ import type {
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { withRetry } from "../rate-limit";
+import { safeFetch } from "../../../security/safe-fetch";
 
 const BLUESKY_SERVICE = "https://bsky.social";
+
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
 
 interface BskySession {
   did: string;
@@ -237,8 +240,13 @@ export const blueskyProvider: SocialMediaProvider = {
           } else if (media.base64) {
             imageData = Buffer.from(media.base64, "base64");
           } else if (media.url) {
-            const response = await fetch(media.url);
-            imageData = Buffer.from(await response.arrayBuffer());
+            const response = await safeFetch(media.url, { signal: AbortSignal.timeout(10_000) });
+            if (!response.ok) throw new Error(`Media fetch failed: ${response.status}`);
+            const hdrLen = response.headers.get("content-length");
+            if (hdrLen && Number(hdrLen) > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${hdrLen} > ${MAX_MEDIA_BYTES}`);
+            const ab = await response.arrayBuffer();
+            if (ab.byteLength > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${ab.byteLength} > ${MAX_MEDIA_BYTES}`);
+            imageData = Buffer.from(ab);
           } else {
             continue;
           }
@@ -414,8 +422,13 @@ export const blueskyProvider: SocialMediaProvider = {
     } else if (media.base64) {
       imageData = Buffer.from(media.base64, "base64");
     } else if (media.url) {
-      const response = await fetch(media.url);
-      imageData = Buffer.from(await response.arrayBuffer());
+      const response = await safeFetch(media.url, { signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) throw new Error(`Media fetch failed: ${response.status}`);
+      const hdrLen = response.headers.get("content-length");
+      if (hdrLen && Number(hdrLen) > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${hdrLen} > ${MAX_MEDIA_BYTES}`);
+      const ab = await response.arrayBuffer();
+      if (ab.byteLength > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${ab.byteLength} > ${MAX_MEDIA_BYTES}`);
+      imageData = Buffer.from(ab);
     } else {
       throw new Error("No media data provided");
     }

@@ -15,8 +15,11 @@ import type {
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { withRetry } from "../rate-limit";
+import { safeFetch } from "../../../security/safe-fetch";
 
 const LINKEDIN_API_BASE = "https://api.linkedin.com/v2";
+
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
 
 interface LinkedInProfile {
   id: string;
@@ -216,13 +219,17 @@ export const linkedinProvider: SocialMediaProvider = {
             // Download and upload the image. A non-OK download or upload must
             // surface: otherwise the asset below is marked READY and attached to
             // a published post that references bytes LinkedIn never received.
-            const imageResponse = await fetch(media.url);
+            const imageResponse = await safeFetch(media.url, { signal: AbortSignal.timeout(10_000) });
             if (!imageResponse.ok) {
               throw new Error(
                 `LinkedIn image download failed for ${media.url}: ${imageResponse.status}`,
               );
             }
-            const imageData = await imageResponse.arrayBuffer();
+            const hdrLen = imageResponse.headers.get("content-length");
+            if (hdrLen && Number(hdrLen) > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${hdrLen} > ${MAX_MEDIA_BYTES}`);
+            const ab0 = await imageResponse.arrayBuffer();
+            if (ab0.byteLength > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${ab0.byteLength} > ${MAX_MEDIA_BYTES}`);
+            const imageData = ab0;
 
             const uploadResponse = await fetch(uploadUrl, {
               method: "PUT",
@@ -394,11 +401,15 @@ export const linkedinProvider: SocialMediaProvider = {
     } else if (media.base64) {
       imageData = Uint8Array.from(Buffer.from(media.base64, "base64"));
     } else if (media.url) {
-      const response = await fetch(media.url);
+      const response = await safeFetch(media.url, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) {
         throw new Error(`LinkedIn image download failed for ${media.url}: ${response.status}`);
       }
-      imageData = new Uint8Array(await response.arrayBuffer());
+      const hdrLen2 = response.headers.get("content-length");
+      if (hdrLen2 && Number(hdrLen2) > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${hdrLen2} > ${MAX_MEDIA_BYTES}`);
+      const ab2 = await response.arrayBuffer();
+      if (ab2.byteLength > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${ab2.byteLength} > ${MAX_MEDIA_BYTES}`);
+      imageData = new Uint8Array(ab2);
     } else {
       throw new Error("No media data provided");
     }

@@ -10,8 +10,11 @@ import type {
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { withRetry } from "../rate-limit";
+import { safeFetch } from "../../../security/safe-fetch";
 
 const SLACK_API_BASE = "https://slack.com/api";
+
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
 
 interface SlackResponse<_T = unknown> {
   ok: boolean;
@@ -343,11 +346,15 @@ export const slackProvider: SocialMediaProvider = {
     } else if (media.base64) {
       fileData = Buffer.from(media.base64, "base64");
     } else if (media.url) {
-      const response = await fetch(media.url);
+      const response = await safeFetch(media.url, { signal: AbortSignal.timeout(10_000) });
       if (!response.ok) {
         throw new Error(`Failed to download media from ${media.url}: ${response.status}`);
       }
-      fileData = Buffer.from(await response.arrayBuffer());
+      const hdrLen = response.headers.get("content-length");
+      if (hdrLen && Number(hdrLen) > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${hdrLen} > ${MAX_MEDIA_BYTES}`);
+      const ab = await response.arrayBuffer();
+      if (ab.byteLength > MAX_MEDIA_BYTES) throw new Error(`Media exceeds size limit: ${ab.byteLength} > ${MAX_MEDIA_BYTES}`);
+      fileData = Buffer.from(ab);
       const urlParts = media.url.split("/");
       filename = urlParts[urlParts.length - 1].split("?")[0] || filename;
     } else {
