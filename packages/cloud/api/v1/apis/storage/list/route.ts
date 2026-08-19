@@ -6,7 +6,7 @@
  *       → { items: [{ key, size, contentType, modifiedAt }] }
  *
  * Auth: requireUserOrApiKeyWithOrg.
- * Pricing: flat per-request charge against the `storage:list` row.
+ * Pricing: explicitly unbilled until durable paid-list receipts are available.
  *
  * Native R2 enumeration discovers and adopts legacy tenant-prefixed objects;
  * the catalog remains authoritative for immutable generations and tombstones.
@@ -17,12 +17,9 @@ import { z } from "zod";
 import { orgStorageMutationsRepository } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { creditsService } from "@/lib/services/credits";
-import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
 import { ensureNativeStorageQuotaReconciled } from "@/lib/services/storage/native-storage-put";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const STORAGE_SERVICE_ID = "storage";
 const MAX_LIST_RESULTS = 1000;
 
 const listQuerySchema = z.object({
@@ -84,30 +81,6 @@ app.get("/", async (c) => {
         modifiedAt: object.uploaded_at.toISOString(),
       };
     });
-
-    const cost = await getServiceMethodCost(STORAGE_SERVICE_ID, "list");
-    if (cost > 0) {
-      const deductResult = await creditsService.deductCredits({
-        organizationId: organization_id,
-        amount: cost,
-        description: "API proxy: storage — list",
-        metadata: {
-          type: "proxy_storage",
-          service: "storage",
-          method: "list",
-          prefix,
-        },
-      });
-      if (!deductResult.success) {
-        return c.json(
-          {
-            error: "Insufficient credits",
-            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
-          },
-          402,
-        );
-      }
-    }
 
     return c.json({
       items,

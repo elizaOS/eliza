@@ -1,7 +1,7 @@
 /**
  * Exercises the real storage object Hono router to protect HEAD from Hono's
  * automatic HEAD-to-GET dispatch. The suite proves metadata requests never
- * enter the object-body path or use GET pricing.
+ * enter the object-body path and catalog reads remain explicitly unbilled.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -11,7 +11,6 @@ const ORGANIZATION_ID = "00000000-0000-4000-8000-000000021045";
 const ROUTE_PREFIX = "/api/v1/apis/storage/objects";
 const ROUTE_MOUNT = `${ROUTE_PREFIX}/:*{.+}`;
 const OBJECT_PATH = "voice/message.ogg";
-const HEAD_COST = 0.00007;
 const GET_COST = 0.00011;
 const OBJECT_BYTES = new TextEncoder().encode("asset");
 const MODIFIED_AT = new Date("2026-08-17T12:00:00.000Z");
@@ -277,9 +276,7 @@ describe("storage object HEAD routing", () => {
     expect(deductCredits).not.toHaveBeenCalled();
   });
 
-  test("uses HEAD pricing and metadata without reading the object body", async () => {
-    getServiceMethodCost.mockResolvedValue(HEAD_COST);
-
+  test("serves HEAD metadata without reading or billing", async () => {
     const response = await request("HEAD");
 
     expect(response.status).toBe(200);
@@ -294,46 +291,21 @@ describe("storage object HEAD routing", () => {
     );
 
     expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
-    expect(getServiceMethodCost).toHaveBeenCalledTimes(1);
-    expect(getServiceMethodCost).toHaveBeenCalledWith("storage", "head");
-    expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(deductCredits).toHaveBeenCalledWith({
-      organizationId: ORGANIZATION_ID,
-      amount: HEAD_COST,
-      description: "API proxy: storage — head",
-      metadata: {
-        type: "proxy_storage",
-        service: "storage",
-        method: "head",
-        key: OBJECT_PATH,
-      },
-    });
+    expect(getServiceMethodCost).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
     expect(bucket.head).toHaveBeenCalledWith(nativeObject.provider_key);
     expect(tryReserveBytes).not.toHaveBeenCalled();
     expect(releaseBytes).not.toHaveBeenCalled();
     expect(failureResponse).not.toHaveBeenCalled();
   });
 
-  test("preserves the existing GET pricing and body path", async () => {
-    getServiceMethodCost.mockResolvedValue(GET_COST);
-
+  test("serves the catalog GET body without billing", async () => {
     const response = await request("GET");
 
     expect(response.status).toBe(200);
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(OBJECT_BYTES);
-    expect(getServiceMethodCost).toHaveBeenCalledTimes(1);
-    expect(getServiceMethodCost).toHaveBeenCalledWith("storage", "get");
-    expect(deductCredits).toHaveBeenCalledWith({
-      organizationId: ORGANIZATION_ID,
-      amount: GET_COST,
-      description: "API proxy: storage — get",
-      metadata: {
-        type: "proxy_storage",
-        service: "storage",
-        method: "get",
-        key: OBJECT_PATH,
-      },
-    });
+    expect(getServiceMethodCost).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
     expect(bucket.get).toHaveBeenCalledWith(nativeObject.provider_key);
     expect(failureResponse).not.toHaveBeenCalled();
   });

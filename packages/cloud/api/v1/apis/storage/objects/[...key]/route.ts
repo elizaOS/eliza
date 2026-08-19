@@ -14,7 +14,8 @@
  *
  * Auth: requireUserOrApiKeyWithOrg.
  * Quota: hard-rejects writes with 413 when the org's bytes_limit is exceeded.
- * Pricing: per-request charge (and per-byte for PUT) deducted via creditsService.
+ * Pricing: PUT is durably billed by the mutation service. Catalog GET and HEAD
+ * remain explicitly unbilled until durable paid-read receipts are available.
  */
 
 import { type Context, Hono } from "hono";
@@ -24,10 +25,7 @@ import {
 } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import {
-  creditsService,
-  InsufficientCreditsError,
-} from "@/lib/services/credits";
+import { InsufficientCreditsError } from "@/lib/services/credits";
 import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
 import {
   calculateStoragePutPrice,
@@ -76,32 +74,6 @@ function validateUserKey(
     return { error: "Object key may not contain '..' path segments" };
   }
   return { key };
-}
-
-async function deductFlatCost(
-  organizationId: string,
-  method: "put" | "get" | "head" | "delete" | "list" | "presign",
-  metadata: Record<string, string | number>,
-): Promise<{ ok: true } | { ok: false }> {
-  const cost = await getServiceMethodCost(STORAGE_SERVICE_ID, method);
-  if (cost === 0) {
-    return { ok: true };
-  }
-  const result = await creditsService.deductCredits({
-    organizationId,
-    amount: cost,
-    description: `API proxy: storage — ${method}`,
-    metadata: {
-      type: "proxy_storage",
-      service: "storage",
-      method,
-      ...metadata,
-    },
-  });
-  if (!result.success) {
-    return { ok: false };
-  }
-  return { ok: true };
 }
 
 app.put("/*", async (c) => {
@@ -217,18 +189,6 @@ app.get("/*", async (c) => {
       if (!body) {
         return c.json({ error: "Storage generation body is unavailable" }, 503);
       }
-      const deduct = await deductFlatCost(organization_id, "get", {
-        key: validated.key,
-      });
-      if (!deduct.ok) {
-        return c.json(
-          {
-            error: "Insufficient credits",
-            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
-          },
-          402,
-        );
-      }
       return new Response(body, {
         status: 200,
         headers: {
@@ -273,18 +233,6 @@ async function handleStorageHead(c: Context<AppEnv>) {
         return c.json(
           { error: "Storage generation is temporarily unavailable" },
           503,
-        );
-      }
-      const deduct = await deductFlatCost(organization_id, "head", {
-        key: validated.key,
-      });
-      if (!deduct.ok) {
-        return c.json(
-          {
-            error: "Insufficient credits",
-            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
-          },
-          402,
         );
       }
       return new Response(null, {

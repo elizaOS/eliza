@@ -1,6 +1,6 @@
 /**
  * Exercises the real storage LIST router against a native fake R2 binding,
- * proving legacy discovery is catalog-adopted before a successful charge.
+ * proving legacy discovery is catalog-adopted while paid LIST is disabled.
  */
 
 import { beforeEach, expect, mock, test } from "bun:test";
@@ -59,7 +59,7 @@ beforeEach(() => {
   ]);
 });
 
-test("reconciles native authority and charges only after catalog success", async () => {
+test("reconciles native authority without activating incomplete paid LIST", async () => {
   const list = mock();
   const response = await app.request(
     "/api/v1/apis/storage/list?prefix=voice&recursive=true",
@@ -82,7 +82,9 @@ test("reconciles native authority and charges only after catalog success", async
   });
   expect(ensureNativeStorageQuotaReconciled).toHaveBeenCalled();
   expect(listObjects).toHaveBeenCalledWith(ORG, "voice", 1001, true);
-  expect(events).toEqual(["reconcile", "charge"]);
+  expect(events).toEqual(["reconcile"]);
+  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
 });
 
 test("does not charge when native listing fails", async () => {
