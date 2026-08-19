@@ -33,7 +33,9 @@ export function chunkText(text: string, limit: number): string[] {
 	let remaining = text;
 
 	while (remaining.length > limit) {
-		const window = remaining.slice(0, limit);
+		let safeLimit = limit;
+		if (safeLimit > 0 && safeLimit < remaining.length && remaining.charCodeAt(safeLimit) >= 0xdc00 && remaining.charCodeAt(safeLimit) <= 0xdfff) { safeLimit--; }
+		const window = remaining.slice(0, safeLimit);
 
 		// 1) Prefer a newline break inside the window (outside parentheses).
 		const { lastNewline, lastWhitespace } = scanParenAwareBreakpoints(window);
@@ -43,7 +45,7 @@ export function chunkText(text: string, limit: number): string[] {
 
 		// 3) Fallback: hard break exactly at the limit.
 		if (breakIdx <= 0) {
-			breakIdx = limit;
+			breakIdx = safeLimit;
 		}
 
 		const rawChunk = remaining.slice(0, breakIdx);
@@ -171,10 +173,12 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 
 	while (remaining.length > limit) {
 		const spans = parseFenceSpans(remaining);
-		const window = remaining.slice(0, limit);
+		let safeLimit = limit;
+		if (safeLimit > 0 && safeLimit < remaining.length && remaining.charCodeAt(safeLimit) >= 0xdc00 && remaining.charCodeAt(safeLimit) <= 0xdfff) { safeLimit--; }
+		const window = remaining.slice(0, safeLimit);
 
 		const softBreak = pickSafeBreakIndex(window, spans);
-		let breakIdx = softBreak > 0 ? softBreak : limit;
+		let breakIdx = softBreak > 0 ? softBreak : safeLimit;
 
 		const initialFence = isSafeFenceBreak(spans, breakIdx)
 			? undefined
@@ -192,7 +196,7 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 
 			if (maxIdxIfNeedNewline <= 0) {
 				bailed = true;
-				breakIdx = limit;
+				breakIdx = safeLimit;
 			} else {
 				const minProgressIdx = Math.min(
 					remaining.length,

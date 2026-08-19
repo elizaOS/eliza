@@ -25,7 +25,16 @@ export function findBreakPoint(
 		return text.length;
 	}
 
-	const region = text.slice(0, maxLen);
+	let safeMax = maxLen;
+	if (
+		safeMax > 0 &&
+		safeMax < text.length &&
+		text.charCodeAt(safeMax) >= 0xdc00 &&
+		text.charCodeAt(safeMax) <= 0xdfff
+	) {
+		safeMax--;
+	}
+	const region = text.slice(0, safeMax);
 	if (breakPreference === "paragraph" || breakPreference === "newline") {
 		const paragraphBreak = region.lastIndexOf("\n\n");
 		if (paragraphBreak > maxLen * 0.3) {
@@ -60,5 +69,5 @@ export function findBreakPoint(
 		return wordBreak + 1;
 	}
 
-	return maxLen;
+	return safeMax;
 }

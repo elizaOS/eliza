@@ -116,7 +116,9 @@ function buildChannelLabel(
 function truncateText(text: string, maxChars: number): string {
 	const trimmed = text.trim();
 	if (trimmed.length <= maxChars) return trimmed;
-	return `${trimmed.slice(0, maxChars - 3)}...`;
+	let cut = maxChars - 3;
+	if (cut > 0 && cut < trimmed.length && trimmed.charCodeAt(cut) >= 0xdc00 && trimmed.charCodeAt(cut) <= 0xdfff) { cut--; }
+	return `${trimmed.slice(0, cut)}...`;
 }
 
 function sanitizeReplyReferenceText(text: string): string {

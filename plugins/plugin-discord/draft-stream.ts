@@ -86,9 +86,11 @@ export function createDraftStreamController(
 			return false;
 		}
 
+		let _displayCut = maxChars - 3;
+		if (_displayCut > 0 && _displayCut < trimmed.length && trimmed.charCodeAt(_displayCut) >= 0xdc00 && trimmed.charCodeAt(_displayCut) <= 0xdfff) { _displayCut--; }
 		const displayText =
 			trimmed.length > maxChars
-				? `${trimmed.slice(0, maxChars - 3)}...`
+				? `${trimmed.slice(0, _displayCut)}...`
 				: trimmed;
 		if (displayText === lastSentText) {
 			if (components && components.length > 0 && lastSentMessage) {
@@ -241,8 +243,10 @@ export function createDraftStreamController(
 			maxChars,
 			chunkConfig.breakPreference,
 		);
-		const firstChunk = trimmed.slice(0, breakPoint).trimEnd();
-		let remaining = trimmed.slice(breakPoint).trimStart();
+		let _bp = breakPoint;
+		if (_bp > 0 && _bp < trimmed.length && trimmed.charCodeAt(_bp) >= 0xdc00 && trimmed.charCodeAt(_bp) <= 0xdfff) { _bp--; }
+		const firstChunk = trimmed.slice(0, _bp).trimEnd();
+		let remaining = trimmed.slice(_bp).trimStart();
 
 		await sendSnapshot(firstChunk);
 
@@ -252,8 +256,10 @@ export function createDraftStreamController(
 				maxChars,
 				chunkConfig.breakPreference,
 			);
-			const chunk = remaining.slice(0, nextBreak).trimEnd();
-			remaining = remaining.slice(nextBreak).trimStart();
+			let _nb = nextBreak;
+			if (_nb > 0 && _nb < remaining.length && remaining.charCodeAt(_nb) >= 0xdc00 && remaining.charCodeAt(_nb) <= 0xdfff) { _nb--; }
+			const chunk = remaining.slice(0, _nb).trimEnd();
+			remaining = remaining.slice(_nb).trimStart();
 			if (!chunk) {
 				continue;
 			}

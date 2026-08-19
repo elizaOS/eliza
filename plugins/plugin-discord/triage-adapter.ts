@@ -105,9 +105,12 @@ function metaString(
 }
 
 function clip(value: string, maxLength: number): string {
-	return value.length > maxLength
-		? `${value.slice(0, maxLength - 3)}...`
-		: value;
+	if (value.length <= maxLength) return value;
+	let cut = maxLength - 3;
+	if (cut > 0 && cut < value.length && value.charCodeAt(cut) >= 0xdc00 && value.charCodeAt(cut) <= 0xdfff) {
+		cut--;
+	}
+	return `${value.slice(0, cut)}...`;
 }
 
 function refId(discordMessageId: string): string {

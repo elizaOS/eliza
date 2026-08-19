@@ -86,12 +86,28 @@ function splitLongLine(
 
 	while (remaining.length > limit) {
 		if (opts.preserveWhitespace) {
-			out.push(remaining.slice(0, limit));
-			remaining = remaining.slice(limit);
+			let cut = limit;
+			if (
+				cut < remaining.length &&
+				remaining.charCodeAt(cut) >= 0xdc00 &&
+				remaining.charCodeAt(cut) <= 0xdfff
+			) {
+				cut--;
+			}
+			out.push(remaining.slice(0, cut));
+			remaining = remaining.slice(cut);
 			continue;
 		}
 
-		const window = remaining.slice(0, limit);
+		let windowEnd = limit;
+		if (
+			windowEnd < remaining.length &&
+			remaining.charCodeAt(windowEnd) >= 0xdc00 &&
+			remaining.charCodeAt(windowEnd) <= 0xdfff
+		) {
+			windowEnd--;
+		}
+		const window = remaining.slice(0, windowEnd);
 		let breakIdx = -1;
 		for (let i = window.length - 1; i >= 0; i--) {
 			if (/\s/.test(window[i])) {
@@ -101,7 +117,7 @@ function splitLongLine(
 		}
 
 		if (breakIdx <= 0) {
-			breakIdx = limit;
+			breakIdx = windowEnd;
 		}
 
 		out.push(remaining.slice(0, breakIdx));
@@ -495,7 +511,19 @@ export function truncateText(
 	if (text.length <= maxLength) {
 		return text;
 	}
-	return text.slice(0, maxLength - ellipsis.length) + ellipsis;
+	const target = maxLength - ellipsis.length;
+	if (target <= 0) {
+		return ellipsis.slice(0, maxLength);
+	}
+	let truncateAt = target;
+	if (
+		truncateAt < text.length &&
+		text.charCodeAt(truncateAt) >= 0xdc00 &&
+		text.charCodeAt(truncateAt) <= 0xdfff
+	) {
+		truncateAt--;
+	}
+	return text.slice(0, truncateAt) + ellipsis;
 }
 
 /**
