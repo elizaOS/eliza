@@ -3,7 +3,6 @@
  */
 
 import * as fsp from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -522,57 +521,63 @@ describe("browser workspace HTTP routes", () => {
   });
 
   it("round trips web user state without leaking across later mutations", async () => {
-    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "plugin-browser-"));
-    const statePath = path.join(dir, "browser-state.json");
-    const tab = await openBrowserWorkspaceTab({
-      show: true,
-      url: "about:blank",
-    });
-    await executeBrowserWorkspaceCommand({
-      id: tab.id,
-      networkAction: "route",
-      responseBody: "<!doctype html><title>State</title>",
-      subaction: "network",
-      url: "**",
-    });
-    await executeBrowserWorkspaceCommand({
-      id: tab.id,
-      subaction: "navigate",
-      url: "https://example.com/state",
-    });
+    const dir = await fsp.mkdtemp(
+      path.join(process.cwd(), "plugin-browser-state-"),
+    );
+    try {
+      const statePath = path.join(dir, "browser-state.json");
+      const tab = await openBrowserWorkspaceTab({
+        show: true,
+        url: "about:blank",
+      });
+      await executeBrowserWorkspaceCommand({
+        id: tab.id,
+        networkAction: "route",
+        responseBody: "<!doctype html><title>State</title>",
+        subaction: "network",
+        url: "**",
+      });
+      await executeBrowserWorkspaceCommand({
+        id: tab.id,
+        subaction: "navigate",
+        url: "https://example.com/state",
+      });
 
-    await executeBrowserWorkspaceCommand({
-      clipboardAction: "write",
-      id: tab.id,
-      subaction: "clipboard",
-      value: "saved clipboard",
-    });
-    await executeBrowserWorkspaceCommand({
-      filePath: statePath,
-      id: tab.id,
-      subaction: "state",
-    });
-    await executeBrowserWorkspaceCommand({
-      clipboardAction: "write",
-      id: tab.id,
-      subaction: "clipboard",
-      value: "mutated clipboard",
-    });
+      await executeBrowserWorkspaceCommand({
+        clipboardAction: "write",
+        id: tab.id,
+        subaction: "clipboard",
+        value: "saved clipboard",
+      });
+      await executeBrowserWorkspaceCommand({
+        filePath: statePath,
+        id: tab.id,
+        subaction: "state",
+      });
+      await executeBrowserWorkspaceCommand({
+        clipboardAction: "write",
+        id: tab.id,
+        subaction: "clipboard",
+        value: "mutated clipboard",
+      });
 
-    await executeBrowserWorkspaceCommand({
-      filePath: statePath,
-      id: tab.id,
-      stateAction: "load",
-      subaction: "state",
-    });
-    const restored = await executeBrowserWorkspaceCommand({
-      id: tab.id,
-      subaction: "state",
-    });
+      await executeBrowserWorkspaceCommand({
+        filePath: statePath,
+        id: tab.id,
+        stateAction: "load",
+        subaction: "state",
+      });
+      const restored = await executeBrowserWorkspaceCommand({
+        id: tab.id,
+        subaction: "state",
+      });
 
-    expect(restored.value).toMatchObject({
-      clipboard: "saved clipboard",
-      url: "https://example.com/state",
-    });
+      expect(restored.value).toMatchObject({
+        clipboard: "saved clipboard",
+        url: "https://example.com/state",
+      });
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
   });
 });

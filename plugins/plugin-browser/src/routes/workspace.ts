@@ -99,6 +99,7 @@ function statusFromBrowserWorkspaceErrorCode(
         : 409;
     case "script_forbidden":
     case "connector_secret_export_forbidden":
+    case "path_forbidden":
       return 403;
     case "timeout":
       return 504;

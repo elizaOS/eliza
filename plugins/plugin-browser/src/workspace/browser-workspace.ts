@@ -17,7 +17,6 @@
  */
 
 import * as fsp from "node:fs/promises";
-import * as path from "node:path";
 
 export type {
   AcquireBrowserWorkspaceConnectorSessionRequest,
@@ -111,6 +110,7 @@ import {
   inferBrowserWorkspaceTitle,
   normalizeBrowserWorkspaceCommand,
   resolveBrowserWorkspaceCommandPartition,
+  resolveBrowserWorkspaceFilePath,
   resolveConnectorBrowserWorkspacePartition,
   sleep,
   writeBrowserWorkspaceFile,
@@ -948,7 +948,7 @@ export async function executeBrowserWorkspaceCommand(
         const currentData = screenshot.data;
         const baseline = command.baselinePath?.trim()
           ? await fsp.readFile(
-              path.resolve(command.baselinePath.trim()),
+              resolveBrowserWorkspaceFilePath(command.baselinePath.trim()),
               "base64",
             )
           : runtime.lastScreenshotData;
@@ -993,7 +993,7 @@ export async function executeBrowserWorkspaceCommand(
       const baseline = command.baselinePath?.trim()
         ? (JSON.parse(
             await fsp.readFile(
-              path.resolve(command.baselinePath.trim()),
+              resolveBrowserWorkspaceFilePath(command.baselinePath.trim()),
               "utf8",
             ),
           ) as import("./browser-workspace-types.js").BrowserWorkspaceSnapshotRecord)
@@ -1022,14 +1022,14 @@ export async function executeBrowserWorkspaceCommand(
         const payload = { entries: target.entries };
         const filePath = command.filePath?.trim() || command.outputPath?.trim();
         if (filePath) {
-          await writeBrowserWorkspaceFile(
+          const resolvedPath = await writeBrowserWorkspaceFile(
             filePath,
             JSON.stringify(payload, null, 2),
           );
           return {
             mode: "desktop",
             subaction: command.subaction,
-            value: { path: path.resolve(filePath), ...payload },
+            value: { path: resolvedPath, ...payload },
           };
         }
         return {
@@ -1070,7 +1070,7 @@ export async function executeBrowserWorkspaceCommand(
           );
         }
         const payload = JSON.parse(
-          await fsp.readFile(path.resolve(filePath), "utf8"),
+          await fsp.readFile(resolveBrowserWorkspaceFilePath(filePath), "utf8"),
         ) as Record<string, unknown>;
         await loadDesktopBrowserWorkspaceSessionState(command, payload, env);
         return {
@@ -1085,14 +1085,14 @@ export async function executeBrowserWorkspaceCommand(
       );
       const filePath = command.filePath?.trim() || command.outputPath?.trim();
       if (filePath) {
-        await writeBrowserWorkspaceFile(
+        const resolvedPath = await writeBrowserWorkspaceFile(
           filePath,
           JSON.stringify(payload, null, 2),
         );
         return {
           mode: "desktop",
           subaction: command.subaction,
-          value: { path: path.resolve(filePath), ...payload },
+          value: { path: resolvedPath, ...payload },
         };
       }
       return { mode: "desktop", subaction: command.subaction, value: payload };

@@ -3,7 +3,6 @@
  */
 
 import * as fsp from "node:fs/promises";
-import * as path from "node:path";
 import {
   browserWorkspaceTextMatches,
   buildBrowserWorkspaceElementSelector,
@@ -41,6 +40,7 @@ import {
   DEFAULT_WAIT_INTERVAL_MS,
   normalizeBrowserWorkspaceText,
   resolveBrowserWorkspaceCommandElementRefs,
+  resolveBrowserWorkspaceFilePath,
   sleep,
   writeBrowserWorkspaceFile,
 } from "./browser-workspace-helpers.js";
@@ -212,7 +212,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         if (command.filePath?.trim() || command.outputPath?.trim()) {
           const targetPath =
             command.filePath?.trim() || command.outputPath?.trim() || "";
-          await writeBrowserWorkspaceFile(
+          const resolvedPath = await writeBrowserWorkspaceFile(
             targetPath,
             Buffer.from(data, "base64"),
           );
@@ -220,7 +220,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
             mode: "web",
             subaction: command.subaction,
             snapshot: { data },
-            value: { path: path.resolve(targetPath) },
+            value: { path: resolvedPath },
           };
         }
         return {
@@ -546,14 +546,14 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
           if (command.filePath?.trim() || command.outputPath?.trim()) {
             const targetPath =
               command.filePath?.trim() || command.outputPath?.trim() || "";
-            await writeBrowserWorkspaceFile(
+            const resolvedPath = await writeBrowserWorkspaceFile(
               targetPath,
               JSON.stringify(har, null, 2),
             );
             return {
               mode: "web",
               subaction: command.subaction,
-              value: { path: path.resolve(targetPath), ...har },
+              value: { path: resolvedPath, ...har },
             };
           }
           return { mode: "web", subaction: command.subaction, value: har };
@@ -721,7 +721,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
             );
           const baseline = command.baselinePath?.trim()
             ? await fsp.readFile(
-                path.resolve(command.baselinePath.trim()),
+                resolveBrowserWorkspaceFilePath(command.baselinePath.trim()),
                 "base64",
               )
             : runtime.lastScreenshotData;
@@ -739,7 +739,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         const baseline = command.baselinePath?.trim()
           ? (JSON.parse(
               await fsp.readFile(
-                path.resolve(command.baselinePath.trim()),
+                resolveBrowserWorkspaceFilePath(command.baselinePath.trim()),
                 "utf8",
               ),
             ) as import("./browser-workspace-types.js").BrowserWorkspaceSnapshotRecord)
@@ -755,14 +755,14 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
           if (command.filePath?.trim() || command.outputPath?.trim()) {
             const targetPath =
               command.filePath?.trim() || command.outputPath?.trim() || "";
-            await writeBrowserWorkspaceFile(
+            const resolvedPath = await writeBrowserWorkspaceFile(
               targetPath,
               JSON.stringify(traceValue, null, 2),
             );
             return {
               mode: "web",
               subaction: command.subaction,
-              value: { path: path.resolve(targetPath), ...traceValue },
+              value: { path: resolvedPath, ...traceValue },
             };
           }
           return {
@@ -789,14 +789,14 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
           if (command.filePath?.trim() || command.outputPath?.trim()) {
             const targetPath =
               command.filePath?.trim() || command.outputPath?.trim() || "";
-            await writeBrowserWorkspaceFile(
+            const resolvedPath = await writeBrowserWorkspaceFile(
               targetPath,
               JSON.stringify(profileValue, null, 2),
             );
             return {
               mode: "web",
               subaction: command.subaction,
-              value: { path: path.resolve(targetPath), ...profileValue },
+              value: { path: resolvedPath, ...profileValue },
             };
           }
           return {
@@ -834,7 +834,10 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
             );
           }
           const payload = JSON.parse(
-            await fsp.readFile(path.resolve(filePath), "utf8"),
+            await fsp.readFile(
+              resolveBrowserWorkspaceFilePath(filePath),
+              "utf8",
+            ),
           ) as Record<string, unknown>;
           applyBrowserWorkspaceStateToWebDocument(document, payload);
           if (payload.settings && typeof payload.settings === "object") {
@@ -871,14 +874,14 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         };
         const filePath = command.filePath?.trim() || command.outputPath?.trim();
         if (filePath) {
-          await writeBrowserWorkspaceFile(
+          const resolvedPath = await writeBrowserWorkspaceFile(
             filePath,
             JSON.stringify(payload, null, 2),
           );
           return {
             mode: "web",
             subaction: command.subaction,
-            value: { path: path.resolve(filePath), ...payload },
+            value: { path: resolvedPath, ...payload },
           };
         }
         return { mode: "web", subaction: command.subaction, value: payload };
