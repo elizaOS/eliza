@@ -66,6 +66,19 @@ vi.mock("../../chat/report-composer-activity", () => ({
   reportComposerActivity: vi.fn(),
 }));
 
+const desktopBridgeEventHandlers = vi.hoisted(
+  () => new Map<string, (payload: unknown) => void>(),
+);
+
+vi.mock("../../hooks/useDesktopBridgeEvent", () => ({
+  useDesktopBridgeEvent: (
+    options: { rpcMessage: string },
+    handler: (payload: unknown) => void,
+  ) => {
+    desktopBridgeEventHandlers.set(options.rpcMessage, handler);
+  },
+}));
+
 import * as React from "react";
 import { client } from "../../api/client";
 import type {
@@ -179,6 +192,12 @@ function makeController(
     clearConversation: vi.fn(),
     ...overrides,
   } as unknown as ShellController;
+}
+
+function emitDesktopWindowBlur(): void {
+  const handler = desktopBridgeEventHandlers.get("desktopWindowBlur");
+  expect(handler).toBeTypeOf("function");
+  act(() => handler?.(undefined));
 }
 
 /**
@@ -1803,6 +1822,25 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("collapses an open desktop chat when the user clicks another window", () => {
+    const onStateChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        onStateChange={onStateChange}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
+
+    emitDesktopWindowBlur();
+
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+  });
+
   it("cedes taps to a layer painted ABOVE the chat (stacked dialog) instead of collapsing", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
@@ -2409,6 +2447,36 @@ describe("ChatOverlay", () => {
     expect(onStateChange).toHaveBeenLastCalledWith("OPEN_UNDER_HALF");
 
     fireEvent.keyDown(document, { key: "Escape" });
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+  });
+
+  it("releases the temporary menu host bounds when the desktop window loses focus", () => {
+    const onStateChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        onStateChange={onStateChange}
+      />,
+    );
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    expect(screen.getByText("Upload file")).toBeTruthy();
+    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_UNDER_HALF");
+
+    emitDesktopWindowBlur();
+
+    expect(screen.queryByText("Upload file")).toBeNull();
     expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
   });
 

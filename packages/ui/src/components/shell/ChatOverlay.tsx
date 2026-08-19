@@ -67,6 +67,7 @@ import {
   GLASS_SHEET_FILL,
 } from "../../glass/tokens";
 import { useConversationRenderWindow } from "../../hooks/useConversationRenderWindow";
+import { useDesktopBridgeEvent } from "../../hooks/useDesktopBridgeEvent";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -3868,6 +3869,24 @@ export function ChatOverlay({
     inputRef.current?.blur();
   }, [closeSheet, pinnedOpen]);
 
+  // The transparent desktop host only receives pointer events inside its
+  // current native bounds. Clicking another app/window therefore cannot reach
+  // the document-level outside-tap detector above, but the native shell does
+  // report that focus loss (including a macOS key-window polling fallback).
+  // Fold an open conversation to the compact composer, and forcibly close the
+  // controlled actions portal so its temporary tall host bounds are released.
+  // Onboarding stays pinned because collapse() owns that existing guard.
+  useDesktopBridgeEvent(
+    {
+      rpcMessage: "desktopWindowBlur",
+      ipcChannel: "desktop:windowBlur",
+    },
+    () => {
+      setChatActionsOpen(false);
+      if (sheetOpen) collapse();
+    },
+  );
+
   // Dismiss the keyboard and return to the resting state from BEFORE the composer
   // was focused — the single restore path shared by every "drop the keyboard"
   // gesture (tap the grabber, tap the scrim, tap outside the panel). A sheet that
@@ -6425,7 +6444,10 @@ export function ChatOverlay({
                   Discord/Telegram room. Search is agent-driveable; Upload is a
                   pure client affordance. */}
               {!transcriptionComposerActive ? (
-                <DropdownMenu onOpenChange={setChatActionsOpen}>
+                <DropdownMenu
+                  open={chatActionsOpen}
+                  onOpenChange={setChatActionsOpen}
+                >
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
