@@ -87,7 +87,8 @@ export function processToolResult(
   let hasAttachments = false;
   const attachments: Media[] = [];
 
-  for (const content of result.content) {
+  for (let i = 0; i < result.content.length; i++) {
+    const content = result.content[i];
     if (content.type === "text" && content.text) {
       toolOutput += content.text;
     } else if (content.type === "image" && content.data && content.mimeType) {
@@ -95,7 +96,7 @@ export function processToolResult(
       attachments.push({
         contentType: getMimeTypeToContentType(content.mimeType),
         url: `data:${content.mimeType};base64,${content.data}`,
-        id: createUniqueUuid(runtime, messageEntityId),
+        id: createUniqueUuid(runtime, `${messageEntityId}:image-${i}`),
         title: "Generated image",
         source: `${serverName}/${toolName}`,
         description: "Tool-generated image",
