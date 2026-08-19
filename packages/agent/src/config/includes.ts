@@ -5,11 +5,19 @@
  * { "$include": "./base.json5" }
  * { "$include": ["./a.json5", "./b.json5"] }
  * ```
+ *
+ * Included files are byte-capped before parse. Origin read the whole file
+ * then JSON5.parse'd it with no size budget, so a hostile include could hang
+ * agent boot.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import JSON5 from "json5";
+import {
+  isIncludeFileTooLarge,
+  MAX_INCLUDE_BYTES,
+} from "./include-file-budget.ts";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -165,6 +173,13 @@ class IncludeProcessor {
         `Failed to read include file: ${includePath} (resolved: ${normalized})`,
         includePath,
         err instanceof Error ? err : undefined,
+      );
+    }
+
+    if (isIncludeFileTooLarge(raw)) {
+      throw new ConfigIncludeError(
+        `Include file exceeds ${MAX_INCLUDE_BYTES} bytes at: ${includePath}`,
+        includePath,
       );
     }
 
