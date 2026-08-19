@@ -1167,13 +1167,35 @@ async function runCreateLegacy(
       { timeoutMs: 1_500 },
     );
     earlyAckText = text;
-    // `immediate` opts out of the capture-then-settle deferral (see the
-    // tasksAction handler wrapper).
-    await callback({
-      text: earlyAckText,
-      agentVoiced: true,
-      metadata: { immediate: true },
-    });
+    // Out-of-band send: same-turn callback deliveries batch at turn end (five
+    // ack placements all landed ~2s before the completion relay, live
+    // 2026-08-19), while sendMessageToTarget posts NOW — the same path the
+    // park/recovery notices use to arrive mid-flight.
+    const ackSend = (
+      runtime as IAgentRuntime & {
+        sendMessageToTarget?: (
+          target: { source: string; roomId?: string },
+          content: { text: string; source: string; agentVoiced?: boolean },
+        ) => Promise<unknown>;
+      }
+    ).sendMessageToTarget;
+    const ackSource =
+      typeof (message.content as { source?: unknown })?.source === "string"
+        ? String((message.content as { source?: unknown }).source)
+        : undefined;
+    if (typeof ackSend === "function" && ackSource && message.roomId) {
+      // error-policy:J6 a failed ack send must never block the build itself.
+      await ackSend(
+        { source: ackSource, roomId: String(message.roomId) },
+        { text: earlyAckText, source: ackSource, agentVoiced: true },
+      ).catch(() => undefined);
+    } else {
+      await callback({
+        text: earlyAckText,
+        agentVoiced: true,
+        metadata: { immediate: true },
+      });
+    }
   }
   const useSmithers = shouldUseSmithersTaskRunner();
   let threadId: string | null = null;
