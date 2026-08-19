@@ -187,7 +187,29 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
     CREATE TABLE organizations (
       id uuid PRIMARY KEY,
       credit_balance numeric(16, 6) NOT NULL DEFAULT '0.000000',
+      stripe_customer_id text,
+      billing_email text,
+      stripe_payment_method_id text,
+      stripe_default_payment_method text,
+      auto_top_up_enabled boolean DEFAULT false,
+      auto_top_up_amount numeric(10, 2),
+      auto_top_up_threshold numeric(10, 2),
       CONSTRAINT credit_balance_non_negative CHECK (credit_balance >= 0)
+    );
+    CREATE TABLE organization_billing (
+      organization_id uuid NOT NULL UNIQUE
+        REFERENCES organizations(id) ON DELETE CASCADE,
+      stripe_customer_id text,
+      billing_email text,
+      tax_id_type text,
+      tax_id_value text,
+      billing_address jsonb,
+      stripe_payment_method_id text,
+      stripe_default_payment_method text,
+      auto_top_up_enabled boolean NOT NULL DEFAULT false,
+      auto_top_up_amount numeric(12, 6),
+      auto_top_up_threshold numeric(12, 6) DEFAULT '0.000000',
+      updated_at timestamp without time zone NOT NULL DEFAULT now()
     );
     CREATE TABLE credit_transactions (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -236,7 +258,20 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
       updated_at timestamp with time zone NOT NULL DEFAULT now()
     );
     CREATE TABLE payment_requests (
-      id uuid PRIMARY KEY
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      provider text NOT NULL CHECK (
+        provider IN ('stripe', 'oxapay', 'x402', 'wallet_native')
+      ),
+      amount_cents bigint NOT NULL CHECK (amount_cents >= 0),
+      currency text NOT NULL DEFAULT 'usd',
+      provider_intent jsonb NOT NULL DEFAULT '{}'::jsonb,
+      status text NOT NULL DEFAULT 'pending' CHECK (
+        status IN ('pending', 'delivered', 'settled', 'failed', 'expired', 'canceled')
+      ),
+      settled_at timestamp with time zone,
+      settlement_tx_ref text,
+      settlement_proof jsonb
     );
     CREATE TABLE payment_request_events (
       id uuid PRIMARY KEY,
@@ -418,6 +453,162 @@ async function waitForAdvisoryLock(client: pg.Client): Promise<void> {
   throw new Error("Timed out waiting for migration advisory lock");
 }
 
+async function expectPreCheckpointPaymentRequestAuthority(
+  client: pg.Client,
+): Promise<void> {
+  const authority = await client.query<{
+    payment_columns: string[];
+    organization_id_type: string;
+    organization_id_nullable: string;
+    provider_type: string;
+    provider_nullable: string;
+    organization_fk: string;
+    provider_check: string;
+    receipt_table: string | null;
+    receipt_parent_index: string | null;
+  }>(`
+    SELECT
+      (SELECT to_json(array_agg(format('%s:%s:%s', attname,
+          format_type(atttypid, atttypmod),
+          CASE WHEN attnotnull THEN 'required' ELSE 'nullable' END)
+        ORDER BY attnum))
+        FROM pg_attribute
+        WHERE attrelid = 'payment_requests'::regclass
+          AND attnum > 0 AND NOT attisdropped) AS payment_columns,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'payment_requests'
+          AND column_name = 'organization_id') AS organization_id_type,
+      (SELECT is_nullable FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'payment_requests'
+          AND column_name = 'organization_id') AS organization_id_nullable,
+      (SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'payment_requests'
+          AND column_name = 'provider') AS provider_type,
+      (SELECT is_nullable FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'payment_requests'
+          AND column_name = 'provider') AS provider_nullable,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'payment_requests'::regclass AND contype = 'f'
+          AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid = 'payment_requests'::regclass
+              AND attname = 'organization_id')]::smallint[]) AS organization_fk,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'payment_requests'::regclass AND contype = 'c'
+          AND pg_get_constraintdef(oid) LIKE '%provider%') AS provider_check,
+      to_regclass('public.payment_request_receipts')::text AS receipt_table,
+      to_regclass('public.payment_requests_id_organization_provider_unique')::text
+        AS receipt_parent_index
+  `);
+  expect(authority.rows[0]).toEqual({
+    payment_columns: [
+      "id:uuid:required",
+      "organization_id:uuid:required",
+      "provider:text:required",
+      "amount_cents:bigint:required",
+      "currency:text:required",
+      "provider_intent:jsonb:required",
+      "status:text:required",
+      "settled_at:timestamp with time zone:nullable",
+      "settlement_tx_ref:text:nullable",
+      "settlement_proof:jsonb:nullable",
+    ],
+    organization_id_type: "uuid",
+    organization_id_nullable: "NO",
+    provider_type: "text",
+    provider_nullable: "NO",
+    organization_fk:
+      "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+    provider_check:
+      "CHECK ((provider = ANY (ARRAY['stripe'::text, 'oxapay'::text, 'x402'::text, 'wallet_native'::text])))",
+    receipt_table: null,
+    receipt_parent_index: null,
+  });
+}
+
+async function expectPreCheckpointOrganizationBillingAuthority(
+  client: pg.Client,
+): Promise<void> {
+  const authority = await client.query<{
+    organization_columns: string[];
+    billing_columns: string[];
+    organization_fk: string;
+    organization_unique: string;
+    authority_index: string | null;
+    shadow_authority_index: string | null;
+    sync_function: string | null;
+    shadow_guard: string | null;
+  }>(`
+    SELECT
+      (SELECT to_json(array_agg(format('%s:%s:%s', attname,
+          format_type(atttypid, atttypmod),
+          CASE WHEN attnotnull THEN 'required' ELSE 'nullable' END)
+        ORDER BY attnum))
+        FROM pg_attribute
+        WHERE attrelid = 'organizations'::regclass
+          AND attnum > 0 AND NOT attisdropped AND attname IN (
+            'stripe_customer_id', 'billing_email', 'stripe_payment_method_id',
+            'stripe_default_payment_method', 'auto_top_up_enabled',
+            'auto_top_up_amount', 'auto_top_up_threshold'
+          )) AS organization_columns,
+      (SELECT to_json(array_agg(format('%s:%s:%s', attname,
+          format_type(atttypid, atttypmod),
+          CASE WHEN attnotnull THEN 'required' ELSE 'nullable' END)
+        ORDER BY attnum))
+        FROM pg_attribute
+        WHERE attrelid = 'organization_billing'::regclass
+          AND attnum > 0 AND NOT attisdropped)
+        AS billing_columns,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'organization_billing'::regclass AND contype = 'f'
+          AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid = 'organization_billing'::regclass
+              AND attname = 'organization_id')]::smallint[]) AS organization_fk,
+      (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conrelid = 'organization_billing'::regclass AND contype = 'u'
+          AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid = 'organization_billing'::regclass
+              AND attname = 'organization_id')]::smallint[]) AS organization_unique,
+      to_regclass('public.organizations_stripe_customer_authority_unique')::text
+        AS authority_index,
+      to_regclass('public.org_billing_stripe_customer_authority_unique')::text
+        AS shadow_authority_index,
+      to_regprocedure('public.sync_organization_billing_shadow()')::text AS sync_function,
+      to_regprocedure('public.guard_organization_billing_shadow()')::text AS shadow_guard
+  `);
+  expect(authority.rows[0]).toEqual({
+    organization_columns: [
+      "stripe_customer_id:text:nullable",
+      "billing_email:text:nullable",
+      "stripe_payment_method_id:text:nullable",
+      "stripe_default_payment_method:text:nullable",
+      "auto_top_up_enabled:boolean:nullable",
+      "auto_top_up_amount:numeric(10,2):nullable",
+      "auto_top_up_threshold:numeric(10,2):nullable",
+    ],
+    billing_columns: [
+      "organization_id:uuid:required",
+      "stripe_customer_id:text:nullable",
+      "billing_email:text:nullable",
+      "tax_id_type:text:nullable",
+      "tax_id_value:text:nullable",
+      "billing_address:jsonb:nullable",
+      "stripe_payment_method_id:text:nullable",
+      "stripe_default_payment_method:text:nullable",
+      "auto_top_up_enabled:boolean:required",
+      "auto_top_up_amount:numeric(12,6):nullable",
+      "auto_top_up_threshold:numeric(12,6):nullable",
+      "updated_at:timestamp without time zone:required",
+    ],
+    organization_fk:
+      "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE",
+    organization_unique: "UNIQUE (organization_id)",
+    authority_index: null,
+    shadow_authority_index: null,
+    sync_function: null,
+    shadow_guard: null,
+  });
+}
+
 describe.skipIf(!ENABLED)(
   "migrate-with-diagnostics real PostgreSQL safety",
   () => {
@@ -433,11 +624,13 @@ describe.skipIf(!ENABLED)(
         );
       }
       await admin.end();
-    }, 120_000);
+    }, 300_000);
 
     test("applies the append-only fix-forward once and passes the reusable catalog preflight", async () => {
       const database = await createDatabase();
       await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
+      await expectPreCheckpointPaymentRequestAuthority(database.client);
+      await expectPreCheckpointOrganizationBillingAuthority(database.client);
       await database.client.query(`
         INSERT INTO jobs (
           status,
