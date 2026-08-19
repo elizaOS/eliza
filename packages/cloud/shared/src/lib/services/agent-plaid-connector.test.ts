@@ -14,6 +14,9 @@ import {
 const originalEnvironment = process.env.PLAID_ENV;
 const originalClientId = process.env.PLAID_CLIENT_ID;
 const originalSecret = process.env.PLAID_SECRET;
+const originalSandboxSecret = process.env.PLAID_SANDBOX_SECRET;
+const originalDevelopmentSecret = process.env.PLAID_DEVELOPMENT_SECRET;
+const originalProductionSecret = process.env.PLAID_PRODUCTION_SECRET;
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
@@ -23,6 +26,12 @@ afterEach(() => {
   else process.env.PLAID_CLIENT_ID = originalClientId;
   if (originalSecret === undefined) delete process.env.PLAID_SECRET;
   else process.env.PLAID_SECRET = originalSecret;
+  if (originalSandboxSecret === undefined) delete process.env.PLAID_SANDBOX_SECRET;
+  else process.env.PLAID_SANDBOX_SECRET = originalSandboxSecret;
+  if (originalDevelopmentSecret === undefined) delete process.env.PLAID_DEVELOPMENT_SECRET;
+  else process.env.PLAID_DEVELOPMENT_SECRET = originalDevelopmentSecret;
+  if (originalProductionSecret === undefined) delete process.env.PLAID_PRODUCTION_SECRET;
+  else process.env.PLAID_PRODUCTION_SECRET = originalProductionSecret;
   globalThis.fetch = originalFetch;
 });
 
@@ -30,6 +39,9 @@ function configurePlaid(environment = "sandbox"): void {
   process.env.PLAID_CLIENT_ID = "client-id";
   process.env.PLAID_SECRET = "server-secret";
   process.env.PLAID_ENV = environment;
+  delete process.env.PLAID_SANDBOX_SECRET;
+  delete process.env.PLAID_DEVELOPMENT_SECRET;
+  delete process.env.PLAID_PRODUCTION_SECRET;
 }
 
 describe("agent Plaid connector protocol boundary", () => {
@@ -54,9 +66,12 @@ describe("agent Plaid connector protocol boundary", () => {
 
   test("removes an Item from its stored environment after the process environment changes", async () => {
     configurePlaid("production");
+    process.env.PLAID_SANDBOX_SECRET = "sandbox-server-secret";
     let requestedUrl = "";
-    globalThis.fetch = mock(async (input) => {
+    let requestedBody = "";
+    globalThis.fetch = mock(async (input, init) => {
       requestedUrl = String(input);
+      requestedBody = String(init?.body ?? "");
       return Response.json({ request_id: "request-1" });
     }) as typeof fetch;
 
@@ -66,6 +81,25 @@ describe("agent Plaid connector protocol boundary", () => {
     });
 
     expect(requestedUrl).toBe("https://sandbox.plaid.com/item/remove");
+    expect(JSON.parse(requestedBody)).toMatchObject({
+      secret: "sandbox-server-secret",
+      access_token: "access-sandbox-1",
+    });
+  });
+
+  test("never sends the active environment secret to a stored different environment", async () => {
+    configurePlaid("production");
+    delete process.env.PLAID_SANDBOX_SECRET;
+    const fetchMock = mock(async () => Response.json({ request_id: "must-not-run" }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(
+      removePlaidItem({
+        accessToken: "access-sandbox-1",
+        environment: "sandbox",
+      }),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test("fails closed on malformed successful upstream data", async () => {

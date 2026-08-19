@@ -29,7 +29,10 @@ import { FinancesRepository } from "../src/db/finances-repository.ts";
 import { executeRawSql } from "../src/db/sql.ts";
 import { FinancesService } from "../src/finances-service.ts";
 import financesPlugin from "../src/plugin.ts";
-import { scrubLegacyPlaidCredentials } from "../src/services/migration.ts";
+import {
+  FinancesMigrationService,
+  scrubLegacyPlaidCredentials,
+} from "../src/services/migration.ts";
 
 function plaidTransaction(
   transactionId: string,
@@ -359,7 +362,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
     }
   });
 
-  it("scrubs legacy plaintext Plaid secrets before returning or syncing a source", async () => {
+  it("scrubs dormant legacy Plaid secrets during startup migration without API access", async () => {
     const secret = "access-sandbox-adversarial-do-not-retain";
     const now = new Date().toISOString();
     const sourceId = crypto.randomUUID();
@@ -385,12 +388,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       updatedAt: now,
     });
 
-    const listed = await service.listPaymentSources();
-    expect(listed.find((source) => source.id === sourceId)).toMatchObject({
-      status: "needs_attention",
-      metadata: { unrelated: "preserved" },
-    });
-    expect(JSON.stringify(listed)).not.toContain(secret);
+    await FinancesMigrationService.start(runtime);
 
     const persisted = await repository.getPaymentSource(
       runtime.agentId,
@@ -402,10 +400,72 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       institutionId: "legacy-institution",
       migrationStatus: "relink_required",
     });
+    expect(persisted?.metadata.unrelated).toBe("preserved");
     expect(JSON.stringify(persisted)).not.toContain(secret);
     await expect(
       service.syncPlaidTransactions({ sourceId }),
     ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("keeps distinct Plaid ids even when every legacy uniqueness field matches", async () => {
+    const now = new Date().toISOString();
+    const sourceId = crypto.randomUUID();
+    const source = {
+      id: sourceId,
+      agentId: runtime.agentId,
+      kind: "plaid" as const,
+      label: "Provider identity bank",
+      institution: "Provider identity bank",
+      accountMask: null,
+      status: "active" as const,
+      lastSyncedAt: null,
+      transactionCount: 0,
+      metadata: { plaid: { connectionId: crypto.randomUUID(), cursor: "" } },
+      createdAt: now,
+      updatedAt: now,
+    };
+    await repository.upsertPaymentSource(source);
+    const buildRecord = (externalId: string) => ({
+      id: crypto.randomUUID(),
+      agentId: runtime.agentId,
+      sourceId,
+      externalId,
+      postedAt: "2026-08-19T00:00:00.000Z",
+      amountUsd: 12.34,
+      direction: "debit" as const,
+      merchantRaw: "Same Merchant",
+      merchantNormalized: "same merchant",
+      description: null,
+      category: null,
+      currency: "USD",
+      metadata: {},
+      createdAt: now,
+    });
+
+    await expect(
+      repository.applyPlaidSync({
+        source: {
+          ...source,
+          metadata: {
+            plaid: { connectionId: crypto.randomUUID(), cursor: "cursor-2" },
+          },
+        },
+        added: [
+          buildRecord("plaid-distinct-a"),
+          buildRecord("plaid-distinct-b"),
+        ],
+        modified: [],
+        removedExternalIds: [],
+      }),
+    ).resolves.toMatchObject({ inserted: 2, transactionCount: 2 });
+
+    const transactions = await repository.listPaymentTransactions(
+      runtime.agentId,
+      { sourceId },
+    );
+    expect(
+      transactions.map((transaction) => transaction.externalId).sort(),
+    ).toEqual(["plaid-distinct-a", "plaid-distinct-b"]);
   });
 
   it("preserves typed relink errors and persists a visible needs-attention state", async () => {

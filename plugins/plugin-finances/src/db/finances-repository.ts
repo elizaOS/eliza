@@ -621,6 +621,31 @@ export class FinancesRepository {
   async insertPaymentTransaction(
     transaction: LifeOpsPaymentTransaction,
   ): Promise<boolean> {
+    const externalId = transaction.externalId;
+    if (externalId) {
+      return withTransaction(this.runtime, async (tx) => {
+        const source = await executeRawSqlTx(
+          tx,
+          `SELECT id FROM ${FINANCE_TABLES.paymentSources}
+            WHERE agent_id = ${sqlQuote(transaction.agentId)}
+              AND id = ${sqlQuote(transaction.sourceId)}
+            FOR UPDATE`,
+        );
+        if (source.length === 0) {
+          throw new Error("Payment transaction source does not exist.");
+        }
+        const existing = await executeRawSqlTx(
+          tx,
+          `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
+            WHERE agent_id = ${sqlQuote(transaction.agentId)}
+              AND source_id = ${sqlQuote(transaction.sourceId)}
+              AND external_id = ${sqlQuote(externalId)}
+            RETURNING id`,
+        );
+        await executeRawSqlTx(tx, paymentTransactionInsertSql(transaction));
+        return existing.length === 0;
+      });
+    }
     const rows = await executeRawSql(
       this.runtime,
       `${paymentTransactionInsertSql(transaction)}

@@ -120,7 +120,7 @@ export class PlaidConnectionService {
         logger.warn(
           "[PlaidConnectionService] Failed to revoke Item after connection storage failure",
           {
-            error: cleanupError instanceof Error ? cleanupError.message : "unknown cleanup failure",
+            errorType: cleanupError instanceof Error ? cleanupError.name : "UnknownCleanupFailure",
           },
         );
       }

@@ -121,10 +121,6 @@ function redactPlaidErrorMessage(
 
 function readPlaidConfig(environmentOverride?: PlaidConfig["environment"]): PlaidConfig | null {
   const clientId = process.env.PLAID_CLIENT_ID?.trim();
-  const secret = process.env.PLAID_SECRET?.trim();
-  if (!clientId || !secret) {
-    return null;
-  }
   const env = environmentOverride ?? (process.env.PLAID_ENV ?? "sandbox").trim().toLowerCase();
   if (env !== "sandbox" && env !== "development" && env !== "production") {
     throw new AgentPlaidConnectorError(
@@ -133,6 +129,16 @@ function readPlaidConfig(environmentOverride?: PlaidConfig["environment"]): Plai
     );
   }
   const environment: PlaidConfig["environment"] = env;
+  const environmentSecret = process.env[`PLAID_${environment.toUpperCase()}_SECRET`]?.trim();
+  const configuredEnvironment = (process.env.PLAID_ENV ?? "sandbox").trim().toLowerCase();
+  // PLAID_SECRET remains a compatibility alias for the active environment.
+  // Cross-environment cleanup must use that environment's own credential.
+  const secret =
+    environmentSecret ??
+    (environment === configuredEnvironment ? process.env.PLAID_SECRET?.trim() : undefined);
+  if (!clientId || !secret) {
+    return null;
+  }
   const host =
     environment === "production"
       ? "https://production.plaid.com"

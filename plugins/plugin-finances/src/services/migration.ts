@@ -1,6 +1,6 @@
 /**
- * Non-destructive data migration for the finance tables carved out of
- * @elizaos/plugin-personal-assistant.
+ * Startup data migrations for finance-table ownership and retired Plaid
+ * credential storage.
  *
  * The five finance tables (`life_payment_sources`, `life_payment_transactions`,
  * `life_subscription_audits`, `life_subscription_candidates`,
@@ -162,6 +162,40 @@ export async function scrubLegacyPlaidCredentials(
   $finances_plaid_scrub$`);
 }
 
+/**
+ * Collapse old multiple versions of one provider transaction before the new
+ * source-row serialization contract takes over. The most recently written
+ * representation wins; distinct external ids are never coalesced.
+ */
+export async function reconcileLegacyProviderTransactionDuplicates(
+  exec: SqlExecutor,
+): Promise<number> {
+  const deleted = await exec(
+    `DELETE FROM ${TARGET_SCHEMA}."life_payment_transactions" AS stale
+       USING ${TARGET_SCHEMA}."life_payment_transactions" AS current
+       WHERE stale.external_id IS NOT NULL
+         AND stale.agent_id = current.agent_id
+         AND stale.source_id = current.source_id
+         AND stale.external_id = current.external_id
+         AND (stale.created_at, stale.id) < (current.created_at, current.id)
+       RETURNING stale.id`,
+  );
+  if (deleted.length > 0) {
+    await exec(
+      `UPDATE ${TARGET_SCHEMA}."life_payment_sources" AS source
+         SET transaction_count = (
+               SELECT COUNT(*)
+                 FROM ${TARGET_SCHEMA}."life_payment_transactions" AS txn
+                WHERE txn.agent_id = source.agent_id
+                  AND txn.source_id = source.id
+             ),
+             updated_at = CURRENT_TIMESTAMP::text
+         WHERE source.kind IN ('plaid', 'paypal')`,
+    );
+  }
+  return deleted.length;
+}
+
 type RuntimeDb = {
   execute: (query: unknown) => Promise<unknown>;
 };
@@ -196,14 +230,14 @@ function extractRows(result: unknown): Array<Record<string, unknown>> {
 }
 
 /**
- * Service whose `start()` performs the one-time, guarded, non-destructive copy
- * of the owner's finance rows from `app_lifeops` into `app_finances`.
+ * Service whose `start()` performs the guarded table copy and replay-safe
+ * credential retirement before finance routes become available.
  */
 export class FinancesMigrationService extends Service {
   static override readonly serviceType = FINANCES_MIGRATION_SERVICE_TYPE;
 
   override capabilityDescription =
-    "Non-destructive one-time copy of finance rows from app_lifeops into app_finances during the plugin-finances carve-out.";
+    "Migrates finance rows into app_finances and removes retired local Plaid credentials before finance routes become available.";
 
   static async start(
     runtime: IAgentRuntime,
@@ -221,6 +255,8 @@ export class FinancesMigrationService extends Service {
 
     const results = await migrateFinanceTables(exec);
     await scrubLegacyPlaidCredentials(exec);
+    const reconciledProviderTransactionVersions =
+      await reconcileLegacyProviderTransactionDuplicates(exec);
     const copied = results.filter((r) => r.outcome === "copied");
     if (copied.length > 0) {
       logger.info(
@@ -231,6 +267,12 @@ export class FinancesMigrationService extends Service {
       logger.debug(
         { results },
         `${FINANCES_LOG_PREFIX} no finance tables required copying (already migrated or fresh install)`,
+      );
+    }
+    if (reconciledProviderTransactionVersions > 0) {
+      logger.info(
+        { reconciledProviderTransactionVersions },
+        `${FINANCES_LOG_PREFIX} reconciled superseded provider transaction versions`,
       );
     }
   }

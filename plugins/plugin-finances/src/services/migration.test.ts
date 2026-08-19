@@ -1,7 +1,7 @@
 /**
- * Unit tests for the non-destructive finance-table copy migration
- * (`migrateFinanceTable` / `migrateFinanceTables`) that moves rows from the old
- * `app_lifeops` schema into `app_finances`, driven through a mock `SqlExecutor`.
+ * Unit tests for startup finance migrations, covering both the
+ * non-destructive `app_lifeops` table copy and replay-safe retirement of
+ * locally stored Plaid access tokens through a deterministic SQL executor.
  */
 
 import { describe, expect, it } from "vitest";
@@ -10,6 +10,7 @@ import {
   type MigratedFinanceTable,
   migrateFinanceTable,
   migrateFinanceTables,
+  reconcileLegacyProviderTransactionDuplicates,
   type SqlExecutor,
   scrubLegacyPlaidCredentials,
 } from "./migration.ts";
@@ -124,5 +125,37 @@ describe("scrubLegacyPlaidCredentials", () => {
     expect(statements[0]).toContain("UPDATE app_lifeops.life_payment_sources");
     expect(statements[0]).toContain("#- '{plaid,accessToken}'");
     expect(statements[0]).toContain("'needs_attention'");
+  });
+});
+
+describe("reconcileLegacyProviderTransactionDuplicates", () => {
+  it("keeps distinct provider ids and refreshes counts after removing older versions", async () => {
+    const statements: string[] = [];
+    const exec: SqlExecutor = async (sql) => {
+      statements.push(sql);
+      return statements.length === 1 ? [{ id: "stale-version" }] : [];
+    };
+
+    await expect(
+      reconcileLegacyProviderTransactionDuplicates(exec),
+    ).resolves.toBe(1);
+    expect(statements[0]).toContain("stale.external_id = current.external_id");
+    expect(statements[0]).toContain(
+      "(stale.created_at, stale.id) < (current.created_at, current.id)",
+    );
+    expect(statements[1]).toContain("SET transaction_count");
+  });
+
+  it("does not rewrite source counts when no duplicate exists", async () => {
+    const statements: string[] = [];
+    const exec: SqlExecutor = async (sql) => {
+      statements.push(sql);
+      return [];
+    };
+
+    await expect(
+      reconcileLegacyProviderTransactionDuplicates(exec),
+    ).resolves.toBe(0);
+    expect(statements).toHaveLength(1);
   });
 });

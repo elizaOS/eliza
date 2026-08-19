@@ -135,6 +135,37 @@ describe("managed payment clients", () => {
     });
   });
 
+  it("redacts Cloud authentication and Link credentials echoed in errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () =>
+        Response.json(
+          {
+            message: "eliza_secret_key public-secret-token must not escape",
+            code: "INVALID_INPUT",
+          },
+          { status: 400 }
+        )
+      )
+    );
+    const client = new PlaidManagedClient(() => ({
+      configured: true,
+      apiKey: "eliza_secret_key",
+      apiBaseUrl: "https://cloud.example/api/v1",
+      siteUrl: "https://cloud.example",
+    }));
+
+    let caught: unknown;
+    try {
+      await client.exchangePublicToken({ publicToken: "public-secret-token" });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({ status: 400, code: "INVALID_INPUT" });
+    expect(JSON.stringify(caught)).not.toContain("eliza_secret_key");
+    expect(JSON.stringify(caught)).not.toContain("public-secret-token");
+  });
+
   it("rejects malformed successful Plaid responses", async () => {
     vi.stubGlobal(
       "fetch",

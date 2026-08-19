@@ -108,6 +108,23 @@ describe("Plaid credential-opaque routes", () => {
     expect(sync).not.toHaveBeenCalled();
   });
 
+  test("rejects malformed JSON explicitly without invoking Plaid", async () => {
+    for (const route of [exchangeRoute, syncRoute, revokeRoute]) {
+      const response = await route.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{not-json",
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "Invalid JSON body.",
+      });
+    }
+    expect(exchange).not.toHaveBeenCalled();
+    expect(sync).not.toHaveBeenCalled();
+    expect(revoke).not.toHaveBeenCalled();
+  });
+
   test("sync and revoke pass only opaque id plus authenticated org scope", async () => {
     const syncResponse = await syncRoute.request("/", {
       method: "POST",

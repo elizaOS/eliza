@@ -3,9 +3,10 @@
  * idempotent revoke behavior of the Cloud-owned Plaid connection use-case.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { buildOrgBoundAccessTokenAad } from "../../db/repositories/vendor-connections";
 import type { VendorConnection } from "../../db/schemas/vendor-connections";
+import { logger } from "../utils/logger";
 import { AgentPlaidConnectorError } from "./agent-plaid-connector";
 import { PlaidConnectionError, PlaidConnectionService } from "./plaid-connections";
 import { EncryptionKeyMismatchError } from "./secrets/encryption";
@@ -118,6 +119,22 @@ describe("PlaidConnectionService", () => {
       service.exchange({ organizationId: "org-a", publicToken: "public-token" }),
     ).rejects.toThrow("storage unavailable");
     expect(protocol.remove).toHaveBeenCalledWith("plaid-secret-token");
+  });
+
+  test("never logs a credential echoed by compensating cleanup", async () => {
+    const { service, store, protocol } = harness();
+    const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
+    store.upsertOrgBoundAccessToken.mockRejectedValueOnce(new Error("storage unavailable"));
+    protocol.remove.mockRejectedValueOnce(new Error("cleanup echoed plaid-secret-token"));
+
+    try {
+      await expect(
+        service.exchange({ organizationId: "org-a", publicToken: "public-token" }),
+      ).rejects.toThrow("storage unavailable");
+      expect(JSON.stringify(warn.mock.calls)).not.toContain("plaid-secret-token");
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("fails cross-organization lookup without decrypting or calling Plaid", async () => {

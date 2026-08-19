@@ -72,6 +72,7 @@ export class PaypalManagedClientError extends Error {
 async function readPlaidJson<T>(
   response: Response,
   schema: z.ZodType<T>,
+  secrets: readonly string[] = [],
 ): Promise<T> {
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`.trim();
@@ -89,6 +90,9 @@ async function readPlaidJson<T>(
       } catch {
         detail = text.slice(0, 240);
       }
+    }
+    for (const secret of secrets) {
+      if (secret.length > 0) detail = detail.replaceAll(secret, "[REDACTED]");
     }
     throw new PlaidManagedClientError(response.status, detail, code);
   }
@@ -255,7 +259,7 @@ export class PlaidManagedClient {
       json: {},
       timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
     });
-    return readPlaidJson(response, plaidLinkTokenResponseSchema);
+    return readPlaidJson(response, plaidLinkTokenResponseSchema, [config.apiKey]);
   }
 
   async exchangePublicToken(args: {
@@ -266,7 +270,10 @@ export class PlaidManagedClient {
       json: { publicToken: args.publicToken },
       timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
     });
-    return readPlaidJson(response, plaidExchangeResponseSchema);
+    return readPlaidJson(response, plaidExchangeResponseSchema, [
+      config.apiKey,
+      args.publicToken,
+    ]);
   }
 
   async syncTransactions(args: {
@@ -283,7 +290,7 @@ export class PlaidManagedClient {
       },
       timeoutMs: PLAID_REQUEST_TIMEOUT_MS * 2,
     });
-    return readPlaidJson(response, plaidSyncResponseSchema);
+    return readPlaidJson(response, plaidSyncResponseSchema, [config.apiKey]);
   }
 
   async revokeConnection(args: {
@@ -294,7 +301,7 @@ export class PlaidManagedClient {
       json: { connectionId: args.connectionId },
       timeoutMs: PLAID_REQUEST_TIMEOUT_MS,
     });
-    return readPlaidJson(response, plaidRevokeResponseSchema);
+    return readPlaidJson(response, plaidRevokeResponseSchema, [config.apiKey]);
   }
 
   private cloudClient(

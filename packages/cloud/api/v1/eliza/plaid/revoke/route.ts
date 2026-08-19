@@ -13,6 +13,7 @@ import {
   PlaidConnectionError,
   plaidConnectionService,
 } from "@/lib/services/plaid-connections";
+import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -26,9 +27,12 @@ const requestSchema = z
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const parsed = requestSchema.safeParse(
-      await c.req.json().catch(() => ({})),
-    );
+    const decoded = await decodeRequestJson(c.req);
+    if (!decoded.ok) {
+      // error-policy:J3 malformed JSON is explicit invalid request input.
+      return c.json({ error: "Invalid JSON body." }, 400);
+    }
+    const parsed = requestSchema.safeParse(decoded.value);
     if (!parsed.success) {
       return c.json(
         { error: "connectionId is required.", details: parsed.error.issues },
