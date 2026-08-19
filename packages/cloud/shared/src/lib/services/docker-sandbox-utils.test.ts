@@ -437,9 +437,9 @@ describe("resolveVpnTeardown (#16565)", () => {
 });
 
 describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
-  // Runs the EXACT shell command the provider sends over SSH, against a real
-  // local /bin/sh and a real temp "agent volume" directory — the same
-  // read-or-create the deployed node executes.
+  // The real-process cases run the exact shell program sent over SSH against
+  // local /bin/sh and a temp agent volume. They cover shell mutation and trap
+  // behavior, but not SSH channel or supported-node behavior.
   const shExecStdin = async (cmd: string, input: string, _timeoutMs: number): Promise<string> => {
     const { spawn } = await import("node:child_process");
     return await new Promise<string>((resolve, reject) => {
@@ -532,6 +532,46 @@ describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
       expect(command).not.toContain(override ?? "operator-secret-value");
       fs.rmSync(volume, { recursive: true, force: true });
     }
+  });
+
+  test("signal interruption during frame upload removes staged secret bytes", async () => {
+    const { spawn } = await import("node:child_process");
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const override = "interrupted-operator-secret";
+    let command = "";
+    let validFrame = "";
+    await ensureVolumeVaultPassphrase(
+      async (cmd, input) => {
+        command = cmd;
+        validFrame = input;
+        return "";
+      },
+      volume,
+      5_000,
+      override,
+    );
+
+    const child = spawn("/bin/sh", ["-c", command], { detached: true });
+    const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
+    let output = "";
+    child.stdout.on("data", (chunk) => (output += chunk.toString()));
+    child.stderr.on("data", (chunk) => (output += chunk.toString()));
+    child.stdin.write(validFrame.slice(0, -8));
+    for (
+      let attempt = 0;
+      attempt < 100 && !fs.readdirSync(volume).some((entry) => entry.includes(".stdin."));
+      attempt++
+    ) {
+      await Bun.sleep(10);
+    }
+    expect(fs.readdirSync(volume).some((entry) => entry.includes(".stdin."))).toBe(true);
+
+    process.kill(-child.pid!, "SIGTERM");
+    await closed;
+    expect(output).not.toContain(override);
+    expect(fs.readdirSync(volume)).toEqual([]);
+    fs.rmSync(volume, { recursive: true, force: true });
   });
 
   test("maps an invalid frame to a non-secret typed boundary error", async () => {
