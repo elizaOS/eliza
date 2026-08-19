@@ -47,11 +47,64 @@ describe("isTrustedComputerUseLocalRequest", () => {
     ).toBe(false);
   });
 
-  it("rejects cross-site fetch metadata", () => {
+  it("rejects cross-site and same-site fetch metadata", () => {
     expect(
       isTrustedComputerUseLocalRequest(
         req("127.0.0.1", { "sec-fetch-site": "cross-site" }),
       ),
     ).toBe(false);
+    expect(
+      isTrustedComputerUseLocalRequest(
+        req("127.0.0.1", {
+          host: "localhost:31337",
+          origin: "http://localhost:31337",
+          "sec-fetch-site": "same-site",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a different loopback port than Host", () => {
+    expect(
+      isTrustedComputerUseLocalRequest(
+        req("127.0.0.1", {
+          host: "localhost:31337",
+          origin: "http://localhost:5173",
+          "sec-fetch-site": "same-site",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects same hostname on a different port", () => {
+    expect(
+      isTrustedComputerUseLocalRequest(
+        req("127.0.0.1", {
+          host: "127.0.0.1:31337",
+          origin: "http://127.0.0.1:5173",
+          "sec-fetch-site": "same-origin",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("admits an Origin that matches Host including port", () => {
+    expect(
+      isTrustedComputerUseLocalRequest(
+        req("127.0.0.1", {
+          host: "localhost:31337",
+          origin: "http://localhost:31337",
+          "sec-fetch-site": "same-origin",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("still admits an originless direct loopback client", () => {
+    expect(
+      isTrustedComputerUseLocalRequest(
+        req("127.0.0.1", { host: "localhost:31337" }),
+      ),
+    ).toBe(true);
   });
 });

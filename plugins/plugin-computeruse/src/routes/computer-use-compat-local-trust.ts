@@ -1,8 +1,10 @@
 /**
  * Fail-closed same-machine trust for computer-use compatibility approval
  * routes. Origin treated a missing peer address as local and authorized
- * GET/POST approval routes without a token. A proxy client-IP header or a
- * non-loopback Host must not restore that bypass.
+ * GET/POST approval routes without a token. A proxy client-IP header, a
+ * non-loopback Host, a present Origin that does not match Host (host+port),
+ * or browser fetch metadata other than same-origin/none must not restore
+ * that bypass. Originless direct loopback clients remain admitted.
  */
 import type http from "node:http";
 
@@ -35,12 +37,45 @@ function isLoopbackHostname(hostname: string): boolean {
 }
 
 function hostnameFromHostHeader(host: string): string {
-  if (host.startsWith("[")) {
-    const end = host.indexOf("]");
-    return end === -1 ? host : host.slice(1, end);
+  return parseHostAuthority(host).hostname;
+}
+
+function parseHostAuthority(host: string): {
+  hostname: string;
+  port: string | null;
+} {
+  const trimmed = host.trim().toLowerCase();
+  if (trimmed.startsWith("[")) {
+    const end = trimmed.indexOf("]");
+    if (end === -1) return { hostname: trimmed, port: null };
+    const hostname = trimmed.slice(1, end);
+    const after = trimmed.slice(end + 1);
+    const port =
+      after.startsWith(":") && after.length > 1 ? after.slice(1) : null;
+    return { hostname, port };
   }
-  const colon = host.lastIndexOf(":");
-  return colon === -1 ? host : host.slice(0, colon);
+  const colon = trimmed.lastIndexOf(":");
+  if (colon === -1) return { hostname: trimmed, port: null };
+  return { hostname: trimmed.slice(0, colon), port: trimmed.slice(colon + 1) };
+}
+
+function parseOriginAuthority(origin: string): {
+  hostname: string;
+  port: string;
+} | null {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    const hostname = parsed.hostname.trim().toLowerCase();
+    if (!hostname) return null;
+    const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
+    return { hostname, port };
+  } catch {
+    // error-policy:J3 untrusted Origin header; unparseable origin is invalid.
+    return null;
+  }
 }
 
 export function isTrustedComputerUseLocalRequest(
@@ -68,20 +103,26 @@ export function isTrustedComputerUseLocalRequest(
   const secFetchSite = firstHeaderValue(
     req.headers["sec-fetch-site"],
   )?.toLowerCase();
-  if (secFetchSite === "cross-site") return false;
+  if (
+    secFetchSite &&
+    secFetchSite !== "same-origin" &&
+    secFetchSite !== "none"
+  ) {
+    return false;
+  }
 
   const origin = firstHeaderValue(req.headers.origin);
   if (origin) {
-    try {
-      const parsed = new URL(origin);
-      if (!isLoopbackHostname(parsed.hostname)) {
-        return false;
-      }
-    } catch {
-      // error-policy:J3 untrusted Origin header; an unparseable origin is
-      // rejected (fail-closed), never treated as local.
+    const originAuth = parseOriginAuthority(origin);
+    if (!originAuth || !isLoopbackHostname(originAuth.hostname)) {
       return false;
     }
+    if (!host) return false;
+    const hostAuth = parseHostAuthority(host);
+    if (!isLoopbackHostname(hostAuth.hostname)) return false;
+    if (originAuth.hostname !== hostAuth.hostname) return false;
+    const hostPort = hostAuth.port ?? "80";
+    if (originAuth.port !== hostPort) return false;
   }
 
   return true;
