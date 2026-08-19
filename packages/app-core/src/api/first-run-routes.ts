@@ -13,7 +13,9 @@
  * boot; cloud/remote targets deliberately leave the process runtime-less.
  *
  * Untrusted request JSON is parsed before any persist: syntax errors and
- * non-object bodies return 400 and never report `{ ok: true }`.
+ * non-object bodies return 400 and never report `{ ok: true }`. The raw
+ * body is credited against MAX_FIRST_RUN_BODY_BYTES so a multi-megabyte
+ * POST cannot be materialized before that parse.
  *
  * A defensive delayed resave (`scheduleCloudApiKeyResave`) re-writes
  * `cloud.apiKey` if a concurrent config write clobbers it — a best-effort
@@ -44,6 +46,10 @@ import {
   isRuntimeBootDeferred,
   triggerDeferredRuntimeBoot,
 } from "./deferred-runtime-boot";
+import {
+  FirstRunBodyTooLargeError,
+  readFirstRunRawBody,
+} from "./first-run-routes-body.ts";
 import { sendJson as sendJsonResponse } from "./response";
 import {
   deriveFirstRunReplayBody,
@@ -201,18 +207,21 @@ export async function handleFirstRunRoute(
     return true;
   }
 
-  const chunks: Buffer[] = [];
+  let rawBody: string;
   try {
-    for await (const chunk of req) {
-      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-    }
+    rawBody = await readFirstRunRawBody(req);
   } catch (err) {
+    // error-policy:J1 first-run POST is the transport boundary — overflow
+    // is 413, a broken stream is 400, never a fabricated onboarding success.
+    if (err instanceof FirstRunBodyTooLargeError) {
+      sendJsonResponse(res, 413, { error: err.message });
+      return true;
+    }
     sendJsonResponse(res, 400, {
       error: `failed to read onboarding request body: ${err instanceof Error ? err.message : String(err)}`,
     });
     return true;
   }
-  const rawBody = Buffer.concat(chunks).toString("utf8").trim();
   let parsed: unknown;
   try {
     parsed = rawBody === "" ? undefined : JSON.parse(rawBody);
