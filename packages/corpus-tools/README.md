@@ -62,6 +62,52 @@ apply, retain only counts and hashes in shared evidence, and prove idempotent
 re-apply plus stale-decision rejection against a protected snapshot before the
 issue is closed.
 
+## Telegram Desktop collector
+
+`collectTelegramDesktopExport` parses the machine-readable `result.json`
+created by Telegram Desktop's Settings → Advanced → Export Telegram data flow.
+It is offline-only: the collector does not accept GramJS clients,
+`StringSession` values, Telegram API credentials, or raw `tdata` directories.
+
+```ts
+import { collectTelegramDesktopExport } from "@elizaos/corpus-tools";
+
+const result = await collectTelegramDesktopExport({
+  exportPath: "data/raw/telegram/result.json",
+  ownerAccountId: "<numeric Telegram user id>",
+  outDir: "data",
+  allowedGroupPeerIds: ["<explicitly selected group id>"],
+  allowedChannelPeerIds: ["<explicitly selected channel id>"],
+});
+```
+
+DMs are admitted by default; groups and channels are denied unless their bare
+peer ids are allowlisted. Rows are bounded to the canonical corpus
+cutoff/anchor, identities include account + peer kind + peer id + message id,
+and monthly shards plus the manifest and aggregate summary are byte-stable on
+rerun. Service, deleted, secret-chat, and media-only records are counted but
+not fabricated into text messages. Export media paths are never opened, so
+metadata alone never produces an attachment SHA-256.
+
+Telegram's `verification_codes` dialog is always excluded and counted as
+credential material. Input is capped at 64 MiB and read only through that byte
+boundary before parsing. Symlinked or hardlinked inputs, duplicate JSON object
+keys, and files changed during capture are rejected. Publications use an
+output-root lock, account-owned
+`telegram/<account>/summary.json` files, and a manifest installed last as the
+generation commit marker. Before the first changed or stale shard is installed,
+an existing marker is removed so an interrupted update is visibly incomplete;
+unchanged reruns retain it byte-for-byte. Collector-owned hardlinks, concurrent
+writers, and manifest validation issues fail the collection instead of
+returning partial success.
+
+Migrated basic-group history retains Telegram Desktop's signed negative message
+and reply ids; account and peer identities remain positive-only. Collection
+currently fails closed on Windows because Node's portable filesystem API cannot
+both reject directory reparse points and establish owner-only ACLs for these raw
+private-message artifacts. Windows support requires platform-specific ACL and
+reparse-point enforcement plus real-host verification.
+
 ```bash
 bun run --cwd packages/corpus-tools test
 bun run --cwd packages/corpus-tools typecheck
