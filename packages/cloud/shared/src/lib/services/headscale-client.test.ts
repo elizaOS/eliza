@@ -43,6 +43,18 @@ describe("resolvePreAuthTtlMs (headscale pre-auth key TTL)", () => {
       expect(resolvePreAuthTtlMs()).toBe(DEFAULT_PREAUTH_TTL_MIN * 60 * 1000);
     }
   });
+
+  it("honors complete JS numeric minutes instead of parseInt prefix coercion", () => {
+    process.env.HEADSCALE_PREAUTH_TTL_MIN = "1e3";
+    expect(resolvePreAuthTtlMs()).toBe(1000 * 60 * 1000);
+  });
+
+  it("rejects prefix-coerced and overflowing minute strings", () => {
+    for (const bad of ["90abc", "1e20"]) {
+      process.env.HEADSCALE_PREAUTH_TTL_MIN = bad;
+      expect(resolvePreAuthTtlMs()).toBe(DEFAULT_PREAUTH_TTL_MIN * 60 * 1000);
+    }
+  });
 });
 
 describe("HeadscaleClient upstream errors", () => {

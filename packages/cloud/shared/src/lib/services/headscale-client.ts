@@ -63,8 +63,18 @@ export const DEFAULT_PREAUTH_TTL_MIN = 1440;
  * daemon redeploy and ops can retune without a code change.
  */
 export function resolvePreAuthTtlMs(): number {
-  const minutes = Number.parseInt(process.env.HEADSCALE_PREAUTH_TTL_MIN ?? "", 10);
-  return (Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_PREAUTH_TTL_MIN) * 60 * 1000;
+  const raw = process.env.HEADSCALE_PREAUTH_TTL_MIN ?? "";
+  const minutes = Number(raw);
+  const ms = minutes * 60 * 1000;
+  if (
+    !Number.isFinite(minutes) ||
+    minutes <= 0 ||
+    !Number.isFinite(ms) ||
+    ms > Number.MAX_SAFE_INTEGER
+  ) {
+    return DEFAULT_PREAUTH_TTL_MIN * 60 * 1000;
+  }
+  return ms;
 }
 
 // ---------------------------------------------------------------------------
