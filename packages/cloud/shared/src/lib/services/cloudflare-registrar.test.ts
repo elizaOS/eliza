@@ -2,7 +2,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   CorruptRegistrarPriceError,
+  CorruptRegistrarRegistrationSchemaError,
   cloudflareRegistrarService,
+  parseMinimumRegistrationYears,
   parseWholesaleUsdCents,
 } from "./cloudflare-registrar";
 
@@ -35,7 +37,7 @@ describe("cloudflareRegistrarService production stub guard", () => {
     await expect(cloudflareRegistrarService.checkAvailability("guard-example.com")).rejects.toThrow(
       /production deployment/i,
     );
-    await expect(cloudflareRegistrarService.registerDomain("guard-example.com")).rejects.toThrow(
+    await expect(cloudflareRegistrarService.registerDomain("guard-example.com", 1)).rejects.toThrow(
       /production deployment/i,
     );
   });
@@ -47,8 +49,90 @@ describe("cloudflareRegistrarService production stub guard", () => {
     const availability = await cloudflareRegistrarService.checkAvailability("guard-example.com");
     expect(availability.available).toBe(true);
 
-    const registration = await cloudflareRegistrarService.registerDomain("guard-example.com");
+    const registration = await cloudflareRegistrarService.registerDomain("guard-example.com", 1);
     expect(registration.registrationId).toContain("stub-reg-");
+  });
+});
+
+describe("parseMinimumRegistrationYears", () => {
+  it("accepts and pins a two-year registry minimum", () => {
+    expect(
+      parseMinimumRegistrationYears("example.ai", {
+        properties: { years: { type: "integer", minimum: 2, maximum: 10 } },
+      }),
+    ).toBe(2);
+  });
+
+  it("fails closed when the extension schema cannot prove a safe minimum", () => {
+    for (const schema of [
+      null,
+      {},
+      { properties: {} },
+      { properties: { years: {} } },
+      { properties: { years: { minimum: "2" } } },
+      { properties: { years: { minimum: 0 } } },
+      { properties: { years: { minimum: 11 } } },
+      { properties: { years: { minimum: 1.5 } } },
+    ]) {
+      expect(() => parseMinimumRegistrationYears("example.ai", schema)).toThrow(
+        CorruptRegistrarRegistrationSchemaError,
+      );
+    }
+  });
+});
+
+describe("extension minimum and registration request binding", () => {
+  it("queries the extension schema and POSTs the same two-year minimum", async () => {
+    const savedEnvironment = process.env.ENVIRONMENT;
+    const savedStub = process.env.ELIZA_CF_REGISTRAR_DEV_STUB;
+    const savedAccount = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const savedToken = process.env.CLOUDFLARE_API_TOKEN;
+    const savedFetch = globalThis.fetch;
+    const requests: Array<{ url: string; body: unknown }> = [];
+
+    process.env.ENVIRONMENT = "development";
+    delete process.env.ELIZA_CF_REGISTRAR_DEV_STUB;
+    process.env.CLOUDFLARE_ACCOUNT_ID = "account-test";
+    process.env.CLOUDFLARE_API_TOKEN = "token-test";
+    globalThis.fetch = async (request, init) => {
+      const url = String(request);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      requests.push({ url, body });
+      const result = url.endsWith("/registrar/extensions/ai")
+        ? {
+            metadata: { name: "ai", tld: "ai" },
+            registration_schema: {
+              properties: { years: { type: "integer", minimum: 2, maximum: 10 } },
+            },
+          }
+        : {
+            domain_name: "example.ai",
+            state: "succeeded",
+            context: { registration: { domain_name: "example.ai", status: "active" } },
+          };
+      return new Response(JSON.stringify({ success: true, errors: [], messages: [], result }), {
+        status: 200,
+      });
+    };
+
+    try {
+      const years = await cloudflareRegistrarService.getMinimumRegistrationYears("example.ai");
+      expect(years).toBe(2);
+      await cloudflareRegistrarService.registerDomain("example.ai", years);
+      expect(requests).toHaveLength(2);
+      expect(requests[0]?.url.endsWith("/registrar/extensions/ai")).toBe(true);
+      expect(requests[1]?.body).toEqual({ domain_name: "example.ai", years: 2 });
+    } finally {
+      if (savedEnvironment === undefined) delete process.env.ENVIRONMENT;
+      else process.env.ENVIRONMENT = savedEnvironment;
+      if (savedStub === undefined) delete process.env.ELIZA_CF_REGISTRAR_DEV_STUB;
+      else process.env.ELIZA_CF_REGISTRAR_DEV_STUB = savedStub;
+      if (savedAccount === undefined) delete process.env.CLOUDFLARE_ACCOUNT_ID;
+      else process.env.CLOUDFLARE_ACCOUNT_ID = savedAccount;
+      if (savedToken === undefined) delete process.env.CLOUDFLARE_API_TOKEN;
+      else process.env.CLOUDFLARE_API_TOKEN = savedToken;
+      globalThis.fetch = savedFetch;
+    }
   });
 });
 
