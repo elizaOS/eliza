@@ -27,6 +27,11 @@ import type {
 import { redactedSensitiveActionResult } from "./redaction.js";
 import { toRecord } from "./utils.js";
 
+// Both keys use `Symbol.for` (global registry), not module-local `Symbol()`,
+// deliberately: a runtime resolved through two module instances (dual ESM/CJS
+// resolution, or a duplicated package in the graph) must still map to one
+// marker and one interceptor. A module-local symbol would split-brain the cache
+// under a duplicated dependency, so do not "tidy" these to `Symbol()`.
 const INTERCEPTOR_MARKER = Symbol.for("scenario-runner.interceptor-wrapped");
 // The live interceptor is cached on the runtime under this symbol so that a
 // re-attach returns the SAME wrapper whose capture arrays the wrapped handlers

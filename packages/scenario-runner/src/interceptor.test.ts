@@ -131,6 +131,34 @@ describe("attachInterceptor idempotency contract", () => {
     expect(rt.actions[0]!.handler).toBe(original);
   });
 
+  it("a stale detach of an already-detached interceptor must not evict the live one", async () => {
+    const rt = makeFakeRuntime();
+    const original = rt.actions[0]!.handler;
+
+    const first = attachInterceptor(asRuntime(rt));
+    first.detach();
+    expect(rt.actions[0]!.handler).toBe(original);
+
+    // Re-attach installs a fresh live interceptor and re-wraps the handler.
+    const second = attachInterceptor(asRuntime(rt));
+    expect(second).not.toBe(first);
+    expect(rt.actions[0]!.handler).not.toBe(original);
+
+    // A stale detach of the ALREADY-detached first interceptor must be a no-op
+    // for the cache: the identity guard in detach() sees the live `second`
+    // instance in the cache slot and refuses to evict it. Without that guard an
+    // unconditional delete would drop the live cache entry while `second`'s
+    // wrapped handler stays installed, so the next attach would skip re-wrapping
+    // and hand back a distinct, permanently-empty interceptor.
+    first.detach();
+
+    const third = attachInterceptor(asRuntime(rt));
+    expect(third).toBe(second);
+
+    second.detach();
+    expect(rt.actions[0]!.handler).toBe(original);
+  });
+
   it("observes createMemory/createTask through the re-attached wrapper and restores them", async () => {
     const rt = makeFakeRuntime();
     const originalCreateMemory = rt.createMemory;
