@@ -294,9 +294,15 @@ export async function fetchMediaData(
 export async function processAttachments(
 	attachments: Media[] | null | undefined,
 	runtime: IAgentRuntime,
+	// `fetchImpl`/`timeoutMs` are an internal test seam — production callers
+	// should not set them. The fetch budget is fixed to
+	// DEFAULT_BASIC_CAPABILITIES_ATTACHMENT_FETCH_TIMEOUT_MS. If `timeoutMs` is
+	// supplied it is validated as a finite positive integer.
 	options: {
 		signal?: AbortSignal;
+		/** @internal test seam */
 		fetchImpl?: typeof fetch;
+		/** @internal test seam — validated finite positive integer */
 		timeoutMs?: number;
 	} = {},
 ): Promise<Media[]> {
@@ -317,6 +323,20 @@ export async function processAttachments(
 		fetchImpl = fetch,
 		timeoutMs = DEFAULT_BASIC_CAPABILITIES_ATTACHMENT_FETCH_TIMEOUT_MS,
 	} = options;
+
+	if (
+		timeoutMs !== undefined &&
+		(!Number.isFinite(timeoutMs) ||
+			!Number.isInteger(timeoutMs) ||
+			timeoutMs <= 0)
+	) {
+		throw new TypeError(
+			`timeoutMs must be a finite positive integer (got ${String(timeoutMs)})`,
+		);
+	}
+	if (fetchImpl !== undefined && typeof fetchImpl !== "function") {
+		throw new TypeError("fetchImpl must be a function");
+	}
 
 	const processedAttachments: Media[] = [];
 

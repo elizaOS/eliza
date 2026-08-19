@@ -4,6 +4,7 @@
  * response.arrayBuffer()/text() so a stalled body is still aborted. Caller
  * cancellation is composed via AbortSignal.any.
  */
+import { createServer } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ContentType } from "../../types/primitives.ts";
 import {
@@ -208,5 +209,106 @@ describe("processAttachments attachment fetch timeout", () => {
 		);
 		expect(out).toHaveLength(1);
 		expect(out[0].text).toBe("hello from doc");
+	});
+
+	describe("timeoutMs validation", () => {
+		for (const bad of [
+			NaN,
+			Infinity,
+			-Infinity,
+			-1,
+			0,
+			1.5,
+			Number.NaN,
+		]) {
+			it(`rejects invalid timeoutMs=${String(bad)}`, async () => {
+				await expect(
+					processAttachments([makeDocumentAttachment()], makeRuntime(), {
+						timeoutMs: bad as number,
+						fetchImpl: vi.fn() as unknown as typeof fetch,
+					}),
+				).rejects.toThrow(TypeError);
+			});
+		}
+
+		it("accepts valid integer timeoutMs", async () => {
+			const fetchSpy = vi.fn().mockResolvedValue(
+				new Response("ok", {
+					status: 200,
+					headers: { "content-type": "text/plain" },
+				}),
+			);
+			const out = await processAttachments(
+				[makeDocumentAttachment()],
+				makeRuntime(),
+				{ timeoutMs: 5000, fetchImpl: fetchSpy as unknown as typeof fetch },
+			);
+			expect(out[0].text).toBe("ok");
+		});
+
+		it("respects tiny bound via validated timeoutMs (real fetch timeout)", async () => {
+			// Use a tiny timeoutMs to prove the bound is honored
+			const origTimeout = AbortSignal.timeout.bind(AbortSignal);
+			let capturedMs = -1;
+			vi.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+				capturedMs = ms;
+				return origTimeout(ms);
+			});
+			const fetchSpy = vi.fn(async (_url: string, init?: RequestInit) =>
+				stallUntilAborted(init?.signal),
+			);
+			await expect(
+				processAttachments([makeDocumentAttachment()], makeRuntime(), {
+					timeoutMs: 15,
+					fetchImpl: fetchSpy as unknown as typeof fetch,
+				}),
+			).rejects.toMatchObject({ name: "TimeoutError" });
+			expect(capturedMs).toBe(15);
+		});
+	});
+
+	describe("real transport — headers then stalled body", () => {
+		it("aborts stalled body via real http server with timeoutMs", async () => {
+			const server = createServer((_req, res) => {
+				// Send headers immediately, then stall body forever
+				res.writeHead(200, { "content-type": "text/plain" });
+				res.write("partial-");
+				// never call res.end() — body stalls
+			});
+			await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+			const addr = server.address() as { port: number };
+			const url = `http://127.0.0.1:${addr.port}/doc.txt`;
+
+			try {
+				await expect(
+					processAttachments(
+						[makeDocumentAttachment(url)],
+						makeRuntime(),
+						{ timeoutMs: 25 },
+					),
+				).rejects.toMatchObject({ name: "TimeoutError" });
+			} finally {
+				await new Promise<void>((r) => server.close(() => r()));
+			}
+		});
+
+		it("succeeds via real http server when body returns within budget", async () => {
+			const server = createServer((_req, res) => {
+				res.writeHead(200, { "content-type": "text/plain" });
+				res.end("hello real transport");
+			});
+			await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+			const addr = server.address() as { port: number };
+			const url = `http://127.0.0.1:${addr.port}/doc.txt`;
+			try {
+				const out = await processAttachments(
+					[makeDocumentAttachment(url)],
+					makeRuntime(),
+				);
+				expect(out[0].text).toBe("hello real transport");
+			} finally {
+				await new Promise<void>((r) => server.close(() => r()));
+			}
+		});
 	});
 });
