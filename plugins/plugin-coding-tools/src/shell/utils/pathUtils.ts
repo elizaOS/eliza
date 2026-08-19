@@ -2,6 +2,9 @@
  * Path and command-safety guards: validatePath() confines a resolved path to the
  * allowed directory, while isForbiddenCommand/isSafeCommand/extractBaseCommand
  * gate which commands the shell will run (the command-injection boundary).
+ * isSafeCommand still allows one data pipe (cat | grep). It rejects command
+ * separators, backticks, $(), and a pipe into a shell/interpreter because
+ * ShellService then runs the string as `shell -c`.
  */
 import path from "node:path";
 import { logger } from "@elizaos/core";
@@ -26,17 +29,32 @@ export function validatePath(
   return normalizedPath;
 }
 
+const PIPE_TO_INTERPRETER =
+  /\|\s*(?:sh|bash|zsh|dash|ksh|csh|tcsh|fish|python\d*|perl|ruby|node|nodejs|osascript|pwsh|powershell|cmd)(?:\s|$)/i;
+
 export function isSafeCommand(command: string): boolean {
   const pathTraversalPatterns = [/\.\.\//g, /\.\.\\/g, /\/\.\./g, /\\\.\./g];
 
   const dangerousPatterns = [
     /\$\(/g,
-    /`[^']*`/g,
     /\|\s*sudo/g,
-    /;\s*sudo/g,
     /&\s*&/g,
     /\|\s*\|/g,
+    PIPE_TO_INTERPRETER,
   ];
+
+  if (/[\n\r]/.test(command)) {
+    logger.warn(`Line break detected in command: ${command}`);
+    return false;
+  }
+  if (command.includes(";")) {
+    logger.warn(`Command chaining detected in command: ${command}`);
+    return false;
+  }
+  if (command.includes("`")) {
+    logger.warn(`Backtick substitution detected in command: ${command}`);
+    return false;
+  }
 
   for (const pattern of pathTraversalPatterns) {
     if (pattern.test(command)) {

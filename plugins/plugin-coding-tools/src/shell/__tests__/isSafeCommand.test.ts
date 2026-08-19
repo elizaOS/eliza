@@ -27,6 +27,27 @@ describe("isSafeCommand", () => {
   it("rejects command substitution and backticks", () => {
     expect(isSafeCommand("echo $(whoami)")).toBe(false);
     expect(isSafeCommand("echo `id`")).toBe(false);
+    expect(isSafeCommand("echo `'id'`")).toBe(false);
+  });
+
+  it("rejects semicolon chaining that would run under shell -c", () => {
+    expect(isSafeCommand("echo hi; touch /tmp/eliza-shell-semicolon")).toBe(
+      false,
+    );
+    expect(isSafeCommand("echo hi ;id")).toBe(false);
+    expect(isSafeCommand("x ; sudo y")).toBe(false);
+  });
+
+  it("rejects a line break used as a command separator", () => {
+    expect(isSafeCommand("echo hi\nid")).toBe(false);
+    expect(isSafeCommand("echo hi\r\nid")).toBe(false);
+  });
+
+  it("rejects a single pipe into a shell or interpreter", () => {
+    expect(isSafeCommand("echo id | sh")).toBe(false);
+    expect(isSafeCommand("echo id | bash")).toBe(false);
+    expect(isSafeCommand("cat script.py | python3")).toBe(false);
+    expect(isSafeCommand("cat file.txt | grep needle")).toBe(true);
   });
 
   it("rejects sudo chained after a pipe or semicolon", () => {
