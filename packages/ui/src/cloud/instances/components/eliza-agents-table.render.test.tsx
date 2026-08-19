@@ -153,11 +153,10 @@ describe("ElizaAgentsTable per-row view model", () => {
       </QueryClientProvider>,
     );
 
-    expect(
-      screen.getAllByText("Eliza Cloud Agent").length,
-    ).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Shared Agent").length).toBeGreaterThanOrEqual(
+      2,
+    );
     expect(screen.queryByText("Shared Eliza")).toBeNull();
-    expect(screen.queryByText("Shared Agent")).toBeNull();
     expect(screen.queryByText("Dedicated Agent")).toBeNull();
     expect(screen.queryByText("All statuses")).toBeNull();
     expect(screen.queryByText("Details")).toBeNull();
@@ -165,9 +164,7 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(container.textContent).not.toContain("Heartbeat");
     expect(screen.getAllByText("Free").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("$0.01/hr").length).toBeGreaterThanOrEqual(2);
-    const sharedRow = screen
-      .getAllByText("Eliza Cloud Agent")[0]
-      ?.closest("tr");
+    const sharedRow = screen.getAllByText("Shared Agent")[0]?.closest("tr");
     const dedicatedRow = screen
       .getAllByText("Dedicated Eliza")[0]
       ?.closest("tr");
