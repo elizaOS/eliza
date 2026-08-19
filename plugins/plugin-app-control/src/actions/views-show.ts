@@ -378,6 +378,17 @@ interface NavigateResult {
 	completedActionDelivered?: true;
 }
 
+/** Accept only the own, literal confirmation field emitted by the agent route. */
+function confirmsCompletedActionDelivery(body: unknown): boolean {
+	if (typeof body !== "object" || body === null || Array.isArray(body)) {
+		return false;
+	}
+	return (
+		Object.getOwnPropertyDescriptor(body, "completedActionDelivered")?.value ===
+		true
+	);
+}
+
 /**
  * Resolve a caller-supplied sub-section token into the value the renderer
  * focuses. Settings is the only view with addressable sub-sections today, so we
@@ -434,9 +445,9 @@ async function navigateToView(
 		const sectionSuffix = resolvedSubview ? ` — ${resolvedSubview}` : "";
 		const openedText = `Opened ${navigationLabel}${sectionSuffix}.`;
 		if (resp.ok) {
-			let responseBody: Record<string, unknown> | null;
+			let responseBody: unknown;
 			try {
-				responseBody = (await resp.json()) as Record<string, unknown>;
+				responseBody = await resp.json();
 			} catch (error) {
 				// error-policy:J3 malformed optional receipt JSON keeps the terminal
 				// navigation fallback enabled; transport/body failures remain failures.
@@ -447,7 +458,8 @@ async function navigateToView(
 				ok: true,
 				text: openedText,
 				subview: resolvedSubview,
-				...(responseBody?.completedActionDelivered === true
+				...(delivery === "completed-action" &&
+				confirmsCompletedActionDelivery(responseBody)
 					? { completedActionDelivered: true as const }
 					: {}),
 			};
@@ -620,7 +632,7 @@ export async function runViewsShow({
 			viewType: view.viewType ?? viewType ?? "gui",
 			label: navigationLabel,
 			...(result.subview ? { subview: result.subview } : {}),
-			...(result.completedActionDelivered
+			...(confirmsCompletedActionDelivery(result)
 				? { completedActionDelivered: true }
 				: {}),
 		},

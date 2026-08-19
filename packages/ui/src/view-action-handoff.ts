@@ -40,6 +40,13 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function readOwnValue(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  return Object.getOwnPropertyDescriptor(value, key)?.value;
+}
+
 export function findViewActionHandoff(
   actionResults: readonly ChatActionResultSummary[] | undefined,
 ): ViewActionHandoff | null {
@@ -47,21 +54,22 @@ export function findViewActionHandoff(
   for (let index = actionResults.length - 1; index >= 0; index--) {
     const result = actionResults[index];
     if (
-      result?.success !== true ||
-      result.actionName?.toUpperCase() !== "VIEWS"
+      readOwnValue(result, "success") !== true ||
+      readString(readOwnValue(result, "actionName"))?.toUpperCase() !== "VIEWS"
     ) {
       continue;
     }
-    const mode = readString(result.values?.mode)?.toLowerCase();
-    const viewId = readString(result.values?.viewId);
+    const values = readOwnValue(result, "values");
+    const mode = readString(readOwnValue(values, "mode"))?.toLowerCase();
+    const viewId = readString(readOwnValue(values, "viewId"));
     if ((mode === "show" || mode === "open") && viewId) {
-      const viewPath = readString(result.values?.viewPath);
-      const subview = readString(result.values?.subview);
+      const viewPath = readString(readOwnValue(values, "viewPath"));
+      const subview = readString(readOwnValue(values, "subview"));
       return {
         viewId,
         ...(viewPath ? { viewPath } : {}),
         ...(subview ? { subview } : {}),
-        ...(result.values?.completedActionDelivered === true
+        ...(readOwnValue(values, "completedActionDelivered") === true
           ? { completedActionDelivered: true }
           : {}),
       };
