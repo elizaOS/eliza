@@ -349,7 +349,21 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
   });
 
   it("does not let lifetime demotion history poison the current recency window", async () => {
-    const item = await seedRendered("newsletter");
+    const [item] = structureBriefingItems({ inbox: sections.inbox ?? [] });
+    if (!item) throw new Error("fixture produced no structured item");
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "current-recency-brief",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "rendered",
+      eventAt: new Date().toISOString(),
+      weight: 0,
+      metadata: { briefingKind: "morning", period: "today" },
+    });
     const oldAt = new Date(
       Date.now() - 60 * 24 * 60 * 60 * 1_000,
     ).toISOString();
