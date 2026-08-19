@@ -103,8 +103,12 @@ function normalizeLegacyDocumentEntry(raw: unknown): DocumentSourceItem | null {
     return {
       item: {
         case: "directory",
+        // Restore under the canonical `path` field (same mapping as
+        // `normalizeDocumentItem` in core). `documentDirectorySchema` requires
+        // `path`, so emitting `directory` here would produce an in-memory value
+        // that character validation rejects and re-normalization drops.
         value: {
-          directory: raw.directory,
+          path: raw.directory,
           shared: typeof raw.shared === "boolean" ? raw.shared : undefined,
         },
       },

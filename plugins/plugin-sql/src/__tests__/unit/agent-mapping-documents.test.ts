@@ -7,8 +7,13 @@
  * `path` key, so on reload `normalizeLegacyDocumentEntry` (which checks `path`
  * before `directory`) silently downgraded it to a `path`-case entry and
  * dropped the `shared` flag. Legacy DB row shapes must keep normalizing.
+ *
+ * The reloaded directory value must use the canonical `path` field (what
+ * `documentItemSchema` / `documentDirectorySchema` accept), so each round-trip
+ * assertion also parses the restored item through the core schema to prove
+ * character validation and re-normalization accept it.
  */
-import type { DocumentSourceItem } from "@elizaos/core";
+import { type DocumentSourceItem, documentItemSchema } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { documentsFromDb, documentsToDb } from "../../agent-mapping";
 
@@ -26,9 +31,12 @@ describe("documents mapper round-trip", () => {
     expect(reloaded).toHaveLength(1);
     expect(reloaded[0].item.case).toBe("directory");
     if (reloaded[0].item.case === "directory") {
-      expect(reloaded[0].item.value.directory).toBe("docs/");
+      // Canonical directory value uses `path`, not `directory`.
+      expect(reloaded[0].item.value.path).toBe("docs/");
       expect(reloaded[0].item.value.shared).toBe(true);
     }
+    // The restored item must satisfy core character validation.
+    expect(documentItemSchema.safeParse(reloaded[0]).success).toBe(true);
   });
 
   it("preserves a directory source with shared=false", () => {
@@ -39,9 +47,10 @@ describe("documents mapper round-trip", () => {
     const reloaded = documentsFromDb(documentsToDb(original));
     expect(reloaded[0].item.case).toBe("directory");
     if (reloaded[0].item.case === "directory") {
-      expect(reloaded[0].item.value.directory).toBe("kb/");
+      expect(reloaded[0].item.value.path).toBe("kb/");
       expect(reloaded[0].item.value.shared).toBe(false);
     }
+    expect(documentItemSchema.safeParse(reloaded[0]).success).toBe(true);
   });
 
   it("serializes a legacy directory value stored under the `path` alias as a directory", () => {
@@ -86,9 +95,10 @@ describe("documents mapper round-trip", () => {
 
     expect(normalized[2].item.case).toBe("directory");
     if (normalized[2].item.case === "directory") {
-      expect(normalized[2].item.value.directory).toBe("y");
+      expect(normalized[2].item.value.path).toBe("y");
       expect(normalized[2].item.value.shared).toBe(false);
     }
+    expect(documentItemSchema.safeParse(normalized[2]).success).toBe(true);
   });
 
   it("returns an empty array for empty/nullish input", () => {

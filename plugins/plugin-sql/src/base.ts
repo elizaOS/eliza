@@ -358,6 +358,7 @@ function isDuplicateKeyError(error: unknown): boolean {
   return false;
 }
 
+import { documentsFromDb } from "./agent-mapping";
 import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
@@ -431,33 +432,10 @@ function normalizeAgentMessageExamples(messageExamples: unknown): AgentMessageEx
 }
 
 function normalizeAgentKnowledge(knowledge: AgentRow["knowledge"]): AgentKnowledge {
-  return knowledge.flatMap((item): AgentKnowledge => {
-    if (typeof item === "string") {
-      return [{ item: { case: "path", value: item } }];
-    }
-    if (item && typeof item === "object" && "path" in item && typeof item.path === "string") {
-      return [{ item: { case: "path", value: item.path } }];
-    }
-    if (
-      item &&
-      typeof item === "object" &&
-      "directory" in item &&
-      typeof item.directory === "string"
-    ) {
-      return [
-        {
-          item: {
-            case: "directory",
-            value: {
-              directory: item.directory,
-              shared: typeof item.shared === "boolean" ? item.shared : undefined,
-            },
-          },
-        },
-      ];
-    }
-    return [];
-  });
+  // Delegate to the single shared reader so `mapAgentRow` and `AgentStore.get`
+  // restore directory knowledge identically (canonical `{ path, shared }`
+  // value) instead of maintaining a second, divergent normalizer.
+  return documentsFromDb(knowledge);
 }
 
 function transformAgentSettings(
