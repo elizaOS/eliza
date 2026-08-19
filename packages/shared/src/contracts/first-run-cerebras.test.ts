@@ -28,7 +28,6 @@ import {
   DIRECT_ACCOUNT_PROVIDER_BY_FIRST_RUN_PROVIDER,
   FIRST_RUN_PROVIDER_CATALOG,
   getDirectAccountProviderForFirstRunProvider,
-  getFirstRunModelRegistrationProvider,
   getFirstRunProviderOption,
   getFirstRunProviderSignalEnvKeys,
   getStoredSubscriptionProviderForRequest,
@@ -51,16 +50,6 @@ describe("Cerebras first-run provider", () => {
     expect(entry?.authMode).toBe("api-key");
     expect(entry?.group).toBe("local");
     expect(entry?.family).toBe("cerebras");
-  });
-
-  it("resolves product providers to their runtime registration identity", () => {
-    expect(getFirstRunModelRegistrationProvider("cerebras")).toBe("openai");
-    expect(getFirstRunModelRegistrationProvider("moonshot")).toBe("openai");
-    expect(getFirstRunModelRegistrationProvider("anthropic")).toBe("anthropic");
-    expect(getFirstRunModelRegistrationProvider("gemini")).toBe("google-genai");
-    expect(getFirstRunModelRegistrationProvider("elizacloud")).toBe(
-      "elizaOSCloud",
-    );
   });
 
   it("normalizes its id, casing, and the linked-account alias", () => {

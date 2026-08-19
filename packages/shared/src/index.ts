@@ -212,7 +212,6 @@ export * from "./connector-account-catalog.js";
 export * from "./connectors.js";
 export {
   getDirectAccountProviderForFirstRunProvider,
-  getFirstRunModelRegistrationProvider,
   getFirstRunProviderFamily,
   getFirstRunProviderOption,
   getFirstRunProviderSignalEnvKeys,

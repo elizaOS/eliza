@@ -67,7 +67,7 @@ import {
 	ModelType,
 	NoModelProviderConfiguredError,
 } from "@elizaos/core";
-import { getFirstRunModelRegistrationProvider } from "@elizaos/shared";
+import { getFirstRunProviderOption } from "@elizaos/shared";
 import { readEffectiveAssignments } from "./assignments";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import { localInferenceEngine } from "./engine";
@@ -144,6 +144,15 @@ function readCanonicalTextProvider(
 	return typeof value === "string" && value.trim().length > 0
 		? value.trim().toLowerCase()
 		: null;
+}
+
+function canonicalProviderRegistrationId(providerId: string): string {
+	const option = getFirstRunProviderOption(providerId);
+	if (!option) return providerId;
+	if (option.pluginName === "@elizaos/plugin-elizacloud") {
+		return "elizaOSCloud";
+	}
+	return option.pluginName.replace(/^@elizaos\//, "").replace(/^plugin-/, "");
 }
 
 /**
@@ -363,8 +372,7 @@ function makeRouterHandler(
 			? "manual"
 			: (configuredPolicy ?? globalDefault);
 		const preferred = useCanonicalTextProvider
-			? (getFirstRunModelRegistrationProvider(canonicalTextProvider) ??
-				canonicalTextProvider)
+			? canonicalProviderRegistrationId(canonicalTextProvider)
 			: (configuredPreferred ?? null);
 
 		// Ask the policy engine which handler to dispatch to. For automatic
