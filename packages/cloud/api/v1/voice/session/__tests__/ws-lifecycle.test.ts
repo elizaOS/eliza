@@ -590,6 +590,16 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).toContain("speaking_start");
     expect(responseRequests).toBe(0);
+    const greetingLatencyLog = fakeLogger.logger.info.mock.calls.findLast(
+      ([message]) => message === "[voice-session] opening greeting latency",
+    );
+    expect(greetingLatencyLog?.[1]).toMatchObject({
+      greetingChars: "hello? who's this?".length,
+      prewarmStatus: "not_configured",
+      firstAudioMs: expect.any(Number),
+      ttsTransportReadyMs: expect.any(Number),
+      ttsSynthesisAfterReadyMs: expect.any(Number),
+    });
 
     cartesia.emitDone();
     await flush();
@@ -882,6 +892,14 @@ describe("voice-session WS lifecycle", () => {
     });
     expect(client.controlTypes()).toContain("ready");
     expect(prewarmCalls).toBe(1);
+    const prewarmLog = fakeLogger.logger.info.mock.calls.findLast(
+      ([message]) =>
+        message === "[voice-session] Eliza context prewarm completed",
+    );
+    expect(prewarmLog?.[1]).toMatchObject({
+      sessionId: CLAIMS.sessionId,
+      prewarmDurationMs: expect.any(Number),
+    });
   });
 
   test("first response does not wait for latency-only prewarm", async () => {
@@ -1555,6 +1573,9 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(latencyLog?.[1]).toMatchObject({
       upstreamAttemptCount: 3,
+      prewarmStatus: "not_configured",
+      ttsTransportReadyMs: expect.any(Number),
+      ttsSynthesisAfterReadyMs: expect.any(Number),
       upstreamAttempts: [
         { attempt: 1, status: 503 },
         { attempt: 2, status: 503 },
@@ -1570,6 +1591,46 @@ describe("voice-session WS lifecycle", () => {
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("speaking_end");
+  });
+
+  test("prewarm completion wakes a cold-turn retry before its backoff expires", async () => {
+    const prewarm = Promise.withResolvers<void>();
+    const client = new FakeClientSocket();
+    const successFetch = makeSseFetch(["Warm now."]);
+    let calls = 0;
+    await connectSession({
+      client,
+      prewarmElizaContext: () => prewarm.promise,
+      cacheWarmingRetryDelaysMs: [5_000],
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls += 1;
+        if (calls === 1) {
+          prewarm.resolve();
+          return Response.json(
+            {
+              success: false,
+              error: "Shared runtime cache is warming. Retry shortly.",
+              code: "shared_runtime_cache_warming",
+              retryable: true,
+            },
+            { status: 503 },
+          );
+        }
+        return successFetch(input, init);
+      }) as typeof fetch,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "answer after prewarm");
+    await flush();
+    await flush();
+
+    expect(calls).toBe(2);
+    expect(client.controlTypes()).toContain("llm_first_text");
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    cartesia.emitDone();
+    client.clientSend(JSON.stringify({ t: "bye" }));
+    await flush();
   });
 
   test("canonical 402 becomes a non-retryable insufficient-credits turn error", async () => {

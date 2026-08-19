@@ -8,6 +8,7 @@ import { AgentRuntime, ChannelType } from "@elizaos/core/edge";
 import { NotificationService } from "@elizaos/core/services/notification";
 import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
+import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
 const scheduledInputs: Array<Record<string, unknown>> = [];
 type StoredTodo = Awaited<ReturnType<TodoStore["create"]>>;
@@ -488,6 +489,7 @@ describe("Shared Eliza Workerd runtime", () => {
   });
 
   test("persists an ambiguous group message when AgentRuntime chooses IGNORE", async () => {
+    let timingReceipt: SharedRuntimeTimingReceipt | null = null;
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
@@ -540,6 +542,10 @@ describe("Shared Eliza Workerd runtime", () => {
         user: "ba919f47-c00d-4dfa-a4da-09d1078c1462",
         assistant: "be654e90-f3e7-44ef-b9ba-e215212c430e",
       },
+      traceId: "trace-shared-ignore",
+      onRuntimeTiming: (receipt) => {
+        timingReceipt = receipt;
+      },
       execution: {
         channel: { type: ChannelType.GROUP, source: "discord" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
@@ -551,6 +557,16 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(result.history[0]).toMatchObject({
       role: "user",
       content: "Alice and Bob should continue without me.",
+    });
+    expect(timingReceipt).toMatchObject({
+      traceId: "trace-shared-ignore",
+      outcome: "success",
+      routing: { decision: "silent", contextIds: ["general"] },
+      inference: {
+        composeStateDurationMs: expect.any(Number),
+        shouldRespondAndContextDurationMs: expect.any(Number),
+        providerTotalDurationMs: expect.any(Number),
+      },
     });
   });
 

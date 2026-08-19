@@ -12,6 +12,7 @@ import {
   AgentRuntime,
   basicProviders,
   basicServices,
+  CONTEXT_ROUTING_METADATA_KEY,
   createMessageMemory,
   type GenerateTextParams,
   generateMediaAction,
@@ -20,6 +21,7 @@ import {
   type InferenceTurnSummary,
   InMemoryDatabaseAdapter,
   type MediaGenerationRequest,
+  type Memory,
   ModelType,
   NOTIFICATION_STREAM,
   NotificationService,
@@ -471,6 +473,19 @@ function logSharedProviderSpans(
   }
 }
 
+function routedContextIds(message: Memory): string[] {
+  const metadata = message.content?.metadata;
+  if (!metadata || typeof metadata !== "object") return [];
+  const routing = (metadata as Record<string, unknown>)[CONTEXT_ROUTING_METADATA_KEY];
+  if (!routing || typeof routing !== "object" || Array.isArray(routing)) return [];
+  const record = routing as Record<string, unknown>;
+  const primary = typeof record.primaryContext === "string" ? [record.primaryContext] : [];
+  const secondary = Array.isArray(record.secondaryContexts)
+    ? record.secondaryContexts.filter((value): value is string => typeof value === "string")
+    : [];
+  return [...primary, ...secondary];
+}
+
 async function executeSharedElizaRuntimeTurn(
   input: SharedElizaRuntimeTurnInput,
   onStreamChunk?: (chunk: string) => void | Promise<void>,
@@ -780,30 +795,31 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     if (!messageService) {
       throw new Error("Eliza Shared runtime initialized without a message service");
     }
+    const incomingMessage = createMessageMemory({
+      id: stringToUuid(input.messageIds?.user ?? `${input.agentKey}:${input.message}`),
+      entityId: incomingEntityId,
+      agentId: runtime.agentId,
+      roomId,
+      content: {
+        text: input.message.trim(),
+        // Only the server-owned execution attestation may translate a Shared
+        // turn to authenticated client-chat provenance. Connector payloads and
+        // direct runtime callers remain on the fail-closed Shared source.
+        source: actionsEnabled ? input.execution.channel.source : "shared-runtime-system",
+        channelType: input.execution.channel.type,
+        ...(input.originClientMessageId
+          ? {
+              chatIdempotency: {
+                version: 1,
+                clientMessageId: input.originClientMessageId,
+              },
+            }
+          : {}),
+      },
+    });
     const result = await messageService.handleMessage(
       runtime,
-      createMessageMemory({
-        id: stringToUuid(input.messageIds?.user ?? `${input.agentKey}:${input.message}`),
-        entityId: incomingEntityId,
-        agentId: runtime.agentId,
-        roomId,
-        content: {
-          text: input.message.trim(),
-          // Only the server-owned execution attestation may translate a Shared
-          // turn to authenticated client-chat provenance. Connector payloads and
-          // direct runtime callers remain on the fail-closed Shared source.
-          source: actionsEnabled ? input.execution.channel.source : "shared-runtime-system",
-          channelType: input.execution.channel.type,
-          ...(input.originClientMessageId
-            ? {
-                chatIdempotency: {
-                  version: 1,
-                  clientMessageId: input.originClientMessageId,
-                },
-              }
-            : {}),
-        },
-      }),
+      incomingMessage,
       async (content) => {
         const text = content.text?.trim();
         const attachmentUrls = (content.attachments ?? []).flatMap((attachment) =>
@@ -828,6 +844,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
               inferenceTelemetry.summary = summary;
             },
           },
+    );
+    timing.markInferenceSpans(inferenceTelemetry.summary?.spans ?? []);
+    timing.markRoutingDecision(
+      result?.didRespond || delivered.length > 0 ? "respond" : "silent",
+      routedContextIds(incomingMessage),
     );
     unsubscribePush?.();
     const pushResults = await Promise.allSettled(pushDispatches);

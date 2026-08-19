@@ -43,6 +43,43 @@ describe("SharedRuntimeTimingCollector", () => {
         providerFirstTextOffsetMs: 120,
         completedOffsetMs: 150,
       },
+      inference: {
+        composeStateDurationMs: null,
+        shouldRespondAndContextDurationMs: null,
+        responseHandlerFieldsDurationMs: null,
+        providerTotalDurationMs: 0,
+        slowestProviderDurationMs: null,
+      },
+      routing: {
+        decision: "unknown",
+        contextIds: [],
+      },
+    });
+  });
+
+  test("records content-free inference phases, provider totals, and routing", () => {
+    const timing = new SharedRuntimeTimingCollector("trace-routing", 2, clock([0, 100]));
+    timing.markInferenceSpans([
+      { name: "composeState", durationMs: 42.25 },
+      { name: "provider:CHARACTER", durationMs: 10.04 },
+      { name: "provider:RECENT_MESSAGES", durationMs: 31.16 },
+      { name: "message:planner", durationMs: 188.88 },
+      { name: "evaluators:response-handler-fields", durationMs: 3.33 },
+    ]);
+    timing.markRoutingDecision("silent", ["Simple", "memory", "simple", "not private"]);
+
+    expect(timing.receipt("success")).toMatchObject({
+      inference: {
+        composeStateDurationMs: 42.3,
+        shouldRespondAndContextDurationMs: 188.9,
+        responseHandlerFieldsDurationMs: 3.3,
+        providerTotalDurationMs: 41.2,
+        slowestProviderDurationMs: 31.2,
+      },
+      routing: {
+        decision: "silent",
+        contextIds: ["simple", "memory"],
+      },
     });
   });
 
