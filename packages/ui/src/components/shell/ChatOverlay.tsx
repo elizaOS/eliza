@@ -6041,12 +6041,11 @@ export function ChatOverlay({
               // catch light. Depth here is the glass rim, not a drop shadow (the
               // flat system keeps all shadow tokens none).
               boxShadow: desktopOverlayHost ? "none" : surfaceEdgeShadow,
-              // Specular sheen: a soft radial highlight near the top-left (as if
-              // lit from above) over the faint neutral top-edge fade — the glass
-              // catches light instead of just fading. Neutral white only, NOT the
-              // warm `--surface` gradient that read as brown.
+              // Specular sheen belongs to the inset glass slab, where there is
+              // an edge to catch light. Fullscreen and the native detached host
+              // stay flat; the same image reads as a broad gray top glow there.
               backgroundImage:
-                firstRunOpen || desktopOverlayHost
+                firstRunOpen || desktopOverlayHost || fullBleed
                   ? "none"
                   : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
               // Full-bleed: extend the glass UP through the safe-area-top so the
@@ -6146,12 +6145,12 @@ export function ChatOverlay({
               }
             }}
           >
-            {/* Specular sheen — a soft light from the top edge, the liquid-glass
-                highlight. Subtle + non-interactive. */}
-            {!desktopOverlayHost ? (
+            {/* The top-edge sheen belongs only to the inset glass slab.
+                Fullscreen and the detached native host are deliberately flat. */}
+            {!desktopOverlayHost && !fullBleed ? (
               <div
+                data-testid="chat-sheet-top-sheen"
                 aria-hidden="true"
-                data-testid="chat-sheet-specular-sheen"
                 className="pointer-events-none absolute inset-x-0 top-0 z-0 h-20 bg-gradient-to-b from-surface to-transparent"
               />
             ) : null}
@@ -6347,6 +6346,11 @@ export function ChatOverlay({
                       <MessageScrollerViewport
                         id="continuous-thread"
                         data-testid="chat-thread-scroll"
+                        // Fullscreen no longer changes flex-basis while the user
+                        // reads, so its top edge can use the real scroll mask and
+                        // dissolve into the sheet's nuanced surface. Resizable
+                        // detents retain the compositor overlay below.
+                        fade={fullBleed ? "both" : "bottom"}
                         ref={threadRef}
                         preserveScrollOnPrepend={false}
                         onScroll={handleThreadScroll}
@@ -6510,7 +6514,7 @@ export function ChatOverlay({
                     </AnimatePresence>
                   </MessageScroller>
                 </MessageScrollerProvider>
-                {!firstRunOpen ? (
+                {!firstRunOpen && !fullBleed ? (
                   <motion.div
                     data-testid="chat-thread-top-fade"
                     aria-hidden="true"
@@ -6531,9 +6535,7 @@ export function ChatOverlay({
                       // that masks messages moving beneath its floating bar.
                       backgroundImage: desktopOverlayHost
                         ? "none"
-                        : fullBleed
-                          ? "linear-gradient(to bottom, var(--bg) 0%, var(--bg) 28%, color-mix(in srgb, var(--bg) 72%, transparent) 64%, transparent 100%)"
-                          : "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
+                        : "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
                     }}
                   />
                 ) : null}
