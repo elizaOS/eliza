@@ -528,7 +528,6 @@ export default defineConfig({
       // native/agent.test.ts requires the full desktop runtime, so it runs only
       // via the package-owned desktop contract command during release review;
       // routine CI does not duplicate that platform-specific lane.
-      "packages/plugin-wechat/src/**/*.test.ts",
       "src/**/*.test.{ts,tsx}",
       "scripts/**/*.test.{ts,tsx}",
       "apps/chrome-extension/**/*.test.ts",
