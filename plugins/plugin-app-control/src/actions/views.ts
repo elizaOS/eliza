@@ -589,6 +589,26 @@ function inferMode(
 	return null;
 }
 
+/**
+ * Keep the user's rigid Home command authoritative over contradictory planner
+ * parameters. The model still owns whether VIEWS is selected, but once it has
+ * selected VIEWS, a bare "go back" must navigate to the registered Chat/Home
+ * surface instead of closing whichever foreground view the model inferred.
+ */
+function canonicalizeHomeNavigationOptions(
+	text: string,
+	options?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+	const requestText = viewRequestText(text);
+	if (!/^[\s\p{P}]*go\s+back[\s\p{P}]*$/iu.test(requestText)) return options;
+	return {
+		...options,
+		action: "show",
+		mode: "show",
+		view: "chat",
+	};
+}
+
 function isGenericViewNavigationMode(normalizedExplicit: string): boolean {
 	return (
 		normalizedExplicit === "open" ||
@@ -2834,7 +2854,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			// Security-unwrapped user words — never the raw (possibly enveloped)
 			// content.text; the envelope's warning contains verbs the extractors match.
 			const text = userRequestMessageText(message);
-			const actionOptions = normalizeActionOptions(options);
+			const actionOptions = canonicalizeHomeNavigationOptions(
+				text,
+				normalizeActionOptions(options),
+			);
 			const roomId =
 				typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 
@@ -2911,11 +2934,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const run = async (): Promise<ActionResult> => {
-				const actionOptions = normalizeActionOptions(options);
-				const client = clientFactory();
 				// Security-unwrapped user words — never the raw (possibly enveloped)
 				// content.text; the envelope's warning contains verbs the extractors match.
 				const text = userRequestMessageText(message);
+				const actionOptions = canonicalizeHomeNavigationOptions(
+					text,
+					normalizeActionOptions(options),
+				);
+				const client = clientFactory();
 				const roomId =
 					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 

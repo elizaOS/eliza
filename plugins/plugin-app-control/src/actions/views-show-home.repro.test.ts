@@ -301,6 +301,28 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 		);
 	});
 
+	it("keeps bare go back authoritative over planner close-notes parameters", async () => {
+		const { result, fetchMock, callback } = await runCase(
+			"go back",
+			{ action: "close", view: "notes" },
+			fullRegistry(),
+		);
+
+		expect(result?.values).toMatchObject({ mode: "show", viewId: "chat" });
+		expect(result?.text).toBe("Opened Home.");
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(callback).toHaveBeenCalledWith({ text: "Opened Home." });
+		expect(fetchMock).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/chat/navigate",
+			expect.objectContaining({ method: "POST" }),
+		);
+		expect(
+			fetchMock.mock.calls.some(([url]) =>
+				String(url).includes("/api/views/notes/navigate"),
+			),
+		).toBe(false);
+	});
+
 	it("reports one grounded failure when the shell rejects Home navigation", async () => {
 		vi.stubGlobal(
 			"fetch",
