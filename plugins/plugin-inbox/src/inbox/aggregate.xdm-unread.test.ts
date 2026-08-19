@@ -68,6 +68,14 @@ describe("x_dm unread derivation", () => {
     expect(inbox.channelCounts.x_dm).toMatchObject({ total: 1, unread: 1 });
   });
 
+  it("does not treat malformed connector timestamps as read receipts", () => {
+    const inbox = build([
+      xDm({ id: "dm4", lastSeenAt: "not-a-date", repliedAt: "invalid" }),
+    ]);
+    expect(inbox.messages[0]?.unread).toBe(true);
+    expect(inbox.channelCounts.x_dm).toMatchObject({ total: 1, unread: 1 });
+  });
+
   it("chat channels keep the unread-for-triage fallback even with seen state", () => {
     const inbox = build([
       xDm({

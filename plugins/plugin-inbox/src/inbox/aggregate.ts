@@ -164,9 +164,12 @@ export function toInboxMessage(
   // read state (the fetcher maps dm.readAt -> lastSeenAt and dm.repliedAt ->
   // repliedAt), so a read-or-replied DM must not inflate unread counts. Chat
   // memories still lack a read flag, so they stay unread for triage.
-  const hasSeenState =
-    (typeof message.lastSeenAt === "string" && message.lastSeenAt.length > 0) ||
-    (typeof message.repliedAt === "string" && message.repliedAt.length > 0);
+  const hasSeenState = [message.lastSeenAt, message.repliedAt].some(
+    (value) =>
+      typeof value === "string" &&
+      value.length > 0 &&
+      Number.isFinite(Date.parse(value)),
+  );
   const unread =
     channel === "gmail"
       ? Boolean(
