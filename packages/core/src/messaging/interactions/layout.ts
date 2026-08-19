@@ -253,8 +253,12 @@ export function toPlainTextFallback(
 				: undefined;
 		}
 		case "task": {
+			// Title-only renders duplicated the ack prose as a dangling bare line
+			// on chat transports ("Created task agent.\n\nDaily Quote Page" —
+			// owner report 2026-08-19). Without a link the widget adds nothing a
+			// text transport can use.
 			const url = opts.resolveUrl?.(block);
-			return [block.title, url].filter(Boolean).join("\n");
+			return url ? [block.title, url].join("\n") : undefined;
 		}
 		case "form": {
 			const prose = [block.title, block.description]

@@ -64,7 +64,11 @@ export function withMachineAppendix(prose: string, appendix: string): string {
 export const BANNED_MECHANISM_VOCAB_RE =
   /\b(?:sessions?|acp|receipts?|callbacks?|uuids?|orchestrators?|planners?)\b/i;
 
-const DEFAULT_TIMEOUT_MS = 1_200;
+// 3.5s: at 1.2s the Cerebras round-trip lost the race often enough that the
+// canned fallbacks ("Created task agent.") leaked to normies as the COMMON
+// case (owner report 2026-08-19). Acks precede work measured in tens of
+// seconds; a few hundred extra ms of voice is the right trade.
+const DEFAULT_TIMEOUT_MS = 3_500;
 const DEFAULT_MAX_CHARS = 320;
 const FACT_VALUE_MAX_CHARS = 400;
 const CACHE_CAP = 32;
