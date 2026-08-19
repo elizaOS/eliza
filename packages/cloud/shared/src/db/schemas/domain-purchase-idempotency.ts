@@ -36,6 +36,7 @@ export const domainPurchaseIdempotency = pgTable(
     domain: text("domain").notNull(),
     status: text("status").notNull().default("processing"),
     request_digest: text("request_digest"),
+    registration_years: integer("registration_years"),
     charge_id: uuid("charge_id").references(() => creditTransactions.id, {
       onDelete: "restrict",
     }),

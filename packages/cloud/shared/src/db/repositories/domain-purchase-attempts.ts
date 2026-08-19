@@ -42,6 +42,7 @@ export interface CreateDomainPurchaseAttemptInput {
   appId: string;
   domain: string;
   requestDigest: string;
+  registrationYears: number;
   expiresAt: Date;
 }
 
@@ -108,6 +109,7 @@ class DomainPurchaseAttemptsRepository {
         app_id: input.appId,
         domain: input.domain,
         request_digest: input.requestDigest,
+        registration_years: input.registrationYears,
         status: "processing",
         expires_at: input.expiresAt,
       })

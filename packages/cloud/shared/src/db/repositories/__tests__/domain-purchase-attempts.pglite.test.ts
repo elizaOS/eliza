@@ -96,6 +96,7 @@ function createInput() {
     appId: APP_A,
     domain: "example.com",
     requestDigest: DIGEST,
+    registrationYears: 1,
     expiresAt: new Date(Date.now() + 60_000),
   };
 }
@@ -266,6 +267,52 @@ describe("domain purchase durable authority", () => {
     );
   });
 
+  test("pins the registration term at creation and rejects missing or mutated terms", async () => {
+    const created = await repository.createOrRead({
+      ...createInput(),
+      registrationYears: 2,
+    });
+    expect(created.attempt.registration_years).toBe(2);
+
+    await expectDbCause(
+      dbWrite.execute(sql`
+        UPDATE domain_purchase_idempotency
+        SET registration_years = 1
+        WHERE key = ${createInput().key}
+      `),
+      "immutable binding changed",
+    );
+
+    await dbWrite.execute(sql`DELETE FROM domain_purchase_idempotency`);
+    await expectDbCause(
+      dbWrite.execute(sql`
+        INSERT INTO domain_purchase_idempotency (
+          key, organization_id, app_id, domain, status, request_digest,
+          registration_years, expires_at
+        ) VALUES (
+          ${createInput().key}, ${ORG_A}, ${APP_A}, ${createInput().domain},
+          'processing', ${DIGEST}, NULL, now() + interval '1 minute'
+        )
+      `),
+      "registration_years_check",
+    );
+
+    await repository.createOrRead({
+      ...createInput(),
+      registrationYears: 2,
+    });
+    await expectDbCause(
+      repository.storeQuote({
+        key: createInput().key,
+        organizationId: ORG_A,
+        requestDigest: DIGEST,
+        quote: QUOTE,
+        expiresAt: createInput().expiresAt,
+      }),
+      "quote term binding mismatch",
+    );
+  });
+
   test("pins one quote and lets exactly one caller claim registrar start", async () => {
     await quoteAttempt();
     await expect(
@@ -357,6 +404,10 @@ describe("domain purchase durable authority", () => {
         {
           wholesaleUsdCents: 1099,
           marginUsdCents: 400,
+          registrationWholesaleUsdCents: 1099,
+          renewalWholesaleUsdCents: 1099,
+          renewalUsdCents: 1499,
+          years: 1,
           currency: "USD",
         },
         "charge binding mismatch",

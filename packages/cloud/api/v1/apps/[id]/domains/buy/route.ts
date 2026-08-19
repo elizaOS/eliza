@@ -99,13 +99,13 @@ app.post("/", domainBuyRateLimit, async (c) => {
     const pinnedYears = existingAttempt
       ? readPinnedOrLegacyRegistrationYears(existingAttempt)
       : null;
-    const years =
+    const proposedYears =
       pinnedYears ??
       (await cloudflareRegistrarService.getMinimumRegistrationYears(domain));
-    const requestDigest = await digestDomainPurchaseRequest({
+    const proposedRequestDigest = await digestDomainPurchaseRequest({
       organizationId: user.organization_id,
       domain,
-      years,
+      years: proposedYears,
     });
     const { attempt, created } =
       await domainPurchaseAttemptsRepository.createOrRead({
@@ -113,7 +113,8 @@ app.post("/", domainBuyRateLimit, async (c) => {
         organizationId: user.organization_id,
         appId,
         domain,
-        requestDigest,
+        requestDigest: proposedRequestDigest,
+        registrationYears: proposedYears,
         expiresAt: new Date(Date.now() + DOMAIN_PURCHASE_PROVIDER_LEASE_MS),
       });
 
@@ -143,7 +144,7 @@ app.post("/", domainBuyRateLimit, async (c) => {
       attempt.response_status === 200 &&
       attempt.app_id !== appId;
     if (
-      attempt.request_digest !== requestDigest &&
+      attempt.request_digest !== proposedRequestDigest &&
       !legacyCompletedReassignment
     ) {
       if (attempt.request_digest === null && attempt.expires_at <= new Date()) {
@@ -173,6 +174,31 @@ app.post("/", domainBuyRateLimit, async (c) => {
           409,
         );
       }
+      return c.json(
+        { success: false, error: "Idempotency request digest mismatch" },
+        409,
+      );
+    }
+    const years = readPinnedOrLegacyRegistrationYears(attempt);
+    if (years === null) {
+      return c.json(
+        {
+          success: false,
+          error: "Domain purchase registration term is not durably pinned",
+          code: "domain_purchase_term_missing",
+        },
+        409,
+      );
+    }
+    const requestDigest = await digestDomainPurchaseRequest({
+      organizationId: user.organization_id,
+      domain,
+      years,
+    });
+    if (
+      attempt.request_digest !== requestDigest &&
+      !legacyCompletedReassignment
+    ) {
       return c.json(
         { success: false, error: "Idempotency request digest mismatch" },
         409,
@@ -778,7 +804,7 @@ export function getPinnedDomainPurchaseYears(
 function readPinnedOrLegacyRegistrationYears(
   attempt: DomainPurchaseIdempotency,
 ): number | null {
-  const years = attempt.charge?.years;
+  const years = attempt.registration_years ?? attempt.charge?.years;
   if (
     typeof years === "number" &&
     Number.isSafeInteger(years) &&

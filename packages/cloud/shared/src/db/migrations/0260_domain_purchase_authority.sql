@@ -1,5 +1,6 @@
 ALTER TABLE "domain_purchase_idempotency"
   ADD COLUMN IF NOT EXISTS "request_digest" text,
+  ADD COLUMN IF NOT EXISTS "registration_years" integer,
   ADD COLUMN IF NOT EXISTS "refund_id" uuid,
   ADD COLUMN IF NOT EXISTS "response_status" integer,
   ADD COLUMN IF NOT EXISTS "lease_token" uuid,
@@ -48,6 +49,20 @@ ALTER TABLE "domain_purchase_idempotency"
 --> statement-breakpoint
 ALTER TABLE "domain_purchase_idempotency"
   VALIDATE CONSTRAINT "domain_purchase_idempotency_attempt_count_check";
+--> statement-breakpoint
+ALTER TABLE "domain_purchase_idempotency"
+  ADD CONSTRAINT "domain_purchase_idempotency_registration_years_check"
+  CHECK (
+    ("request_digest" IS NULL AND "registration_years" IS NULL)
+    OR (
+      "request_digest" IS NOT NULL
+      AND "registration_years" IS NOT NULL
+      AND "registration_years" BETWEEN 1 AND 10
+    )
+  ) NOT VALID;
+--> statement-breakpoint
+ALTER TABLE "domain_purchase_idempotency"
+  VALIDATE CONSTRAINT "domain_purchase_idempotency_registration_years_check";
 --> statement-breakpoint
 ALTER TABLE "domain_purchase_idempotency"
   ADD CONSTRAINT "domain_purchase_idempotency_phase_shape_check"
@@ -104,6 +119,8 @@ BEGIN
     OR NEW."domain" IS DISTINCT FROM OLD."domain"
     OR (OLD."request_digest" IS NOT NULL
       AND NEW."request_digest" IS DISTINCT FROM OLD."request_digest")
+    OR (OLD."registration_years" IS NOT NULL
+      AND NEW."registration_years" IS DISTINCT FROM OLD."registration_years")
     OR (OLD."charge" IS NOT NULL AND NEW."charge" IS DISTINCT FROM OLD."charge")
     OR (OLD."charge_id" IS NOT NULL AND NEW."charge_id" IS DISTINCT FROM OLD."charge_id")
     OR (OLD."refund_id" IS NOT NULL AND NEW."refund_id" IS DISTINCT FROM OLD."refund_id")
@@ -113,6 +130,13 @@ BEGIN
 
   IF NEW."request_digest" IS NOT NULL AND NEW."request_digest" !~ '^[0-9a-f]{64}$' THEN
     RAISE EXCEPTION 'domain purchase request digest is invalid';
+  END IF;
+
+  IF NEW."request_digest" IS NOT NULL
+    AND NEW."charge" IS NOT NULL
+    AND NEW."charge"->>'years' IS DISTINCT FROM NEW."registration_years"::text
+  THEN
+    RAISE EXCEPTION 'domain purchase quote term binding mismatch';
   END IF;
 
   IF NEW."charge_id" IS NOT NULL THEN

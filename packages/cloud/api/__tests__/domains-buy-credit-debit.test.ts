@@ -88,6 +88,7 @@ function baseAttempt() {
     domain: "example.com",
     status: "processing",
     request_digest: null,
+    registration_years: null,
     charge_id: null,
     refund_id: null,
     charge: null,
@@ -106,35 +107,38 @@ function baseAttempt() {
   };
 }
 const domainPurchaseAttemptsRepository = {
-  createOrRead: mock(async (input: { requestDigest: string }) => {
-    const inserted = await idempotencyReturning();
-    if (inserted.length > 0) {
-      durableAttempt = {
-        ...baseAttempt(),
-        request_digest: input.requestDigest,
-      };
-      return { attempt: durableAttempt, created: true };
-    }
-    const existing = (await dbReadLimit())[0] as
-      | Record<string, unknown>
-      | undefined;
-    durableAttempt = existing
-      ? {
-          ...baseAttempt(),
-          ...existing,
-          request_digest: Object.hasOwn(existing, "request_digest")
-            ? existing.request_digest
-            : input.requestDigest,
-          response_status:
-            existing.response_status ??
-            (existing.status === "completed" ? 200 : null),
-        }
-      : (durableAttempt ?? {
+  createOrRead: mock(
+    async (input: { requestDigest: string; registrationYears: number }) => {
+      const inserted = await idempotencyReturning();
+      if (inserted.length > 0) {
+        durableAttempt = {
           ...baseAttempt(),
           request_digest: input.requestDigest,
-        });
-    return { attempt: durableAttempt, created: false };
-  }),
+          registration_years: input.registrationYears,
+        };
+        return { attempt: durableAttempt, created: true };
+      }
+      const existing = (await dbReadLimit())[0] as
+        | Record<string, unknown>
+        | undefined;
+      durableAttempt = existing
+        ? {
+            ...baseAttempt(),
+            ...existing,
+            request_digest: Object.hasOwn(existing, "request_digest")
+              ? existing.request_digest
+              : input.requestDigest,
+            response_status:
+              existing.response_status ??
+              (existing.status === "completed" ? 200 : null),
+          }
+        : (durableAttempt ?? {
+            ...baseAttempt(),
+            request_digest: input.requestDigest,
+          });
+      return { attempt: durableAttempt, created: false };
+    },
+  ),
   storeQuote: mock(async (input: { quote: Record<string, unknown> }) => {
     durableAttempt = {
       ...durableAttempt,
@@ -357,6 +361,16 @@ function buy(domain = "example.com", appId = "app-1") {
     },
     ENV,
   );
+}
+
+async function domainPurchaseDigest(years: number): Promise<string> {
+  const bytes = new TextEncoder().encode(
+    JSON.stringify({ organizationId: "org-1", domain: "example.com", years }),
+  );
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function successfulDebitTransaction(id = "txn-1") {
@@ -985,11 +999,17 @@ describe("POST /apps/:id/domains/buy — idempotency single-flights the purchase
   });
 
   test("concurrent duplicate (claim lost the race, prior still processing) → 409, never charges/registers twice", async () => {
+    const requestDigest = await domainPurchaseDigest(1);
     // This caller lost the unique-insert race: onConflictDoNothing returns no row.
     idempotencyReturning.mockResolvedValue([]);
     // The winning claim is still in flight.
     dbReadLimit.mockResolvedValue([
-      { status: "processing", expires_at: new Date(Date.now() + 3_600_000) },
+      {
+        status: "processing",
+        request_digest: requestDigest,
+        registration_years: 1,
+        expires_at: new Date(Date.now() + 3_600_000),
+      },
     ]);
 
     const res = await buy();
@@ -1000,6 +1020,139 @@ describe("POST /apps/:id/domains/buy — idempotency single-flights the purchase
     expect(res.status).toBe(409);
     expect(body.code).toBe("idempotency_in_progress");
     // The losing caller must NOT charge or register — the winner owns the purchase.
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(registerDomain).not.toHaveBeenCalled();
+  });
+
+  test("unquoted processing attempt with a future lease returns in-progress without side effects", async () => {
+    const requestDigest = await domainPurchaseDigest(2);
+    idempotencyReturning.mockResolvedValue([]);
+    dbReadLimit.mockResolvedValue([
+      {
+        status: "processing",
+        request_digest: requestDigest,
+        registration_years: 2,
+        charge: null,
+        expires_at: new Date(Date.now() + 3_600_000),
+      },
+    ]);
+
+    const res = await buy();
+    const body = await readDomainBuyResponseBody(res);
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe("idempotency_in_progress");
+    expect(getMinimumRegistrationYears).not.toHaveBeenCalled();
+    expect(checkAvailability).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(registerDomain).not.toHaveBeenCalled();
+  });
+
+  test("expired unquoted processing attempt resumes from its durable term without a second attempt", async () => {
+    const requestDigest = await domainPurchaseDigest(2);
+    const winner = {
+      status: "processing",
+      request_digest: requestDigest,
+      registration_years: 2,
+      charge: null,
+      expires_at: new Date(Date.now() - 1),
+    };
+    idempotencyReturning.mockResolvedValue([]);
+    dbReadLimit.mockResolvedValue([winner]);
+    checkAvailability.mockResolvedValue({
+      available: true,
+      priceUsdCents: 1000,
+      renewalUsdCents: 1000,
+      currency: "USD",
+    });
+    computeDomainPrice.mockImplementation((wholesaleUsdCents: number) =>
+      wholesaleUsdCents === 2000
+        ? {
+            totalUsdCents: 2800,
+            wholesaleUsdCents: 2000,
+            marginUsdCents: 800,
+          }
+        : {
+            totalUsdCents: 1400,
+            wholesaleUsdCents: 1000,
+            marginUsdCents: 400,
+          },
+    );
+    deductCredits.mockResolvedValue({
+      success: true,
+      newBalance: 72,
+      transaction: {
+        ...successfulDebitTransaction("txn-resume-2y"),
+        amount: "-28.000000",
+        metadata: {
+          ...successfulDebitTransaction().metadata,
+          totalUsdCents: 2800,
+        },
+      },
+    });
+    registerDomain.mockResolvedValue({ registrationId: "reg-resume-2y" });
+    const insertionCallsBefore = idempotencyReturning.mock.calls.length;
+
+    const res = await buy();
+
+    expect(res.status).toBe(200);
+    expect(getMinimumRegistrationYears).not.toHaveBeenCalled();
+    expect(idempotencyReturning.mock.calls.length - insertionCallsBefore).toBe(
+      1,
+    );
+    expect(domainPurchaseAttemptsRepository.storeQuote).toHaveBeenCalledWith(
+      expect.objectContaining({ quote: expect.objectContaining({ years: 2 }) }),
+    );
+    expect(deductCredits).toHaveBeenCalledTimes(1);
+    expect(registerDomain).toHaveBeenCalledWith("example.com", 2);
+  });
+
+  test("concurrent loser that reads the winner before quote returns 409 without buying", async () => {
+    const requestDigest = await domainPurchaseDigest(1);
+    idempotencyReturning.mockResolvedValue([]);
+    dbReadLimit.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        status: "processing",
+        request_digest: requestDigest,
+        registration_years: 1,
+        charge: null,
+        expires_at: new Date(Date.now() + 3_600_000),
+      },
+    ]);
+    const res = await buy();
+
+    expect(res.status).toBe(409);
+    expect(getMinimumRegistrationYears).toHaveBeenCalledTimes(1);
+    expect(checkAvailability).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(registerDomain).not.toHaveBeenCalled();
+  });
+
+  test("concurrent provider-minimum drift fails closed against the winner's durable term", async () => {
+    const winnerDigest = await domainPurchaseDigest(1);
+    idempotencyReturning.mockResolvedValue([]);
+    getMinimumRegistrationYears.mockResolvedValue(2);
+    dbReadLimit.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        status: "processing",
+        request_digest: winnerDigest,
+        registration_years: 1,
+        charge: null,
+        expires_at: new Date(Date.now() + 3_600_000),
+      },
+    ]);
+    const quoteCallsBefore =
+      domainPurchaseAttemptsRepository.storeQuote.mock.calls.length;
+
+    const res = await buy();
+
+    expect(res.status).toBe(409);
+    expect(getMinimumRegistrationYears).toHaveBeenCalledTimes(1);
+    expect(checkAvailability).not.toHaveBeenCalled();
+    expect(
+      domainPurchaseAttemptsRepository.storeQuote.mock.calls.length -
+        quoteCallsBefore,
+    ).toBe(0);
     expect(deductCredits).not.toHaveBeenCalled();
     expect(registerDomain).not.toHaveBeenCalled();
   });

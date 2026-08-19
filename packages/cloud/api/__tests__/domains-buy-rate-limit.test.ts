@@ -104,37 +104,40 @@ mock.module("@/db/client", () => ({ dbRead, dbWrite }));
 
 let durableAttempt: Record<string, unknown> | null = null;
 const domainPurchaseAttemptsRepository = {
-  createOrRead: mock(async (input: { requestDigest: string }) => {
-    dbWriteInsert();
-    dbWriteValues();
-    dbWriteOnConflictDoNothing();
-    await dbWriteReturning();
-    durableAttempt = {
-      id: "claim-1",
-      key: "domain-buy:org-1:example.com",
-      organization_id: "org-1",
-      app_id: "app-1",
-      domain: "example.com",
-      status: "processing",
-      request_digest: input.requestDigest,
-      charge_id: null,
-      refund_id: null,
-      charge: null,
-      cloudflare_registration_id: null,
-      managed_domain_id: null,
-      response_body: null,
-      response_status: null,
-      error_code: null,
-      lease_token: null,
-      provider_started_at: null,
-      next_reconcile_at: null,
-      attempt_count: 0,
-      expires_at: new Date(Date.now() + 60_000),
-      created_at: new Date(),
-      updated_at: new Date(),
-    };
-    return { attempt: durableAttempt, created: true };
-  }),
+  createOrRead: mock(
+    async (input: { requestDigest: string; registrationYears: number }) => {
+      dbWriteInsert();
+      dbWriteValues();
+      dbWriteOnConflictDoNothing();
+      await dbWriteReturning();
+      durableAttempt = {
+        id: "claim-1",
+        key: "domain-buy:org-1:example.com",
+        organization_id: "org-1",
+        app_id: "app-1",
+        domain: "example.com",
+        status: "processing",
+        request_digest: input.requestDigest,
+        registration_years: input.registrationYears,
+        charge_id: null,
+        refund_id: null,
+        charge: null,
+        cloudflare_registration_id: null,
+        managed_domain_id: null,
+        response_body: null,
+        response_status: null,
+        error_code: null,
+        lease_token: null,
+        provider_started_at: null,
+        next_reconcile_at: null,
+        attempt_count: 0,
+        expires_at: new Date(Date.now() + 60_000),
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+      return { attempt: durableAttempt, created: true };
+    },
+  ),
   storeQuote: mock(async (input: { quote: Record<string, unknown> }) => {
     durableAttempt = {
       ...durableAttempt,
