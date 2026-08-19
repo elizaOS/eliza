@@ -159,6 +159,11 @@ describe("shader-schema — isPlausibleFragmentSource (static safety gate)", () 
         "void main(){ for (int i = 0; i < 200000; i++) {} gl_FragColor = vec4(1.0); }",
       ),
     ).toBe(false);
+    expect(
+      isPlausibleFragmentSource(
+        "void main(){ for(int i=99999;i>0;i--){} gl_FragColor = vec4(1.0); }",
+      ),
+    ).toBe(false);
   });
   it("still accepts the preset-style 5-iter for", () => {
     expect(

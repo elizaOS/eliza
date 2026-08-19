@@ -3,12 +3,13 @@
  * GLSL background (#10694).
  *
  * Arbitrary GLSL is untrusted GPU code and the uniform values arrive from
- * untrusted places (the agent, persisted localStorage, chat). Everything here
- * coerces those inputs into a safe, finite, clamped shape so a hostile or
- * malformed value can never NaN the render or push the GPU into a hang —
- * including `for(;;)` / huge-literal `for` that used to slip past the
- * `while`/`do` check. This module is deliberately three.js-free so it
- * unit-tests without a WebGL context.
+ * untrusted places (the agent, persisted localStorage, chat). Uniforms are
+ * clamped to a finite schema. Fragment source is size-bounded and scanned
+ * for hang-prone loops (`while`/`do`, empty-condition `for`, huge numeric
+ * literals in a `for` init or condition). Named constants, uniforms, and
+ * nested loops can still compile; the renderer's 5-slow-frame watchdog is
+ * the backstop. This module is three.js-free so it unit-tests without a
+ * WebGL context.
  */
 
 /** The tunable uniforms the user/agent can drive. Standard `u_time` /
@@ -123,18 +124,27 @@ export const MAX_SHADER_SOURCE_BYTES = 16 * 1024;
  * long before the renderer's 5-slow-frame watchdog. */
 export const MAX_SHADER_LOOP_ITERS = 64;
 
+/** True when a clause carries a decimal literal above {@link MAX_SHADER_LOOP_ITERS}. */
+function clauseHasHugeLiteral(clause: string): boolean {
+  for (const digits of clause.match(/\d+/g) ?? []) {
+    if (Number(digits) > MAX_SHADER_LOOP_ITERS) return true;
+  }
+  return false;
+}
+
 /** True when a `for` header has an empty/`true`/`1` condition or a numeric
- * literal above {@link MAX_SHADER_LOOP_ITERS}. */
+ * literal above {@link MAX_SHADER_LOOP_ITERS} in the init or condition. */
 function hasUnboundedForLoop(source: string): boolean {
   const header = /\bfor\s*\(([^;]*);([^;]*);/g;
   let match = header.exec(source);
   while (match !== null) {
+    const init = match[1];
     const condition = match[2].replace(/\s+/g, "");
     if (condition === "" || condition === "true" || condition === "1") {
       return true;
     }
-    for (const digits of condition.match(/\d+/g) ?? []) {
-      if (Number(digits) > MAX_SHADER_LOOP_ITERS) return true;
+    if (clauseHasHugeLiteral(init) || clauseHasHugeLiteral(match[2])) {
+      return true;
     }
     match = header.exec(source);
   }
@@ -143,10 +153,11 @@ function hasUnboundedForLoop(source: string): boolean {
 
 /**
  * Cheap static safety gate applied BEFORE the authoritative GL compile-validate
- * in the renderer. Bounds the size and rejects hang-prone loops (`while`/`do`,
- * empty-condition `for`, and `for` with a huge literal bound). Preset shaders
- * use `for(int i=0;i<5;i++)` only, so this never rejects a legitimate
- * background. Persistence (`normalizeBackgroundConfig`) is the product sink.
+ * in the renderer. Defence in depth ahead of the 5-slow-frame watchdog: size
+ * bound, no `while`/`do`, no empty-condition `for`, no huge decimal literal in
+ * a `for` init or condition. Named constants, uniforms, and nested loops are
+ * not closed by this regex. Presets use `for(int i=0;i<5;i++)` only.
+ * Persistence (`normalizeBackgroundConfig`) is the product sink.
  */
 export function isPlausibleFragmentSource(source: unknown): source is string {
   if (typeof source !== "string") return false;
