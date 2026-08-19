@@ -253,7 +253,7 @@ face_gguf *face_gguf_open(const char *path, int *err) {
         .err = 0,
     };
 
-    if (c.p + 4 > c.end || memcmp(c.p, GGUF_MAGIC, 4) != 0) {
+    if (cur_need(&c, 4) != 0 || memcmp(c.p, GGUF_MAGIC, 4) != 0) {
         if (err) *err = -EINVAL;
         munmap(map, map_size); close(fd);
         return NULL;

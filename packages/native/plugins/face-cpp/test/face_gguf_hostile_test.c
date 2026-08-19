@@ -100,10 +100,31 @@ int main(void) {
     }
     if (bomb) face_gguf_close(bomb);
 
+    char *short_path = make_tmp();
+    if (!short_path) {
+        fprintf(stderr, "[face-gguf-hostile] mkstemp short failed\n");
+        return 2;
+    }
+    if (write_bytes(short_path, "GGU", 3) != 0) {
+        fprintf(stderr, "[face-gguf-hostile] write 3-byte stub failed\n");
+        return 2;
+    }
+    err = 0;
+    face_gguf *too_short = face_gguf_open(short_path, &err);
+    if (too_short != NULL || err != -EINVAL) {
+        fprintf(stderr,
+            "[face-gguf-hostile] 3-byte file returned g=%p err=%d, expected NULL/-EINVAL\n",
+            (void *)too_short, err);
+        ++failures;
+    }
+    if (too_short) face_gguf_close(too_short);
+
     unlink(empty_path);
     unlink(bomb_path);
+    unlink(short_path);
     free(empty_path);
     free(bomb_path);
+    free(short_path);
 
     printf("[face-gguf-hostile] failures=%d\n", failures);
     return failures == 0 ? 0 : 1;
