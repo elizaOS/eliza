@@ -2991,15 +2991,12 @@ export class LifeOpsRepository {
              WHERE receipt.agent_id = outcome.agent_id
                AND receipt.event_type = 'rewarded'
                AND receipt.metadata_json::jsonb ->> 'engagementEventId' = outcome.id
-               AND (
-                 receipt.metadata_json::jsonb ->> 'rewardState' = 'completed'
-                 OR (
-                   receipt.metadata_json::jsonb ->> 'rewardState'
-                     IS DISTINCT FROM 'released'
-                   AND receipt.event_at::timestamptz >
-                     ${sqlQuote(nowIso)}::timestamptz
-                 )
-               )
+               AND CASE receipt.metadata_json::jsonb ->> 'rewardState'
+                 WHEN 'released' THEN FALSE
+                 WHEN 'claimed' THEN receipt.event_at::timestamptz >
+                   ${sqlQuote(nowIso)}::timestamptz
+                 ELSE TRUE
+               END
           )
         ORDER BY COALESCE(
           (
@@ -3284,14 +3281,13 @@ export class LifeOpsRepository {
         metadata_json = EXCLUDED.metadata_json,
         created_at = EXCLUDED.created_at
       WHERE app_lifeops.life_brief_item_engagements.agent_id = EXCLUDED.agent_id
-        AND app_lifeops.life_brief_item_engagements.metadata_json::jsonb ->> 'rewardState'
-              IS DISTINCT FROM 'completed'
-        AND (
-          app_lifeops.life_brief_item_engagements.metadata_json::jsonb ->> 'rewardState'
-            = 'released'
-          OR app_lifeops.life_brief_item_engagements.event_at::timestamptz <=
-            ${sqlQuote(nowIso)}::timestamptz
-        )
+        AND CASE app_lifeops.life_brief_item_engagements.metadata_json::jsonb ->> 'rewardState'
+          WHEN 'released' THEN TRUE
+          WHEN 'claimed' THEN
+            app_lifeops.life_brief_item_engagements.event_at::timestamptz <=
+              ${sqlQuote(nowIso)}::timestamptz
+          ELSE FALSE
+        END
       RETURNING id`,
     );
     return rows.length === 1 ? claimToken : null;

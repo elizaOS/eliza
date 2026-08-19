@@ -1066,6 +1066,48 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     ).not.toBeNull();
   });
 
+  it("fails closed on an unknown reward marker state without parsing its lease", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const engagement = await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-unknown-reward-state",
+      itemId: `${item.itemId}:unknown-reward-state`,
+      source: item.source,
+      kind: item.kind,
+      sourceId: `${item.sourceId}:unknown-reward-state`,
+      itemClass: item.itemClass,
+      eventType: "kept",
+      eventAt: "2025-01-01T00:00:00.000Z",
+      weight: 0.5,
+      metadata: { trajectoryId: "unknown-reward-state-trajectory" },
+    });
+    expect(
+      await repository.claimBriefEngagementReward(engagement, {
+        nowIso: "2025-01-02T00:00:00.000Z",
+      }),
+    ).not.toBeNull();
+    await executeRawSql(
+      runtime,
+      `UPDATE app_lifeops.life_brief_item_engagements
+          SET event_at = 'not-a-time',
+              metadata_json = '{"engagementEventId":"${engagement.id}","rewardState":"unknown"}'
+        WHERE event_type = 'rewarded'
+          AND agent_id = '${runtime.agentId}'`,
+    );
+
+    expect(
+      await repository.listPendingBriefEngagementRewards(runtime.agentId, {
+        nowIso: "2100-01-01T00:00:00.000Z",
+      }),
+    ).toEqual([]);
+    expect(
+      await repository.claimBriefEngagementReward(engagement, {
+        nowIso: "2100-01-01T00:00:00.000Z",
+      }),
+    ).toBeNull();
+  });
+
   it("rejects invalid pending-reward limits, scan times, and leases", async () => {
     const rewardIndexes = await executeRawSql(
       runtime,
