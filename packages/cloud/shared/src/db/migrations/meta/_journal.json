@@ -1786,6 +1786,27 @@
       "when": 1791489600000,
       "tag": "0255_crypto_settlement_outboxes",
       "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1791576000000,
+      "tag": "0256_org_storage_native_objects",
+      "breakpoints": true
+    },
+    {
+      "idx": 256,
+      "version": "7",
+      "when": 1791662400000,
+      "tag": "0257_org_storage_native_put_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 257,
+      "version": "7",
+      "when": 1791748800000,
+      "tag": "0258_org_storage_generation_gc_outbox",
+      "breakpoints": true
     }
   ]
 }

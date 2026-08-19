@@ -1439,6 +1439,9 @@ export class CreditsService {
                 AND metadata->>'settlement_marker' = ${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}
               )
             )
+            -- Native storage reservations are settled only after a strong R2
+            -- HEAD proves the immutable generation present or absent.
+            AND NOT (metadata ? 'storage_operation_id')
             AND settled_at IS NULL
           RETURNING id, amount
         `,
