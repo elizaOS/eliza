@@ -2618,8 +2618,11 @@ export class DatabaseTrajectoryLogger extends Service {
           params.idempotencyKey,
         ];
         trajectory.totalReward += params.reward;
+        const componentValues = trajectory.rewardComponents.components;
         const components =
-          asRecord(trajectory.rewardComponents.components) ?? {};
+          componentValues === undefined
+            ? {}
+            : normalizeJsonRecord(componentValues, "rewardComponents");
         const current = components[params.component];
         trajectory.rewardComponents = {
           ...trajectory.rewardComponents,
