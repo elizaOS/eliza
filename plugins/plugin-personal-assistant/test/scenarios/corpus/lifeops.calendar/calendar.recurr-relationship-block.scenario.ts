@@ -46,6 +46,7 @@ export default scenario({
   id: "calendar.recurr-relationship-block",
   title: "Daily 1hr 'time with Jill' block creates a recurring event",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "recurring", "relationships"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

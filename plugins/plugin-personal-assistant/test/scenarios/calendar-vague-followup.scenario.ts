@@ -15,6 +15,7 @@ export default scenario({
   id: "calendar-vague-followup",
   title: "Calendar vague follow-up answers are grounded in seeded flights",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "executive-assistant", "outcome"],
   isolation: "per-scenario",
   requires: {

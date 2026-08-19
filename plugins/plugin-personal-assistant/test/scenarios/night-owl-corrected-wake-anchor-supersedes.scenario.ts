@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Night owl: a walked-back wake time replaces the anchor instead of adding one",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "night-owl",

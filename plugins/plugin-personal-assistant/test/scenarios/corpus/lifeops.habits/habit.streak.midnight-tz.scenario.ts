@@ -83,6 +83,7 @@ export default scenario({
   id: "habit.streak.midnight-tz",
   title: "Habit streak credits the user's TZ day, not the server's UTC day",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "streak", "timezone", "robustness"],
   isolation: "per-scenario",
   requires: {

@@ -8,6 +8,7 @@ export default scenario({
   id: "selfcontrol.block-apps.ios-capacitor",
   title: "iPhone companion block request routes through blocker planning",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "ios", "planning"],
   description:
     "An iPhone companion app-block request currently falls back to the existing blocker planning flow.",

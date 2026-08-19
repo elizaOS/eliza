@@ -13,6 +13,7 @@ export default scenario({
   id: "daily-brief-cross-channel",
   title: "Daily brief is grounded in seeded calendar, task, and money state",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "briefing", "inbox", "outcome"],
   isolation: "per-scenario",
   requires: {

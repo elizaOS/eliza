@@ -56,6 +56,10 @@ function writeScenario(
       lane: "pr-deterministic",
       turns: [],
       ...overrides,
+      ...(overrides.executionProfile === "provider-qualified" &&
+      overrides.evidenceScope === undefined
+        ? { evidenceScope: "provider-certification" }
+        : {}),
     })};\n`,
   );
 }
@@ -86,6 +90,7 @@ function qualifiedScenarioReport(id: string): ScenarioReport {
   return {
     ...scenarioReport(id, "passed"),
     executionProfile: "provider-qualified",
+    evidenceScope: "provider-certification",
     judgeScore: 0.9,
     finalChecks: [
       {
@@ -180,6 +185,28 @@ function aggregateReport(
     providerName,
     executionProfile: null,
     scenarios: reports,
+    classificationSummary: {
+      laneCounts: {
+        "pr-deterministic": 0,
+        "live-only": 0,
+        unreported: reports.length,
+      },
+      executionProfileCounts: {
+        simulated: 0,
+        "provider-qualified": 0,
+        unreported: reports.length,
+      },
+      evidenceScopeCounts: {
+        "runner-fixture": 0,
+        "domain-contract": 0,
+        "model-behavior": 0,
+        "connector-contract": 0,
+        "provider-certification": 0,
+        unreported: reports.length,
+      },
+      defaultedEvidenceScopeCount: 0,
+      selfGradedJudgeCount: 0,
+    },
     // CLI fixtures carry no evidence blocks, so every scenario is honestly
     // unreported — mirrors what aggregateEvidence derives for them.
     evidenceSummary: {

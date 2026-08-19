@@ -8,6 +8,7 @@ export default scenario({
   id: "todo.delete",
   title: "Delete a seeded todo with confirmation",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "confirms-destructive-action"],
   isolation: "per-scenario",
   requires: {

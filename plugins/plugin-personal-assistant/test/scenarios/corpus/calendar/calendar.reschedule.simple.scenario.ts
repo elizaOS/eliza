@@ -8,6 +8,7 @@ export default scenario({
   id: "calendar.reschedule.simple",
   title: "Reschedule a seeded calendar event to a later time",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "happy-path"],
   isolation: "per-scenario",
   requires: {

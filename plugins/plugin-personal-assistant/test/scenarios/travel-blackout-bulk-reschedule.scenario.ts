@@ -18,6 +18,7 @@ export default scenario({
   title:
     "Travel blackout plan grounds in seeded meetings, spares VIPs, sends nothing",
   domain: "executive.schedule",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "calendar", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {

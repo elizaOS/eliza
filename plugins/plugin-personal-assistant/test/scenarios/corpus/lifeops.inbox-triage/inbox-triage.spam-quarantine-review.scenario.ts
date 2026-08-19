@@ -59,6 +59,7 @@ export default scenario({
   title:
     "Spam quarantine review surfaces likely false-positive among real spam",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox-triage", "spam", "false-positive", "ranking"],
   isolation: "per-scenario",
   requires: {

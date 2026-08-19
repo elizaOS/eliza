@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Shift rotation: a corrected rotation start supersedes the first one instead of stacking",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "shift-rotation",

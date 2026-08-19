@@ -9,6 +9,7 @@ export default scenario({
   id: "i2-neutral-schedule-options",
   title: "I2 disagreement becomes neutral schedule separation options",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "I2", "mediation", "calendar", "neutral-logistics"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

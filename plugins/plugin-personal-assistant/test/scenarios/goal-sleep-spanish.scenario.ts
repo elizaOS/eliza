@@ -8,6 +8,7 @@ export default scenario({
   id: "goal-sleep-spanish",
   title: "Sleep goal save flow from Spanish phrasing (neutral register)",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "smoke"],
   isolation: "per-scenario",
   requires: {

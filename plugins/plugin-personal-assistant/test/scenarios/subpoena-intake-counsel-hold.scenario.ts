@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Subpoena intake grounds in the seeded counsel line and keeps the privileged memo held",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

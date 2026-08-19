@@ -23,6 +23,7 @@ export default scenario({
   title:
     "Elderly week-1: offer a bill-due reminder in plain, jargon-free words",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "persona",

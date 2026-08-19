@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-cancel",
   title: "Brush teeth cancel before save",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

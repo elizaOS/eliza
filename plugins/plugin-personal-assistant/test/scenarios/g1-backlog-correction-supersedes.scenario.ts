@@ -13,6 +13,7 @@ export default scenario({
   id: "g1-backlog-correction-supersedes",
   title: "Retracted backlog item supersedes rather than stacks",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "G1",

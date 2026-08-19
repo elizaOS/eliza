@@ -48,6 +48,7 @@ export default scenario({
   title:
     "Missed-call repair enqueues a real approval-gated note and sends nothing",
   domain: "executive.followup",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

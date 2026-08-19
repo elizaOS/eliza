@@ -13,6 +13,7 @@ export default scenario({
   id: "g2-grounded-reconnect-draft",
   title: "G2 reconnect draft is grounded in shared history and held",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "G2", "relationships", "reconnect", "approval"],
   isolation: "per-scenario",
   rooms: [

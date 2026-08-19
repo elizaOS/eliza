@@ -275,6 +275,7 @@ export default scenario({
   title:
     "Night owl anchored day: brief fires in her noon window and a wake-anchored reminder fires relative to wake — never at 9am",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

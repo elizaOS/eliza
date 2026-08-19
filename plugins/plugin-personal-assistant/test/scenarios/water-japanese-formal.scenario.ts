@@ -9,6 +9,7 @@ export default scenario({
   id: "water-japanese-formal",
   title: "Drink water from Japanese formal phrasing",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

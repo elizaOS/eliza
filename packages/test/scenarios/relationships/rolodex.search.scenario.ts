@@ -1,43 +1,20 @@
 /**
- * Rolodex search: seed three contacts (two at Acme, one elsewhere),
- * ask the agent to find everyone from Acme. Expected action: SEARCH_CONTACTS.
+ * Rolodex search: seed three contacts, ask for one exact name, and require the
+ * canonical CONTACT search result to include only that matching contact.
  */
 
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  callPayloadBlob,
-  describeCalls,
-  successfulCalls,
-} from "@elizaos/scenario-runner/scenario-assertions";
-
-function expectAcmeSearchResult(ctx: ScenarioContext): string | undefined {
-  if (successfulCalls(ctx, "SEARCH_CONTACTS").length === 0) {
-    return `expected successful SEARCH_CONTACTS call; calls: ${describeCalls(ctx)}`;
-  }
-  const blob = callPayloadBlob(ctx, "SEARCH_CONTACTS");
-  if (!/acme/.test(blob)) {
-    return `expected SEARCH_CONTACTS payload/result to include Acme, saw ${blob.slice(0, 600)}`;
-  }
-
-  const reply = ctx.turns?.at(-1)?.responseText ?? "";
-  if (!/alice/i.test(reply) || !/bob/i.test(reply)) {
-    return `expected reply to list seeded Acme contacts Alice and Bob, saw ${JSON.stringify(reply)}`;
-  }
-  if (/carol/i.test(reply)) {
-    return `expected non-Acme contact Carol to be excluded, saw ${JSON.stringify(reply)}`;
-  }
-  return undefined;
-}
+import { expectSearchResultNames } from "./_assertions.js";
 
 export default scenario({
   lane: "live-only",
   id: "rolodex.search",
-  title: "Search Rolodex by company",
+  title: "Search the Rolodex by exact contact name",
   domain: "relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "relationships", "happy-path"],
   description:
-    "Three contacts are seeded with varying companies. Agent must invoke SEARCH_CONTACTS when asked to find everyone from Acme.",
+    "Three contacts are seeded. CONTACT search must return Alice Chen for an exact-name query and exclude the two non-matching contacts.",
 
   isolation: "per-scenario",
   requires: {
@@ -77,18 +54,23 @@ export default scenario({
   turns: [
     {
       kind: "message",
-      name: "find-acme",
+      name: "find-alice",
       room: "main",
-      text: "Find everyone from Acme.",
-      expectedActions: ["SEARCH_CONTACTS"],
+      text: "Find Alice Chen in my contacts.",
+      expectedActions: ["CONTACT"],
     },
   ],
 
   finalChecks: [
     {
       type: "custom",
-      name: "rolodex-search-returns-acme-contacts",
-      predicate: expectAcmeSearchResult,
+      name: "rolodex-search-returns-exact-contact",
+      predicate: (ctx) =>
+        expectSearchResultNames({
+          ctx,
+          includes: ["Alice Chen"],
+          excludes: ["Bob Rivera", "Carol Patel"],
+        }),
     },
   ],
 });

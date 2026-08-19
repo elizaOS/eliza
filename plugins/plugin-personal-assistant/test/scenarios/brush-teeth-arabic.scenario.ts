@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-arabic",
   title: "Brush teeth from polite Arabic phrasing (RTL)",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "smoke"],
   isolation: "per-scenario",
   requires: {

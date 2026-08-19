@@ -25,6 +25,7 @@ export default scenario({
   id: "first-run-abandon-resume-no-data-loss",
   title: "First-run resume: abandon mid-customize → resume with no re-asking",
   domain: "lifeops.first-run",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "first-run", "onboarding", "resume", "mvp", "14353"],
   status: "active",
   tier: "T3",

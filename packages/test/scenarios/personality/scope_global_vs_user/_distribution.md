@@ -4,7 +4,7 @@ Total scenarios: **40**
 
 ## Length brackets (intended vs actual)
 
-Some buckets require a semantic minimum (e.g. `note_trait_unrelated` needs ≥3 turns to test a trait on an unrelated topic; `scope_global_vs_user` needs ≥4 turns for two-room flow). When the intended bracket falls below that minimum, the scenario is clamped upward and its `length:<bracket>` tag reflects the **actual** count.
+Scope-response cases require at least four turns to exercise the request and follow-up behavior. Refusal variants use one room and make response-only claims; cross-room variants use two labeled contexts. Deterministic contracts separately establish durable authorization and state isolation.
 
 | Bracket | Intended count | Actual count |
 |---|---:|---:|

@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.inbox.daily-brief-includes-unsent-drafts",
   title: "Morning brief includes pending drafts still waiting for sign-off",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "briefing", "drafts", "transcript-derived"],
   description:
     "Transcript-derived case: pending drafts in the approval queue appear in the morning brief with enough context for the owner to approve or revise them.",
@@ -35,7 +36,7 @@ export default scenario({
       room: "main",
       text: "In the morning brief, add a Pending Drafts section that lists which drafts still need my sign-off and who they are for.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CHECKIN", "MESSAGE", "MESSAGE"],
+        acceptedActions: ["CHECKIN", "MESSAGE"],
         description: "morning brief approval queue review",
         includesAny: [
           "draft",
@@ -62,11 +63,11 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CHECKIN", "MESSAGE", "MESSAGE"],
+      actionName: ["CHECKIN", "MESSAGE"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE"],
       includesAny: ["draft", "sign-off", "approval", "pending"],
     },
     {
@@ -82,7 +83,7 @@ export default scenario({
       type: "custom",
       name: "ea-daily-brief-drafts-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CHECKIN", "MESSAGE", "MESSAGE"],
+        acceptedActions: ["CHECKIN", "MESSAGE"],
         description: "morning brief approval queue review",
         includesAny: ["draft", "sign-off", "approval", "brief", "pending"],
       }),

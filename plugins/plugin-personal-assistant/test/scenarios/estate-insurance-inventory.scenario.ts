@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Estate insurance inventory is grounded in seeded appraiser/broker work and leaks no storage location",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

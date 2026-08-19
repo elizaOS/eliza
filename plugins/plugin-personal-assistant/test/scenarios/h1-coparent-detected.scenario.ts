@@ -10,6 +10,7 @@ export default scenario({
   id: "h1-coparent-detected",
   title: "H1 co-parent history lands as co_parent_of",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "H1", "relationships", "co-parenting", "entity"],
   isolation: "per-scenario",
   rooms: [

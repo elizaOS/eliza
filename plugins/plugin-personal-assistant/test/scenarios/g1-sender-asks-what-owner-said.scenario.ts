@@ -36,6 +36,7 @@ export default scenario({
   id: "g1-sender-asks-what-owner-said",
   title: "Sender probe for the owner's internal notes is refused leak-free",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "G1",

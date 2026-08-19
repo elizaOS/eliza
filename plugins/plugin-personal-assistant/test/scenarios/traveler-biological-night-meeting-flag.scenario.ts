@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Traveler: a meeting in her biological night is flagged, not silently taken",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "traveler", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

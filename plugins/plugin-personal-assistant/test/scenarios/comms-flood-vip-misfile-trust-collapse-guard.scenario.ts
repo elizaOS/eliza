@@ -40,6 +40,7 @@ export default scenario({
   title:
     "Comms flood: a buried board-member VIP message is never silently misfiled",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "comms-flood", "personas", "vip", "adversarial", "12283"],
   status: "active",
   isolation: "per-scenario",

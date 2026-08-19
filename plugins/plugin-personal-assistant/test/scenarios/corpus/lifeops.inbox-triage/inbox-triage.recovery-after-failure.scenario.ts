@@ -43,6 +43,7 @@ export default scenario({
   id: "inbox-triage.recovery-after-failure",
   title: "Agent retries transient connector failure and completes triage",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox-triage", "retry", "recovery", "robustness"],
   isolation: "per-scenario",
   requires: {

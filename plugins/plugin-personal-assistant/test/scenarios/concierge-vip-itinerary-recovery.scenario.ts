@@ -16,6 +16,7 @@ export default scenario({
   title:
     "VIP itinerary recovery is grounded in seeded vendor work and protects the guest list",
   domain: "executive.vendor",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

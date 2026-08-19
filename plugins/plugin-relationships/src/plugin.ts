@@ -40,7 +40,7 @@ export const relationshipsPlugin: Plugin = {
       surface: { capabilities: ["agent-surface"] },
       componentExport: "RelationshipsView",
       tags: ["relationships", "entities", "people", "contacts", "graph"],
-      relatedActions: ["ENTITY"],
+      relatedActions: ["KNOWLEDGE_GRAPH"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

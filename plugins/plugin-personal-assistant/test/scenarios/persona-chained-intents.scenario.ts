@@ -98,6 +98,7 @@ export default scenario({
   title:
     "Persona: 3-chained-intent run-on books the dentist, moves the Priya 1:1 to Friday, and adds a deck reminder",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "persona", "robustness", "multi-intent"],
   isolation: "per-scenario",
   requires: {

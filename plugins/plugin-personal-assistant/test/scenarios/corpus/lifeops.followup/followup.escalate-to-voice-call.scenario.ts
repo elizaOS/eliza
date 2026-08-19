@@ -13,6 +13,7 @@ export default scenario({
   id: "followup.escalate-to-voice-call",
   title: "Escalate a stalled follow-up to a voice call via Twilio",
   domain: "lifeops.followup",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "followup", "escalation", "twilio", "voice"],
   description:
     "After SMS + email + chat all went unanswered for 72h on a time-sensitive matter, the user authorizes a voice-call escalation. The agent must dispatch via the twilio voice mock — not silently keep texting.",

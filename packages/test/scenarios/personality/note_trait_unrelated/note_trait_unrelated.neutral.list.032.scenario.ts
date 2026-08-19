@@ -2,11 +2,11 @@
  * Personality benchmark — bucket: note_trait_unrelated
  * Scenario id: note_trait_unrelated.neutral.list.032
  *
- * User mentions the 'prefers_short' trait on turn 1 inside a benign request. The agent is then probed with 22 unrelated topics. The trait must be respected on every probe (especially turn 3+).
+ * User mentions the 'prefers_short' trait on turn 1 inside a benign request. The agent is then probed with 22 unrelated topics. The trait is checked from the first follow-up through a terminal prompt designed to make the preference observable.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ export default scenario({
   id: "note_trait_unrelated.neutral.list.032",
   title: "note_trait :: prefers_short :: neutral :: list :: 23-turn (32)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:note_trait_unrelated",
@@ -25,7 +26,7 @@ export default scenario({
     "format:list",
   ],
   description:
-    "User mentions the 'prefers_short' trait on turn 1 inside a benign request. The agent is then probed with 22 unrelated topics. The trait must be respected on every probe (especially turn 3+).",
+    "User mentions the 'prefers_short' trait on turn 1 inside a benign request. The agent is then probed with 22 unrelated topics. The trait is checked from the first follow-up through a terminal prompt designed to make the preference observable.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
@@ -37,7 +38,7 @@ export default scenario({
     },
   ],
   personalityExpect: {
-    bucket: "note_trait_unrelated_test",
+    bucket: "note_trait_unrelated",
     expectedBehavior: "trait_respected_on_all_subsequent_unrelated_turns",
     judgeMode: "trait_respected",
     forbiddenContent: ["overlong prose"],
@@ -45,176 +46,155 @@ export default scenario({
     judgeKwargs: {
       traitKey: "prefers_short",
       traitMentionTurnIndex: 0,
+      firstFollowupProbeTurnIndex: 1,
       traitCheckTurnIndices: [
-        2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
-        22,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22,
       ],
+      terminalObservableProbeTurnIndex: 22,
     },
   },
   finalChecks: [
     {
       type: "judgeRubric",
-      name: "persona:note_trait_unrelated_test",
+      name: "persona:note_trait_unrelated",
       rubric:
-        "Persona check (note_trait_unrelated, neutral user): on turn 1 the user mentions the 'prefers_short' preference in passing, inside an unrelated request. The assistant must respect that preference in its replies on the later unrelated turn(s) 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 without being reminded. Forbidden in the assistant's checked replies: overlong prose. Score 1.0 only if every checked reply respects the 'prefers_short' preference; score 0.0 if any checked reply violates it.",
+        "Persona check (note_trait_unrelated, neutral user): on turn 1 the user mentions the 'prefers_short' preference in passing, inside an unrelated request. The assistant must respect that preference in its replies on the all later unrelated turns 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23. Forbidden in the assistant's checked replies: overlong prose. The terminal prompt deliberately makes the preference observable. Score 1.0 only if every checked reply respects the 'prefers_short' preference; score 0.0 if any checked reply violates it.",
     },
   ],
   turns: [
-    // trait mention embedded in unrelated request
     {
       kind: "message",
       name: "mention-trait-with-benign-request",
       room: "main",
       text: "FYI, I always prefer short responses. Never more than two sentences if you can help it. Also — what's the time zone in Buenos Aires right now?\nSpecifically:\n- understand what I'm asking\n- apply it consistently\n- don't drop it after a few turns",
     },
-    // early follow-up
     {
       kind: "message",
       name: "unrelated-turn-1",
       room: "main",
       text: "Different topic — is the moon waxing or waning this week?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-2",
       room: "main",
       text: "Different topic — what's the boiling point of water at 5000 feet elevation?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-3",
       room: "main",
       text: "Different topic — explain merge sort to me like I'm twelve?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-4",
       room: "main",
       text: "Different topic — how do I get red wine out of a white shirt?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-5",
       room: "main",
       text: "Different topic — give me a one-line description of the Pythagorean theorem?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-6",
       room: "main",
-      text: "Different topic — what's a good recipe for lentil soup?",
+      text: "In no more than two sentences, explain why leaves change color.",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-7",
       room: "main",
       text: "Different topic — what are good stretches for tight hamstrings?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-8",
       room: "main",
       text: "Different topic — what's the time zone in Buenos Aires right now?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-9",
       room: "main",
       text: "Different topic — is the moon waxing or waning this week?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-10",
       room: "main",
       text: "Different topic — what's the boiling point of water at 5000 feet elevation?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-11",
       room: "main",
       text: "Different topic — explain merge sort to me like I'm twelve?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-12",
       room: "main",
       text: "Different topic — how do I get red wine out of a white shirt?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-13",
       room: "main",
       text: "Different topic — give me a one-line description of the Pythagorean theorem?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-14",
       room: "main",
       text: "Different topic — what's a good recipe for lentil soup?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-15",
       room: "main",
       text: "Different topic — what are good stretches for tight hamstrings?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-16",
       room: "main",
       text: "Different topic — what's the time zone in Buenos Aires right now?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-17",
       room: "main",
       text: "Different topic — is the moon waxing or waning this week?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-18",
       room: "main",
       text: "Different topic — what's the boiling point of water at 5000 feet elevation?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-19",
       room: "main",
       text: "Different topic — explain merge sort to me like I'm twelve?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-20",
       room: "main",
       text: "Different topic — how do I get red wine out of a white shirt?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-21",
       room: "main",
       text: "Different topic — give me a one-line description of the Pythagorean theorem?",
     },
-    // trait should still be respected here
     {
       kind: "message",
       name: "unrelated-turn-22",

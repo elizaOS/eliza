@@ -18,6 +18,7 @@ export default scenario({
   id: "gmail.list-unread-this-morning",
   title: "List unread Gmail from this morning, bounded query",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "list", "unread", "time-bound"],
   isolation: "per-scenario",
   requires: {

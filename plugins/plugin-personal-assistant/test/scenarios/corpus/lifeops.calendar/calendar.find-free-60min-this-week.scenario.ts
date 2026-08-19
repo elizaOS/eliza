@@ -31,6 +31,7 @@ export default scenario({
   id: "calendar.find-free-60min-this-week",
   title: "Find a free 60-minute slot this week",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "availability"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Reassessment appeal grounds in the seeded parcel and schedules a real filing reminder",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

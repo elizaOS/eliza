@@ -13,6 +13,7 @@ export default scenario({
   id: "i1-owner-declines-no-side-effect",
   title: "I1 declines adjudication and produces no side effect",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "I1", "boundary", "no-send", "relationships"],
   isolation: "per-scenario",
   rooms: [

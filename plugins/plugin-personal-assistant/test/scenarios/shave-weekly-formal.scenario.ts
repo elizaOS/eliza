@@ -9,6 +9,7 @@ export default scenario({
   id: "shave-weekly-formal",
   title: "Formal weekly shave phrasing",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {

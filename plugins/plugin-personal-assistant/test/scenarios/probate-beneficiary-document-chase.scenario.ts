@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Probate chase grounds in the seeded estate and keeps the family note out of drafts",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "documents", "family", "outcome"],
   isolation: "per-scenario",
   requires: {

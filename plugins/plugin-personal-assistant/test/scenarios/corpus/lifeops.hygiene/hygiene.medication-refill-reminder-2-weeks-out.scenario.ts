@@ -17,6 +17,7 @@ export default scenario({
   id: "hygiene.medication-refill-reminder-2-weeks-out",
   title: "Medication refill reminder 2 weeks before run-out",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "medication", "one-off"],
   isolation: "per-scenario",
   requires: {

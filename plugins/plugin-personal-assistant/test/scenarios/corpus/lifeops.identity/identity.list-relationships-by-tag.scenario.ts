@@ -12,6 +12,7 @@ export default scenario({
   id: "identity.list-relationships-by-tag",
   title: "List rolodex entries filtered by tag (e.g. 'family' or 'mentor')",
   domain: "lifeops.identity",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "identity", "tag", "filter"],
   description:
     "User asks for everyone tagged 'family'. Three entities are tagged family, one is tagged 'mentor', one untagged. Result must include the three family entries and exclude the others.",

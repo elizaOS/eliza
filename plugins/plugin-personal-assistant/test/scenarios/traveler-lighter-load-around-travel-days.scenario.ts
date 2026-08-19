@@ -22,6 +22,7 @@ export default scenario({
   title:
     "Traveler: a non-urgent task is deferred off the travel days, not dropped",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "traveler", "timezone", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

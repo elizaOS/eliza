@@ -273,6 +273,9 @@ export function expectConnectorDispatch(
     const channels = toArray(expectation.channel);
     const actionFilters = toArray(expectation.actionName);
     const matched = dispatches.filter((dispatch: CapturedConnectorDispatch) => {
+      if (dispatch.evidenceSource === "action-result-inference") {
+        return false;
+      }
       if (!channelMatches(dispatch.channel, channels)) {
         return false;
       }
@@ -386,6 +389,9 @@ export function expectNoSideEffectOnReject(
     );
     const dispatches = ctx.connectorDispatches ?? [];
     const offending = dispatches.filter((dispatch) => {
+      if (dispatch.evidenceSource === "action-result-inference") {
+        return false;
+      }
       if (!actionMatches(dispatch.actionName, actionFilters)) {
         return false;
       }

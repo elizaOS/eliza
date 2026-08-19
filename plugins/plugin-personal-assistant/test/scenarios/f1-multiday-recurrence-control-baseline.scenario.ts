@@ -204,6 +204,7 @@ export default scenario({
   title:
     "Control baseline: a plain daily habit fires once per day on its literal cadence, three days running",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

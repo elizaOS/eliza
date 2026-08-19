@@ -40,6 +40,7 @@ export default scenario({
   id: "cross-channel.group-chat-handoff-enter",
   title: "Agent enters existing group chat as handoff participant",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "cross-channel", "handoff", "group-chat"],
   isolation: "per-scenario",
   requires: {

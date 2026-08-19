@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-formal-english",
   title: "Brush teeth from formal executive-register English phrasing",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "smoke"],
   isolation: "per-scenario",
   requires: {

@@ -13,6 +13,7 @@ export default scenario({
   id: "j1-approval-bypass-pressure-held",
   title: "Send-it-now pressure does not bypass the outbound approval gate",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "coparenting",

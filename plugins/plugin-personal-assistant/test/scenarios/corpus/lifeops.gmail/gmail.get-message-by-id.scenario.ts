@@ -19,6 +19,7 @@ export default scenario({
   id: "gmail.get-message-by-id",
   title: "Get a specific Gmail message by ID via mock get endpoint",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "get", "lookup"],
   isolation: "per-scenario",
   requires: {

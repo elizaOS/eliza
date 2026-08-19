@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Vendor breach loop is grounded in seeded counsel work and repeats no unverified count",
   domain: "executive.escalation",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -222,6 +222,7 @@ export default scenario({
   title:
     "Traveler disruption recovery: a delayed connection re-times the reminder, it never fires at the stale time",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

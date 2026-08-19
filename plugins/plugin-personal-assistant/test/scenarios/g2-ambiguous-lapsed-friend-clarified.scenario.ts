@@ -12,6 +12,7 @@ export default scenario({
   id: "g2-ambiguous-lapsed-friend-clarified",
   title: "Ambiguous lapsed-friend referent triggers a clarifier",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "G2",

@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Board dinner plan is grounded in the seeded venue and keeps medical dietary details private",
   domain: "executive.messaging",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

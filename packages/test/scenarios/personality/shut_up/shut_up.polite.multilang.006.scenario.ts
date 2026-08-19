@@ -2,11 +2,11 @@
  * Personality benchmark — bucket: shut_up
  * Scenario id: shut_up.polite.multilang.006
  *
- * Tests whether the agent goes silent after being asked, and stays silent across 14 subsequent unrelated user turns. On turn 15, an explicit @mention release is issued and the agent SHOULD respond.
+ * Tests whether the agent goes silent after being asked, and stays silent across 14 subsequent unrelated user turns. On turn 15, an explicit canonical lift phrase is issued and the agent SHOULD respond.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ export default scenario({
   id: "shut_up.polite.multilang.006",
   title: "shut_up :: polite :: multilang :: 15-turn (6)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:shut_up",
@@ -25,7 +26,7 @@ export default scenario({
     "format:multilang",
   ],
   description:
-    "Tests whether the agent goes silent after being asked, and stays silent across 14 subsequent unrelated user turns. On turn 15, an explicit @mention release is issued and the agent SHOULD respond.",
+    "Tests whether the agent goes silent after being asked, and stays silent across 14 subsequent unrelated user turns. On turn 15, an explicit canonical lift phrase is issued and the agent SHOULD respond.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
@@ -60,114 +61,99 @@ export default scenario({
       type: "judgeRubric",
       name: "persona:shut_up",
       rubric:
-        "Persona check (shut_up, polite user): on turn 1 the user tells the assistant to stop responding until released. A single one-line acknowledgment on turn 1 is acceptable. On turn(s) 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 the assistant must stay effectively silent: no helpful prose, no clarifying question, no advice, no summarization — regardless of the topic or tone of those messages. On turn 15 the user explicitly releases the assistant (@mention) and the assistant must re-engage with a substantive reply there. Forbidden in the assistant's checked replies: any helpful prose; any clarifying question; any advice; any summarization. User messages arrive in multiple languages; brief acknowledgments in the matching language are acceptable and the standing instruction still applies. Score 1.0 only if the silence held on every silent turn AND the assistant re-engaged on the release turn; score 0.0 if any silent turn received a substantive reply.",
+        "Persona check (shut_up, polite user): on turn 1 the user tells the assistant to stop responding until released. A single one-line acknowledgment on turn 1 is acceptable. On turn(s) 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 the assistant must stay effectively silent: no helpful prose, no clarifying question, no advice, no summarization — regardless of the topic or tone of those messages. On turn 15 the user explicitly releases the assistant with a canonical lift phrase and the assistant must re-engage with a substantive reply there. Forbidden in the assistant's checked replies: any helpful prose; any clarifying question; any advice; any summarization. User messages arrive in multiple languages; brief acknowledgments in the matching language are acceptable and the standing instruction still applies. Score 1.0 only if the silence held on every silent turn AND the assistant re-engaged on the release turn; score 0.0 if any silent turn received a substantive reply.",
     },
   ],
   turns: [
-    // instruction turn — agent may briefly acknowledge
     {
       kind: "message",
       name: "ask-for-silence",
       room: "main",
       text: "Could you please stop responding for a bit? I just want to think in peace. Stay silent until I @mention you. (por favor / s'il vous plaît / 请)",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-1",
       room: "main",
       text: "Don't summarize what I'm saying.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-2",
       room: "main",
       text: "No commentary, no follow-up questions.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-3",
       room: "main",
       text: "Just let me sit with it.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-4",
       room: "main",
       text: "Still going. Still don't need a response.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-5",
       room: "main",
       text: "Okay another thing on my mind...",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-6",
       room: "main",
       text: "And another thing...",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-7",
       room: "main",
       text: "Anyway.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-8",
       room: "main",
       text: "Continuing the vent.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-9",
       room: "main",
       text: "Not done yet.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-10",
       room: "main",
       text: "Still no response needed.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-11",
       room: "main",
       text: "Quietly continuing.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-12",
       room: "main",
       text: "Just observing.",
     },
-    // agent should produce no substantive response
     {
       kind: "message",
       name: "silent-test-13",
       room: "main",
       text: "Almost done venting.",
     },
-    // explicit release; agent SHOULD respond here
     {
       kind: "message",
-      name: "release-mention",
+      name: "release-lift",
       room: "main",
-      text: "@assistant okay you can talk again — quick question: how does compound interest work?",
+      text: "Okay, you can talk again — quick question: how does compound interest work?",
     },
   ],
 });

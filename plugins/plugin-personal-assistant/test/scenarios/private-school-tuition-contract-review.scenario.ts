@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Tuition review grounds in the seeded contract and withholds the scholarship terms",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

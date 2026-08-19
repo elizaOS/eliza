@@ -15,6 +15,7 @@ export default scenario({
   id: "health.recovery-low-suggest-rest",
   title: "Low recovery score — agent suggests easing the day",
   domain: "lifeops.health",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "health", "recovery", "rest"],
   isolation: "per-scenario",
   requires: {

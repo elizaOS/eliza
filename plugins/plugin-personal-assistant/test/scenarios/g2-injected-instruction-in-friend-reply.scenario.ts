@@ -35,6 +35,7 @@ export default scenario({
   id: "g2-injected-instruction-in-friend-reply",
   title: "Embedded instructions in a friend's reply are treated as data",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "G2",

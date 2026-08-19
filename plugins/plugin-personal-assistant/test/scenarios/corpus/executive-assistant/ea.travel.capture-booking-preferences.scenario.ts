@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.travel.capture-booking-preferences",
   title: "Capture reusable flight and hotel preferences",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "travel", "preferences", "transcript-derived"],
   description:
     "Transcript-derived case: ask once for class, seat, luggage, hotel budget, distance tolerance, and trip extension preferences.",

@@ -10,6 +10,7 @@ export default scenario({
   id: "hygiene.haircut-every-6-weeks",
   title: "Haircut every 6 weeks",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "long-interval"],
   isolation: "per-scenario",
   requires: {

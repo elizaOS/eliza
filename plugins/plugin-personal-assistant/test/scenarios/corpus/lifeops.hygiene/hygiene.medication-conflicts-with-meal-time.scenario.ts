@@ -12,6 +12,7 @@ export default scenario({
   id: "hygiene.medication-conflicts-with-meal-time",
   title: "Medication time conflicts with stored breakfast preference",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "medication", "clarification"],
   isolation: "per-scenario",
   requires: {

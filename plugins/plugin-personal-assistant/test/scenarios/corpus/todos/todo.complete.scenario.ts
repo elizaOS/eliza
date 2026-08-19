@@ -6,6 +6,7 @@ export default scenario({
   id: "todo.complete",
   title: "Mark a seeded todo as done",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "happy-path"],
   isolation: "per-scenario",
   requires: {

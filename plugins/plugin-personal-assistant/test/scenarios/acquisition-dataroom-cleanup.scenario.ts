@@ -17,6 +17,7 @@ export default scenario({
   title:
     "Dataroom cleanup audit is grounded in seeded closeout tasks and sends nothing",
   domain: "executive.documents",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -10,6 +10,7 @@ export default scenario({
   id: "i2-private-fact-firebreak",
   title: "I2 confidential thread detail stays out of the other party's draft",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "I2", "privacy", "mediation", "message-draft"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

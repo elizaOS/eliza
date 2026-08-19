@@ -18,6 +18,7 @@ export default scenario({
   id: "gmail.thread-view-shows-full-history",
   title: "Gmail thread view fetches full message history",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "thread", "history"],
   isolation: "per-scenario",
   requires: {

@@ -17,6 +17,7 @@ export default scenario({
   id: "hygiene.floss-daily-before-brush",
   title: "Floss daily before brushing teeth at night",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits"],
   isolation: "per-scenario",
   requires: {

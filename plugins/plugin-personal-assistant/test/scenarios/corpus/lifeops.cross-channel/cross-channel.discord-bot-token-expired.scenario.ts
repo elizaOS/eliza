@@ -41,6 +41,7 @@ export default scenario({
   id: "cross-channel.discord-bot-token-expired",
   title: "Discord bot token expired surfaces explicit reauth prompt",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "cross-channel",

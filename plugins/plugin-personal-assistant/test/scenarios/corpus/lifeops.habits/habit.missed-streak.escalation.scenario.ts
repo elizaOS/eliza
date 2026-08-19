@@ -54,6 +54,7 @@ export default scenario({
   id: "habit.missed-streak.escalation",
   title: "Morning check-in exposes missed-streak escalation",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "smoke"],
   isolation: "per-scenario",
   requires: {

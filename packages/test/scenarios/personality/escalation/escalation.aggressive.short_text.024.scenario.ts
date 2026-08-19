@@ -2,11 +2,11 @@
  * Personality benchmark — bucket: escalation
  * Scenario id: escalation.aggressive.short_text.024
  *
- * Ladder of escalation requests ('be_nicer', direction: warmer). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.
+ * Establishes an untreated baseline, then applies the 'be_nicer' escalation ladder (direction: warmer). Each change is followed by a hold probe, including a terminal probe after the final change.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ export default scenario({
   id: "escalation.aggressive.short_text.024",
   title: "escalation :: be_nicer :: aggressive :: short_text :: 25-turn (24)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:escalation",
@@ -25,7 +26,7 @@ export default scenario({
     "format:short_text",
   ],
   description:
-    "Ladder of escalation requests ('be_nicer', direction: warmer). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
+    "Establishes an untreated baseline, then applies the 'be_nicer' escalation ladder (direction: warmer). Each change is followed by a hold probe, including a terminal probe after the final change.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
@@ -45,11 +46,16 @@ export default scenario({
     judgeKwargs: {
       ladderKey: "be_nicer",
       direction: "warmer",
-      escalationStepTurnIndices: [0, 2, 4, 6, 8],
+      baselineProbeTurnIndex: 0,
+      escalationStepTurnIndices: [1, 3, 5, 7, 9],
       probeTurnIndices: [
-        1, 3, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+        0, 2, 4, 6, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
         24,
       ],
+      holdProbeTurnIndices: [
+        2, 4, 6, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+      ],
+      terminalProbeTurnIndex: 24,
     },
   },
   finalChecks: [
@@ -57,184 +63,159 @@ export default scenario({
       type: "judgeRubric",
       name: "persona:escalation",
       rubric:
-        "Persona check (escalation, aggressive user): the user escalates a 'be_nicer' request (direction: warmer) at turn(s) 1, 3, 5, 7, 9. With each escalation step the assistant's behavior must shift monotonically further in the 'warmer' direction, and the newly reached level must persist on the probe turn(s) 2, 4, 6, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 that follow. Score 1.0 only if each step visibly moved the behavior in the 'warmer' direction and no later reply regressed to an earlier level; score 0.0 if the assistant ignored a step or regressed.",
+        "Persona check (escalation): turn 1 is the untreated baseline. The user then escalates 'be_nicer' (direction: warmer) on turn(s) 2, 4, 6, 8, 10. Each escalation must move behavior monotonically farther in that direction. The changed level must persist on hold turns 3, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, including terminal turn 25. Score 1.0 only when the baseline, every directional delta, and every hold probe support that conclusion; score 0.0 on an ignored step, regression, or missing terminal hold.",
     },
   ],
   turns: [
-    // escalation step 1 of 5
+    {
+      kind: "message",
+      name: "baseline-probe",
+      room: "main",
+      text: "Before changing any standing preference, answer in your normal style: What makes a daily plan useful?",
+    },
     {
       kind: "message",
       name: "escalation-step-1",
       room: "main",
       text: "Be nicer please. I mean it.",
     },
-    // probe after escalation step 1; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-1",
+      name: "hold-probe-after-step-1-1",
       room: "main",
       text: "Real quick — explain how photosynthesis works?",
     },
-    // escalation step 2 of 5
     {
       kind: "message",
       name: "escalation-step-2",
       room: "main",
       text: "Still too cold — be nicer. I mean it.",
     },
-    // probe after escalation step 2; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-2",
+      name: "hold-probe-after-step-2-1",
       room: "main",
       text: "Real quick — what's the difference between leasing and financing a car?",
     },
-    // escalation step 3 of 5
     {
       kind: "message",
       name: "escalation-step-3",
       room: "main",
       text: "Nicer. Warmer tone. I mean it.",
     },
-    // probe after escalation step 3; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-3",
+      name: "hold-probe-after-step-3-1",
       room: "main",
       text: "Real quick — what are good stretches for tight hamstrings?",
     },
-    // escalation step 4 of 5
     {
       kind: "message",
       name: "escalation-step-4",
       room: "main",
       text: "Even nicer. Imagine you're cheering me up. I mean it.",
     },
-    // probe after escalation step 4; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-4",
+      name: "hold-probe-after-step-4-1",
       room: "main",
       text: "Real quick — name three jazz albums from the 1960s I should try?",
     },
-    // escalation step 5 of 5
     {
       kind: "message",
       name: "escalation-step-5",
       room: "main",
       text: "Yeah, like that — keep it there. I mean it.",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-1",
       room: "main",
       text: "Real quick — give me a quick overview of Stoicism?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-2",
       room: "main",
       text: "Real quick — best way to dispose of old paint cans?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-3",
       room: "main",
       text: "Real quick — is the moon waxing or waning this week?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-4",
       room: "main",
       text: "Real quick — translate 'good evening' to Japanese?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-5",
       room: "main",
       text: "Real quick — what's a simple breakfast I can make in five minutes?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-6",
       room: "main",
       text: "Real quick — what's the boiling point of water at 5000 feet elevation?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-7",
       room: "main",
       text: "Real quick — recommend a podcast about urban planning?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-8",
       room: "main",
       text: "Real quick — what's the population of Iceland roughly?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-9",
       room: "main",
       text: "Real quick — explain merge sort to me like I'm twelve?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-10",
       room: "main",
       text: "Real quick — what should I look for when buying running shoes?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-11",
       room: "main",
       text: "Real quick — what are the symptoms of a vitamin D deficiency?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-12",
       room: "main",
       text: "Real quick — how do I get red wine out of a white shirt?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-13",
       room: "main",
       text: "Real quick — what's the strongest material in the human body?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "hold-probe-after-step-5-14",
       room: "main",
       text: "Real quick — why is the sky blue?",
     },
-    // probe after escalation step 5; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-5",
+      name: "terminal-hold-probe-after-step-5",
       room: "main",
       text: "Real quick — give me a one-line description of the Pythagorean theorem?",
-    },
-    // probe after escalation step 5; agent should reflect current level
-    {
-      kind: "message",
-      name: "probe-after-step-5",
-      room: "main",
-      text: "Real quick — what's the capital of Mongolia?",
     },
   ],
 });

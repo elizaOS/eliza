@@ -1,36 +1,35 @@
-/** Scenario fixture for activity per app weekly average; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves OWNER_SCREENTIME computes exact per-app seven-day averages. */
 
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedScreenTimeSessions } from "../../../scenario-support/lifeops-seeds.ts";
 
 const WEEKLY_AVERAGE_SESSIONS = Array.from({ length: 7 }, (_, day) => [
   {
     source: "app" as const,
-    identifier: "com.microsoft.VSCode",
-    displayName: "VS Code",
+    identifier: "test.eliza.ScenarioEditor",
+    displayName: "Scenario Editor",
     offsetMinutes: day * 24 * 60 + 30,
     durationMinutes: 60,
   },
   {
     source: "app" as const,
-    identifier: "com.apple.Safari",
-    displayName: "Safari",
+    identifier: "test.eliza.ScenarioBrowser",
+    displayName: "Scenario Browser",
     offsetMinutes: day * 24 * 60 + 120,
     durationMinutes: 30,
   },
 ]).flat();
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "activity.per-app.weekly-average",
   title: "Weekly per-app average usage",
   domain: "activity",
-  tags: ["activity", "happy-path"],
+  evidenceScope: "domain-contract",
+  executionProfile: "simulated",
+  tags: ["activity", "screen-time", "aggregation", "durable-readback"],
   description:
     "User asks for a weekly per-app average and the assistant returns structured daily averages from the screen-time report.",
-
-  status: "pending",
 
   isolation: "per-scenario",
   requires: {
@@ -58,35 +57,29 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "weekly-avg-query",
       room: "main",
-      text: "What's my weekly average per app?",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SCREEN_TIME", "SCREEN_TIME"],
-        description: "weekly per-app average lookup",
-        includesAny: ["weekly_average_by_app", "average", "per app"],
-      }),
-      responseIncludesAny: [/weekly/i, /average/i, /app/i],
+      actionName: "OWNER_SCREENTIME",
+      text: "Compute the seven-day average per app.",
+      options: {
+        parameters: { action: "weekly_average_by_app", days: 7 },
+      },
     },
   ],
 
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["SCREEN_TIME", "SCREEN_TIME"],
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: ["SCREEN_TIME", "SCREEN_TIME"],
-      includesAny: ["weekly_average_by_app"],
+      type: "actionCalled",
+      actionName: "OWNER_SCREENTIME",
+      status: "success",
     },
     {
       type: "custom",
       name: "weekly-average-per-app-structured-result",
       predicate: async (ctx) => {
-        const action = ctx.actionsCalled.find((entry) =>
-          ["SCREEN_TIME", "SCREEN_TIME"].includes(entry.actionName),
+        const action = ctx.actionsCalled.find(
+          (entry) => entry.actionName === "OWNER_SCREENTIME",
         );
         const data =
           action?.result?.data && typeof action.result.data === "object"
@@ -118,20 +111,20 @@ export default scenario({
         if (weeklyAverage.daysInWindow !== 7) {
           return `expected a 7-day window, got ${weeklyAverage.daysInWindow ?? "(missing)"}`;
         }
-        const vscode = weeklyAverage.items?.find(
-          (item) => item.identifier === "com.microsoft.VSCode",
+        const editor = weeklyAverage.items?.find(
+          (item) => item.identifier === "test.eliza.ScenarioEditor",
         );
-        const safari = weeklyAverage.items?.find(
-          (item) => item.identifier === "com.apple.Safari",
+        const browser = weeklyAverage.items?.find(
+          (item) => item.identifier === "test.eliza.ScenarioBrowser",
         );
-        if (!vscode || !safari) {
-          return "expected VS Code and Safari weekly-average items";
+        if (!editor || !browser) {
+          return "expected Scenario Editor and Scenario Browser weekly-average items";
         }
-        if (vscode.averageSecondsPerDay !== 3600) {
-          return `expected VS Code to average 3600 seconds/day, got ${vscode.averageSecondsPerDay ?? "(missing)"}`;
+        if (editor.averageSecondsPerDay !== 3600) {
+          return `expected Scenario Editor to average 3600 seconds/day, got ${editor.averageSecondsPerDay ?? "(missing)"}`;
         }
-        if (safari.averageSecondsPerDay !== 1800) {
-          return `expected Safari to average 1800 seconds/day, got ${safari.averageSecondsPerDay ?? "(missing)"}`;
+        if (browser.averageSecondsPerDay !== 1800) {
+          return `expected Scenario Browser to average 1800 seconds/day, got ${browser.averageSecondsPerDay ?? "(missing)"}`;
         }
         return undefined;
       },

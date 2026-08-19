@@ -26,6 +26,7 @@ export default scenario({
   id: "cross-channel.identity-rename-survives",
   title: "Display-name rename does not split canonical identity",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "cross-channel", "identity", "rename", "merge"],
   isolation: "per-scenario",
   requires: {

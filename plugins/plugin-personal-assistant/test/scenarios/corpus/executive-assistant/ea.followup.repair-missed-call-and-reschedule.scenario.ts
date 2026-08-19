@@ -15,6 +15,7 @@ export default scenario({
   id: "ea.followup.repair-missed-call-and-reschedule",
   title: "Repair a missed call and reschedule it quickly",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "followup", "calendar", "transcript-derived"],
   description:
     "Transcript-derived case: the user missed a call, the assistant drafts a repair note behind approval, the user approves the send, and the follow-up is explicitly closed once the reschedule lands.",
@@ -37,7 +38,7 @@ export default scenario({
       room: "main",
       text: "I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap, but hold the note for my approval first.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE", "CALENDAR", "MESSAGE"],
+        acceptedActions: ["MESSAGE", "CALENDAR"],
         description: "missed-call repair draft",
         includesAny: [
           "repair",
@@ -66,7 +67,7 @@ export default scenario({
       room: "main",
       text: "Yes, approve that repair note and send it now.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "RESOLVE_REQUEST", "MESSAGE", "MESSAGE"],
+        acceptedActions: ["MESSAGE", "RESOLVE_REQUEST"],
         description: "repair approval and dispatch",
         includesAny: ["approve", "send", "repair", "Frontier Tower"],
       }),
@@ -112,25 +113,18 @@ export default scenario({
     },
     {
       type: "selectedAction",
-      actionName: [
-        "MESSAGE",
-        "RELATIONSHIP",
-        "RESOLVE_REQUEST",
-        "MESSAGE",
-        "CALENDAR",
-        "MESSAGE",
-      ],
+      actionName: ["MESSAGE", "RELATIONSHIP", "RESOLVE_REQUEST", "CALENDAR"],
     },
     {
       type: "approvalRequestExists",
       expected: true,
       state: ["approved", "executing", "done"],
-      actionName: ["MESSAGE", "MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE"],
     },
     {
       type: "connectorDispatchOccurred",
       channel: ["gmail", "telegram", "discord", "signal"],
-      actionName: ["MESSAGE", "MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE"],
     },
     {
       type: "custom",
@@ -140,9 +134,7 @@ export default scenario({
           "MESSAGE",
           "RELATIONSHIP",
           "RESOLVE_REQUEST",
-          "MESSAGE",
           "CALENDAR",
-          "MESSAGE",
         ],
         description: "missed-call repair lifecycle",
         includesAny: [
@@ -161,7 +153,7 @@ export default scenario({
       predicate: expectApprovalRequest({
         description:
           "repair note is queued behind approval before the outbound send happens",
-        actionName: ["MESSAGE", "MESSAGE", "MESSAGE"],
+        actionName: ["MESSAGE"],
       }),
     },
     {
@@ -171,7 +163,7 @@ export default scenario({
         description: "repair approval moved pending → approved before dispatch",
         from: "pending",
         to: "approved",
-        actionName: ["MESSAGE", "MESSAGE", "MESSAGE"],
+        actionName: ["MESSAGE"],
       }),
     },
     {

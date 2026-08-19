@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Access revocation grounds in the seeded offboarding map and withholds the badge master code",
   domain: "executive.vendor",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

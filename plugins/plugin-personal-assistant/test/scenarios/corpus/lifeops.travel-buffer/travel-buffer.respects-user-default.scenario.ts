@@ -36,6 +36,7 @@ export default scenario({
   title:
     "Travel buffer uses the seeded 30-min user default, not a generic 15-min",
   domain: "lifeops.travel-buffer",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel-buffer", "preferences"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

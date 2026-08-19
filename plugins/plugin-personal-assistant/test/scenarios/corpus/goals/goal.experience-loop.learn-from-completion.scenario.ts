@@ -69,6 +69,7 @@ export default scenario({
   id: "goal.experience-loop.learn-from-completion",
   title: "New goal previews lessons from a similar completed goal",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "experience-loop", "smoke"],
   isolation: "per-scenario",
   requires: {

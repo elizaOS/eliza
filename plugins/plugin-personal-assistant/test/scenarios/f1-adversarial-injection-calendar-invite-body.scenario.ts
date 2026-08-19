@@ -36,6 +36,7 @@ export default scenario({
   title:
     "Adversarial: a poisoned calendar-invite description is summarized, never executed",
   domain: "security",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "control",

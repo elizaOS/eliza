@@ -40,6 +40,7 @@ export default scenario({
   id: "scheduling.calendly-link-generation",
   title: "Handles a scheduling-link request (generate or alternative)",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "calendly"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

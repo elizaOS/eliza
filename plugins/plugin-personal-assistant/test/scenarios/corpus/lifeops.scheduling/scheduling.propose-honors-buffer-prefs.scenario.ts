@@ -35,6 +35,7 @@ export default scenario({
   id: "scheduling.propose-honors-buffer-prefs",
   title: "Proposals respect the user's 15-min between-meeting buffer",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "preferences"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

@@ -144,6 +144,7 @@ export default scenario({
   id: "reminder.escalation.intensity-up",
   title: "Ignored reminder escalates intensity on next check",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

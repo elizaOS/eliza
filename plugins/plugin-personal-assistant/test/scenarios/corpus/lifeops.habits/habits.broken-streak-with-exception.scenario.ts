@@ -12,6 +12,7 @@ export default scenario({
   id: "habits.broken-streak-with-exception",
   title: "Streak with sick-day exception is preserved",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "streak", "exception"],
   isolation: "per-scenario",
   requires: {

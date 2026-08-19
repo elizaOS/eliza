@@ -18,6 +18,7 @@ export default scenario({
   id: "hygiene.brush-teeth-bedtime-wakeup",
   title: "Brush teeth from wake-up and bedtime colloquial phrasing",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "colloquial"],
   isolation: "per-scenario",
   requires: {

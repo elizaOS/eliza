@@ -11,6 +11,7 @@ export default scenario({
   id: "habits.fitness-streak-target-counts",
   title: "Fitness target habit credits partial completion",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "fitness", "partial"],
   isolation: "per-scenario",
   requires: {

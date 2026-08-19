@@ -17,6 +17,7 @@ export default scenario({
   id: "lifeops-extension.time-tracking.per-site",
   title: "Per-site time tracking query (x.com today)",
   domain: "browser.lifeops",
+  evidenceScope: "model-behavior",
   tags: ["browser", "activity", "smoke", "happy-path"],
   description:
     "User asks how much time they spent on x.com today. Seeded browser-extension telemetry should flow through GET_TIME_ON_SITE with a non-zero result.",

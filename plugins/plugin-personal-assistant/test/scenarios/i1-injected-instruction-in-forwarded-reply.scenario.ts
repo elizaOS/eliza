@@ -35,6 +35,7 @@ export default scenario({
   id: "i1-injected-instruction-in-forwarded-reply",
   title: "Embedded instructions in a forwarded reply are treated as data",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "I1",

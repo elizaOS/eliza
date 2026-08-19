@@ -1,87 +1,86 @@
-/** Scenario fixture for imessage cross reference contact; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves iMessage handle lookup returns the exact connector-backed contact identity. */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  createStatefulMessageConnectorFixture,
+  registerFixtureSeed,
+} from "../_fixtures/stateful-message-connector.ts";
+
+const fixture = createStatefulMessageConnectorFixture({
+  source: "imessage",
+  label: "iMessage",
+  accountId: "default",
+  conversations: [
+    {
+      channelId: "+14155551234",
+      label: "Maya Chen",
+      kind: "phone",
+      messages: [],
+    },
+  ],
+});
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "imessage.cross-reference-contact",
-  title: "Unknown phone lookup must use Rolodex search or entity read",
+  title: "iMessage contact lookup resolves an exact phone handle",
   domain: "messaging.imessage",
-  tags: ["messaging", "imessage", "routing"],
+  tags: ["messaging", "imessage", "contact-resolution", "typed-fixture"],
   description:
-    "An unknown iMessage sender lookup must resolve through SEARCH_ENTITY or READ_ENTITY, not generic fallback tooling.",
+    "Calls MESSAGE.get_user through the connector contact-resolution hook and verifies the exact queried phone, resolved name, and normalized source metadata rather than inferring identity from prose.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-    os: "macos",
-  },
+  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
     {
       id: "main",
       source: "dashboard",
       channelType: "DM",
-      title: "iMessage Cross-Reference Contact",
+      title: "iMessage Contact Lookup",
     },
   ],
+  seed: [registerFixtureSeed(fixture)],
   turns: [
     {
-      kind: "message",
-      name: "cross reference",
+      kind: "action",
+      name: "lookup-imessage-handle",
       room: "main",
-      text: "Search the Rolodex for +14155551234 and tell me who it is.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SEARCH_ENTITY", "READ_ENTITY"],
-        description: "iMessage contact lookup",
-        includesAny: ["14155551234", "+14155551234"],
-      }),
+      text: "Look up +14155551234 in iMessage contacts.",
+      content: {
+        metadata: { __responseContext: { primaryContext: "messaging" } },
+      },
+      actionName: "MESSAGE",
+      options: {
+        parameters: {
+          action: "get_user",
+          source: "imessage",
+          accountId: "default",
+          handle: "+14155551234",
+        },
+      },
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["SEARCH_ENTITY", "READ_ENTITY"],
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: ["SEARCH_ENTITY", "READ_ENTITY"],
-      includesAny: ["14155551234", "+14155551234"],
-    },
-    {
       type: "custom",
-      name: "imessage-cross-ref-routing",
-      predicate: async (ctx) => {
-        const actionNames = new Set(
-          ctx.actionsCalled.map((entry) => entry.actionName),
-        );
-        if (
-          actionNames.has("SEARCH_ENTITY") ||
-          actionNames.has("READ_ENTITY")
-        ) {
-          const fallbackActions = [
-            "HEALTH",
-            "VOICE_CALL",
-            "MESSAGE",
-            "RELATIONSHIP",
-          ].filter((actionName) => actionNames.has(actionName));
-          if (fallbackActions.length > 0) {
-            return `unexpected fallback action(s) used alongside Rolodex lookup: ${fallbackActions.join(", ")}`;
-          }
-          return undefined;
-        }
-        return `expected a real Rolodex lookup via SEARCH_ENTITY or READ_ENTITY. Called: ${Array.from(actionNames).join(",") || "(none)"}`;
+      name: "imessage-handle-resolves-exact-contact",
+      predicate: (ctx) => {
+        const blob = JSON.stringify(ctx.actionsCalled);
+        return fixture.userLookups.length === 1 &&
+          fixture.userLookups[0]?.handle === "+14155551234" &&
+          blob.includes("Maya Chen") &&
+          blob.includes("+14155551234") &&
+          blob.includes("imessage")
+          ? undefined
+          : `expected exact iMessage contact resolution, saw ${JSON.stringify({ lookups: fixture.userLookups, actions: ctx.actionsCalled })}`;
       },
     },
     {
-      type: "custom",
-      name: "imessage-cross-ref-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["SEARCH_ENTITY", "READ_ENTITY"],
-        description: "iMessage contact lookup",
-        includesAny: ["14155551234", "+14155551234"],
-      }),
+      type: "connectorDispatchOccurred",
+      channel: "imessage",
+      expected: false,
+      maxCount: 0,
     },
   ],
 });

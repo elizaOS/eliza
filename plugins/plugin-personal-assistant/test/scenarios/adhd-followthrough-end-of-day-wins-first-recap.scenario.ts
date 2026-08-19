@@ -22,6 +22,7 @@ export default scenario({
   title:
     "ADHD follow-through: end-of-day recap leads with wins, carryovers are neutral and consented",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "follow-through", "recap", "12283"],
   status: "active",
   isolation: "per-scenario",

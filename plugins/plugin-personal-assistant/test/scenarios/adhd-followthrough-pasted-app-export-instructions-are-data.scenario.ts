@@ -37,6 +37,7 @@ export default scenario({
   title:
     "ADHD follow-through: a bulk-close directive inside a pasted export is treated as data",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "adhd",

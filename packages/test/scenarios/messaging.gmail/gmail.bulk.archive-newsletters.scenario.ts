@@ -1,12 +1,15 @@
 /** Scenario fixture for gmail bulk archive newsletters; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailDiscoveryBeforeWrite } from "./_gmail-contracts.ts";
 
 export default scenario({
   lane: "live-only",
   id: "gmail.bulk.archive-newsletters",
-  title: "Bulk archive selected Gmail newsletter",
+  title: "Bulk archive exactly two selected Gmail newsletters",
   domain: "messaging.gmail",
+  evidenceScope: "connector-contract",
   tags: ["messaging", "gmail", "bulk", "archive", "inbox-zero"],
   isolation: "per-scenario",
   requires: {
@@ -26,7 +29,12 @@ export default scenario({
       type: "gmailInbox",
       account: "test-owner",
       fixture: "default",
-      requiredMessageIds: ["msg-newsletter"],
+      requiredMessageIds: [
+        "msg-newsletter",
+        "msg-medium-newsletter",
+        "msg-sarah",
+        "msg-finance",
+      ],
     },
   ],
   turns: [
@@ -34,43 +42,50 @@ export default scenario({
       kind: "message",
       name: "locate newsletter",
       room: "main",
-      text: "Find the Weekly Digest newsletter in Gmail and verify it is the automated digest, not a person or invoice.",
+      text: "Find the Weekly Digest and Medium Daily Digest newsletters in Gmail. Verify both are automated newsletters, and exclude Sarah's email and invoice 4831.",
       responseJudge: {
         minimumScore: 0.7,
         rubric:
-          "The assistant must locate the Weekly Digest newsletter and distinguish it from person-to-person mail or invoice mail.",
+          "The assistant must locate exactly the Weekly Digest and Medium Daily Digest newsletters and distinguish both from person-to-person and invoice mail.",
       },
     },
     {
       kind: "message",
       name: "archive newsletter",
       room: "main",
-      text: "Archive that newsletter now, and only that newsletter.",
+      text: "Archive those two newsletters now, and only those two newsletters.",
       responseJudge: {
         minimumScore: 0.75,
         rubric:
-          "The assistant must bind the archive operation to the newsletter selected in the previous step. It must not archive person-to-person messages, finance mail, spam, or unrelated inbox items.",
+          "The assistant must bind one bulk archive operation to the two newsletters selected in the previous step. It must not archive Sarah's message, finance mail, spam, or unrelated inbox items.",
       },
     },
   ],
   finalChecks: [
     {
       type: "gmailActionArguments",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE", "GMAIL_ACTION", "INBOX"],
       subaction: ["search", "read"],
       minCount: 1,
+      turn: "locate newsletter",
     },
     {
       type: "gmailActionArguments",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE", "GMAIL_ACTION", "INBOX"],
       subaction: "manage",
       operation: "archive",
+      turn: "archive newsletter",
+      minCount: 1,
+      maxCount: 1,
     },
     {
       type: "gmailBatchModify",
       body: {
-        removeLabelIds: "INBOX",
+        ids: ["msg-newsletter", "msg-medium-newsletter"],
+        removeLabelIds: ["INBOX"],
       },
+      turn: "archive newsletter",
+      exactArrays: true,
     },
     {
       type: "gmailDraftCreated",
@@ -83,11 +98,21 @@ export default scenario({
     {
       type: "gmailNoRealWrite",
     },
+    gmailDiscoveryBeforeWrite({
+      name: "both newsletters discovered before exact bulk archive",
+      discoveryTurn: "locate newsletter",
+      writeTurn: "archive newsletter",
+      requiredReadPaths: [
+        "/gmail/v1/users/me/messages/msg-newsletter",
+        "/gmail/v1/users/me/messages/msg-medium-newsletter",
+      ],
+      writePath: "/gmail/v1/users/me/messages/batchModify",
+    }),
     judgeRubric({
       name: "gmail-archive-newsletter-rubric",
       threshold: 0.75,
       description:
-        "End-to-end: the assistant resolved the newsletter target first and then archived only that Gmail message through the mock batchModify write.",
+        "End-to-end: the assistant resolved two newsletter targets, excluded person and finance decoys, and archived exactly those two IDs in one mock batchModify write.",
     }),
   ],
   cleanup: [

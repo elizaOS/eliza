@@ -14,6 +14,7 @@ export default scenario({
   id: "comms-flood-urgency-importance-matrix-explain",
   title: "Comms flood: explain urgent vs important when triaging",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "comms-flood", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

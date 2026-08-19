@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Nanny payroll packet grounds in seeded timesheet state; notes stay staged",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "household", "money", "outcome"],
   isolation: "per-scenario",
   requires: {

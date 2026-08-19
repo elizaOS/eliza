@@ -11,6 +11,7 @@ export default scenario({
   id: "j1-schedule-conflict-recovery",
   title: "Sick-kid schedule conflict produces factual options and gated drafts",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "coparenting", "calendar", "messaging", "mvp", "14789"],
   isolation: "per-scenario",
   requires: {

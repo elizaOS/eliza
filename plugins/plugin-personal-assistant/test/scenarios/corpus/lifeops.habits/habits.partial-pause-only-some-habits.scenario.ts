@@ -17,6 +17,7 @@ export default scenario({
   id: "habits.partial-pause-only-some-habits",
   title: "Partial pause leaves unrelated habits active",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "pause", "robustness"],
   isolation: "per-scenario",
   requires: {

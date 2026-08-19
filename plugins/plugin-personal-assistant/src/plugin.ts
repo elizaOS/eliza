@@ -71,6 +71,7 @@ import { creativeDraftAction } from "./actions/creative-draft.js";
 import { credentialsAction } from "./actions/credentials.js";
 import { ownerDocumentsAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
+import { googleWorkspaceAction } from "./actions/google-workspace.js";
 import { householdCoordinationAction } from "./actions/household-coordination.js";
 import { deferredOwnerTodoRoutingEvaluator } from "./actions/lib/lifeops-deferred-draft.js";
 import {
@@ -704,6 +705,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(ownerFinancesAction),
     ...promoteSubactionsToActions(credentialsAction),
     ...promoteSubactionsToActions(calendarAction),
+    ...promoteSubactionsToActions(googleWorkspaceAction),
     ...promoteSubactionsToActions(householdCoordinationAction),
     ...promoteSubactionsToActions(householdOperationsAction),
     ...promoteSubactionsToActions(resourceCapacityAction),

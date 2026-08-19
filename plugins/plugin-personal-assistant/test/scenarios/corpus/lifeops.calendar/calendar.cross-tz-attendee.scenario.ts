@@ -37,6 +37,7 @@ export default scenario({
   id: "calendar.cross-tz-attendee",
   title: "Proposing times for a Denver-Tokyo meeting names both timezones",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "timezone", "scheduling"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

@@ -12,9 +12,12 @@ import type {
   CapturedArtifact,
   CapturedConnectorDispatch,
   CapturedMemoryWrite,
+  CapturedProviderRequest,
   CapturedStateTransition,
   ScenarioContext,
+  ScenarioEvidenceScope,
   ScenarioExecutionProfile,
+  ScenarioLane,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 
@@ -271,6 +274,13 @@ export interface TurnReport {
   statusCode?: number;
   responseBody?: unknown;
   actionsCalled: CapturedAction[];
+  /** Authoritative ledger deltas produced during this turn only. */
+  approvalRequests?: CapturedApprovalRequest[];
+  connectorDispatches?: CapturedConnectorDispatch[];
+  memoryWrites?: CapturedMemoryWrite[];
+  stateTransitions?: CapturedStateTransition[];
+  artifacts?: CapturedArtifact[];
+  providerRequests?: CapturedProviderRequest[];
   durationMs: number;
   failedAssertions: string[];
   /**
@@ -298,6 +308,12 @@ export interface ScenarioReport {
   actionsCalled: CapturedAction[];
   failedAssertions: Array<{ label: string; detail: string }>;
   providerName: string | null;
+  /** Scheduling lane declared by the scenario. */
+  lane?: ScenarioLane;
+  /** Closed behavioral claim classification; absent only on legacy reports. */
+  evidenceScope?: ScenarioEvidenceScope;
+  /** Migration debt marker: the scenario omitted evidenceScope. */
+  evidenceScopeDefaulted?: boolean;
   /**
    * Execution trust boundary used for this scenario. Optional only while
    * legacy producers migrate; aggregation reports missing values as unreported
@@ -347,6 +363,18 @@ export interface AggregateReport {
     nativeManifest?: string;
   };
   scenarios: ScenarioReport[];
+  classificationSummary: {
+    laneCounts: Record<ScenarioLane, number> & { unreported: number };
+    executionProfileCounts: Record<ScenarioExecutionProfile, number> & {
+      unreported: number;
+    };
+    evidenceScopeCounts: Record<ScenarioEvidenceScope, number> & {
+      unreported: number;
+    };
+    /** Legacy definitions conservatively treated as runner fixtures. */
+    defaultedEvidenceScopeCount: number;
+    selfGradedJudgeCount: number;
+  };
   evidenceSummary: {
     reportedScenarioCount: number;
     unreportedScenarioCount: number;
@@ -392,4 +420,5 @@ export interface RunnerContext extends ScenarioContext {
   memoryWrites: CapturedMemoryWrite[];
   stateTransitions: CapturedStateTransition[];
   artifacts: CapturedArtifact[];
+  providerRequests: CapturedProviderRequest[];
 }

@@ -26,6 +26,7 @@ export default scenario({
   title:
     "Low activation: return after two weeks → warm triage, tiny restart, zero guilt",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "low-activation", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

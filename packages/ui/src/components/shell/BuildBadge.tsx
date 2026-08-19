@@ -23,24 +23,39 @@ import { useCallback, useEffect, useState } from "react";
 import { Z_BUILD_BADGE } from "../../lib/floating-layers";
 import { getStandaloneBottomReclaimState } from "../../platform/standalone-bottom-reclaim";
 
-const BUILD_INFO_URL = "/build-info.json";
+export const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.buildBadge.dismissed";
 
-const BUILD_BADGE_JSON_TIMEOUT_MS = 15_000;
+export const BUILD_BADGE_JSON_TIMEOUT_MS = 15_000;
 
-async function fetchBuildInfo(signal: AbortSignal): Promise<BuildInfo> {
-  const response = await globalThis.fetch(BUILD_INFO_URL, {
+export async function getBuildInfoJsonWithFetch<T>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  callerSignal?: AbortSignal,
+): Promise<T> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, timeoutSignal])
+    : timeoutSignal;
+  const response = await fetchImpl(url, {
     method: "GET",
     cache: "no-store",
-    signal: AbortSignal.any([
-      signal,
-      AbortSignal.timeout(BUILD_BADGE_JSON_TIMEOUT_MS),
-    ]),
+    signal,
   });
   if (!response.ok) {
     throw new Error(`Build info request failed (${response.status})`);
   }
-  return (await response.json()) as BuildInfo;
+  return (await response.json()) as T;
+}
+
+async function fetchBuildInfo(signal: AbortSignal): Promise<BuildInfo> {
+  return getBuildInfoJsonWithFetch<BuildInfo>(
+    BUILD_INFO_URL,
+    globalThis.fetch,
+    BUILD_BADGE_JSON_TIMEOUT_MS,
+    signal,
+  );
 }
 
 interface BuildInfo {

@@ -4887,8 +4887,16 @@ export const messageAction: Action = {
 	roleGate: { minRole: "ADMIN" },
 	parameters: MESSAGE_PARAMETERS,
 	examples: (spec?.examples ?? []) as ActionExample[][],
-	validate: async (runtime, message, state) => {
+	validate: async (runtime, message, state, options) => {
 		refreshDescriptions(messageAction, runtime);
+		const explicitParams = paramsFromOptions(options);
+		if (
+			textParam(explicitParams.action) ||
+			textParam(explicitParams.operation) ||
+			textParam(explicitParams.op)
+		) {
+			return true;
+		}
 		return hasActionContext(message, state, {
 			contexts: MESSAGE_CONTEXTS,
 		});

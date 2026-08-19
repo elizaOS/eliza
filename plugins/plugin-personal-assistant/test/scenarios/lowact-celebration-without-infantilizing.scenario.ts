@@ -24,6 +24,7 @@ export default scenario({
   title:
     "Low activation: celebrate a small win proportionally, not infantilizing",
   domain: "lifeops.wellbeing",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "low-activation", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

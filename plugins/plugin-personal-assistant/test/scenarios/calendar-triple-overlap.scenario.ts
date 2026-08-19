@@ -416,6 +416,7 @@ export default scenario({
   title:
     "CONFLICT_DETECT surfaces both real overlaps, excludes the declined invite, and a reschedule leaves exactly one conflict",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "conflict", "outcome", "declined"],
   isolation: "per-scenario",
   requires: {

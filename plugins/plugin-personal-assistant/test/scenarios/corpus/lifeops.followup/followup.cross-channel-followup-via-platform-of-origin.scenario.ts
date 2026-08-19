@@ -13,6 +13,7 @@ export default scenario({
   id: "followup.cross-channel-followup-via-platform-of-origin",
   title: "Follow-up goes back through the platform the conversation started on",
   domain: "lifeops.followup",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "followup", "cross-channel", "routing"],
   description:
     "The original thread is on Telegram. The follow-up dispatch must go to Telegram (not Discord, not Gmail) — bug class: agent picks the user's 'preferred' channel and accidentally bridges identity to a counterparty who only knows them on Telegram.",

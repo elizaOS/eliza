@@ -283,6 +283,7 @@ export default scenario({
   title:
     "Shift rotation re-anchors a habit reminder to the shifted waking window and never fires it inside the newly-protected sleep block",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

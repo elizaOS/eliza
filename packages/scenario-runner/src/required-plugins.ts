@@ -90,7 +90,9 @@ export function pluginPackageIsRegistered(
   const aliases = pluginNameAliases(packageName);
   return runtime.plugins.some(
     (plugin) =>
-      typeof plugin.name === "string" && aliases.has(plugin.name.trim()),
+      (typeof plugin.packageName === "string" &&
+        plugin.packageName.trim() === packageName) ||
+      (typeof plugin.name === "string" && aliases.has(plugin.name.trim())),
   );
 }
 

@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Fee collection grounds in the seeded invoice and withholds the payment account",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

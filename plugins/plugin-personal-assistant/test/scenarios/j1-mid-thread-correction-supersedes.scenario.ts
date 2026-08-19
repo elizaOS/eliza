@@ -14,6 +14,7 @@ export default scenario({
   id: "j1-mid-thread-correction-supersedes",
   title: "A mid-thread handoff correction supersedes instead of duplicating",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "coparenting", "supersession", "reminders", "mvp", "14789"],
   tier: "T2",
   isolation: "per-scenario",

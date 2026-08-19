@@ -70,6 +70,7 @@ export type SeededCanonicalIdentityContact = {
 };
 
 export type SeededCanonicalIdentityFixture = {
+  alreadySeeded: boolean;
   seedKey: string;
   ownerId: UUID;
   ownerName: string;
@@ -132,6 +133,10 @@ async function ensureEntity(
   const names = [name, ...priorNames.filter((n) => n && n !== name)];
   const existing = await runtime.getEntityById(entityId);
   if (existing) {
+    const mergedNames = [...new Set([...existing.names, ...names])];
+    if (mergedNames.length !== existing.names.length) {
+      await runtime.updateEntity({ ...existing, names: mergedNames });
+    }
     return;
   }
   await runtime.createEntity({
@@ -208,11 +213,47 @@ export async function seedCanonicalIdentityFixture(args: {
   const runtime = args.runtime;
   const relationships = await resolveRelationshipsService(runtime);
   const seedKey = args.seedKey;
-  const ownerId = args.ownerId ?? makeScopedUuid(seedKey, "owner");
+  const ownerId = args.ownerId ?? runtime.agentId;
   const ownerName = args.ownerName ?? "Shaw";
   const personName = args.personName ?? "Priya Rao";
   const priorNames = args.priorNames ?? [];
   const primaryPlatform = args.primaryPlatform ?? "gmail";
+
+  const existingPrimary = await runtime.getEntityById(
+    makeScopedUuid(seedKey, `${primaryPlatform}:entity`),
+  );
+  if (existingPrimary) {
+    const contacts = {} as Record<
+      CanonicalIdentityPlatform,
+      SeededCanonicalIdentityContact
+    >;
+    for (const platform of CANONICAL_IDENTITY_PLATFORMS) {
+      const entityId = makeScopedUuid(seedKey, `${platform}:entity`);
+      await ensureEntity(runtime, entityId, personName, priorNames);
+      const fixture = PLATFORM_FIXTURES[platform];
+      contacts[platform] = {
+        entityId,
+        roomId: makeScopedUuid(seedKey, `${platform}:room`),
+        worldId: makeScopedUuid(seedKey, `${platform}:world`),
+        platform,
+        handle: `${fixture.handle}#${seedKey}`,
+        inboundMessageId: makeScopedUuid(seedKey, `${platform}:inbound`),
+        outboundMessageId: makeScopedUuid(seedKey, `${platform}:outbound`),
+        inboundText: fixture.inboundText,
+      };
+    }
+    return {
+      alreadySeeded: true,
+      seedKey,
+      ownerId,
+      ownerName,
+      personName,
+      priorNames: [...priorNames],
+      primaryPlatform,
+      primaryEntityId: contacts[primaryPlatform].entityId,
+      contacts,
+    };
+  }
 
   await ensureEntity(runtime, ownerId, ownerName);
 
@@ -228,6 +269,7 @@ export async function seedCanonicalIdentityFixture(args: {
     const inboundMessageId = makeScopedUuid(seedKey, `${platform}:inbound`);
     const outboundMessageId = makeScopedUuid(seedKey, `${platform}:outbound`);
     const fixture = PLATFORM_FIXTURES[platform];
+    const scopedHandle = `${fixture.handle}#${seedKey}`;
 
     await ensureEntity(runtime, entityId, personName, priorNames);
     await relationships.addContact(
@@ -275,21 +317,11 @@ export async function seedCanonicalIdentityFixture(args: {
       }),
       "messages",
     );
-    await runtime.createRelationship({
-      sourceEntityId: ownerId,
-      targetEntityId: entityId,
-      tags: ["conversation", "direct_exchange"],
-      metadata: {
-        source: "identity-merge-test-fixture",
-        status: "confirmed",
-      },
-    });
-
     await relationships.upsertIdentity(
       entityId,
       {
         platform,
-        handle: fixture.handle,
+        handle: scopedHandle,
         confidence: 0.95,
         verified: true,
         source: "identity-merge-test-fixture",
@@ -302,7 +334,7 @@ export async function seedCanonicalIdentityFixture(args: {
       roomId,
       worldId,
       platform,
-      handle: fixture.handle,
+      handle: scopedHandle,
       inboundMessageId,
       outboundMessageId,
       inboundText: fixture.inboundText,
@@ -310,6 +342,7 @@ export async function seedCanonicalIdentityFixture(args: {
   }
 
   return {
+    alreadySeeded: false,
     seedKey,
     ownerId,
     ownerName,
@@ -325,12 +358,12 @@ export async function acceptCanonicalIdentityMerge(
   runtime: AgentRuntime,
   fixture: SeededCanonicalIdentityFixture,
 ): Promise<void> {
-  const relationships = await resolveRelationshipsService(runtime);
+  const graph = await getCanonicalIdentityGraph(runtime);
   for (const platform of CANONICAL_IDENTITY_PLATFORMS) {
     if (platform === fixture.primaryPlatform) {
       continue;
     }
-    const candidateId = await relationships.proposeMerge(
+    const candidateId = await graph.proposeMerge(
       fixture.primaryEntityId,
       fixture.contacts[platform].entityId,
       {
@@ -339,7 +372,7 @@ export async function acceptCanonicalIdentityMerge(
         notes: `${fixture.personName} is the same person across ${fixture.primaryPlatform} and ${platform}`,
       },
     );
-    await relationships.acceptMerge(candidateId);
+    await graph.acceptMerge(candidateId);
   }
 }
 

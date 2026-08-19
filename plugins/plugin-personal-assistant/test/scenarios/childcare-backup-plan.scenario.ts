@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Childcare backup plan is grounded in the seeded immovable commitment and keeps the school private",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "family", "calendar", "outcome"],
   isolation: "per-scenario",
   requires: {

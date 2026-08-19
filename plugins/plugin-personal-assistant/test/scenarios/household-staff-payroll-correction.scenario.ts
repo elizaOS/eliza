@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Payroll correction grounds in seeded timesheet state; wage rate stays gated",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "household", "money", "outcome"],
   isolation: "per-scenario",
   requires: {

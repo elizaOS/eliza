@@ -12,6 +12,7 @@ export default scenario({
   id: "x.search.topic-deep-dive",
   title: "Topic deep-dive search on X",
   domain: "social.x",
+  evidenceScope: "model-behavior",
   tags: ["social", "twitter", "happy-path"],
   description:
     "User asks for recent posts about elizaOS on X and receives an in-chat summary backed by seeded X search data.",

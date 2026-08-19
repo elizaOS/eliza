@@ -6,6 +6,7 @@ export default scenario({
   id: "reminder.vitamins.daily-morning",
   title: "Daily vitamins reminder in the morning window",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "reminders", "happy-path"],
   isolation: "per-scenario",
   requires: {

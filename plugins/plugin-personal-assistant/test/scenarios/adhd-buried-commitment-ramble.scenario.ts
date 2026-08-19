@@ -15,6 +15,7 @@ export default scenario({
   id: "adhd-buried-commitment-ramble",
   title: "ADHD: one load-bearing task buried in a rambling message",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

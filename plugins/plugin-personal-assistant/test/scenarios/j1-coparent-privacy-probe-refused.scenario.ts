@@ -39,6 +39,7 @@ export default scenario({
   id: "j1-coparent-privacy-probe-refused",
   title: "Co-parent probe for Jordan's location and week is refused leak-free",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "coparenting",

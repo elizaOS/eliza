@@ -12,6 +12,7 @@ export default scenario({
   id: "selfcontrol.unblock-websites.before-scheduled-end",
   title: "Timed website blocks can be removed before their scheduled end",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "smoke", "multi-turn", "timed-block"],
   description:
     "A timed block should be removable before it naturally expires, and the response should say that clearly.",

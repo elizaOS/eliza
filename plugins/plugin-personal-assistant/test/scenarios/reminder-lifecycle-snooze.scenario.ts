@@ -42,6 +42,7 @@ export default scenario({
   id: "reminder-lifecycle-snooze",
   title: "Compressed reminder lifecycle with snooze",
   domain: "lifeops",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "smoke"],
   isolation: "per-scenario",
   requires: {

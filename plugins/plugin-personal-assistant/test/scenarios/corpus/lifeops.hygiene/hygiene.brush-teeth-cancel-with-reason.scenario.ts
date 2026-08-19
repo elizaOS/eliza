@@ -18,6 +18,7 @@ export default scenario({
   id: "hygiene.brush-teeth-cancel-with-reason",
   title: "Brush teeth preview is cancelled with a reason — no duplicate",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "cancel"],
   isolation: "per-scenario",
   requires: {

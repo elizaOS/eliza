@@ -9,6 +9,7 @@ export default scenario({
   id: "workout-spanish",
   title: "Workout blocker from casual Spanish phrasing",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {

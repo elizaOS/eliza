@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Search the rolodex returns the same entity for any handle on any platform",
   domain: "lifeops.identity",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "identity", "search", "merge"],
   description:
     "An entity has gmail + telegram + discord handles. Searching by any one of the three must resolve to the same entity. Catches a regression where the search index forgot to include some handles after merge.",

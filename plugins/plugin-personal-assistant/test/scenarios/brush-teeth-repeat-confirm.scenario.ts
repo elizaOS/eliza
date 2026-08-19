@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-repeat-confirm",
   title: "Brush teeth ignores repeated save confirmation",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Hiring loop coordination grounds in seeded panels; candidate email stays staged",
   domain: "executive.hiring",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "calendar", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {

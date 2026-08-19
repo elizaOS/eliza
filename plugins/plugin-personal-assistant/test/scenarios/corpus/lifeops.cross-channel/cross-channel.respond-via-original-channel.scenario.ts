@@ -46,6 +46,7 @@ export default scenario({
   id: "cross-channel.respond-via-original-channel",
   title: "Reply preserves original channel (Telegram in, Telegram out)",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "cross-channel", "channel-preservation", "reply"],
   isolation: "per-scenario",
   requires: {

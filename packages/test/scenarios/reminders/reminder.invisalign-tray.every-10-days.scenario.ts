@@ -6,6 +6,7 @@ export default scenario({
   id: "reminder.invisalign-tray.every-10-days",
   title: "Invisalign tray swap every 10 days",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "reminders", "smoke", "critical", "happy-path"],
   isolation: "per-scenario",
   requires: {

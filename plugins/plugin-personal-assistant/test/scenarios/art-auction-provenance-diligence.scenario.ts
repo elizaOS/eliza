@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Auction provenance diligence is grounded in seeded tasks and never leaks the bid ceiling",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

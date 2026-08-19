@@ -38,6 +38,7 @@ export default scenario({
   id: "travel-buffer.auto-add-15min-before-offsite",
   title: "Auto-adds a 15-min travel buffer before an offsite event",
   domain: "lifeops.travel-buffer",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel-buffer", "calendar"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

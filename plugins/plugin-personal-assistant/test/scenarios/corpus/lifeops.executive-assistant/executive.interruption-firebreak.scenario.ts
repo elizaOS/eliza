@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.interruption-firebreak",
   title: "Interruption firebreak batches low-value pings during focus",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "focus", "interruptions"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

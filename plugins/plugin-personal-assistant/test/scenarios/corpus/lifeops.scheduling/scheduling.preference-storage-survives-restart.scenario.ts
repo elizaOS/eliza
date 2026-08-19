@@ -40,6 +40,7 @@ export default scenario({
   id: "scheduling.preference-storage-survives-restart",
   title: "Seeded meeting preferences are read back, not re-asked",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "preferences", "persistence"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

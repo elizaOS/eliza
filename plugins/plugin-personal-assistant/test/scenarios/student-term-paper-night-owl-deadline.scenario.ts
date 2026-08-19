@@ -10,6 +10,7 @@ export default scenario({
   id: "student-term-paper-night-owl-deadline",
   title: "Student night owl: term-paper deadline avoids default morning",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "mvp", "student", "night-owl", "14352"],
   tier: "T2",
   status: "active",

@@ -13,6 +13,7 @@ export default scenario({
   id: "travel.capture-preferences-first-time",
   title: "Capture travel preferences on the first booking conversation",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "profile", "preferences"],
   description:
     "On the user's first travel booking request the agent must elicit class, seat, bag, and budget preferences and persist them via PROFILE/LIFE so the next booking doesn't repeat the interrogation.",

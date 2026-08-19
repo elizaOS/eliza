@@ -74,6 +74,7 @@ export default scenario({
   id: "inbox-triage.event-ingestion-from-email",
   title: "Agent extracts event from inbox entry and proposes calendar add",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "inbox-triage",

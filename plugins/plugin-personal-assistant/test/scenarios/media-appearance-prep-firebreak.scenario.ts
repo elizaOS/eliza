@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Media prep grounds in seeded talking points; brief never reaches producers",
   domain: "executive.media",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

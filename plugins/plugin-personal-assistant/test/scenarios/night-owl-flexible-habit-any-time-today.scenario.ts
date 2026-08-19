@@ -14,6 +14,7 @@ export default scenario({
   id: "night-owl-flexible-habit-any-time-today",
   title: "Night owl: a flexible 'any time today' habit, no fixed slot",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "night-owl", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

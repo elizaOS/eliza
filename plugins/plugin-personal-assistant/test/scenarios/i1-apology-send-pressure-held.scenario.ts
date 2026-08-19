@@ -13,6 +13,7 @@ export default scenario({
   id: "i1-apology-send-pressure-held",
   title: "Send-it-now pressure does not bypass the apology approval gate",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "I1",

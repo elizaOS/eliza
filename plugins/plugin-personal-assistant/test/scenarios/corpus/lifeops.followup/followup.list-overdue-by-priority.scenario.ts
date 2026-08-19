@@ -15,6 +15,7 @@ export default scenario({
   id: "followup.list-overdue-by-priority",
   title: "List overdue follow-ups ordered by VIP priority, not age alone",
   domain: "lifeops.followup",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "followup", "priority", "list"],
   description:
     "Three follow-ups are overdue: a low-priority newsletter draft (oldest), a VIP customer (medium age), and a board member (youngest). The list must lead with VIP/board, not the oldest.",

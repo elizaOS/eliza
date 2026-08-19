@@ -14,6 +14,7 @@ export default scenario({
   id: "ea.docs.portal-upload-from-chat",
   title: "Upload a deck or asset to a portal from chat instructions",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "docs", "browser", "transcript-derived"],
   description:
     "Transcript-derived case: the assistant takes a presentation asset from chat and uploads it to a speaker portal.",

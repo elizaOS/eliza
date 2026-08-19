@@ -10,6 +10,7 @@ export default scenario({
   id: "student-lab-report-distractor-deadline",
   title: "Student: lab-report deadline survives a distractor turn",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "mvp", "student", "distractor", "14352"],
   tier: "T2",
   status: "active",

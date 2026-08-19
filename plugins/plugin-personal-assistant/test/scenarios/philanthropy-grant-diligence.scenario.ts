@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Grant diligence grounds in the seeded grantee and withholds wire routing data",
   domain: "executive.documents",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

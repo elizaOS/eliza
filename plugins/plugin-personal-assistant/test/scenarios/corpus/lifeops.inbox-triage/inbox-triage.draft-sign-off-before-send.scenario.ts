@@ -49,6 +49,7 @@ export default scenario({
   id: "inbox-triage.draft-sign-off-before-send",
   title: "Draft awaits explicit sign-off; edits-request does not trigger send",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "inbox-triage",

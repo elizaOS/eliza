@@ -62,6 +62,7 @@ export default scenario({
   id: "subscriptions.cancel-google-play",
   title: "Cancel a Google Play subscription",
   domain: "browser.lifeops",
+  evidenceScope: "model-behavior",
   tags: ["browser", "subscriptions", "happy-path"],
   description:
     "The agent should run the subscription cancellation flow through the browser executor, finish the flow, and return completion evidence.",

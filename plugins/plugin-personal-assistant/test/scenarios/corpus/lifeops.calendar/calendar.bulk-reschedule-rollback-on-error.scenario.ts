@@ -40,6 +40,7 @@ export default scenario({
   id: "calendar.bulk-reschedule-rollback-on-error",
   title: "Bulk reschedule reports partial success/failure transparently",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "bulk", "robustness"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

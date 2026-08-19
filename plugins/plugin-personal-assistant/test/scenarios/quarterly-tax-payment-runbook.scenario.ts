@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Quarterly tax runbook grounds in the seeded CPA packet and withholds the payment account",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

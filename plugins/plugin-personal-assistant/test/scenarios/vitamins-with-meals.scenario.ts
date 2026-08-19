@@ -9,6 +9,7 @@ export default scenario({
   id: "vitamins-with-meals",
   title: "Vitamins tied to a meal window",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits"],
   isolation: "per-scenario",
   requires: {

@@ -13,6 +13,7 @@ export default scenario({
   id: "identity.merge-after-handle-rename",
   title: "User confirms a Telegram rename and the agent commits the merge",
   domain: "lifeops.identity",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "identity", "rename", "merge", "confirmed"],
   description:
     "Second-step of the rename flow: after surfacing the suspected rename, the user explicitly confirms. The agent must merge the two entity rows into one and store the rename event as audit history.",

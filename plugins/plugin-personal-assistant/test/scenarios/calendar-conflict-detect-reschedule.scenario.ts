@@ -10,6 +10,7 @@ export default scenario({
   id: "calendar-conflict-detect-reschedule",
   title: "Detect a calendar double-booking and reschedule to resolve it",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "conflict", "reschedule"],
   isolation: "per-scenario",
   requires: {

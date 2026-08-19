@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Night owl: 'tonight' spoken after midnight is clarified before a block moves",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "night-owl",

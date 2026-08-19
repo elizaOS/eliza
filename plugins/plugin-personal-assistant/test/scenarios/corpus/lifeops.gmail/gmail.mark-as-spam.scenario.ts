@@ -18,6 +18,7 @@ export default scenario({
   id: "gmail.mark-as-spam",
   title: "Mark a specific Gmail message as spam via batchModify add SPAM",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "spam", "modify"],
   isolation: "per-scenario",
   requires: {

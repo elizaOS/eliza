@@ -12,6 +12,7 @@ export default scenario({
   id: "cross-platform.escalation-to-user",
   title: "Signature-required request escalates back to the owner",
   domain: "messaging.cross-platform",
+  evidenceScope: "model-behavior",
   tags: ["cross-platform", "gateway", "negotiation", "intent-bus"],
   description:
     "A request that requires the owner's direct negotiation or signature should route through the real cross-platform gateway and create an owner-action intent instead of falling back to inbox/calendar actions.",

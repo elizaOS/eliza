@@ -30,6 +30,7 @@ export default scenario({
   id: "habits.dst-cross-streak-integrity",
   title: "Streak counter survives DST fall-back transition",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "streak", "dst", "timezone"],
   isolation: "per-scenario",
   requires: {

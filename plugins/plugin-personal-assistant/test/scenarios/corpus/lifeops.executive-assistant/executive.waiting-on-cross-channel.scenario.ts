@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.waiting-on-cross-channel",
   title: "Waiting-on review finds delegated work across channels",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "waiting-on", "cross-channel"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

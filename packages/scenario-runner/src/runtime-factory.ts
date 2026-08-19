@@ -16,6 +16,7 @@ import {
   createCharacter,
   logger,
   ModelType,
+  promoteSubactionsToActions,
   trajectoriesPlugin,
 } from "@elizaos/core";
 import {
@@ -94,13 +95,16 @@ async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
   >;
   const KnowledgeGraphService = agentModule.KnowledgeGraphService;
   const knowledgeGraphSchema = agentModule.knowledgeGraphSchema;
+  const contactAction = agentModule.contactAction;
   if (
     typeof KnowledgeGraphService !== "function" ||
     knowledgeGraphSchema === null ||
-    typeof knowledgeGraphSchema !== "object"
+    typeof knowledgeGraphSchema !== "object" ||
+    contactAction === null ||
+    typeof contactAction !== "object"
   ) {
     throw new Error(
-      "[scenario-runner] @elizaos/agent did not expose KnowledgeGraphService and knowledgeGraphSchema",
+      "[scenario-runner] @elizaos/agent did not expose the relationship graph and CONTACT contracts",
     );
   }
 
@@ -111,6 +115,11 @@ async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
     schema: knowledgeGraphSchema as Plugin["schema"],
     services: [
       KnowledgeGraphService as NonNullable<Plugin["services"]>[number],
+    ],
+    actions: [
+      ...promoteSubactionsToActions(
+        contactAction as NonNullable<Plugin["actions"]>[number],
+      ),
     ],
   };
 }
@@ -866,9 +875,11 @@ export async function createScenarioRuntime(
     // Dashboard routes remain a compatibility-harness capability. Qualified
     // runs receive only packages declared by the scenario, preventing an
     // ambient route bundle from making a missing production dependency pass.
-    const routesModule = (await import(
-      "@elizaos/plugin-personal-assistant"
-    )) as Record<string, unknown>;
+    const lifeOpsRoutesPackage: string = "@elizaos/plugin-personal-assistant";
+    const routesModule = (await import(lifeOpsRoutesPackage)) as Record<
+      string,
+      unknown
+    >;
     const lifeOpsRoutesPlugin = extractPlugin(routesModule, [
       "personalAssistantRoutesPlugin",
     ]);

@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-basic",
   title: "Brush teeth basic save flow",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "smoke"],
   isolation: "per-scenario",
   requires: {

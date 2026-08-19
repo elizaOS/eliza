@@ -55,7 +55,7 @@ export type BuiltInEntityKind = (typeof BUILT_IN_ENTITY_KINDS)[number];
 export const SELF_ENTITY_ID = "self";
 
 /**
- * Canonical entity-kind / op tuple accepted by the `ENTITY` action.
+ * Canonical operation tuple accepted by the `KNOWLEDGE_GRAPH` action.
  *
  * Mirrors the `Subaction` union in
  * `plugins/plugin-personal-assistant/src/actions/entity.ts`.

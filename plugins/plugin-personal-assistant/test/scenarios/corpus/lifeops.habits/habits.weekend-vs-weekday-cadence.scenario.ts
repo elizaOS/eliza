@@ -10,6 +10,7 @@ export default scenario({
   id: "habits.weekend-vs-weekday-cadence",
   title: "Weekday-only running habit excludes Sat/Sun",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "weekly", "weekday-only"],
   isolation: "per-scenario",
   requires: {

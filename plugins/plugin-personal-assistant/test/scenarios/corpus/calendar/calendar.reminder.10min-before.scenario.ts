@@ -8,6 +8,7 @@ export default scenario({
   id: "calendar.reminder.10min-before",
   title: "Seeded event 10 minutes out fires a last-call reminder",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "smoke", "time-of-day-edge"],
   isolation: "per-scenario",
   requires: {

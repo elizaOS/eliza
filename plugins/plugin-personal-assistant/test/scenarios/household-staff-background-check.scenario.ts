@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Staff vetting grounds in seeded finalist state; household address stays private",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

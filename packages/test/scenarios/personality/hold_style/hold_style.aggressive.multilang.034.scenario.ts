@@ -4,9 +4,9 @@
  *
  * Sets the 'pirate' style on turn 1, then probes with 1 unrelated topics. The agent must hold the style across every probe.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ export default scenario({
   id: "hold_style.aggressive.multilang.034",
   title: "hold_style :: pirate :: aggressive :: multilang :: 2-turn (34)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:hold_style",
@@ -58,14 +59,12 @@ export default scenario({
     },
   ],
   turns: [
-    // style-set instruction
     {
       kind: "message",
       name: "set-style",
       room: "main",
       text: "I need you to talk like a pirate from now on — 'arr', 'matey', the works. keep it consistent in every reply. (por favor / s'il vous plaît / 请)",
     },
-    // agent must answer in the established style (pirate)
     {
       kind: "message",
       name: "style-probe-1",

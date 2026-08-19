@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Equity exercise window is grounded in seeded grant work and leaks no tax estimate",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -113,6 +113,26 @@ describe("scenario() strict scenario metadata validation", () => {
       } as unknown as ScenarioDefinition),
     ).toThrow(/invalid status "known-red"/);
   });
+
+  it("requires a concrete reason for pending scenarios", () => {
+    expect(() => scenario({ ...base, status: "pending" })).toThrow(
+      /pending without a concrete pendingReason/,
+    );
+    expect(() =>
+      scenario({
+        ...base,
+        status: "pending",
+        pendingReason: "Requires an authenticated provider fixture.",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      scenario({
+        ...base,
+        status: "active",
+        pendingReason: "This reason must not survive activation.",
+      }),
+    ).toThrow(/declares pendingReason but is not pending/);
+  });
 });
 
 describe("loadScenarioFile strict validation", () => {
@@ -230,6 +250,256 @@ describe("skipped finalChecks (dependency missing)", () => {
   });
 });
 
+describe("binding connector evidence", () => {
+  const runtime = {} as IAgentRuntime;
+  const inferredDispatch = {
+    channel: "sms",
+    delivered: false,
+    evidenceSource: "action-result-inference" as const,
+    status: "reported_success" as const,
+  };
+
+  it("does not treat an action success report as a connector dispatch", async () => {
+    const result = await runFinalCheck(
+      { type: "connectorDispatchOccurred", name: "dispatch", channel: "sms" },
+      {
+        runtime,
+        ctx: { actionsCalled: [], connectorDispatches: [inferredDispatch] },
+      },
+    );
+    expect(result).toMatchObject({ status: "failed" });
+  });
+
+  it("does not treat action result prose/status as message delivery", async () => {
+    const result = await runFinalCheck(
+      { type: "messageDelivered", name: "delivery", channel: "sms" },
+      {
+        runtime,
+        ctx: {
+          actionsCalled: [
+            {
+              actionName: "MESSAGE",
+              result: {
+                success: true,
+                data: { channel: "sms", status: "delivered" },
+              },
+            },
+          ],
+          connectorDispatches: [inferredDispatch],
+        },
+      },
+    );
+    expect(result).toMatchObject({ status: "failed" });
+  });
+
+  it("scopes dispatch absence and exact counts to named turns", async () => {
+    const observed = {
+      channel: "sms",
+      delivered: true,
+      evidenceSource: "runtime-send-handler" as const,
+      status: "delivered" as const,
+      providerMessageIds: ["SM42"],
+      idempotencyKey: "approval-42",
+    };
+    const ctx = {
+      actionsCalled: [],
+      connectorDispatches: [observed],
+      turns: [
+        {
+          name: "draft",
+          actionsCalled: [],
+          connectorDispatches: [],
+        },
+        {
+          name: "confirm",
+          actionsCalled: [],
+          connectorDispatches: [observed],
+        },
+      ],
+    };
+    await expect(
+      runFinalCheck(
+        {
+          type: "connectorDispatchOccurred",
+          name: "no pre-confirm send",
+          channel: "sms",
+          turn: "draft",
+          expected: false,
+        },
+        { runtime, ctx },
+      ),
+    ).resolves.toMatchObject({ status: "passed" });
+    await expect(
+      runFinalCheck(
+        {
+          type: "connectorDispatchOccurred",
+          name: "one confirmed send",
+          channel: "sms",
+          turn: "confirm",
+          minCount: 1,
+          maxCount: 1,
+          delivered: true,
+          status: "delivered",
+          idempotencyKey: "approval-42",
+          providerMessageId: "SM42",
+        },
+        { runtime, ctx },
+      ),
+    ).resolves.toMatchObject({ status: "passed" });
+  });
+
+  it("fails noSideEffects on authoritative turn-scoped effects", async () => {
+    const result = await runFinalCheck(
+      { type: "noSideEffects", name: "read-only", turn: "question" },
+      {
+        runtime,
+        ctx: {
+          actionsCalled: [],
+          turns: [
+            {
+              name: "question",
+              actionsCalled: [],
+              connectorDispatches: [],
+              stateTransitions: [
+                { subject: "todo:42", from: "open", to: "deleted" },
+              ],
+            },
+          ],
+        },
+      },
+    );
+    expect(result).toMatchObject({ status: "failed" });
+  });
+
+  it("can treat approval creation as a safe continuation without allowing dispatch", async () => {
+    const result = await runFinalCheck(
+      {
+        type: "noSideEffects",
+        name: "approval only",
+        turn: "proposal",
+        allowApprovalRequests: true,
+      },
+      {
+        runtime,
+        ctx: {
+          actionsCalled: [],
+          turns: [
+            {
+              name: "proposal",
+              actionsCalled: [],
+              connectorDispatches: [],
+              approvalRequests: [
+                { id: "approval-42", actionName: "MESSAGE", state: "pending" },
+              ],
+            },
+          ],
+        },
+      },
+    );
+    expect(result).toMatchObject({ status: "passed" });
+  });
+});
+
+describe("turn-scoped Gmail fixture evidence", () => {
+  const runtime = {} as IAgentRuntime;
+  const exactWrite = {
+    provider: "gmail",
+    method: "POST",
+    path: "/gmail/v1/users/me/messages/batchModify",
+    body: {
+      ids: ["msg-a", "msg-b"],
+      removeLabelIds: ["INBOX"],
+    },
+    metadata: {
+      action: "messages.batchModify",
+      ids: ["msg-a", "msg-b"],
+    },
+  };
+
+  it("binds an exact Gmail ID set to the named turn", async () => {
+    const result = await runFinalCheck(
+      {
+        type: "gmailMockRequest",
+        name: "exact bulk archive",
+        method: "POST",
+        path: "/gmail/v1/users/me/messages/batchModify",
+        body: { ids: ["msg-a", "msg-b"], removeLabelIds: ["INBOX"] },
+        gmail: { action: "messages.batchModify", ids: ["msg-a", "msg-b"] },
+        exactArrays: true,
+        turn: "confirm",
+        minCount: 1,
+        maxCount: 1,
+      },
+      {
+        runtime,
+        ctx: {
+          actionsCalled: [],
+          turns: [
+            { name: "review", actionsCalled: [], providerRequests: [] },
+            {
+              name: "confirm",
+              actionsCalled: [],
+              providerRequests: [exactWrite],
+            },
+          ],
+        },
+      },
+    );
+    expect(result).toMatchObject({ status: "passed" });
+  });
+
+  it("rejects an extra Gmail target under exact-array matching", async () => {
+    const result = await runFinalCheck(
+      {
+        type: "gmailMockRequest",
+        name: "no decoy mutation",
+        method: "POST",
+        path: "/gmail/v1/users/me/messages/batchModify",
+        body: { ids: ["msg-a"] },
+        exactArrays: true,
+        turn: "confirm",
+      },
+      {
+        runtime,
+        ctx: {
+          actionsCalled: [],
+          turns: [
+            {
+              name: "confirm",
+              actionsCalled: [],
+              providerRequests: [exactWrite],
+            },
+          ],
+        },
+      },
+    );
+    expect(result).toMatchObject({ status: "failed" });
+  });
+
+  it("fails closed when turn-scoped Gmail request evidence is unavailable", async () => {
+    const result = await runFinalCheck(
+      {
+        type: "gmailMockRequest",
+        name: "prove no write",
+        method: "POST",
+        expected: false,
+        turn: "review",
+      },
+      {
+        runtime,
+        ctx: {
+          actionsCalled: [],
+          turns: [{ name: "review", actionsCalled: [] }],
+        },
+      },
+    );
+    expect(result).toMatchObject({
+      status: "failed",
+      detail: expect.stringContaining("ledger unavailable"),
+    });
+  });
+});
+
 describe("provider-qualified data boundary", () => {
   const trustedScenario = {
     id: "fixture.provider-qualified",
@@ -237,6 +507,7 @@ describe("provider-qualified data boundary", () => {
     domain: "fixture",
     lane: "live-only",
     executionProfile: "provider-qualified",
+    evidenceScope: "provider-certification",
     isolation: "per-scenario",
     requires: { plugins: ["@elizaos/plugin-personal-assistant"] },
     turns: [

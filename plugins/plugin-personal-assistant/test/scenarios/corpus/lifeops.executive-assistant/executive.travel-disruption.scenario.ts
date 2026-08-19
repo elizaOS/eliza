@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Travel disruption reprioritizes itinerary, calendar, contacts, and expenses",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "travel", "resilience"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

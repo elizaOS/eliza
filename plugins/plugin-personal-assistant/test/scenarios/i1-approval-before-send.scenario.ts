@@ -11,6 +11,7 @@ export default scenario({
   id: "i1-approval-before-send",
   title: "I1 repair draft requires approval before send",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "I1", "approval", "message-draft", "relationships"],
   isolation: "per-scenario",
   rooms: [

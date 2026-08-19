@@ -1,4 +1,4 @@
-/** Scenario fixture for reminder escalation user angry; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves that angry, explicitly temporary pushback skips the active occurrence, preserves its definition, and suppresses the later due rung. */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 function assertApiBody(options: {
@@ -39,6 +39,7 @@ export default scenario({
   id: "reminder.escalation.user-angry",
   title: "User tells agent to stop; agent de-escalates without disabling",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "reminders", "escalation", "cancel-mid-flow"],
   isolation: "per-scenario",
   requires: {
@@ -101,7 +102,7 @@ export default scenario({
       kind: "message",
       name: "user snaps at reminder",
       room: "discord",
-      text: "stop pinging me about the dentist, enough already!",
+      text: "Stop pinging me about the dentist for today, enough already!",
       plannerIncludesAll: ["<name>life</name>"],
       responseIncludesAny: ["sorry", "okay", "back off", "calm", "quieter"],
       responseExcludes: ["disabled", "deleted"],
@@ -110,6 +111,18 @@ export default scenario({
           "Agent acknowledges the user's frustration, offers to soften or pause future nudges without fully deleting or disabling the reminder.",
         minimumScore: 0.6,
       },
+    },
+    {
+      kind: "api",
+      name: "process later rung after pushback",
+      method: "POST",
+      path: "/api/lifeops/reminders/process",
+      body: {
+        now: "{{now+40m}}",
+        limit: 10,
+      },
+      expectedStatus: 200,
+      assertResponse: assertApiBody({ includesAll: ['"attempts":[]'] }),
     },
     {
       kind: "api",
@@ -123,6 +136,31 @@ export default scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "custom",
+      name: "angry-pushback-skips-active-occurrence",
+      predicate: (ctx) => {
+        const turn = ctx.turns?.find(
+          (entry) => entry.name === "user snaps at reminder",
+        );
+        const life = turn?.actionsCalled.find(
+          (action) => action.actionName === "LIFE",
+        );
+        if (!life || life.error || life.result?.success !== true) {
+          return "expected LIFE to apply a successful temporary skip";
+        }
+        const data =
+          life.result.data && typeof life.result.data === "object"
+            ? (life.result.data as Record<string, unknown>)
+            : null;
+        if (data?.state !== "skipped" || data.title !== "Call dentist") {
+          return `expected skipped Call dentist occurrence, saw ${JSON.stringify(data)}`;
+        }
+        if (data.deleted !== undefined) {
+          return "temporary pushback deleted the reminder definition";
+        }
+      },
+    },
     {
       type: "definitionCountDelta",
       title: "Call dentist",

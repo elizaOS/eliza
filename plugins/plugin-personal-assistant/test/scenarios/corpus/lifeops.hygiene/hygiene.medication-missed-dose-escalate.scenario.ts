@@ -14,6 +14,7 @@ export default scenario({
   id: "hygiene.medication-missed-dose-escalate",
   title: "Missed medication dose surfaces immediately on check-in",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "medication", "escalation"],
   isolation: "per-scenario",
   requires: {

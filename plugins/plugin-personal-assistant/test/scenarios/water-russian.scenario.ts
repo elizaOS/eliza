@@ -9,6 +9,7 @@ export default scenario({
   id: "water-russian",
   title: "Drink water from Russian phrasing (Cyrillic, neutral)",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

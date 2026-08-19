@@ -26,6 +26,7 @@ export default scenario({
   title:
     "Low activation: 'make my whole list smaller' → bulk shrink, not a wipe",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "low-activation", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

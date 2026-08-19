@@ -71,6 +71,7 @@ export default scenario({
   id: "inbox-triage.draft-respects-tone-prefs",
   title: "Draft respects 'terse, no pleasantries' tone preference",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox-triage", "tone", "preferences", "draft"],
   isolation: "per-scenario",
   requires: {

@@ -39,6 +39,7 @@ export default scenario({
   id: "travel-buffer.zoom-meeting-no-buffer",
   title: "Zoom / virtual meeting skips the auto travel buffer",
   domain: "lifeops.travel-buffer",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel-buffer", "virtual"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

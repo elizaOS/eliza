@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-korean",
   title: "Brush teeth from polite Korean phrasing",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "smoke"],
   isolation: "per-scenario",
   requires: {

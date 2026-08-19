@@ -17,6 +17,7 @@ export default scenario({
   id: "gmail.bulk-cleanup-marketing-emails",
   title: "Bulk archive marketing emails without touching person mail",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "cleanup", "marketing", "bulk"],
   isolation: "per-scenario",
   requires: {

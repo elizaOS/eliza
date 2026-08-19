@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Chef brief grounds in the seeded chef and strips the medical explanation",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

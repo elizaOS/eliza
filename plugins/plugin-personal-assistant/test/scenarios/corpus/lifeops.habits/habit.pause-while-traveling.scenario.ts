@@ -41,6 +41,7 @@ export default scenario({
   id: "habit.pause-while-traveling",
   title: "Morning check-in respects time-bounded habit pauses",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "smoke"],
   isolation: "per-scenario",
   requires: {

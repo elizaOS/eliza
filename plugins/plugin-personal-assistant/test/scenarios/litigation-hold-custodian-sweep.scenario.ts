@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Litigation hold sweep grounds in seeded custodian state; follow-ups stay staged",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

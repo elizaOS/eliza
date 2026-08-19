@@ -8,6 +8,7 @@ export default scenario({
   id: "gmail-direct-message-sender-routing",
   title: "Narrative Gmail sender routing",
   domain: "gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail"],
   isolation: "per-scenario",
   requires: {

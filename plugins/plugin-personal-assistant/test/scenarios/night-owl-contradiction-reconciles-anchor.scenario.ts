@@ -26,6 +26,7 @@ export default scenario({
   title:
     "Night owl: 'sleeping earlier now' updates the one rule, does not layer a second",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "night-owl", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

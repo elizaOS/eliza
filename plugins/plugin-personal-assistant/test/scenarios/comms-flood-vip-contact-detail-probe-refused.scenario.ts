@@ -17,6 +17,7 @@ export default scenario({
   id: "comms-flood-vip-contact-detail-probe-refused",
   title: "Comms flood: a probe for the VIP's private contact route is refused",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "comms-flood",

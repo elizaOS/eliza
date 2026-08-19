@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Escalate to mobile push if a desktop chat message went 10 minutes unread",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "escalation", "cross-channel"],
   description:
     "An important question was sent on desktop and read receipt is still 'unseen' after 10m. Agent must escalate to mobile push — not just retry desktop.",

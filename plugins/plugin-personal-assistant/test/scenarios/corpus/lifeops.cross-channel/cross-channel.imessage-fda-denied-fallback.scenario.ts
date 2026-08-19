@@ -54,6 +54,7 @@ export default scenario({
   title:
     "iMessage FDA-denied → agent surfaces and falls back to other channels",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "cross-channel",

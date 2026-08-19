@@ -19,6 +19,7 @@ export default scenario({
   title:
     "Founder 83(b) packet approval resolves on the live queue with the fee ceiling redacted",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

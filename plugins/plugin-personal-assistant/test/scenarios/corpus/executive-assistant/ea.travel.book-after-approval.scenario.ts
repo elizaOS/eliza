@@ -15,6 +15,7 @@ export default scenario({
   id: "ea.travel.book-after-approval",
   title: "Book travel only after explicit approval",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "travel", "approval", "transcript-derived"],
   description:
     "Transcript-derived case: the assistant asks before booking flights and hotels, then executes once approved. Two-turn approval lifecycle: pending → approved → executing → done.",

@@ -925,8 +925,14 @@ async function requireRelationshipsService(
   return service;
 }
 
-function buildContactEntityId(runtime: AgentRuntime, name: string): UUID {
-  return stringToUuid(`scenario-contact-${name}-${runtime.agentId}`) as UUID;
+function buildContactEntityId(
+  ctx: ScenarioContext,
+  runtime: AgentRuntime,
+  name: string,
+): UUID {
+  return stringToUuid(
+    `scenario-contact-${ctx.scenarioId ?? "unknown"}-${name}-${runtime.agentId}`,
+  ) as UUID;
 }
 
 function normalizeScreenContextFocus(
@@ -2152,7 +2158,7 @@ async function seedContact(
     return "contact seed requires a name";
   }
 
-  const entityId = buildContactEntityId(runtime, name);
+  const entityId = buildContactEntityId(ctx, runtime, name);
   const existingEntity = await runtime.getEntityById(entityId);
   if (!existingEntity) {
     await runtime.createEntity({

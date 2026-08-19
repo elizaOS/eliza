@@ -210,6 +210,7 @@ export default scenario({
   title:
     "Low activation: a values-anchored activity fires inside the owner's evening window, defers outside it",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

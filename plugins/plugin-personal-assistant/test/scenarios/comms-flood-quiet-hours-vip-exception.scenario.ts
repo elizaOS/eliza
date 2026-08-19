@@ -273,6 +273,7 @@ export default scenario({
   title:
     "Comms flood quiet-hours VIP exception: VIP nudge breaks through, non-VIP digest ping held",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

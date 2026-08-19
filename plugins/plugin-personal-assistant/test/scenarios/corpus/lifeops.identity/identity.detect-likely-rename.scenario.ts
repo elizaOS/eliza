@@ -12,6 +12,7 @@ export default scenario({
   id: "identity.detect-likely-rename",
   title: "Flag a likely Telegram handle rename for user confirmation",
   domain: "lifeops.identity",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "identity", "rename", "detection"],
   description:
     "A Telegram contact changed handle from @oldhandle → @newhandle but the same user_id keeps appearing in messages. Agent must propose linking, not auto-merge silently nor lose the history.",

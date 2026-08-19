@@ -34,6 +34,7 @@ export default scenario({
   id: "reminder-multistep-plan-outcome",
   title: "Each step of a multi-step reminder plan delivers at its own time",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "reminders"],
   isolation: "per-scenario",
   requires: {

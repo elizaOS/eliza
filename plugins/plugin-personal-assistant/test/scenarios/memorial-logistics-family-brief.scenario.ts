@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Memorial plan grounds in seeded logistics; family conflict stays out of the group note",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

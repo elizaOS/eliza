@@ -1,10 +1,5 @@
-/** Scenario fixture for cross platform inbox; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves MESSAGE consolidates one canonical person's cross-platform threads. */
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   acceptCanonicalIdentityMerge,
@@ -12,15 +7,19 @@ import {
   seedCanonicalIdentityFixture,
 } from "../../../../test/helpers/lifeops-identity-merge-fixtures.ts";
 
-const PERSON_NAME = "Priya Rao";
+const PERSON_NAME = "Scenario Priya Rao";
+const PERSON_ALIAS = "Scenario P. Rao";
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "cross-platform.inbox",
-  title: "Inbox dedupes one person across messaging platforms",
+  title: "Consolidate one person's cross-platform conversation threads",
   domain: "messaging.cross-platform",
-  tags: ["cross-platform", "messaging", "inbox", "identity-merge"],
-  status: "pending",
+  evidenceScope: "domain-contract",
+  executionProfile: "simulated",
+  tags: ["cross-platform", "messaging", "identity-merge", "durable-readback"],
+  description:
+    "Invokes MESSAGE.read_with_contact and verifies one scenario-scoped canonical person spanning five seeded platform rooms and ten stored messages.",
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -44,48 +43,28 @@ export default scenario({
         }
         const fixture = await seedCanonicalIdentityFixture({
           runtime,
-          seedKey: "scenario-inbox",
+          seedKey: "scenario-priya",
           personName: PERSON_NAME,
+          priorNames: [PERSON_ALIAS],
         });
-        await acceptCanonicalIdentityMerge(runtime, fixture);
+        if (!fixture.alreadySeeded) {
+          await acceptCanonicalIdentityMerge(runtime, fixture);
+        }
         return undefined;
       },
     },
   ],
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "request-deduped-inbox",
       room: "main",
-      text: "Show me what unread messages need my attention from Priya Rao across Gmail, Signal, Telegram, and WhatsApp, without treating her like four different contacts.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE", "MESSAGE", "READ_MESSAGES"],
-        description: "deduped inbox lookup for one canonical person",
-        includesAny: [
-          "priya",
-          "unread",
-          "gmail",
-          "signal",
-          "telegram",
-          "whatsapp",
-        ],
-      }),
-      // De-echoed (#9310): the old keywords ("Priya", "unread", "Gmail",
-      // "Signal", "Telegram", "WhatsApp") all appeared in the user's own turn
-      // text. The reply must now express the derived dedupe outcome in words
-      // the prompt never used.
-      responseIncludesAny: [
-        "one person",
-        "single",
-        "merged",
-        "consolidated",
-        "deduplicated",
-      ],
-      responseJudge: {
-        minimumScore: 0.75,
-        rubric:
-          "The assistant must present Priya Rao as one person in the inbox view, while still surfacing her unread context across Gmail, Signal, Telegram, and WhatsApp.",
+      actionName: "MESSAGE",
+      text: "Read the canonical person's cross-platform conversation threads.",
+      options: {
+        parameters: { action: "read_with_contact", contact: PERSON_NAME },
       },
+      responseIncludes: ["Priya Rao", "5 thread(s)", "10 messages"],
     },
   ],
   finalChecks: [
@@ -105,25 +84,43 @@ export default scenario({
     },
     {
       type: "custom",
-      name: "cross-platform-inbox-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE", "MESSAGE", "READ_MESSAGES"],
-        description: "deduped inbox lookup for one canonical person",
-        includesAny: [
-          "priya",
-          "unread",
+      predicate: (ctx) => {
+        const action = ctx.actionsCalled.find(
+          (entry) => entry.actionName === "MESSAGE" && entry.result?.success,
+        );
+        const data = action?.result?.data as
+          | {
+              operation?: string;
+              personName?: string;
+              totalMessages?: number;
+              conversations?: Array<{ platform?: string }>;
+            }
+          | undefined;
+        if (
+          data?.operation !== "read_with_contact" ||
+          data.personName !== PERSON_NAME
+        ) {
+          return `expected a successful canonical MESSAGE.read_with_contact result for ${PERSON_NAME}`;
+        }
+        if (data.totalMessages !== 10 || data.conversations?.length !== 5) {
+          return `expected 5 threads and 10 messages, got ${data.conversations?.length ?? 0} and ${data.totalMessages ?? 0}`;
+        }
+        const platforms = new Set(
+          data.conversations.map((conversation) => conversation.platform),
+        );
+        for (const platform of [
           "gmail",
           "signal",
           "telegram",
           "whatsapp",
-        ],
-      }),
+          "discord",
+        ]) {
+          if (!platforms.has(platform)) {
+            return `canonical conversation result omitted ${platform}`;
+          }
+        }
+        return undefined;
+      },
     },
-    judgeRubric({
-      name: "cross-platform-inbox-rubric",
-      threshold: 0.75,
-      description:
-        "End-to-end: the inbox response dedupes Priya Rao into one canonical person while still surfacing unread context across Gmail, Signal, Telegram, and WhatsApp.",
-    }),
   ],
 });

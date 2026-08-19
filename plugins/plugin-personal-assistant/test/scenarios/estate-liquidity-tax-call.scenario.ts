@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Estate liquidity call prep grounds in seeded trust state and redacts account digits",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

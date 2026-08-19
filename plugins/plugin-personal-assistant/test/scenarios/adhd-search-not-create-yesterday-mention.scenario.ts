@@ -25,6 +25,7 @@ export default scenario({
   id: "adhd-search-not-create-yesterday-mention",
   title: "ADHD: half-remembered mention triggers a search, not a new reminder",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

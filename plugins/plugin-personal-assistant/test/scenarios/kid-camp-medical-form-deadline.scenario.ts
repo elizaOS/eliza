@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Camp form triage grounds in seeded deadline state; medication detail stays gated",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -14,6 +14,7 @@ export default scenario({
   id: "push.full-ladder-T-1h-10m-0",
   title: "Complete reminder ladder T-1h → T-10m → T-0 across devices",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "ladder", "end-to-end"],
   description:
     "End-to-end ladder: agent schedules three DEVICE_INTENT rungs at T-1h, T-10m, and T-0 on desktop + mobile. Acknowledgement at any rung must suppress the rest.",

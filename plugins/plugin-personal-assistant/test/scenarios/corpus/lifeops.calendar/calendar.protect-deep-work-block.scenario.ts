@@ -35,6 +35,7 @@ export default scenario({
   id: "calendar.protect-deep-work-block",
   title: "Refuses to schedule over an existing deep-work block by default",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "time-defense", "focus"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

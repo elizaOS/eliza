@@ -13,6 +13,7 @@ export default scenario({
   id: "g1-do-not-over-apologize",
   title: "G1 overdue reply draft avoids guilt and therapy framing",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "G1", "tone", "no-therapy", "outcome"],
   isolation: "per-scenario",
   requires: {

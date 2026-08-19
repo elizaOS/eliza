@@ -13,6 +13,7 @@ export default scenario({
   id: "g1-ambiguous-overdue-thread-clarified",
   title: "Ambiguous overdue referent triggers a clarifier before drafting",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "G1",

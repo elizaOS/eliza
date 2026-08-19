@@ -12,6 +12,7 @@ export default scenario({
   id: "twitter.dm.read-unread",
   title: "Read unread Twitter DMs",
   domain: "messaging.twitter-dm",
+  evidenceScope: "model-behavior",
   tags: ["messaging", "twitter", "happy-path", "smoke"],
   isolation: "per-scenario",
   requires: {

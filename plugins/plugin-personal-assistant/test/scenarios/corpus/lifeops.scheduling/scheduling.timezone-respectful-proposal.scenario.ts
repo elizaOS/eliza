@@ -27,6 +27,7 @@ export default scenario({
   id: "scheduling.timezone-respectful-proposal",
   title: "Proposal labels times with the requested timezone",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "timezone"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

@@ -262,6 +262,7 @@ export default scenario({
   title:
     "LifeOps persona scheduling: during_window / anchor firing, quiet_hours defer, activity-gated poke allow",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

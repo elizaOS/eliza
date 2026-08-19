@@ -1,12 +1,15 @@
 /** Scenario fixture for gmail triage unread; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailNoWriteOnTurns } from "./_gmail-contracts.ts";
 
 export default scenario({
   lane: "live-only",
   id: "gmail.triage.unread",
   title: "Triage unread Gmail inbox",
   domain: "messaging.gmail",
+  evidenceScope: "connector-contract",
   tags: ["messaging", "gmail", "triage", "happy-path", "smoke"],
   isolation: "per-scenario",
   requires: {
@@ -46,16 +49,19 @@ export default scenario({
       type: "gmailActionArguments",
       actionName: "MESSAGE",
       subaction: "triage",
+      turn: "triage unread",
     },
     {
       type: "gmailMockRequest",
       method: "GET",
       path: "/gmail/v1/users/me/messages",
       minCount: 1,
+      turn: "triage unread",
     },
     {
       type: "gmailNoRealWrite",
     },
+    gmailNoWriteOnTurns("unread triage is read-only", "triage unread"),
     judgeRubric({
       name: "gmail-unread-triage-rubric",
       threshold: 0.7,

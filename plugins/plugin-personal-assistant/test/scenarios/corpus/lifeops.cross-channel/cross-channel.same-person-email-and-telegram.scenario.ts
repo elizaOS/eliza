@@ -28,6 +28,7 @@ export default scenario({
   id: "cross-channel.same-person-email-and-telegram",
   title: "Same person on Email + Telegram dedupes to one canonical identity",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "cross-channel", "dedup", "identity-merge"],
   isolation: "per-scenario",
   requires: {

@@ -69,6 +69,7 @@ export default scenario({
   title:
     "Gmail connector 5xx during triage degrades gracefully and surfaces failure",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "inbox-triage",

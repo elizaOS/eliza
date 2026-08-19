@@ -4,9 +4,9 @@
  *
  * Sets the 'terse_one_sentence' style on turn 1, then probes with 1 unrelated topics. The agent must hold the style across every probe.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ export default scenario({
   id: "hold_style.hostile.code.025",
   title: "hold_style :: terse_one_sentence :: hostile :: code :: 2-turn (25)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:hold_style",
@@ -58,14 +59,12 @@ export default scenario({
     },
   ],
   turns: [
-    // style-set instruction
     {
       kind: "message",
       name: "set-style",
       room: "main",
       text: "I'm tired of your default voice. From now on, reply in exactly one short sentence. No lists, no preamble, no follow-up questions. No exceptions.\n```\n// instruction: persist across topics\nbehavior.persist = true;\n```",
     },
-    // agent must answer in the established style (terse_one_sentence)
     {
       kind: "message",
       name: "style-probe-1",

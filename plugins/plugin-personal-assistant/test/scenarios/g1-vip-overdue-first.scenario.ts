@@ -12,6 +12,7 @@ export default scenario({
   id: "g1-vip-overdue-first",
   title: "G1 overdue reply backlog ranks relationship-sensitive threads first",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "G1", "backlog", "priority", "outcome"],
   isolation: "per-scenario",
   requires: {

@@ -14,7 +14,24 @@ import {
   validateContentPackManifest,
 } from "@elizaos/shared";
 
-const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;
+export const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;
+
+export async function getContentPackManifestJsonWithFetch<T = unknown>(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  callerSignal?: AbortSignal,
+): Promise<T> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, timeoutSignal])
+    : timeoutSignal;
+  const response = await fetchImpl(url, { method: "GET", signal });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as T;
+}
 
 export class ContentPackLoadError extends Error {
   constructor(
@@ -43,20 +60,12 @@ export async function loadContentPackFromUrl(
 
   let raw: unknown;
   try {
-    const timeoutSignal = AbortSignal.timeout(
+    raw = await getContentPackManifestJsonWithFetch(
+      manifestUrl,
+      globalThis.fetch,
       CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS,
+      options.signal,
     );
-    const signal = options.signal
-      ? AbortSignal.any([options.signal, timeoutSignal])
-      : timeoutSignal;
-    const response = await globalThis.fetch(manifestUrl, {
-      method: "GET",
-      signal,
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    }
-    raw = await response.json();
   } catch (err) {
     // error-policy:J2 retain the source URL while preserving the transport,
     // body-read, timeout, or caller-cancellation failure as the cause.

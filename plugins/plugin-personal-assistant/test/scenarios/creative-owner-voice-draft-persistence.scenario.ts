@@ -91,6 +91,7 @@ export default scenario({
   title:
     "Owner voice draft preserves memo affect and reloads the standing artifact for revision",
   domain: "lifeops.creative",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

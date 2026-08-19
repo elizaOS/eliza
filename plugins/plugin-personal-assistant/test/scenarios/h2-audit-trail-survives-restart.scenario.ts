@@ -17,6 +17,7 @@ export default scenario({
   id: "h2-audit-trail-survives-restart",
   title: "H2 captured relationship carries stable source evidence",
   domain: "lifeops.kg",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "H2", "entity", "provenance", "audit"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

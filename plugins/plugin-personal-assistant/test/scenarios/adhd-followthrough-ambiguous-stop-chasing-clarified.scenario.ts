@@ -13,6 +13,7 @@ export default scenario({
   title:
     "ADHD follow-through: 'stop chasing that one' gets a clarifier before anything is silenced",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "adhd",

@@ -12,6 +12,7 @@ export default scenario({
   id: "habits.cross-platform-habit-via-imessage",
   title: "Habit completion ack from iMessage updates the same definition",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "cross-platform", "imessage"],
   isolation: "per-scenario",
   requires: {

@@ -36,6 +36,7 @@ import {
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import { FinancesService } from "@elizaos/plugin-finances/finances-service";
+import { computeOverdueFollowups } from "../followup/followup-tracker.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   buildBriefEditorialContract,
@@ -329,12 +330,25 @@ async function loadLifeFromOverview(args: {
   try {
     const service = await getBriefLifeOpsService(args.runtime);
     const overview = await service.getOverview();
+    let overdueFollowups: Awaited<
+      ReturnType<typeof computeOverdueFollowups>
+    >["overdue"] = [];
+    try {
+      overdueFollowups = (await computeOverdueFollowups(args.runtime)).overdue;
+    } catch (error) {
+      // error-policy:J4 Relationship follow-ups are an optional brief section;
+      // preserve the healthy LifeOps overview and surface the missing section.
+      logger.warn(
+        `[BRIEF] relationship follow-up load failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      args.runtime.reportError("BRIEF.relationshipFollowups", error);
+    }
     const records = [
       ...(Array.isArray(overview.occurrences) ? overview.occurrences : []),
       ...(Array.isArray(overview.reminders) ? overview.reminders : []),
       ...(Array.isArray(overview.goals) ? overview.goals : []),
     ];
-    return records.slice(0, 25).map((item) => {
+    const lifeItems = records.slice(0, 25).map((item) => {
       const record = asRecord(item);
       const metadata = asRecord(record.metadata);
       return {
@@ -352,6 +366,18 @@ async function loadLifeFromOverview(args: {
           null,
       };
     });
+    const followupItems: LifeOpsBriefingLifeItem[] = overdueFollowups.map(
+      (entry) => ({
+        id: `relationship-followup:${entry.entityId}`,
+        kind: "followup",
+        title: `Follow up with ${entry.displayName}`,
+        dueAt: new Date(
+          new Date(entry.lastContactedAt).getTime() +
+            entry.thresholdDays * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+      }),
+    );
+    return [...followupItems, ...lifeItems].slice(0, 25);
   } catch (error) {
     logger.warn(
       `[BRIEF] life load failed: ${error instanceof Error ? error.message : String(error)}`,

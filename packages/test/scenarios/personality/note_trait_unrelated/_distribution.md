@@ -4,7 +4,7 @@ Total scenarios: **40**
 
 ## Length brackets (intended vs actual)
 
-Some buckets require a semantic minimum (e.g. `note_trait_unrelated` needs ≥3 turns to test a trait on an unrelated topic; `scope_global_vs_user` needs ≥4 turns for two-room flow). When the intended bracket falls below that minimum, the scenario is clamped upward and its `length:<bracket>` tag reflects the **actual** count.
+Trait cases require an instruction plus two follow-ups so the first follow-up and a targeted terminal probe are both checked. Intended one- and two-turn brackets are clamped into the 3–5-turn bracket, and `length:<bracket>` records the actual count.
 
 | Bracket | Intended count | Actual count |
 |---|---:|---:|

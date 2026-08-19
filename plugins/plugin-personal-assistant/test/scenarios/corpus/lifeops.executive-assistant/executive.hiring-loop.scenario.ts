@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Hiring loop coordinates interview schedule, docs, panel, and follow-up",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "hiring", "calendar"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

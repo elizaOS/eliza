@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Acknowledging on mobile clears the same notification on desktop + watch",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "ack", "multi-device-sync"],
   description:
     "Same DEVICE_INTENT was dispatched to desktop, mobile, and watch. User acks on mobile. Desktop and watch copies must transition to acknowledged. No stale copy left ringing.",

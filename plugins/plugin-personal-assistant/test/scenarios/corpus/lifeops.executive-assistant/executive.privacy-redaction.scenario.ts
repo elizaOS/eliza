@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.privacy-redaction",
   title: "Privacy redaction prepares a shareable brief without secrets",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "privacy", "briefing"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

@@ -56,7 +56,15 @@ describe("iMessage message connector registration", () => {
     expect(registrations).toHaveLength(1);
     const connector = registrations[0];
     expect(connector.source).toBe("imessage");
-    expect(connector.capabilities).toContain("send_message");
+    expect(connector.capabilities).toEqual(
+      expect.arrayContaining([
+        "send_message",
+        "read_messages",
+        "search_messages",
+        "list_channels",
+        "get_user",
+      ])
+    );
     expect(connector.supportedTargetKinds).toEqual(
       expect.arrayContaining(["phone", "email", "contact", "group"])
     );

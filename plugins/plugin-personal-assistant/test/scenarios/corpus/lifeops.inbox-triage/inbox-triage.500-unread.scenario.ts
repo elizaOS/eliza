@@ -70,6 +70,7 @@ export default scenario({
   id: "inbox-triage.500-unread",
   title: "500-unread inbox is batched/summarized, not enumerated row-by-row",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox-triage", "volume", "batching", "robustness"],
   isolation: "per-scenario",
   requires: {

@@ -124,6 +124,67 @@ describe("scenario executor wait turns", () => {
     expect(report.status).toBe("failed");
     expect(report.error).toContain("requires non-negative durationMs");
   });
+
+  it("records controlled Gmail request-ledger deltas on the producing turn", async () => {
+    const priorBase = process.env.ELIZA_MOCK_GOOGLE_BASE;
+    const priorRunId = process.env.ELIZA_LIFEOPS_RUN_ID;
+    const runId = "gmail-ledger-turn-run";
+    process.env.ELIZA_MOCK_GOOGLE_BASE = "http://127.0.0.1:47891";
+    process.env.ELIZA_LIFEOPS_RUN_ID = runId;
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ requests: [] }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            requests: [
+              {
+                runId,
+                environment: "Gmail fixture",
+                method: "POST",
+                path: "/gmail/v1/users/me/messages/batchModify",
+                query: "",
+                body: { ids: ["msg-a"] },
+                gmail: { action: "messages.batchModify", ids: ["msg-a"] },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+    try {
+      const report = await runScenario(
+        {
+          id: "gmail-ledger-turn",
+          title: "Gmail ledger turn",
+          domain: "executor",
+          turns: [{ kind: "wait", name: "gmail write", durationMs: 0 }],
+        },
+        createRuntime([]),
+        {
+          minJudgeScore: 0.8,
+          providerName: "unit-test",
+          turnTimeoutMs: 1_000,
+        },
+      );
+      expect(report.turns[0]?.providerRequests).toEqual([
+        expect.objectContaining({
+          provider: "gmail",
+          method: "POST",
+          path: "/gmail/v1/users/me/messages/batchModify",
+          metadata: { action: "messages.batchModify", ids: ["msg-a"] },
+        }),
+      ]);
+    } finally {
+      fetchSpy.mockRestore();
+      if (priorBase === undefined) delete process.env.ELIZA_MOCK_GOOGLE_BASE;
+      else process.env.ELIZA_MOCK_GOOGLE_BASE = priorBase;
+      if (priorRunId === undefined) delete process.env.ELIZA_LIFEOPS_RUN_ID;
+      else process.env.ELIZA_LIFEOPS_RUN_ID = priorRunId;
+    }
+  });
 });
 
 describe("provider-qualified execution boundary", () => {
@@ -155,6 +216,7 @@ describe("provider-qualified execution boundary", () => {
         domain: "executor",
         lane: "live-only",
         executionProfile: "provider-qualified",
+        evidenceScope: "provider-certification",
         isolation: "per-scenario",
         requires: { plugins: ["@elizaos/plugin-personal-assistant"] },
         turns: [
@@ -500,6 +562,11 @@ describe("scenario executor action turns", () => {
       ],
       {
         useModel: vi.fn() as AgentRuntime["useModel"],
+        composeState: vi.fn(async () => ({
+          data: {},
+          values: {},
+          text: "",
+        })) as AgentRuntime["composeState"],
       },
     );
 
@@ -547,10 +614,19 @@ describe("scenario executor action turns", () => {
           text: "open the remote ledger view",
         }),
       }),
-      undefined,
+      expect.objectContaining({
+        data: expect.any(Object),
+        values: expect.any(Object),
+      }),
       { action: "pin", view: "remote-ledger" },
     );
     expect(handler).toHaveBeenCalledOnce();
+    expect(handler.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({
+        data: expect.any(Object),
+        values: expect.any(Object),
+      }),
+    );
     expect(report.turns[0]).toMatchObject({
       kind: "action",
       responseText: "opened remote-ledger",

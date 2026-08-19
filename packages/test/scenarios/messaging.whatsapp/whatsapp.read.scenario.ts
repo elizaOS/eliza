@@ -1,21 +1,43 @@
-/** Scenario fixture for whatsapp read; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves recent WhatsApp messages are returned from an exact typed chat fixture. */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  createStatefulMessageConnectorFixture,
+  registerFixtureSeed,
+} from "../_fixtures/stateful-message-connector.ts";
+
+const fixture = createStatefulMessageConnectorFixture({
+  source: "whatsapp",
+  label: "WhatsApp",
+  conversations: [
+    {
+      channelId: "14155550999@s.whatsapp.net",
+      label: "Eve",
+      kind: "phone",
+      messages: [
+        {
+          id: "wamid.fixture.eve.001",
+          sender: "Eve",
+          text: "Table is booked under Walters for 7:00 PM.",
+          createdAt: Date.parse("2026-08-18T19:00:00.000Z"),
+        },
+      ],
+    },
+  ],
+});
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "whatsapp.read",
-  title: "Read recent WhatsApp messages",
+  title: "WhatsApp read returns exact recent chat content",
   domain: "messaging.whatsapp",
-  tags: ["messaging", "whatsapp", "happy-path", "smoke"],
+  tags: ["messaging", "whatsapp", "typed-fixture", "readback"],
+  description:
+    "Exercises MESSAGE.read_channel through WhatsApp's typed connector-hook shape and verifies exact JID, message ID, sender, and content. It does not claim a live Meta or Baileys session.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
+  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
     {
       id: "main",
@@ -24,65 +46,48 @@ export default scenario({
       title: "WhatsApp Read",
     },
   ],
+  seed: [registerFixtureSeed(fixture)],
   turns: [
     {
-      kind: "message",
-      name: "read whatsapp",
+      kind: "action",
+      name: "read-eve-whatsapp",
       room: "main",
-      text: "What's new on WhatsApp?",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "whatsapp chat read",
-        includesAny: ["whatsapp", "message", "chat"],
-      }),
-      responseIncludesAny: ["whatsapp", "message", "chat"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "The reply must summarize or acknowledge recent WhatsApp chat content. A generic statement that WhatsApp was checked without chat context fails.",
+      text: "Read Eve's latest WhatsApp message.",
+      content: {
+        metadata: { __responseContext: { primaryContext: "messaging" } },
+      },
+      actionName: "MESSAGE",
+      options: {
+        parameters: {
+          action: "read_channel",
+          source: "whatsapp",
+          accountId: "test-owner",
+          target: "Eve",
+          limit: 5,
+        },
       },
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: "MESSAGE",
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: "MESSAGE",
-      includesAny: ["whatsapp", "message", "chat"],
-    },
-    {
       type: "custom",
-      name: "whatsapp-read-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "whatsapp chat read",
-        includesAny: ["whatsapp", "message", "chat"],
-      }),
-    },
-    {
-      type: "custom",
-      name: "whatsapp-read-requires-channel-context",
-      predicate: async (ctx) => {
-        const inboxActions = ctx.actionsCalled.filter((action) =>
-          ["MESSAGE", "MESSAGE"].includes(action.actionName),
-        );
-        const blob = JSON.stringify(inboxActions).toLowerCase();
-        if (!blob.includes("whatsapp")) {
-          return "expected the inbox read to be scoped to WhatsApp";
-        }
-        if (!/(chat|thread|room|message)/i.test(blob)) {
-          return "expected WhatsApp chat/message context in the inbox read payload";
-        }
+      name: "whatsapp-read-is-bound-to-exact-chat",
+      predicate: (ctx) => {
+        const blob = JSON.stringify(ctx.actionsCalled);
+        return fixture.reads.length === 1 &&
+          fixture.reads[0]?.target.channelId === "14155550999@s.whatsapp.net" &&
+          blob.includes("wamid.fixture.eve.001") &&
+          blob.includes("Table is booked under Walters for 7:00 PM.") &&
+          blob.includes("Eve")
+          ? undefined
+          : `expected exact WhatsApp fixture readback, saw ${JSON.stringify({ reads: fixture.reads, actions: ctx.actionsCalled })}`;
       },
     },
-    judgeRubric({
-      name: "whatsapp-read-rubric",
-      threshold: 0.7,
-      description:
-        "End-to-end: the assistant surfaced recent WhatsApp chat context instead of a generic acknowledgement.",
-    }),
+    {
+      type: "connectorDispatchOccurred",
+      channel: "whatsapp",
+      expected: false,
+      maxCount: 0,
+    },
   ],
 });

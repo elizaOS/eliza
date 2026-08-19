@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Vendor negotiation gathers contract docs, renewal data, and draft replies",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "vendor", "renewals"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

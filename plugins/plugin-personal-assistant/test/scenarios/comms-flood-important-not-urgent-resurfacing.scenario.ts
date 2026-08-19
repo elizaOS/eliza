@@ -93,6 +93,7 @@ export default scenario({
   title:
     "Comms flood: an important-not-urgent item is held and resurfaces later, not dropped",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "comms-flood", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

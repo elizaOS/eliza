@@ -41,6 +41,7 @@ export default scenario({
   id: "habits.post-travel-resume",
   title: "Habit resumes cleanly when travel pause expires",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "pause", "resume"],
   isolation: "per-scenario",
   requires: {

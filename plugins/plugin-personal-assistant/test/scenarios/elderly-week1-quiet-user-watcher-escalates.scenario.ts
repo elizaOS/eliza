@@ -178,6 +178,7 @@ export default scenario({
   title:
     "Elderly week-1: three unanswered mornings trip the quiet-user watcher — the next check-in softens, never chases",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "lifeops",
     "persona",

@@ -18,6 +18,7 @@ export default scenario({
   id: "h2-relationship-update-live",
   title: "H2 relationship update lands in the RelationshipStore with evidence",
   domain: "lifeops.kg",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "H2", "entity", "relationship", "evidence"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

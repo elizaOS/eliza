@@ -238,6 +238,7 @@ export default scenario({
   title:
     "ADHD follow-through: an ignored reminder re-nudges once, then settles — never lost, never nagged forever",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

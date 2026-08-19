@@ -279,6 +279,7 @@ export default scenario({
   title:
     "Traveler: a wall-clock morning window re-anchors to the destination while an absolute boarding instant does not",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

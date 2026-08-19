@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.status-compression",
   title: "Status compression turns noisy app state into icons and decisions",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "status", "chat-first"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

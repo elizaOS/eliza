@@ -12,6 +12,7 @@ export default scenario({
   id: "lifeops-extension.time-tracking.social-breakdown",
   title: "Social-media time breakdown",
   domain: "browser.lifeops",
+  evidenceScope: "model-behavior",
   tags: ["browser", "activity", "happy-path"],
   description:
     "User asks for a social-media breakdown. Seeded website sessions must surface through the screen-time website view.",
@@ -65,7 +66,7 @@ export default scenario({
       room: "main",
       text: "Break down my social media time today across X, Instagram, and Facebook.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SCREEN_TIME", "SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "social-media website breakdown",
       }),
       responseIncludesAny: [
@@ -78,13 +79,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["SCREEN_TIME", "SCREEN_TIME"],
+      actionName: ["SCREEN_TIME"],
     },
     {
       type: "custom",
       name: "social-breakdown-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["SCREEN_TIME", "SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "social-media website breakdown",
       }),
     },

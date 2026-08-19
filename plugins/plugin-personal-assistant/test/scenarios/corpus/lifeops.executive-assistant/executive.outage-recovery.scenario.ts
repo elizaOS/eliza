@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.outage-recovery",
   title: "Outage recovery degrades across unavailable connectors",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "resilience", "connectors"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

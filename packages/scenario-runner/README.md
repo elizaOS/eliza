@@ -68,7 +68,38 @@ export default {
 - `responseJudge: { rubric, minimumScore }` — LLM-as-judge scoring
 
 **Final checks** (after all turns, in `finalChecks` array):
-`actionCalled`, `selectedAction`, `judgeRubric`, `connectorDispatchOccurred`, `memoryWriteOccurred`, `approvalRequestExists`, `browserTaskCompleted`, `messageDelivered`, and more — see `schema/index.js` for the full list.
+`actionCalled`, `selectedAction`, `judgeRubric`, `connectorDispatchOccurred`,
+`noSideEffects`, `memoryWriteOccurred`, `approvalRequestExists`,
+`browserTaskCompleted`, `messageDelivered`, and more — see `schema/index.js`
+for the full list.
+
+Use turn-scoped binding checks for safety and ordering. Action names, action
+success values, and response prose do not prove that an effect happened:
+
+```ts
+finalChecks: [
+  {
+    type: "noSideEffects",
+    name: "proposal is read-only",
+    turn: "proposal",
+    allowApprovalRequests: true,
+  },
+  {
+    type: "connectorDispatchOccurred",
+    name: "one confirmed dispatch",
+    channel: "sms",
+    turn: "confirm",
+    minCount: 1,
+    maxCount: 1,
+    delivered: true,
+  },
+]
+```
+
+`noSideEffects` inspects authoritative connector dispatches, durable state
+transitions, artifacts, and approval creation. It intentionally ignores
+action-result inference. Set `allowApprovalRequests` only when creating a
+pending approval is the safe continuation being tested.
 
 ## CLI flags
 
@@ -111,6 +142,52 @@ The qualifier always records `exactlyOnce: false`; provider idempotency and
 readback reduce ambiguity but do not prove end-to-end exactly-once delivery.
 Action results, model prose, loopback fixtures, local PGlite, and unsigned
 same-process observations cannot satisfy these contracts.
+
+The provider-canary catalog under `packages/test/scenarios/provider-qualified/`
+covers Gmail, Google Calendar, Google Drive/Sheets, Discord, Slack, Telegram,
+WhatsApp, X DM, Twilio SMS and voice, BlueBubbles/iMessage, Signal, and Duffel
+travel. Before authenticated ingress, an operator controller must pass the
+exact canary definition and its externally authored manifest through
+`preflightProviderCanary`. Missing manifests are a hard refusal, and a manifest
+for another scenario, account, connector, or observation contract is rejected.
+This preflight only validates the trust binding; it does not execute the canary
+or manufacture qualification evidence. Non-qualifiable generic surfaces are
+source-documented in `_provider-canary-exclusions.json`.
+
+## Evidence scopes
+
+`evidenceScope` describes the claim a scenario is designed to support; it does
+not change where the scenario runs (`lane`) or how trustworthy its evidence is
+(`executionProfile`):
+
+- `runner-fixture` — runner, schema, or interception behavior only.
+- `domain-contract` — deterministic domain/state-machine behavior.
+- `model-behavior` — model selection, extraction, or response quality.
+- `connector-contract` — a connector adapter exercised against deterministic
+  fixture infrastructure; it is still simulated and does not prove delivery.
+- `provider-certification` — qualified external provider evidence only.
+
+The schema keeps `runner-fixture` as a compatibility default for external
+callers, and reports count every use. Maintained corpora must classify the field
+explicitly; the shared and personal-assistant corpus gate requires a zero
+default count.
+`provider-certification` and `executionProfile:
+"provider-qualified"` must be declared together. A simulated pass is never
+provider certification, including when it used a live model or real plugin
+code.
+
+Planned behavior that is not yet executable must use `status: "pending"` with
+an explicit dependency in its title or description. Pending definitions remain
+inventory-visible but are excluded from ordinary execution unless
+`SCENARIO_INCLUDE_PENDING=1`; do not encode an unrelated fallback as a passing
+implementation or delete the definition to hide the gap.
+
+An invalid historical claim may instead be retired when the product capability
+was deliberately removed, the scenario was renamed without changing its
+contract, or a stronger scenario covers the same behavior. Every retirement
+must be recorded in the corpus `_scenario-retirements.json` manifest as
+`removed`, `renamed`, or `covered-by`, with a live replacement or checked source
+evidence. Unsupported behavior that is still planned is not a retirement.
 
 ## Key env vars
 

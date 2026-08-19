@@ -11,6 +11,7 @@ export default scenario({
   id: "x.post.with-confirmation",
   title: "Draft an X post inline in chat",
   domain: "social.x",
+  evidenceScope: "model-behavior",
   tags: ["social", "twitter", "post", "draft"],
   description:
     "User asks for a short X post draft and gets the copy inline in chat.",

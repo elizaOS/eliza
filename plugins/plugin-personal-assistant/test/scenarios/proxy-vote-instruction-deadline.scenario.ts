@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Proxy-vote runbook grounds in the seeded Calloway package and holds the vote for approval",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

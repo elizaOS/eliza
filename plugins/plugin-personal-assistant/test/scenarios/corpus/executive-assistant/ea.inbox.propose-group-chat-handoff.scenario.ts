@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.inbox.propose-group-chat-handoff",
   title: "Propose a group-chat handoff when direct coordination is messy",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "messaging", "handoff", "transcript-derived"],
   description:
     "Transcript-derived case: sometimes the assistant should suggest linking people into a group chat instead of continuing one-off relays.",
@@ -35,7 +36,7 @@ export default scenario({
       room: "main",
       text: "If direct relaying gets messy here, suggest making a group chat handoff instead.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
+        acceptedActions: ["MESSAGE"],
         description: "group chat handoff planning",
         includesAny: ["group", "chat", "handoff", "relay"],
       }),
@@ -56,7 +57,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE"],
     },
     {
       type: "memoryWriteOccurred",
@@ -66,7 +67,7 @@ export default scenario({
       type: "custom",
       name: "ea-group-handoff-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
+        acceptedActions: ["MESSAGE"],
         description: "group chat handoff planning",
         includesAny: ["group", "chat", "handoff", "relay"],
       }),

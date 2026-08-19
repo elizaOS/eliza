@@ -35,6 +35,7 @@ export default scenario({
   id: "travel-buffer.late-night-skips-buffer",
   title: "Late-night casual event skips the auto travel buffer",
   domain: "lifeops.travel-buffer",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel-buffer", "context-sensitive"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

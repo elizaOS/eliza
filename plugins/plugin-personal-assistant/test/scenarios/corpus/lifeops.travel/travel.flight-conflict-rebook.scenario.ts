@@ -17,6 +17,7 @@ export default scenario({
   title:
     "Detect a flight conflict with an existing booking and propose a rebook",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "conflict", "rebook"],
   description:
     "User has an existing United flight on file. They ask to book a Delta flight at an overlapping time. The agent must flag the conflict (not double-book) and offer a concrete rebook plan gated on approval.",

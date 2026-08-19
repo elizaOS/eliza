@@ -27,6 +27,7 @@ export default scenario({
   title:
     "Low activation: can't choose → assistant picks one tiny thing, doesn't re-offer the menu",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "low-activation", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

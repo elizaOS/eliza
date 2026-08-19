@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Group-chat handoff drafts an intro with both counterparties and sends nothing",
   domain: "executive.messaging",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "messaging", "handoff", "outcome"],
   isolation: "per-scenario",
   requires: {

@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Dismissing a follow-up captures the user-supplied reason for future filtering",
   domain: "lifeops.followup",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "followup", "dismiss", "memory"],
   description:
     "User dismisses a recurring follow-up about a former colleague with a reason ('we don't work together anymore'). The agent must persist the reason on the contact so similar follow-ups don't get auto-resurfaced.",

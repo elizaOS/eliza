@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Renewal audit grounds in the seeded subscription and holds the cancellation for the owner",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "money", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {

@@ -25,6 +25,7 @@ function scenario(): ScenarioDefinition {
     domain: "calendar",
     lane: "live-only",
     executionProfile: "provider-qualified",
+    evidenceScope: "provider-certification",
     isolation: "per-scenario",
     turns: [
       {

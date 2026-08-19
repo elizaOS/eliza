@@ -27,6 +27,7 @@ import { scheduledTaskAction } from "../src/actions/scheduled-task.js";
 const STATIC_RUNTIME = {
   agentId: "00000000-0000-4000-8000-000000000001",
   getSetting: () => undefined,
+  reportError: vi.fn(),
 } as unknown as IAgentRuntime;
 
 const STATIC_MESSAGE = {
@@ -263,13 +264,14 @@ describe("promoteSubactionsToActions", () => {
 });
 
 describe("SCHEDULED_TASKS promotion + alias normalization", () => {
-  it("promotes the 12 task operations to virtual top-level Actions", () => {
+  it("promotes every task operation to a virtual top-level Action", () => {
     const promoted = promoteSubactionsToActions(scheduledTaskAction);
     expect(promoted[0]).toBe(scheduledTaskAction);
     const virtuals = promoted.slice(1);
-    expect(virtuals).toHaveLength(12);
+    expect(virtuals).toHaveLength(13);
     expect(virtuals.map((a) => a.name)).toEqual([
       "SCHEDULED_TASKS_LIST",
+      "SCHEDULED_TASKS_LIST_OVERDUE_FOLLOWUPS",
       "SCHEDULED_TASKS_GET",
       "SCHEDULED_TASKS_CREATE",
       "SCHEDULED_TASKS_UPDATE",

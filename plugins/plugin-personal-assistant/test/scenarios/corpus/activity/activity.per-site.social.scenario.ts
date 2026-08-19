@@ -12,6 +12,7 @@ export default scenario({
   id: "activity.per-site.social",
   title: "Per-site social activity (requires browser extension)",
   domain: "activity",
+  evidenceScope: "model-behavior",
   tags: ["activity", "browser", "happy-path"],
   description:
     "User asks which social sites took the most time. Seeded website sessions must surface through the screen-time query path.",
@@ -65,7 +66,7 @@ export default scenario({
       room: "main",
       text: "Which social sites did I spend the most time on this week?",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SCREEN_TIME", "SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "social website breakdown",
       }),
       responseIncludesAny: [
@@ -78,13 +79,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["SCREEN_TIME", "SCREEN_TIME"],
+      actionName: "SCREEN_TIME",
     },
     {
       type: "custom",
       name: "per-site-social-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["SCREEN_TIME", "SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "social website breakdown",
       }),
     },

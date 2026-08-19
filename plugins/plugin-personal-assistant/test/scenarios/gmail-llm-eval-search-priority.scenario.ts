@@ -8,6 +8,7 @@ export default scenario({
   id: "gmail-llm-eval-search-priority",
   title: "Gmail LLM evals cover cross-account search and priority triage",
   domain: "gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "email", "llm-eval"],
   isolation: "per-scenario",
   requires: {

@@ -12,6 +12,7 @@ export default scenario({
   id: "lifeops-extension.daily-report",
   title: "Daily screen time report",
   domain: "browser.lifeops",
+  evidenceScope: "model-behavior",
   tags: ["browser", "activity", "happy-path"],
   description:
     "User asks for a daily screen-time report. Seeded app and website sessions must surface through the screen-time summary path.",
@@ -65,7 +66,7 @@ export default scenario({
       room: "main",
       text: "Give me my daily screen time report.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SCREEN_TIME", "SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "daily screen-time summary",
       }),
       responseIncludesAny: [
@@ -78,13 +79,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["SCREEN_TIME", "SCREEN_TIME"],
+      actionName: ["SCREEN_TIME"],
     },
     {
       type: "custom",
       name: "daily-report-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["SCREEN_TIME", "SCREEN_TIME"],
+        acceptedActions: ["SCREEN_TIME"],
         description: "daily screen-time summary",
       }),
     },

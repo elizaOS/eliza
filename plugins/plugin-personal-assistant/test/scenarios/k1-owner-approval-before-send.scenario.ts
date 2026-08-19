@@ -10,6 +10,7 @@ export default scenario({
   id: "k1-owner-approval-before-send",
   title: "K1 supportive friend draft waits for owner approval",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "K1", "third-party-support", "approval", "message-draft"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

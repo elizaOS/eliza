@@ -19,6 +19,7 @@ export default scenario({
   title:
     "Low activation: 'just send it, i don't want to look' does not bypass approval",
   domain: "lifeops.messaging",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "low-activation",

@@ -6,6 +6,7 @@ export default scenario({
   id: "todo.forceful-reminder.persistent",
   title: "Persistent forceful reminder escalates tone when user dodges",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "long-utterance"],
   isolation: "per-scenario",
   requires: {

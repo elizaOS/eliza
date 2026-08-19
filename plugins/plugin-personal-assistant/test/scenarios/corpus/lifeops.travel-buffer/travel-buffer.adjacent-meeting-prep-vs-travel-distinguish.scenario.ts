@@ -43,6 +43,7 @@ export default scenario({
   id: "travel-buffer.adjacent-meeting-prep-vs-travel-distinguish",
   title: "Distinguishes prep buffer from travel buffer when both are relevant",
   domain: "lifeops.travel-buffer",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel-buffer", "prep-buffer"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

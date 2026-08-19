@@ -11,6 +11,7 @@ export default scenario({
   id: "i1-sensitive-event-defer",
   title: "I1 negative rupture sentiment schedules owner check-in only",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "I1", "sentiment", "followup", "relationships"],
   isolation: "per-scenario",
   rooms: [

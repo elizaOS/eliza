@@ -13,6 +13,7 @@ export default scenario({
   id: "i1-grounded-apology-draft",
   title: "I1 sister-fight apology draft is grounded and approval-gated",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "I1", "rupture-repair", "approval", "relationships"],
   isolation: "per-scenario",
   rooms: [

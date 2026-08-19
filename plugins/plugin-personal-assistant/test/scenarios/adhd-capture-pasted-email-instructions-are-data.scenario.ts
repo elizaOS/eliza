@@ -38,6 +38,7 @@ export default scenario({
   id: "adhd-capture-pasted-email-instructions-are-data",
   title: "ADHD: instructions inside a pasted email are treated as data",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "adhd",

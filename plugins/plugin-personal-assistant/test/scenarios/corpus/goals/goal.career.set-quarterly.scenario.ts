@@ -10,6 +10,7 @@ export default scenario({
   id: "goal.career.set-quarterly",
   title: "Set a Q2 career goal to ship Eliza v2",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "career", "smoke"],
   isolation: "per-scenario",
   requires: {

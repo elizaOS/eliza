@@ -11,6 +11,7 @@ export default scenario({
   id: "cross-platform.group-chat-gateway",
   title: "Create a real Discord group handoff room",
   domain: "messaging.cross-platform",
+  evidenceScope: "model-behavior",
   tags: ["cross-platform", "gateway", "routing", "group-chat"],
   description:
     "A request to create a Discord group handoff should invoke the real gateway action and persist the created room/participants in runtime state.",

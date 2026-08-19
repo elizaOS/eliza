@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Replacement ID logistics is grounded in seeded itinerary work and leaks no ID number",
   domain: "executive.travel",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -13,6 +13,7 @@ export default scenario({
   title:
     "End-of-day closeout compresses unresolved decisions and tomorrow risks",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "closeout", "chat-first"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

@@ -51,6 +51,7 @@ export default scenario({
   id: "cross-channel.same-person-4-platforms",
   title: "Same person across Gmail + Signal + Telegram + Discord dedupes",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "cross-channel", "dedup", "identity-merge", "scale"],
   isolation: "per-scenario",
   requires: {

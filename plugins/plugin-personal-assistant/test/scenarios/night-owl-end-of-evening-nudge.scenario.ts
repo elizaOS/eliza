@@ -26,6 +26,7 @@ export default scenario({
   title:
     "Night owl: an end-of-evening nudge follows her sleep boundary, not midnight",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "night-owl", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

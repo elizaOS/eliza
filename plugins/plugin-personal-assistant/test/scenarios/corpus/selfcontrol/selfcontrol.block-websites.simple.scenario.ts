@@ -6,6 +6,7 @@ export default scenario({
   id: "selfcontrol.block-websites.simple",
   title: "Block X and Instagram for two hours via website blocker",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "smoke", "happy-path"],
   isolation: "per-scenario",
   requires: {

@@ -1,8 +1,15 @@
-/** Tests declared production-plugin resolution and pre-initialization runtime registration. */
+/** Tests declared production-plugin registration and package identity resolution. */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { registerScenarioRequiredPlugins } from "./required-plugins.ts";
+import {
+  pluginPackageIsRegistered,
+  registerScenarioRequiredPlugins,
+} from "./required-plugins.ts";
+
+function runtimeWith(plugin: Plugin): Pick<AgentRuntime, "plugins"> {
+  return { plugins: [plugin] };
+}
 
 describe("scenario required plugin registration", () => {
   it("loads and registers Maps for a simulated live-model runtime", async () => {
@@ -45,5 +52,29 @@ describe("scenario required plugin registration", () => {
       "simulated",
     );
     expect(registerPlugin).not.toHaveBeenCalled();
+  });
+
+  it("recognizes a package by packageName when its runtime name is intentionally different", () => {
+    const runtime = runtimeWith({
+      name: "elizaOSCloud",
+      packageName: "@elizaos/plugin-elizacloud",
+      description: "Cloud plugin with a stable legacy runtime identity.",
+    });
+
+    expect(
+      pluginPackageIsRegistered(runtime, "@elizaos/plugin-elizacloud"),
+    ).toBe(true);
+  });
+
+  it("does not treat an unrelated package as registered", () => {
+    const runtime = runtimeWith({
+      name: "elizaOSCloud",
+      packageName: "@elizaos/plugin-elizacloud",
+      description: "Cloud plugin with a stable legacy runtime identity.",
+    });
+
+    expect(pluginPackageIsRegistered(runtime, "@elizaos/plugin-openai")).toBe(
+      false,
+    );
   });
 });

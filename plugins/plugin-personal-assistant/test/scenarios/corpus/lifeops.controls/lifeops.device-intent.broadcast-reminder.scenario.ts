@@ -20,6 +20,7 @@ export default scenario({
   id: "lifeops.device-intent.broadcast-reminder",
   title: "User asks to broadcast a reminder → DEVICE_INTENT routes to mobile",
   domain: "lifeops",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "device-intent", "cross-device", "controls"],
   description:
     "When the owner asks the agent to send a phone reminder, the planner should call DEVICE_INTENT with target=mobile. The action result must include the persisted intent's kind and target.",

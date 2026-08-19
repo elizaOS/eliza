@@ -12,6 +12,7 @@ export default scenario({
   id: "x.dm.read-unread",
   title: "Read unread Twitter/X DMs",
   domain: "social.x",
+  evidenceScope: "model-behavior",
   tags: ["social", "twitter", "dm", "happy-path"],
   description:
     "User asks for unread X DMs and receives an inline summary from seeded X DM data.",

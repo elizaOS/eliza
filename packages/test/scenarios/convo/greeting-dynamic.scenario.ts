@@ -90,6 +90,7 @@ export default scenario({
   id: "convo.greeting-dynamic",
   title: "Convo framework: greeting routes to GREET_USER",
   domain: "convo",
+  evidenceScope: "runner-fixture",
   // Keyless-deterministic: the trivial GREET_USER plugin runs in-memory and the
   // routing fixtures registered below force action selection under the
   // deterministic model provider. No external service or secret required.

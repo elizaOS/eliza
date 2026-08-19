@@ -17,6 +17,7 @@ export default scenario({
   id: "gmail.mark-as-read",
   title: "Mark Gmail messages as read removes UNREAD label",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "mark-read", "modify"],
   isolation: "per-scenario",
   requires: {

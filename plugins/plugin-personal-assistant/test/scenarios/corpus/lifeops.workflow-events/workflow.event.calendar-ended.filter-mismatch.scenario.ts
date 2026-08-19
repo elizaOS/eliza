@@ -19,6 +19,7 @@ export default scenario({
   id: "workflow.event.calendar-ended.filter-mismatch",
   title: "Event-triggered workflow does not fire when filters reject the event",
   domain: "lifeops.workflow-events",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "workflow", "event-trigger"],
   isolation: "per-scenario",
   seed: [

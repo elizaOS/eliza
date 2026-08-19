@@ -17,6 +17,7 @@ export default scenario({
   id: "persona-elderly-nontechnical",
   title: "Persona: elderly non-technical phrasing still books Thursday 3pm",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "persona", "robustness"],
   isolation: "per-scenario",
   requires: {

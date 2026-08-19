@@ -11,6 +11,7 @@ export default scenario({
   id: "i2-conflicting-claims-label-uncertain",
   title: "I2 conflicting claims stay uncertain instead of becoming a verdict",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "I2", "mediation", "uncertainty", "entity"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

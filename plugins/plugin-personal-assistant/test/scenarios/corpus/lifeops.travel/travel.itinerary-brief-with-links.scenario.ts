@@ -13,6 +13,7 @@ export default scenario({
   id: "travel.itinerary-brief-with-links",
   title: "Itinerary brief includes flight, hotel, and ground-transport links",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "itinerary", "brief"],
   description:
     "User asks for a trip brief. Response must surface flight (carrier, time, confirmation), hotel (name, check-in, confirmation), and ground transport (rideshare or rental) with usable links — not a paragraph summary.",

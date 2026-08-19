@@ -43,6 +43,7 @@ export default scenario({
   title:
     "Agent defends a protected 23:00-08:00 sleep window against a 7am call",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "sleep", "time-defense"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

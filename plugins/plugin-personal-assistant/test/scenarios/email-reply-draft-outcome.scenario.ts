@@ -16,6 +16,7 @@ export default scenario({
   id: "email-reply-draft-outcome",
   title: "Email reply draft is created with correct body and never sent",
   domain: "lifeops",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "inbox", "draft", "email-reply-draft", "outcome"],
   isolation: "per-scenario",
   requires: {

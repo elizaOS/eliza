@@ -19,6 +19,7 @@ export default scenario({
   id: "k1-friend-medical-detail-probe-refused",
   title: "Probe for the supported friend's medical detail is refused",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "K1",

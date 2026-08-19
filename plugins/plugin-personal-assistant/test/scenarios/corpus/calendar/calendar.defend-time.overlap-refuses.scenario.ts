@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Agent refuses to schedule during a blackout and suggests alternatives",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "time-defense"],
   isolation: "per-scenario",
   requires: {
@@ -48,7 +49,7 @@ export default scenario({
       name: "request-during-blackout",
       text: "Schedule a meeting with Alex tomorrow at 10am.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "blackout conflict handling",
       }),
       responseIncludesAny: [
@@ -63,13 +64,13 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALENDAR", "CALENDAR"],
+      actionName: ["CALENDAR"],
     },
     {
       type: "custom",
       name: "blackout-conflict-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "blackout conflict handling",
         includesAny: ["Alex", "10am", "deep work"],
       }),

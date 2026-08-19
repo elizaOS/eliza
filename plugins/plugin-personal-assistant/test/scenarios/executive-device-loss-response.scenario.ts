@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Device-loss plan grounds in seeded exposure state and stages, never sends, notifications",
   domain: "executive.privacy",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

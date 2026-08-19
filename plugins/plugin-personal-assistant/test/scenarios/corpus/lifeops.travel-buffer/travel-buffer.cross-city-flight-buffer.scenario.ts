@@ -39,6 +39,7 @@ export default scenario({
   title:
     "Cross-city flight requires a multi-hour travel buffer, not 15-min default",
   domain: "lifeops.travel-buffer",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel-buffer", "flight"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

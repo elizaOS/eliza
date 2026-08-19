@@ -17,6 +17,7 @@ export default scenario({
   title:
     "Negative control: a plain timed reminder, literal time, bare confirmation",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "control", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

@@ -8,6 +8,7 @@ export default scenario({
   id: "calendar-llm-eval-mutations",
   title: "Calendar LLM evals cover check, add, move, delete, and search",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "llm-eval"],
   isolation: "per-scenario",
   requires: {

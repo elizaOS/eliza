@@ -18,6 +18,7 @@ export default scenario({
   id: "hygiene.medication-am-pm-with-meals",
   title: "Medication twice daily with breakfast and dinner",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "medication", "twice-daily"],
   isolation: "per-scenario",
   requires: {

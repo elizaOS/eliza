@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Caregiver shift transition is grounded in seeded coverage and keeps medication details need-to-know",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

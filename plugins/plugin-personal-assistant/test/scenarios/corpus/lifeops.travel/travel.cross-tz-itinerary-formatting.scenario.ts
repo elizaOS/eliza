@@ -12,6 +12,7 @@ export default scenario({
   id: "travel.cross-tz-itinerary-formatting",
   title: "Cross-timezone itinerary shows times in destination + home TZ",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "timezone", "itinerary"],
   description:
     "User is in Pacific time, travelling to Tokyo. The itinerary brief must show flight times in BOTH destination and home timezone — not just UTC, not just one side. Catches a 'agent did the math but lost the user's frame of reference' bug.",

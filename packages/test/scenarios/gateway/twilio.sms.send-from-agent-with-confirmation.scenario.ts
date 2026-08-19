@@ -1,101 +1,108 @@
-/** Scenario fixture for twilio sms send from agent with confirmation; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+/** Proves a Twilio SMS draft cannot dispatch before owner confirmation and dispatches once after it. */
+import type { AgentRuntime } from "@elizaos/core";
 import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  type ScenarioTurnExecution,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
+import { createGatewayContractHarness } from "./_fixtures/gateway-contract-plugin.ts";
 
+const harness = createGatewayContractHarness();
+const data = (turn: ScenarioTurnExecution) =>
+  (turn.responseBody as { data?: Record<string, unknown> })?.data ?? {};
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "twilio.sms.send-from-agent-with-confirmation",
-  title: "Agent sends outbound SMS via Twilio after confirmation",
-  domain: "gateway",
-  tags: ["gateway", "twilio", "sms", "confirms-destructive-edge"],
+  title: "Twilio SMS dispatch is owner-confirmed and idempotent",
+  domain: "gateway-contract",
+  tags: [
+    "gateway",
+    "twilio",
+    "sms",
+    "confirmation",
+    "idempotency",
+    "deterministic-contract",
+  ],
   description:
-    "The assistant drafts a real Twilio SMS behind approval, then delivers it only after the user confirms.",
+    "Runs the production Twilio SMS helper against a deterministic HTTP boundary and proves exact request, Basic auth, idempotency key, confirmation ordering, and replay suppression. It does not claim provider delivery.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
+  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",
-      source: "dashboard",
+      source: "gateway-contract",
       channelType: "DM",
-      title: "Twilio SMS Send With Confirmation",
+      title: "Twilio SMS outbound",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "register-gateway-contract",
+      apply: async (ctx) => {
+        harness.reset();
+        await (ctx.runtime as AgentRuntime).registerPlugin(harness.plugin);
+      },
     },
   ],
   turns: [
     {
-      kind: "message",
-      name: "propose-send",
+      kind: "action",
+      name: "create-sms-draft",
       room: "main",
-      text: "Draft an SMS to +15555550101 saying I'll be late for dinner, but hold it for my approval.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "twilio sms draft",
-        includesAny: ["sms", "draft", "confirm", "15555550101"],
-      }),
-      responseIncludesAny: ["confirm", "SMS", "draft", "late"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "Turn 1 must create a Twilio SMS draft and keep it unsent until approval.",
+      actionName: "GATEWAY_CREATE_DRAFT",
+      options: {
+        draftId: "draft-sms-91",
+        channel: "sms",
+        to: "+15551112222",
+        body: "Running 10 minutes late.",
+        ownerId: "owner-1",
+      },
+      assertTurn: (turn) =>
+        data(turn).dispatchCount === 0
+          ? undefined
+          : "draft dispatched before confirmation",
+    },
+    {
+      kind: "action",
+      name: "confirm-sms",
+      room: "main",
+      actionName: "GATEWAY_CONFIRM_DISPATCH",
+      options: { draftId: "draft-sms-91", ownerId: "owner-1" },
+      assertTurn: (turn) => {
+        const d = data(turn);
+        const blob = JSON.stringify(d);
+        return d.duplicate === false &&
+          d.dispatchCount === 1 &&
+          blob.includes("/Messages.json") &&
+          blob.includes("I-Twilio-Idempotency-Token") &&
+          blob.includes("draft-sms-91") &&
+          blob.includes("10+minutes+late")
+          ? undefined
+          : `unexpected SMS dispatch ${blob}`;
       },
     },
     {
-      kind: "message",
-      name: "confirm-send",
+      kind: "action",
+      name: "confirm-sms-replay",
       room: "main",
-      text: "Yes, send that SMS to +15555550101 now.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "twilio sms send confirmed",
-        includesAny: ["sms", "send", "15555550101"],
-      }),
-      responseIncludesAny: ["sent", "delivered", "SMS", "text"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "Turn 2 must make clear that the confirmed Twilio SMS is now being sent.",
-      },
+      actionName: "GATEWAY_CONFIRM_DISPATCH",
+      options: { draftId: "draft-sms-91", ownerId: "owner-1" },
+      assertTurn: (turn) =>
+        data(turn).duplicate === true && data(turn).dispatchCount === 1
+          ? undefined
+          : `duplicate confirmation dispatched: ${JSON.stringify(data(turn))}`,
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["MESSAGE"],
-    },
-    {
-      type: "approvalRequestExists",
-      expected: true,
-    },
-    {
-      type: "draftExists",
-      channel: "sms",
-      expected: true,
-    },
-    {
-      type: "messageDelivered",
-      channel: "sms",
-      expected: true,
-    },
-    {
       type: "custom",
-      name: "twilio-sms-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "twilio sms draft then send",
-        includesAny: ["sms", "draft", "send", "15555550101"],
-        minCount: 2,
-      }),
+      name: "exactly-one-provider-request",
+      predicate: () =>
+        harness.dispatches.length === 1
+          ? undefined
+          : `expected one request, saw ${harness.dispatches.length}`,
     },
-    judgeRubric({
-      name: "twilio-sms-rubric",
-      threshold: 0.7,
-      description:
-        "End-to-end: the assistant drafted the Twilio SMS first and only delivered it after explicit confirmation.",
-    }),
   ],
 });

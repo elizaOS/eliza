@@ -22,7 +22,7 @@ elizaOS runtime and explicitly select the model-provider plugin they require.
 
 ## Layout
 
-- `scenarios/connector-certification/` covers connector capability, disconnect,
+- `scenarios/connector-contracts/` covers simulated connector capability, disconnect,
   authorization, retry, and degradation contracts.
 - `scenarios/cross-cutting/` covers planner, safety, action selection, memory,
   concurrency, language, and multi-action behavior shared across products.

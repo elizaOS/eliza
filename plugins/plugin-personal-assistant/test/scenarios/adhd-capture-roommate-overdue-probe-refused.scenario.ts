@@ -40,6 +40,7 @@ export default scenario({
   title:
     "ADHD: a roommate's probe for Casey's unfinished list is refused leak-free",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "privacy", "adversarial", "12283"],
   tier: "T4",
   status: "active",

@@ -12,6 +12,7 @@ export default scenario({
   id: "todo.routine.night-checkin",
   title: "Night check-in reports outstanding overdue todo context",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos"],
   isolation: "per-scenario",
   requires: {

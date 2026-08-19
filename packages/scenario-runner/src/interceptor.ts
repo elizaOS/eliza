@@ -10,12 +10,15 @@
 
 import type {
   Action,
+  Content,
   HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
+  TargetInfo,
   Task,
 } from "@elizaos/core";
+import { inspectSendHandlerResult } from "@elizaos/core";
 import type {
   CapturedAction,
   CapturedApprovalRequest,
@@ -357,7 +360,7 @@ export function captureConnectorDispatchesFromAction(
   // success. Defaulting to `true` would let a "messageDelivered" final check
   // pass on a handler that returned no boolean `success` — inconsistent with the
   // safe default used for the captured action result below (undefined, not true).
-  const delivered =
+  const reportedSuccess =
     typeof resultRecord?.success === "boolean" ? resultRecord.success : false;
   const blob = [
     JSON.stringify(params ?? {}),
@@ -373,7 +376,11 @@ export function captureConnectorDispatchesFromAction(
       channel,
       actionName,
       payload,
-      delivered,
+      // An action can report success without reaching a connector boundary.
+      // Retain this as diagnostic coverage, but never promote it to delivery.
+      delivered: false,
+      evidenceSource: "action-result-inference",
+      status: reportedSuccess ? "reported_success" : "reported_failure",
       sentAt: new Date().toISOString(),
     });
   };
@@ -411,6 +418,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
   const memoryWrites: CapturedMemoryWrite[] = [];
   const artifacts: CapturedArtifact[] = [];
   const stateTransitions: CapturedStateTransition[] = [];
+  let activeActionName: string | undefined;
 
   // Wrap actions registered on this runtime.
   const restoreFns: Array<() => void> = [];
@@ -453,9 +461,17 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         }) as HandlerCallback;
       }
       try {
-        const result = (await (
-          original as (...inner: unknown[]) => unknown
-        ).apply(action, wrappedArgs)) as unknown;
+        const previousActionName = activeActionName;
+        activeActionName = action.name;
+        let result: unknown;
+        try {
+          result = (await (original as (...inner: unknown[]) => unknown).apply(
+            action,
+            wrappedArgs,
+          )) as unknown;
+        } finally {
+          activeActionName = previousActionName;
+        }
         if (result && typeof result === "object") {
           const r = result as Record<string, unknown>;
           const suppressResult = action.suppressActionResultClipboard === true;
@@ -519,6 +535,98 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
     restoreFns.push(() => {
       action.handler = original;
     });
+  }
+
+  // Capture the runtime's account-aware connector boundary. Unlike action
+  // results, this call reaches a registered transport and returns structural
+  // provider-acceptance evidence (or an explicit unknown/failure outcome).
+  type SendMessageToTargetFn = IAgentRuntime["sendMessageToTarget"];
+  const originalSendMessageToTarget = Reflect.get(
+    runtime,
+    "sendMessageToTarget",
+  );
+  if (isCallable(originalSendMessageToTarget)) {
+    if (Reflect.get(originalSendMessageToTarget, INTERCEPTOR_MARKER) !== true) {
+      const sendMessageToTarget =
+        originalSendMessageToTarget as SendMessageToTargetFn;
+      const wrappedSendMessageToTarget = (async (
+        target: TargetInfo,
+        content: Content,
+      ) => {
+        const sentAt = new Date().toISOString();
+        const actionName = activeActionName;
+        const safeTarget = toJsonSafe(
+          target,
+        ) as CapturedConnectorDispatch["target"];
+        const safePayload = toJsonSafe(content);
+        const metadata = toRecord(content.metadata);
+        const idempotencyKey = [
+          metadata?.scheduledDispatchKey,
+          metadata?.idempotencyKey,
+          metadata?.dispatchIdempotencyKey,
+        ].find(
+          (value): value is string =>
+            typeof value === "string" && value.trim().length > 0,
+        );
+        try {
+          const result = await sendMessageToTarget.call(
+            runtime,
+            target,
+            content,
+          );
+          const disposition = inspectSendHandlerResult(result);
+          const providerMessageIds =
+            "receipt" in disposition && disposition.receipt
+              ? [...disposition.receipt.providerMessageIds]
+              : "providerMessageId" in disposition &&
+                  disposition.providerMessageId
+                ? [disposition.providerMessageId]
+                : undefined;
+          connectorDispatches.push({
+            channel: target.source,
+            actionName,
+            payload: safePayload,
+            target: safeTarget,
+            sentAt,
+            completedAt: new Date().toISOString(),
+            delivered: disposition.kind === "delivered",
+            evidenceSource: "runtime-send-handler",
+            status: disposition.kind,
+            providerMessageIds,
+            replayed:
+              "replayed" in disposition ? disposition.replayed : undefined,
+            errorCode: "code" in disposition ? disposition.code : undefined,
+            idempotencyKey,
+          });
+          return result;
+        } catch (error) {
+          connectorDispatches.push({
+            channel: target.source,
+            actionName,
+            payload: safePayload,
+            target: safeTarget,
+            sentAt,
+            completedAt: new Date().toISOString(),
+            delivered: false,
+            evidenceSource: "runtime-send-handler",
+            status: "not_delivered",
+            errorCode:
+              error instanceof Error ? error.name : "SEND_HANDLER_ERROR",
+            idempotencyKey,
+          });
+          throw error;
+        }
+      }) as SendMessageToTargetFn;
+      Reflect.set(wrappedSendMessageToTarget, INTERCEPTOR_MARKER, true);
+      Reflect.set(runtime, "sendMessageToTarget", wrappedSendMessageToTarget);
+      restoreFns.push(() => {
+        Reflect.set(
+          runtime,
+          "sendMessageToTarget",
+          originalSendMessageToTarget,
+        );
+      });
+    }
   }
 
   // Wrap createMemory (adapter-backed) so memory-write assertions work.

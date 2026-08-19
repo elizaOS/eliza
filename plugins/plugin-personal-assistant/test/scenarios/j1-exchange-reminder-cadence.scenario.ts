@@ -10,6 +10,7 @@ export default scenario({
   id: "j1-exchange-reminder-cadence",
   title: "Exchange reminders use a recurring handoff cadence",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "coparenting",

@@ -12,6 +12,7 @@ export default scenario({
   id: "followup.offer-alternates-after-no-response",
   title: "Offer alternate times after a single time slot got no response",
   domain: "lifeops.followup",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "followup", "scheduling", "alternates"],
   description:
     "Agent proposed Tuesday 3pm to a counterparty and got no response in 24h. On bump, it must offer 2–3 alternates — not re-send 'Tuesday 3pm?' again.",

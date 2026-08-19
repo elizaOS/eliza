@@ -192,6 +192,7 @@ export default scenario({
   title:
     "Inbox triage capability routes requests to INBOX and drives the inbox_triage classifier",
   domain: "inbox",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox", "inbox_triage", "llm-eval"],
   isolation: "per-scenario",
   requires: {

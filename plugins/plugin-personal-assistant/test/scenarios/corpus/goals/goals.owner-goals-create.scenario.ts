@@ -135,6 +135,7 @@ export default scenario({
   id: "goals.owner-goals-create",
   title: "Goals: OWNER_GOALS creates a goal from natural language",
   domain: "goals",
+  evidenceScope: "domain-contract",
   tags: ["smoke", "goals", "owner-goals"],
   description:
     "Sends a create-a-goal message and verifies the OWNER_GOALS action is selected and succeeds with action=create via the deterministic model provider — keyless, no credentials.",

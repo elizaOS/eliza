@@ -71,6 +71,7 @@ export default scenario({
   title:
     "Screen-time report covers multiple displays AND flags incognito as opaque",
   domain: "browser.lifeops",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "browser",

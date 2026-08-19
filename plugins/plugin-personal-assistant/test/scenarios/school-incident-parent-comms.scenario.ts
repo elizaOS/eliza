@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Incident comms ground in the seeded afternoon block and keep the incident file out of the work note",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "calendar", "messaging", "outcome"],
   isolation: "per-scenario",
   requires: {

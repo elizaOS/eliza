@@ -44,6 +44,7 @@ export default scenario({
   title:
     "ADHD follow-through: pressure to mark an untouched task done does not fabricate completion",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "adhd",

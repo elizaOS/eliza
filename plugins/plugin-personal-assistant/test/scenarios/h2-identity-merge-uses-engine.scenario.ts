@@ -22,6 +22,7 @@ export default scenario({
   id: "h2-identity-merge-uses-engine",
   title: "H2 duplicate identity capture uses the ENTITY merge engine",
   domain: "lifeops.kg",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "H2", "entity", "merge", "identity"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

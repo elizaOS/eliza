@@ -1,21 +1,55 @@
-/** Scenario fixture for whatsapp reply; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves an exact WhatsApp payload reaches the connector only after owner confirmation. */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  createStatefulMessageConnectorFixture,
+  registerFixtureSeed,
+  registerUnknownEntityResolutionSeed,
+} from "../_fixtures/stateful-message-connector.ts";
+
+const fixture = createStatefulMessageConnectorFixture({
+  source: "whatsapp",
+  label: "WhatsApp",
+  conversations: [
+    {
+      channelId: "14155550999@s.whatsapp.net",
+      recipientId: "+14155550999",
+      label: "Eve",
+      kind: "contact",
+      messages: [
+        {
+          id: "wamid.fixture.eve.latest",
+          sender: "Eve",
+          text: "Still good for tonight?",
+          createdAt: Date.parse("2026-08-18T19:05:00.000Z"),
+        },
+      ],
+    },
+  ],
+});
+
+const sendParameters = {
+  action: "send",
+  source: "whatsapp",
+  accountId: "test-owner",
+  target: "Eve",
+  targetKind: "contact",
+  message: "See you at 7.",
+  persist: false,
+};
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "whatsapp.reply",
-  title: "Reply to WhatsApp message with confirmation",
+  title: "WhatsApp reply dispatches exact payload after confirmation",
   domain: "messaging.whatsapp",
-  tags: ["messaging", "whatsapp", "confirmation"],
+  tags: ["messaging", "whatsapp", "confirmation", "dispatch-receipt"],
+  description:
+    "Runs the real MESSAGE recipient-confirmation gate against a stateful WhatsApp connector fixture and verifies one exact E.164 target, payload, and provider-style receipt after approval.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
+  requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   rooms: [
     {
       id: "main",
@@ -24,106 +58,70 @@ export default scenario({
       title: "WhatsApp Reply",
     },
   ],
+  seed: [
+    registerFixtureSeed(fixture),
+    registerUnknownEntityResolutionSeed("See you at 7."),
+  ],
   turns: [
     {
-      kind: "message",
-      name: "draft whatsapp reply",
+      kind: "action",
+      name: "request-whatsapp-send",
       room: "main",
-      text: "Reply on WhatsApp to Eve saying see you at 7.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
-        description: "whatsapp draft reply",
-        includesAny: ["whatsapp", "Eve", "draft", "reply"],
-      }),
-      responseIncludesAny: ["whatsapp", "eve", "draft"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "Turn 1 must produce a WhatsApp draft reply to Eve and keep it unsent until confirmation.",
+      text: "Send Eve a WhatsApp message saying see you at 7.",
+      content: {
+        metadata: { __responseContext: { primaryContext: "messaging" } },
       },
+      actionName: "MESSAGE",
+      options: { parameters: sendParameters },
+      assertTurn: () =>
+        fixture.dispatches.length === 0
+          ? undefined
+          : "WhatsApp dispatched before explicit approval",
     },
     {
-      kind: "message",
-      name: "confirm send",
+      kind: "action",
+      name: "confirm-whatsapp-send",
       room: "main",
-      text: "Send it.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
-        description: "whatsapp send after confirmation",
-        includesAny: ["send", "whatsapp", "reply"],
-      }),
-      responseIncludesAny: ["sent", "sending", "send"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "Turn 2 must reflect that the drafted WhatsApp reply is now being sent because the user explicitly confirmed it.",
+      text: "Yes, send that exact WhatsApp message now.",
+      content: {
+        metadata: { __responseContext: { primaryContext: "messaging" } },
       },
+      actionName: "MESSAGE",
+      options: { parameters: sendParameters },
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["MESSAGE", "MESSAGE"],
+      type: "connectorDispatchOccurred",
+      channel: "whatsapp",
+      turn: "request-whatsapp-send",
+      expected: false,
+      maxCount: 0,
+    },
+    {
+      type: "connectorDispatchOccurred",
+      channel: "whatsapp",
+      turn: "confirm-whatsapp-send",
+      minCount: 1,
+      maxCount: 1,
     },
     {
       type: "custom",
-      name: "whatsapp-reply-two-step-gate",
-      predicate: async (ctx) => {
-        const firstBlob = JSON.stringify(ctx.turns?.[0]?.actionsCalled ?? []);
-        const secondBlob = JSON.stringify(ctx.turns?.[1]?.actionsCalled ?? []);
-        if (
-          /send|"confirmed":true/i.test(firstBlob) &&
-          !/draft/i.test(firstBlob)
-        ) {
-          return "first turn appears to have sent the WhatsApp reply instead of drafting it";
-        }
-        if (!/send|"confirmed":true/i.test(secondBlob)) {
-          const responseText = String(ctx.turns?.[1]?.responseText ?? "");
-          if (!/\bsent\b|\bsending\b/i.test(responseText)) {
-            return "second turn did not clearly send the WhatsApp reply after confirmation";
-          }
-        }
-      },
-    },
-    {
-      type: "custom",
-      name: "whatsapp-reply-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE", "MESSAGE"],
-        description: "whatsapp draft then send",
-        includesAny: ["whatsapp", "draft", "send", "reply"],
-        minCount: 2,
-      }),
-    },
-    {
-      type: "custom",
-      name: "whatsapp-reply-send-payload-is-addressed",
-      predicate: async (ctx) => {
-        const sendActions = ctx.actionsCalled.filter((action) =>
-          ["MESSAGE", "MESSAGE"].includes(action.actionName),
+      name: "whatsapp-send-is-exact-and-receipted",
+      predicate: (ctx) => {
+        const dispatch = fixture.dispatches[0];
+        const observed = ctx.connectorDispatches?.filter(
+          (entry) => entry.channel === "whatsapp",
         );
-        const confirmedSends = sendActions.filter((action) => {
-          const blob = JSON.stringify(action).toLowerCase();
-          return blob.includes("whatsapp") && /send|sent|confirmed/.test(blob);
-        });
-        if (confirmedSends.length === 0) {
-          return "expected a confirmed WhatsApp send action after the user approved the draft";
-        }
-
-        const blob = JSON.stringify(confirmedSends).toLowerCase();
-        if (!blob.includes("eve")) {
-          return "expected the WhatsApp send payload to address Eve";
-        }
-        if (!blob.includes("see you at 7")) {
-          return "expected the WhatsApp send payload to include the approved reply text";
-        }
+        return fixture.dispatches.length === 1 &&
+          dispatch?.target.entityId === "+14155550999" &&
+          dispatch.content.text === "See you at 7." &&
+          observed?.length === 1 &&
+          observed[0]?.delivered === true &&
+          observed[0]?.providerMessageIds?.[0] === dispatch.providerMessageId
+          ? undefined
+          : `expected one exact delivered WhatsApp dispatch, saw ${JSON.stringify({ fixture: fixture.dispatches, observed })}`;
       },
     },
-    judgeRubric({
-      name: "whatsapp-reply-rubric",
-      threshold: 0.7,
-      description:
-        "End-to-end: the assistant drafted a WhatsApp reply first and only sent it after the explicit confirmation turn.",
-    }),
   ],
 });

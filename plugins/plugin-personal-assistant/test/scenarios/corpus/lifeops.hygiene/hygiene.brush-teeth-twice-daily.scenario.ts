@@ -19,6 +19,7 @@ export default scenario({
   id: "hygiene.brush-teeth-twice-daily",
   title: "Brush teeth twice a day at 8am and 9pm",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "smoke"],
   isolation: "per-scenario",
   requires: {

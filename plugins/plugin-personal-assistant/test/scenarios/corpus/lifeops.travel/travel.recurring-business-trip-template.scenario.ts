@@ -13,6 +13,7 @@ export default scenario({
   id: "travel.recurring-business-trip-template",
   title: "Persist a recurring business-trip template (SF → NYC monthly)",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "template", "recurring", "profile"],
   description:
     "User describes a monthly SFO → JFK trip pattern (Mon out, Thu back, same hotel). The agent must persist the template via PROFILE/LIFE so future 'book the usual NYC trip' resolves without re-asking for routing, dates pattern, and lodging.",

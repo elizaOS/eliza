@@ -31,6 +31,7 @@ export default scenario({
   id: "cross.multi-turn.memory-across-turns",
   title: "Agent recalls a user-stated fact on a later turn",
   domain: "cross-cutting",
+  evidenceScope: "domain-contract",
   tags: ["cross-cutting", "multi-turn", "critical"],
   description:
     "Turn 1 tells the agent the user's favorite color (blue) plus a decoy least-favorite (orange). Turn 2 asks for the favorite, in Spanish. The response must contain 'azul' and not the decoy's translation.",

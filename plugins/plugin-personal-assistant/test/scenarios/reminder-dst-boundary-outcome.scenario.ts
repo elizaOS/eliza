@@ -1,16 +1,45 @@
-// Defines the reminder dst boundary outcome LifeOps scenario-runner spec.
+/** Proves a local morning reminder moves by one UTC hour across the New York spring-forward transition. */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-function assertApiBody(options: {
-  includesAll?: ReadonlyArray<string>;
-}): (status: number, body: unknown) => string | undefined {
+const TITLE = "Morning stretch DST contract";
+
+function assertSingleDelivery(
+  expectedScheduledFor: string,
+): (_status: number, body: unknown) => string | undefined {
   return (_status, body) => {
-    const serialized =
-      typeof body === "string" ? body : JSON.stringify(body ?? "");
-    for (const needle of options.includesAll ?? []) {
-      if (!serialized.includes(needle)) {
-        return `expected body to include "${needle}"`;
-      }
+    const attempts =
+      body &&
+      typeof body === "object" &&
+      Array.isArray((body as { attempts?: unknown }).attempts)
+        ? (body as { attempts: unknown[] }).attempts
+        : null;
+    if (!attempts)
+      return `expected attempts array, saw ${JSON.stringify(body)}`;
+    const matching = attempts.filter((attempt) => {
+      if (!attempt || typeof attempt !== "object") return false;
+      const row = attempt as {
+        deliveryMetadata?: { title?: unknown; lifecycle?: unknown };
+      };
+      return (
+        row.deliveryMetadata?.title === TITLE &&
+        row.deliveryMetadata.lifecycle === "plan"
+      );
+    });
+    if (matching.length !== 1)
+      return `expected exactly one ${TITLE} plan attempt, saw ${matching.length}`;
+    const row = matching[0] as {
+      outcome?: unknown;
+      channel?: unknown;
+      scheduledFor?: unknown;
+    };
+    if (row.outcome !== "delivered" && row.outcome !== "delivered_read") {
+      return `expected delivered outcome, saw ${String(row.outcome)}`;
+    }
+    if (row.channel !== "in_app") {
+      return `expected in_app channel, saw ${String(row.channel)}`;
+    }
+    if (row.scheduledFor !== expectedScheduledFor) {
+      return `expected local-window start ${expectedScheduledFor}, saw ${String(row.scheduledFor)}`;
     }
   };
 }
@@ -25,11 +54,12 @@ function assertApiBody(options: {
  * DST offset rather than a fixed UTC offset (issue #9970 DST-boundary edge case).
  */
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "reminder-dst-boundary-outcome",
   title: "A daily reminder window tracks local time across a DST transition",
   domain: "reminders",
-  tags: ["lifeops", "reminders"],
+  evidenceScope: "domain-contract",
+  tags: ["pr", "deterministic", "lifeops", "reminders", "dst"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -49,7 +79,7 @@ export default scenario({
       path: "/api/lifeops/definitions",
       body: {
         kind: "task",
-        title: "Morning stretch",
+        title: TITLE,
         timezone: "America/New_York",
         priority: 1,
         cadence: {
@@ -72,7 +102,7 @@ export default scenario({
       path: "/api/lifeops/reminders/process",
       body: { now: "2027-03-13T13:00:00.000Z", limit: 10 },
       expectedStatus: 200,
-      assertResponse: assertApiBody({ includesAll: ["delivered", "in_app"] }),
+      assertResponse: assertSingleDelivery("2027-03-13T10:00:00.000Z"),
     },
     {
       kind: "api",
@@ -83,7 +113,7 @@ export default scenario({
       path: "/api/lifeops/reminders/process",
       body: { now: "2027-03-15T09:30:00.000Z", limit: 10 },
       expectedStatus: 200,
-      assertResponse: assertApiBody({ includesAll: ["delivered", "in_app"] }),
+      assertResponse: assertSingleDelivery("2027-03-15T09:00:00.000Z"),
     },
   ],
 });

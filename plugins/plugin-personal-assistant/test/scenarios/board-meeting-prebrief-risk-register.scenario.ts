@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Board prebrief surfaces seeded risk-register items and schedules the metric-gap follow-up",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "briefing", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {

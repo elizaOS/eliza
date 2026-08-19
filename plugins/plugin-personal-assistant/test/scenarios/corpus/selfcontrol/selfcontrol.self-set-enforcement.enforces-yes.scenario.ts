@@ -20,6 +20,7 @@ export default scenario({
   id: "selfcontrol.self-set-enforcement.enforces-yes",
   title: "Agent enforces a block once the user confirms",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "confirmation", "happy-path"],
   description:
     "Turn 1 — agent proposes a block and must not act. Turn 2 — user confirms; WEBSITE_BLOCK must fire.",

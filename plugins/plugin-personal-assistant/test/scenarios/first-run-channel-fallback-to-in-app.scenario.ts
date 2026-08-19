@@ -25,6 +25,7 @@ export default scenario({
   id: "first-run-channel-fallback-to-in-app",
   title: "First-run channel fallback: unconnected channel → in-app + warning",
   domain: "lifeops.first-run",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "first-run", "onboarding", "channel", "mvp", "14353"],
   status: "active",
   tier: "T4",

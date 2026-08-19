@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.schedule.bundle-meetings-while-traveling",
   title: "Bundle related meetings while the user is briefly in a city",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "calendar", "travel", "transcript-derived"],
   description:
     "Transcript-derived case: the assistant should combine nearby meetings while the user is temporarily in Tokyo.",
@@ -35,7 +36,7 @@ export default scenario({
       room: "main",
       text: "I'm in Tokyo for limited time, so schedule PendingReality and Ryan at the same time if possible.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "city-limited meeting bundling",
         includesAny: [
           "tokyo",
@@ -56,7 +57,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["CALENDAR", "CALENDAR"],
+      actionName: ["CALENDAR"],
     },
     {
       type: "memoryWriteOccurred",
@@ -66,7 +67,7 @@ export default scenario({
       type: "custom",
       name: "ea-bundle-meetings-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["CALENDAR", "CALENDAR"],
+        acceptedActions: ["CALENDAR"],
         description: "city-limited meeting bundling",
         includesAny: [
           "tokyo",

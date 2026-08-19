@@ -11,6 +11,7 @@ export default scenario({
   id: "x.dm.reply-with-confirmation",
   title: "Draft an X DM reply inline in chat",
   domain: "social.x",
+  evidenceScope: "model-behavior",
   tags: ["social", "twitter", "dm", "draft"],
   description:
     "User asks for an X DM reply draft and gets the copy inline in chat.",

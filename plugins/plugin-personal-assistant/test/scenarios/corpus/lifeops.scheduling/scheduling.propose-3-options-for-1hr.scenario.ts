@@ -44,6 +44,7 @@ export default scenario({
   id: "scheduling.propose-3-options-for-1hr",
   title: "Proposes three 1-hour slots when asked",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "propose-times"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

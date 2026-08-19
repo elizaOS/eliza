@@ -10,6 +10,7 @@ export default scenario({
   id: "habit.sit-ups-push-ups.daily-counts",
   title: "Daily push-ups and sit-ups habit",
   domain: "habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "smoke"],
   isolation: "per-scenario",
   requires: {

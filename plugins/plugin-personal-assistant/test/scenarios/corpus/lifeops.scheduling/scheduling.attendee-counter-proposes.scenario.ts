@@ -45,6 +45,7 @@ export default scenario({
   id: "scheduling.attendee-counter-proposes",
   title: "Agent reconciles when the attendee counter-proposes a different time",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "negotiation"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

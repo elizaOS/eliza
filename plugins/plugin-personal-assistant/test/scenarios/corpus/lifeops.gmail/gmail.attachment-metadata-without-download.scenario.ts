@@ -18,6 +18,7 @@ export default scenario({
   id: "gmail.attachment-metadata-without-download",
   title: "Attachment metadata surfaced without downloading bytes",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "attachment", "metadata"],
   isolation: "per-scenario",
   requires: {

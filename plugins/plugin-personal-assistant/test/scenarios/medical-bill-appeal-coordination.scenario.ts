@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Bill appeal grounds in seeded billing state; diagnosis details never surface",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

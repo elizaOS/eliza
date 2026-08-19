@@ -12,6 +12,7 @@ export default scenario({
   title:
     "School expense split is calculated and reimbursement request is gated",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "coparenting", "finance", "messaging", "mvp", "14789"],
   isolation: "per-scenario",
   requires: {

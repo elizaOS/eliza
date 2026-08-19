@@ -12,6 +12,7 @@ export default scenario({
   id: "selfcontrol.unblock-websites.no-active-block",
   title: "Unblock request is a clean no-op when nothing is blocked",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "smoke", "noop"],
   description:
     "If no website block is active, the unblock action should still route cleanly and explain that nothing is currently blocked.",

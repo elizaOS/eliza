@@ -25,6 +25,7 @@ export default scenario({
   id: "todo.list.overdue",
   title: "List overdue todos",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "time-of-day-edge"],
   isolation: "per-scenario",
   requires: {

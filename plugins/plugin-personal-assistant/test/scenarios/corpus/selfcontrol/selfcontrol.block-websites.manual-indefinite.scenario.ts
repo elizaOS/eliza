@@ -12,6 +12,7 @@ export default scenario({
   id: "selfcontrol.block-websites.manual-indefinite",
   title: "Block X with no duration until manual unblock",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "smoke", "manual-block", "multi-turn"],
   description:
     "If the user does not specify a duration, the website block should stay active until they explicitly remove it.",

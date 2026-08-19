@@ -188,6 +188,7 @@ export default scenario({
   title:
     "Inbox triage classifies seeded cross-channel messages (urgent vs noise) and persists the decision",
   domain: "inbox",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox", "inbox_triage", "llm-eval", "outcome"],
   isolation: "per-scenario",
   requires: {

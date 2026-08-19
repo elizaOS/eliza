@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.event-planning",
   title: "Event planning coordinates calendar, invites, venue, docs, and tasks",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "events", "calendar"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

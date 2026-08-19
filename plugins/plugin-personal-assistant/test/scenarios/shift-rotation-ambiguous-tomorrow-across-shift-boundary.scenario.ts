@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Shift rotation: 'tomorrow' spoken mid-night-shift is clarified before the reminder moves",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "shift-rotation",

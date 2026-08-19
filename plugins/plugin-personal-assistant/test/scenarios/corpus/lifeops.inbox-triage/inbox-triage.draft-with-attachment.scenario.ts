@@ -90,6 +90,7 @@ export default scenario({
   title:
     "Triage entry with attachment — draft acknowledges file without fabricating its contents",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox-triage", "attachments", "draft", "no-fabrication"],
   isolation: "per-scenario",
   requires: {

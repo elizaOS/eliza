@@ -19,6 +19,7 @@ export default scenario({
   title:
     "Gift matrix approval resolves on the live queue with the budget ceiling redacted",
   domain: "executive.approvals",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

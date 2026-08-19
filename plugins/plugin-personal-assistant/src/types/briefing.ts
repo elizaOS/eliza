@@ -35,7 +35,7 @@ export interface LifeOpsBriefingInboxItem {
 
 export interface LifeOpsBriefingLifeItem {
   readonly id: string;
-  readonly kind: "todo" | "reminder" | "habit" | "goal";
+  readonly kind: "todo" | "reminder" | "habit" | "goal" | "followup";
   readonly title: string;
   readonly dueAt: string | null;
 }
@@ -90,6 +90,7 @@ export interface LifeOpsBriefingEditorialItem {
     | "reminder"
     | "habit"
     | "goal"
+    | "followup"
     | "recurring_charge";
   readonly sourceId: string;
   readonly itemClass: string;

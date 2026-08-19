@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-japanese",
   title: "Brush teeth from polite Japanese (です/ます) phrasing",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks", "smoke"],
   isolation: "per-scenario",
   requires: {

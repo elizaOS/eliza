@@ -1,6 +1,7 @@
 // Handles webhook gateway whatsapp behavior for authenticated connector fan-in.
 import crypto from "node:crypto";
 import { z } from "zod";
+import { resolveConnectorAccountId } from "../connector-account";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
@@ -57,6 +58,11 @@ const WhatsAppWebhookPayloadSchema = z.object({
 export const whatsappAdapter: PlatformAdapter = {
   platform: "whatsapp",
 
+  getDedupeScope(config, _event, project): string {
+    const accountId = resolveConnectorAccountId("whatsapp", config);
+    return `project:${project}:account:${accountId ?? "missing"}`;
+  },
+
   async verifyWebhook(
     request: Request,
     rawBody: string,
@@ -83,7 +89,25 @@ export const whatsappAdapter: PlatformAdapter = {
       const computedBuf = Buffer.from(computedSignature, "hex");
 
       if (expectedBuf.length !== computedBuf.length) return false;
-      return crypto.timingSafeEqual(expectedBuf, computedBuf);
+      if (!crypto.timingSafeEqual(expectedBuf, computedBuf)) return false;
+      if (config.phoneNumberId) {
+        const parsed = WhatsAppWebhookPayloadSchema.safeParse(
+          JSON.parse(rawBody),
+        );
+        if (
+          !parsed.success ||
+          parsed.data.entry.some((entry) =>
+            entry.changes.some(
+              (change) =>
+                change.value.metadata.phone_number_id !== config.phoneNumberId,
+            ),
+          )
+        ) {
+          logger.warn("WhatsApp webhook phone-number account mismatch");
+          return false;
+        }
+      }
+      return true;
     } catch (err) {
       logger.warn("WhatsApp signature verification error", {
         error: err instanceof Error ? err.message : String(err),

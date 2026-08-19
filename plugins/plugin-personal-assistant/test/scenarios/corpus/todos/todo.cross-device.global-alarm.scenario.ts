@@ -6,6 +6,7 @@ export default scenario({
   id: "todo.cross-device.global-alarm",
   title: "Setting an alarm is confirmation-gated before saving",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos"],
   isolation: "per-scenario",
   requires: {

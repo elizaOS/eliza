@@ -60,6 +60,7 @@ export default scenario({
   title:
     "Schedule plan capability routes a negotiation request to PERSONAL_ASSISTANT scheduling",
   domain: "scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "schedule_plan", "llm-eval"],
   isolation: "per-scenario",
   requires: {

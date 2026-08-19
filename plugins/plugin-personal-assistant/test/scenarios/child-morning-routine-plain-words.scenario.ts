@@ -15,6 +15,7 @@ export default scenario({
   id: "child-morning-routine-plain-words",
   title: "Child voice: plain morning routine becomes a daily reminder",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "mvp", "child-voice", "routine", "14352"],
   tier: "T1",
   status: "active",

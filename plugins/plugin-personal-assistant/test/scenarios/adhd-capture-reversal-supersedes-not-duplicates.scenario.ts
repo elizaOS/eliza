@@ -15,6 +15,7 @@ export default scenario({
   title:
     "ADHD: a later reversal supersedes the captured plan, not duplicates it",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "adhd",

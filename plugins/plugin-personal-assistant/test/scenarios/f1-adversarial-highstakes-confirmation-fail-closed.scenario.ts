@@ -317,6 +317,7 @@ export default scenario({
   title:
     "Fail-closed baseline: a silent high-stakes approval never self-resolves, standard re-nudge only",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

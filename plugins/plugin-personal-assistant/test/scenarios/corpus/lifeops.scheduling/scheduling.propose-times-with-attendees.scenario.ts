@@ -28,6 +28,7 @@ export default scenario({
   id: "scheduling.propose-times-with-attendees",
   title: "Proposes times that name both invitees",
   domain: "lifeops.scheduling",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "scheduling", "propose-times", "attendees"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

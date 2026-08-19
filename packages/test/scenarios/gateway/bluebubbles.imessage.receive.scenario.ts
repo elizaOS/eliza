@@ -1,84 +1,117 @@
-/** Scenario fixture for bluebubbles imessage receive; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectMemoryWrite } from "@elizaos/scenario-runner/scenario-assertions";
+/** Proves BlueBubbles webhook authentication and message-guid deduplication. */
+import type { AgentRuntime } from "@elizaos/core";
+import {
+  type ScenarioTurnExecution,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
+import { createGatewayContractHarness } from "./_fixtures/gateway-contract-plugin.ts";
 
+const harness = createGatewayContractHarness();
+const data = (turn: ScenarioTurnExecution) =>
+  (turn.responseBody as { data?: Record<string, unknown> })?.data ?? {};
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "bluebubbles.imessage.receive",
-  title:
-    "BlueBubbles webhook inbound iMessage writes memory and reaches the agent",
-  domain: "gateway",
-  tags: ["gateway", "imessage", "bluebubbles", "smoke"],
+  title: "BlueBubbles authenticates and deduplicates inbound iMessage identity",
+  domain: "gateway-contract",
+  tags: [
+    "gateway",
+    "bluebubbles",
+    "imessage",
+    "auth",
+    "dedupe",
+    "deterministic-contract",
+  ],
   description:
-    "A BlueBubbles webhook delivering an inbound iMessage should create the incoming message memory and route the message through the agent.",
+    "Exercises the production constant-time BlueBubbles webhook-secret verifier and a stable chat/message identity ledger. It does not claim a live macOS BlueBubbles server.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-    os: "macos",
-  },
+  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",
-      source: "bluebubbles",
+      source: "gateway-contract",
       channelType: "DM",
-      title: "BlueBubbles iMessage Receive",
+      title: "BlueBubbles ingress contract",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "register-gateway-contract",
+      apply: async (ctx) => {
+        harness.reset();
+        await (ctx.runtime as AgentRuntime).registerPlugin(harness.plugin);
+      },
     },
   ],
   turns: [
     {
-      kind: "message",
-      name: "inbound-imessage",
+      kind: "action",
+      name: "reject-wrong-secret",
       room: "main",
-      text: "Hey, did you get my iMessage about the weekend plans?",
-      responseIncludesAny: ["weekend", "iMessage", "got", "plans"],
+      actionName: "BLUEBUBBLES_INGRESS_CONTRACT",
+      options: {
+        secret: "correct-secret",
+        provided: "wrong-secret",
+        messageGuid: "msg-91",
+        chatGuid: "iMessage;-;+15551112222",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 401 &&
+        data(turn).authorized === false &&
+        data(turn).dispatchCount === 0
+          ? undefined
+          : `unauthorized webhook dispatched: ${JSON.stringify(data(turn))}`,
+    },
+    {
+      kind: "action",
+      name: "accept-authenticated-message",
+      room: "main",
+      actionName: "BLUEBUBBLES_INGRESS_CONTRACT",
+      options: {
+        secret: "correct-secret",
+        provided: "correct-secret",
+        messageGuid: "msg-91",
+        chatGuid: "iMessage;-;+15551112222",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 200 &&
+        data(turn).acknowledged === true &&
+        data(turn).authorized === true &&
+        data(turn).duplicate === false &&
+        data(turn).dispatchCount === 1
+          ? undefined
+          : `authenticated webhook failed: ${JSON.stringify(data(turn))}`,
+    },
+    {
+      kind: "action",
+      name: "dedupe-replay",
+      room: "main",
+      actionName: "BLUEBUBBLES_INGRESS_CONTRACT",
+      options: {
+        secret: "correct-secret",
+        provided: "correct-secret",
+        messageGuid: "msg-91",
+        chatGuid: "iMessage;-;+15551112222",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 200 &&
+        data(turn).duplicate === true &&
+        data(turn).dispatchCount === 1
+          ? undefined
+          : `replay was not deduplicated: ${JSON.stringify(data(turn))}`,
     },
   ],
   finalChecks: [
     {
       type: "custom",
-      name: "bluebubbles-receive-inbound-memory",
-      predicate: async (ctx) => {
-        const inboundWrite = (ctx.memoryWrites ?? []).find((write) => {
-          if (write.table !== "messages") {
-            return false;
-          }
-          const blob = JSON.stringify(write.content ?? {});
-          return (
-            blob.includes('"source":"bluebubbles"') &&
-            /weekend plans/i.test(blob)
-          );
-        });
-
-        if (!inboundWrite) {
-          return "expected a BlueBubbles inbound message memory write containing the weekend plans thread";
-        }
-
-        const turnActions = ctx.turns?.[0]?.actionsCalled ?? [];
-        const syntheticReply = turnActions.find((action) => {
-          if (action.actionName !== "REPLY") {
-            return false;
-          }
-          const data =
-            action.result?.data && typeof action.result.data === "object"
-              ? (action.result.data as Record<string, unknown>)
-              : null;
-          return data?.source === "synthesized-reply";
-        });
-        if (syntheticReply) {
-          return "expected a real inbound agent action, not a synthesized reply";
-        }
-
-        return undefined;
-      },
-    },
-    {
-      type: "custom",
-      name: "bluebubbles-receive-memory-coverage",
-      predicate: expectMemoryWrite({
-        description: "BlueBubbles inbound memory write",
-        table: "messages",
-        contentIncludesAny: [/bluebubbles/i, /weekend plans/i],
-      }),
+      name: "exactly-one-inbound-effect",
+      predicate: () =>
+        harness.dispatches.length === 1
+          ? undefined
+          : `expected one effect, saw ${harness.dispatches.length}`,
     },
   ],
 });

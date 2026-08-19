@@ -13,6 +13,7 @@ export default scenario({
   id: "push.urgent-bypasses-do-not-disturb",
   title: "Mom-flagged urgent push fires through Do Not Disturb",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "urgent", "dnd", "bypass"],
   description:
     "Do Not Disturb is on. Mom is messaging — and her contact carries a top-priority/interrupt rule. The push must fire through DnD on mobile. Negative-space: pushes that are NOT mom/urgent should still be suppressed during DnD; that's covered by a sibling scenario.",

@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.document-signature-review",
   title: "Document review finds signatures, redlines, and approvals",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "documents", "approvals"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

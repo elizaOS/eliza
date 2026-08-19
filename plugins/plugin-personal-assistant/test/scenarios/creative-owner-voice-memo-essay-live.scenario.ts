@@ -25,6 +25,7 @@ export default scenario({
   title:
     "Two voice memos become an owner-voice essay whose accepted edit survives revision",
   domain: "lifeops.creative",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "creative-draft", "voice", "judge", "live", "14871"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-personal-assistant"] },

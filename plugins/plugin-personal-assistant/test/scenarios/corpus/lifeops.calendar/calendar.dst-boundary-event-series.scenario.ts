@@ -63,6 +63,7 @@ export default scenario({
   title:
     "Daily recurring series across DST boundary respects this-instance scope",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "dst", "recurring", "robustness"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

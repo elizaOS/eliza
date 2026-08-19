@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Keynote signoff is rejected until fact-check passes; embargoed metric never leaks",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

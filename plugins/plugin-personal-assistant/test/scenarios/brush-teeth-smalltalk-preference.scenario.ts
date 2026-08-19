@@ -8,6 +8,7 @@ export default scenario({
   id: "brush-teeth-smalltalk-preference",
   title: "Brush teeth from smalltalk into preference update",
   domain: "tasks",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "tasks"],
   isolation: "per-scenario",
   requires: {

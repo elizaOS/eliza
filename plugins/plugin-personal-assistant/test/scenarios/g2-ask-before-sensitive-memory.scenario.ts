@@ -13,6 +13,7 @@ export default scenario({
   id: "g2-ask-before-sensitive-memory",
   title: "G2 reconnect draft asks before using sensitive memories",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "G2", "privacy", "relationships", "approval"],
   isolation: "per-scenario",
   rooms: [

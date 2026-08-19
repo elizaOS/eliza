@@ -11,6 +11,7 @@ export default scenario({
   id: "hygiene.medication-single-daily-am",
   title: "Single daily medication taken every morning",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "medication", "daily"],
   isolation: "per-scenario",
   requires: {

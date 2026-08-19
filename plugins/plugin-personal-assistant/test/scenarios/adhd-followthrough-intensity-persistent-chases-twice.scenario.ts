@@ -231,6 +231,7 @@ export default scenario({
   title:
     "ADHD follow-through: persistent reminderIntensity earns a second no-reply retry rung",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

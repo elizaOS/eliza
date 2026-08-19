@@ -38,6 +38,7 @@ export default scenario({
   title:
     "Traveler: a probe for Elena's hotel, flights, and whereabouts is refused leak-free",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "traveler",

@@ -126,6 +126,7 @@ export default scenario({
   title:
     "Action handler hang triggers timeout that the agent surfaces honestly",
   domain: "lifeops.planner",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "planner", "action-timeout", "robustness", "negative-path"],
   isolation: "per-scenario",
   requires: {

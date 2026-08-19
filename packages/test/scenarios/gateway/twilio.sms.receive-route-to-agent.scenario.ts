@@ -1,58 +1,144 @@
-/** Scenario fixture for twilio sms receive route to agent; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
+/** Proves signed Twilio SMS normalization, tenant ownership, and replay deduplication. */
+import type { AgentRuntime } from "@elizaos/core";
+import {
+  type ScenarioTurnExecution,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
+import { createGatewayContractHarness } from "./_fixtures/gateway-contract-plugin.ts";
 
+const harness = createGatewayContractHarness();
+const data = (turn: ScenarioTurnExecution) =>
+  (turn.responseBody as { data?: Record<string, unknown> })?.data ?? {};
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "twilio.sms.receive-route-to-agent",
-  title: "Incoming Twilio SMS routes to the user's agent",
-  domain: "gateway",
-  tags: ["gateway", "twilio", "sms", "smoke"],
+  title: "Twilio signed SMS ingress routes once to its owning tenant",
+  domain: "gateway-contract",
+  tags: [
+    "gateway",
+    "twilio",
+    "sms",
+    "auth",
+    "dedupe",
+    "deterministic-contract",
+  ],
   description:
-    "Inbound Twilio SMS is routed to the active user agent and produces a real reply path. Signed webhook coverage and dedupe remain covered by the webhook integration tests.",
+    "Exercises production Twilio signature verification and SMS normalization, then proves project-scoped ownership and replay suppression. It does not claim Twilio delivery.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
+  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",
-      source: "twilio",
+      source: "gateway-contract",
       channelType: "DM",
-      title: "Twilio SMS Receive",
+      title: "Twilio ingress contract",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "register-gateway-contract",
+      apply: async (ctx) => {
+        harness.reset();
+        await (ctx.runtime as AgentRuntime).registerPlugin(harness.plugin);
+      },
     },
   ],
   turns: [
     {
-      kind: "message",
-      name: "inbound-sms",
+      kind: "action",
+      name: "reject-invalid-signature",
       room: "main",
-      text: 'Please route this incoming Twilio text to the right agent and reply naturally. Exact SMS: "I am running 20 minutes late, the freeway is backed up, I will update you when I am parked, and please start the meeting without me if I am not there by 9:15."',
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["REPLY", "MESSAGE", "MESSAGE"],
-        description: "twilio sms route-to-agent",
-        includesAny: ["got", "received", "text", "SMS"],
-      }),
-      responseIncludesAny: ["got", "received", "text", "SMS"],
+      actionName: "GATEWAY_HTTP_INGRESS_CONTRACT",
+      options: {
+        platform: "twilio",
+        project: "project-owner-c",
+        variant: "invalid-signature",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 401 && data(turn).effectCount === 0
+          ? undefined
+          : `invalid signature crossed ingress: ${JSON.stringify(data(turn))}`,
+    },
+    {
+      kind: "action",
+      name: "reject-wrong-account-sid",
+      room: "main",
+      actionName: "GATEWAY_HTTP_INGRESS_CONTRACT",
+      options: {
+        platform: "twilio",
+        project: "project-owner-c",
+        variant: "wrong-account",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 401 && data(turn).effectCount === 0
+          ? undefined
+          : `wrong account crossed ingress: ${JSON.stringify(data(turn))}`,
+    },
+    {
+      kind: "action",
+      name: "accept-signed-sms",
+      room: "main",
+      actionName: "GATEWAY_HTTP_INGRESS_CONTRACT",
+      options: {
+        platform: "twilio",
+        project: "project-owner-c",
+        variant: "valid",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 200 &&
+        data(turn).effectCount === 1 &&
+        Number(data(turn).providerEgressCount) === 1
+          ? undefined
+          : `valid SMS route failed: ${JSON.stringify(data(turn))}`,
+    },
+    {
+      kind: "action",
+      name: "dedupe-twilio-retry",
+      room: "main",
+      actionName: "GATEWAY_HTTP_INGRESS_CONTRACT",
+      options: {
+        platform: "twilio",
+        project: "project-owner-c",
+        variant: "replay",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 200 &&
+        data(turn).effectCount === 0 &&
+        data(turn).providerEgressCount === 0 &&
+        data(turn).totalEffects === 1
+          ? undefined
+          : `unexpected replay ${JSON.stringify(data(turn))}`,
+    },
+    {
+      kind: "action",
+      name: "isolate-cross-tenant-message-sid",
+      room: "main",
+      actionName: "GATEWAY_HTTP_INGRESS_CONTRACT",
+      options: {
+        platform: "twilio",
+        project: "project-owner-d",
+        variant: "cross-tenant",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 200 &&
+        data(turn).effectCount === 1 &&
+        Number(data(turn).providerEgressCount) === 1 &&
+        data(turn).totalEffects === 2
+          ? undefined
+          : `cross-tenant SID collided: ${JSON.stringify(data(turn))}`,
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["REPLY", "MESSAGE", "MESSAGE"],
-    },
-    {
       type: "custom",
-      name: "twilio-sms-route-produces-action-and-reply",
-      predicate: async (ctx) => {
-        const reply = String(ctx.turns?.[0]?.responseText ?? "").trim();
-        if (!reply) {
-          return "expected a non-empty Twilio SMS reply";
-        }
-        if ((ctx.turns?.[0]?.actionsCalled.length ?? 0) === 0) {
-          return "expected the inbound Twilio SMS to call at least one action";
-        }
-      },
+      name: "exactly-one-owned-dispatch",
+      predicate: () =>
+        harness.dispatches.length === 2
+          ? undefined
+          : `expected one dispatch, saw ${harness.dispatches.length}`,
     },
   ],
 });

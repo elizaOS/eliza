@@ -372,11 +372,11 @@ export class AppChargeCallbacksService {
     if (!existing) {
       throw new Error("App callback outbox replay does not match the committed delivery");
     }
+    if (existing.payload_digest !== settlementDigest(existing.payload)) {
+      throw new Error("App callback outbox stored payload digest is invalid");
+    }
     const existingSnapshot = parseAppChargeCallbackOutboxPayload(existing.payload);
-    if (
-      existing.payload_digest !== settlementDigest(existingSnapshot) ||
-      settlementDigest(existingSnapshot.params) !== settlementDigest(snapshot.params)
-    ) {
+    if (settlementDigest(existingSnapshot.params) !== settlementDigest(snapshot.params)) {
       throw new Error("App callback outbox replay does not match the committed delivery");
     }
   }
@@ -427,10 +427,10 @@ export class AppChargeCallbacksService {
       let deliveryResult: CallbackDispatchResult | null = null;
 
       try {
-        const snapshot = parseAppChargeCallbackOutboxPayload(claimed.payload);
-        if (settlementDigest(snapshot) !== claimed.payload_digest) {
+        if (settlementDigest(claimed.payload) !== claimed.payload_digest) {
           throw new Error("App callback outbox payload digest mismatch");
         }
+        const snapshot = parseAppChargeCallbackOutboxPayload(claimed.payload);
         deliveryResult = await this.dispatchSnapshot(
           {
             ...snapshot,

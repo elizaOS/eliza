@@ -54,6 +54,7 @@ export default scenario({
   id: "hygiene.floss-missed-2-nights-escalate",
   title: "Floss escalation surfaces after 2 missed nights",
   domain: "lifeops.hygiene",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "hygiene", "habits", "escalation"],
   isolation: "per-scenario",
   requires: {

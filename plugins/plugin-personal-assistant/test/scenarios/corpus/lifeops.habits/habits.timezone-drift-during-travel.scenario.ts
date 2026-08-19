@@ -35,6 +35,7 @@ export default scenario({
   id: "habits.timezone-drift-during-travel",
   title: "Cross-TZ same-day completion does not double-count",
   domain: "lifeops.habits",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "habits", "streak", "timezone", "travel"],
   isolation: "per-scenario",
   requires: {

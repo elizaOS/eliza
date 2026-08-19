@@ -14,6 +14,7 @@ export default scenario({
   id: "adhd-medication-refill-fuzzy-date-capture",
   title: "ADHD: a fuzzy-dated refill captured as a dated reminder",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

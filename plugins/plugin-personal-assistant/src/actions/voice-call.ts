@@ -14,6 +14,7 @@ import {
   requireConfirmation,
   resolveActionArgs,
   type SubactionsMap,
+  stringToUuid,
 } from "@elizaos/core";
 import {
   readTwilioCredentialsFromEnv,
@@ -75,6 +76,32 @@ interface PendingCallDraft {
   message?: string | null;
   approvalTaskId?: string | null;
   createdAt: string;
+}
+
+function voiceCallIdempotencyKey(args: {
+  message: Memory;
+  recipientKind: RecipientKind;
+  to: string;
+  body: string;
+}): string {
+  return `voice-call:${stringToUuid(
+    [
+      ACTION_NAME,
+      args.message.id ?? args.message.roomId,
+      args.message.entityId,
+      args.recipientKind,
+      args.to,
+      args.body,
+    ].join(":"),
+  )}`;
+}
+
+function confirmedIdempotencyKey(
+  metadata: Record<string, unknown> | undefined,
+  fallback: string,
+): string {
+  const stored = metadata?.idempotencyKey;
+  return typeof stored === "string" && stored.length > 0 ? stored : fallback;
 }
 
 function isE164(value: string): boolean {
@@ -277,6 +304,7 @@ function deliveryToResult(
   delivery: TwilioDeliveryResult,
   to: string,
   recipientKind: RecipientKind,
+  idempotencyKey: string,
 ): ActionResult {
   return {
     text: delivery.ok ? `Placed call to ${to}.` : `Call to ${to} failed.`,
@@ -296,6 +324,7 @@ function deliveryToResult(
       status: delivery.status,
       error: delivery.error,
       retryCount: delivery.retryCount ?? 0,
+      idempotencyKey,
     },
   };
 }
@@ -389,12 +418,19 @@ async function dialE164(
   }
 
   const callPrompt = `Place voice call to ${to} with message: "${messageBody}"?`;
+  const draftIdempotencyKey = voiceCallIdempotencyKey({
+    message,
+    recipientKind: "e164",
+    to,
+    body: messageBody,
+  });
   const decision = await requireConfirmation({
     runtime,
     message,
     actionName: ACTION_NAME,
     pendingKey: `e164:${to}`,
     prompt: callPrompt,
+    metadata: { idempotencyKey: draftIdempotencyKey },
   });
   if (decision.status !== "confirmed") {
     return {
@@ -426,10 +462,16 @@ async function dialE164(
     };
   }
 
+  const idempotencyKey = confirmedIdempotencyKey(
+    decision.metadata,
+    draftIdempotencyKey,
+  );
+
   const result = await sendTwilioVoiceCall({
     credentials,
     to,
     message: messageBody,
+    idempotencyKey,
   });
 
   if (!result.ok) {
@@ -450,6 +492,7 @@ async function dialE164(
         message: messageBody,
         status: result.status,
         retryCount: result.retryCount,
+        idempotencyKey,
       },
     };
   }
@@ -468,6 +511,7 @@ async function dialE164(
       sid: result.sid ?? null,
       status: result.status,
       retryCount: result.retryCount,
+      idempotencyKey,
     },
   };
 }
@@ -561,12 +605,19 @@ async function dialOwner(
     pendingDraft?.message?.trim() ||
     "Your agent is calling you.";
   const ownerPrompt = `Place voice call to owner ${to} with message: "${spokenMessage}"?`;
+  const draftIdempotencyKey = voiceCallIdempotencyKey({
+    message,
+    recipientKind: "owner",
+    to,
+    body: spokenMessage,
+  });
   const ownerDecision = await requireConfirmation({
     runtime,
     message,
     actionName: "VOICE_CALL_OWNER",
     pendingKey: `owner:${to}`,
     prompt: ownerPrompt,
+    metadata: { idempotencyKey: draftIdempotencyKey },
   });
   if (ownerDecision.status !== "confirmed") {
     return {
@@ -589,12 +640,17 @@ async function dialOwner(
       },
     };
   }
+  const idempotencyKey = confirmedIdempotencyKey(
+    ownerDecision.metadata,
+    draftIdempotencyKey,
+  );
   const delivery = await sendTwilioVoiceCall({
     credentials,
     to,
     message: spokenMessage,
+    idempotencyKey,
   });
-  const result = deliveryToResult(delivery, to, "owner");
+  const result = deliveryToResult(delivery, to, "owner", idempotencyKey);
   if (result.success) {
     await clearPendingCallDraft(runtime, message.roomId, "CALL_USER");
     if (pendingDraft?.approvalTaskId) {
@@ -661,12 +717,19 @@ async function dialExternal(
     pendingDraft?.message?.trim() ||
     "This is a call from an automated assistant.";
   const externalPrompt = `Place voice call to ${to} with message: "${spokenMessage}"?`;
+  const draftIdempotencyKey = voiceCallIdempotencyKey({
+    message,
+    recipientKind: "external",
+    to,
+    body: spokenMessage,
+  });
   const externalDecision = await requireConfirmation({
     runtime,
     message,
     actionName: "VOICE_CALL_EXTERNAL",
     pendingKey: `external:${to}`,
     prompt: externalPrompt,
+    metadata: { idempotencyKey: draftIdempotencyKey },
   });
   if (externalDecision.status !== "confirmed") {
     return {
@@ -692,6 +755,10 @@ async function dialExternal(
       },
     };
   }
+  const idempotencyKey = confirmedIdempotencyKey(
+    externalDecision.metadata,
+    draftIdempotencyKey,
+  );
 
   const allowList = readExternalAllowList(runtime);
   const normalizedTo = normalizePhoneAllowListKey(to);
@@ -739,8 +806,9 @@ async function dialExternal(
     credentials,
     to,
     message: spokenMessage,
+    idempotencyKey,
   });
-  const result = deliveryToResult(delivery, to, "external");
+  const result = deliveryToResult(delivery, to, "external", idempotencyKey);
   if (result.success) {
     await clearPendingCallDraft(runtime, message.roomId, "CALL_EXTERNAL");
     if (pendingDraft?.approvalTaskId) {

@@ -12,6 +12,7 @@ export default scenario({
   id: "push.silent-during-deep-work",
   title: "Suppress low-urgency pushes during a deep-work focus block",
   domain: "lifeops.push",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "push", "focus", "suppress", "do-not-disturb"],
   description:
     "A focus window is active. A low-urgency reminder (newsletter draft) wants to fire. Agent must defer it past the window — not push through. Negative-space test: dispatch should NOT happen during the window.",

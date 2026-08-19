@@ -2,94 +2,59 @@
 
 Entity and relationship knowledge graph for Eliza agents.
 
-Provides the `ENTITY` umbrella action (person / organization / place / project /
-concept CRUD with identity claims, typed relationships, and merge), an
-`ENTITY_GRAPH` context provider for the planner, and a drizzle
-`pgSchema('app_relationships')` with `entities` and `relationships` tables.
+## Runtime surface
 
-## Status
+The plugin is implemented and opt-in. It contributes:
 
-**Scaffolded — decomposition in progress.** Action and provider handlers are
-stubs that return a TODO marker. The real EntityStore, identity merge engine,
-voice-observer-bridge, and RelationshipStore still live in
-`@elizaos/plugin-personal-assistant`; they will move here in a follow-up pass.
+- `KNOWLEDGE_GRAPH`, an owner-only umbrella action for `create`, `read`,
+  `list`, `log_interaction`, `set_identity`, `set_relationship`, and `merge`;
+- `ENTITY_GRAPH`, a planner provider that projects the owner's recent entities
+  and ego-network edges in people/contact/relationship contexts;
+- the `/relationships` developer view; and
+- the `app_relationships` Drizzle schema with entity and relationship tables.
 
-## Migration mapping from `@elizaos/plugin-personal-assistant`
+The authoritative stores are owned by `@elizaos/agent`'s
+`KnowledgeGraphService`. This plugin resolves that service and operates on its
+`EntityStore` and `RelationshipStore`; it does not maintain a second graph.
+Rich contact/Rolodex orchestration remains the `ENTITY` action in
+`@elizaos/plugin-personal-assistant`, so the two action names are intentionally
+different.
 
-| Source under `plugins/plugin-personal-assistant/src/` | Will move to |
-|---|---|
-| `actions/entity.ts` (`ENTITY` action) | `plugins/plugin-relationships/src/actions/entity.ts` |
-| `lifeops/entities/store.ts` (`EntityStore`) | `plugins/plugin-relationships/src/services/entity-store.ts` |
-| `lifeops/entities/merge.ts` (identity merge engine) | `plugins/plugin-relationships/src/services/merge.ts` |
-| `lifeops/entities/voice-observer-bridge.ts` | `plugins/plugin-relationships/src/services/voice-observer-bridge.ts` |
-| `lifeops/entities/voice-observer.ts` | `plugins/plugin-relationships/src/services/voice-observer.ts` |
-| `lifeops/entities/voice-attribution.ts` | `plugins/plugin-relationships/src/services/voice-attribution.ts` |
-| `lifeops/entities/types.ts` (Entity, registries) | folded into `plugins/plugin-relationships/src/types.ts` |
-| `lifeops/relationships/store.ts` (`RelationshipStore`) | `plugins/plugin-relationships/src/services/relationship-store.ts` |
-| `lifeops/relationships/extraction.ts` | `plugins/plugin-relationships/src/services/relationship-extraction.ts` |
-| `lifeops/relationships/types.ts` (Relationship, registries) | folded into `plugins/plugin-relationships/src/types.ts` |
-| LifeOps `lifeops` provider — entity / relationship sections | `plugins/plugin-relationships/src/providers/entity-graph.ts` |
+## Installation and configuration
 
-DB rows currently live in the LifeOps schema (`app_lifeops.life_entities`,
-`life_entity_identities`, `life_entity_attributes`, `life_relationships`). The
-new plugin owns the dedicated `app_relationships` schema with two minimal
-tables; the rich identity + attribute + edge-state shapes from lifeops will
-land in a follow-up migration.
+Add `@elizaos/plugin-relationships` to the agent's plugin list and load
+`@elizaos/plugin-sql` first. The plugin has no provider credentials or
+plugin-specific environment variables.
 
-## Plugin surface
+## Public modules
 
-**Action**
-- `ENTITY` (`src/actions/entity.ts`) — umbrella op dispatch. Accepted ops:
-  `create`, `read`, `list`, `log_interaction`, `set_identity`,
-  `set_relationship`, `merge`. Contexts: `people`, `contacts`,
-  `relationships`. STUB returns a TODO marker.
-
-**Provider**
-- `ENTITY_GRAPH` (`src/providers/entity-graph.ts`) — injects a projection of
-  the owner's known entities and ego-network edges into the planner. STUB
-  returns an empty projection.
-
-**Schema**
-- `relationshipsSchema` / `entitiesTable` / `relationshipsTable`
-  (`src/db/schema.ts`) — `pgSchema("app_relationships")`. Registered via the
-  plugin object's `schema` field so the elizaOS runtime handles migrations.
-
-## Layout
-
-```
+```text
 src/
-  index.ts                       Public exports + default Plugin export
-  plugin.ts                      Plugin object (action + provider + schema)
-  types.ts                       Entity / Relationship interfaces + constants
-  actions/
-    entity.ts                    ENTITY umbrella action (STUB)
-  providers/
-    entity-graph.ts              ENTITY_GRAPH provider (STUB)
-  db/
-    schema.ts                    drizzle pgSchema + entities + relationships tables
-    index.ts                     re-export schema
+  index.ts                  public exports and default plugin
+  plugin.ts                 action, provider, schema, and view registration
+  actions/entity.ts         KNOWLEDGE_GRAPH validation and op dispatch
+  providers/entity-graph.ts ENTITY_GRAPH context projection
+  db/schema.ts              app_relationships Drizzle schema
+  components/relationships relationship graph view
 ```
+
+`SELF_ENTITY_ID = "self"` is the owner node. Entity and relationship kinds are
+open strings with built-in defaults. Schema registration is handled by the
+runtime; do not add a second migration runner.
 
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-relationships build       # bun build → dist/ + tsc types
-bun run --cwd plugins/plugin-relationships test        # vitest run
-bun run --cwd plugins/plugin-relationships typecheck   # tsgo --noEmit
-bun run --cwd plugins/plugin-relationships check       # typecheck + test
-bun run --cwd plugins/plugin-relationships clean       # rm -rf dist .turbo
+bun run --cwd plugins/plugin-relationships build
+bun run --cwd plugins/plugin-relationships test
+bun run --cwd plugins/plugin-relationships typecheck
+bun run --cwd plugins/plugin-relationships lint:check
+bun run --cwd plugins/plugin-relationships check
 ```
 
-## Conventions / gotchas
+## Extending the graph
 
-- **`@elizaos/plugin-sql` must be loaded first.** The plugin declares this in
-  `dependencies: ["@elizaos/plugin-sql"]`; the runtime registers DB migrations
-  for `app_relationships` automatically.
-- **`SELF_ENTITY_ID = "self"`** is the canonical id of the owner. All
-  ego-network edges originate from `self`.
-- **`relationshipType` is open-string.** The lifeops `RelationshipTypeRegistry`
-  carries the built-in set (`follows`, `colleague_of`, `partner_of`, `manages`,
-  …) and will be ported alongside the store.
-- **Stubs only.** Do not rely on `ENTITY` or `ENTITY_GRAPH` returning real
-  data yet — both intentionally return a TODO / empty result while the port
-  is in progress.
+Add action operations to `ENTITY_OPS` and the typed parameter/handler dispatch
+together. Add planner providers through `src/providers/` and register them in
+`src/plugin.ts`. New behavior must continue to resolve the canonical runtime
+knowledge-graph service rather than introducing a parallel store.

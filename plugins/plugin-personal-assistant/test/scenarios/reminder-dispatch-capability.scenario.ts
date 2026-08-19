@@ -58,6 +58,7 @@ export default scenario({
   title:
     "Reminder dispatch capability fires a due reminder on the delivery path",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "reminders", "reminder_dispatch", "llm-eval"],
   isolation: "per-scenario",
   requires: {

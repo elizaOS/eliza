@@ -21,6 +21,7 @@ export default scenario({
   id: "adhd-followthrough-rage-quit-delete-trap",
   title: "ADHD follow-through: 'delete everything' offers a pause, not a wipe",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "adhd", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",

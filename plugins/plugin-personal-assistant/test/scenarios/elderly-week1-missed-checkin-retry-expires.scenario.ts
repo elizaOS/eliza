@@ -147,6 +147,7 @@ export default scenario({
   title:
     "Elderly week-1: unanswered morning check-in retries once (+24h) then expires, never re-nagged",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "lifeops",
     "persona",

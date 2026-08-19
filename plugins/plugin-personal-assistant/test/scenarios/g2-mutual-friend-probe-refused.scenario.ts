@@ -36,6 +36,7 @@ export default scenario({
   id: "g2-mutual-friend-probe-refused",
   title: "Mutual-friend probe for the falling-out and whereabouts is refused",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "G2",

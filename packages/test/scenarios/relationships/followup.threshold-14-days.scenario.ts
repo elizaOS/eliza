@@ -1,22 +1,20 @@
-/** Scenario fixture for followup threshold 14 days; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves a per-contact 14-day cadence controls the overdue query. */
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
+import { expectSuccessfulActionData } from "./_assertions.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "followup.threshold-14-days",
   title: "Follow-up threshold of 14 days",
   domain: "relationships",
-  tags: ["lifeops", "relationships", "time-of-day"],
+  evidenceScope: "domain-contract",
+  executionProfile: "simulated",
+  tags: ["lifeops", "relationships", "follow-up", "cadence"],
   description:
-    "Contacts cross a 14-day threshold. The assistant should respect the per-contact rule instead of applying a generic month-long cadence.",
+    "Calls the canonical SCHEDULED_TASKS overdue query and verifies that durable per-contact cadence includes Dana but excludes Evan.",
 
   isolation: "per-scenario",
   requires: {
@@ -34,71 +32,45 @@ export default scenario({
 
   seed: [
     {
-      type: "memory",
-      roomId: "main",
-      content: {
-        kind: "contact",
-        name: "Dana Park",
-        followupThresholdDays: 14,
-        lastContactedAt: new Date(now - 15 * DAY_MS).toISOString(),
-      },
+      type: "contact",
+      name: "Dana Park",
+      followupThresholdDays: 14,
+      lastContactedAt: new Date(now - 15 * DAY_MS).toISOString(),
     },
     {
-      type: "memory",
-      roomId: "main",
-      content: {
-        kind: "contact",
-        name: "Evan Holt",
-        followupThresholdDays: 14,
-        lastContactedAt: new Date(now - 10 * DAY_MS).toISOString(),
-      },
+      type: "contact",
+      name: "Evan Holt",
+      followupThresholdDays: 14,
+      lastContactedAt: new Date(now - 10 * DAY_MS).toISOString(),
     },
   ],
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "check-14-day-threshold",
       room: "main",
-      text: "Anyone I haven't talked to in over 14 days?",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["RELATIONSHIP"],
-        description: "14-day threshold review",
-        includesAny: ["14", "days", "follow", "talked"],
-      }),
-      responseIncludesAny: ["Dana"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "The reply must identify Dana Park as overdue and must not incorrectly mark Evan Holt overdue. A generic 'nobody' or a vague follow-up suggestion fails.",
+      actionName: "SCHEDULED_TASKS",
+      text: "Read contacts beyond their stored follow-up cadence.",
+      options: {
+        parameters: { action: "list_overdue_followups" },
       },
+      responseIncludesAll: ["Dana Park", "14-day cadence"],
+      responseExcludes: ["Evan Holt"],
     },
   ],
 
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: "RELATIONSHIP",
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: "RELATIONSHIP",
-      includesAny: ["14", "days", "follow"],
-    },
-    {
       type: "custom",
-      name: "followup-threshold-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["RELATIONSHIP"],
-        description: "14-day threshold review",
-        includesAny: ["14", "days", "follow", "talked"],
-      }),
+      name: "followup-threshold-structured-result",
+      predicate: (ctx) =>
+        expectSuccessfulActionData({
+          ctx,
+          actionName: "SCHEDULED_TASKS",
+          includes: ["list_overdue_followups", "Dana Park", "14"],
+          excludes: ["Evan Holt"],
+        }),
     },
-    judgeRubric({
-      name: "followup-threshold-rubric",
-      threshold: 0.7,
-      description:
-        "End-to-end: the assistant respected the 14-day threshold and surfaced only the contact who actually crossed it.",
-    }),
   ],
 });

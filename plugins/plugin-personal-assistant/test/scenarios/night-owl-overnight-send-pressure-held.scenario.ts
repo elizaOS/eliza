@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Night owl: 4am 'just send it' does not bypass the outbound approval gate",
   domain: "executive.comms",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "night-owl",

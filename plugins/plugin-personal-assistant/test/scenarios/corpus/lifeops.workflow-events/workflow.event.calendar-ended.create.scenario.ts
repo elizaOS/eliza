@@ -39,6 +39,7 @@ export default scenario({
   id: "workflow.event.calendar-ended.create",
   title: "Create an event-triggered workflow for calendar event end",
   domain: "lifeops.workflow-events",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "workflow", "event-trigger"],
   isolation: "per-scenario",
   rooms: [

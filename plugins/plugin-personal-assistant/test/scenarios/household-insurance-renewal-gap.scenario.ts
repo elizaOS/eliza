@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Insurance renewal gap grounds in seeded policy state; payment stays gated",
   domain: "executive.household",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

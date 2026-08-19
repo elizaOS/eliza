@@ -265,6 +265,7 @@ export default scenario({
   title:
     "ADHD hyperfocus guardrail: important standup nudge breaks through, low-value ping held",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

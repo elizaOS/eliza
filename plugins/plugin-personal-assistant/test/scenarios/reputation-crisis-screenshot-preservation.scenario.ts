@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Crisis preservation grounds in the seeded watch log and never names the unverified poster",
   domain: "executive.escalation",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

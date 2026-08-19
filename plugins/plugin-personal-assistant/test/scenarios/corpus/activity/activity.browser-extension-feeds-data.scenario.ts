@@ -12,6 +12,7 @@ export default scenario({
   id: "activity.browser-extension-feeds-data",
   title: "Browser extension feeds per-site activity data",
   domain: "activity",
+  evidenceScope: "model-behavior",
   tags: ["activity", "browser", "happy-path"],
   description:
     "Tests the browser extension -> runtime cache -> agent query path using seeded per-domain telemetry.",
@@ -83,7 +84,7 @@ export default scenario({
           (action) => action.actionName === "SCREEN_TIME",
         );
         if (!hit) {
-          return "expected FETCH_BROWSER_ACTIVITY action result";
+          return "expected SCREEN_TIME browser-activity result";
         }
         const payload = JSON.stringify(hit.result?.data ?? {});
         if (!payload.includes("browser-extension-feed")) {

@@ -17,6 +17,7 @@ export default scenario({
   title:
     "Board packet correction is grounded in seeded counsel work and leaks no revised figure",
   domain: "executive.documents",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

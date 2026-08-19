@@ -1,36 +1,19 @@
-/** Scenario fixture for relationships status goals set; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
+/** Proves CONTACT persists a per-contact relationship goal and cadence. */
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  callPayloadBlob,
-  describeCalls,
-  successfulCalls,
-} from "@elizaos/scenario-runner/scenario-assertions";
+import { expectRelationshipGoal } from "./_assertions.js";
 
-function expectRelationshipGoalPayload(
-  ctx: ScenarioContext,
-): string | undefined {
-  if (successfulCalls(ctx, "RELATIONSHIP").length === 0) {
-    return `expected successful RELATIONSHIP call; calls: ${describeCalls(ctx)}`;
-  }
-  const blob = callPayloadBlob(ctx, "RELATIONSHIP");
-  if (!/alice/.test(blob)) {
-    return `expected RELATIONSHIP payload to reference Alice, saw ${blob.slice(0, 600)}`;
-  }
-  if (!/(quarterly|stay in touch)/.test(blob)) {
-    return `expected RELATIONSHIP payload to carry the quarterly stay-in-touch note, saw ${blob.slice(0, 600)}`;
-  }
-  return undefined;
-}
+const CONTACT_NAME = "Maya Torres";
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "relationships.status-goals.set",
-  title: "Relationship goal request routes into generic relationship handling",
+  title: "Persist a quarterly relationship goal",
   domain: "relationships",
-  tags: ["lifeops", "relationships", "routing"],
+  evidenceScope: "domain-contract",
+  executionProfile: "simulated",
+  tags: ["lifeops", "relationships", "goals", "durable-readback"],
   description:
-    "A relationship-goal request currently routes into the generic RELATIONSHIP flow instead of a dedicated goal-setting action.",
+    "Calls CONTACT.set_goal and verifies the exact goal and 90-day cadence through RelationshipsService readback.",
 
   isolation: "per-scenario",
   requires: {
@@ -49,26 +32,42 @@ export default scenario({
   seed: [
     {
       type: "contact",
-      name: "Alice Chen",
-      handles: [{ platform: "gmail", identifier: "alice@acme.example.com" }],
+      name: CONTACT_NAME,
+      handles: [{ platform: "gmail", identifier: "maya@acme.example.com" }],
       notes: "Acme Inc",
     },
   ],
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "set-relationship-goal",
       room: "main",
-      text: "Add to Alice's notes: 'stay in touch quarterly'.",
+      actionName: "CONTACT",
+      text: "Persist Maya's quarterly relationship goal.",
+      options: {
+        parameters: {
+          action: "set_goal",
+          name: CONTACT_NAME,
+          goalText: "stay in touch every quarter",
+          targetCadenceDays: 90,
+        },
+      },
+      responseIncludesAll: ["Set relationship goal", CONTACT_NAME],
     },
   ],
 
   finalChecks: [
     {
       type: "custom",
-      name: "relationship-goal-carries-contact-and-note",
-      predicate: expectRelationshipGoalPayload,
+      name: "relationship-goal-survives-durable-readback",
+      predicate: (ctx) =>
+        expectRelationshipGoal({
+          ctx,
+          name: CONTACT_NAME,
+          goalIncludes: "stay in touch",
+          cadenceDays: 90,
+        }),
     },
   ],
 });

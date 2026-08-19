@@ -15,6 +15,7 @@ export default scenario({
   id: "sleep.sleep-window-protection-enforcement",
   title: "Sleep window protects user from being scheduled before wake-up",
   domain: "lifeops.sleep",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "sleep", "protection", "scheduling"],
   isolation: "per-scenario",
   requires: {

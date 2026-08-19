@@ -25,6 +25,7 @@ export default scenario({
   id: "todo.list.upcoming",
   title: "List upcoming todos for the week",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "happy-path"],
   isolation: "per-scenario",
   requires: {

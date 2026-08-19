@@ -228,6 +228,7 @@ export default scenario({
   title:
     "ADHD distractor storm: a parked capture resurfaces once at its promised time, never early",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

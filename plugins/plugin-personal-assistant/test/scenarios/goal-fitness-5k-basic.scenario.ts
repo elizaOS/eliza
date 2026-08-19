@@ -8,6 +8,7 @@ export default scenario({
   id: "goal-fitness-5k-basic",
   title: "Fitness goal save flow",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "fitness", "mvp"],
   isolation: "per-scenario",
   requires: {

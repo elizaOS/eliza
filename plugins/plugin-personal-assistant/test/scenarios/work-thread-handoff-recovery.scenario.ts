@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Thread handoff grounds in the seeded procurement thread and withholds the private leave reason",
   domain: "executive.delegation",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

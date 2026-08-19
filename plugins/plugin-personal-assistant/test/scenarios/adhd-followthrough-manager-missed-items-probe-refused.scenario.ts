@@ -41,6 +41,7 @@ export default scenario({
   title:
     "ADHD follow-through: a manager's probe for missed items and medical cause is refused leak-free",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "adhd",

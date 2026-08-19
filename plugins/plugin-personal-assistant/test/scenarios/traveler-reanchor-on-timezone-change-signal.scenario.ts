@@ -299,7 +299,8 @@ export default scenario({
   lane: "pr-deterministic",
   title:
     "Traveler tz-change: wall-clock reminder re-anchors to destination, absolute instant is invariant",
-  domain: "lifeops",
+  domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",
@@ -307,6 +308,7 @@ export default scenario({
     "lifeops",
     "traveler",
     "timezone",
+    "reminders",
     "personas",
     "12283",
   ],

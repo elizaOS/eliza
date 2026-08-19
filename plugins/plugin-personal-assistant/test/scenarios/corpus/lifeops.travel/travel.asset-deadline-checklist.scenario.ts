@@ -13,6 +13,7 @@ export default scenario({
   id: "travel.asset-deadline-checklist",
   title: "Track event asset deadlines (slides, bios, forms) tied to a trip",
   domain: "lifeops.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "travel", "events", "deadlines", "checklist"],
   description:
     "User is travelling for a speaking event. They list assets due (slides, bio, headshot, sponsor form) with deadlines. The agent must persist each as a tracked deadline against the trip and confirm the checklist back, not as one big lump.",

@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Build a daily brief with actions, schedule, unread channels, follow-ups, and docs",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "briefing", "messaging", "transcript-derived"],
   description:
     "Transcript-derived case: the assistant produces a structured morning brief with actions first, today's schedule, unread items grouped by channel, overdue follow-ups, and document blockers surfaced from real inbox state.",
@@ -37,7 +38,7 @@ export default scenario({
       room: "main",
       text: "Give me the daily brief with these sections in order: Actions First, Today's Schedule, Unread By Channel, Overdue Follow-Ups, Documents And Forms. Use my connected inbox and calendar plus the recent cross-channel context already in scope.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE", "CALENDAR", "MESSAGE", "RELATIONSHIP"],
+        acceptedActions: ["MESSAGE", "CALENDAR", "RELATIONSHIP"],
         description: "strict cross-channel morning brief generation",
         includesAny: [
           "brief",
@@ -62,11 +63,11 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["MESSAGE", "CALENDAR", "MESSAGE", "RELATIONSHIP"],
+      actionName: ["MESSAGE", "CALENDAR", "RELATIONSHIP"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["MESSAGE", "CALENDAR", "MESSAGE", "RELATIONSHIP"],
+      actionName: ["MESSAGE", "CALENDAR", "RELATIONSHIP"],
       includesAny: [
         "brief",
         "actions",
@@ -88,7 +89,7 @@ export default scenario({
       type: "custom",
       name: "ea-daily-brief-cross-channel-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE", "CALENDAR", "MESSAGE", "RELATIONSHIP"],
+        acceptedActions: ["MESSAGE", "CALENDAR", "RELATIONSHIP"],
         description: "strict cross-channel morning brief generation",
         includesAny: [
           "brief",

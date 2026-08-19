@@ -31,10 +31,18 @@ export const FINAL_CHECK_KEYS = new Map(
     pushEscalationOrder: ["type", "name", "channelOrder"],
     pushAcknowledgedSync: ["type", "name", "expected"],
     approvalRequestExists: ["type", "name", "expected", "actionName", "state"],
-    approvalStateTransition: ["type", "name", "from", "to", "actionName"],
+    approvalStateTransition: [
+      "type",
+      "name",
+      "from",
+      "to",
+      "actionName",
+      "turn",
+    ],
     noSideEffectOnReject: ["type", "name", "actionName"],
+    noSideEffects: ["type", "name", "turn", "allowApprovalRequests"],
     draftExists: ["type", "name", "channel", "expected"],
-    messageDelivered: ["type", "name", "channel", "expected"],
+    messageDelivered: ["type", "name", "channel", "expected", "turn"],
     browserTaskCompleted: ["type", "name", "expected"],
     browserTaskNeedsHuman: ["type", "name", "expected"],
     uploadedAssetExists: ["type", "name", "expected"],
@@ -44,6 +52,13 @@ export const FINAL_CHECK_KEYS = new Map(
       "channel",
       "actionName",
       "minCount",
+      "maxCount",
+      "expected",
+      "delivered",
+      "status",
+      "turn",
+      "idempotencyKey",
+      "providerMessageId",
     ],
     durableApprovalObserved: [
       "type",
@@ -125,6 +140,10 @@ export const FINAL_CHECK_KEYS = new Map(
       "operation",
       "fields",
       "minCount",
+      "maxCount",
+      "expected",
+      "turn",
+      "exactArrays",
     ],
     gmailMockRequest: [
       "type",
@@ -134,12 +153,23 @@ export const FINAL_CHECK_KEYS = new Map(
       "body",
       "expected",
       "minCount",
+      "maxCount",
+      "turn",
+      "gmail",
+      "exactArrays",
     ],
-    gmailDraftCreated: ["type", "name", "expected"],
+    gmailDraftCreated: ["type", "name", "expected", "turn"],
     gmailDraftDeleted: ["type", "name", "expected"],
-    gmailMessageSent: ["type", "name", "expected"],
-    gmailBatchModify: ["type", "name", "expected", "body"],
-    gmailApproval: ["type", "name", "state"],
+    gmailMessageSent: ["type", "name", "expected", "turn"],
+    gmailBatchModify: [
+      "type",
+      "name",
+      "expected",
+      "body",
+      "turn",
+      "exactArrays",
+    ],
+    gmailApproval: ["type", "name", "state", "turn"],
     gmailNoRealWrite: ["type", "name"],
     workflowDispatchOccurred: [
       "type",
@@ -203,10 +233,33 @@ export const DEFAULT_SCENARIO_LANE = "live-only";
  */
 export const DEFAULT_SCENARIO_EXECUTION_PROFILE = "simulated";
 
+/**
+ * Legacy scenarios receive the least expansive claim during migration. The
+ * executor records that this value was defaulted so reports expose the debt.
+ */
+export const DEFAULT_SCENARIO_EVIDENCE_SCOPE = "runner-fixture";
+
 const SCENARIO_LANES = new Set(["pr-deterministic", "live-only"]);
 const SCENARIO_EXECUTION_PROFILES = new Set([
   "simulated",
   "provider-qualified",
+]);
+const SCENARIO_EVIDENCE_SCOPES = new Set([
+  "runner-fixture",
+  "domain-contract",
+  "model-behavior",
+  "connector-contract",
+  "provider-certification",
+]);
+const SCENARIO_EVIDENCE_SCOPE_LABELS = new Map([
+  ["runner-fixture", "runner fixture (diagnostic only)"],
+  ["domain-contract", "domain contract (not provider evidence)"],
+  ["model-behavior", "model behavior (not provider evidence)"],
+  ["connector-contract", "connector contract (simulated provider boundary)"],
+  [
+    "provider-certification",
+    "provider certification (qualified external evidence)",
+  ],
 ]);
 const SCENARIO_TIERS = new Set(["T1", "T2", "T3", "T4"]);
 const SCENARIO_STATUSES = new Set(["active", "pending"]);
@@ -255,6 +308,43 @@ export function scenarioExecutionProfile(value) {
   return executionProfile;
 }
 
+/** Return whether a value belongs to the closed evidence-scope vocabulary. */
+export function isScenarioEvidenceScope(value) {
+  return typeof value === "string" && SCENARIO_EVIDENCE_SCOPES.has(value);
+}
+
+/**
+ * Resolve the scenario's behavioral claim without inflating legacy scenarios.
+ * Provider certification is an iff relationship with provider qualification:
+ * neither side may be independently relabeled.
+ */
+export function scenarioEvidenceScope(value) {
+  const evidenceScope = value?.evidenceScope ?? DEFAULT_SCENARIO_EVIDENCE_SCOPE;
+  if (!isScenarioEvidenceScope(evidenceScope)) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid evidenceScope "${evidenceScope}"; expected one of ${[...SCENARIO_EVIDENCE_SCOPES].join(", ")}`,
+    );
+  }
+  const executionProfile = scenarioExecutionProfile(value);
+  if (
+    (evidenceScope === "provider-certification") !==
+    (executionProfile === "provider-qualified")
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has incompatible evidenceScope "${evidenceScope}" and executionProfile "${executionProfile}"; provider certification requires provider-qualified execution and provider-qualified execution requires provider-certification scope`,
+    );
+  }
+  return evidenceScope;
+}
+
+/** Return the report label that states the scope's trust limit explicitly. */
+export function scenarioEvidenceScopeLabel(value) {
+  if (!isScenarioEvidenceScope(value)) {
+    throw new Error(`invalid scenario evidence scope "${String(value)}"`);
+  }
+  return SCENARIO_EVIDENCE_SCOPE_LABELS.get(value);
+}
+
 /** Resolve and validate the optional persona-scenario complexity tier. */
 export function scenarioTier(value) {
   const tier = value?.tier;
@@ -277,6 +367,20 @@ function validateScenarioStatus(value) {
   if (!SCENARIO_STATUSES.has(status)) {
     throw new Error(
       `scenario "${value?.id ?? "<unknown>"}" has invalid status "${status}"; expected one of ${[...SCENARIO_STATUSES].join(", ")}`,
+    );
+  }
+  const pendingReason = value?.pendingReason;
+  if (
+    status === "pending" &&
+    (typeof pendingReason !== "string" || pendingReason.trim().length < 12)
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" is pending without a concrete pendingReason`,
+    );
+  }
+  if (status !== "pending" && pendingReason !== undefined) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" declares pendingReason but is not pending`,
     );
   }
   return status;
@@ -377,6 +481,9 @@ export function scenario(value) {
     scenarioLane(value);
     // Provider evidence cannot be claimed by a deterministic execution profile.
     scenarioExecutionProfile(value);
+    // Scope is independent metadata, but certification must agree with the
+    // existing closed execution-profile trust boundary.
+    scenarioEvidenceScope(value);
     // Validate optional LifeOps/persona tier metadata when authored.
     scenarioTier(value);
     // Validate pending/active inventory status before loader filtering relies on it.

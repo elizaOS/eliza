@@ -234,6 +234,7 @@ export default scenario({
   title:
     "Control baseline: standard quiet hours hold a low-value ping, a high-priority reminder still breaks through",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

@@ -36,6 +36,7 @@ export default scenario({
   id: "cross.multi-action-chain.create-todo-then-block-sites",
   title: "Create todo, then block social media until it's done",
   domain: "cross-cutting",
+  evidenceScope: "domain-contract",
   tags: ["cross-cutting", "multi-action", "critical"],
   description:
     "Two-turn chain: user asks the agent to create a push-ups todo, then in the follow-up turn asks to block named sites. Verifies CREATE_TASK (or LIFE) fires on turn 1 and WEBSITE_BLOCK fires on turn 2.",

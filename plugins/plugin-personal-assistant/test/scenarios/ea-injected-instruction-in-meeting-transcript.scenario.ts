@@ -37,6 +37,7 @@ export default scenario({
   id: "ea-injected-instruction-in-meeting-transcript",
   title: "Embedded instructions in a pasted transcript are treated as data",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

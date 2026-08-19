@@ -8,11 +8,24 @@ import { listScenarioMetadata, loadAllScenarios } from "../loader";
 let tempDirs: string[] = [];
 
 function makeScenarioDir(
-  files: Record<string, { id: string; lane?: string; status?: string }>,
+  files: Record<
+    string,
+    {
+      id: string;
+      lane?: string;
+      status?: string;
+      pendingReason?: string;
+      evidenceScope?: string;
+      executionProfile?: string;
+    }
+  >,
 ): string {
   const dir = mkdtempSync(path.join(tmpdir(), "scenario-lane-filter-"));
   tempDirs.push(dir);
-  for (const [fileName, { id, lane, status }] of Object.entries(files)) {
+  for (const [
+    fileName,
+    { id, lane, status, pendingReason, evidenceScope, executionProfile },
+  ] of Object.entries(files)) {
     writeFileSync(
       path.join(dir, fileName),
       [
@@ -22,6 +35,11 @@ function makeScenarioDir(
         '  domain: "loader-test",',
         ...(lane ? [`  lane: "${lane}",`] : []),
         ...(status ? [`  status: "${status}",`] : []),
+        ...(pendingReason ? [`  pendingReason: "${pendingReason}",`] : []),
+        ...(executionProfile
+          ? [`  executionProfile: "${executionProfile}",`]
+          : []),
+        ...(evidenceScope ? [`  evidenceScope: "${evidenceScope}",`] : []),
         "  turns: [],",
         "};",
         "",
@@ -63,6 +81,43 @@ describe("listScenarioMetadata lane filtering", () => {
     ]);
   });
 
+  it("returns effective scope metadata and exposes legacy default debt", async () => {
+    const dir = makeScenarioDir({
+      "legacy.scenario.ts": { id: "scope-legacy" },
+      "domain.scenario.ts": {
+        id: "scope-domain",
+        evidenceScope: "domain-contract",
+      },
+    });
+
+    await expect(listScenarioMetadata(dir)).resolves.toMatchObject([
+      {
+        id: "scope-domain",
+        evidenceScope: "domain-contract",
+        evidenceScopeDefaulted: false,
+        executionProfile: "simulated",
+      },
+      {
+        id: "scope-legacy",
+        evidenceScope: "runner-fixture",
+        evidenceScopeDefaulted: true,
+        executionProfile: "simulated",
+      },
+    ]);
+  });
+
+  it("rejects incompatible static certification metadata", async () => {
+    const dir = makeScenarioDir({
+      "false-cert.scenario.ts": {
+        id: "scope-false-cert",
+        evidenceScope: "provider-certification",
+      },
+    });
+    await expect(listScenarioMetadata(dir)).rejects.toThrow(
+      /incompatible evidenceScope/,
+    );
+  });
+
   it("still filters declared lanes exactly", async () => {
     const dir = makeScenarioDir({
       "undeclared.scenario.ts": { id: "lane-undeclared" },
@@ -101,6 +156,8 @@ describe("listScenarioMetadata lane filtering", () => {
         id: "pending-hidden",
         lane: "live-only",
         status: "pending",
+        pendingReason:
+          "Requires a fixture that this inventory test intentionally omits.",
       },
     });
 

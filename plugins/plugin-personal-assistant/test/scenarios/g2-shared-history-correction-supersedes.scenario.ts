@@ -13,6 +13,7 @@ export default scenario({
   id: "g2-shared-history-correction-supersedes",
   title: "Corrected shared history supersedes rather than stacks",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "G2",

@@ -13,6 +13,7 @@ export default scenario({
   id: "i1-ambiguous-rupture-referent-clarified",
   title: "Ambiguous rupture referent triggers a clarifier before drafting",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "I1",

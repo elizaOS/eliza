@@ -10,6 +10,7 @@ export default scenario({
   title:
     "Travel readiness audit grounds in seeded trip state; coordinator note stays staged",
   domain: "executive.travel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "travel", "documents", "outcome"],
   isolation: "per-scenario",
   requires: {

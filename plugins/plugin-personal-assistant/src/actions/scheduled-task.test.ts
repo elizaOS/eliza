@@ -357,6 +357,68 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
     expect(paramNames).toContain("dueWindow");
   });
 
+  it("lists relationship follow-ups from durable contact cadence state", async () => {
+    const contacts = [
+      {
+        entityId: "00000000-0000-0000-0000-00000000000a",
+        categories: [],
+        tags: [],
+        customFields: {
+          displayName: "Dana Park",
+          followupThresholdDays: 14,
+          lastContactedAt: "2026-04-24T12:00:00.000Z",
+        },
+      },
+      {
+        entityId: "00000000-0000-0000-0000-00000000000b",
+        categories: [],
+        tags: [],
+        customFields: {
+          displayName: "Evan Holt",
+          followupThresholdDays: 14,
+          lastContactedAt: "2026-04-29T12:00:00.000Z",
+        },
+      },
+    ];
+    const relationships = {
+      searchContacts: vi.fn(async () => contacts),
+      getContact: vi.fn(async () => null),
+      updateContact: vi.fn(async () => null),
+    };
+    const runtime = {
+      ...makeRuntime(),
+      getService: vi.fn((name: string) =>
+        name === "relationships" ? relationships : null,
+      ),
+      getEntityById: vi.fn(async () => null),
+    } as unknown as IAgentRuntime;
+
+    const result = await scheduledTaskAction.handler(
+      runtime,
+      makeMessage(),
+      undefined,
+      { parameters: { action: "list_overdue_followups" } },
+      undefined,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        subaction: "list_overdue_followups",
+        digest: {
+          overdue: [
+            expect.objectContaining({
+              displayName: "Dana Park",
+              thresholdDays: 14,
+            }),
+          ],
+        },
+      },
+    });
+    expect(result.text).toContain("Dana Park");
+    expect(result.text).not.toContain("Evan Holt");
+  });
+
   it("normalizes planner create aliases and empty structural objects before scheduling", async () => {
     const result = await scheduledTaskAction.handler(
       makeRuntime(),

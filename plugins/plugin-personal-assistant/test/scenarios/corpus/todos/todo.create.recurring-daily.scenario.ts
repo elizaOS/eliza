@@ -6,6 +6,7 @@ export default scenario({
   id: "todo.create.recurring-daily",
   title: "Create a daily recurring todo with preview + confirm",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "happy-path"],
   isolation: "per-scenario",
   requires: {

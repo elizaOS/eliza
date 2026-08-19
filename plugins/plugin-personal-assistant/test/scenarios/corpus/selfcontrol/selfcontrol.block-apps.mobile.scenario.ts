@@ -8,6 +8,7 @@ export default scenario({
   id: "selfcontrol.block-apps.mobile",
   title: "Phone app-block request reaches the blocker permission gate",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "selfcontrol", "mobile", "permissions"],
   description:
     "A phone app-block request currently routes into the blocker permission check instead of a mobile-only enforcement path.",

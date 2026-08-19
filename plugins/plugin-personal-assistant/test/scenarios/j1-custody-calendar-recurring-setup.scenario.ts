@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Alternating custody rhythm becomes recurring exchange reminders without commentary",
   domain: "lifeops.coparenting",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "coparenting",

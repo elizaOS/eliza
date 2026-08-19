@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.meeting-prep-docs-people",
   title: "Meeting prep gathers people, docs, threads, and open decisions",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "meeting-prep", "documents"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

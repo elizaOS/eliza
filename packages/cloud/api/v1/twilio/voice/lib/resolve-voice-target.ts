@@ -3,9 +3,9 @@
  * personal Shared agent. The trusted Twilio boundary supplies the E.164 caller.
  */
 
-import { elizaAppUserService } from "@/lib/services/eliza-app/user-service";
-import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
+import { elizaAppUserService } from "@elizaos/cloud-shared/lib/services/eliza-app/user-service";
+import { personalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
+import type { SharedRuntimeAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-agent";
 
 export interface TwilioVoiceTarget {
   agent: SharedRuntimeAgent;

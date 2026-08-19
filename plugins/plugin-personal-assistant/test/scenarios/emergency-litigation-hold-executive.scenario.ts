@@ -14,6 +14,7 @@ export default scenario({
   title:
     "Litigation hold is grounded in seeded matter work and holds the notice for counsel",
   domain: "executive.legal",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -206,10 +206,33 @@ async function handleCheckoutSessionCompleted(
   const checkoutOrderId = session.metadata?.checkout_order_id;
 
   const isAppPurchase = purchaseSource === "miniapp_app" && appId && userId;
+  const appPurchaseAmountUsd =
+    typeof session.amount_total === "number" &&
+    Number.isSafeInteger(session.amount_total) &&
+    session.amount_total > 0
+      ? session.amount_total / 100
+      : null;
 
   if (!paymentIntentId) {
     logger.warn(
       `[Stripe Queue] Permanent failure - No payment intent ID in checkout session ${session.id}`,
+    );
+    return;
+  }
+
+  if (
+    isAppPurchase &&
+    (session.currency?.toUpperCase() !== "USD" ||
+      appPurchaseAmountUsd === null ||
+      appPurchaseAmountUsd !== credits)
+  ) {
+    logger.warn(
+      `[Stripe Queue] Permanent failure - Invalid authoritative amount or currency in app checkout session ${session.id}`,
+      {
+        metadataCredits: credits,
+        amountTotal: session.amount_total,
+        currency: session.currency,
+      },
     );
     return;
   }
@@ -413,12 +436,16 @@ async function handleCheckoutSessionCompleted(
   }
 
   if (isAppPurchase && appId && userId && chargeRequestId) {
+    if (appPurchaseAmountUsd === null) {
+      throw new Error("Invalid authoritative Stripe app-purchase amount");
+    }
     await appChargeSettlementService.markPaid({
       appId,
       chargeRequestId,
       provider: "stripe",
       providerPaymentId: paymentIntentId,
-      amountUsd: credits,
+      amountUsd: appPurchaseAmountUsd,
+      currency: session.currency ?? "",
       payerUserId: userId,
       payerOrganizationId: organizationId,
       metadata: {

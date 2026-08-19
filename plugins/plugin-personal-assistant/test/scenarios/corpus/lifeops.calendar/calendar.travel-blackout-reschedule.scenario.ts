@@ -31,6 +31,7 @@ export default scenario({
   title:
     "Bulk-reschedule three meetings when the travel window slides by a day",
   domain: "lifeops.calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "travel", "bulk-reschedule"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

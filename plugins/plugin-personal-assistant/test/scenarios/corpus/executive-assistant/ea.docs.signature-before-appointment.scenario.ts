@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.docs.signature-before-appointment",
   title: "Chase signature forms before an appointment",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "docs", "calendar", "transcript-derived"],
   description:
     "Transcript-derived case: the assistant reminds the user to sign forms before a clinic or office appointment.",

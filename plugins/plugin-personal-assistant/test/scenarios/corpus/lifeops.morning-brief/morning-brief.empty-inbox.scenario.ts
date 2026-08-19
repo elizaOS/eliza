@@ -101,6 +101,7 @@ export default scenario({
   title:
     "Morning brief on a truly empty inbox reports the empty state honestly",
   domain: "lifeops.morning-brief",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "morning-brief",

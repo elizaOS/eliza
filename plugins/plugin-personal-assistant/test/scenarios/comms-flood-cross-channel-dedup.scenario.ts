@@ -35,6 +35,7 @@ export default scenario({
   title:
     "Comms flood: the same request on two channels is handled once, not twice",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "comms-flood", "personas", "dedup", "12283"],
   status: "active",
   isolation: "per-scenario",

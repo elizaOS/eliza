@@ -32,6 +32,7 @@ import {
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import {
   type CapturedAction,
+  type CapturedProviderRequest,
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioContext,
   type ScenarioDefinition,
@@ -41,6 +42,7 @@ import {
   type ScenarioLane,
   type ScenarioTurn,
   type ScenarioTurnExecution,
+  scenarioEvidenceScope,
   scenarioLane,
 } from "@elizaos/scenario-runner/schema";
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
@@ -382,6 +384,67 @@ type ExecutedTurn = ScenarioTurnExecution & {
   reportResponseText?: string;
   syntheticFailure?: boolean;
 };
+
+type MockProviderRequestLedgerEntry = {
+  environment?: unknown;
+  method?: unknown;
+  path?: unknown;
+  query?: unknown;
+  body?: unknown;
+  createdAt?: unknown;
+  runId?: unknown;
+  gmail?: unknown;
+};
+
+/**
+ * Reads only the loopback fixture ledger. These observations prove simulated
+ * connector contracts; they are never promoted to provider-qualified evidence.
+ */
+async function readControlledProviderRequests(
+  runId: string | undefined,
+): Promise<CapturedProviderRequest[] | null> {
+  if (!runId) return null;
+  const baseUrl = process.env.ELIZA_MOCK_GOOGLE_BASE;
+  if (!isLoopbackUrl(baseUrl)) return null;
+  try {
+    const response = await fetch(`${baseUrl}/__mock/requests`, {
+      signal: AbortSignal.timeout(2_000),
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { requests?: unknown };
+    if (!Array.isArray(payload.requests)) return [];
+    return payload.requests.flatMap((raw): CapturedProviderRequest[] => {
+      if (!raw || typeof raw !== "object") return [];
+      const entry = raw as MockProviderRequestLedgerEntry;
+      if (entry.runId !== runId) return [];
+      const method =
+        typeof entry.method === "string" ? entry.method.toUpperCase() : "";
+      const path = typeof entry.path === "string" ? entry.path : "";
+      if (!method || !path.startsWith("/gmail/")) return [];
+      return [
+        {
+          provider: "gmail",
+          method,
+          path,
+          ...(typeof entry.environment === "string"
+            ? { environment: entry.environment }
+            : {}),
+          ...(typeof entry.query === "string" ? { query: entry.query } : {}),
+          ...(entry.body !== undefined ? { body: entry.body } : {}),
+          ...(entry.gmail !== undefined ? { metadata: entry.gmail } : {}),
+          ...(typeof entry.runId === "string" ? { runId: entry.runId } : {}),
+          ...(typeof entry.createdAt === "string"
+            ? { createdAt: entry.createdAt }
+            : {}),
+        },
+      ];
+    });
+  } catch {
+    // error-policy:J4 A missing optional fixture ledger is surfaced by the
+    // Gmail check that requires it; unrelated scenario execution continues.
+    return null;
+  }
+}
 
 type ScenarioVariableState = {
   baseNow: Date;
@@ -1717,8 +1780,16 @@ async function executeActionTurn(
   };
   const timeoutMs =
     typeof turn.timeoutMs === "number" ? turn.timeoutMs : turnTimeoutMs;
+  const state =
+    typeof runtime.composeState === "function"
+      ? await withTimeout(
+          runtime.composeState(message),
+          timeoutMs,
+          `composeActionState(${turn.name})`,
+        )
+      : undefined;
   const validated = await withTimeout(
-    action.validate(runtime, message, undefined, options as never),
+    action.validate(runtime, message, state, options as never),
     timeoutMs,
     `validateAction(${turn.name})`,
   );
@@ -1731,7 +1802,7 @@ async function executeActionTurn(
     action.handler(
       runtime,
       message,
-      undefined,
+      state,
       options as never,
       callback as never,
     ),
@@ -2257,6 +2328,7 @@ export async function runScenario(
     memoryWrites: [],
     stateTransitions: [],
     artifacts: [],
+    providerRequests: [],
   };
 
   const report: ScenarioReport = {
@@ -2274,6 +2346,9 @@ export async function runScenario(
     actionsCalled: [],
     failedAssertions: [],
     providerName: opts.providerName,
+    lane: scenarioLane(scenario),
+    evidenceScope: scenarioEvidenceScope(scenario),
+    evidenceScopeDefaulted: scenario.evidenceScope === undefined,
     executionProfile,
     evidence:
       executionProfile === "simulated"
@@ -2435,11 +2510,18 @@ export async function runScenario(
         }
       } catch (err) {
         // error-policy:J2 Required-plugin startup failures need package context.
-        throw new ElizaError(`Failed to initialize required plugin ${pkg}`, {
-          code: "SCENARIO_REQUIRED_PLUGIN_INIT_FAILED",
-          context: { packageName: pkg },
-          cause: err,
-        });
+        const causeMessage =
+          err instanceof Error && err.message.trim().length > 0
+            ? err.message
+            : String(err);
+        throw new ElizaError(
+          `Failed to initialize required plugin ${pkg}: ${causeMessage}`,
+          {
+            code: "SCENARIO_REQUIRED_PLUGIN_INIT_FAILED",
+            context: { packageName: pkg },
+            cause: err,
+          },
+        );
       }
     }
     const missing = requiredPlugins.filter(
@@ -2485,6 +2567,14 @@ export async function runScenario(
       }
 
       const actionsBefore = interceptor.actions.length;
+      const approvalsBefore = interceptor.approvalRequests.length;
+      const dispatchesBefore = interceptor.connectorDispatches.length;
+      const memoryWritesBefore = interceptor.memoryWrites.length;
+      const transitionsBefore = interceptor.stateTransitions.length;
+      const artifactsBefore = interceptor.artifacts.length;
+      const providerRequestsBefore = await readControlledProviderRequests(
+        ctx.runId,
+      );
       const execution: ExecutedTurn =
         kind === "voice"
           ? {
@@ -2576,6 +2666,25 @@ export async function runScenario(
         actionsThisTurn = [synthesizedReply];
       }
       execution.actionsCalled = actionsThisTurn;
+      execution.name = turn.name;
+      execution.approvalRequests =
+        interceptor.approvalRequests.slice(approvalsBefore);
+      execution.connectorDispatches =
+        interceptor.connectorDispatches.slice(dispatchesBefore);
+      execution.memoryWrites =
+        interceptor.memoryWrites.slice(memoryWritesBefore);
+      execution.stateTransitions =
+        interceptor.stateTransitions.slice(transitionsBefore);
+      execution.artifacts = interceptor.artifacts.slice(artifactsBefore);
+      const providerRequestsAfter = await readControlledProviderRequests(
+        ctx.runId,
+      );
+      if (providerRequestsBefore && providerRequestsAfter) {
+        execution.providerRequests = providerRequestsAfter.slice(
+          providerRequestsBefore.length,
+        );
+        ctx.providerRequests.push(...execution.providerRequests);
+      }
       ctx.turns.push(execution);
 
       const { failures: failedAssertions, judgeScore: turnJudgeScore } =
@@ -2594,6 +2703,14 @@ export async function runScenario(
         responseText:
           execution.reportResponseText ?? execution.responseText ?? "",
         actionsCalled: actionsThisTurn,
+        approvalRequests: execution.approvalRequests,
+        connectorDispatches: execution.connectorDispatches,
+        memoryWrites: execution.memoryWrites,
+        stateTransitions: execution.stateTransitions,
+        artifacts: execution.artifacts,
+        ...(execution.providerRequests
+          ? { providerRequests: execution.providerRequests }
+          : {}),
         durationMs: execution.durationMs ?? 0,
         failedAssertions,
         ...(turnJudgeScore !== undefined ? { judgeScore: turnJudgeScore } : {}),

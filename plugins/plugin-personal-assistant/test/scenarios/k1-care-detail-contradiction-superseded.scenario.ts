@@ -13,6 +13,7 @@ export default scenario({
   id: "k1-care-detail-contradiction-superseded",
   title: "Corrected care detail supersedes rather than duplicates",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "K1",

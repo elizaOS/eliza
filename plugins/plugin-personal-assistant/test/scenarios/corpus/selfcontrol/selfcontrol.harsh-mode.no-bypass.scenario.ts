@@ -12,6 +12,7 @@ export default scenario({
   id: "selfcontrol.harsh-mode.no-bypass",
   title: "Harsh mode refuses to unblock before time elapses",
   domain: "selfcontrol",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "selfcontrol",

@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Succession comms ground in the seeded announcement and withhold the compensation package",
   domain: "executive.briefing",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

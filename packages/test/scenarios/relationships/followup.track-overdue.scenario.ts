@@ -1,22 +1,20 @@
-/** Scenario fixture for followup track overdue; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+/** Proves the canonical scheduled-task surface reads durable contact cadence. */
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
+import { expectSuccessfulActionData } from "./_assertions.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "followup.track-overdue",
   title: "Surface overdue follow-ups",
   domain: "relationships",
-  tags: ["lifeops", "relationships", "time-of-day", "smoke"],
+  evidenceScope: "domain-contract",
+  executionProfile: "simulated",
+  tags: ["lifeops", "relationships", "follow-up", "durable-readback"],
   description:
-    "Three contacts have varying lastContactedAt values. The assistant should surface the overdue ones instead of giving a generic relationship answer.",
+    "Calls SCHEDULED_TASKS.list_overdue_followups and verifies structured overdue entries from the canonical RelationshipsService.",
 
   isolation: "per-scenario",
   requires: {
@@ -34,78 +32,48 @@ export default scenario({
 
   seed: [
     {
-      type: "memory",
-      roomId: "main",
-      content: {
-        kind: "contact",
-        name: "Alice Chen",
-        lastContactedAt: new Date(now - 30 * DAY_MS).toISOString(),
-      },
+      type: "contact",
+      name: "Alice Chen",
+      lastContactedAt: new Date(now - 30 * DAY_MS).toISOString(),
     },
     {
-      type: "memory",
-      roomId: "main",
-      content: {
-        kind: "contact",
-        name: "Bob Rivera",
-        lastContactedAt: new Date(now - 3 * DAY_MS).toISOString(),
-      },
+      type: "contact",
+      name: "Bob Rivera",
+      lastContactedAt: new Date(now - 3 * DAY_MS).toISOString(),
     },
     {
-      type: "memory",
-      roomId: "main",
-      content: {
-        kind: "contact",
-        name: "Carol Patel",
-        lastContactedAt: new Date(now - 60 * DAY_MS).toISOString(),
-      },
+      type: "contact",
+      name: "Carol Patel",
+      lastContactedAt: new Date(now - 60 * DAY_MS).toISOString(),
     },
   ],
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "who-to-followup",
       room: "main",
-      text: "Who should I follow up with?",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["RELATIONSHIP"],
-        description: "overdue follow-up review",
-        includesAny: ["follow", "overdue", "contact"],
-      }),
-      responseIncludesAny: ["Alice", "Carol"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "The reply must surface the overdue contacts by name and should not include Bob Rivera as overdue. A generic prompt to open the Rolodex fails.",
+      actionName: "SCHEDULED_TASKS",
+      text: "Read overdue relationship follow-ups.",
+      options: {
+        parameters: { action: "list_overdue_followups", thresholdDays: 14 },
       },
+      responseIncludesAll: ["Alice Chen", "Carol Patel"],
+      responseExcludes: ["Bob Rivera"],
     },
   ],
 
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: "RELATIONSHIP",
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: "RELATIONSHIP",
-      includesAny: ["follow", "overdue"],
-    },
-    {
       type: "custom",
-      name: "followup-track-overdue-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["RELATIONSHIP"],
-        description: "overdue follow-up review",
-        includesAny: ["follow", "overdue", "contact"],
-      }),
+      name: "overdue-followups-structured-result",
+      predicate: (ctx) =>
+        expectSuccessfulActionData({
+          ctx,
+          actionName: "SCHEDULED_TASKS",
+          includes: ["list_overdue_followups", "Alice Chen", "Carol Patel"],
+          excludes: ["Bob Rivera"],
+        }),
     },
-    judgeRubric({
-      name: "followup-track-overdue-rubric",
-      threshold: 0.7,
-      description:
-        "End-to-end: the assistant surfaced the overdue follow-ups by name and did not bury the owner in a generic contacts response.",
-    }),
   ],
 });

@@ -12,6 +12,7 @@ export default scenario({
   id: "sleep.travel-jet-lag-adjustment",
   title: "Jet-lag adjustment recommends gradual sleep-time shift",
   domain: "lifeops.sleep",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "sleep", "travel", "jet-lag"],
   isolation: "per-scenario",
   requires: {

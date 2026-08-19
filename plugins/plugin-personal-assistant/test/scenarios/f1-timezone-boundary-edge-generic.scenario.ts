@@ -268,6 +268,7 @@ export default scenario({
   title:
     "Control baseline: a literal zoned reminder fires at its true wall-clock instant, no re-anchoring",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

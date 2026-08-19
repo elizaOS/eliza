@@ -239,6 +239,7 @@ export default scenario({
   title:
     "Low activation: one gentle morning pick fires once, the whole-list ping stays held",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

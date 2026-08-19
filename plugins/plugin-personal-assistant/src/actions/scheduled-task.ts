@@ -8,6 +8,8 @@
  * Subactions:
  *   - `list`      — read tasks (optional kind / status / subject filters, plus
  *                   a `dueWindow` = overdue|today next-fire filter)
+ *   - `list_overdue_followups` — read relationship cadence from the canonical
+ *                   RelationshipsService projection
  *   - `get`       — fetch one task by id
  *   - `create`    — schedule a new task (any `ScheduledTaskKind`)
  *   - `update`    — edit a scheduled task (`ScheduledTaskRunner.apply edit`)
@@ -39,6 +41,10 @@ import type {
   State,
 } from "@elizaos/core";
 import { stableStringify } from "@elizaos/core";
+import {
+  computeOverdueFollowups,
+  FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
+} from "../followup/followup-tracker.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -79,6 +85,7 @@ import { OWNER_OPERATION_VALIDATE, runLifeOperationHandler } from "./life.js";
 
 const SUBACTIONS = [
   "list",
+  "list_overdue_followups",
   "get",
   "create",
   "update",
@@ -164,6 +171,8 @@ interface ScheduledTaskParams {
   includeRollups?: boolean;
   /** history-only: row cap (default 100). */
   limit?: number;
+  /** list_overdue_followups-only: fallback cadence for contacts without one. */
+  thresholdDays?: number;
 }
 
 const SCHEDULED_TASK_KINDS: readonly ScheduledTaskKindParam[] = [
@@ -1620,6 +1629,46 @@ async function handleHistory(
   };
 }
 
+async function handleListOverdueFollowups(
+  scope: RunnerScope,
+  params: ScheduledTaskParams,
+): Promise<ActionResult> {
+  const thresholdDays =
+    typeof params.thresholdDays === "number" &&
+    Number.isFinite(params.thresholdDays) &&
+    params.thresholdDays > 0
+      ? params.thresholdDays
+      : FOLLOWUP_DEFAULT_THRESHOLD_DAYS;
+  const digest = await computeOverdueFollowups(
+    scope.runtime,
+    Date.now(),
+    thresholdDays,
+  );
+  const limit =
+    typeof params.limit === "number" &&
+    Number.isFinite(params.limit) &&
+    params.limit > 0
+      ? Math.floor(params.limit)
+      : undefined;
+  const overdue = limit ? digest.overdue.slice(0, limit) : digest.overdue;
+  return {
+    success: true,
+    text:
+      overdue.length === 0
+        ? "No overdue relationship follow-ups."
+        : overdue
+            .map(
+              (entry) =>
+                `${entry.displayName}: ${entry.daysOverdue} days overdue against a ${entry.thresholdDays}-day cadence.`,
+            )
+            .join("\n"),
+    data: {
+      subaction: "list_overdue_followups",
+      digest: { ...digest, overdue },
+    },
+  };
+}
+
 const examples: ActionExample[][] = [
   [
     {
@@ -1752,7 +1801,7 @@ export const scheduledTaskAction: Action & {
     {
       name: "action",
       description:
-        "ScheduledTask op: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
+        "ScheduledTask op: list|list_overdue_followups|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
@@ -1911,7 +1960,13 @@ export const scheduledTaskAction: Action & {
     },
     {
       name: "limit",
-      description: "history-only: row cap (default 100).",
+      description: "history or list_overdue_followups: maximum returned rows.",
+      schema: { type: "number" as const },
+    },
+    {
+      name: "thresholdDays",
+      description:
+        "list_overdue_followups: fallback cadence for contacts without an explicit relationship cadence.",
       schema: { type: "number" as const },
     },
   ],
@@ -2002,6 +2057,9 @@ export const scheduledTaskAction: Action & {
     switch (subaction) {
       case "list":
         result = await handleList(scope, params);
+        break;
+      case "list_overdue_followups":
+        result = await handleListOverdueFollowups(scope, params);
         break;
       case "get":
         result = await handleGet(scope, params);

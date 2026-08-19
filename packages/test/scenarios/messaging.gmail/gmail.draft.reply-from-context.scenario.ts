@@ -1,12 +1,15 @@
 /** Scenario fixture for gmail draft reply from context; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { gmailExactDraftBinding } from "./_gmail-contracts.ts";
 
 export default scenario({
   lane: "live-only",
   id: "gmail.draft.reply-from-context",
   title: "Draft Gmail reply using recent email context",
   domain: "messaging.gmail",
+  evidenceScope: "connector-contract",
   tags: ["messaging", "gmail", "draft", "happy-path"],
   isolation: "per-scenario",
   requires: {
@@ -44,36 +47,42 @@ export default scenario({
   finalChecks: [
     {
       type: "gmailActionArguments",
-      actionName: ["MESSAGE", "MESSAGE"],
+      actionName: ["MESSAGE", "GMAIL_ACTION", "INBOX"],
       subaction: "draft_reply",
+      turn: "draft reply to sarah",
+      minCount: 1,
+      maxCount: 1,
     },
     {
       type: "gmailMockRequest",
       method: "GET",
-      path: "/gmail/v1/users/me/messages",
+      path: "/gmail/v1/users/me/messages/msg-sarah",
       minCount: 1,
+      turn: "draft reply to sarah",
     },
     {
       type: "gmailDraftCreated",
-    },
-    {
-      type: "gmailMockRequest",
-      method: "POST",
-      path: "/gmail/v1/users/me/drafts",
-      minCount: 1,
+      turn: "draft reply to sarah",
     },
     {
       type: "gmailMessageSent",
       expected: false,
+      turn: "draft reply to sarah",
     },
     {
       type: "gmailNoRealWrite",
     },
+    gmailExactDraftBinding({
+      name: "Sarah draft is bound to exact source and dictated body",
+      turn: "draft reply to sarah",
+      sourceMessageId: "msg-sarah",
+      bodyIncludesAll: ["Friday afternoon"],
+    }),
     judgeRubric({
       name: "gmail-draft-reply-from-context-rubric",
       threshold: 0.7,
       description:
-        "End-to-end: the assistant drafted the Gmail reply from recent context and kept it as a draft instead of claiming it was sent.",
+        "End-to-end: the assistant read msg-sarah, created one local Gmail draft bound to that exact source and Friday-afternoon body, and made no provider send request.",
     }),
   ],
   cleanup: [

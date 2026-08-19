@@ -37,6 +37,7 @@ export default scenario({
   title:
     "Cross-persona: an ambiguous possible-VIP message is surfaced, never silently buried",
   domain: "lifeops.comms",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "control",

@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Crew-swap recovery grounds in the seeded charter and holds all confirmations",
   domain: "executive.travel",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

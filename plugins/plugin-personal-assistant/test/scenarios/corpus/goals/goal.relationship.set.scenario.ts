@@ -11,6 +11,7 @@ export default scenario({
   id: "goal.relationship.set",
   title: "Set a relationship goal to stay in closer touch with family",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "relationships", "happy-path"],
   isolation: "per-scenario",
   requires: {

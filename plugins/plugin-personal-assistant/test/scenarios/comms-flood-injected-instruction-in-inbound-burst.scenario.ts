@@ -35,6 +35,7 @@ export default scenario({
   id: "comms-flood-injected-instruction-in-inbound-burst",
   title: "Comms flood: an injected instruction inside the burst stays inert",
   domain: "lifeops.inbox",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "comms-flood",

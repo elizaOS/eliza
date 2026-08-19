@@ -13,6 +13,7 @@ export default scenario({
   title:
     "Home ops review covers deliveries, errands, reservations, and support tickets",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "home-ops", "personal-admin"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

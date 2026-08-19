@@ -1,87 +1,119 @@
-/** Scenario fixture for whatsapp gateway bot routes to user agent; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+/** Proves WhatsApp HMAC verification, normalized sender ownership, and replay deduplication. */
+import type { AgentRuntime } from "@elizaos/core";
 import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  type ScenarioTurnExecution,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
+import { createGatewayContractHarness } from "./_fixtures/gateway-contract-plugin.ts";
 
+const harness = createGatewayContractHarness();
+const data = (turn: ScenarioTurnExecution) =>
+  (turn.responseBody as { data?: Record<string, unknown> })?.data ?? {};
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "whatsapp-gateway.bot-routes-to-user-agent",
-  title: "WhatsApp gateway bot routes to the active assistant",
-  domain: "gateway",
-  tags: ["gateway", "whatsapp", "smoke"],
+  title: "WhatsApp signed ingress routes once to its owning tenant",
+  domain: "gateway-contract",
+  tags: ["gateway", "whatsapp", "auth", "dedupe", "deterministic-contract"],
   description:
-    "A WhatsApp gateway DM resolves to the owning user agent and returns inbox-grounded context from the same WhatsApp chat.",
+    "Exercises the production WhatsApp adapter's HMAC verification and payload normalization, then proves project-scoped ownership and replay suppression. It does not claim Meta delivery.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
+  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",
-      source: "whatsapp",
+      source: "gateway-contract",
       channelType: "DM",
-      title: "WhatsApp Gateway Bot Routes To User Agent",
+      title: "WhatsApp ingress contract",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "register-gateway-contract",
+      apply: async (ctx) => {
+        harness.reset();
+        await (ctx.runtime as AgentRuntime).registerPlugin(harness.plugin);
+      },
     },
   ],
   turns: [
     {
-      kind: "message",
-      name: "whatsapp-inbound",
+      kind: "action",
+      name: "reject-invalid-signature",
       room: "main",
-      text: "What's in this WhatsApp gateway DM? Summarize it back to me.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "WhatsApp gateway inbox read",
-        includesAny: ["whatsapp", "chat", "message"],
-      }),
+      actionName: "GATEWAY_HTTP_INGRESS_CONTRACT",
+      options: {
+        platform: "whatsapp",
+        project: "project-owner-b",
+        variant: "invalid-signature",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 401 && data(turn).effectCount === 0
+          ? undefined
+          : `invalid signature crossed ingress: ${JSON.stringify(data(turn))}`,
+    },
+    {
+      kind: "action",
+      name: "reject-wrong-phone-account",
+      room: "main",
+      actionName: "GATEWAY_HTTP_INGRESS_CONTRACT",
+      options: {
+        platform: "whatsapp",
+        project: "project-owner-b",
+        variant: "wrong-account",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 401 && data(turn).effectCount === 0
+          ? undefined
+          : `wrong account crossed ingress: ${JSON.stringify(data(turn))}`,
+    },
+    {
+      kind: "action",
+      name: "accept-signed-message",
+      room: "main",
+      actionName: "GATEWAY_HTTP_INGRESS_CONTRACT",
+      options: {
+        platform: "whatsapp",
+        project: "project-owner-b",
+        variant: "valid",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 200 &&
+        data(turn).effectCount === 1 &&
+        Number(data(turn).providerEgressCount) >= 1
+          ? undefined
+          : `valid WhatsApp route failed: ${JSON.stringify(data(turn))}`,
+    },
+    {
+      kind: "action",
+      name: "dedupe-meta-retry",
+      room: "main",
+      actionName: "GATEWAY_HTTP_INGRESS_CONTRACT",
+      options: {
+        platform: "whatsapp",
+        project: "project-owner-b",
+        variant: "replay",
+      },
+      assertTurn: (turn) =>
+        data(turn).status === 200 &&
+        data(turn).effectCount === 0 &&
+        data(turn).providerEgressCount === 0 &&
+        data(turn).totalEffects === 1
+          ? undefined
+          : `unexpected replay ${JSON.stringify(data(turn))}`,
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["MESSAGE", "MESSAGE"],
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: ["MESSAGE", "MESSAGE"],
-      includesAny: ["whatsapp", "chat", "message", "room"],
-    },
-    {
       type: "custom",
-      name: "whatsapp-gateway-inbox-context-is-real",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["MESSAGE"],
-        description: "WhatsApp gateway inbox read",
-        includesAny: ["whatsapp", "chat", "message"],
-      }),
-    },
-    {
-      type: "custom",
-      name: "whatsapp-gateway-response-is-grounded",
-      predicate: async (ctx) => {
-        const reply = (ctx.turns?.[0]?.responseText ?? "").trim();
-        if (!reply) {
-          return "expected a non-empty WhatsApp response";
-        }
-
-        const hit = ctx.actionsCalled.find((action) =>
-          ["MESSAGE", "MESSAGE"].includes(action.actionName),
-        );
-        if (!hit) {
-          return "expected an INBOX action";
-        }
-
-        const blob = JSON.stringify(hit).toLowerCase();
-        if (
-          !blob.includes("whatsapp") ||
-          (!blob.includes("chat") && !blob.includes("message"))
-        ) {
-          return "expected WhatsApp chat metadata in the inbox action payload";
-        }
-        return undefined;
-      },
+      name: "exactly-one-owned-dispatch",
+      predicate: () =>
+        harness.dispatches.length === 1
+          ? undefined
+          : `expected one dispatch, saw ${harness.dispatches.length}`,
     },
   ],
 });

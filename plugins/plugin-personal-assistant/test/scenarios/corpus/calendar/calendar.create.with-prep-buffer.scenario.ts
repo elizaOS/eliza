@@ -8,6 +8,7 @@ export default scenario({
   id: "calendar.create.with-prep-buffer",
   title: "Create a calendar event with a 15-minute prep buffer before it",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "happy-path"],
   isolation: "per-scenario",
   requires: {

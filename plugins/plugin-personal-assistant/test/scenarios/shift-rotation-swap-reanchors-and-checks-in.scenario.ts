@@ -215,6 +215,7 @@ export default scenario({
   title:
     "Shift swap onto nights: assistant checks in gently and the real scheduler re-anchors the routine to the shifted waking window",
   domain: "lifeops",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "shift-rotation",

@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.renewals-keep-cancel",
   title: "Renewals review surfaces keep/cancel decisions",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "renewals", "subscriptions"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

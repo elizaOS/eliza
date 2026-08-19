@@ -38,6 +38,7 @@ export default scenario({
   title:
     "Traveler: instructions embedded in a forwarded itinerary are treated as data",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "traveler",

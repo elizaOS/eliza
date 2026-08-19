@@ -10,6 +10,7 @@ export default scenario({
   id: "h1-private-label-not-shared",
   title: "H1 ex-partner label is stored structurally without commentary",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "H1", "relationships", "privacy", "no-therapy"],
   isolation: "per-scenario",
   rooms: [

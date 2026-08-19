@@ -61,6 +61,7 @@ export default scenario({
   id: "inbox-triage.token-expiry-mid-fetch",
   title: "Gmail OAuth 401 mid-fetch surfaces re-authentication prompt",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "inbox-triage",

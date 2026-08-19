@@ -11,6 +11,7 @@ export default scenario({
   id: "calendar.create.travel-time",
   title: "Create a calendar event with travel-time awareness",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "travel", "happy-path"],
   isolation: "per-scenario",
   requires: {

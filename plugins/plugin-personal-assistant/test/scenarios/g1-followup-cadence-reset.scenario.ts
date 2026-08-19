@@ -60,6 +60,7 @@ export default scenario({
   id: "g1-followup-cadence-reset",
   title: "G1 overdue communication cadence uses relationship follow-up tasks",
   domain: "lifeops.relationships",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "G1", "followup", "scheduled-task", "outcome"],
   isolation: "per-scenario",
   requires: {

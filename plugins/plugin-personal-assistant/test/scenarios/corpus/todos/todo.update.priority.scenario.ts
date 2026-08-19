@@ -6,6 +6,7 @@ export default scenario({
   id: "todo.update.priority",
   title: "Raise a seeded todo to high priority",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "smoke", "multi-turn-memory"],
   isolation: "per-scenario",
   requires: {

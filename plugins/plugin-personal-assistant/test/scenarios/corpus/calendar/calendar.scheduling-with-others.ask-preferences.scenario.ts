@@ -29,6 +29,7 @@ export default scenario({
   id: "calendar.scheduling-with-others.ask-preferences",
   title: "Agent pulls user's preferred meeting times when asked",
   domain: "calendar",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "calendar", "preferences"],
   isolation: "per-scenario",
   requires: {

@@ -44,6 +44,7 @@ export default scenario({
   title:
     "Signal permission denied → degraded but cross-channel query continues",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "cross-channel",

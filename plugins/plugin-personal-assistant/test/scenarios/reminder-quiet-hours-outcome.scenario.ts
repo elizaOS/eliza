@@ -31,6 +31,7 @@ export default scenario({
   id: "reminder-quiet-hours-outcome",
   title: "An interruptive reminder is suppressed during quiet hours",
   domain: "reminders",
+  evidenceScope: "domain-contract",
   tags: ["lifeops", "reminders"],
   isolation: "per-scenario",
   requires: {

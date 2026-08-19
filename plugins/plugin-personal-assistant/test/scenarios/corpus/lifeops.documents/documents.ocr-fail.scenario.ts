@@ -108,6 +108,7 @@ export default scenario({
   title:
     "OCR-failed PDF: agent surfaces the failure honestly, offers retry, no fabrication",
   domain: "lifeops.documents",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "documents",

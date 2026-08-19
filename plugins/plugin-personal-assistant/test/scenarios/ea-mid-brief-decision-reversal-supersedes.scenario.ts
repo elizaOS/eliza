@@ -13,6 +13,7 @@ export default scenario({
   id: "ea-mid-brief-decision-reversal-supersedes",
   title: "A mid-conversation reversal supersedes the earlier prep decision",
   domain: "executive.schedule",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

@@ -246,6 +246,7 @@ export default scenario({
   title:
     "ADHD follow-through: minimal reminderIntensity drops the no-reply retry entirely — fires once, then stops",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

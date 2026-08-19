@@ -8,6 +8,7 @@ export default scenario({
   id: "goal-sleep-french-formal",
   title: "Sleep goal save flow (French, formal vous)",
   domain: "goals",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "goals", "smoke"],
   isolation: "per-scenario",
   requires: {

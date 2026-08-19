@@ -15,6 +15,7 @@ export default scenario({
   title:
     "Expat payroll review grounds in seeded assignment state; advisor notes stay staged",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

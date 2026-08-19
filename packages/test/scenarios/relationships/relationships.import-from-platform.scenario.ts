@@ -1,24 +1,32 @@
 /**
- * Import contacts from a platform: user asks to import top Discord DM
- * partners into the Rolodex. The current relationship workflow falls
- * back to listing the existing Rolodex instead of importing from a
- * platform.
+ * Proves CONTACT imports an adapter-supplied Discord roster into the durable
+ * Rolodex with stable platform identifiers and an exact requested count.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectImportedContacts } from "./_assertions.js";
+
+const DISCORD_ROSTER = Array.from({ length: 20 }, (_, index) => ({
+  platform: "discord",
+  identifier: `scenario-discord-user-${String(index + 1).padStart(2, "0")}`,
+  displayName: `Scenario Discord Partner ${String(index + 1).padStart(2, "0")}`,
+}));
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "relationships.import-from-platform",
-  title: "Platform import request falls back to Rolodex listing",
+  title: "Import a typed Discord roster into the Rolodex",
   domain: "relationships",
-  tags: ["lifeops", "relationships", "cross-platform", "routing"],
+  evidenceScope: "domain-contract",
+  executionProfile: "simulated",
+  tags: ["lifeops", "relationships", "discord", "durable-readback"],
   description:
-    "A request to import Discord DM partners currently routes to the existing Rolodex list flow instead of an import action.",
+    "Calls CONTACT.import with a typed upstream roster and verifies all 20 Discord identities through RelationshipsService. This contract does not claim connector roster discovery.",
 
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
+    services: ["relationships"],
   },
 
   rooms: [
@@ -32,40 +40,33 @@ export default scenario({
 
   turns: [
     {
-      kind: "message",
+      kind: "action",
       name: "import-discord-contacts",
       room: "main",
-      text: "Import my top 20 Discord DM partners into my Rolodex.",
-      responseIncludesAny: ["Rolodex", "contacts"],
+      actionName: "CONTACT",
+      text: "Import the supplied Discord contact roster.",
+      options: {
+        parameters: {
+          action: "import",
+          platform: "discord",
+          contacts: DISCORD_ROSTER,
+        },
+      },
+      responseIncludesAll: ["Imported 20 discord contacts", "skipped 0"],
     },
   ],
 
   finalChecks: [
     {
       type: "custom",
-      name: "import-request-routing",
-      predicate: async (ctx) => {
-        const action = ctx.actionsCalled.find(
-          (entry) => entry.actionName === "RELATIONSHIP",
-        );
-        const data =
-          action?.result?.data && typeof action.result.data === "object"
-            ? (action.result.data as {
-                subaction?: string;
-                contacts?: unknown[];
-              })
-            : null;
-        if (!data) {
-          return "expected RELATIONSHIP result data";
-        }
-        if (data.subaction !== "list_contacts") {
-          return `expected list_contacts fallback, got ${data.subaction ?? "(missing)"}`;
-        }
-        if (!Array.isArray(data.contacts)) {
-          return "expected contacts array in Rolodex list result";
-        }
-        return undefined;
-      },
+      name: "discord-import-persists-exact-contact-count",
+      predicate: (ctx) =>
+        expectImportedContacts({
+          ctx,
+          actionName: "CONTACT",
+          platform: "discord",
+          expectedCount: 20,
+        }),
     },
   ],
 });

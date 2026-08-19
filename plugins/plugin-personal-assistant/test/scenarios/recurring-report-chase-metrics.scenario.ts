@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Recurring report chase grounds in the seeded metrics pack and keeps embargoed material out of pings",
   domain: "executive.delegation",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "delegation", "briefing", "outcome"],
   isolation: "per-scenario",
   requires: {

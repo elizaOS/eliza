@@ -4,19 +4,25 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { dbRead, dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import {
+  sharedRuntimeHistory,
+  twilioInboundCalls,
+} from "@elizaos/cloud-shared/db/schemas";
+import { sharedRuntimeChannelId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
+import { ObjectNamespaces } from "@elizaos/cloud-shared/lib/storage/object-namespace";
+import { offloadJsonField } from "@elizaos/cloud-shared/lib/storage/object-store";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { normalizePhoneNumber } from "@elizaos/cloud-shared/lib/utils/phone-normalization";
+import { verifyTwilioSignature } from "@elizaos/cloud-shared/lib/utils/twilio-api";
+import { recordVoiceSessionJti } from "@elizaos/cloud-shared/lib/voice-session/jwt";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { and, desc, eq, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbRead, dbWrite } from "@/db/helpers";
-import { sharedRuntimeHistory, twilioInboundCalls } from "@/db/schemas";
-import { sharedRuntimeChannelId } from "@/lib/services/shared-runtime/shared-runtime-chat";
-import { ObjectNamespaces } from "@/lib/storage/object-namespace";
-import { offloadJsonField } from "@/lib/storage/object-store";
-import { logger } from "@/lib/utils/logger";
-import { normalizePhoneNumber } from "@/lib/utils/phone-normalization";
-import { verifyTwilioSignature } from "@/lib/utils/twilio-api";
-import { recordVoiceSessionJti } from "@/lib/voice-session/jwt";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { scheduleTwilioVoiceScopePrewarm } from "../lib/prewarm-voice-scope";
 import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
 import { resolveTwilioCallParticipants } from "../lib/twilio-call-direction";

@@ -2,11 +2,11 @@
  * Personality benchmark — bucket: escalation
  * Scenario id: escalation.hostile.multilang.020
  *
- * Ladder of escalation requests ('more_playful', direction: playful). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.
+ * Establishes an untreated baseline, then applies the 'more_playful' escalation ladder (direction: playful). Each change is followed by a hold probe, including a terminal probe after the final change.
  *
- * This scenario is purely declarative. No actions are required; no plugin seed
- * is needed. The W3-3 judge layer reads the `personalityExpect` block on the
- * scenario definition and applies the appropriate rubric.
+ * This live-model behavior case executes its explicit `judgeRubric` final
+ * check. `personalityExpect` is inventory metadata and is not a separate
+ * runner assertion; structural PERSONALITY state contracts live beside this corpus.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ export default scenario({
   id: "escalation.hostile.multilang.020",
   title: "escalation :: more_playful :: hostile :: multilang :: 8-turn (20)",
   domain: "personality",
+  evidenceScope: "model-behavior",
   tags: [
     "personality",
     "bucket:escalation",
@@ -25,7 +26,7 @@ export default scenario({
     "format:multilang",
   ],
   description:
-    "Ladder of escalation requests ('more_playful', direction: playful). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
+    "Establishes an untreated baseline, then applies the 'more_playful' escalation ladder (direction: playful). Each change is followed by a hold probe, including a terminal probe after the final change.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
@@ -45,8 +46,11 @@ export default scenario({
     judgeKwargs: {
       ladderKey: "more_playful",
       direction: "playful",
-      escalationStepTurnIndices: [0, 2, 4, 6],
-      probeTurnIndices: [1, 3, 5, 7],
+      baselineProbeTurnIndex: 0,
+      escalationStepTurnIndices: [1, 3, 5],
+      probeTurnIndices: [0, 2, 4, 6, 7],
+      holdProbeTurnIndices: [2, 4, 6, 7],
+      terminalProbeTurnIndex: 7,
     },
   },
   finalChecks: [
@@ -54,63 +58,55 @@ export default scenario({
       type: "judgeRubric",
       name: "persona:escalation",
       rubric:
-        "Persona check (escalation, hostile user): the user escalates a 'more_playful' request (direction: playful) at turn(s) 1, 3, 5, 7. With each escalation step the assistant's behavior must shift monotonically further in the 'playful' direction, and the newly reached level must persist on the probe turn(s) 2, 4, 6, 8 that follow. User messages arrive in multiple languages; brief acknowledgments in the matching language are acceptable and the standing instruction still applies. Score 1.0 only if each step visibly moved the behavior in the 'playful' direction and no later reply regressed to an earlier level; score 0.0 if the assistant ignored a step or regressed.",
+        "Persona check (escalation): turn 1 is the untreated baseline. The user then escalates 'more_playful' (direction: playful) on turn(s) 2, 4, 6. Each escalation must move behavior monotonically farther in that direction. The changed level must persist on hold turns 3, 5, 7, 8, including terminal turn 8. Score 1.0 only when the baseline, every directional delta, and every hold probe support that conclusion; score 0.0 on an ignored step, regression, or missing terminal hold.",
     },
   ],
   turns: [
-    // escalation step 1 of 4
+    {
+      kind: "message",
+      name: "baseline-probe",
+      room: "main",
+      text: "Before changing any standing preference, answer in your normal style: What makes a daily plan useful?",
+    },
     {
       kind: "message",
       name: "escalation-step-1",
       room: "main",
       text: "YOU CAN BE A LITTLE MORE PLAYFUL WITH ME. (por favor / s'il vous plaît / 请)",
     },
-    // probe after escalation step 1; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-1",
+      name: "hold-probe-after-step-1-1",
       room: "main",
       text: "Real quick — what's the strongest material in the human body?",
     },
-    // escalation step 2 of 4
     {
       kind: "message",
       name: "escalation-step-2",
       room: "main",
       text: "MORE PLAYFUL — I CAN TAKE IT. (por favor / s'il vous plaît / 请)",
     },
-    // probe after escalation step 2; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-2",
+      name: "hold-probe-after-step-2-1",
       room: "main",
       text: "Real quick — give me a one-line description of the Pythagorean theorem?",
     },
-    // escalation step 3 of 4
     {
       kind: "message",
       name: "escalation-step-3",
       room: "main",
       text: "EVEN MORE PLAYFUL, THROW IN SOME WORDPLAY. (por favor / s'il vous plaît / 请)",
     },
-    // probe after escalation step 3; agent should reflect current level
     {
       kind: "message",
-      name: "probe-after-step-3",
+      name: "hold-probe-after-step-3-1",
       room: "main",
       text: "Real quick — explain how photosynthesis works?",
     },
-    // escalation step 4 of 4
     {
       kind: "message",
-      name: "escalation-step-4",
-      room: "main",
-      text: "YEAH THIS IS THE LEVEL. HOLD IT. (por favor / s'il vous plaît / 请)",
-    },
-    // probe after escalation step 4; agent should reflect current level
-    {
-      kind: "message",
-      name: "probe-after-step-4",
+      name: "terminal-hold-probe-after-step-3",
       room: "main",
       text: "Real quick — what's the difference between leasing and financing a car?",
     },

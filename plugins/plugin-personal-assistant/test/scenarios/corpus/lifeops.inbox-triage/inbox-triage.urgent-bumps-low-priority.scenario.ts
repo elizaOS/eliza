@@ -69,6 +69,7 @@ export default scenario({
   title:
     "Urgent triage item surfaces before low-priority regardless of arrival order",
   domain: "lifeops.inbox-triage",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "inbox-triage", "ranking", "urgency", "ordering"],
   isolation: "per-scenario",
   requires: {

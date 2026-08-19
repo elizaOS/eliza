@@ -12,6 +12,7 @@ export default scenario({
   id: "executive.travel-readiness",
   title: "Travel readiness checks bookings, buffers, docs, and expenses",
   domain: "lifeops.executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "travel", "readiness"],
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },

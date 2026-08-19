@@ -16,6 +16,7 @@ export default scenario({
   title:
     "Travel reimbursement packet is grounded in seeded folio/approver work and leaks no card digits",
   domain: "executive.money",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",

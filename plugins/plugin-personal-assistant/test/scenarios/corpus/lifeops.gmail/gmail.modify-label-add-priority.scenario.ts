@@ -19,6 +19,7 @@ export default scenario({
   id: "gmail.modify-label-add-priority",
   title: "Add Priority label to a specific Gmail message",
   domain: "lifeops.gmail",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "gmail", "label", "modify"],
   isolation: "per-scenario",
   requires: {

@@ -323,6 +323,7 @@ export default scenario({
   title:
     "Low activation: three ignored check-ins soften the next nudge (quiet-streak), never chase harder",
   domain: "lifeops",
+  evidenceScope: "domain-contract",
   tags: [
     "pr",
     "deterministic",

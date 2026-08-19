@@ -21,6 +21,7 @@ export default scenario({
   id: "cross-channel.search-across-platforms",
   title: "Search spans Gmail + Signal + Telegram",
   domain: "lifeops.cross-channel",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "cross-channel", "search", "search-all"],
   isolation: "per-scenario",
   requires: {

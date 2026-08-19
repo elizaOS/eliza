@@ -25,6 +25,7 @@ export default scenario({
   id: "sleep.oura-vs-apple-conflict-trust-policy",
   title: "Oura preferred over Apple Health when trust policy is set",
   domain: "lifeops.sleep",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "sleep", "multi-source", "trust-policy"],
   isolation: "per-scenario",
   requires: {

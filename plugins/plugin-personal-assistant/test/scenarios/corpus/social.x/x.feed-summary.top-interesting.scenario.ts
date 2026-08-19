@@ -12,6 +12,7 @@ export default scenario({
   id: "x.feed-summary.top-interesting",
   title: "Summarize top 5 tweets in feed today",
   domain: "social.x",
+  evidenceScope: "model-behavior",
   tags: ["social", "twitter", "smoke", "happy-path"],
   description:
     "User asks for a summary of the top posts in their X feed today and gets an inline summary from seeded timeline data.",

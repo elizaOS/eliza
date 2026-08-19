@@ -1,111 +1,108 @@
-/** Scenario fixture for twilio call outbound with confirmation; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+/** Proves a Twilio call draft cannot dial before owner confirmation and dispatches once after it. */
+import type { AgentRuntime } from "@elizaos/core";
 import {
-  expectConnectorDispatch,
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
+  type ScenarioTurnExecution,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
+import { createGatewayContractHarness } from "./_fixtures/gateway-contract-plugin.ts";
 
+const harness = createGatewayContractHarness();
+const data = (turn: ScenarioTurnExecution) =>
+  (turn.responseBody as { data?: Record<string, unknown> })?.data ?? {};
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
+  executionProfile: "simulated",
+  evidenceScope: "domain-contract",
   id: "twilio.call.outbound-with-confirmation",
-  title: "Agent places outbound Twilio call after confirmation",
-  domain: "gateway",
-  tags: ["gateway", "twilio", "call", "confirms-destructive-edge"],
+  title: "Twilio voice dispatch is owner-confirmed and idempotent",
+  domain: "gateway-contract",
+  tags: [
+    "gateway",
+    "twilio",
+    "voice",
+    "confirmation",
+    "idempotency",
+    "deterministic-contract",
+  ],
   description:
-    "The assistant drafts a real third-party phone call behind approval, then places it only after the user confirms.",
+    "Runs the production Twilio voice helper against a deterministic HTTP boundary and proves exact target/TwiML, Basic auth, idempotency key, confirmation ordering, and replay suppression. It does not claim a live PSTN call.",
   isolation: "per-scenario",
-  requires: {
-    plugins: ["@elizaos/plugin-agent-skills"],
-  },
+  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",
-      source: "dashboard",
+      source: "gateway-contract",
       channelType: "DM",
-      title: "Twilio Call Outbound With Confirmation",
+      title: "Twilio call outbound",
+    },
+  ],
+  seed: [
+    {
+      type: "custom",
+      name: "register-gateway-contract",
+      apply: async (ctx) => {
+        harness.reset();
+        await (ctx.runtime as AgentRuntime).registerPlugin(harness.plugin);
+      },
     },
   ],
   turns: [
     {
-      kind: "message",
-      name: "propose-call",
+      kind: "action",
+      name: "create-call-draft",
       room: "main",
-      text: "Call Downtown Dental at +15555550101 and reschedule my appointment to next Tuesday, but wait for my approval before dialing.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["VOICE_CALL"],
-        description: "twilio outbound call draft",
-        includesAny: ["call", "downtown", "dental", "confirm", "15555550101"],
-      }),
-      responseIncludesAny: ["confirm", "call", "Downtown Dental", "Tuesday"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "Turn 1 must hold the Twilio call behind explicit approval instead of pretending it already dialed.",
+      actionName: "GATEWAY_CREATE_DRAFT",
+      options: {
+        draftId: "draft-call-91",
+        channel: "voice",
+        to: "+15555550101",
+        body: "Please reschedule the appointment to next Tuesday.",
+        ownerId: "owner-1",
+      },
+      assertTurn: (turn) =>
+        data(turn).dispatchCount === 0
+          ? undefined
+          : "call dialed before confirmation",
+    },
+    {
+      kind: "action",
+      name: "confirm-call",
+      room: "main",
+      actionName: "GATEWAY_CONFIRM_DISPATCH",
+      options: { draftId: "draft-call-91", ownerId: "owner-1" },
+      assertTurn: (turn) => {
+        const d = data(turn);
+        const blob = JSON.stringify(d);
+        return d.duplicate === false &&
+          d.dispatchCount === 1 &&
+          blob.includes("/Calls.json") &&
+          blob.includes("I-Twilio-Idempotency-Token") &&
+          blob.includes("draft-call-91") &&
+          blob.includes("next+Tuesday")
+          ? undefined
+          : `unexpected call dispatch ${blob}`;
       },
     },
     {
-      kind: "message",
-      name: "confirm-call",
+      kind: "action",
+      name: "confirm-call-replay",
       room: "main",
-      text: "Yes, place the call to +15555550101 now.",
-      assertTurn: expectTurnToCallAction({
-        acceptedActions: ["VOICE_CALL"],
-        description: "twilio outbound call confirmed",
-        includesAny: ["call", "place", "dial", "15555550101"],
-      }),
-      responseIncludesAny: ["calling", "dialing", "placed", "call"],
-      responseJudge: {
-        minimumScore: 0.7,
-        rubric:
-          "Turn 2 must make clear that the confirmed Twilio call is being placed now.",
-      },
+      actionName: "GATEWAY_CONFIRM_DISPATCH",
+      options: { draftId: "draft-call-91", ownerId: "owner-1" },
+      assertTurn: (turn) =>
+        data(turn).duplicate === true && data(turn).dispatchCount === 1
+          ? undefined
+          : `duplicate confirmation dialed: ${JSON.stringify(data(turn))}`,
     },
   ],
   finalChecks: [
     {
-      type: "selectedAction",
-      actionName: ["VOICE_CALL"],
-    },
-    {
-      type: "approvalRequestExists",
-      expected: true,
-    },
-    {
-      type: "pushSent",
-      channel: "phone_call",
-    },
-    {
-      type: "connectorDispatchOccurred",
-      channel: "phone_call",
-      actionName: ["VOICE_CALL"],
-    },
-    {
       type: "custom",
-      name: "twilio-call-action-coverage",
-      predicate: expectScenarioToCallAction({
-        acceptedActions: ["VOICE_CALL"],
-        description: "twilio outbound call draft then send",
-        includesAny: ["call", "confirm", "dial", "15555550101"],
-        minCount: 2,
-      }),
+      name: "exactly-one-provider-request",
+      predicate: () =>
+        harness.dispatches.length === 1
+          ? undefined
+          : `expected one request, saw ${harness.dispatches.length}`,
     },
-    {
-      type: "custom",
-      name: "twilio-call-dispatch",
-      predicate: expectConnectorDispatch({
-        channel: "phone_call",
-        actionName: ["VOICE_CALL"],
-        description:
-          "the confirmed Twilio call goes through the voice dispatcher",
-      }),
-    },
-    judgeRubric({
-      name: "twilio-call-rubric",
-      threshold: 0.7,
-      description:
-        "End-to-end: the assistant held the third-party call for approval and only dialed after explicit confirmation.",
-    }),
   ],
 });

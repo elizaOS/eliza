@@ -11,6 +11,7 @@ export default scenario({
   title:
     "Carpool recovery grounds in the seeded pickup change and keeps the gate code out of the parent thread",
   domain: "executive.family",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "executive-assistant", "family", "calendar", "outcome"],
   isolation: "per-scenario",
   requires: {

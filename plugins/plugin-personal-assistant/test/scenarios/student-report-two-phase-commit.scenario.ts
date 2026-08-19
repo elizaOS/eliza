@@ -10,6 +10,7 @@ export default scenario({
   id: "student-report-two-phase-commit",
   title: "Student: report deadline writes only after confirmation",
   domain: "lifeops.reminders",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "mvp", "student", "two-phase-commit", "14352"],
   tier: "T1",
   status: "active",

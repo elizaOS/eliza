@@ -11,6 +11,7 @@ export default scenario({
   id: "k1-boundary-respected",
   title: "K1 friend boundary is respected",
   domain: "lifeops.relationships",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "K1", "third-party-support", "boundary", "privacy"],
   isolation: "per-scenario",
   rooms: [{ id: "main", source: "dashboard", channelType: "DM" }],

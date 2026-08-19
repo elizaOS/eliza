@@ -39,6 +39,7 @@ export default scenario({
   id: "todo.prioritize",
   title: "Ask which todo is most important",
   domain: "todos",
+  evidenceScope: "model-behavior",
   tags: ["lifeops", "todos", "smoke", "ambiguous-parameter"],
   isolation: "per-scenario",
   requires: {

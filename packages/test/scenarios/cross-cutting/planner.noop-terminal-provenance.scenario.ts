@@ -92,6 +92,7 @@ export default scenario({
   lane: "live-only",
   title: "Generic no-op cannot authorize a later planner widget",
   domain: "planner-loop",
+  evidenceScope: "domain-contract",
   tags: ["live", "real-llm", "planner-loop", "adversarial", "15967"],
   isolation: "per-scenario",
   seed: [

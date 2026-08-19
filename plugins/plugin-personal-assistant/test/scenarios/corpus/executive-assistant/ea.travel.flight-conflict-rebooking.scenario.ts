@@ -13,6 +13,7 @@ export default scenario({
   id: "ea.travel.flight-conflict-rebooking",
   title: "Detect a flight conflict and propose rebooking",
   domain: "executive-assistant",
+  evidenceScope: "model-behavior",
   tags: ["executive-assistant", "travel", "calendar", "transcript-derived"],
   description:
     "Transcript-derived case: the assistant warns about a conflict before a flight and offers to handle the rebooking.",

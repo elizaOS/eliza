@@ -20,6 +20,7 @@ export default scenario({
   id: "auction-bid-approval-window",
   title: "Auction bid authorization expires unapproved and no bid is placed",
   domain: "executive.approvals",
+  evidenceScope: "model-behavior",
   tags: [
     "lifeops",
     "executive-assistant",
