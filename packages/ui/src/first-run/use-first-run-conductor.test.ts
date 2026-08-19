@@ -382,7 +382,9 @@ describe("useFirstRunConductor", () => {
 
     const greeting = await waitForTurn(turn, "first-run:greeting");
     const signIn = await waitForTurn(turn, "first-run:cloud-oauth");
-    expect(greeting.text).toBe("Hi, I'm Eliza.");
+    expect(greeting.text).toBe(
+      "Hi, I'm Eliza. I'll help keep your day moving.",
+    );
     expect(signIn.text).toContain("Let's get you signed in.");
     expect(signIn.text).toContain("Sign in to Eliza Cloud");
     expect(signIn.text).not.toContain("runtime:local");
