@@ -333,7 +333,7 @@ jobs:
       - name: Install X11 evidence dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends openbox scrot wmctrl x11-utils xclip xdotool xterm xvfb
+          sudo apt-get install --yes --no-install-recommends openbox scrot wmctrl x11-utils x11-xserver-utils xclip xdotool xterm xvfb
 
       - name: Install workspace
         run: bun install --frozen-lockfile --ignore-scripts

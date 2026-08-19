@@ -15,6 +15,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -248,12 +249,26 @@ async function preserveApprovalConfig(run) {
 }
 
 async function runBrowserCheck(service, outDir, artifacts) {
-  const pageUrl =
-    "data:text/html,<html><head><title>Linux CUA Evidence</title></head><body><main><h1>Linux CUA Evidence</h1><button id='go'>Ready</button><input id='field'></main></body></html>";
-  const open = await service.executeCommand("browser_open", { url: pageUrl });
-  if (!open.success) throw new Error(`browser_open failed: ${open.error}`);
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(
+      "<!doctype html><html><head><title>Linux CUA Evidence</title></head><body><main><h1>Linux CUA Evidence</h1><button id='go'>Ready</button><input id='field'></main></body></html>",
+    );
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("local browser evidence server did not expose a TCP port");
+  }
+  const pageUrl = `http://127.0.0.1:${address.port}/evidence`;
   let closed = false;
   try {
+    const open = await service.executeCommand("browser_open", { url: pageUrl });
+    if (!open.success) throw new Error(`browser_open failed: ${open.error}`);
     const dom = await service.executeCommand("browser_get_dom");
     if (
       !dom.success ||
@@ -283,7 +298,7 @@ async function runBrowserCheck(service, outDir, artifacts) {
     closed = true;
     return {
       requiredEvidence: [
-        "browser target opened the local evidence data URL",
+        "browser target opened the ephemeral loopback HTTP evidence page",
         "browser_get_dom returned the local evidence page",
         `browser_get_clickables returned ${clickables.count ?? clickables.elements?.length ?? "some"} element(s)`,
         `browser screenshot artifact ${relativeToRepo(artifact)} (${quality.width}x${quality.height})`,
@@ -293,6 +308,7 @@ async function runBrowserCheck(service, outDir, artifacts) {
     };
   } finally {
     if (!closed) await service.executeCommand("browser_close");
+    await new Promise((resolve) => server.close(resolve));
   }
 }
 
@@ -433,7 +449,14 @@ async function main() {
     });
 
     await runCheck(checks, details, "dependencyProbe", async () => {
-      const required = ["xdotool", "scrot", "wmctrl", "xclip", "xterm"];
+      const required = [
+        "xdotool",
+        "scrot",
+        "wmctrl",
+        "xclip",
+        "xrandr",
+        "xterm",
+      ];
       const missing = required.filter((command) => !commandExists(command));
       if (missing.length > 0) {
         throw new Error(`missing X11 dependencies: ${missing.join(", ")}`);
@@ -444,6 +467,7 @@ async function main() {
           "scrot screenshot backend is available",
           "wmctrl window-list backend is available",
           "xclip clipboard backend is available",
+          "xrandr display enumeration backend is available",
         ],
         details: { required },
       };
@@ -541,7 +565,7 @@ async function main() {
         ["mouse_move", { coordinate, displayId: display.id }],
         ["click", { coordinate, displayId: display.id }],
         ["type", { text: marker }],
-        ["key", { key: "Return" }],
+        ["key_press", { key: "Return" }],
       ]) {
         const result = await service.executeCommand(command, params);
         if (!result.success)

@@ -47,7 +47,8 @@ the other.
 
 The Linux X11 release-evidence path is executable with
 `bun run capture:linux-desktop-evidence`; it uses a disposable controlled xterm
-and emits a strict-validator-compatible evidence bundle.
+and emits a strict-validator-compatible evidence bundle. The lane requires
+`xdotool`, `scrot`, `wmctrl`, `xclip`, `xrandr`, and `xterm`.
 
 ## Surface
 
