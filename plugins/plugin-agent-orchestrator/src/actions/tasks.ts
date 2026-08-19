@@ -1701,7 +1701,12 @@ async function runCreateLegacy(
   const widgetBlock = threadId ? `[TASK:${threadId}]${taskTitle}[/TASK]` : "";
   const composeCreateText = (prose: string): string =>
     widgetBlock ? withMachineAppendix(prose, widgetBlock) : prose;
-  const createdFallback = `Created task agent${results.length > 1 ? "s" : ""}.`;
+  // Normie fallback (owner directive 2026-08-19): "Created task agent." is
+  // dev-speak; even the no-model path should read like a person.
+  const createdFallback =
+    results.length > 1
+      ? `On it — starting ${results.length} builds.`
+      : "On it — building that now.";
 
   // Respawn-ack suppression: an internally-routed re-spawn (verify-driven
   // successor) must not post a second "Created task agent(s)." ack for the

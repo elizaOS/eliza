@@ -175,8 +175,20 @@ function reportLateTrajectoryCapture(
 ): void {
   const entry = rememberClosedTrajectoryStep(runtime, stepId);
   entry.rejects += 1;
-  const age = `${Math.round((Date.now() - entry.closedAt) / 1000)}s`;
+  const ageMs = Date.now() - entry.closedAt;
+  const age = `${Math.round(ageMs / 1000)}s`;
   const detail = `step=${stepId.slice(0, 12)} type=${captureType} purpose=${purpose ?? "unknown"} age=${age}`;
+  // The voice-gate rephrase races its own turn's terminalization by design
+  // (delivery does not wait for the diagnostic copy); a same-instant reject
+  // is expected once per racy turn and had the overnight watch paging on
+  // every boot. Anything older still reports in full.
+  if (purpose === "voice-gate-rephrase" && ageMs < 5_000) {
+    runtime.logger.debug?.(
+      { stepId, captureType, purpose, ageMs },
+      `[trajectory-db] Expected rephrase-terminalization race (${detail})`,
+    );
+    return;
+  }
   if (entry.rejects > 1) {
     // A retrying caller re-submits the same rejected capture; one full report
     // per step is signal, the repeats are noise.
