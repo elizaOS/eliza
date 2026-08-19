@@ -1280,6 +1280,7 @@ async function stageNodeModulesEntries(params: {
   sourceNodeModulesDir: string;
   targetNodeModulesDir: string;
 }): Promise<void> {
+  const canonicalSourceRoot = await fs.realpath(params.sourceNodeModulesDir);
   const entries = await fs.readdir(params.sourceNodeModulesDir, {
     withFileTypes: true,
   });
@@ -1306,12 +1307,12 @@ async function stageNodeModulesEntries(params: {
         if (existsSync(scopedTargetPath)) {
           continue;
         }
-        if (scopedEntry.isSymbolicLink()) {
-          await copySymlinkedPackageForStaging(
-            scopedSourcePath,
-            scopedTargetPath,
-            `${entry.name}/${scopedEntry.name}`,
-          );
+		if (scopedEntry.isSymbolicLink()) {
+			await stageConfinedNodeModulesSymlink(
+				scopedSourcePath,
+				scopedTargetPath,
+				canonicalSourceRoot,
+			);
           continue;
         }
         if (!scopedEntry.isDirectory()) {
@@ -1328,8 +1329,12 @@ async function stageNodeModulesEntries(params: {
     if (existsSync(targetPath)) {
       continue;
     }
-    if (entry.isSymbolicLink()) {
-      await copySymlinkedPackageForStaging(sourcePath, targetPath, entry.name);
+	if (entry.isSymbolicLink()) {
+		await stageConfinedNodeModulesSymlink(
+			sourcePath,
+			targetPath,
+			canonicalSourceRoot,
+		);
       continue;
     }
     if (!entry.isDirectory()) {
@@ -1337,6 +1342,20 @@ async function stageNodeModulesEntries(params: {
     }
     await copyPluginTreeWithoutEscapingSymlinks(sourcePath, targetPath);
   }
+}
+
+async function stageConfinedNodeModulesSymlink(
+  sourcePath: string,
+  targetPath: string,
+  canonicalRoot: string,
+): Promise<void> {
+  const rawTarget = await fs.readlink(sourcePath);
+  if (path.isAbsolute(rawTarget)) return;
+  const canonicalTarget = await resolveSymlinkTargetIfPresent(sourcePath);
+  if (!canonicalTarget || !pathIsWithinRoot(canonicalTarget, canonicalRoot)) {
+    return;
+  }
+  await fs.symlink(rawTarget, targetPath);
 }
 
 function stageAllHoistedNodeModulesEnabled(): boolean {

@@ -1,7 +1,6 @@
 /**
- * Deterministic coverage for scenario-report redaction: sensitive keys, cycle
- * and depth fail-closed, and the visit budget so a hostile payload cannot
- * blow the stack while persisting the aggregate report.
+ * Deterministic coverage for scenario-report redaction: sensitive keys,
+ * accessor safety, cycles, deep and wide payloads, and prototype-bearing data.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -79,6 +78,60 @@ describe("redactForScenarioReport", () => {
       first: { ok: 1, token: "[REDACTED]" },
       second: { ok: 1, token: "[REDACTED]" },
     });
+  });
+
+  it("redacts sensitive accessor keys without evaluating their getters", () => {
+    const payload: Record<string, unknown> = { visible: "ok" };
+    Object.defineProperty(payload, "token", {
+      enumerable: true,
+      get: () => {
+        throw new Error("sensitive getter must not execute");
+      },
+    });
+    expect(redactForScenarioReport(payload)).toEqual({
+      visible: "ok",
+      token: "[REDACTED]",
+    });
+  });
+
+  it("redacts credential values when their key is an accessor", () => {
+    const payload: Record<string, unknown> = {
+      value: "secret",
+      retrievedAt: "2026-08-19T00:00:00.000Z",
+    };
+    Object.defineProperty(payload, "key", {
+      enumerable: true,
+      get: () => {
+        throw new Error("credential key getter must not execute");
+      },
+    });
+    expect(redactForScenarioReport(payload)).toEqual({
+      value: "[REDACTED]",
+      retrievedAt: "2026-08-19T00:00:00.000Z",
+      key: "[REDACTED]",
+    });
+  });
+
+  it("redacts array accessors without evaluating their getters", () => {
+    const payload: unknown[] = ["safe"];
+    Object.defineProperty(payload, 1, {
+      enumerable: true,
+      get: () => {
+        throw new Error("array getter must not execute");
+      },
+    });
+    expect(redactForScenarioReport(payload)).toEqual(["safe", "[REDACTED]"]);
+  });
+
+  it("defines __proto__ as data without mutating the output prototype", () => {
+    const input = JSON.parse('{"__proto__":{"polluted":true}}') as Record<
+      string,
+      unknown
+    >;
+    const redacted = redactForScenarioReport(input) as Record<string, unknown>;
+    expect(Object.hasOwn(redacted, "__proto__")).toBe(true);
+    expect(Reflect.get(redacted, "polluted")).toBeUndefined();
+    expect(Reflect.get(redacted, "__proto__")).toEqual({ polluted: true });
   });
 
   it("keeps an honest shallow nest", () => {

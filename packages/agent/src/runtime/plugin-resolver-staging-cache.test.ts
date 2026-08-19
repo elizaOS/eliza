@@ -205,6 +205,34 @@ describe("content-keyed staging cache", () => {
     expect(stagedLink.isSymbolicLink()).toBe(true);
   });
 
+  it("does not stage node_modules symlinks outside their source root", async () => {
+    const name = "stage-cache-node-modules-confinement-fixture";
+    const installPath = await createSourceFixture(
+      tmpDir,
+      name,
+      "confined-deps",
+    );
+    const nodeModules = path.join(installPath, "node_modules");
+    const internal = path.join(nodeModules, "internal-real");
+    const outside = path.join(tmpDir, "outside-package");
+    await fsp.mkdir(internal, { recursive: true });
+    await fsp.mkdir(outside, { recursive: true });
+    await fsp.writeFile(path.join(internal, "package.json"), "{}");
+    await fsp.writeFile(path.join(outside, "secret.txt"), "host-only");
+    await fsp.symlink("internal-real", path.join(nodeModules, "internal-link"));
+    await fsp.symlink(outside, path.join(nodeModules, "escape-link"));
+
+    const stagedRoot = await stageColdPluginImportRoot(
+      coldStageParams(installPath, name),
+    );
+    await expect(
+      fsp.lstat(path.join(stagedRoot, "node_modules", "escape-link")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      fsp.realpath(path.join(stagedRoot, "node_modules", "internal-link")),
+    ).resolves.toBe(path.join(stagedRoot, "node_modules", "internal-real"));
+  });
+
   it("non-workspace dist-less plugin stages once, then cache-hits with no rebuild", async () => {
     const name = "stage-cache-hit-fixture";
     const installPath = await createSourceFixture(tmpDir, name, "cache-hit");

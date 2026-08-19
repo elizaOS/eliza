@@ -45,11 +45,22 @@ function objectHasCredentialValueShape(parent: unknown): boolean {
     return false;
   }
   const record = parent as Record<string, unknown>;
+  const descriptorFor = (key: string): PropertyDescriptor | undefined =>
+    Object.getOwnPropertyDescriptor(record, key);
+  const dataValue = (key: string): unknown => {
+    const descriptor = descriptorFor(key);
+    return descriptor && "value" in descriptor ? descriptor.value : undefined;
+  };
+  const keyDescriptor = descriptorFor("key");
+  const hasCredentialMetadata = [
+    "retrievedAt",
+    "credentialScopeId",
+    "childSessionId",
+  ].some((key) => descriptorFor(key) !== undefined);
   return (
-    typeof record.key === "string" &&
-    (record.retrievedAt !== undefined ||
-      record.credentialScopeId !== undefined ||
-      record.childSessionId !== undefined)
+    (typeof dataValue("key") === "string" ||
+      (keyDescriptor !== undefined && !("value" in keyDescriptor))) &&
+    hasCredentialMetadata
   );
 }
 
@@ -80,13 +91,30 @@ export function redactForScenarioReport(
     terminal: boolean;
     children: Map<string, ExplicitPathNode>;
   }
+  interface VisitEntry {
+    key: string;
+    descriptor: PropertyDescriptor | undefined;
+  }
   interface VisitFrame {
     source: object;
     target: Record<string, unknown> | unknown[];
-    entries: [string, unknown][];
+    entries: VisitEntry[];
     explicitPathNode: ExplicitPathNode | undefined;
     index: number;
   }
+
+  const entriesFor = (source: object): VisitEntry[] => {
+    if (Array.isArray(source)) {
+      return Array.from({ length: source.length }, (_, index) => ({
+        key: String(index),
+        descriptor: Object.getOwnPropertyDescriptor(source, index),
+      }));
+    }
+    return Object.keys(source).map((key) => ({
+      key,
+      descriptor: Object.getOwnPropertyDescriptor(source, key),
+    }));
+  };
 
   const explicitRoot: ExplicitPathNode = {
     terminal: false,
@@ -120,12 +148,7 @@ export function redactForScenarioReport(
     {
       source: value,
       target: root,
-      entries: Array.isArray(value)
-        ? Array.from(value.entries(), ([index, entry]) => [
-            String(index),
-            entry,
-          ])
-        : Object.entries(value),
+      entries: entriesFor(value),
       explicitPathNode: explicitRoot,
       index: 0,
     },
@@ -140,9 +163,11 @@ export function redactForScenarioReport(
       continue;
     }
 
-    const [key, entry] = frame.entries[frame.index];
+    const { key, descriptor } = frame.entries[frame.index];
     frame.index += 1;
     const explicitPathNode = frame.explicitPathNode?.children.get(key);
+    const entry =
+      descriptor && "value" in descriptor ? descriptor.value : REDACTED;
     let redacted: unknown;
     if (
       shouldRedactKey(
@@ -152,6 +177,8 @@ export function redactForScenarioReport(
         explicitKeys,
       )
     ) {
+      redacted = REDACTED;
+    } else if (!descriptor || !("value" in descriptor)) {
       redacted = REDACTED;
     } else if (!entry || typeof entry !== "object") {
       redacted = entry;
@@ -163,12 +190,7 @@ export function redactForScenarioReport(
       stack.push({
         source: entry,
         target: redacted as Record<string, unknown> | unknown[],
-        entries: Array.isArray(entry)
-          ? Array.from(entry.entries(), ([index, item]) => [
-              String(index),
-              item,
-            ])
-          : Object.entries(entry),
+        entries: entriesFor(entry),
         explicitPathNode,
         index: 0,
       });
@@ -177,7 +199,12 @@ export function redactForScenarioReport(
     if (Array.isArray(frame.target)) {
       frame.target.push(redacted);
     } else {
-      frame.target[key] = redacted;
+      Object.defineProperty(frame.target, key, {
+        value: redacted,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
   }
 
