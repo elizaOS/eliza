@@ -1189,6 +1189,13 @@ async function runCreateLegacy(
         { source: ackSource, roomId: String(message.roomId) },
         { text: earlyAckText, source: ackSource, agentVoiced: true },
       ).catch(() => undefined);
+      // Record (never re-send) so settle binds its receipt to this text
+      // instead of synthesizing a duplicate delivery from result.text.
+      await callback({
+        text: earlyAckText,
+        agentVoiced: true,
+        metadata: { recordOnly: true },
+      });
     } else {
       await callback({
         text: earlyAckText,
@@ -7086,8 +7093,19 @@ export const tasksAction: Action & {
           // children's completion relays overtook them in chat (live
           // 2026-08-19, three runs). Delivered-now entries still record so
           // settle binds receipts, but settle must not re-send them.
-          const meta = (response as { metadata?: { immediate?: boolean } })
-            .metadata;
+          const meta = (
+            response as {
+              metadata?: { immediate?: boolean; recordOnly?: boolean };
+            }
+          ).metadata;
+          // recordOnly: the text was already posted out-of-band (early ack via
+          // sendMessageToTarget); record it so settle binds receipts to it and
+          // synthesizes nothing, but never send it again — the synthesized
+          // canonical re-posted "On it" at turn end (live 2026-08-19).
+          if (meta?.recordOnly === true) {
+            capturedCallbacks.push({ response, actionName, delivered: true });
+            return [];
+          }
           if (meta?.immediate === true) {
             capturedCallbacks.push({ response, actionName, delivered: true });
             return callback(response, actionName);
