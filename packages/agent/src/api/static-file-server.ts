@@ -40,7 +40,12 @@ function isWithin(child: string, parent: string): boolean {
   const resolvedParent = path.resolve(parent);
   if (resolvedChild === resolvedParent) return true;
   const rel = path.relative(resolvedParent, resolvedChild);
-  return rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel);
+  return (
+    rel.length > 0 &&
+    rel !== ".." &&
+    !rel.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(rel)
+  );
 }
 
 // One-time warning when an operator opts into embedding the API token in served

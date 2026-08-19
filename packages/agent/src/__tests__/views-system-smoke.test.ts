@@ -15,7 +15,14 @@
  */
 
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -349,7 +356,7 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
       const registryEntry = getView("smoke.main");
       expect(registryEntry).toBeTruthy();
       expect(registryEntry ? getFrameDiskPath(registryEntry) : null).toBe(
-        path.join(pluginDir, "dist", "views", "frame.html"),
+        await realpath(path.join(pluginDir, "dist", "views", "frame.html")),
       );
     } finally {
       await rm(pluginDir, { recursive: true, force: true });
@@ -552,6 +559,44 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
       path.resolve("/some/plugin/dir", "dist/views/bundle.js"),
     );
   });
+
+  const itSymlink = process.platform === "win32" ? it.skip : it;
+
+  itSymlink(
+    "getBundleDiskPath rejects a bundle reached through a directory symlink",
+    async () => {
+      const pluginDir = await mkdtemp(
+        path.join(os.tmpdir(), "eliza-view-root-"),
+      );
+      const outsideDir = await mkdtemp(
+        path.join(os.tmpdir(), "eliza-view-outside-"),
+      );
+      try {
+        await mkdir(path.join(outsideDir, "views"), { recursive: true });
+        await writeFile(
+          path.join(outsideDir, "views", "bundle.js"),
+          "export {};",
+        );
+        await symlink(outsideDir, path.join(pluginDir, "dist"), "dir");
+        await registerPluginViews(
+          {
+            name: SMOKE_PLUGIN,
+            description: "symlink confinement fixture",
+            actions: [],
+            views: [SMOKE_VIEW],
+          },
+          pluginDir,
+        );
+
+        const entry = getView("smoke.main");
+        expect(entry).toBeDefined();
+        expect(entry ? getBundleDiskPath(entry) : null).toBeNull();
+      } finally {
+        await rm(pluginDir, { recursive: true, force: true });
+        await rm(outsideDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("serves relative chunks emitted beside the root bundle", async () => {
     const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-view-"));
