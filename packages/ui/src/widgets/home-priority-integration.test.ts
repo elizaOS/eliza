@@ -53,11 +53,7 @@ describe("home priority - real declarations + ranker scenario (#9143)", () => {
   it("registers only the kept home widgets with attention signalKinds", () => {
     const byKey = new Map(homeDeclarations().map((d) => [homeWidgetKey(d), d]));
     // Kept cards resolve on the home slot (spec §B target resident set)…
-    for (const key of [
-      "calendar/calendar.upcoming",
-      "needs-attention/needs-attention.pending",
-      "todo/todo.items",
-    ]) {
+    for (const key of ["calendar/calendar.upcoming", "todo/todo.items"]) {
       expect(byKey.has(key), `${key} should resolve on home`).toBe(true);
     }
     // …while the demoted/merged residents no longer hold a home declaration:
@@ -74,6 +70,7 @@ describe("home priority - real declarations + ranker scenario (#9143)", () => {
       "finances/finances.alerts",
       "relationships/relationships.attention",
       "inbox/inbox.unread",
+      "needs-attention/needs-attention.pending",
     ]) {
       expect(byKey.has(key), `${key} should not resolve on home`).toBe(false);
     }
@@ -99,12 +96,11 @@ describe("home priority - real declarations + ranker scenario (#9143)", () => {
     const order = rankedKeys(signals);
     const top3 = order.slice(0, 3);
 
-    // The two attention-worthy widgets occupy the front, ahead of every
-    // quiet widget (which rank by static base order only). Needs-attention
-    // floats via the urgent-notification derivation (urgent → escalation);
-    // the Today card rides its merged goal's self-published escalation signal.
-    expect(top3).toContain("needs-attention/needs-attention.pending");
+    // The Today card rides its merged goal's self-published escalation signal.
+    // Pending-response prompts stay in conversation/notification flows rather
+    // than becoming a resident Home card.
     expect(top3).toContain("todo/todo.items");
+    expect(order).not.toContain("needs-attention/needs-attention.pending");
 
     // A quiet widget (calendar with no upcoming-event signal) ranks behind them.
     const calendarRank = order.indexOf("calendar/calendar.upcoming");
@@ -156,11 +152,8 @@ describe("home priority - real declarations + ranker scenario (#9143)", () => {
     );
   });
 
-  it("with no live signals, ranks purely by base order (quiet home)", () => {
+  it("keeps pending-response prompts off a quiet home", () => {
     const order = rankedKeys([]);
-    // needs-attention (order 60) outranks the per-plugin cards (order ≥ 110).
-    expect(
-      order.indexOf("needs-attention/needs-attention.pending"),
-    ).toBeLessThan(order.indexOf("calendar/calendar.upcoming"));
+    expect(order).not.toContain("needs-attention/needs-attention.pending");
   });
 });

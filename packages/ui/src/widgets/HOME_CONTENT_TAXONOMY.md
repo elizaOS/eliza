@@ -15,13 +15,12 @@ behaves; the spec wins if this taxonomy drifts.
 Clock + weather (`DefaultHomeWidgets`). Never ranked, never sunset; the calm
 backdrop a brand-new account still sees.
 
-### Tier 2 - Live agent work (ongoing, self-hiding)
-Only work that needs the user's response belongs here:
-`needs-attention.pending`, plus setup-progress cards such as
-`model-download.status` and `agent-provisioning.status`. These rank by
-`approval`/`escalation`/setup signals and self-hide when idle. Continuous
-activity streams, app-run lists, and running workflow lists stay in the
-launcher/sidebar/routed views.
+### Tier 2 - Setup progress (ongoing, self-hiding)
+Only active setup work belongs here, such as `model-download.status` and
+`agent-provisioning.status`. Pending-response prompts stay in conversation and
+notification flows instead of becoming resident Home cards. Continuous activity
+streams, app-run lists, and running workflow lists stay in the launcher/sidebar
+or routed views.
 
 ### Tier 3 - Data attention (urgency from the widget's own data)
 Calendar and Today (todo.items). Each fetches its own data, self-publishes a
