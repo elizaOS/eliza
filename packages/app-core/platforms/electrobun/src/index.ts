@@ -2723,9 +2723,8 @@ async function main(): Promise<void> {
   const dockless = shouldStartTrayFirst();
   if (dockless) {
     logger.info(
-      "[Main] Dockless startup — pill only, Dock icon hidden at rest",
+      "[Main] Dockless startup requested — verifying the menu-bar icon before hiding the Dock icon",
     );
-    getDesktopManager().setTrayFirstMode(true);
   }
   recordStartupPhase("creating_window", {
     pid: process.pid,
@@ -2857,7 +2856,38 @@ async function main(): Promise<void> {
         tooltip: BRAND.appName,
         ...resolveDesktopTrayIconOptions(),
       });
+
+      if (dockless) {
+        if (desktop.hasVisibleTrayStatusItem()) {
+          desktop.setTrayFirstMode(true);
+          logger.info(
+            "[Main] Menu-bar icon visible — pill-only dockless mode enabled",
+          );
+        } else {
+          // macOS 26.5 can return a live NSStatusItem while Control Center
+          // rejects its NSStatusItemView scene. Keep the Dock icon visible so
+          // the app is never stranded, then restore dockless mode if macOS
+          // later recovers the status item.
+          desktop.setTrayFirstMode(false);
+          logger.warn(
+            "[Main] Menu-bar icon has no visible bounds; keeping Dock icon available while macOS recovers",
+          );
+          const trayRecoveryTimer = setInterval(() => {
+            if (!desktop.hasVisibleTrayStatusItem()) return;
+            clearInterval(trayRecoveryTimer);
+            desktop.setTrayFirstMode(true);
+            logger.info(
+              "[Main] Menu-bar icon recovered — pill-only dockless mode enabled",
+            );
+          }, 5_000);
+          trayRecoveryTimer.unref?.();
+          cleanupFns.push(() => clearInterval(trayRecoveryTimer));
+        }
+      }
     } catch (err) {
+      if (dockless) {
+        desktop.setTrayFirstMode(false);
+      }
       logger.warn(
         `[Main] Tray creation failed: ${err instanceof Error ? err.message : String(err)}`,
       );
