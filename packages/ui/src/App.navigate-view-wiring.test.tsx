@@ -8,7 +8,10 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { createNavigateViewEvent } from "@elizaos/shared/events";
+import {
+  createNavigateViewEvent,
+  NAVIGATE_VIEW_EVENT,
+} from "@elizaos/shared/events";
 import {
   act,
   cleanup,
@@ -597,6 +600,23 @@ describe("App navigate-view event wiring", () => {
     });
     expect(appState.setTab).toHaveBeenCalledTimes(2);
     expect(desktopTabsMock.openTab).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges a cancelable completed-action handoff only after handling it", () => {
+    render(<App />);
+    const event = new CustomEvent(NAVIGATE_VIEW_EVENT, {
+      cancelable: true,
+      detail: {
+        viewId: "views-manager",
+        viewPath: "/views",
+        completedActionHandoffId: "handoff-app-observed",
+      },
+    });
+
+    act(() => window.dispatchEvent(event));
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(appState.setTab).toHaveBeenCalledWith("views");
   });
 
   it("routes a settings subview navigate to the settings tab (#9945)", async () => {

@@ -7,7 +7,6 @@
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
-  createNavigateViewEvent,
   normalizeShellNavigateViewPayload,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 } from "@elizaos/shared/events";
@@ -21,6 +20,7 @@ import {
 } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
+import { dispatchCompletedActionNavigation } from "../completed-action-navigation";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
 import { registerDeviceControlInteractHandler } from "../components/views/device-control-interact";
 import {
@@ -488,7 +488,7 @@ export function bindReadyPhase(
     (data: Record<string, unknown>) => {
       if (typeof window === "undefined") return;
       const payload = normalizeShellNavigateViewPayload(data);
-      window.dispatchEvent(createNavigateViewEvent(payload));
+      dispatchCompletedActionNavigation(payload);
     },
   );
 

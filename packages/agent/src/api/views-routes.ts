@@ -35,6 +35,7 @@ import {
 } from "@elizaos/core";
 import {
   createShellNavigateViewWsFrame,
+  normalizeCompletedActionHandoffId,
   parseClampedInteger,
   type RouteHelpers,
   readJsonBody,
@@ -1104,6 +1105,7 @@ export async function handleViewsRoutes(
   //   payload: unknown     — opaque deep-link state consumed by the target view
   //   delivery: "originating-client" — realtime caller navigates its own client
   //   delivery: "completed-action" — app chat navigates from its stream result
+  //   completedActionHandoffId: string — renderer-observed transport dedupe key
   if (method === "POST" && subResource === "navigate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
@@ -1248,10 +1250,13 @@ export async function handleViewsRoutes(
     // chat normally has the completed action as a reliable fallback, but when
     // its originating renderer still has a live WebSocket, deliver there now:
     // the navigate frame is emitted before the action callback can claim
-    // "Opened …", while the later completed-action handoff remains a no-op (or
-    // recovers the switch when this best-effort delivery misses).
+    // "Opened …". Supporting renderers deduplicate this frame against the
+    // caller-scoped terminal handoff by id after one path is actually handled.
     const shouldTargetCompletedAction =
       body?.delivery === "completed-action" && Boolean(originatingClientId);
+    const completedActionHandoffId = shouldTargetCompletedAction
+      ? normalizeCompletedActionHandoffId(body?.completedActionHandoffId)
+      : undefined;
     let completedActionDelivered = false;
     if (
       reportedSource !== "user" &&
@@ -1268,6 +1273,7 @@ export async function handleViewsRoutes(
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
         ...deepLinkPayload,
+        ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
       };
       const frame = createShellNavigateViewWsFrame(navigatePayload);
       if (originatingClientId) {
@@ -1318,6 +1324,7 @@ export async function handleViewsRoutes(
       ...layoutPayload,
       ...deepLinkPayload,
       ...(shouldTargetCompletedAction ? { completedActionDelivered } : {}),
+      ...(completedActionHandoffId ? { completedActionHandoffId } : {}),
     });
     return true;
   }

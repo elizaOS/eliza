@@ -83,6 +83,7 @@ import {
   reportUserViewSwitch,
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
+import { markCompletedActionNavigationHandled } from "./completed-action-navigation";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
@@ -2729,9 +2730,12 @@ function AppContent() {
         setSettingsNavigatePayload(detail.payload);
         setSettingsNavigateSequence((sequence) => sequence + 1);
         setTab("settings");
+        markCompletedActionNavigationHandled(event, detail);
         return;
       }
-      baseHandler(event);
+      if (baseHandler(event)) {
+        markCompletedActionNavigationHandled(event, detail);
+      }
     };
     window.addEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
     return () =>
