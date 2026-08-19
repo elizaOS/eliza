@@ -78,13 +78,29 @@ export function storePendingOnboardingSession(
 ): boolean {
   const sanitized = sanitizeOnboardingSessionToken(token);
   if (!sanitized) return false;
+  const storages = eachStorage();
+  let expiresAt = Date.now() + PENDING_ONBOARDING_SESSION_TTL_MS;
+  // The expiry also orders mirrored entries. Advance beyond either existing
+  // value so same-millisecond links and partial storage writes stay ordered.
+  for (const storage of storages) {
+    try {
+      const existing = parseStored(
+        storage.getItem(PENDING_ONBOARDING_SESSION_KEY),
+      );
+      if (existing && existing.expiresAt >= expiresAt) {
+        expiresAt = existing.expiresAt + 1;
+      }
+    } catch {
+      // error-policy:J3 unreadable storage cannot contribute ordering state.
+    }
+  }
   const stored = JSON.stringify({
     token: sanitized,
-    expiresAt: Date.now() + PENDING_ONBOARDING_SESSION_TTL_MS,
+    expiresAt,
     purpose,
   } satisfies StoredPendingOnboardingSession);
   let persisted = false;
-  for (const storage of eachStorage()) {
+  for (const storage of storages) {
     try {
       storage.setItem(PENDING_ONBOARDING_SESSION_KEY, stored);
       persisted = true;
@@ -122,19 +138,22 @@ function parseStored(
 export function peekPendingOnboardingSession(
   purpose?: PendingOnboardingPurpose,
 ): string | null {
+  let newest: StoredPendingOnboardingSession | null = null;
   for (const storage of eachStorage()) {
     try {
       const pending = parseStored(
         storage.getItem(PENDING_ONBOARDING_SESSION_KEY),
       );
-      if (pending && (!purpose || pending.purpose === purpose)) {
-        return pending.token;
+      if (pending && (!newest || pending.expiresAt >= newest.expiresAt)) {
+        newest = pending;
       }
     } catch {
       // error-policy:J3 unreadable storage reads as no pending token.
     }
   }
-  return null;
+  return newest && (!purpose || newest.purpose === purpose)
+    ? newest.token
+    : null;
 }
 
 /** Drop the pending token from every storage (post-success, single-use). */
@@ -228,5 +247,5 @@ export async function completePendingOnboardingContinuation(
     platform: "web",
     confirmPlatformLink: true,
   });
-  clearPendingOnboardingSession();
+  clearPendingOnboardingSessionIfMatches(sanitized, "link");
 }

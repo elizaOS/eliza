@@ -369,8 +369,6 @@ export interface StewardNonceExchangeRequest {
   tenantId?: string;
   /** PKCE verifier paired with the `code_challenge` sent to Steward. */
   codeVerifier?: string;
-  /** Opaque Telegram DM continuation that names an existing rowless account. */
-  telegramContinuation?: string;
 }
 
 export interface StewardNonceExchangeResponse extends StewardSessionResponse {
