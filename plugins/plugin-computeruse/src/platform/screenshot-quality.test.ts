@@ -80,7 +80,6 @@ const quality = (o: Partial<ScreenshotQuality>): ScreenshotQuality => ({
   dominantRatio: 0.2,
   ...o,
 });
-
 describe("screenshotQualityIssues", () => {
   it("flags an empty screenshot", () => {
     const issues = screenshotQualityIssues(
@@ -182,7 +181,7 @@ describe("analyzePngScreenshot: bounded decompression", () => {
       pngChunk("IEND", Buffer.alloc(0)),
     ]);
     expect(() => analyzePngScreenshot(truncated)).toThrow(
-      /decompression failed|length mismatch/,
+      /PNG decompression length mismatch/,
     );
   });
 
@@ -204,9 +203,10 @@ describe("analyzePngScreenshot: bounded decompression", () => {
       pngChunk("IDAT", idat),
       pngChunk("IEND", Buffer.alloc(0)),
     ]);
+    // This distinguishes the allocation cap from the later length check: if
+    // maxOutputLength is removed, inflate succeeds and reports a mismatch.
     expect(() => analyzePngScreenshot(bomb)).toThrow(
-      /decompression failed|length mismatch/,
+      /PNG decompression failed/,
     );
   });
 });
-
