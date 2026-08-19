@@ -67,6 +67,7 @@ import {
   tasksSandboxStubAction,
 } from "./actions/sandbox-stub.js";
 import { tasksAction } from "./actions/tasks.js";
+import { durableCancelRoutingEvaluator } from "./evaluators/durable-cancel-routing.js";
 import { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
 import { subAgentFailureResponseEvaluator } from "./evaluators/sub-agent-failure.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
@@ -265,7 +266,11 @@ export function createAgentOrchestratorPlugin(): Plugin {
     providers: orchestratorProviders,
     routes: codeExecutionAllowed ? (codingAgentRoutePlugin.routes ?? []) : [],
     responseHandlerEvaluators: codeExecutionAllowed
-      ? [subAgentCompletionResponseEvaluator, subAgentFailureResponseEvaluator]
+      ? [
+          subAgentCompletionResponseEvaluator,
+          subAgentFailureResponseEvaluator,
+          durableCancelRoutingEvaluator,
+        ]
       : [],
     // Eager-start the orchestrator's services. They're declared in `services:`
     // above and registered by elizaOS, but service registration is lazy — the
