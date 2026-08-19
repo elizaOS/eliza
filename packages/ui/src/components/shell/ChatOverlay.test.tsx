@@ -2069,9 +2069,13 @@ describe("ChatOverlay", () => {
     // bubble, where it would steal clicks from the underlying desktop app.
     expect(grabber.className).not.toContain("before:");
     expect(grabber.className).toContain("top-0.5");
-    // Input mode leaves real gutters above both edge controls, while the whole
-    // target remains confined to the visible composer surface.
-    expect(grabber.className).toContain("inset-x-[4.5rem]");
+    // Input mode keeps a compact centered drag lane entirely above the text
+    // field instead of stretching a broad invisible strip across the composer.
+    expect(grabber.className).toContain("left-1/2");
+    expect(grabber.className).toContain("h-2");
+    expect(grabber.className).toContain("w-32");
+    expect(grabber.className).toContain("p-0");
+    expect(grabber.className).not.toContain("inset-x-[4.5rem]");
     expect(grabber.className).not.toContain("inset-x-6");
   });
 

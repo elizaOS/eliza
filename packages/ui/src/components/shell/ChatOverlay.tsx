@@ -1021,13 +1021,13 @@ function SheetGrabber({
         // open" affordance) but STAYS ABOVE the input row so it never steals
         // taps meant for the textarea / +/mic controls below it.
         // z-20 keeps it above the input row (z-10) so it always wins the drag.
-        "absolute top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center py-2 active:cursor-grabbing",
+        "absolute top-0.5 z-20 flex cursor-grab touch-none select-none items-center justify-center active:cursor-grabbing",
         // In input mode, reserve a real gutter over BOTH edge controls. The
         // prior full-width band began inside the + button and immediately to
         // its right, so a tiny miss opened/flung the sheet instead of opening
         // chat actions. Once the sheet is open, those controls are far below
         // this top handle and the generous full-width drag lane is safe again.
-        open ? "inset-x-6" : "inset-x-[4.5rem]",
+        open ? "inset-x-6 py-2" : "left-1/2 h-2 w-32 -translate-x-1/2 p-0",
         // Keep the complete target inside the painted panel. A pseudo-element
         // used to extend above the visible bubble, which made transparent
         // desktop pixels steal clicks from the app underneath.
