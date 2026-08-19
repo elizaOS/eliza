@@ -9,6 +9,9 @@ export const DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_MCP_MARKETPLACE_TIMEOUT_MS = 2 * 60_000;
 const MAX_MCP_MARKETPLACE_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_MCP_MARKETPLACE_RESULTS = 50;
+// This is a request-count backstop for pathological tiny/empty pages. The
+// byte and deadline budgets normally bind first for a legitimate catalog.
+export const MAX_MCP_MARKETPLACE_PAGES = 200;
 
 export type McpMarketplaceErrorCode =
   | "aborted"
@@ -494,8 +497,13 @@ export async function searchMcpMarketplace(
   const pageLimit = normalizedQuery ? MAX_MCP_MARKETPLACE_RESULTS : requestedLimit;
   let cursor: string | undefined;
   const seenCursors = new Set<string>();
+  let pageCount = 0;
 
   do {
+    pageCount += 1;
+    if (pageCount > MAX_MCP_MARKETPLACE_PAGES) {
+      invalidResponse(`MCP registry pagination exceeded ${MAX_MCP_MARKETPLACE_PAGES} page limit`);
+    }
     const page = await fetchRegistryJson(
       createSearchUrl(pageLimit, cursor),
       parseListResponse,
