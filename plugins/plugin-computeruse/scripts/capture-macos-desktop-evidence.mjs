@@ -531,8 +531,47 @@ async function runTextEditInputCheck(service, displays) {
   }
 }
 
-async function runBrowserCheck(service, outDir, artifacts) {
-  const fixture = await startMacosBrowserEvidenceServer();
+function combineBrowserCleanupErrors(errors) {
+  if (errors.length === 0) return null;
+  if (errors.length === 1) return errors[0];
+  return new AggregateError(errors, "macOS browser evidence cleanup failed");
+}
+
+/** Attempts every browser-evidence teardown and returns the combined failure. */
+export async function cleanupMacosBrowserEvidence(
+  service,
+  fixture,
+  browserOpened,
+) {
+  const errors = [];
+  if (browserOpened) {
+    try {
+      const close = await service.executeCommand("browser_close");
+      if (!close.success) {
+        errors.push(
+          new Error(`browser_close failed: ${close.error ?? "unknown"}`),
+        );
+      }
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  try {
+    await fixture.close();
+  } catch (error) {
+    errors.push(error);
+  }
+  return combineBrowserCleanupErrors(errors);
+}
+
+/** Runs the browser evidence check with an injectable fixture for failure tests. */
+export async function runBrowserCheck(
+  service,
+  outDir,
+  artifacts,
+  startFixture = startMacosBrowserEvidenceServer,
+) {
+  const fixture = await startFixture();
   let browserOpened = false;
   let primaryError = null;
   let result = null;
@@ -593,19 +632,11 @@ async function runBrowserCheck(service, outDir, artifacts) {
   } catch (error) {
     primaryError = error;
   } finally {
-    if (browserOpened) {
-      const close = await service.executeCommand("browser_close");
-      if (!close.success) {
-        cleanupError = new Error(
-          `browser_close failed: ${close.error ?? "unknown"}`,
-        );
-      }
-    }
-    try {
-      await fixture.close();
-    } catch (error) {
-      cleanupError ??= error;
-    }
+    cleanupError = await cleanupMacosBrowserEvidence(
+      service,
+      fixture,
+      browserOpened,
+    );
   }
   if (primaryError) {
     if (cleanupError) {
