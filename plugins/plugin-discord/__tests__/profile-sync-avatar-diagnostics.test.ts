@@ -153,4 +153,69 @@ describe("Discord profile avatar resolution diagnostics", () => {
 		);
 		expect(setAvatar).not.toHaveBeenCalled();
 	});
+
+	it("rejects remote avatar exceeding MAX_PROFILE_AVATAR_BYTES via Content-Length", async () => {
+		const remoteUrl = "https://example.com/huge-avatar.png";
+		const runtime = {
+			...fakeRuntime(remoteUrl),
+			fetch: vi.fn(async () => {
+				return new Response(new Uint8Array(10), {
+					status: 200,
+					headers: {
+						"Content-Type": "image/png",
+						"Content-Length": String(10 * 1024 * 1024), // 10MB > 8MB cap
+					},
+				});
+			}),
+		} as unknown as IAgentRuntime;
+
+		const error = await syncDiscordClientProfile(runtime, clientUser, {
+			syncProfile: true,
+		} as DiscordSettings).then(
+			() => null,
+			(value: unknown) => value,
+		);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toContain(
+			"Discord profile avatar exceeds 8388608 bytes",
+		);
+	});
+
+	it("aborts remote avatar stream exceeding MAX_PROFILE_AVATAR_BYTES", async () => {
+		const remoteUrl = "https://example.com/stream-bomb-avatar.png";
+		const chunkSize = 2 * 1024 * 1024; // 2MB
+		let chunkCount = 0;
+		const stream = new ReadableStream({
+			pull(controller) {
+				chunkCount++;
+				controller.enqueue(new Uint8Array(chunkSize));
+				if (chunkCount > 5) {
+					controller.close();
+				}
+			},
+		});
+
+		const runtime = {
+			...fakeRuntime(remoteUrl),
+			fetch: vi.fn(async () => {
+				return new Response(stream, {
+					status: 200,
+					headers: { "Content-Type": "image/png" },
+				});
+			}),
+		} as unknown as IAgentRuntime;
+
+		const error = await syncDiscordClientProfile(runtime, clientUser, {
+			syncProfile: true,
+		} as DiscordSettings).then(
+			() => null,
+			(value: unknown) => value,
+		);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toContain(
+			"Discord profile avatar exceeds 8388608 bytes",
+		);
+	});
 });

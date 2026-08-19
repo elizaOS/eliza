@@ -10,6 +10,7 @@ import { resolveStateDir } from "@elizaos/core";
 
 const DISCORD_AVATAR_ROUTE_PREFIX = "/api/avatar/discord";
 const MAX_DISCORD_AVATAR_BYTES = 2 * 1024 * 1024;
+const DISCORD_AVATAR_FETCH_TIMEOUT_MS = 15_000;
 const ALLOWED_DISCORD_AVATAR_HOSTS = new Set([
 	"cdn.discordapp.com",
 	"media.discordapp.net",
@@ -135,60 +136,114 @@ export async function cacheDiscordAvatarUrl(
 	}
 
 	const downloadPromise = (async () => {
-		await fs.mkdir(getDiscordAvatarCacheDir(), { recursive: true });
-
-		const response = await fetchImpl(url, {
-			headers: { Accept: "image/*" },
-		});
-		if (!response.ok) {
-			return url;
-		}
-
-		const contentType = response.headers.get("content-type");
-		if (!contentType?.toLowerCase().startsWith("image/")) {
-			return url;
-		}
-
-		const bytes = Buffer.from(await response.arrayBuffer());
-		if (bytes.length === 0 || bytes.length > MAX_DISCORD_AVATAR_BYTES) {
-			return url;
-		}
-
-		const preferredExtension = extensionFromContentType(contentType);
-		const finalFileName = requestedFileName.endsWith(`.${preferredExtension}`)
-			? requestedFileName
-			: requestedFileName.replace(/\.[^.]+$/, `.${preferredExtension}`);
-		const finalFilePath = getDiscordAvatarCachePath(finalFileName);
-
 		try {
-			const stat = await fs.stat(finalFilePath);
-			if (stat.isFile()) {
-				return getDiscordAvatarPublicPath(finalFileName);
+			await fs.mkdir(getDiscordAvatarCacheDir(), { recursive: true });
+
+			const response = await fetchImpl(url, {
+				headers: { Accept: "image/*" },
+				signal: AbortSignal.timeout(DISCORD_AVATAR_FETCH_TIMEOUT_MS),
+			});
+			if (!response.ok) {
+				return url;
 			}
+
+			const contentType = response.headers.get("content-type");
+			if (!contentType?.toLowerCase().startsWith("image/")) {
+				return url;
+			}
+
+			const rawLength = response.headers.get("content-length");
+			const declaredLength = rawLength === null ? null : Number(rawLength);
+			if (
+				declaredLength !== null &&
+				Number.isFinite(declaredLength) &&
+				declaredLength > MAX_DISCORD_AVATAR_BYTES
+			) {
+				return url;
+			}
+
+			let bytes: Buffer;
+			if (!response.body) {
+				const ab = await response.arrayBuffer();
+				if (ab.byteLength === 0 || ab.byteLength > MAX_DISCORD_AVATAR_BYTES) {
+					return url;
+				}
+				bytes = Buffer.from(ab);
+			} else {
+				const reader = response.body.getReader();
+				const chunks: Uint8Array[] = [];
+				let total = 0;
+				try {
+					for (;;) {
+						const { done, value } = await reader.read();
+						if (done) break;
+						if (!value?.byteLength) continue;
+						total += value.byteLength;
+						if (total > MAX_DISCORD_AVATAR_BYTES) {
+							try {
+								await reader.cancel();
+							} catch {
+								// error-policy:J6 best-effort stream cancellation
+							}
+							return url;
+						}
+						chunks.push(value);
+					}
+				} finally {
+					try {
+						reader.releaseLock();
+					} catch {
+						// error-policy:J6 stream lock release is best-effort teardown
+					}
+				}
+				if (total === 0) {
+					return url;
+				}
+				bytes = Buffer.concat(
+					chunks.map((chunk) => Buffer.from(chunk)),
+					total,
+				);
+			}
+
+			const preferredExtension = extensionFromContentType(contentType);
+			const finalFileName = requestedFileName.endsWith(`.${preferredExtension}`)
+				? requestedFileName
+				: requestedFileName.replace(/\.[^.]+$/, `.${preferredExtension}`);
+			const finalFilePath = getDiscordAvatarCachePath(finalFileName);
+
+			try {
+				const stat = await fs.stat(finalFilePath);
+				if (stat.isFile()) {
+					return getDiscordAvatarPublicPath(finalFileName);
+				}
+			} catch {
+				// error-policy:J3 stat probe for a concurrently-materialized cache entry; a
+				// miss is expected and falls through to the atomic write below.
+			}
+
+			const tempFilePath = `${finalFilePath}.${process.pid}.${Date.now()}.tmp`;
+			await fs.writeFile(tempFilePath, bytes, { mode: 0o600 });
+			try {
+				await fs.rename(tempFilePath, finalFilePath);
+			} catch (error) {
+				await fs.unlink(tempFilePath).catch(() => {});
+				const code =
+					typeof error === "object" &&
+					error !== null &&
+					"code" in error &&
+					typeof (error as { code?: unknown }).code === "string"
+						? (error as { code: string }).code
+						: "";
+				if (code !== "EEXIST") {
+					throw error;
+				}
+			}
+
+			return getDiscordAvatarPublicPath(finalFileName);
 		} catch {
-			// error-policy:J3 stat probe for a concurrently-materialized cache entry; a
-			// miss is expected and falls through to the atomic write below.
+			// error-policy:J4 avatar caching failure gracefully degrades to the original volatile URL
+			return url;
 		}
-
-		const tempFilePath = `${finalFilePath}.${process.pid}.${Date.now()}.tmp`;
-		await fs.writeFile(tempFilePath, bytes, { mode: 0o600 });
-		try {
-			await fs.rename(tempFilePath, finalFilePath);
-		} catch (error) {
-			await fs.unlink(tempFilePath).catch(() => {});
-			const code =
-				typeof error === "object" &&
-				error !== null &&
-				"code" in error &&
-				typeof (error as { code?: unknown }).code === "string"
-					? (error as { code: string }).code
-					: "";
-			if (code !== "EEXIST") {
-				throw error;
-			}
-		}
-
-		return getDiscordAvatarPublicPath(finalFileName);
 	})().finally(() => {
 		inflightDiscordAvatarDownloads.delete(requestedFileName);
 	});

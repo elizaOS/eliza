@@ -12,6 +12,7 @@ import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";
 
 const MAX_PROFILE_AVATAR_BYTES = 8 * 1024 * 1024;
+const PROFILE_AVATAR_FETCH_TIMEOUT_MS = 15_000;
 const PROFILE_SYNC_STATE_FILE = "discord-profile-sync.v1.json";
 const DEFAULT_DISCORD_PROFILE_AVATAR = "/avatars/eliza.png";
 
@@ -246,6 +247,7 @@ async function loadDiscordProfileAvatarBytes(
 			}
 			const response = await fetchImpl(trimmed, {
 				headers: { Accept: "image/*" },
+				signal: AbortSignal.timeout(PROFILE_AVATAR_FETCH_TIMEOUT_MS),
 			});
 			if (!response.ok) {
 				throw new Error(`HTTP ${response.status}`);
@@ -256,7 +258,61 @@ async function loadDiscordProfileAvatarBytes(
 					`Expected image content-type, got ${contentType ?? "unknown"}`,
 				);
 			}
-			bytes = Buffer.from(await response.arrayBuffer());
+
+			const rawLength = response.headers.get("content-length");
+			const declaredLength = rawLength === null ? null : Number(rawLength);
+			if (
+				declaredLength !== null &&
+				Number.isFinite(declaredLength) &&
+				declaredLength > MAX_PROFILE_AVATAR_BYTES
+			) {
+				throw new Error(
+					`Discord profile avatar exceeds ${MAX_PROFILE_AVATAR_BYTES} bytes`,
+				);
+			}
+
+			if (!response.body) {
+				const ab = await response.arrayBuffer();
+				if (ab.byteLength > MAX_PROFILE_AVATAR_BYTES) {
+					throw new Error(
+						`Discord profile avatar exceeds ${MAX_PROFILE_AVATAR_BYTES} bytes`,
+					);
+				}
+				bytes = Buffer.from(ab);
+			} else {
+				const reader = response.body.getReader();
+				const chunks: Uint8Array[] = [];
+				let total = 0;
+				try {
+					for (;;) {
+						const { done, value } = await reader.read();
+						if (done) break;
+						if (!value?.byteLength) continue;
+						total += value.byteLength;
+						if (total > MAX_PROFILE_AVATAR_BYTES) {
+							try {
+								await reader.cancel();
+							} catch {
+								// error-policy:J6 best-effort stream cancellation
+							}
+							throw new Error(
+								`Discord profile avatar exceeds ${MAX_PROFILE_AVATAR_BYTES} bytes`,
+							);
+						}
+						chunks.push(value);
+					}
+				} finally {
+					try {
+						reader.releaseLock();
+					} catch {
+						// error-policy:J6 stream lock release is best-effort teardown
+					}
+				}
+				bytes = Buffer.concat(
+					chunks.map((chunk) => Buffer.from(chunk)),
+					total,
+				);
+			}
 		} else {
 			bytes = await readAvatarBytesFromLocalCandidates(trimmed);
 		}
