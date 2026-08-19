@@ -217,6 +217,7 @@ app.post("/", async (c) => {
       );
       await stripeCheckoutOrdersService.bindSession(order.id, session.id);
     } catch (error) {
+      // error-policy:J1 Route boundary durably records an ambiguous provider outcome before translating it.
       await stripeCheckoutOrdersService.markProviderAmbiguous(
         order.id,
         error instanceof Error ? error.name : "unknown_error",
@@ -233,6 +234,7 @@ app.post("/", async (c) => {
 
     return c.json({ url: session.url, sessionId: session.id });
   } catch (error) {
+    // error-policy:J1 HTTP boundary translates checkout failures into explicit client or server responses.
     const errorMessage = error instanceof Error ? error.message : "";
     if (
       errorMessage.includes("Invalid success_url") ||

@@ -381,6 +381,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
           : undefined,
       );
     } catch (cause) {
+      // error-policy:J1 Route boundary durably records an ambiguous provider outcome before translating it.
       if (checkoutOrder) {
         await stripeCheckoutOrdersService.markProviderAmbiguous(
           checkoutOrder.id,
@@ -398,6 +399,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
 
     return c.json({ sessionId: session.id, url: session.url });
   } catch (error) {
+    // error-policy:J1 HTTP boundary translates checkout failures into the shared structured response.
     logger.error("[Stripe Checkout] Error creating checkout session:", error);
     return failureResponse(c, error);
   }

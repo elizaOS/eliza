@@ -589,6 +589,7 @@ export class StripeCheckoutOrdersService {
       try {
         claimedCredits = new Decimal(receipt.claimedCredits ?? "invalid");
       } catch {
+        // error-policy:J3 Provider receipt parsing rejects malformed claimed credits explicitly.
         return mismatch("STRIPE_LEGACY_CHECKOUT_CREDITS_MISMATCH", "claimed credits");
       }
       if (!claimedCredits.eq(credits)) {

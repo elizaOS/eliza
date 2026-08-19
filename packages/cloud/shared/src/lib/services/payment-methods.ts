@@ -49,6 +49,7 @@ export class PaymentMethodsService {
         customer: customerId,
       });
     } catch (error) {
+      // error-policy:J1 Service boundary translates Stripe attachment failures.
       if (error instanceof Error) {
         throw new Error(`Failed to attach payment method: ${error.message}`);
       }
@@ -95,6 +96,7 @@ export class PaymentMethodsService {
         throw new Error("Payment method does not belong to this customer");
       }
     } catch (error) {
+      // error-policy:J1 Service boundary translates Stripe ownership failures.
       if (error instanceof Error) {
         throw new Error(`Failed to verify payment method: ${error.message}`);
       }
@@ -109,6 +111,7 @@ export class PaymentMethodsService {
         },
       });
     } catch (error) {
+      // error-policy:J1 Service boundary translates Stripe customer-update failures.
       if (error instanceof Error) {
         throw new Error(`Failed to update default payment method in Stripe: ${error.message}`);
       }
@@ -173,6 +176,7 @@ export class PaymentMethodsService {
     try {
       await requireStripe().paymentMethods.detach(paymentMethodId);
     } catch (error) {
+      // error-policy:J4 Only Stripe's explicit already-detached shapes degrade to success.
       if (error instanceof Error) {
         // If payment method is already detached, that's fine
         if (

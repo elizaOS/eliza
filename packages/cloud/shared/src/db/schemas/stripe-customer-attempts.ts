@@ -129,6 +129,12 @@ export const stripeCustomerLegacyQuarantines = pgTable(
     resolved_by: text("resolved_by"),
     resolution_reason: text("resolution_reason"),
     resolved_at: timestamp("resolved_at", { withTimezone: true }),
+    retirement_kind: text("retirement_kind").$type<"missing" | "deleted" | "wrong_tenant">(),
+    retirement_receipt: jsonb("retirement_receipt").$type<Record<string, unknown>>(),
+    retired_by: text("retired_by"),
+    retirement_reason: text("retirement_reason"),
+    retired_at: timestamp("retired_at", { withTimezone: true }),
+    replacement_attempt_id: uuid("replacement_attempt_id"),
   },
   (table) => ({
     resolved_attempt_tenant_fk: foreignKey({
@@ -136,9 +142,18 @@ export const stripeCustomerLegacyQuarantines = pgTable(
       foreignColumns: [stripeCustomerAttempts.id, stripeCustomerAttempts.organization_id],
       name: "stripe_customer_legacy_quarantine_attempt_tenant_fk",
     }).onDelete("restrict"),
+    replacement_attempt_tenant_fk: foreignKey({
+      columns: [table.replacement_attempt_id, table.organization_id],
+      foreignColumns: [stripeCustomerAttempts.id, stripeCustomerAttempts.organization_id],
+      name: "stripe_customer_legacy_quarantine_replacement_tenant_fk",
+    }).onDelete("restrict"),
     resolution_shape: check(
       "stripe_customer_legacy_quarantine_resolution_shape",
       sql`(${table.resolved_attempt_id} IS NULL AND ${table.resolved_by} IS NULL AND ${table.resolution_reason} IS NULL AND ${table.resolved_at} IS NULL) OR (${table.resolved_attempt_id} IS NOT NULL AND ${table.resolved_by} IS NOT NULL AND ${table.resolution_reason} IS NOT NULL AND ${table.resolved_at} IS NOT NULL)`,
+    ),
+    retirement_shape: check(
+      "stripe_customer_legacy_quarantine_retirement_shape",
+      sql`(${table.retirement_kind} IS NULL AND ${table.retirement_receipt} IS NULL AND ${table.retired_by} IS NULL AND ${table.retirement_reason} IS NULL AND ${table.retired_at} IS NULL AND ${table.replacement_attempt_id} IS NULL) OR (${table.retirement_kind} IN ('missing','deleted','wrong_tenant') AND ${table.retirement_receipt} IS NOT NULL AND ${table.retired_by} IS NOT NULL AND ${table.retirement_reason} IS NOT NULL AND ${table.retired_at} IS NOT NULL AND ${table.replacement_attempt_id} IS NOT NULL AND ${table.resolved_attempt_id} IS NOT NULL)`,
     ),
   }),
 );

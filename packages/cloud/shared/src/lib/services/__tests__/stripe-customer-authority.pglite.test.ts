@@ -6,7 +6,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { sqlRows } from "../../../db/execute-helpers";
-import type { StripeCustomerCandidate, StripeCustomerProvider } from "../stripe-customer-authority";
+import type {
+  StripeCustomerCandidate,
+  StripeCustomerLookup,
+  StripeCustomerProvider,
+} from "../stripe-customer-authority";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests;
@@ -24,6 +28,8 @@ class MockStripeCustomers implements StripeCustomerProvider {
     attemptId: string,
   ) => StripeCustomerCandidate[] | Promise<StripeCustomerCandidate[]>;
   forceCustomerId?: string;
+  retrieveAbsentReason?: "missing" | "deleted";
+  retrieveOverride?: (customerId: string) => StripeCustomerLookup;
 
   async searchByAttemptId(attemptId: string): Promise<StripeCustomerCandidate[]> {
     if (this.failSearchOnce) {
@@ -36,9 +42,16 @@ class MockStripeCustomers implements StripeCustomerProvider {
     );
   }
 
-  async retrieve(customerId: string): Promise<StripeCustomerCandidate | null> {
+  async retrieve(customerId: string): Promise<StripeCustomerLookup> {
     this.retrieveCalls += 1;
-    return this.candidates.find((candidate) => candidate.id === customerId) ?? null;
+    if (this.retrieveOverride) return this.retrieveOverride(customerId);
+    if (this.retrieveAbsentReason) {
+      return { kind: "absent", customerId, reason: this.retrieveAbsentReason };
+    }
+    const candidate = this.candidates.find((item) => item.id === customerId);
+    return candidate
+      ? { kind: "found", candidate }
+      : { kind: "absent", customerId, reason: "missing" };
   }
 
   async create(
@@ -344,32 +357,120 @@ describe("Stripe Customer durable authority", () => {
       customerId,
     );
     expect(provider.retrieveCalls).toBe(1);
+    await expect(
+      Promise.resolve(
+        dbWrite.execute(
+          sql`UPDATE organizations SET stripe_customer_id=NULL WHERE id=${organizationId}`,
+        ),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite.execute(sql`UPDATE stripe_customer_legacy_quarantines
+        SET retirement_kind='missing' WHERE organization_id=${organizationId}`),
+      ),
+    ).rejects.toThrow();
   });
 
-  test("legacy cutover rejects wrong-tenant and missing provider Customers", async () => {
-    for (const mode of ["wrong-tenant", "missing"] as const) {
+  test("provider-verified missing, deleted, and wrong-tenant legacy Customers are retired once", async () => {
+    for (const mode of ["wrong_tenant", "missing", "deleted"] as const) {
       const provider = new MockStripeCustomers();
       const organizationId = await legacyOrganization(provider);
-      if (mode === "wrong-tenant" && provider.candidates[0]) {
+      const oldCustomerId = provider.candidates[0]?.id;
+      if (!oldCustomerId) throw new Error("missing legacy fixture");
+      if (mode === "wrong_tenant" && provider.candidates[0]) {
         provider.candidates[0].metadata.organization_id = "10000000-0000-4000-8000-999999999999";
       } else {
-        provider.candidates.length = 0;
+        provider.retrieveAbsentReason = mode;
       }
-      await expect(
-        new AuthorityService(provider).ensure({
-          organizationId,
-          callerIntent: "credit_checkout",
-        }),
-      ).rejects.toMatchObject({ code: "STRIPE_CUSTOMER_QUARANTINED" });
-      expect((await rows(organizationId))[0]).toMatchObject({ status: "quarantined" });
+      const service = new AuthorityService(provider);
+      const replacement = await service.ensure({
+        organizationId,
+        callerIntent: "credit_checkout",
+      });
+      expect(replacement).not.toBe(oldCustomerId);
+      expect(provider.createCalls).toBe(1);
       expect(
         await sqlRows(
           dbWrite,
-          sql`SELECT resolved_attempt_id FROM stripe_customer_legacy_quarantines
+          sql`SELECT resolved_attempt_id, retirement_kind, retirement_receipt,
+            replacement_attempt_id FROM stripe_customer_legacy_quarantines
             WHERE organization_id=${organizationId}`,
         ),
-      ).toEqual([{ resolved_attempt_id: null }]);
+      ).toEqual([
+        expect.objectContaining({
+          resolved_attempt_id: expect.any(String),
+          retirement_kind: mode,
+          replacement_attempt_id: expect.any(String),
+          retirement_receipt: expect.objectContaining({
+            customer_id: oldCustomerId,
+            outcome: mode,
+          }),
+        }),
+      ]);
+      expect(
+        await sqlRows(
+          dbWrite,
+          sql`SELECT generation, status FROM stripe_customer_attempts
+            WHERE organization_id=${organizationId} ORDER BY generation`,
+        ),
+      ).toEqual([
+        { generation: 1, status: "abandoned" },
+        { generation: 2, status: "bound" },
+      ]);
+      expect(await service.ensure({ organizationId, callerIntent: "payment_method" })).toBe(
+        replacement,
+      );
     }
+  });
+
+  test("an attacker Customer returned for an exact legacy lookup cannot trigger replacement", async () => {
+    const provider = new MockStripeCustomers();
+    const organizationId = await legacyOrganization(provider);
+    provider.retrieveOverride = () => ({
+      kind: "found",
+      candidate: {
+        id: "cus_attacker",
+        metadata: { organization_id: "10000000-0000-4000-8000-999999999999" },
+        created: 1,
+        livemode: false,
+      },
+    });
+    await expect(
+      new AuthorityService(provider).ensure({
+        organizationId,
+        callerIntent: "interactive_checkout",
+      }),
+    ).rejects.toMatchObject({ code: "STRIPE_CUSTOMER_QUARANTINED" });
+    expect(provider.createCalls).toBe(0);
+    expect(
+      await sqlRows(
+        dbWrite,
+        sql`SELECT resolved_attempt_id FROM stripe_customer_legacy_quarantines
+          WHERE organization_id=${organizationId}`,
+      ),
+    ).toEqual([{ resolved_attempt_id: null }]);
+  });
+
+  test("concurrent legacy retirement and rebind converges on one replacement generation", async () => {
+    const provider = new MockStripeCustomers();
+    const organizationId = await legacyOrganization(provider);
+    provider.retrieveAbsentReason = "deleted";
+    provider.createDelayMs = 50;
+    const service = new AuthorityService(provider, { waitMs: 2_000 });
+    const [paymentMethodCustomer, checkoutCustomer] = await Promise.all([
+      service.ensure({ organizationId, callerIntent: "payment_method" }),
+      service.ensure({ organizationId, callerIntent: "interactive_checkout" }),
+    ]);
+    expect(paymentMethodCustomer).toBe(checkoutCustomer);
+    expect(provider.createCalls).toBe(1);
+    expect(
+      await sqlRows(
+        dbWrite,
+        sql`SELECT count(*)::integer AS count FROM stripe_customer_attempts
+          WHERE organization_id=${organizationId}`,
+      ),
+    ).toEqual([{ count: 2 }]);
   });
 
   test("audited no-candidate resolution abandons once and creates one new generation", async () => {
@@ -722,6 +823,71 @@ describe("Stripe Customer durable authority", () => {
           for (const statement of statements) await isolated.exec(statement);
         })(),
       ).rejects.toThrow(/constraint collision/i);
+    } finally {
+      await isolated.close();
+    }
+  });
+
+  test("catalog postcondition rejects weakened checks, predicates, FKs, columns, defaults, and triggers", async () => {
+    const cases = [
+      `ALTER TABLE stripe_customer_attempts DROP CONSTRAINT stripe_customer_attempts_generation_check;
+       ALTER TABLE stripe_customer_attempts ADD CONSTRAINT stripe_customer_attempts_generation_check
+         CHECK (generation >= 0)`,
+      `DROP INDEX stripe_customer_attempts_active_org_idx;
+       CREATE UNIQUE INDEX stripe_customer_attempts_active_org_idx ON stripe_customer_attempts
+         (organization_id) WHERE status IN ('prepared','provider_started')`,
+      `ALTER TABLE stripe_customer_legacy_quarantines
+         DROP CONSTRAINT stripe_customer_legacy_quarantine_replacement_tenant_fk;
+       ALTER TABLE stripe_customer_legacy_quarantines
+         ADD CONSTRAINT stripe_customer_legacy_quarantine_replacement_tenant_fk
+         FOREIGN KEY (replacement_attempt_id) REFERENCES stripe_customer_attempts(id) ON DELETE RESTRICT`,
+      `ALTER TABLE stripe_customer_legacy_quarantines
+         ALTER COLUMN retirement_kind TYPE varchar(32)`,
+      `ALTER TABLE stripe_customer_attempts ALTER COLUMN status SET DEFAULT 'provider_started'`,
+      `DROP TRIGGER stripe_customer_attempt_authority_guard ON stripe_customer_attempts;
+       CREATE TRIGGER stripe_customer_attempt_authority_guard AFTER INSERT OR UPDATE
+         ON stripe_customer_attempts FOR EACH ROW
+         EXECUTE FUNCTION guard_stripe_customer_attempt_authority()`,
+    ];
+    for (const mutation of cases) {
+      const isolated = new PGlite();
+      try {
+        await isolated.exec(`CREATE TABLE organizations (
+          id uuid PRIMARY KEY, stripe_customer_id text, updated_at timestamptz NOT NULL DEFAULT now()
+        )`);
+        const migration = await Bun.file(
+          new URL("../../../db/migrations/0267_stripe_customer_attempts.sql", import.meta.url),
+        ).text();
+        const statements = migration
+          .split("--> statement-breakpoint")
+          .filter((item) => item.trim());
+        for (const statement of statements) await isolated.exec(statement);
+        await isolated.exec(mutation);
+        const postcondition = statements.at(-1);
+        if (!postcondition) throw new Error("migration has no postcondition");
+        await expect(isolated.exec(postcondition)).rejects.toThrow(/collision/i);
+      } finally {
+        await isolated.close();
+      }
+    }
+  });
+
+  test("migration fails closed on a partial authority table object", async () => {
+    const isolated = new PGlite();
+    try {
+      await isolated.exec(`CREATE TABLE organizations (
+        id uuid PRIMARY KEY, stripe_customer_id text, updated_at timestamptz NOT NULL DEFAULT now()
+      ); CREATE TABLE stripe_customer_attempts (id uuid PRIMARY KEY)`);
+      const migration = await Bun.file(
+        new URL("../../../db/migrations/0267_stripe_customer_attempts.sql", import.meta.url),
+      ).text();
+      await expect(
+        (async () => {
+          for (const statement of migration.split("--> statement-breakpoint")) {
+            if (statement.trim()) await isolated.exec(statement);
+          }
+        })(),
+      ).rejects.toThrow();
     } finally {
       await isolated.close();
     }

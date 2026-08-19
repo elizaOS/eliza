@@ -32,9 +32,13 @@ export interface StripeCustomerCandidate {
   livemode: boolean;
 }
 
+export type StripeCustomerLookup =
+  | { kind: "found"; candidate: StripeCustomerCandidate }
+  | { kind: "absent"; customerId: string; reason: "missing" | "deleted" };
+
 export interface StripeCustomerProvider {
   searchByAttemptId(attemptId: string): Promise<StripeCustomerCandidate[]>;
-  retrieve(customerId: string): Promise<StripeCustomerCandidate | null>;
+  retrieve(customerId: string): Promise<StripeCustomerLookup>;
   create(
     params: Stripe.CustomerCreateParams,
     idempotencyKey: string,
@@ -83,15 +87,30 @@ class LiveStripeCustomerProvider implements StripeCustomerProvider {
     );
   }
 
-  async retrieve(customerId: string): Promise<StripeCustomerCandidate | null> {
-    const customer = await requireStripe().customers.retrieve(customerId);
-    if (customer.deleted) return null;
-    return {
-      id: customer.id,
-      metadata: customer.metadata,
-      created: customer.created,
-      livemode: customer.livemode,
-    };
+  async retrieve(customerId: string): Promise<StripeCustomerLookup> {
+    try {
+      const customer = await requireStripe().customers.retrieve(customerId);
+      if (customer.deleted) return { kind: "absent", customerId, reason: "deleted" };
+      return {
+        kind: "found",
+        candidate: {
+          id: customer.id,
+          metadata: customer.metadata,
+          created: customer.created,
+          livemode: customer.livemode,
+        },
+      };
+    } catch (error) {
+      // error-policy:J1 Stripe's resource-missing boundary becomes explicit retirement evidence.
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        (error as Error & { code?: string }).code === "resource_missing"
+      ) {
+        return { kind: "absent", customerId, reason: "missing" };
+      }
+      throw error;
+    }
   }
 
   async create(
@@ -415,6 +434,134 @@ export class StripeCustomerAuthorityService {
     );
   }
 
+  private async retireLegacyCustomer(
+    claimed: ClaimedAttempt,
+    evidence:
+      | { kind: "missing" | "deleted"; customerId: string }
+      | { kind: "wrong_tenant"; customerId: string; providerOrganizationId: string },
+  ): Promise<void> {
+    if (!claimed.legacyCustomerId || evidence.customerId !== claimed.legacyCustomerId) {
+      return this.quarantine(
+        claimed.attempt.id,
+        claimed.leaseToken,
+        "legacy retirement evidence did not identify the exact published Customer",
+      );
+    }
+    await writeTransaction(async (tx) => {
+      const now = this.now();
+      const [organization] = await tx
+        .select({ stripe_customer_id: organizations.stripe_customer_id })
+        .from(organizations)
+        .where(eq(organizations.id, claimed.attempt.organization_id))
+        .for("update")
+        .limit(1);
+      const [attempt] = await tx
+        .select()
+        .from(stripeCustomerAttempts)
+        .where(eq(stripeCustomerAttempts.id, claimed.attempt.id))
+        .for("update")
+        .limit(1);
+      const [quarantine] = await tx
+        .select()
+        .from(stripeCustomerLegacyQuarantines)
+        .where(eq(stripeCustomerLegacyQuarantines.organization_id, claimed.attempt.organization_id))
+        .for("update")
+        .limit(1);
+      if (
+        !organization ||
+        !attempt ||
+        !quarantine ||
+        organization.stripe_customer_id !== evidence.customerId ||
+        quarantine.stripe_customer_id !== evidence.customerId ||
+        quarantine.resolved_attempt_id ||
+        attempt.lease_token !== claimed.leaseToken
+      ) {
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_LEGACY_RETIREMENT_FENCE_LOST",
+          "Legacy Stripe Customer retirement authority changed during provider lookup",
+        );
+      }
+      if (
+        evidence.kind === "wrong_tenant" &&
+        evidence.providerOrganizationId === attempt.organization_id
+      ) {
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_LEGACY_RETIREMENT_INVALID",
+          "A valid tenant Customer cannot be retired as wrong-tenant",
+        );
+      }
+      const generation = attempt.generation + 1;
+      const replacementId = randomUUID();
+      const digest = requestDigest({
+        organizationId: attempt.organization_id,
+        generation,
+        organizationName: claimed.organizationName,
+        billingEmail: claimed.billingEmail,
+      });
+      await tx
+        .update(stripeCustomerAttempts)
+        .set({
+          status: "abandoned",
+          lease_token: null,
+          lease_expires_at: null,
+          resolved_by: "system:stripe-customer-authority",
+          resolution_reason: `provider-verified legacy Customer ${evidence.kind}`,
+          resolved_at: now,
+          updated_at: now,
+        })
+        .where(eq(stripeCustomerAttempts.id, attempt.id));
+      await tx.insert(stripeCustomerAttempts).values({
+        id: replacementId,
+        organization_id: attempt.organization_id,
+        generation,
+        request_digest: digest,
+        caller_intent: attempt.caller_intent,
+        idempotency_key: `eliza-customer-attempt:${replacementId}`,
+        status: "prepared",
+      });
+      const retirementReceipt = {
+        customer_id: evidence.customerId,
+        outcome: evidence.kind,
+        observed_at: now.toISOString(),
+        provider_metadata:
+          evidence.kind === "wrong_tenant"
+            ? { organization_id: evidence.providerOrganizationId }
+            : null,
+      };
+      await tx
+        .update(stripeCustomerLegacyQuarantines)
+        .set({
+          resolved_attempt_id: attempt.id,
+          resolved_by: "system:stripe-customer-authority",
+          resolution_reason: `provider-verified legacy Customer ${evidence.kind}`,
+          resolved_at: now,
+          retirement_kind: evidence.kind,
+          retirement_receipt: retirementReceipt,
+          retired_by: "system:stripe-customer-authority",
+          retirement_reason: `provider lookup proved ${evidence.kind}`,
+          retired_at: now,
+          replacement_attempt_id: replacementId,
+        })
+        .where(eq(stripeCustomerLegacyQuarantines.organization_id, attempt.organization_id));
+      const [cleared] = await tx
+        .update(organizations)
+        .set({ stripe_customer_id: null, updated_at: now })
+        .where(
+          and(
+            eq(organizations.id, attempt.organization_id),
+            eq(organizations.stripe_customer_id, evidence.customerId),
+          ),
+        )
+        .returning({ id: organizations.id });
+      if (!cleared) {
+        throw new StripeCustomerAuthorityError(
+          "STRIPE_CUSTOMER_LEGACY_RETIREMENT_CAS_FAILED",
+          "Legacy Stripe Customer clear compare-and-set failed",
+        );
+      }
+    });
+  }
+
   private async bind(claimed: ClaimedAttempt, candidate: StripeCustomerCandidate): Promise<string> {
     const matches = claimed.legacyCustomerId
       ? legacyCandidateMatches(claimed.attempt.organization_id, claimed.legacyCustomerId, candidate)
@@ -559,12 +706,49 @@ export class StripeCustomerAuthorityService {
       let candidates: StripeCustomerCandidate[];
       try {
         if (claim.legacyCustomerId) {
-          const candidate = await this.provider.retrieve(claim.legacyCustomerId);
-          candidates = candidate ? [candidate] : [];
+          const lookup = await this.provider.retrieve(claim.legacyCustomerId);
+          if (lookup.kind === "absent") {
+            await this.retireLegacyCustomer(claim, {
+              kind: lookup.reason,
+              customerId: lookup.customerId,
+            });
+            continue;
+          }
+          const candidate = lookup.candidate;
+          if (candidate.id !== claim.legacyCustomerId) {
+            return this.quarantine(
+              claim.attempt.id,
+              claim.leaseToken,
+              "provider returned a different Customer for exact legacy lookup",
+            );
+          }
+          if (
+            candidate.metadata.organization_id &&
+            candidate.metadata.organization_id !== claim.attempt.organization_id
+          ) {
+            if (
+              candidate.metadata.eliza_organization_id &&
+              candidate.metadata.eliza_organization_id !== candidate.metadata.organization_id
+            ) {
+              return this.quarantine(
+                claim.attempt.id,
+                claim.leaseToken,
+                "provider legacy Customer contains conflicting tenant metadata",
+              );
+            }
+            await this.retireLegacyCustomer(claim, {
+              kind: "wrong_tenant",
+              customerId: candidate.id,
+              providerOrganizationId: candidate.metadata.organization_id,
+            });
+            continue;
+          }
+          candidates = [candidate];
         } else {
           candidates = await this.provider.searchByAttemptId(claim.attempt.id);
         }
       } catch (error) {
+        // error-policy:J2 Persist ambiguity before propagating the provider failure.
         await this.markAmbiguous(
           claim.attempt.id,
           claim.leaseToken,
@@ -580,14 +764,6 @@ export class StripeCustomerAuthorityService {
         );
       }
       if (candidates[0]) return this.bind(claim, candidates[0]);
-
-      if (claim.legacyCustomerId) {
-        return this.quarantine(
-          claim.attempt.id,
-          claim.leaseToken,
-          "published legacy Customer was not retrievable from Stripe",
-        );
-      }
 
       const startedAt = claim.attempt.provider_started_at ?? this.now();
       if (this.now().getTime() - startedAt.getTime() >= PROVIDER_REUSE_WINDOW_MS) {
@@ -615,6 +791,7 @@ export class StripeCustomerAuthorityService {
         );
         return await this.bind(claim, candidate);
       } catch (error) {
+        // error-policy:J2 Persist create ambiguity before propagating the provider failure.
         await this.markAmbiguous(
           claim.attempt.id,
           claim.leaseToken,
@@ -744,6 +921,7 @@ export class StripeCustomerAuthorityService {
         candidateMatches(claim.attempt, candidate),
       );
     } catch (error) {
+      // error-policy:J2 Release the resolution fence before propagating provider search failure.
       await this.releaseResolutionLease(
         claim.attempt.id,
         leaseToken,
@@ -906,6 +1084,7 @@ export class StripeCustomerAuthorityService {
         return { retryAttemptId: id };
       });
     } catch (error) {
+      // error-policy:J2 Release the resolution fence before propagating commit failure.
       await this.releaseResolutionLease(
         claim.attempt.id,
         leaseToken,
