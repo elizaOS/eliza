@@ -13,6 +13,7 @@ import {
   MAX_AUDIO_REDACTION_PII_NORMALIZED_CHARS,
   MAX_AUDIO_REDACTION_PII_SPAN_CHARS,
   MAX_AUDIO_REDACTION_PII_SPANS,
+  MAX_AUDIO_REDACTION_RAW_CHARS,
   MAX_AUDIO_REDACTION_WORD_CHARS,
   MAX_AUDIO_REDACTION_WORDS,
   selectAudioRedactionSentinels,
@@ -145,6 +146,21 @@ describe("selectAudioRedactionSentinels", () => {
     );
     expect(() => selectAudioRedactionSentinels(words, [])).toThrow(
       /normalized timed-word stream exceeds/,
+    );
+  });
+
+  it("fails closed on aggregate raw text before punctuation can evade normalization", () => {
+    const token = "!".repeat(MAX_AUDIO_REDACTION_WORD_CHARS);
+    const words = Array.from(
+      { length: Math.floor(MAX_AUDIO_REDACTION_RAW_CHARS / token.length) + 1 },
+      (_, index) => ({
+        text: token,
+        startMs: index,
+        endMs: index + 1,
+      }),
+    );
+    expect(() => selectAudioRedactionSentinels(words, [])).toThrow(
+      /raw timed-word stream exceeds/,
     );
   });
 

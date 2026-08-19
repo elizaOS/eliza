@@ -9,6 +9,7 @@
 
 export const MAX_AUDIO_REDACTION_WORDS = 100_000;
 export const MAX_AUDIO_REDACTION_WORD_CHARS = 4_096;
+export const MAX_AUDIO_REDACTION_RAW_CHARS = 2_000_000;
 export const MAX_AUDIO_REDACTION_NORMALIZED_CHARS = 1_000_000;
 export const MAX_AUDIO_REDACTION_PII_SPANS = 1_024;
 export const MAX_AUDIO_REDACTION_PII_SPAN_CHARS = 4_096;
@@ -69,6 +70,7 @@ function normalizedWordCharsWithinBudget(
       },
     );
   }
+  let rawChars = 0;
   let normalizedChars = 0;
   for (const word of words) {
     if (word.text.length > MAX_AUDIO_REDACTION_WORD_CHARS) {
@@ -78,6 +80,17 @@ function normalizedWordCharsWithinBudget(
         {
           wordChars: word.text.length,
           maxWordChars: MAX_AUDIO_REDACTION_WORD_CHARS,
+        },
+      );
+    }
+    rawChars += word.text.length;
+    if (rawChars > MAX_AUDIO_REDACTION_RAW_CHARS) {
+      throw new AudioRedactionWordBudgetError(
+        `audio redaction raw timed-word stream exceeds ${MAX_AUDIO_REDACTION_RAW_CHARS} characters`,
+        "AUDIO_REDACTION_UNBOUNDED",
+        {
+          rawChars,
+          maxRawChars: MAX_AUDIO_REDACTION_RAW_CHARS,
         },
       );
     }
