@@ -67,10 +67,12 @@ function nextGmailPageToken(
   resource: string
 ): string | undefined {
   state.pageCount += 1;
-  const token = value?.trim();
-  if (!token) {
+  if (!value?.trim()) {
     return undefined;
   }
+  // Google page tokens are opaque. Whitespace-only values are terminal, but
+  // a non-empty token must be replayed byte-for-byte rather than normalized.
+  const token = value;
   if (state.seenPageTokens.has(token)) {
     throw new ElizaError(`Gmail repeated a ${resource} page token.`, {
       code: "GOOGLE_GMAIL_PAGINATION_LOOP",
@@ -196,6 +198,9 @@ export class GoogleGmailClient {
         if (message) {
           messages.push(message);
         }
+      }
+      if (messages.length >= maxResults) {
+        break;
       }
       pageToken = nextGmailPageToken(response.data.nextPageToken, pagination, "message search");
       if (!pageToken) {
@@ -459,6 +464,9 @@ export class GoogleGmailClient {
         if (headers) {
           results.push(headers);
         }
+      }
+      if (results.length >= maxMessages) {
+        break;
       }
       pageToken = nextGmailPageToken(
         response.data.nextPageToken,
