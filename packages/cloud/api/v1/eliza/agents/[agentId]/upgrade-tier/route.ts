@@ -47,8 +47,13 @@ import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
   createTierUpgradeTargetWithProvision,
   findLiveTierUpgradeTarget,
+  persistTierUpgradeCapabilityContinuation,
 } from "@/lib/services/agent-tier-upgrade-target";
 import { buildDefaultAgentCharacterConfig } from "@/lib/services/default-agent-character";
+import {
+  createStoredLifecycleCapabilityContinuation,
+  parseLifecycleCapabilityContinuation,
+} from "@/lib/services/eliza-app/lifecycle-follow-up";
 import {
   AgentQuotaExceededError,
   elizaSandboxService,
@@ -73,6 +78,7 @@ const DEDICATED_QUOTE_VERSION = "personal-dedicated-v1";
 const ActivationBody = z.object({
   action: z.literal("activate_dedicated"),
   quoteId: z.string().regex(/^[a-f0-9]{64}$/),
+  continuation: z.unknown().optional(),
 });
 
 type AgentRow = NonNullable<
@@ -418,6 +424,23 @@ async function __hono_POST(
         400,
       );
     }
+    const capabilityContinuation =
+      confirmation.data.continuation === undefined
+        ? undefined
+        : parseLifecycleCapabilityContinuation(confirmation.data.continuation);
+    if (
+      confirmation.data.continuation !== undefined &&
+      !capabilityContinuation
+    ) {
+      return json(
+        {
+          success: false,
+          code: "invalid_continuation",
+          error: "Invalid capability continuation.",
+        },
+        400,
+      );
+    }
 
     // ── Reattach: an upgrade for this shared agent is already under way. ──
     const existingTarget = await findLiveTierUpgradeTarget(
@@ -425,6 +448,17 @@ async function __hono_POST(
       source.id,
     );
     if (existingTarget) {
+      if (capabilityContinuation) {
+        await persistTierUpgradeCapabilityContinuation({
+          organizationId: user.organization_id,
+          userId: user.id,
+          sourceAgentId: source.id,
+          dedicatedAgentId: existingTarget.id,
+          capabilityContinuation: createStoredLifecycleCapabilityContinuation(
+            capabilityContinuation,
+          ),
+        });
+      }
       return await respondToLiveTarget(
         existingTarget,
         source.id,
@@ -513,6 +547,14 @@ async function __hono_POST(
         maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg(
           creditCheck.balance,
         ),
+        ...(capabilityContinuation
+          ? {
+              capabilityContinuation:
+                createStoredLifecycleCapabilityContinuation(
+                  capabilityContinuation,
+                ),
+            }
+          : {}),
       });
     } catch (error) {
       if (error instanceof AgentQuotaExceededError) {

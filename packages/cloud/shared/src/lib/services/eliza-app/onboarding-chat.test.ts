@@ -149,7 +149,7 @@ describe("runOnboardingChat", () => {
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
     expect(result.reply).toMatch(/what should I call you\?/i);
-    expect(result.reply).toContain("shared chat is free");
+    expect(result.reply).toContain("What should I call you?");
     expect(result.reply).not.toContain("$5");
   });
 
@@ -169,7 +169,7 @@ describe("runOnboardingChat", () => {
     );
     expect(result.loginUrl).not.toContain("platform%3A");
     expect(result.loginUrl).not.toContain("14155550123");
-    expect(result.reply).toContain("connect this chat to your account here");
+    expect(result.reply).toContain("Connect here");
     expect(result.reply).toContain(result.loginUrl);
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
@@ -793,7 +793,7 @@ describe("runOnboardingChat", () => {
     expect(result.reply).not.toContain(result.loginUrl);
     expect(result.reply).not.toContain("https://");
     expect(result.reply).toContain("Sam");
-    expect(result.reply).toContain("shared chat is free");
+    expect(result.reply).toContain("Connect below");
     expect(result.reply).not.toContain("$5");
   });
 
@@ -920,9 +920,9 @@ describe("runOnboardingChat", () => {
     });
 
     expect(result.session.name).toBeUndefined();
-    expect(result.reply).toMatch(/^hey!/);
+    expect(result.reply).toMatch(/^Hey\./);
     expect(result.reply).toMatch(/what should I call you\?/i);
-    expect(result.reply).toContain("shared chat is free");
+    expect(result.reply.split(/\s+/).length).toBeLessThanOrEqual(15);
     expect(result.reply).not.toContain("$5");
   });
 
@@ -944,8 +944,8 @@ describe("runOnboardingChat", () => {
 
     expect(result.requiresLogin).toBe(true);
     expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
-    expect(result.reply).toContain("good question, Sam");
-    expect(result.reply).toContain("shared chat is free");
+    expect(result.reply).toContain("kept your question, Sam");
+    expect(result.reply).toContain("Connect below");
     expect(result.reply).not.toContain("$5");
     // The button carries the URL; the message body must not repeat it.
     expect(result.reply).not.toContain(result.loginUrl);
@@ -969,7 +969,7 @@ describe("runOnboardingChat", () => {
 
     expect(result.requiresLogin).toBe(true);
     expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
-    expect(result.reply).toContain("no pressure, Sam");
+    expect(result.reply).toContain("No pressure, Sam");
     expect(result.reply).not.toContain(result.loginUrl);
   });
 
@@ -991,7 +991,7 @@ describe("runOnboardingChat", () => {
 
     expect(result.requiresLogin).toBe(true);
     expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
-    expect(result.reply).toContain("still here, Sam");
+    expect(result.reply).toContain("I kept that, Sam");
     expect(result.reply).not.toContain(result.loginUrl);
   });
 
@@ -1013,7 +1013,7 @@ describe("runOnboardingChat", () => {
 
     expect(result.requiresLogin).toBe(true);
     expect(result.cta).toBeNull();
-    expect(result.reply).toContain("no pressure, Sam");
+    expect(result.reply).toContain("No pressure, Sam");
     expect(result.reply).toContain(result.loginUrl);
   });
 
@@ -1041,9 +1041,9 @@ describe("runOnboardingChat", () => {
     expect(first.reply.replace(first.loginUrl, "<login>")).toBe(
       second.reply.replace(second.loginUrl, "<login>"),
     );
-    expect(first.reply).toContain("shared chat is free");
+    expect(first.reply).toContain("Connect here");
     expect(first.reply).not.toContain("$5");
-    expect(first.reply.endsWith(`no card needed: ${first.loginUrl}`)).toBe(true);
+    expect(first.reply.endsWith(first.loginUrl)).toBe(true);
     expect(first.reply).not.toMatch(/[^\x09\x0A\x0D\x20-\x7E]/);
   });
 
@@ -1711,7 +1711,7 @@ describe("runOnboardingChat", () => {
       // Proactive first turn (client posts an empty message on load): the agent
       // greets AND explicitly offers to get the new user set up, then asks the
       // name — a proactive hello, not a passive prompt.
-      expect(first.reply).toMatch(/i can get you set up|get you started/i);
+      expect(first.reply).toMatch(/start helping now/i);
       expect(first.reply).toMatch(/what should I call you\?/i);
       expect(first.session.history).toHaveLength(1);
       expect(first.session.history[0]?.role).toBe("assistant");
@@ -1747,7 +1747,7 @@ describe("runOnboardingChat", () => {
       expect(second.session.name).toBe("Sam");
       expect(second.session.history).toHaveLength(4);
       for (const result of [first, second]) {
-        expect(result.reply).toContain(`no card needed: ${result.loginUrl}`);
+        expect(result.reply).toContain(result.loginUrl);
       }
     });
 
@@ -1759,6 +1759,21 @@ describe("runOnboardingChat", () => {
 
       const bare = await runTrustedPhoneTurn("Bob");
       expect(bare.session.name).toBe("Alex");
+    });
+
+    test("captures and forgets explicit location and timezone with provenance", async () => {
+      const captured = await runTrustedPhoneTurn(
+        "I live in Montréal. My timezone is America/Toronto.",
+      );
+      expect(captured.session.ownerProfile?.facts.location).toMatchObject({
+        value: "Montréal",
+        source: "owner_explicit",
+      });
+      expect(captured.session.ownerProfile?.facts.timezone?.value).toBe("America/Toronto");
+
+      const forgotten = await runTrustedPhoneTurn("Forget where I live. Delete my timezone.");
+      expect(forgotten.session.ownerProfile?.facts.location).toBeUndefined();
+      expect(forgotten.session.ownerProfile?.facts.timezone).toBeUndefined();
     });
 
     test("greeting-like and filler replies are never captured as names", async () => {
@@ -1789,11 +1804,10 @@ describe("runOnboardingChat", () => {
       expect(result.reply).toMatch(/what should I call you\?/i);
     });
 
-    test("a non-ASCII explicit name is captured in ASCII-safe form and the reply stays ASCII", async () => {
+    test("a non-ASCII explicit name is preserved", async () => {
       const result = await runTrustedPhoneTurn("My name is José");
-      expect(result.session.name).toBe("Jos");
-      expect(result.reply).toContain("Jos");
-      expect(result.reply).not.toMatch(NON_ASCII_PATTERN);
+      expect(result.session.name).toBe("José");
+      expect(result.reply).toContain("José");
     });
 
     test("a fully non-ASCII display name is not auto-captured; the user is asked for a name", async () => {
@@ -1947,7 +1961,7 @@ describe("runOnboardingChat", () => {
     test("login-required fallback reply always ends with the exact login link", async () => {
       const result = await runTrustedPhoneTurn("My name is Sam");
       expect(result.requiresLogin).toBe(true);
-      expect(result.reply.endsWith(`no card needed: ${result.loginUrl}`)).toBe(true);
+      expect(result.reply.endsWith(result.loginUrl)).toBe(true);
     });
 
     test("a failed transcript handoff is retried on the next turn and copied exactly once", async () => {
@@ -2149,6 +2163,39 @@ describe("runOnboardingChat", () => {
       expect("proactiveGreeting" in continued).toBe(false);
     });
 
+    test("queues post-link follow-up for Telegram and SMS continuations", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      for (const [platform, platformUserId] of [
+        ["telegram", "123456789"],
+        ["twilio", "+14155550100"],
+      ] as const) {
+        const gatewayTurn = await runOnboardingChat({
+          message: "call me Sam",
+          platform,
+          platformUserId,
+          sessionId: `platform:${platform}:${platformUserId}`,
+          trustedPlatformIdentity: true,
+        });
+        await runOnboardingChat({
+          sessionId: continuationToken(gatewayTurn),
+          platform: "web",
+          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+          confirmPlatformLink: true,
+        });
+      }
+
+      expect(
+        peekLocalGreetingQueue()
+          .map((entry) => entry.sessionId)
+          .sort(),
+      ).toEqual(["platform:telegram:123456789", "platform:twilio:+14155550100"]);
+    });
+
     test("a turn that fails after binding never queues a greeting (no false-success DM)", async () => {
       getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
@@ -2240,7 +2287,7 @@ describe("runOnboardingChat", () => {
       expect(peekLocalGreetingQueue()).toHaveLength(0);
     });
 
-    test("non-discord platforms never queue a greeting", async () => {
+    test("trusted phone continuation queues a return-to-chat greeting", async () => {
       getElizaAppProvisioningStatus.mockResolvedValue({
         status: "provisioning",
         agentId: null,
@@ -2254,7 +2301,12 @@ describe("runOnboardingChat", () => {
         confirmPlatformLink: true,
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
       });
-      expect(peekLocalGreetingQueue()).toHaveLength(0);
+      expect(peekLocalGreetingQueue()).toEqual([
+        expect.objectContaining({
+          sessionId: named.session.id,
+          platformUserId: named.session.platformUserId,
+        }),
+      ]);
     });
   });
 

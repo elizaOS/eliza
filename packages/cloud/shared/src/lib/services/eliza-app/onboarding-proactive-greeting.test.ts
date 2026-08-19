@@ -7,7 +7,9 @@ import {
   acknowledgeDiscordProactiveGreetings,
   clearLocalGreetingQueue,
   drainDiscordProactiveGreetings,
+  drainProactiveGreetings,
   enqueueDiscordProactiveGreeting,
+  enqueueProactiveGreeting,
   peekLocalGreetingQueue,
 } from "./onboarding-proactive-greeting";
 
@@ -65,5 +67,22 @@ describe("local proactive greeting queue", () => {
         { sessionId, leaseId: leased[0]?.leaseId ?? "" },
       ]),
     ).toBe(1);
+  });
+
+  test("isolates Telegram and SMS work from the Discord queue", async () => {
+    await enqueueProactiveGreeting("telegram", {
+      sessionId: "platform:telegram:123456",
+      platformUserId: "123456",
+      platform: "telegram",
+    });
+    await enqueueProactiveGreeting("twilio", {
+      sessionId: "platform:twilio:+14155550100",
+      platformUserId: "+14155550100",
+      platform: "twilio",
+    });
+
+    expect(await drainDiscordProactiveGreetings()).toEqual([]);
+    expect((await drainProactiveGreetings("telegram"))[0]?.platformUserId).toBe("123456");
+    expect((await drainProactiveGreetings("twilio"))[0]?.platformUserId).toBe("+14155550100");
   });
 });

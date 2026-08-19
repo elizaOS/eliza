@@ -19,7 +19,16 @@ import {
   findActivePersonalDedicatedTarget,
   findLiveTierUpgradeTarget,
 } from "@/lib/services/agent-tier-upgrade-target";
-import { readPersonalElizaCutover } from "@/lib/services/eliza-agent-config";
+import {
+  AGENT_UPGRADE_CONTINUATION_KEY,
+  readPersonalElizaCutover,
+} from "@/lib/services/eliza-agent-config";
+import {
+  enqueueUserLifecycleFollowUps,
+  type LifecycleCapabilityContinuation,
+  parseLifecycleCapabilityContinuation,
+  parseStoredLifecycleCapabilityContinuation,
+} from "@/lib/services/eliza-app/lifecycle-follow-up";
 import { invalidatePersonalDeliveryProjection } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
@@ -39,14 +48,58 @@ import {
   SharedReminderCutoverConflictError,
 } from "@/lib/services/shared-runtime/shared-scheduling";
 import { readSharedTodoCutoverState } from "@/lib/services/shared-runtime/shared-todos";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
 const CUTOVER_SEAL_LEASE_MS = 60_000;
-const bodySchema = z.object({ dedicatedAgentId: z.string().uuid() });
+const bodySchema = z.object({
+  dedicatedAgentId: z.string().uuid(),
+  continuation: z.unknown().optional(),
+});
 
 function json(body: unknown, status = 200): Response {
   return applyCorsHeaders(Response.json(body, { status }), CORS_METHODS);
+}
+
+async function enqueueCompletedCutoverFollowUp(input: {
+  userId: string;
+  organizationId: string;
+  sourceAgentId: string;
+  dedicatedAgentId: string;
+  cutoverToken: string;
+  continuation?: LifecycleCapabilityContinuation;
+}): Promise<void> {
+  await enqueueUserLifecycleFollowUps([
+    {
+      kind: "workspace_ready",
+      idempotencyKey: `workspace-ready:${input.cutoverToken}`,
+      userId: input.userId,
+      organizationId: input.organizationId,
+      resourceId: input.dedicatedAgentId,
+      origin: "web",
+      agentId: input.dedicatedAgentId,
+      ...(input.continuation ? { continuation: input.continuation } : {}),
+    },
+    {
+      kind: "subscription_upgraded",
+      idempotencyKey: `subscription-upgraded:${input.cutoverToken}`,
+      userId: input.userId,
+      organizationId: input.organizationId,
+      resourceId: input.sourceAgentId,
+      origin: "web",
+      agentId: input.dedicatedAgentId,
+      ...(input.continuation ? { continuation: input.continuation } : {}),
+    },
+  ]).catch((error) => {
+    // error-policy:J7 cutover is already authoritative; report a notification
+    // outage without claiming that the completed workspace activation failed.
+    logger.error("[personal-cutover] durable lifecycle follow-up failed", {
+      sourceAgentId: input.sourceAgentId,
+      dedicatedAgentId: input.dedicatedAgentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 }
 
 async function invalidateUserDeliveryProjections(
@@ -248,6 +301,20 @@ app.post("/", async (c) => {
         400,
       );
     }
+    const requestContinuation =
+      parsed.data.continuation === undefined
+        ? undefined
+        : parseLifecycleCapabilityContinuation(parsed.data.continuation);
+    if (parsed.data.continuation !== undefined && !requestContinuation) {
+      return json(
+        {
+          success: false,
+          code: "invalid_continuation",
+          error: "Invalid capability continuation.",
+        },
+        400,
+      );
+    }
 
     const sourceAgentId = personalSharedAgentId({
       userId: user.id,
@@ -298,6 +365,14 @@ app.post("/", async (c) => {
       user.organization_id,
       sourceAgentId,
     );
+    let continuation =
+      requestContinuation ??
+      parseStoredLifecycleCapabilityContinuation(
+        (active?.agent_config as Record<string, unknown> | null)?.[
+          AGENT_UPGRADE_CONTINUATION_KEY
+        ],
+      ) ??
+      undefined;
     if (
       active?.id === parsed.data.dedicatedAgentId &&
       active.user_id === user.id
@@ -369,6 +444,14 @@ app.post("/", async (c) => {
             holderToken: reminderReservationToken,
             expectedTaskCount: marker.sharedScheduledTaskCount,
           });
+          await enqueueCompletedCutoverFollowUp({
+            userId: user.id,
+            organizationId: user.organization_id,
+            sourceAgentId,
+            dedicatedAgentId: active.id,
+            cutoverToken: sealToken,
+            ...(continuation ? { continuation } : {}),
+          });
           return json({
             success: true,
             data: {
@@ -408,6 +491,12 @@ app.post("/", async (c) => {
         409,
       );
     }
+    continuation ??=
+      parseStoredLifecycleCapabilityContinuation(
+        (target.agent_config as Record<string, unknown> | null)?.[
+          AGENT_UPGRADE_CONTINUATION_KEY
+        ],
+      ) ?? undefined;
 
     const base = personalDedicatedAgentApiBase(
       target,
@@ -617,6 +706,14 @@ app.post("/", async (c) => {
         token: sealToken,
         holderToken: reminderReservationToken,
         expectedTaskCount: scheduledTasks.length,
+      });
+      await enqueueCompletedCutoverFollowUp({
+        userId: user.id,
+        organizationId: user.organization_id,
+        sourceAgentId,
+        dedicatedAgentId: activeTarget.id,
+        cutoverToken: sealToken,
+        ...(continuation ? { continuation } : {}),
       });
       return json({
         success: true,

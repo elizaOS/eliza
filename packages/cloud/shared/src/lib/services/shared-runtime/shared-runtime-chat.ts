@@ -71,6 +71,15 @@ import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
 import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
 import {
+  applySharedProfileMutation,
+  extractSharedProfileMutation,
+  mergeSharedChannelIdentityHint,
+  readSharedProfile,
+  type SharedChannelIdentityProfileHint,
+  upsertSharedProfileMessage,
+  withoutSharedProfileMessages,
+} from "./shared-profile";
+import {
   buildSharedRecallContext,
   embedTextsViaSidecar,
   embedTextViaSidecar,
@@ -97,6 +106,18 @@ const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
+
+function profileForIncomingMessage(
+  history: readonly SharedTurnMessage[],
+  text: string,
+  messageRole: "system" | "user",
+  trustedProfileHint?: SharedChannelIdentityProfileHint,
+) {
+  const profile = mergeSharedChannelIdentityHint(readSharedProfile(history), trustedProfileHint);
+  return messageRole === "user"
+    ? applySharedProfileMutation(profile, extractSharedProfileMutation(text))
+    : profile;
+}
 
 function elapsedTurnMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 10) / 10;
@@ -279,6 +300,8 @@ export interface SharedRuntimeChatOptions {
   trustedUserUtterance?: string;
   /** Server-resolved transport semantics; untrusted RPC params never populate this. */
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"];
+  /** Server-authenticated connector display name; cannot supply other facts. */
+  trustedProfileHint?: SharedChannelIdentityProfileHint;
   mobilePushDispatch?: NonNullable<
     NonNullable<RunSharedAgentTurnInput["execution"]>["mobilePush"]
   >["dispatch"];
@@ -1161,12 +1184,19 @@ export class SharedRuntimeChatService {
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    const ownerProfile = profileForIncomingMessage(
+      history,
+      text,
+      messageRole,
+      options.trustedProfileHint,
+    );
+    const modelHistory = withoutSharedProfileMessages(history);
     let billing: BillingTurn | null;
     try {
       billing = await admitTurn(
         agent,
         character,
-        history,
+        modelHistory,
         text,
         roomId,
         options.executionCtx,
@@ -1190,14 +1220,15 @@ export class SharedRuntimeChatService {
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const memoryStore = sharedTurnMemoryStore(agent);
-    const recallContext = await sharedTurnRecallContext(memoryStore, text, history);
+    const recallContext = await sharedTurnRecallContext(memoryStore, text, modelHistory);
     const turnStartedAtEpochMs = Date.now();
     let terminalTiming: SharedRuntimeTimingReceipt | undefined;
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
         character,
-        history,
+        history: modelHistory,
+        ownerProfile,
         message: text,
         ...(recallContext ? { recallContext } : {}),
         ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
@@ -1277,8 +1308,11 @@ export class SharedRuntimeChatService {
         await mergeHistory(
           agent.id,
           roomId,
-          turn.history.filter(
-            (message) => message.id === messageIds.user || message.id === messageIds.assistant,
+          upsertSharedProfileMessage(
+            turn.history.filter(
+              (message) => message.id === messageIds.user || message.id === messageIds.assistant,
+            ),
+            ownerProfile,
           ),
           options.historyStore,
         );
@@ -1368,6 +1402,13 @@ export class SharedRuntimeChatService {
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    const ownerProfile = profileForIncomingMessage(
+      history,
+      text,
+      messageRole,
+      options.trustedProfileHint,
+    );
+    const modelHistory = withoutSharedProfileMessages(history);
     timings.turn_hydrate = elapsedTurnMs(hydrateStartedAt);
     let billing: BillingTurn | null;
     const admissionStartedAt = performance.now();
@@ -1375,7 +1416,7 @@ export class SharedRuntimeChatService {
       billing = await admitTurn(
         agent,
         character,
-        history,
+        modelHistory,
         text,
         roomId,
         options.executionCtx,
@@ -1408,7 +1449,11 @@ export class SharedRuntimeChatService {
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
     const streamMemoryStore = sharedTurnMemoryStore(agent);
-    const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
+    const streamRecallContext = await sharedTurnRecallContext(
+      streamMemoryStore,
+      text,
+      modelHistory,
+    );
     const streamTurnStartedAtEpochMs = Date.now();
     let streamTerminalTiming: SharedRuntimeTimingReceipt | undefined;
     const providerSetupStartedAt = performance.now();
@@ -1416,7 +1461,8 @@ export class SharedRuntimeChatService {
       turn = await runSharedAgentTurnStream({
         abortSignal: generationAbort.signal,
         character,
-        history,
+        history: modelHistory,
+        ownerProfile,
         message: text,
         ...(streamRecallContext ? { recallContext: streamRecallContext } : {}),
         ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
@@ -1523,7 +1569,7 @@ export class SharedRuntimeChatService {
           interrupted,
         });
       }
-      return messages;
+      return upsertSharedProfileMessage(messages, ownerProfile);
     };
     let finalizationPromise: Promise<void> | null = null;
     let finalized = false;

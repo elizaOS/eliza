@@ -13,6 +13,7 @@ import { isValidTimeZone } from "../defaults.js";
 import { SELF_ENTITY_ID } from "../entities/types.js";
 import {
   createOwnerFactStore,
+  type ForgettableOwnerFact,
   type OwnerFactsPatch,
 } from "../owner/fact-store.js";
 import {
@@ -56,6 +57,7 @@ type TravelSignal = { kind: "set"; endIso?: string } | { kind: "clear" };
 
 type ProfileExtraction = {
   facts: OwnerFactsPatch;
+  forget: ForgettableOwnerFact[];
   identities: IdentityHint[];
   relationships: RelationshipHint[];
   travel: TravelSignal | null;
@@ -91,6 +93,36 @@ const OTHER_FACT_PATTERNS = [
 
 const UTC_TIMEZONE_PATTERN =
   /^(?:z|zulu|utc|gmt|etc\/utc|etc\/gmt|utc[+-]0{1,2}(?::?00)?|gmt[+-]0{1,2}(?::?00)?|[+-]00:?00)$/iu;
+
+const FORGET_FACT_PATTERNS: ReadonlyArray<{
+  field: ForgettableOwnerFact;
+  patterns: readonly RegExp[];
+}> = [
+  {
+    field: "preferredName",
+    patterns: [
+      /\b(?:forget|delete|remove|clear)\s+(?:what you know about\s+)?my (?:preferred )?name\s*(?:[.!?]|$)/iu,
+      /\b(?:do not|don't)\s+(?:store|keep|remember)\s+my (?:preferred )?name\s*(?:[.!?]|$)/iu,
+      /\b(?:that is|that's|that isn't|that is not)\s+(?:not\s+)?my name\s*(?:[.!?]|$)/iu,
+    ],
+  },
+  {
+    field: "location",
+    patterns: [
+      /\b(?:forget|delete|remove|clear)\s+(?:what you know about\s+)?(?:my location|where i live)\s*(?:[.!?]|$)/iu,
+      /\b(?:do not|don't)\s+(?:store|keep|remember)\s+(?:my location|where i live)\s*(?:[.!?]|$)/iu,
+      /\b(?:that is|that's|that isn't|that is not)\s+(?:not\s+)?where i live\s*(?:[.!?]|$)/iu,
+    ],
+  },
+  {
+    field: "timezone",
+    patterns: [
+      /\b(?:forget|delete|remove|clear)\s+(?:what you know about\s+)?my time\s*zone\s*(?:[.!?]|$)/iu,
+      /\b(?:do not|don't)\s+(?:store|keep|remember)\s+my time\s*zone\s*(?:[.!?]|$)/iu,
+      /\b(?:that is|that's|that isn't|that is not)\s+(?:not\s+)?my time\s*zone\s*(?:[.!?]|$)/iu,
+    ],
+  },
+];
 
 const TRAVEL_PREFERENCE_CONTEXT =
   /\b(?:travel|booking|bookings|trip|trips|flight|flights|hotel|hotels)\b/iu;
@@ -162,6 +194,17 @@ function collectFactHints(text: string, facts: OwnerFactsPatch): void {
       facts[entry.key] = value;
     }
   }
+}
+
+function collectForgetHints(
+  text: string,
+  replacementFacts: OwnerFactsPatch,
+): ForgettableOwnerFact[] {
+  return FORGET_FACT_PATTERNS.filter(
+    ({ field, patterns }) =>
+      replacementFacts[field] === undefined &&
+      patterns.some((pattern) => pattern.test(text)),
+  ).map(({ field }) => field);
 }
 
 function cleanTravelPreference(raw: string | undefined): string | null {
@@ -361,6 +404,7 @@ export function extractProfileDetails(
   collectTravelPreferenceHints(text, facts);
   return {
     facts,
+    forget: collectForgetHints(text, facts),
     identities: collectIdentityHints(text),
     relationships: collectRelationshipHints(text),
     travel: detectTravelSignal(text, now),
@@ -370,6 +414,7 @@ export function extractProfileDetails(
 function hasExtraction(extraction: ProfileExtraction): boolean {
   return (
     Object.keys(extraction.facts).length > 0 ||
+    extraction.forget.length > 0 ||
     extraction.identities.length > 0 ||
     extraction.relationships.length > 0 ||
     extraction.travel !== null
@@ -403,6 +448,11 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
     const evidenceId = `message:${String(message.id ?? Date.now())}`;
     const recordedAt = now.toISOString();
     const debug: string[] = [];
+
+    if (extraction.forget.length > 0) {
+      await createOwnerFactStore(runtime).forget(extraction.forget);
+      debug.push(`forgot=${extraction.forget.join(",")}`);
+    }
 
     if (Object.keys(extraction.facts).length > 0) {
       await createOwnerFactStore(runtime).update(extraction.facts, {

@@ -47,6 +47,34 @@ export interface ProactiveGreetingEntry {
   createdAt: string;
   /** Stable Discord idempotency nonce (the API limit is 25 characters). */
   deliveryNonce: string;
+  /** Explicit expiry for longer-lived server lifecycle notices. */
+  expiresAt?: string;
+  /** Typed lifecycle events coalesced into this one user-facing notice. */
+  lifecycleEvents?: ProactiveLifecycleEventMetadata[];
+}
+
+export type ProactiveGreetingPlatform = "discord" | "telegram" | "blooio" | "twilio" | "in_app";
+
+export type ProactiveLifecycleEventKind =
+  | "workspace_ready"
+  | "subscription_upgraded"
+  | "connector_connected";
+
+export interface ProactiveLifecycleEventMetadata {
+  kind: ProactiveLifecycleEventKind;
+  idempotencyKey: string;
+  userId: string;
+  organizationId: string;
+  resourceId: string;
+  origin: "web" | "app" | ProactiveGreetingPlatform;
+  preferredChannel: ProactiveGreetingPlatform;
+  agentId?: string;
+  continuation?: {
+    originalIntent: string;
+    capabilityId: import("@elizaos/shared").AgentCapabilityId;
+    clientMessageId?: string;
+    requiresConfirmation: true;
+  };
 }
 
 export interface LeasedProactiveGreetingEntry extends ProactiveGreetingEntry {
@@ -83,6 +111,10 @@ export const PROACTIVE_GREETING_QUEUE_PREFIX = "proactive-greetings:";
 /** Well-known Durable Object instance name holding the Discord queue. */
 export const DISCORD_GREETING_QUEUE_NAME = `${PROACTIVE_GREETING_QUEUE_PREFIX}discord`;
 
+function greetingQueueName(platform: ProactiveGreetingPlatform): string {
+  return `${PROACTIVE_GREETING_QUEUE_PREFIX}${platform}`;
+}
+
 /**
  * Commit-ordering handoff describing a greeting that should enqueue once the
  * turn that produced it has durably persisted.
@@ -94,6 +126,8 @@ export interface ProactiveGreetingRequest {
   platformUserId: string;
   /** Preferred name to address in the greeting, when known. */
   name?: string;
+  /** Trusted originating transport to notify after browser account linking. */
+  platform?: ProactiveGreetingPlatform;
 }
 
 function greetingCoordinator(): RuntimeDurableObjectNamespace | undefined {
@@ -103,6 +137,7 @@ function greetingCoordinator(): RuntimeDurableObjectNamespace | undefined {
 /** Process-local fallback queue for non-Worker runtimes (keyed by session id). */
 const localGreetingQueue = new Map<string, ProactiveGreetingEntry>();
 const localGreetingLeases = new Map<string, { leaseId: string; expiresAt: number }>();
+const localGreetingTombstones = new Map<string, number>();
 /** Test-only visibility into the local fallback queue. */
 export function peekLocalGreetingQueue(): ProactiveGreetingEntry[] {
   return [...localGreetingQueue.values()];
@@ -112,6 +147,7 @@ export function peekLocalGreetingQueue(): ProactiveGreetingEntry[] {
 export function clearLocalGreetingQueue(): void {
   localGreetingQueue.clear();
   localGreetingLeases.clear();
+  localGreetingTombstones.clear();
 }
 
 function newOpaqueId(): string {
@@ -121,35 +157,30 @@ function newOpaqueId(): string {
 export function composeProactiveGreeting(name: string | undefined): string {
   const address = name?.trim() ? `${name.trim()}, ` : "";
   return (
-    `${address}you're all set — your account is linked and your agent is spinning up. ` +
-    "This chat is yours now: message me anytime and your agent answers."
+    `${address}you're all set — your account is linked. ` +
+    "Message me here anytime and I'll pick up where we left off."
   );
 }
 
 function isEntryFresh(entry: ProactiveGreetingEntry, now: number): boolean {
   const createdAt = Date.parse(entry.createdAt);
-  return Number.isFinite(createdAt) && now - createdAt <= GREETING_TTL_MS;
+  const explicitExpiry = entry.expiresAt ? Date.parse(entry.expiresAt) : Number.NaN;
+  return (
+    Number.isFinite(createdAt) &&
+    (Number.isFinite(explicitExpiry) ? now <= explicitExpiry : now - createdAt <= GREETING_TTL_MS)
+  );
 }
 
-/**
- * Records a pending proactive greeting for a freshly bound Discord onboarding
- * session. Never throws: the greeting is a courtesy, the turn is not.
- */
-export async function enqueueDiscordProactiveGreeting(
-  input: ProactiveGreetingRequest,
+async function enqueueEntry(
+  platform: ProactiveGreetingPlatform,
+  entry: ProactiveGreetingEntry,
+  failureMode: "best-effort" | "throw",
 ): Promise<void> {
-  const entry: ProactiveGreetingEntry = {
-    sessionId: input.sessionId,
-    platformUserId: input.platformUserId,
-    message: composeProactiveGreeting(input.name),
-    createdAt: new Date().toISOString(),
-    deliveryNonce: newOpaqueId(),
-  };
   try {
     const coordinator = greetingCoordinator();
     if (coordinator) {
       const response = await coordinator
-        .getByName(DISCORD_GREETING_QUEUE_NAME)
+        .getByName(greetingQueueName(platform))
         .fetch("https://onboarding.internal/enqueue-greeting", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -163,9 +194,14 @@ export async function enqueueDiscordProactiveGreeting(
     if (hasCloudBindingsContext()) {
       throw new Error("ONBOARDING_SESSIONS binding is required in Worker deployments");
     }
-    const existing = localGreetingQueue.get(entry.sessionId);
-    if (!existing) localGreetingQueue.set(entry.sessionId, entry);
+    const key = `${platform}:${entry.sessionId}`;
+    const tombstoneExpiry = localGreetingTombstones.get(key);
+    if (tombstoneExpiry && tombstoneExpiry > Date.now()) return;
+    if (tombstoneExpiry) localGreetingTombstones.delete(key);
+    const existing = localGreetingQueue.get(key);
+    if (!existing) localGreetingQueue.set(key, entry);
   } catch (error) {
+    if (failureMode === "throw") throw error;
     // error-policy:J4 The durable sign-in already succeeded; a queue outage
     // degrades only the explicitly best-effort courtesy greeting.
     logger.warn("[eliza-app onboarding] proactive greeting enqueue failed", {
@@ -175,19 +211,63 @@ export async function enqueueDiscordProactiveGreeting(
   }
 }
 
+/** Enqueues a server-authored lifecycle notice and fails if durability is unavailable. */
+export async function enqueueProactiveLifecycleMessage(
+  platform: ProactiveGreetingPlatform,
+  entry: ProactiveGreetingEntry,
+): Promise<void> {
+  await enqueueEntry(platform, entry, "throw");
+}
+
+/**
+ * Records a pending proactive greeting for a freshly bound Discord onboarding
+ * session. Never throws: the greeting is a courtesy, the turn is not.
+ */
+export async function enqueueDiscordProactiveGreeting(
+  input: ProactiveGreetingRequest,
+): Promise<void> {
+  return enqueueProactiveGreeting("discord", input);
+}
+
+/** Records a pending greeting for any gateway-owned messaging transport. */
+export async function enqueueProactiveGreeting(
+  platform: ProactiveGreetingPlatform,
+  input: ProactiveGreetingRequest,
+): Promise<void> {
+  const entry: ProactiveGreetingEntry = {
+    sessionId: input.sessionId,
+    platformUserId: input.platformUserId,
+    message: composeProactiveGreeting(input.name),
+    createdAt: new Date().toISOString(),
+    deliveryNonce: newOpaqueId(),
+  };
+  await enqueueEntry(platform, entry, "best-effort");
+}
+
 /**
  * Leases up to {@link MAX_GREETING_DRAIN} pending Discord greetings. Entries
  * remain stored until an acknowledgement with the matching lease id arrives.
  */
 export async function drainDiscordProactiveGreetings(): Promise<LeasedProactiveGreetingEntry[]> {
+  return drainProactiveGreetings("discord");
+}
+
+/** Leases pending greetings for one messaging gateway. */
+export async function drainProactiveGreetings(
+  platform: ProactiveGreetingPlatform,
+  options: { platformUserId?: string } = {},
+): Promise<LeasedProactiveGreetingEntry[]> {
   const coordinator = greetingCoordinator();
   if (coordinator) {
     const response = await coordinator
-      .getByName(DISCORD_GREETING_QUEUE_NAME)
+      .getByName(greetingQueueName(platform))
       .fetch("https://onboarding.internal/drain-greetings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ limit: MAX_GREETING_DRAIN }),
+        body: JSON.stringify({
+          limit: MAX_GREETING_DRAIN,
+          ...(options.platformUserId ? { platformUserId: options.platformUserId } : {}),
+        }),
       });
     if (!response.ok) {
       throw new Error(`greeting drain failed (${response.status})`);
@@ -204,6 +284,10 @@ export async function drainDiscordProactiveGreetings(): Promise<LeasedProactiveG
   const claimed: LeasedProactiveGreetingEntry[] = [];
   for (const [key, entry] of localGreetingQueue) {
     if (claimed.length >= MAX_GREETING_DRAIN) break;
+    if (!key.startsWith(`${platform}:`)) continue;
+    if (options.platformUserId && entry.platformUserId !== options.platformUserId) {
+      continue;
+    }
     if (!isEntryFresh(entry, now)) {
       localGreetingQueue.delete(key);
       localGreetingLeases.delete(key);
@@ -228,14 +312,26 @@ export async function drainDiscordProactiveGreetings(): Promise<LeasedProactiveG
 export async function acknowledgeDiscordProactiveGreetings(
   acknowledgements: ProactiveGreetingAcknowledgement[],
 ): Promise<number> {
+  return acknowledgeProactiveGreetings("discord", acknowledgements);
+}
+
+/** Acknowledges only leases owned by one messaging gateway. */
+export async function acknowledgeProactiveGreetings(
+  platform: ProactiveGreetingPlatform,
+  acknowledgements: ProactiveGreetingAcknowledgement[],
+  options: { platformUserId?: string } = {},
+): Promise<number> {
   const coordinator = greetingCoordinator();
   if (coordinator) {
     const response = await coordinator
-      .getByName(DISCORD_GREETING_QUEUE_NAME)
+      .getByName(greetingQueueName(platform))
       .fetch("https://onboarding.internal/ack-greetings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ acknowledgements }),
+        body: JSON.stringify({
+          acknowledgements,
+          ...(options.platformUserId ? { platformUserId: options.platformUserId } : {}),
+        }),
       });
     if (!response.ok) {
       throw new Error(`greeting acknowledgement failed (${response.status})`);
@@ -248,10 +344,18 @@ export async function acknowledgeDiscordProactiveGreetings(
   }
   let acknowledged = 0;
   for (const acknowledgement of acknowledgements) {
-    const lease = localGreetingLeases.get(acknowledgement.sessionId);
+    const key = `${platform}:${acknowledgement.sessionId}`;
+    const lease = localGreetingLeases.get(key);
     if (lease?.leaseId !== acknowledgement.leaseId) continue;
-    localGreetingQueue.delete(acknowledgement.sessionId);
-    localGreetingLeases.delete(acknowledgement.sessionId);
+    const entry = localGreetingQueue.get(key);
+    if (options.platformUserId && entry?.platformUserId !== options.platformUserId) {
+      continue;
+    }
+    localGreetingQueue.delete(key);
+    localGreetingLeases.delete(key);
+    if (entry?.expiresAt) {
+      localGreetingTombstones.set(key, Date.parse(entry.expiresAt));
+    }
     acknowledged += 1;
   }
   return acknowledged;

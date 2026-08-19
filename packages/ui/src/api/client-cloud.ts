@@ -5,6 +5,7 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { ElizaError } from "@elizaos/core";
+import type { AgentCapabilityId } from "@elizaos/shared";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
@@ -143,6 +144,26 @@ type DirectCloudJob = {
   createdAt?: string;
   created_at?: string;
 };
+
+export interface CloudLifecycleFollowUpNotice {
+  sessionId: string;
+  leaseId: string;
+  message: string;
+  createdAt: string;
+  expiresAt?: string;
+  lifecycleEvents: Array<{
+    kind: "workspace_ready" | "subscription_upgraded" | "connector_connected";
+    idempotencyKey: string;
+    resourceId: string;
+    agentId?: string;
+    continuation?: {
+      originalIntent: string;
+      capabilityId: AgentCapabilityId;
+      clientMessageId?: string;
+      requiresConfirmation: true;
+    };
+  }>;
+}
 
 type DirectCloudAgentCreateData = {
   id: string;
@@ -1564,6 +1585,13 @@ declare module "./client-base" {
         redirectUrl?: string;
         scopes?: string[];
         connectionRole?: CloudOAuthConnectionRole;
+        agentId?: string;
+        continuation?: {
+          originalIntent: string;
+          capabilityId: AgentCapabilityId;
+          clientMessageId?: string;
+          requiresConfirmation: true;
+        };
       },
     ): Promise<CloudOAuthInitiateResponse>;
     initiateCloudTwitterOauth(request?: {
@@ -1575,6 +1603,12 @@ declare module "./client-base" {
       error?: string;
       [key: string]: unknown;
     }>;
+    claimCloudLifecycleFollowUps(): Promise<{
+      notices: CloudLifecycleFollowUpNotice[];
+    }>;
+    acknowledgeCloudLifecycleFollowUps(
+      acknowledgements: Array<{ sessionId: string; leaseId: string }>,
+    ): Promise<{ acknowledged: number }>;
     getCloudCompatAgentGithubToken(agentId: string): Promise<{
       success: boolean;
       data: {
@@ -1815,6 +1849,12 @@ declare module "./client-base" {
       dedicatedAgentId: string;
       cloudApiBase: string;
       authToken: string;
+      continuation?: {
+        originalIntent: string;
+        capabilityId: AgentCapabilityId;
+        clientMessageId?: string;
+        requiresConfirmation: true;
+      };
     }): Promise<{
       personalElizaId: string;
       activeAgentId: string;
@@ -2670,6 +2710,60 @@ ElizaClient.prototype.disconnectCloudOauthConnection = async function (
       method: "DELETE",
     },
   );
+};
+
+ElizaClient.prototype.claimCloudLifecycleFollowUps = async function (
+  this: ElizaClient,
+) {
+  const cloudApiBase = resolveDirectCloudClientApiBase(this);
+  if (!cloudApiBase) return { notices: [] };
+  const token = readDirectCloudToken(this);
+  const response = await directCloudJsonResponse<{
+    notices?: CloudLifecycleFollowUpNotice[];
+  }>(`${cloudApiBase}/api/v1/eliza/lifecycle-follow-ups`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ action: "claim" }),
+  });
+  if (!response.ok || !Array.isArray(response.data.notices)) {
+    throw new Error(
+      directCloudResponseErrorMessage(response.status, response.data),
+    );
+  }
+  return { notices: response.data.notices };
+};
+
+ElizaClient.prototype.acknowledgeCloudLifecycleFollowUps = async function (
+  this: ElizaClient,
+  acknowledgements,
+) {
+  const cloudApiBase = resolveDirectCloudClientApiBase(this);
+  if (!cloudApiBase) return { acknowledged: 0 };
+  const token = readDirectCloudToken(this);
+  const response = await directCloudJsonResponse<{ acknowledged?: number }>(
+    `${cloudApiBase}/api/v1/eliza/lifecycle-follow-ups`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ action: "ack", acknowledgements }),
+    },
+  );
+  if (!response.ok || typeof response.data.acknowledged !== "number") {
+    throw new Error(
+      directCloudResponseErrorMessage(response.status, response.data),
+    );
+  }
+  return { acknowledged: response.data.acknowledged };
 };
 
 ElizaClient.prototype.getCloudCompatAgentGithubToken = async function (
@@ -4671,7 +4765,10 @@ ElizaClient.prototype.finalizePersonalDedicatedCutover = async (options) => {
       "Content-Type": "application/json",
       Authorization: `Bearer ${options.authToken}`,
     },
-    body: JSON.stringify({ dedicatedAgentId: options.dedicatedAgentId }),
+    body: JSON.stringify({
+      dedicatedAgentId: options.dedicatedAgentId,
+      ...(options.continuation ? { continuation: options.continuation } : {}),
+    }),
   });
   const root = recordOrNull(response.data);
   const data = recordOrNull(root?.data);

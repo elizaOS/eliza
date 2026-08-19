@@ -15,6 +15,7 @@
 
 import type { PluginParamDef } from "@elizaos/shared";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -26,16 +27,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withFrozenClock, withSeededRandom } from "../../../test/determinism";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
+import { persistCapabilityConnectorContinuation } from "../../capability-workspace-handoff";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
-const { clientMock, windowOpenMock } = vi.hoisted(() => ({
+const {
+  clientMock,
+  sendActionMessageMock,
+  setActionNoticeMock,
+  windowOpenMock,
+} = vi.hoisted(() => ({
   clientMock: {
     getPlugins: vi.fn(),
     updatePlugin: vi.fn(),
     startConnectorAccountOAuth: vi.fn(),
     authorizeDiscordLocal: vi.fn(),
   },
+  sendActionMessageMock: vi.fn(),
+  setActionNoticeMock: vi.fn(),
   windowOpenMock: vi.fn(),
 }));
 
@@ -96,9 +105,9 @@ function withApp(
   };
   const appValue = {
     t,
-    setActionNotice: vi.fn(),
+    setActionNotice: setActionNoticeMock,
     loadPlugins: vi.fn(() => Promise.resolve()),
-    sendActionMessage: vi.fn(),
+    sendActionMessage: sendActionMessageMock,
     elizaCloudConnected: opts.elizaCloudConnected ?? false,
   } as never;
   __setAppValueForTests(appValue);
@@ -114,8 +123,11 @@ beforeEach(() => {
   clientMock.updatePlugin.mockReset();
   clientMock.startConnectorAccountOAuth.mockReset();
   clientMock.authorizeDiscordLocal.mockReset();
+  sendActionMessageMock.mockReset();
+  setActionNoticeMock.mockReset();
   windowOpenMock.mockReset();
   vi.stubGlobal("open", windowOpenMock);
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -345,6 +357,88 @@ describe("connector-setup card — collapse-on-connect with modes", () => {
     ).toBe("false");
     expect(
       screen.getByTestId("inline-plugin-config-summary").textContent,
-    ).toContain("Discord is enabled.");
+    ).toContain("Discord is connected.");
+    expect(setActionNoticeMock).not.toHaveBeenCalled();
+    expect(sendActionMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges a server-confirmed OAuth connection and offers to continue once", async () => {
+    clientMock.getPlugins
+      .mockResolvedValueOnce({
+        plugins: [plugin({ id: "discord", name: "Discord" })],
+      })
+      .mockResolvedValue({
+        plugins: [
+          plugin({
+            id: "discord",
+            name: "Discord",
+            enabled: true,
+            configured: true,
+          }),
+        ],
+      });
+    clientMock.startConnectorAccountOAuth.mockResolvedValue({
+      ok: true,
+      authUrl: "https://discord.com/oauth2/authorize?client_id=1",
+    });
+    withApp(<MessageContent message={assistant("[CONFIG:discord]")} />, {
+      elizaCloudConnected: true,
+    });
+    await screen.findByText("Discord Configuration");
+    fireEvent.click(screen.getByTestId("inline-plugin-config-mode-managed"));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    persistCapabilityConnectorContinuation(
+      {
+        version: 1,
+        kind: "capability_handoff",
+        capabilityId: "calendar",
+        label: "Calendar",
+        availability: "needs_workspace",
+        reason: "Calendar needs your personal workspace.",
+        currentTier: "shared",
+        requiredTier: "personal",
+        nextAction: "upgrade_workspace",
+        requiresConfirmation: true,
+        cta: {
+          label: "Set up personal workspace",
+          href: "/cloud/agents/agent-1",
+        },
+        continuation: {
+          originalIntent: "Move tomorrow's meeting to 3pm",
+          clientMessageId: "turn-1",
+        },
+      },
+      "agent-1",
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("inline-plugin-config-oauth-btn"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+
+    expect(setActionNoticeMock).toHaveBeenCalledWith(
+      "Discord connected.",
+      "success",
+      4_200,
+    );
+    expect(sendActionMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendActionMessageMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'offer to continue this quoted user request: "Move tomorrow\'s meeting to 3pm"',
+      ),
+    );
+    expect(sendActionMessageMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Do not perform a consequential action without confirmation",
+      ),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_000);
+    });
+    expect(sendActionMessageMock).toHaveBeenCalledTimes(1);
   });
 });

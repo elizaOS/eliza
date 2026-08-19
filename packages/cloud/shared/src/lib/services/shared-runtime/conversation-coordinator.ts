@@ -16,6 +16,7 @@ import type {
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
+import type { SharedChannelIdentityProfileHint } from "./shared-profile";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
@@ -34,6 +35,8 @@ export interface SharedConversationCoordinatorOptions {
   trustedUserUtterance?: string;
   /** Authenticated transport semantics; never accepted from bridge RPC params. */
   channel?: SharedRuntimeChannel;
+  /** Authenticated connector display name, never arbitrary profile fields. */
+  trustedProfileHint?: SharedChannelIdentityProfileHint;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -302,6 +305,7 @@ export async function coordinateSharedBridge(
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
+        ...(options.trustedProfileHint ? { trustedProfileHint: options.trustedProfileHint } : {}),
       }),
     });
   await requireCoordinatorResponse(response, "conversation");
@@ -329,6 +333,7 @@ export async function coordinateSharedStream(
           ? { trustedUserUtterance: options.trustedUserUtterance }
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
+        ...(options.trustedProfileHint ? { trustedProfileHint: options.trustedProfileHint } : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     });

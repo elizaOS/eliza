@@ -4027,6 +4027,7 @@
   "messagecontent.OAuthStartFailed": "Couldn't start the sign-in flow.",
   "messagecontent.OAuthUseApiKey": "Use an API key / local setup instead",
   "messagecontent.PluginConfigurationTitle": "{{name}} Configuration",
+  "messagecontent.PluginConnectedInlineNotice": "{{name}} is connected.",
   "messagecontent.PluginEnabledInlineNotice": "{{name}} is enabled.",
   "messagecontent.PluginEnabledNotice": "{{name}} is on. Find it in {{tabLabel}}.",
   "messagecontent.PluginNotFound": "Plugin \"{{pluginId}}\" not found.",

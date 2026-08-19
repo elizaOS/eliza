@@ -54,6 +54,9 @@ const originalFetch = globalThis.fetch;
 const originalToken = process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
 const originalBlooioKey = process.env.ELIZA_APP_BLOOIO_API_KEY;
 const originalBlooioNumber = process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
+const originalTwilioSid = process.env.ELIZA_APP_TWILIO_ACCOUNT_SID;
+const originalTwilioToken = process.env.ELIZA_APP_TWILIO_AUTH_TOKEN;
+const originalTwilioNumber = process.env.ELIZA_APP_TWILIO_PHONE_NUMBER;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -66,6 +69,15 @@ afterEach(() => {
   if (originalBlooioNumber === undefined)
     delete process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
   else process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = originalBlooioNumber;
+  if (originalTwilioSid === undefined)
+    delete process.env.ELIZA_APP_TWILIO_ACCOUNT_SID;
+  else process.env.ELIZA_APP_TWILIO_ACCOUNT_SID = originalTwilioSid;
+  if (originalTwilioToken === undefined)
+    delete process.env.ELIZA_APP_TWILIO_AUTH_TOKEN;
+  else process.env.ELIZA_APP_TWILIO_AUTH_TOKEN = originalTwilioToken;
+  if (originalTwilioNumber === undefined)
+    delete process.env.ELIZA_APP_TWILIO_PHONE_NUMBER;
+  else process.env.ELIZA_APP_TWILIO_PHONE_NUMBER = originalTwilioNumber;
   mock.restore();
 });
 
@@ -212,6 +224,39 @@ describe("internal proactive delivery", () => {
       from: "+15550001111",
       text: "take a break",
     });
+  });
+
+  test("delivers Twilio SMS to the fixed phone recipient and replays its receipt", async () => {
+    process.env.ELIZA_APP_TWILIO_ACCOUNT_SID = "AC123";
+    process.env.ELIZA_APP_TWILIO_AUTH_TOKEN = "twilio-token";
+    process.env.ELIZA_APP_TWILIO_PHONE_NUMBER = "+15550001111";
+    const redis = new MemoryRedis();
+    const requests: Request[] = [];
+    globalThis.fetch = mock(async (input, init) => {
+      requests.push(new Request(input, init));
+      return Response.json({ sid: "SM123" });
+    }) as typeof fetch;
+    const delivery = () =>
+      request({
+        platform: "twilio",
+        phoneNumber: "+15551234567",
+      });
+
+    const first = await deliverInternalMessage(delivery(), dependencies(redis));
+    const replay = await deliverInternalMessage(
+      delivery(),
+      dependencies(redis),
+    );
+
+    expect(first.status).toBe(200);
+    await expect(replay.json()).resolves.toMatchObject({
+      success: true,
+      replayed: true,
+      providerMessageIds: ["SM123"],
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toContain("/Accounts/AC123/Messages.json");
+    expect(await requests[0]?.text()).toContain("To=%2B15551234567");
   });
 
   test("rejects a concurrent duplicate while the first send owns delivery", async () => {

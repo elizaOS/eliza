@@ -128,6 +128,9 @@ describe("default Eliza persona safety", () => {
       "when intent is vague, offer one grounded guess and make correction easy",
     );
     expect(definition?.variants.en.catchphrase).not.toMatch(/how can i help/i);
+    expect(definition?.system).toContain(
+      "On first contact, don't lead with a capability list or an open-ended",
+    );
 
     const replies = definition?.messageExamples.flatMap((conversation) =>
       conversation

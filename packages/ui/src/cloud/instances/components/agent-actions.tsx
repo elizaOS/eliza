@@ -55,6 +55,7 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ElizaClient } from "../../../api";
+import { peekCapabilityWorkspaceHandoff } from "../../../capability-workspace-handoff";
 import { Button } from "../../../components/ui/button";
 import { getBootConfig } from "../../../config/boot-config";
 import { runSharedToDedicatedUpgradeHandoff } from "../../handoff/start-tier-upgrade";
@@ -367,6 +368,19 @@ export function ElizaAgentActions({
     setLoading("upgrade-tier");
     setShowUpgradeConfirm(false);
     try {
+      const pending = peekCapabilityWorkspaceHandoff(agentId);
+      const originalIntent = pending?.continuation?.originalIntent?.trim();
+      const continuation =
+        pending && originalIntent
+          ? {
+              originalIntent,
+              capabilityId: pending.capabilityId,
+              ...(pending.continuation?.clientMessageId
+                ? { clientMessageId: pending.continuation.clientMessageId }
+                : {}),
+              requiresConfirmation: true as const,
+            }
+          : undefined;
       const { status: httpStatus, data } = await apiWithStatus<{
         data?:
           | { dedicatedAgentId?: string; jobId?: string }
@@ -378,6 +392,7 @@ export function ElizaAgentActions({
         json: {
           action: "activate_dedicated",
           quoteId: upgradeQuote.quoteId,
+          ...(continuation ? { continuation } : {}),
         },
       });
 
@@ -453,6 +468,7 @@ export function ElizaAgentActions({
         client: new ElizaClient(cloudApiBase, authToken),
         intervalMs: 5_000,
         timeoutMs: 10 * 60_000,
+        ...(continuation ? { continuation } : {}),
       });
 
       if (

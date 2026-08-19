@@ -332,6 +332,8 @@ describe("personal Shared messaging deliveries", () => {
         project: "eliza-app",
         chatId: "123456789",
       },
+      undefined,
+      { preferredName: "Nubs" },
     );
   });
 
@@ -518,6 +520,8 @@ describe("personal Shared messaging deliveries", () => {
           project: "eliza-app",
           chatId: "123456789",
         },
+        undefined,
+        { preferredName: "Nubs" },
       );
       await expect(response.json()).resolves.toMatchObject({
         data: { reply: "hello from Eliza" },
@@ -686,6 +690,8 @@ describe("personal Shared messaging deliveries", () => {
         project: "eliza-app",
         phoneNumber: "+15551234567",
       },
+      undefined,
+      undefined,
     );
   });
 
@@ -726,6 +732,8 @@ describe("personal Shared messaging deliveries", () => {
         platform: "discord",
         discordUserId: "123456789012345678",
       },
+      undefined,
+      { preferredName: "Shaw" },
     );
   });
 

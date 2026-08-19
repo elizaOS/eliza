@@ -271,3 +271,31 @@ export function buildSharedCapabilityCatalog(flags: SharedCapabilityFlags): Agen
     ],
   };
 }
+
+function humanize(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+/** Detailed model-facing projection of the same typed catalog used by gates. */
+export function formatSharedCapabilityCatalogForPrompt(catalog: AgentCapabilityCatalog): string {
+  const capabilities = catalog.capabilities.map((capability) => {
+    const prerequisites = capability.prerequisites.length
+      ? capability.prerequisites.map((item) => item.label).join(", ")
+      : "none";
+    return [
+      `- ${capability.label} (${capability.id})`,
+      `availability: ${humanize(capability.availability)}`,
+      `tier: ${capability.currentTier} -> ${capability.requiredTier}`,
+      `examples: ${capability.examples.join("; ")}`,
+      `prerequisites: ${prerequisites}`,
+      `consequence: ${humanize(capability.consequence)}`,
+      `confirmation: ${capability.requiresConfirmation ? "required before effect" : "not required"}`,
+      `next: ${humanize(capability.nextAction)}`,
+    ].join("; ");
+  });
+  return [
+    `Capability tier: ${catalog.tier}. Transport: ${catalog.transport}.`,
+    ...capabilities,
+    "Offer only the smallest next setup step needed for the user's request.",
+  ].join("\n");
+}

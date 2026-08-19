@@ -1,6 +1,7 @@
 /**
  * Validates Shared-runtime capability gates and preserves their continuation
- * metadata until the user reaches the in-app personal-workspace setup flow.
+ * metadata through personal-workspace provisioning and any connector setup the
+ * capability still requires.
  */
 
 import type { CapabilityHandoffRequest } from "@elizaos/shared";
@@ -8,7 +9,22 @@ import type { ChatActionResultSummary } from "./api/client-types-chat";
 
 export const CAPABILITY_WORKSPACE_HANDOFF_STORAGE_KEY =
   "elizaos:capability-workspace-handoff";
+export const CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY =
+  "elizaos:capability-connector-continuation";
 const CAPABILITY_WORKSPACE_HANDOFF_TTL_MS = 30 * 60 * 1_000;
+const CONNECTION_CAPABILITIES = new Set<
+  CapabilityHandoffRequest["capabilityId"]
+>(["calendar", "communications", "cloud-apps"]);
+
+export interface CapabilityConnectorContinuation {
+  version: 1;
+  agentId: string;
+  capabilityId: CapabilityHandoffRequest["capabilityId"];
+  originalIntent: string;
+  clientMessageId?: string;
+  requiresConfirmation: boolean;
+  connectorId?: string;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -140,8 +156,9 @@ export function persistCapabilityWorkspaceHandoff(
  * setup target that created it. A generic agents-page target may be consumed by
  * the next successful workspace handoff; a different explicit agent is kept.
  */
-export function consumeCapabilityWorkspaceHandoff(
+function readCapabilityWorkspaceHandoff(
   agentId: string,
+  consume: boolean,
   now: () => number = Date.now,
 ): CapabilityHandoffRequest | null {
   if (typeof window === "undefined") return null;
@@ -181,11 +198,194 @@ export function consumeCapabilityWorkspaceHandoff(
     ) {
       return null;
     }
-    window.sessionStorage.removeItem(CAPABILITY_WORKSPACE_HANDOFF_STORAGE_KEY);
+    if (consume) {
+      window.sessionStorage.removeItem(
+        CAPABILITY_WORKSPACE_HANDOFF_STORAGE_KEY,
+      );
+    }
     return handoff;
   } catch {
     // error-policy:J3 malformed or unavailable session storage is treated as no
     // resumable handoff; never manufacture an intent or remove another target.
+    return null;
+  }
+}
+
+/** Reads a pending setup request without consuming it before server completion. */
+export function peekCapabilityWorkspaceHandoff(
+  agentId: string,
+  now: () => number = Date.now,
+): CapabilityHandoffRequest | null {
+  return readCapabilityWorkspaceHandoff(agentId, false, now);
+}
+
+export function consumeCapabilityWorkspaceHandoff(
+  agentId: string,
+  now: () => number = Date.now,
+): CapabilityHandoffRequest | null {
+  return readCapabilityWorkspaceHandoff(agentId, true, now);
+}
+
+/** Preserve a typed continuation only for capabilities with an account prerequisite. */
+export function persistCapabilityConnectorContinuation(
+  handoff: CapabilityHandoffRequest,
+  agentId: string,
+  now: () => number = Date.now,
+): boolean {
+  const originalIntent = handoff.continuation?.originalIntent?.trim();
+  if (
+    typeof window === "undefined" ||
+    !originalIntent ||
+    !CONNECTION_CAPABILITIES.has(handoff.capabilityId)
+  ) {
+    return false;
+  }
+  const continuation: CapabilityConnectorContinuation = {
+    version: 1,
+    agentId,
+    capabilityId: handoff.capabilityId,
+    originalIntent,
+    requiresConfirmation: handoff.requiresConfirmation,
+    ...(handoff.continuation?.clientMessageId
+      ? { clientMessageId: handoff.continuation.clientMessageId }
+      : {}),
+  };
+  try {
+    window.sessionStorage.setItem(
+      CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+      JSON.stringify({ savedAt: now(), continuation }),
+    );
+    return true;
+  } catch {
+    // error-policy:J4 caller visibly reports that automatic post-connect
+    // continuation is unavailable while the normal connector flow remains usable.
+    return false;
+  }
+}
+
+function readConnectorContinuation(
+  now: () => number,
+): { savedAt: number; continuation: CapabilityConnectorContinuation } | null {
+  if (typeof window === "undefined") return null;
+  const serialized = window.sessionStorage.getItem(
+    CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+  );
+  if (!serialized) return null;
+  const parsed: unknown = JSON.parse(serialized);
+  const currentTime = now();
+  if (
+    !isRecord(parsed) ||
+    typeof parsed.savedAt !== "number" ||
+    !Number.isFinite(parsed.savedAt) ||
+    parsed.savedAt > currentTime ||
+    currentTime - parsed.savedAt > CAPABILITY_WORKSPACE_HANDOFF_TTL_MS ||
+    !isRecord(parsed.continuation)
+  ) {
+    window.sessionStorage.removeItem(
+      CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+    );
+    return null;
+  }
+  const candidate = parsed.continuation;
+  if (
+    candidate.version !== 1 ||
+    typeof candidate.agentId !== "string" ||
+    !candidate.agentId ||
+    typeof candidate.capabilityId !== "string" ||
+    !CONNECTION_CAPABILITIES.has(
+      candidate.capabilityId as CapabilityHandoffRequest["capabilityId"],
+    ) ||
+    typeof candidate.originalIntent !== "string" ||
+    !candidate.originalIntent.trim() ||
+    typeof candidate.requiresConfirmation !== "boolean" ||
+    (candidate.clientMessageId !== undefined &&
+      typeof candidate.clientMessageId !== "string") ||
+    (candidate.connectorId !== undefined &&
+      typeof candidate.connectorId !== "string")
+  ) {
+    window.sessionStorage.removeItem(
+      CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+    );
+    return null;
+  }
+  return {
+    savedAt: parsed.savedAt,
+    continuation: {
+      version: 1,
+      agentId: candidate.agentId,
+      capabilityId:
+        candidate.capabilityId as CapabilityHandoffRequest["capabilityId"],
+      originalIntent: candidate.originalIntent,
+      requiresConfirmation: candidate.requiresConfirmation,
+      ...(candidate.clientMessageId
+        ? { clientMessageId: candidate.clientMessageId }
+        : {}),
+      ...(candidate.connectorId ? { connectorId: candidate.connectorId } : {}),
+    },
+  };
+}
+
+/** Bind the pending request to the connector setup the user actually initiated. */
+export function claimCapabilityConnectorContinuation(
+  connectorId: string,
+  now: () => number = Date.now,
+): boolean {
+  try {
+    const pending = readConnectorContinuation(now);
+    if (!pending || pending.continuation.connectorId) return false;
+    pending.continuation.connectorId = connectorId;
+    window.sessionStorage.setItem(
+      CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+      JSON.stringify(pending),
+    );
+    return true;
+  } catch {
+    // error-policy:J3 malformed or unavailable storage cannot bind an intent;
+    // connector setup continues without fabricating continuation metadata.
+    return false;
+  }
+}
+
+/** Bind and read the typed request so OAuth can persist it server-side. */
+export function getOrClaimCapabilityConnectorContinuation(
+  connectorId: string,
+  now: () => number = Date.now,
+): CapabilityConnectorContinuation | null {
+  try {
+    const pending = readConnectorContinuation(now);
+    if (!pending) return null;
+    if (!pending.continuation.connectorId) {
+      pending.continuation.connectorId = connectorId;
+      window.sessionStorage.setItem(
+        CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+        JSON.stringify(pending),
+      );
+    }
+    return pending.continuation.connectorId === connectorId
+      ? pending.continuation
+      : null;
+  } catch {
+    // error-policy:J3 storage is an untrusted boundary; OAuth proceeds without
+    // inventing a resumable request when the stored handoff is malformed.
+    return null;
+  }
+}
+
+/** Consume the exact request only after its user-selected connector is connected. */
+export function consumeCapabilityConnectorContinuation(
+  connectorId: string,
+  now: () => number = Date.now,
+): CapabilityConnectorContinuation | null {
+  try {
+    const pending = readConnectorContinuation(now);
+    if (pending?.continuation.connectorId !== connectorId) return null;
+    window.sessionStorage.removeItem(
+      CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+    );
+    return pending.continuation;
+  } catch {
+    // error-policy:J3 malformed or unavailable storage produces no continuation;
+    // never substitute transcript text or another connector's request.
     return null;
   }
 }

@@ -624,6 +624,12 @@ app.post("/", async (c) => {
                 discordUserId: parsed.data.discordUserId,
               }
             : undefined;
+    const trustedProfileHint =
+      (parsed.data.platform === "telegram" ||
+        parsed.data.platform === "discord") &&
+      parsed.data.displayName
+        ? { preferredName: parsed.data.displayName }
+        : undefined;
     const result = await sharedRestMessageSend(
       agent,
       agent.id,
@@ -634,6 +640,9 @@ app.post("/", async (c) => {
       parsed.data.messageId,
       "platform",
       trustedDelivery,
+      undefined,
+      undefined,
+      trustedProfileHint,
     );
     c.header(
       "Server-Timing",

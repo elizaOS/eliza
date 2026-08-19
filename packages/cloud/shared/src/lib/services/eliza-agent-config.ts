@@ -13,6 +13,8 @@ export const AGENT_MANAGED_GITHUB_KEY = "__agentManagedGithub";
  * can never forge it (stripReservedElizaConfigKeys drops it at every create).
  */
 export const AGENT_UPGRADED_FROM_KEY = "__agentUpgradedFrom";
+/** Server-owned pending request retained across an upgrade tab/device handoff. */
+export const AGENT_UPGRADE_CONTINUATION_KEY = "__agentUpgradeContinuation";
 export const AGENT_PERSONAL_CUTOVER_KEY = "__agentPersonalCutover";
 
 export interface PersonalElizaCutover {

@@ -31,6 +31,7 @@ const secretsCreateCalls: unknown[] = [];
 const insertReturning = mock(async () => [{ id: "conn-1" }]);
 
 let stateData: Record<string, unknown> | null;
+let storedState: unknown;
 let userInfoBody: Record<string, unknown>;
 let originalFetch: typeof globalThis.fetch;
 
@@ -38,7 +39,9 @@ mock.module("../../../cache/client", () => ({
   cache: {
     get: async () => stateData,
     del: async () => {},
-    set: async () => {},
+    set: async (_key: string, value: unknown) => {
+      storedState = value;
+    },
   },
 }));
 
@@ -130,6 +133,7 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
       connectionRole: "OWNER",
       createdAt: Date.now(),
     };
+    storedState = undefined;
     originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async (url: unknown) => {
       const u = String(url);
@@ -258,5 +262,61 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
     } finally {
       AbortSignal.timeout = originalTimeout;
     }
+  it("keeps bounded capability intent in server state and out of the OAuth URL", async () => {
+    const { initiateOAuth2 } = await import("./oauth2");
+    const result = await initiateOAuth2(provider, {
+      organizationId: "org-1",
+      userId: "user-1",
+      capabilityContinuation: {
+        agentId: "agent-1",
+        connectorId: "testprov",
+        expiresAt: Date.now() + 60_000,
+        continuation: {
+          originalIntent: "schedule lunch with Maya",
+          capabilityId: "calendar",
+          clientMessageId: "turn-1",
+          requiresConfirmation: true,
+        },
+      },
+    });
+
+    expect(result.authUrl).not.toContain("schedule");
+    expect(result.authUrl).not.toContain("turn-1");
+    expect(storedState).toMatchObject({
+      organizationId: "org-1",
+      userId: "user-1",
+      capabilityContinuation: {
+        agentId: "agent-1",
+        connectorId: "testprov",
+      },
+    });
+  });
+
+  it("returns an unexpired server-bound continuation after callback", async () => {
+    const { handleOAuth2Callback } = await import("./oauth2");
+    userInfoBody = { id: "real-user-42" };
+    stateData = {
+      ...stateData,
+      capabilityContinuation: {
+        agentId: "agent-1",
+        connectorId: "testprov",
+        expiresAt: Date.now() + 60_000,
+        continuation: {
+          originalIntent: "schedule lunch with Maya",
+          capabilityId: "calendar",
+          requiresConfirmation: true,
+        },
+      },
+    };
+
+    const result = await handleOAuth2Callback(provider, "auth-code", "state-token");
+    expect(result).toMatchObject({
+      agentId: "agent-1",
+      capabilityContinuation: {
+        originalIntent: "schedule lunch with Maya",
+        capabilityId: "calendar",
+        requiresConfirmation: true,
+      },
+    });
   });
 });

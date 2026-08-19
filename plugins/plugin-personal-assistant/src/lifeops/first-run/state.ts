@@ -13,6 +13,7 @@ import { asCacheRuntime } from "../runtime-cache.js";
 
 export type {
   EscalationRule,
+  ForgettableOwnerFact,
   OwnerFactEntry,
   OwnerFactProvenance,
   OwnerFactProvenanceSource,

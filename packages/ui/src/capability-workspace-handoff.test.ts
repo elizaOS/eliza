@@ -5,9 +5,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
 import {
+  CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
   CAPABILITY_WORKSPACE_HANDOFF_STORAGE_KEY,
+  claimCapabilityConnectorContinuation,
+  consumeCapabilityConnectorContinuation,
   consumeCapabilityWorkspaceHandoff,
   findCapabilityWorkspaceHandoff,
+  persistCapabilityConnectorContinuation,
   persistCapabilityWorkspaceHandoff,
 } from "./capability-workspace-handoff";
 
@@ -132,5 +136,62 @@ describe("findCapabilityWorkspaceHandoff", () => {
     expect(
       window.sessionStorage.getItem(CAPABILITY_WORKSPACE_HANDOFF_STORAGE_KEY),
     ).toBeNull();
+  });
+
+  it("binds and consumes typed intent only for the connector the user starts", () => {
+    const handoff = findCapabilityWorkspaceHandoff(
+      [result()],
+      "Move tomorrow's meeting to 3pm",
+    );
+    if (!handoff) throw new Error("Expected a valid capability handoff");
+    expect(
+      persistCapabilityConnectorContinuation(handoff, "agent-1", () => 1_000),
+    ).toBe(true);
+    expect(
+      claimCapabilityConnectorContinuation("google-calendar", () => 2_000),
+    ).toBe(true);
+
+    expect(
+      consumeCapabilityConnectorContinuation("gmail", () => 3_000),
+    ).toBeNull();
+    expect(
+      window.sessionStorage.getItem(
+        CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+      ),
+    ).not.toBeNull();
+    expect(
+      consumeCapabilityConnectorContinuation("google-calendar", () => 3_000),
+    ).toMatchObject({
+      agentId: "agent-1",
+      capabilityId: "calendar",
+      originalIntent: "Move tomorrow's meeting to 3pm",
+      connectorId: "google-calendar",
+    });
+    expect(
+      window.sessionStorage.getItem(
+        CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+      ),
+    ).toBeNull();
+  });
+
+  it("does not carry non-connection capabilities into arbitrary setup", () => {
+    const handoff = findCapabilityWorkspaceHandoff(
+      [
+        result({
+          values: {
+            capabilityHandoff: {
+              ...(result().values?.capabilityHandoff as object),
+              capabilityId: "filesystem",
+            },
+          },
+        }),
+      ],
+      "Edit this file",
+    );
+    if (!handoff) throw new Error("Expected a valid capability handoff");
+    expect(persistCapabilityConnectorContinuation(handoff, "agent-1")).toBe(
+      false,
+    );
+    expect(claimCapabilityConnectorContinuation("gmail")).toBe(false);
   });
 });

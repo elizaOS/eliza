@@ -19,7 +19,10 @@ import type {
   ImageAttachment,
 } from "../api";
 import { StreamGenerationError } from "../api/client-base";
-import { persistCapabilityWorkspaceHandoff } from "../capability-workspace-handoff";
+import {
+  CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+  persistCapabilityWorkspaceHandoff,
+} from "../capability-workspace-handoff";
 import {
   CHAT_PREFILL_EVENT,
   CLOUD_HANDOFF_PHASE_EVENT,
@@ -1680,6 +1683,19 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
     expect(prefills.at(-1)?.detail).toEqual({
       text: "Move tomorrow's meeting to 3pm",
       select: true,
+    });
+    expect(
+      JSON.parse(
+        window.sessionStorage.getItem(
+          CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+        ) ?? "null",
+      ),
+    ).toMatchObject({
+      continuation: {
+        agentId: "agent-123",
+        capabilityId: "calendar",
+        originalIntent: "Move tomorrow's meeting to 3pm",
+      },
     });
     window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
   });

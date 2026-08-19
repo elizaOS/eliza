@@ -12,6 +12,7 @@
  */
 
 import type { Context } from "hono";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import {
   failureResponse,
   ApiError as WorkerApiError,
@@ -24,6 +25,7 @@ import {
   isSafeRelativeRedirectPath,
   LOOPBACK_REDIRECT_ORIGINS,
 } from "@/lib/security/redirect-validation";
+import { parseLifecycleCapabilityContinuation } from "@/lib/services/eliza-app/lifecycle-follow-up";
 import { OAuthError } from "@/lib/services/oauth";
 import {
   getProvider,
@@ -37,7 +39,11 @@ interface InitiateRequestBody {
   redirectUrl?: string;
   scopes?: string[];
   connectionRole?: "owner" | "agent";
+  agentId?: string;
+  continuation?: unknown;
 }
+
+const OAUTH_CONTINUATION_TTL_MS = 10 * 60 * 1000;
 
 export async function handleGenericOAuthInitiate(
   c: Context<AppEnv>,
@@ -145,11 +151,55 @@ export async function handleGenericOAuthInitiate(
       );
     }
 
+    const continuation =
+      body.continuation === undefined
+        ? undefined
+        : parseLifecycleCapabilityContinuation(body.continuation);
+    if (body.continuation !== undefined && !continuation) {
+      return c.json(
+        {
+          error: "INVALID_CONTINUATION",
+          message: "Invalid capability continuation",
+        },
+        400,
+      );
+    }
+    let continuationAgentId: string | undefined;
+    if (continuation) {
+      if (
+        typeof body.agentId !== "string" ||
+        !/^[0-9a-f-]{36}$/i.test(body.agentId)
+      ) {
+        return c.json(
+          {
+            error: "INVALID_CONTINUATION_AGENT",
+            message: "A valid agentId is required",
+          },
+          400,
+        );
+      }
+      const agent = await agentSandboxesRepository.findByIdAndOrg(
+        body.agentId,
+        organizationId,
+      );
+      if (!agent || agent.user_id !== user.id) {
+        return c.json(
+          {
+            error: "CONTINUATION_AGENT_FORBIDDEN",
+            message: "Agent is not owned by this user",
+          },
+          403,
+        );
+      }
+      continuationAgentId = agent.id;
+    }
+
     logger.info(`[OAuth ${platform}] Initiating auth`, {
       organizationId,
       userId: user.id,
       scopeCount: scopes.length,
       connectionRole,
+      hasCapabilityContinuation: Boolean(continuation),
     });
 
     const result = await initiateOAuth2(provider, {
@@ -158,6 +208,16 @@ export async function handleGenericOAuthInitiate(
       redirectUrl,
       scopes,
       connectionRole,
+      ...(continuation && continuationAgentId
+        ? {
+            capabilityContinuation: {
+              agentId: continuationAgentId,
+              connectorId: provider.id,
+              expiresAt: Date.now() + OAUTH_CONTINUATION_TTL_MS,
+              continuation,
+            },
+          }
+        : {}),
     });
 
     return c.json({

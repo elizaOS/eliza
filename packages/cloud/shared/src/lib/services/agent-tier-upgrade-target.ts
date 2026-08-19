@@ -53,10 +53,12 @@ import { encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import { apiKeysService } from "./api-keys";
 import {
   AGENT_PERSONAL_CUTOVER_KEY,
+  AGENT_UPGRADE_CONTINUATION_KEY,
   AGENT_UPGRADED_FROM_KEY,
   readPersonalElizaCutover,
   readUpgradedFromAgentId,
 } from "./eliza-agent-config";
+import type { StoredLifecycleCapabilityContinuation } from "./eliza-app/lifecycle-follow-up";
 import {
   configureElizaLifecycleTransaction,
   elizaAgentCreateAdvisoryLockSql,
@@ -90,11 +92,60 @@ export interface CreateTierUpgradeTargetParams {
   environmentVars?: Record<string, string>;
   characterId?: string;
   maxNonTerminalAgents: number;
+  capabilityContinuation?: StoredLifecycleCapabilityContinuation;
 }
 
 export type TierUpgradeTargetResult =
   | { created: true; agent: AgentSandbox; job: Job }
   | { created: false; agent: AgentSandbox };
+
+/** Adds a validated pending request to an already-live single-flight target. */
+export async function persistTierUpgradeCapabilityContinuation(params: {
+  organizationId: string;
+  userId: string;
+  sourceAgentId: string;
+  dedicatedAgentId: string;
+  capabilityContinuation: StoredLifecycleCapabilityContinuation;
+}): Promise<void> {
+  await dbWrite.transaction(async (tx) => {
+    await configureElizaLifecycleTransaction(tx);
+    await tx.execute(
+      elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
+    );
+    const [target] = await tx
+      .select()
+      .from(agentSandboxes)
+      .where(
+        and(
+          liveTargetWhere(params.organizationId, params.sourceAgentId),
+          eq(agentSandboxes.id, params.dedicatedAgentId),
+          eq(agentSandboxes.user_id, params.userId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!target) {
+      throw new ElizaError("Tier-upgrade continuation target is unavailable", {
+        code: "TIER_UPGRADE_CONTINUATION_TARGET_INVALID",
+        context: {
+          organizationId: params.organizationId,
+          sourceAgentId: params.sourceAgentId,
+          dedicatedAgentId: params.dedicatedAgentId,
+        },
+      });
+    }
+    await tx
+      .update(agentSandboxes)
+      .set({
+        agent_config: {
+          ...((target.agent_config as Record<string, unknown> | null) ?? {}),
+          [AGENT_UPGRADE_CONTINUATION_KEY]: params.capabilityContinuation,
+        },
+        updated_at: new Date(),
+      })
+      .where(eq(agentSandboxes.id, target.id));
+  });
+}
 
 function liveTargetWhere(organizationId: string, sourceAgentId: string) {
   return and(
@@ -232,6 +283,9 @@ export async function finalizePersonalTierUpgradeCutover(params: {
     const existing = readPersonalElizaCutover(
       target.agent_config as Record<string, unknown> | null,
     );
+    const targetConfig = (target.agent_config as Record<string, unknown> | null) ?? {};
+    const { [AGENT_UPGRADE_CONTINUATION_KEY]: pendingContinuation, ...settledTargetConfig } =
+      targetConfig;
     const sameCutover =
       existing?.sourceAgentId === params.sourceAgentId &&
       existing.cutoverToken === params.cutoverToken;
@@ -243,6 +297,14 @@ export async function finalizePersonalTierUpgradeCutover(params: {
       existing.sharedTodoMutationCount === params.sharedTodoMutationCount &&
       existing.sharedTodoDigest === params.sharedTodoDigest
     ) {
+      if (pendingContinuation !== undefined) {
+        const [cleared] = await tx
+          .update(agentSandboxes)
+          .set({ agent_config: settledTargetConfig, updated_at: new Date() })
+          .where(eq(agentSandboxes.id, target.id))
+          .returning();
+        return cleared ?? target;
+      }
       return target;
     }
 
@@ -250,7 +312,7 @@ export async function finalizePersonalTierUpgradeCutover(params: {
       .update(agentSandboxes)
       .set({
         agent_config: {
-          ...((target.agent_config as Record<string, unknown> | null) ?? {}),
+          ...settledTargetConfig,
           [AGENT_PERSONAL_CUTOVER_KEY]: {
             mode: "dedicated",
             sourceAgentId: params.sourceAgentId,
@@ -504,6 +566,11 @@ export async function createTierUpgradeTargetWithProvision(
             // re-applied on top so reattach lookups can find this target.
             ...(canonical.agent_config ?? {}),
             [AGENT_UPGRADED_FROM_KEY]: params.sourceAgentId,
+            ...(params.capabilityContinuation
+              ? {
+                  [AGENT_UPGRADE_CONTINUATION_KEY]: params.capabilityContinuation,
+                }
+              : {}),
           },
         })
         .returning();

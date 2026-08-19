@@ -23,6 +23,7 @@ import { InsufficientCreditsError } from "../../api/errors";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
+import type { SharedChannelIdentityProfileHint } from "./shared-profile";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
 import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
@@ -544,6 +545,7 @@ export async function sharedRestMessageSend(
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
   trustedChannel?: SharedRuntimeChannel,
+  trustedProfileHint?: SharedChannelIdentityProfileHint,
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -569,6 +571,7 @@ export async function sharedRestMessageSend(
       type: ChannelType.DM,
       source: trustedDelivery?.platform ?? MESSAGE_SOURCE_CLIENT_CHAT,
     },
+    ...(trustedProfileHint ? { trustedProfileHint } : {}),
   });
   if (response.error) {
     // A credit-reserve rejection is a permanent add-credits condition, not a

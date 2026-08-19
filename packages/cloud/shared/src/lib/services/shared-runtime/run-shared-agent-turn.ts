@@ -30,12 +30,12 @@ import {
 } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
-import { formatAgentCapabilityCatalog } from "@elizaos/shared";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import { hasLanguageModelProviderConfigured } from "../../providers/language-model";
 import {
   buildSharedCapabilityCatalog,
+  formatSharedCapabilityCatalogForPrompt,
   type SharedCapabilityFlags,
 } from "./shared-capability-catalog";
 import {
@@ -44,6 +44,7 @@ import {
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
+import { formatSharedProfile, type SharedProfile } from "./shared-profile";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
 import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
@@ -98,6 +99,8 @@ export interface RunSharedAgentTurnInput {
   character: SharedAgentCharacter;
   /** Prior conversation (oldest first). The new user message is NOT included. */
   history: SharedTurnMessage[];
+  /** Durable, server-decoded owner facts. Raw profile records never enter model history. */
+  ownerProfile?: SharedProfile;
   /** The incoming user message or event text. */
   message: string;
   /** Authenticated raw utterance used for capability checks when `message` includes server context. */
@@ -297,6 +300,7 @@ function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
   capabilities: SharedCapabilityFlags,
   recallContext?: string,
+  ownerProfile?: SharedProfile,
 ): string {
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
@@ -311,10 +315,11 @@ function buildSharedRuntimeSystem(
   }
   const catalog = buildSharedCapabilityCatalog(capabilities);
   parts.push(
-    `Shared runtime capabilities:\n${formatAgentCapabilityCatalog(catalog)}\n` +
+    `Shared runtime capabilities:\n${formatSharedCapabilityCatalogForPrompt(catalog)}\n` +
       "Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
       "When setup is needed, preserve the user's intent, offer the smallest valid handoff, and continue useful planning or drafting now.",
   );
+  if (ownerProfile) parts.push(formatSharedProfile(ownerProfile));
   if (recallContext?.trim()) parts.push(recallContext.trim());
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
 }
@@ -509,6 +514,7 @@ export async function runSharedAgentTurn(
               media: actionsEnabled && Boolean(execution.media),
             },
             input.recallContext,
+            input.ownerProfile,
           ),
         },
         execution,
@@ -600,6 +606,7 @@ export async function runSharedAgentTurnStream(
               media: actionsEnabled && Boolean(execution.media),
             },
             input.recallContext,
+            input.ownerProfile,
           ),
         },
         execution,

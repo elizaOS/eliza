@@ -78,6 +78,7 @@ function isStoredSessionAlias(value: unknown): value is StoredSessionAlias {
 const SESSION_KEY_PREFIX = "session:";
 const HISTORY_KEY_PREFIX = "history:";
 const GREETING_KEY_PREFIX = "greeting:";
+const GREETING_TOMBSTONE_KEY_PREFIX = "greeting-delivered:";
 // Mirrors GREETING_TTL_MS in onboarding-proactive-greeting.ts: stale greetings
 // are dropped at drain time, never delivered.
 const GREETING_TTL_MS = 15 * 60 * 1000;
@@ -91,7 +92,18 @@ interface StoredGreeting {
   message: string;
   createdAt: string;
   deliveryNonce: string;
+  expiresAt?: string;
   lease?: { id: string; expiresAt: number };
+}
+
+interface GreetingDeliveryTombstone {
+  expiresAt: number;
+}
+
+function greetingTombstoneKey(
+  entry: Pick<StoredGreeting, "platformUserId" | "sessionId">,
+): string {
+  return `${GREETING_TOMBSTONE_KEY_PREFIX}${storageComponent(entry.platformUserId)}:${storageComponent(entry.sessionId)}`;
 }
 
 function isValidGreeting(value: unknown): value is StoredGreeting {
@@ -111,6 +123,9 @@ function isValidGreeting(value: unknown): value is StoredGreeting {
     Number.isFinite(Date.parse(record.createdAt)) &&
     typeof record.deliveryNonce === "string" &&
     /^[A-Za-z0-9_-]{1,25}$/.test(record.deliveryNonce) &&
+    (record.expiresAt === undefined ||
+      (typeof record.expiresAt === "string" &&
+        Number.isFinite(Date.parse(record.expiresAt)))) &&
     (record.lease === undefined || isValidGreetingLease(record.lease))
   );
 }
@@ -564,6 +579,13 @@ export class OnboardingSessionCoordinator {
     if (!isValidGreeting(body)) {
       return Response.json({ error: "Invalid greeting" }, { status: 400 });
     }
+    const tombstoneKey = greetingTombstoneKey(body);
+    const tombstone =
+      await this.state.storage.get<GreetingDeliveryTombstone>(tombstoneKey);
+    if (tombstone && tombstone.expiresAt > Date.now()) {
+      return Response.json({ success: true });
+    }
+    if (tombstone) await this.state.storage.delete(tombstoneKey);
     const key = `${GREETING_KEY_PREFIX}${storageComponent(body.sessionId)}`;
     const existing = await this.state.storage.get<StoredGreeting>(key);
     if (!isValidGreeting(existing)) await this.state.storage.put(key, body);
@@ -577,6 +599,22 @@ export class OnboardingSessionCoordinator {
    */
   private async drainGreetings(request: Request): Promise<Response> {
     const body: unknown = await request.json();
+    const platformUserId =
+      body &&
+      typeof body === "object" &&
+      "platformUserId" in body &&
+      typeof (body as { platformUserId?: unknown }).platformUserId === "string"
+        ? (body as { platformUserId: string }).platformUserId
+        : undefined;
+    if (
+      platformUserId !== undefined &&
+      (platformUserId.length < 1 || platformUserId.length > 64)
+    ) {
+      return Response.json(
+        { error: "Invalid greeting recipient" },
+        { status: 400 },
+      );
+    }
     const requested =
       body && typeof body === "object" && "limit" in body
         ? Number((body as { limit?: unknown }).limit)
@@ -593,10 +631,18 @@ export class OnboardingSessionCoordinator {
     const claimed: Array<StoredGreeting & { leaseId: string }> = [];
     const deletions: string[] = [];
     for (const [key, entry] of entries) {
-      if (
-        !isValidGreeting(entry) ||
-        now - Date.parse(entry.createdAt) > GREETING_TTL_MS
-      ) {
+      if (!isValidGreeting(entry)) {
+        deletions.push(key);
+        logger.warn(
+          "[OnboardingSessionCoordinator] dropped invalid proactive greeting",
+          { key },
+        );
+        continue;
+      }
+      const expiresAt = entry.expiresAt
+        ? Date.parse(entry.expiresAt)
+        : Date.parse(entry.createdAt) + GREETING_TTL_MS;
+      if (now > expiresAt) {
         deletions.push(key);
         logger.warn(
           "[OnboardingSessionCoordinator] dropped stale proactive greeting",
@@ -604,6 +650,7 @@ export class OnboardingSessionCoordinator {
         );
         continue;
       }
+      if (platformUserId && entry.platformUserId !== platformUserId) continue;
       if (claimed.length >= limit) continue;
       if (entry.lease && entry.lease.expiresAt > now) continue;
       const leaseId = greetingLeaseId();
@@ -623,6 +670,22 @@ export class OnboardingSessionCoordinator {
   /** Deletes only greetings still owned by the acknowledging lease. */
   private async acknowledgeGreetings(request: Request): Promise<Response> {
     const body: unknown = await request.json();
+    const platformUserId =
+      body &&
+      typeof body === "object" &&
+      "platformUserId" in body &&
+      typeof (body as { platformUserId?: unknown }).platformUserId === "string"
+        ? (body as { platformUserId: string }).platformUserId
+        : undefined;
+    if (
+      platformUserId !== undefined &&
+      (platformUserId.length < 1 || platformUserId.length > 64)
+    ) {
+      return Response.json(
+        { error: "Invalid greeting recipient" },
+        { status: 400 },
+      );
+    }
     const acknowledgements =
       body && typeof body === "object" && "acknowledgements" in body
         ? (body as { acknowledgements?: unknown }).acknowledgements
@@ -649,6 +712,12 @@ export class OnboardingSessionCoordinator {
       const key = `${GREETING_KEY_PREFIX}${storageComponent(sessionId)}`;
       const entry = await this.state.storage.get<StoredGreeting>(key);
       if (!isValidGreeting(entry) || entry.lease?.id !== leaseId) continue;
+      if (platformUserId && entry.platformUserId !== platformUserId) continue;
+      if (entry.expiresAt) {
+        await this.state.storage.put(greetingTombstoneKey(entry), {
+          expiresAt: Date.parse(entry.expiresAt),
+        } satisfies GreetingDeliveryTombstone);
+      }
       await this.state.storage.delete(key);
       acknowledged += 1;
     }

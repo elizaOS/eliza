@@ -346,6 +346,8 @@ describe("shared-rest-adapter — messages", () => {
       "platform",
       undefined,
       "hello",
+      undefined,
+      { preferredName: "Nia" },
     );
 
     expect(coordinateSharedBridge.mock.calls[0][2]).toEqual({
@@ -354,6 +356,7 @@ describe("shared-rest-adapter — messages", () => {
       agentKind: "personal",
       trustedUserUtterance: "hello",
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      trustedProfileHint: { preferredName: "Nia" },
     });
   });
 

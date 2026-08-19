@@ -6,6 +6,7 @@ import {
   resolveOAuthSuccessRedirectUrl,
 } from "@/lib/security/redirect-validation";
 import { connectionEnforcementService } from "@/lib/services/eliza-app";
+import { enqueueUserLifecycleFollowUps } from "@/lib/services/eliza-app/lifecycle-follow-up";
 import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
 import {
   getProvider,
@@ -174,6 +175,32 @@ export async function handleGenericOAuthCallback(
       userId: result.userId,
       connectionId: result.connectionId,
       platformUserId: result.platformUserId,
+    });
+
+    await enqueueUserLifecycleFollowUps([
+      {
+        kind: "connector_connected",
+        idempotencyKey: `connector-connected:${result.connectionId}`,
+        userId: result.userId,
+        organizationId: result.organizationId,
+        resourceId: result.connectionId,
+        origin: "web",
+        connectorName: provider.name,
+        ...(result.agentId ? { agentId: result.agentId } : {}),
+        ...(result.capabilityContinuation
+          ? { continuation: result.capabilityContinuation }
+          : {}),
+      },
+    ]).catch((followUpError) => {
+      // error-policy:J7 the credential is already durably active; report the
+      // notification outage without rewriting a real OAuth success as failure.
+      logger.error(`[OAuth ${platform}] durable connected follow-up failed`, {
+        connectionId: result.connectionId,
+        error:
+          followUpError instanceof Error
+            ? followUpError.message
+            : String(followUpError),
+      });
     });
 
     return Response.redirect(finalUrl);

@@ -5,7 +5,12 @@ import { telegramAdapter } from "./adapters/telegram";
 import { twilioAdapter } from "./adapters/twilio";
 import type { Platform, PlatformAdapter } from "./adapters/types";
 import { whatsappAdapter } from "./adapters/whatsapp";
-import { getAuthHeader, initAuth, shutdownAuth } from "./auth";
+import {
+  getAuthHeader,
+  initAuth,
+  reacquireAuthHeader,
+  shutdownAuth,
+} from "./auth";
 import { registerForwarderAuthReadinessRoute } from "./forwarder-auth-readiness";
 import {
   enforceForwarderSecret,
@@ -14,6 +19,7 @@ import {
 import { deliverInternalMessage } from "./internal-delivery";
 import { handleInternalEvent } from "./internal-event-handler";
 import { logger } from "./logger";
+import { drainAndDeliverWebhookGreetings } from "./proactive-greeting-delivery";
 import { initProjectConfig, shutdownProjectConfig } from "./project-config";
 import { createRedis } from "./redis";
 import { requireCanonicalAgentRoutingConfiguration } from "./server-router";
@@ -46,12 +52,66 @@ const adapters: Record<Platform, PlatformAdapter> = {
 };
 
 const SUPPORTED_PLATFORMS = new Set<string>(Object.keys(adapters));
+const GREETING_POLL_INTERVAL_MS = 5_000;
 
 let draining = false;
+let greetingPollInterval: ReturnType<typeof setInterval> | null = null;
+let greetingDrainInFlight: Promise<void> | null = null;
 
 const redis = createRedis();
 
 const app = new Hono();
+
+function greetingApiRequest(body: Record<string, unknown>): Promise<Response> {
+  return fetch(
+    `${ELIZA_CLOUD_URL}/api/internal/webhook/eliza-app/pending-greetings`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+}
+
+async function drainProactiveGreetings(): Promise<void> {
+  if (draining) return;
+  const report = await drainAndDeliverWebhookGreetings({
+    redis,
+    claim: (platform) => greetingApiRequest({ action: "claim", platform }),
+    acknowledge: (platform, acknowledgements) =>
+      greetingApiRequest({ action: "ack", platform, acknowledgements }),
+  });
+  if (report.authRefreshNeeded) await reacquireAuthHeader();
+  if (report.claimed > 0) {
+    logger.info("Proactive onboarding greeting drain completed", { ...report });
+  }
+}
+
+function startGreetingPolling(): void {
+  if (greetingPollInterval) return;
+  greetingPollInterval = setInterval(() => {
+    if (greetingDrainInFlight || draining) return;
+    const drain = drainProactiveGreetings()
+      .catch((error) => {
+        // error-policy:J1 lease recovery preserves unacknowledged work after
+        // this background polling boundary reports a failed drain.
+        logger.error("Proactive onboarding greeting drain failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        if (greetingDrainInFlight === drain) greetingDrainInFlight = null;
+      });
+    greetingDrainInFlight = drain;
+  }, GREETING_POLL_INTERVAL_MS);
+}
+
+function stopGreetingPolling(): void {
+  if (greetingPollInterval) clearInterval(greetingPollInterval);
+  greetingPollInterval = null;
+  greetingDrainInFlight = null;
+}
 
 app.get("/health", (c) =>
   c.json({ status: draining ? "draining" : "healthy", pod: POD_NAME }),
@@ -198,6 +258,7 @@ async function start() {
     bootstrapSecret: GATEWAY_BOOTSTRAP_SECRET,
     podName: POD_NAME,
   });
+  startGreetingPolling();
 
   Bun.serve({
     port: PORT,
@@ -217,6 +278,7 @@ function shutdown(signal: string) {
   logger.info("Shutdown signal received", { signal });
   draining = true;
   shutdownProjectConfig();
+  stopGreetingPolling();
   shutdownAuth();
   const quitPromise = redis.quit?.();
   quitPromise?.catch((err) => {

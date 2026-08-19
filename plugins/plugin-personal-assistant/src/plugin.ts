@@ -1323,6 +1323,7 @@ export {
   createSeededDefaultsStore,
   type FirstRunRecord,
   type FirstRunStateStore,
+  type ForgettableOwnerFact,
   type OwnerFactStore,
   type OwnerFacts,
   type OwnerFactsPatch,

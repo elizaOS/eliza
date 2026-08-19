@@ -15,6 +15,7 @@ import {
 import { cache } from "../../../cache/client";
 import { getCloudAwareEnv } from "../../../runtime/cloud-bindings";
 import { logger } from "../../../utils/logger";
+import type { LifecycleCapabilityContinuation } from "../../eliza-app/lifecycle-follow-up";
 import { secretsService } from "../../secrets";
 import type { OAuthProviderConfig, UserInfoMapping } from "../provider-registry";
 import {
@@ -50,6 +51,12 @@ interface OAuth2State {
   connectionRole?: OAuthConnectionRole;
   createdAt: number;
   codeVerifier?: string;
+  capabilityContinuation?: {
+    agentId: string;
+    connectorId: string;
+    expiresAt: number;
+    continuation: LifecycleCapabilityContinuation;
+  };
 }
 
 /**
@@ -179,6 +186,8 @@ export interface OAuth2CallbackResult {
   email?: string;
   displayName?: string;
   redirectUrl: string;
+  agentId?: string;
+  capabilityContinuation?: LifecycleCapabilityContinuation;
 }
 
 /**
@@ -194,6 +203,12 @@ export async function initiateOAuth2(
     redirectUrl?: string;
     scopes?: string[];
     connectionRole?: OAuthConnectionRole;
+    capabilityContinuation?: {
+      agentId: string;
+      connectorId: string;
+      expiresAt: number;
+      continuation: LifecycleCapabilityContinuation;
+    };
   },
 ): Promise<InitiateOAuth2Result> {
   const clientId = getClientId(provider);
@@ -232,6 +247,9 @@ export async function initiateOAuth2(
     connectionRole: normalizeOAuthConnectionRole(params.connectionRole),
     createdAt: Date.now(),
     codeVerifier,
+    ...(params.capabilityContinuation
+      ? { capabilityContinuation: params.capabilityContinuation }
+      : {}),
   };
 
   await cache.set(`oauth2:${provider.id}:${state}`, stateData, STATE_TTL_SECONDS);
@@ -318,6 +336,11 @@ export async function handleOAuth2Callback(
 
   const { organizationId, userId, redirectUrl, scopes, codeVerifier } = stateData;
   const connectionRole = normalizeOAuthConnectionRole(stateData.connectionRole);
+  const capabilityContinuation =
+    stateData.capabilityContinuation?.connectorId === provider.id &&
+    stateData.capabilityContinuation.expiresAt >= Date.now()
+      ? stateData.capabilityContinuation
+      : undefined;
 
   // Exchange code for tokens
   const tokens = await exchangeCodeForTokens(provider, code, codeVerifier);
@@ -366,6 +389,12 @@ export async function handleOAuth2Callback(
     email: userInfo.email,
     displayName: userInfo.displayName,
     redirectUrl,
+    ...(capabilityContinuation
+      ? {
+          agentId: capabilityContinuation.agentId,
+          capabilityContinuation: capabilityContinuation.continuation,
+        }
+      : {}),
   };
 }
 

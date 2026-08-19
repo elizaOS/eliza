@@ -48,7 +48,6 @@ import {
   type AgentCapabilityId,
   type CapabilityHandoffRequest,
   findAgentCapability,
-  formatAgentCapabilityCatalog,
 } from "@elizaos/shared";
 import {
   generateText,
@@ -72,11 +71,24 @@ import type {
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
 import {
+  buildSharedCapabilityCatalog,
+  formatSharedCapabilityCatalogForPrompt,
+} from "./shared-capability-catalog";
+import {
+  applySharedProfileMutation,
+  extractSharedProfileMutation,
+  formatSharedProfile,
+  readSharedProfile,
+  type SharedProfile,
+  sharedProfileProviderProjection,
+  upsertSharedProfileMessage,
+  withoutSharedProfileMessages,
+} from "./shared-profile";
+import {
   createSharedRuntimeCapabilitiesPlugin,
   REQUEST_DEDICATED_UPGRADE_ACTION,
   SHARED_RUNTIME_CAPABILITIES_PROVIDER,
 } from "./shared-runtime-capabilities";
-import { buildSharedCapabilityCatalog } from "./shared-capability-catalog";
 import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
@@ -302,7 +314,7 @@ export function createSharedCapabilityPlugin(options: {
     alwaysInResponseState: true,
     cacheScope: "turn",
     get: async (): Promise<ProviderResult> => ({
-      text: formatAgentCapabilityCatalog(options.catalog),
+      text: formatSharedCapabilityCatalogForPrompt(options.catalog),
       values: {
         capabilityTier: options.catalog.tier,
         capabilityTransport: options.catalog.transport,
@@ -381,6 +393,54 @@ export function createSharedCapabilityPlugin(options: {
   };
 }
 
+export interface SharedProfileState {
+  profile: SharedProfile;
+}
+
+/** Edge-safe provider/evaluator pair backed by the durable synthetic profile record. */
+export function createSharedProfilePlugin(
+  state: SharedProfileState,
+  captureEnabled = true,
+): Plugin {
+  const provider: Provider = {
+    name: "OWNER_PROFILE",
+    description: "Known owner name, stable home location, timezone, provenance, and confidence.",
+    descriptionCompressed: "Known owner profile facts with provenance.",
+    dynamic: true,
+    alwaysInResponseState: true,
+    cacheScope: "turn",
+    get: async (): Promise<ProviderResult> => sharedProfileProviderProjection(state.profile),
+  };
+  const evaluator: NonNullable<Plugin["responseHandlerEvaluators"]>[number] = {
+    name: "shared.owner_profile",
+    description: "Capture or forget explicit owner name, stable home location, and timezone facts.",
+    priority: 30,
+    async shouldRun({ message }) {
+      if (!captureEnabled || typeof message.content?.text !== "string") return false;
+      const mutation = extractSharedProfileMutation(message.content.text);
+      return Object.keys(mutation.set).length > 0 || mutation.forget.length > 0;
+    },
+    async evaluate({ message }) {
+      if (!captureEnabled || typeof message.content?.text !== "string") return undefined;
+      const mutation = extractSharedProfileMutation(message.content.text);
+      state.profile = applySharedProfileMutation(state.profile, mutation);
+      return {
+        debug: [
+          `shared-profile:set=${Object.keys(mutation.set).join(",") || "none"}`,
+          `shared-profile:forgot=${mutation.forget.join(",") || "none"}`,
+        ],
+        addContextSlices: [formatSharedProfile(state.profile)],
+      };
+    },
+  };
+  return {
+    name: "shared-owner-profile",
+    description: "Progressive Shared owner-profile context and deterministic extraction.",
+    providers: [provider],
+    responseHandlerEvaluators: [evaluator],
+  };
+}
+
 function createRuntime(options: {
   agentKey: string;
   agentId?: UUID;
@@ -389,6 +449,7 @@ function createRuntime(options: {
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
   capabilityCatalog: AgentCapabilityCatalog;
+  profileState: SharedProfileState;
   mediaPlugin?: Plugin;
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
@@ -425,6 +486,7 @@ function createRuntime(options: {
         agentKey: options.agentKey,
         catalog: options.capabilityCatalog,
       }),
+      createSharedProfilePlugin(options.profileState, options.actionsEnabled),
       ...(!options.actionsEnabled ? [sharedSystemLifecyclePlugin] : []),
       ...(options.actionsEnabled ? [capabilityPlugin] : []),
       ...(options.actionsEnabled ? [webSearchEdgePlugin] : []),
@@ -462,6 +524,7 @@ export async function prewarmSharedElizaRuntime(): Promise<void> {
         todos: false,
         media: false,
       }),
+      profileState: { profile: { version: 1, facts: {} } },
     });
     let initializationError: unknown;
     try {
@@ -854,6 +917,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     media: Boolean(mediaPlugin),
     transport: input.execution?.transport,
   });
+  const profileState: SharedProfileState = {
+    profile: input.ownerProfile ?? readSharedProfile(input.history),
+  };
+  const conversationHistory = withoutSharedProfileMessages(input.history);
   const runtime = createRuntime({
     agentKey: input.agentKey,
     agentId,
@@ -862,6 +929,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     character: input.character,
     modelPlugin,
     capabilityCatalog,
+    profileState,
     mediaPlugin,
     reminderPlugin,
     todoPlugin,
@@ -950,10 +1018,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     });
     timing.markConnectionReady();
     timing.markHistoryStarted();
-    if (input.history.length > 0) {
-      const historyTimestamps = projectedHistoryTimestamps(input.history);
+    if (conversationHistory.length > 0) {
+      const historyTimestamps = projectedHistoryTimestamps(conversationHistory);
       await adapter.createMemories(
-        input.history.map((message, index) => {
+        conversationHistory.map((message, index) => {
           const createdAt = historyTimestamps[index];
           const memory = createMessageMemory({
             id: runtimeMemoryId(message, index),
@@ -1069,11 +1137,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       return {
         reply: "",
         responded: false,
-        history: appendSharedInput(
-          input.history,
-          input.message.trim(),
-          input.messageIds,
-          input.messageRole,
+        history: upsertSharedProfileMessage(
+          appendSharedInput(
+            conversationHistory,
+            input.message.trim(),
+            input.messageIds,
+            input.messageRole,
+          ),
+          profileState.profile,
         ),
         model: input.model,
         degraded: false,
@@ -1087,12 +1158,15 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     return {
       reply,
       responded: true,
-      history: appendSharedTurn(
-        input.history,
-        input.message.trim(),
-        reply,
-        input.messageIds,
-        input.messageRole,
+      history: upsertSharedProfileMessage(
+        appendSharedTurn(
+          conversationHistory,
+          input.message.trim(),
+          reply,
+          input.messageIds,
+          input.messageRole,
+        ),
+        profileState.profile,
       ),
       model: input.model,
       degraded: false,

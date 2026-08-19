@@ -1108,6 +1108,44 @@ describe("OnboardingSessionCoordinator", () => {
       expect(await greetingsOf(await drain(queue))).toEqual([]);
     });
 
+    test("an explicit lifecycle expiry survives beyond the short onboarding TTL", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+      const createdAt = new Date(Date.now() - 16 * 60 * 1000).toISOString();
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+      expect(
+        (
+          await enqueue(
+            queue,
+            greeting("lifecycle:workspace-ready", { createdAt, expiresAt }),
+          )
+        ).status,
+      ).toBe(200);
+      expect(await greetingsOf(await drain(queue))).toHaveLength(1);
+    });
+
+    test("an acknowledged lifecycle event cannot be re-enqueued before its expiry", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+      const entry = greeting("lifecycle:stable-event", {
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+
+      await enqueue(queue, entry);
+      const [claimed] = await greetingsOf(await drain(queue));
+      expect(claimed).toBeDefined();
+      const acknowledged = await acknowledge(queue, [
+        { sessionId: claimed!.sessionId, leaseId: claimed!.leaseId },
+      ]);
+      expect((await acknowledged.json()) as unknown).toEqual({
+        acknowledged: 1,
+      });
+
+      await enqueue(queue, entry);
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
     test("an unacknowledged greeting is reclaimable after lease expiry", async () => {
       const harness = createCoordinatorHarness();
       const queue = harness.objectByName(QUEUE);

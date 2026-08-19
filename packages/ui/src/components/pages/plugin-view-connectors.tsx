@@ -22,6 +22,7 @@ import {
   client,
   type PluginInfo,
 } from "../../api";
+import { getOrClaimCapabilityConnectorContinuation } from "../../capability-workspace-handoff";
 import { useAppSelectorShallow } from "../../state";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import { PagePanel } from "../composites/page-panel";
@@ -812,6 +813,9 @@ function ConnectorPluginCard({
     try {
       const redirectUrl =
         typeof window !== "undefined" ? window.location.href : undefined;
+      const pending = getOrClaimCapabilityConnectorContinuation(
+        cloudOAuthConnector.platform,
+      );
       const oauthResponse =
         cloudOAuthConnector.oauthInitiation === "twitter-endpoint"
           ? await client.initiateCloudTwitterOauth({
@@ -821,6 +825,19 @@ function ConnectorPluginCard({
           : await client.initiateCloudOauth(cloudOAuthConnector.platform, {
               redirectUrl,
               connectionRole,
+              ...(pending
+                ? {
+                    agentId: pending.agentId,
+                    continuation: {
+                      originalIntent: pending.originalIntent,
+                      capabilityId: pending.capabilityId,
+                      ...(pending.clientMessageId
+                        ? { clientMessageId: pending.clientMessageId }
+                        : {}),
+                      requiresConfirmation: true as const,
+                    },
+                  }
+                : {}),
             });
 
       await handleOpenPluginExternalUrl(oauthResponse.authUrl);

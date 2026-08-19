@@ -59,6 +59,27 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
+const consumeCloudLifecycleFollowUps = vi.fn<
+  (
+    authorityKey: string,
+    accept: (notification: AgentNotification) => void,
+  ) => Promise<void>
+>(async () => {});
+function latestLifecycleConsumeCall(): [
+  string,
+  (notification: AgentNotification) => void,
+] {
+  const call = consumeCloudLifecycleFollowUps.mock.calls.at(-1);
+  if (!call) throw new Error("Expected a lifecycle consume call");
+  return call;
+}
+vi.mock("./lifecycle-follow-up-consumer", () => ({
+  consumeCloudLifecycleFollowUps: (
+    authorityKey: string,
+    accept: (notification: AgentNotification) => void,
+  ) => consumeCloudLifecycleFollowUps(authorityKey, accept),
+}));
+
 const invokeDesktopBridgeRequest = vi.fn();
 vi.mock("../../bridge/electrobun-rpc", () => ({
   getElectrobunRendererRpc: vi.fn(() => null),
@@ -133,6 +154,7 @@ async function flushDelivery(): Promise<void> {
 describe("notification-store", () => {
   beforeEach(() => {
     __resetNotificationStoreForTests();
+    consumeCloudLifecycleFollowUps.mockClear();
     listNotifications.mockReset().mockResolvedValue({
       notifications: [],
       unreadCount: 0,
@@ -1107,6 +1129,57 @@ describe("notification-store — authority isolation (#18391)", () => {
       expect(__getStateForTests().notifications).toHaveLength(1),
     );
     expect(__getStateForTests().notifications[0]?.id).toBe("b-row");
+  });
+
+  it("drops a lifecycle acceptance callback captured before an A to B switch", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(consumeCloudLifecycleFollowUps).toHaveBeenCalled(),
+    );
+    const callsForA = consumeCloudLifecycleFollowUps.mock.calls.length;
+    const [authorityA, acceptA] = latestLifecycleConsumeCall();
+
+    __setAuthStatusForTests(authenticated("user-b", "session-b"));
+    await vi.waitFor(() =>
+      expect(consumeCloudLifecycleFollowUps).toHaveBeenCalledTimes(
+        callsForA + 1,
+      ),
+    );
+    const [authorityB, acceptB] = latestLifecycleConsumeCall();
+    acceptA(makeNotification({ id: "lifecycle-a" }));
+    expect(__getStateForTests().notifications).toHaveLength(0);
+
+    acceptB(makeNotification({ id: "lifecycle-b" }));
+    expect(__getStateForTests().notifications[0]?.id).toBe("lifecycle-b");
+    expect(authorityA).toContain("user-a::session-a");
+    expect(authorityB).toContain("user-b::session-b");
+  });
+
+  it("does not consume on logout or accept a pre-logout lifecycle callback after login", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(consumeCloudLifecycleFollowUps).toHaveBeenCalled(),
+    );
+    const callsBeforeLogout = consumeCloudLifecycleFollowUps.mock.calls.length;
+    const acceptBeforeLogout = latestLifecycleConsumeCall()[1];
+
+    __setAuthStatusForTests({ phase: "unauthenticated" });
+    expect(consumeCloudLifecycleFollowUps).toHaveBeenCalledTimes(
+      callsBeforeLogout,
+    );
+    acceptBeforeLogout(makeNotification({ id: "logged-out-stale" }));
+    expect(__getStateForTests().notifications).toHaveLength(0);
+
+    __setAuthStatusForTests(authenticated("user-a", "session-new"));
+    await vi.waitFor(() =>
+      expect(consumeCloudLifecycleFollowUps).toHaveBeenCalledTimes(
+        callsBeforeLogout + 1,
+      ),
+    );
+    acceptBeforeLogout(makeNotification({ id: "relogin-stale" }));
+    expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
   it("discards a stale in-flight hydration completion from the prior authority", async () => {

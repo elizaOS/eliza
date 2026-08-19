@@ -2,6 +2,7 @@
 
 import { BlooioApiResponseError, blooioAdapter } from "./adapters/blooio";
 import { TelegramApiResponseError, telegramAdapter } from "./adapters/telegram";
+import { TwilioApiResponseError, twilioAdapter } from "./adapters/twilio";
 import type { ChatEvent } from "./adapters/types";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
@@ -21,6 +22,13 @@ type InternalWebhookDelivery =
     }
   | {
       platform: "blooio";
+      project: string;
+      phoneNumber: string;
+      text: string;
+      idempotencyKey: string;
+    }
+  | {
+      platform: "twilio";
       project: string;
       phoneNumber: string;
       text: string;
@@ -98,12 +106,12 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     };
   }
   if (
-    input.platform === "blooio" &&
+    (input.platform === "blooio" || input.platform === "twilio") &&
     typeof input.phoneNumber === "string" &&
     /^\+[1-9]\d{6,14}$/.test(input.phoneNumber)
   ) {
     return {
-      platform: "blooio",
+      platform: input.platform,
       project: input.project,
       phoneNumber: input.phoneNumber,
       text: input.text.trim(),
@@ -229,12 +237,16 @@ export async function deliverInternalMessage(
       rawPayload: { source: "shared-reminder" },
     };
     const adapter =
-      delivery.platform === "telegram" ? telegramAdapter : blooioAdapter;
+      delivery.platform === "telegram"
+        ? telegramAdapter
+        : delivery.platform === "twilio"
+          ? twilioAdapter
+          : blooioAdapter;
     if (!adapter.sendReplyWithReceipt) {
       throw new Error(`${delivery.platform} receipt delivery is unavailable`);
     }
-    if (delivery.platform === "telegram") {
-      // Telegram has no provider idempotency key. Persist an indeterminate
+    if (delivery.platform === "telegram" || delivery.platform === "twilio") {
+      // Telegram and Twilio have no provider idempotency key. Persist an indeterminate
       // tombstone before dispatch so a process death can never duplicate it.
       await dependencies.redis.set(dedupeKey, "indeterminate", {
         ex: DELIVERY_RECEIPT_TTL_SECONDS,
@@ -274,7 +286,8 @@ export async function deliverInternalMessage(
   } catch (error) {
     if (
       error instanceof TelegramApiResponseError ||
-      error instanceof BlooioApiResponseError
+      error instanceof BlooioApiResponseError ||
+      error instanceof TwilioApiResponseError
     ) {
       let claimReleased = true;
       try {

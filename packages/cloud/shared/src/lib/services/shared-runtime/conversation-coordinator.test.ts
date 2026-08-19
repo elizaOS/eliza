@@ -155,6 +155,7 @@ describe("shared conversation coordinator", () => {
       trustedMessageRole: "system",
       trustedUserUtterance: "email Bob now",
       channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
+      trustedProfileHint: { preferredName: "Nia" },
     });
     await coordinateSharedLifecycleEvent(
       agent.id,
@@ -171,6 +172,7 @@ describe("shared conversation coordinator", () => {
         trustedMessageRole: "system",
         trustedUserUtterance: "email Bob now",
         channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
+        trustedProfileHint: { preferredName: "Nia" },
       },
       {
         operation: "lifecycle",

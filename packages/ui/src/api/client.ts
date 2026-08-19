@@ -112,6 +112,7 @@ export { ElizaClient } from "./client-base";
 export {
   CloudAgentWakeError,
   type CloudAgentWakePhase,
+  type CloudLifecycleFollowUpNotice,
   waitForCloudAgentRunning,
   waitForCloudProvisionJob,
 } from "./client-cloud";

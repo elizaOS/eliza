@@ -2,7 +2,10 @@
 
 import { findAgentCapability } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { buildSharedCapabilityCatalog } from "./shared-capability-catalog.js";
+import {
+  buildSharedCapabilityCatalog,
+  formatSharedCapabilityCatalogForPrompt,
+} from "./shared-capability-catalog.js";
 
 describe("Shared capability catalog", () => {
   it("derives optional capability availability from injected services", () => {
@@ -31,5 +34,25 @@ describe("Shared capability catalog", () => {
       nextAction: "upgrade_workspace",
       requiresConfirmation: true,
     });
+  });
+
+  it("gives the model detailed truthful setup and safety context", () => {
+    const catalog = buildSharedCapabilityCatalog({
+      webSearch: true,
+      reminders: false,
+      todos: false,
+      media: false,
+      transport: "web",
+    });
+
+    const text = formatSharedCapabilityCatalogForPrompt(catalog);
+    expect(text).toContain("Capability tier: shared. Transport: web.");
+    expect(text).toContain("Calendar (calendar)");
+    expect(text).toContain("examples: Check tomorrow; Schedule a meeting");
+    expect(text).toContain("prerequisites: Personal workspace, Connect calendar");
+    expect(text).toContain("consequence: consequential");
+    expect(text).toContain("confirmation: required before effect");
+    expect(text).toContain("next: upgrade workspace");
+    expect(text).toContain("Public web research (web-search); availability: available");
   });
 });

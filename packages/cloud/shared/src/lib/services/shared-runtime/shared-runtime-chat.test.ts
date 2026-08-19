@@ -541,6 +541,46 @@ describe("SharedRuntimeChatService", () => {
     expect(lastTurnRole).toBe("system");
   });
 
+  test("learns a trusted channel display name without overriding an explicit owner name", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    await service.bridge(agent, rpc, {
+      ...h,
+      trustedProfileHint: { preferredName: "Channel Nia" },
+    });
+    expect(lastTurnInput?.ownerProfile).toMatchObject({
+      facts: {
+        preferredName: {
+          value: "Channel Nia",
+          source: "channel_identity",
+          confidence: 0.8,
+        },
+      },
+    });
+
+    await service.bridge(
+      agent,
+      { ...rpc, params: { ...rpc.params, text: "Call me Niamh" } },
+      { ...h, trustedProfileHint: { preferredName: "Channel Nia" } },
+    );
+    expect(lastTurnInput?.ownerProfile).toMatchObject({
+      facts: {
+        preferredName: { value: "Niamh", source: "owner_explicit" },
+      },
+    });
+
+    await service.bridge(agent, rpc, {
+      ...h,
+      trustedProfileHint: { preferredName: "Different Nickname" },
+    });
+    expect(lastTurnInput?.ownerProfile).toMatchObject({
+      facts: {
+        preferredName: { value: "Niamh", source: "owner_explicit" },
+      },
+    });
+  });
+
   test("returns before billing and persists ordered cache-local history", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();

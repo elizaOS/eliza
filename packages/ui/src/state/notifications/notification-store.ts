@@ -44,6 +44,7 @@ import {
   isElizaCloudControlPlaneAgentlessBase,
   isManagedCloudSharedAgentBase,
 } from "../../utils/cloud-agent-base";
+import { consumeCloudLifecycleFollowUps } from "./lifecycle-follow-up-consumer";
 
 /**
  * Notification center store.
@@ -278,6 +279,31 @@ function ingest(
   }
 }
 
+/** Accept a control-plane lifecycle notice into the persistent in-app inbox surface. */
+export function acceptInAppLifecycleNotification(
+  notification: AgentNotification,
+): void {
+  ephemeralNotificationIds.add(notification.id);
+  ingest(notification, undefined, { deliver: false });
+}
+
+/** Consume only for the confirmed authority captured by this invocation. */
+function consumeLifecycleForCurrentAuthority(): void {
+  const authorityKey = currentAuthorityKey;
+  if (
+    !isAuthenticatedNow() ||
+    !authorityKey ||
+    authorityKey === INVALIDATED_AUTHORITY_KEY ||
+    isAnonAuthorityKey(authorityKey)
+  ) {
+    return;
+  }
+  void consumeCloudLifecycleFollowUps(authorityKey, (notification) => {
+    if (currentAuthorityKey !== authorityKey) return;
+    acceptInAppLifecycleNotification(notification);
+  });
+}
+
 interface WsAgentEvent {
   stream?: string;
   payload?: unknown;
@@ -492,6 +518,7 @@ function reconcileAuthority(authStatus: AuthStatusState): void {
     client.rotateConnection();
   }
   void requestHydration();
+  consumeLifecycleForCurrentAuthority();
 }
 
 // Cannot equal any real `computeAuthorityKey` result (those are always
@@ -759,20 +786,27 @@ export function initNotifications(): void {
         onStewardSessionChange,
       ),
     );
-    const retryOnline = () => void retryNotificationHydration();
+    const retryOnline = () => {
+      void retryNotificationHydration();
+      consumeLifecycleForCurrentAuthority();
+    };
     window.addEventListener("online", retryOnline);
     notificationCleanups.push(() =>
       window.removeEventListener("online", retryOnline),
     );
   }
   if (typeof document !== "undefined") {
-    const retryOnResume = () => void retryNotificationHydration();
+    const retryOnResume = () => {
+      void retryNotificationHydration();
+      consumeLifecycleForCurrentAuthority();
+    };
     document.addEventListener(APP_RESUME_EVENT, retryOnResume);
     notificationCleanups.push(() =>
       document.removeEventListener(APP_RESUME_EVENT, retryOnResume),
     );
   }
   void requestHydration();
+  consumeLifecycleForCurrentAuthority();
 }
 
 let devSeedAttempted = false;
@@ -1030,8 +1064,10 @@ export function __ingestEphemeralNotificationForTests(
   notification: AgentNotification,
   unreadCount?: number,
 ): void {
-  ephemeralNotificationIds.add(notification.id);
-  ingest(notification, unreadCount, { deliver: false });
+  acceptInAppLifecycleNotification(notification);
+  if (typeof unreadCount === "number") {
+    setState({ unreadCount });
+  }
 }
 
 /** Test-only: drive the hydration flag to exercise the not-loaded vs empty UI. */

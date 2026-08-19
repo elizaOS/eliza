@@ -22,6 +22,7 @@ import type {
   SharedRuntimeChannel,
   SharedTurnMessage,
 } from "@/lib/services/shared-runtime/run-shared-agent-turn";
+import type { SharedChannelIdentityProfileHint } from "@/lib/services/shared-runtime/shared-profile";
 import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import { parseSharedRuntimeChannel } from "@/lib/services/shared-runtime/shared-runtime-channel";
 import type {
@@ -48,6 +49,7 @@ type ConversationRequest =
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
+      trustedProfileHint?: SharedChannelIdentityProfileHint;
     }
   | {
       operation: "personal-bridge";
@@ -57,6 +59,7 @@ type ConversationRequest =
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
+      trustedProfileHint?: SharedChannelIdentityProfileHint;
     }
   | {
       operation: "stream";
@@ -66,6 +69,7 @@ type ConversationRequest =
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
+      trustedProfileHint?: SharedChannelIdentityProfileHint;
     }
   | {
       operation: "personal-stream";
@@ -75,6 +79,7 @@ type ConversationRequest =
       trustedMessageRole?: "system";
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
+      trustedProfileHint?: SharedChannelIdentityProfileHint;
     }
   | {
       operation: "prewarm";
@@ -1663,6 +1668,7 @@ export class SharedRuntimeConversation {
           trustedMessageRole: payload.trustedMessageRole,
           trustedUserUtterance: payload.trustedUserUtterance,
           channel: validatedChannel,
+          trustedProfileHint: payload.trustedProfileHint,
           mobilePushDispatch: personal
             ? async (message: MobilePushMessage) => {
                 this.enqueueMobilePush(message);
@@ -1679,6 +1685,7 @@ export class SharedRuntimeConversation {
         trustedMessageRole: payload.trustedMessageRole,
         trustedUserUtterance: payload.trustedUserUtterance,
         channel: validatedChannel,
+        trustedProfileHint: payload.trustedProfileHint,
         mobilePushDispatch: personal
           ? async (message: MobilePushMessage) => {
               this.enqueueMobilePush(message);

@@ -192,6 +192,9 @@ export interface OwnerFactsPatch {
   chronotype?: OwnerChronotype;
 }
 
+/** Owner facts that conversational privacy/correction requests may erase. */
+export type ForgettableOwnerFact = "preferredName" | "location" | "timezone";
+
 export interface PolicyPatchReminderIntensity {
   intensity: ReminderIntensity;
   /** Optional note to include in provenance. */
@@ -211,6 +214,8 @@ export interface OwnerFactStore {
     patch: OwnerFactsPatch,
     provenance: OwnerFactProvenance,
   ): Promise<OwnerFacts>;
+  /** Permanently remove explicitly selected identity facts from this store. */
+  forget(fields: readonly ForgettableOwnerFact[]): Promise<OwnerFacts>;
   /** Set the reminder-intensity policy. */
   setReminderIntensity(
     patch: PolicyPatchReminderIntensity,
@@ -750,6 +755,17 @@ class CacheBackedOwnerFactStore implements OwnerFactStore {
       }
     }
 
+    return cloneFacts(next);
+  }
+
+  async forget(fields: readonly ForgettableOwnerFact[]): Promise<OwnerFacts> {
+    if (fields.length === 0) return this.read();
+    const record = await this.readRecord();
+    const next = cloneFacts(record.facts);
+    for (const field of new Set(fields)) {
+      delete next[field];
+    }
+    await this.writeRecord({ schemaVersion: 1, facts: next });
     return cloneFacts(next);
   }
 

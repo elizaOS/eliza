@@ -13,6 +13,7 @@
  * and transcript import are idempotent.
  */
 
+import type { AgentCapabilityId } from "@elizaos/shared";
 import {
   buildCloudSharedAgentApiBase,
   isPersonalSharedElizaId,
@@ -33,6 +34,12 @@ export interface TierUpgradeHandoffClient {
     conversationId: string;
     cloudApiBase: string;
     authToken: string;
+    continuation?: {
+      originalIntent: string;
+      capabilityId: AgentCapabilityId;
+      clientMessageId?: string;
+      requiresConfirmation: true;
+    };
     dedicatedAgentId?: string;
     onSwitch: (containerBase: string) => void | Promise<void>;
     intervalMs?: number;
@@ -70,6 +77,12 @@ export interface TierUpgradeHandoffParams {
   intervalMs?: number;
   timeoutMs?: number;
   log?: (message: string) => void;
+  continuation?: {
+    originalIntent: string;
+    capabilityId: AgentCapabilityId;
+    clientMessageId?: string;
+    requiresConfirmation: true;
+  };
 }
 
 export interface TierUpgradeHandoffOutcome {
@@ -134,6 +147,7 @@ export async function runSharedToDedicatedUpgradeHandoff(
           dedicatedAgentId: params.dedicatedAgentId,
           cloudApiBase: params.cloudApiBase,
           authToken: params.authToken,
+          ...(params.continuation ? { continuation: params.continuation } : {}),
         });
         await params.onSwitch?.(cutover.apiBase);
         return {

@@ -82,6 +82,24 @@ describe("owner profile explicit fact extraction", () => {
     expect(factsFrom("My timezone is PST.")).toEqual({});
     expect(factsFrom("My timezone is Moon/Sea_of_Tranquility.")).toEqual({});
   });
+
+  it("recognizes explicit correction and deletion without erasing replacements", () => {
+    expect(factsFrom("Actually, call me Nia.")).toEqual({
+      preferredName: "Nia",
+    });
+    expect(extractProfileDetails("Forget my name.", NOW).forget).toEqual([
+      "preferredName",
+    ]);
+    expect(
+      extractProfileDetails("Don't store where I live.", NOW).forget,
+    ).toEqual(["location"]);
+    expect(
+      extractProfileDetails("That isn't my time zone.", NOW).forget,
+    ).toEqual(["timezone"]);
+    expect(
+      extractProfileDetails("Forget my name. Call me Nia.", NOW),
+    ).toMatchObject({ facts: { preferredName: "Nia" }, forget: [] });
+  });
 });
 
 describe("owner fact provenance", () => {
@@ -106,5 +124,25 @@ describe("owner fact provenance", () => {
         confidence: 0.98,
       },
     });
+  });
+
+  it("forgets only the requested fact", async () => {
+    const runtime = makeCacheRuntime();
+    const store = createOwnerFactStore(runtime);
+    const provenance = {
+      source: "owner_explicit" as const,
+      recordedAt: "2026-08-18T12:00:00.000Z",
+      confidence: 0.98,
+    };
+    await store.update(
+      { locale: "en-US", timezone: "America/Chicago" },
+      provenance,
+    );
+    const remaining = await store.forget(["timezone"]);
+    expect(remaining.locale?.value).toBe("en-US");
+    expect(remaining.timezone).toBeUndefined();
+    expect(
+      (await createOwnerFactStore(runtime).read()).timezone,
+    ).toBeUndefined();
   });
 });

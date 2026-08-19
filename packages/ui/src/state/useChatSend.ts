@@ -30,6 +30,7 @@ import { describeCreditGateError } from "../api/credit-gate-error";
 import {
   consumeCapabilityWorkspaceHandoff,
   findCapabilityWorkspaceHandoff,
+  persistCapabilityConnectorContinuation,
 } from "../capability-workspace-handoff";
 import {
   expandSavedCustomCommand,
@@ -2200,7 +2201,22 @@ export function useChatSend(deps: UseChatSendDeps) {
       if (detail.phase === "switched" || detail.phase === "switched-empty") {
         const pending = consumeCapabilityWorkspaceHandoff(detail.agentId);
         const originalIntent = pending?.continuation?.originalIntent?.trim();
-        if (originalIntent) {
+        if (pending && originalIntent) {
+          const needsConnection = [
+            "calendar",
+            "communications",
+            "cloud-apps",
+          ].includes(pending.capabilityId);
+          if (
+            needsConnection &&
+            !persistCapabilityConnectorContinuation(pending, detail.agentId)
+          ) {
+            setActionNotice(
+              "Workspace ready. If you connect an account next, resend this request afterward.",
+              "info",
+              8_000,
+            );
+          }
           // The workspace is ready, but consequential capabilities may still
           // need confirmation or an account connection. Put the exact request
           // back in the composer for review instead of executing it silently.
@@ -2218,7 +2234,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     };
     window.addEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
     return () => window.removeEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
-  }, [flushQueuedChatSends]);
+  }, [flushQueuedChatSends, setActionNotice]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationIdRef is a ref — its .current is read at ENQUEUE time (always latest) and must NOT be a dependency, or this callback's identity churns on every conversation switch.
   const sendChatTextInternal = useCallback(

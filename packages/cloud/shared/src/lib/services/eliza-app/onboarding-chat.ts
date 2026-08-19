@@ -18,9 +18,15 @@ import {
 import { logger } from "../../utils/logger";
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
 import { readManagedElizaAgentConnection } from "../eliza-managed-launch";
+import {
+  applySharedProfileMutation,
+  extractSharedProfileMutation,
+  mergeSharedProfileHint,
+  type SharedProfile,
+} from "../shared-runtime/shared-profile";
 import { readOnboardingCoordinatorResult } from "./onboarding-coordinator-transport";
 import {
-  enqueueDiscordProactiveGreeting,
+  enqueueProactiveGreeting,
   PROACTIVE_GREETING_QUEUE_PREFIX,
   type ProactiveGreetingRequest,
 } from "./onboarding-proactive-greeting";
@@ -64,6 +70,8 @@ export interface OnboardingSession {
    */
   platformIdentityTrusted?: boolean;
   name?: string;
+  /** Progressive owner facts captured explicitly during onboarding. */
+  ownerProfile?: SharedProfile;
   userId?: string;
   organizationId?: string;
   agentId?: string;
@@ -170,7 +178,6 @@ const MAX_MESSAGE_LENGTH = 4000;
 // landing (Steward login -> identity confirm -> back-to-Discord handoff) that
 // the messaging Connect CTA now targets directly, plus in-app Cloud links.
 const DEFAULT_ONBOARDING_APP_URL = "https://cloud.eliza.app";
-const ELIZA_APP_SHARED_OFFER = "shared chat is free, no card needed";
 /** Label for platforms that render the login link as a UI affordance. */
 const ONBOARDING_CTA_LABEL = "Connect";
 /**
@@ -761,32 +768,33 @@ const NAME_STOPWORDS = new Set([
   "you",
 ]);
 
-const EXPLICIT_NAME_PATTERN = /\b(?:my name is|i am|i'm|call me)\s+([a-z][a-z .'-]{1,40})/i;
-const BARE_NAME_PATTERN = /^\s*([A-Z][a-z]{1,30}(?:\s+[A-Z][a-z]{1,30})?)\s*$/;
+const EXPLICIT_NAME_PATTERN =
+  /\b(?:my name is|my name's|call me|i go by)\s+([\p{L}\p{M}][\p{L}\p{M} '-]{0,59})/iu;
+const BARE_NAME_PATTERN = /^\s*(\p{Lu}[\p{L}\p{M}'-]{1,30}(?:\s+\p{Lu}[\p{L}\p{M}'-]{1,30})?)\s*$/u;
 
 function containsStopword(name: string): boolean {
   return name
     .toLowerCase()
-    .split(/[^a-z']+/)
+    .split(/[^\p{L}\p{M}']+/u)
     .filter(Boolean)
     .some((word) => NAME_STOPWORDS.has(word.replace(/'/g, "")));
 }
 
 /**
- * Normalizes a candidate preferred name to the ASCII-safe form the SMS reply
- * path requires and rejects candidates that are placeholders, stopwords, or
- * empty after sanitization (for example fully non-ASCII display names, which
- * simply keep the "what should I call you?" prompt active).
+ * Normalizes a preferred name without erasing the user's writing system.
  */
 function sanitizePreferredName(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
-  const cleaned = sanitizeReplyText(raw)
+  const cleaned = raw
+    .normalize("NFC")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
     .replace(/\s+/g, " ")
     .replace(/[.!?,]+$/, "")
     .trim()
     .slice(0, 60)
     .trim();
   if (!cleaned) return undefined;
+  if (!/^[\p{L}\p{M}][\p{L}\p{M} '-]{0,59}$/u.test(cleaned)) return undefined;
   if (isPlaceholderPhoneName(cleaned)) return undefined;
   if (containsStopword(cleaned)) return undefined;
   return cleaned;
@@ -1149,18 +1157,16 @@ function fallbackReply(args: {
   const name = hasPreferredName(args.session) ? args.session.name : undefined;
   const intent = classifyUserIntent(args.userMessage);
   if (!name) {
-    // Every no-name variant keeps the same product facts and always ends on
-    // the name ask, so downstream name-capture logic sees a consistent state.
     if (intent === "hesitation") {
-      return `fair to ask. I'm Eliza - I set you up with your own private agent, and ${ELIZA_APP_SHARED_OFFER}. if it's not for you, just stop replying. if you're curious - what should I call you?`;
+      return "No pressure. I can research something first. What should I call you?";
     }
     if (intent === "question") {
-      return `good question - I'm Eliza, and this is where you get your own agent. it lives in this chat, remembers everything you talk about, and can do real work for you. ${ELIZA_APP_SHARED_OFFER}. what should I call you?`;
+      return "I can help with that and keep the context. What should I call you?";
     }
     if (intent === "greeting") {
-      return `hey! I'm Eliza. I can set you up with your own agent - it chats right here, remembers everything you talk about, and ${ELIZA_APP_SHARED_OFFER}. what should I call you?`;
+      return "Hey. I can research something or set a reminder. What should I call you?";
     }
-    return `hey, I'm Eliza. I can get you set up with your own agent. it chats right here, remembers everything you talk about, and ${ELIZA_APP_SHARED_OFFER}. what should I call you?`;
+    return "I can start helping now. What should I call you?";
   }
   if (args.requiresLogin) {
     // "tap below" copy only when a CTA will actually render; otherwise the
@@ -1168,29 +1174,29 @@ function fallbackReply(args: {
     // login URL could not become a valid button - see buildLoginCta).
     if (args.preferredNameProvidedThisTurn !== false) {
       if (args.cta) {
-        return `nice to meet you, ${name}. tap below to connect this chat to your account. ${ELIZA_APP_SHARED_OFFER}.`;
+        return `Nice to meet you, ${name}. Connect below and I'll keep going.`;
       }
-      return `nice to meet you, ${name}. connect this chat to your account here. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
+      return `Nice to meet you, ${name}. Connect here and I'll keep going: ${args.loginUrl}`;
     }
     // The user kept chatting instead of connecting. Respond to what they
     // said, then steer back to the connect handoff - every turn ends on the
     // CTA so the next step is never ambiguous.
     if (intent === "question") {
       if (args.cta) {
-        return `good question, ${name}. connecting takes about ten seconds - it links this chat to your account so Eliza remembers everything we've talked about. tap below to connect. ${ELIZA_APP_SHARED_OFFER}.`;
+        return `I kept your question, ${name}. Connect below and I'll continue.`;
       }
-      return `good question, ${name}. connecting takes about ten seconds - it links this chat to your account so Eliza remembers everything we've talked about. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
+      return `I kept your question, ${name}. Connect and I'll continue: ${args.loginUrl}`;
     }
     if (intent === "hesitation") {
       if (args.cta) {
-        return `no pressure, ${name}. nothing happens until you connect, and ${ELIZA_APP_SHARED_OFFER}. whenever you're ready, the button below is the way in.`;
+        return `No pressure, ${name}. Connect below whenever you're ready.`;
       }
-      return `no pressure, ${name}. nothing happens until you connect, and ${ELIZA_APP_SHARED_OFFER}. whenever you're ready: ${args.loginUrl}`;
+      return `No pressure, ${name}. Connect whenever you're ready: ${args.loginUrl}`;
     }
     if (args.cta) {
-      return `still here, ${name}! one step left: tap below to connect this chat to your account. ${ELIZA_APP_SHARED_OFFER}.`;
+      return `I kept that, ${name}. Connect below and I'll continue.`;
     }
-    return `still here, ${name}! one step left: connect this chat to your account. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
+    return `I kept that, ${name}. Connect and I'll continue: ${args.loginUrl}`;
   }
   if (args.handoffComplete) {
     return `you're in, ${name}. your shared Eliza is connected and already knows everything from this chat. just keep talking here.`;
@@ -1217,7 +1223,7 @@ function sanitizeReplyText(reply: string): string {
     .replace(/\*\*([^*\n][\s\S]*?[^*\n])\*\*/g, "$1")
     .replace(/__([^_\n][\s\S]*?[^_\n])__/g, "$1")
     .replace(/[\u00a0\u202f]/g, " ")
-    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
     .trim();
 }
 
@@ -1465,18 +1471,26 @@ export async function runOnboardingChatWithStore(
   // user just messaged and gets a synchronous reply. Enqueue is keyed by
   // session id (set semantics) so retried or replayed authenticated turns
   // cannot duplicate the greeting.
+  const proactivePlatform =
+    session.platform === "discord" ||
+    session.platform === "telegram" ||
+    session.platform === "blooio" ||
+    session.platform === "twilio"
+      ? session.platform
+      : null;
   const proactiveGreeting: ProactiveGreetingRequest | null =
     wasUnboundBeforeThisTurn &&
     session.userId &&
     input.authenticatedUser &&
     input.trustedPlatformIdentity !== true &&
-    session.platform === "discord" &&
+    proactivePlatform &&
     session.platformIdentityTrusted === true &&
     session.platformUserId
       ? {
           sessionId: session.id,
           platformUserId: session.platformUserId,
           name: hasPreferredName(session) ? session.name : undefined,
+          platform: proactivePlatform,
         }
       : null;
 
@@ -1489,17 +1503,43 @@ export async function runOnboardingChatWithStore(
   let preferredNameProvidedThisTurn = false;
   if (userMessage) {
     session = appendMessage(session, "user", userMessage);
-    const explicitName = inferExplicitName(userMessage);
-    const inferredName =
-      explicitName ??
-      inferBareName(userMessage) ??
-      sanitizePreferredName(input.platformDisplayName);
-    const mayCapture =
-      Boolean(explicitName) || !session.name || isPlaceholderPhoneName(session.name);
-    if (inferredName && mayCapture && inferredName !== session.name) {
-      session.name = inferredName;
-      preferredNameProvidedThisTurn = true;
+    let priorProfile = session.ownerProfile ?? { version: 1 as const, facts: {} };
+    if (!priorProfile.facts.preferredName && hasPreferredName(session)) {
+      priorProfile = mergeSharedProfileHint(priorProfile, "preferredName", {
+        value: session.name!,
+        source: "channel_identity",
+        confidence: 0.7,
+        recordedAt: session.updatedAt,
+      });
     }
+    let ownerProfile = applySharedProfileMutation(
+      priorProfile,
+      extractSharedProfileMutation(userMessage, new Date().toISOString()),
+    );
+    const explicitName = inferExplicitName(userMessage);
+    const bareName = inferBareName(userMessage);
+    if (bareName && !ownerProfile.facts.preferredName) {
+      ownerProfile = mergeSharedProfileHint(ownerProfile, "preferredName", {
+        value: bareName,
+        source: "owner_explicit",
+        confidence: 0.95,
+        recordedAt: new Date().toISOString(),
+      });
+    }
+    const platformName = sanitizePreferredName(input.platformDisplayName);
+    if (platformName && input.trustedPlatformIdentity === true) {
+      ownerProfile = mergeSharedProfileHint(ownerProfile, "preferredName", {
+        value: platformName,
+        source: "channel_identity",
+        confidence: 0.72,
+        recordedAt: new Date().toISOString(),
+      });
+    }
+    session.ownerProfile = ownerProfile;
+    const capturedName = ownerProfile.facts.preferredName?.value;
+    preferredNameProvidedThisTurn =
+      Boolean(explicitName || bareName) && capturedName !== session.name;
+    session.name = capturedName;
   }
 
   const requiresLogin = !session.userId || !session.organizationId;
@@ -1602,7 +1642,7 @@ export async function deliverCommittedProactiveGreeting(
 ): Promise<OnboardingChatResult> {
   const { proactiveGreeting, ...committed } = result;
   if (proactiveGreeting) {
-    await enqueueDiscordProactiveGreeting(proactiveGreeting);
+    await enqueueProactiveGreeting(proactiveGreeting.platform ?? "discord", proactiveGreeting);
   }
   return committed;
 }

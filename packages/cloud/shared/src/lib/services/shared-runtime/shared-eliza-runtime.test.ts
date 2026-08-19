@@ -453,6 +453,7 @@ describe("Shared Eliza Workerd runtime", () => {
     });
     expect(dispatches).toBe(1);
     expect(requests).toHaveLength(1);
+    expect(JSON.stringify(requests[0])).toContain("Missing fields: location, timezone");
     expect(requests[0]).toMatchObject({ stream: true });
     expect(JSON.stringify(requests[0])).toContain("What is one small way to reset my focus?");
     expect(JSON.stringify(requests[0])).not.toContain("Opening Focus for you");
@@ -576,7 +577,18 @@ describe("Shared Eliza Workerd runtime", () => {
         model: "gemma-4-31b",
       },
       history: [],
-      message: "say hello",
+      ownerProfile: {
+        version: 1,
+        facts: {
+          preferredName: {
+            value: "Nia",
+            source: "owner_explicit",
+            confidence: 0.98,
+            recordedAt: "2026-08-19T00:00:00.000Z",
+          },
+        },
+      },
+      message: "My name is Nia",
       messageIds: {
         user: "c92f5aaa-59ce-40a6-994b-e9e16dc85198",
         assistant: "f492130b-2fc6-4b2b-bdca-51f441b0483d",
@@ -600,10 +612,16 @@ describe("Shared Eliza Workerd runtime", () => {
       inputTokens: 41,
       outputTokens: 17,
     });
-    expect(result.history.map((message) => message.content)).toEqual([
-      "say hello",
+    const { readSharedProfile, withoutSharedProfileMessages } = await import("./shared-profile");
+    expect(withoutSharedProfileMessages(result.history).map((message) => message.content)).toEqual([
+      "My name is Nia",
       "hello from the genuine Shared runtime",
     ]);
+    expect(readSharedProfile(result.history).facts.preferredName).toMatchObject({
+      value: "Nia",
+      source: "owner_explicit",
+      confidence: 0.98,
+    });
     expect(dispatches).toBe(1);
     expect(requests).toHaveLength(1);
     expect(
