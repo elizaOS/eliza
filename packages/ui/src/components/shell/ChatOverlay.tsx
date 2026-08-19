@@ -1059,7 +1059,7 @@ function SheetGrabber({
   );
 }
 
-/** The canonical 64x32 resting pill used by every chat surface. */
+/** The canonical 48x6 resting bar used by every chat surface. */
 function PillHandle({
   binding,
   counterScale,
@@ -1069,7 +1069,7 @@ function PillHandle({
 }: {
   binding: PullGestureBinding;
   // Inverse of the panel's pill-morph scale. It wraps the complete painted
-  // target so the visible 64x32 surface and hit geometry remain identical.
+  // target so the visible 48x6 surface and hit geometry remain identical.
   counterScale: MotionValue<number>;
   onOpen: () => void;
   breathing: boolean;
@@ -1083,7 +1083,7 @@ function PillHandle({
 }): React.JSX.Element {
   return (
     <motion.div
-      className="h-8 w-16 origin-bottom"
+      className="h-1.5 w-12 origin-bottom"
       style={{ scale: counterScale }}
     >
       <RestingPillButton

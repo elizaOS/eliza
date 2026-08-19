@@ -131,9 +131,9 @@ export function resolveDesktopShellWindowPresentation(
   };
 }
 
-/** Resting native hit area around the 64×32 visible pill. */
-export const DEFAULT_BOTTOM_BAR_WIDTH = 64;
-export const DEFAULT_BOTTOM_BAR_HEIGHT = 32;
+/** Resting native hit area matching the 48×6 visible bar exactly. */
+export const DEFAULT_BOTTOM_BAR_WIDTH = 48;
+export const DEFAULT_BOTTOM_BAR_HEIGHT = 6;
 
 /** Hit area around the cloud-only "Sign in with Eliza Cloud" action. */
 export const AUTH_GATE_BOTTOM_BAR_WIDTH = 336;

@@ -1040,11 +1040,12 @@ describe("ChatOverlay", () => {
       fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
       expect(sheet.getAttribute("data-detent")).toBe("pill");
       const pill = screen.getByTestId("chat-pill");
-      expect(pill.className).toContain("h-8");
-      expect(pill.className).toContain("w-16");
-      expect(pill.className).toContain("bg-[#181a20]/95");
-      expect(pill.parentElement?.className).toContain("h-8");
-      expect(pill.parentElement?.className).toContain("w-16");
+      expect(pill.className).toContain("h-1.5");
+      expect(pill.className).toContain("w-12");
+      expect(pill.className).toContain("bg-transparent");
+      expect(pill.className).not.toContain("border-white");
+      expect(pill.parentElement?.className).toContain("h-1.5");
+      expect(pill.parentElement?.className).toContain("w-12");
       expect(barOf()).toContain("eliza-chat-handle-breathe");
       expect(barOf()).not.toContain("shimmer");
       expect(barOf()).not.toContain("background-clip");
@@ -3076,11 +3077,12 @@ describe("ChatOverlay", () => {
     // Kept out of the tab order / a11y tree while it's not the active handle.
     expect(pill.getAttribute("tabindex")).toBe("-1");
     expect(pill.getAttribute("aria-hidden")).toBe("true");
-    // Its complete 64x32 target is visibly painted; there is no larger hidden
-    // grab zone around the capsule.
-    expect(pill.className).toContain("h-8");
-    expect(pill.className).toContain("w-16");
-    expect(pill.className).toContain("bg-[#181a20]/95");
+    // Its complete 48x6 target is the visible bar; there is no larger hidden
+    // grab zone or painted capsule around it.
+    expect(pill.className).toContain("h-1.5");
+    expect(pill.className).toContain("w-12");
+    expect(pill.className).toContain("bg-transparent");
+    expect(pill.className).not.toContain("border-white");
   });
 
   it("makes the pill handle interactive (drag-to-open) once collapsed to the pill", () => {
