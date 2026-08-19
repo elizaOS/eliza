@@ -282,6 +282,9 @@ describe("CREATIVE_DRAFT persisted voice-memo workflow", () => {
       },
     );
     expect(initial.success).toBe(true);
+    test.useModel.mockResolvedValueOnce(
+      "Look, start with the blunt truth. Then ship the honest version.",
+    );
 
     const revision = await runAction(
       test.runtime,
@@ -314,6 +317,7 @@ describe("CREATIVE_DRAFT persisted voice-memo workflow", () => {
       draftDocumentId: DRAFT_DOCUMENT_ID,
       draft: {
         acceptedEdits: ["Sharper opening approved."],
+        acceptedPassages: ["Look, start with the blunt truth."],
         sections: [{ text: "Look, start with the blunt truth." }],
       },
     });
@@ -323,6 +327,159 @@ describe("CREATIVE_DRAFT persisted voice-memo workflow", () => {
       kind: "creative-owner-voice-draft",
       draft: { acceptedEdits: ["Sharper opening approved."] },
     });
+  });
+
+  it("preserves explicit memo affect when canonical attachment processing refreshes its transcript", async () => {
+    const test = harness({ transcript: "They wasted six months." });
+    const result = await runAction(
+      test.runtime,
+      voiceMessage({
+        id: "angry-memo",
+        url: "/api/media/angry-memo.wav",
+        contentType: "audio",
+        mimeType: "audio/wav",
+      }),
+      {
+        action: "compose",
+        request: {
+          title: "Keep the Heat",
+          targetForm: "essay",
+          ownerAsk: "Keep the anger.",
+        },
+        memos: [
+          {
+            id: "angry-memo",
+            transcript: "stale transcript",
+            affect: "angry",
+            toneDirective: "Do not smooth this over.",
+          },
+        ],
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      draft: {
+        sections: [
+          {
+            affect: "angry",
+            directive: "Do not smooth this over.",
+            text: "They wasted six months.",
+          },
+        ],
+      },
+    });
+  });
+
+  it("discards generated prose that drops an accepted replacement", async () => {
+    const test = harness({ transcript: "Start with the blunt version." });
+    await runAction(
+      test.runtime,
+      voiceMessage({
+        id: "accepted-memo",
+        url: "/api/media/accepted.wav",
+        contentType: "audio",
+        mimeType: "audio/wav",
+      }),
+      {
+        action: "compose",
+        request: {
+          title: "Accepted Memo",
+          targetForm: "memo",
+          ownerAsk: "Draft this memo.",
+        },
+      },
+    );
+    test.useModel.mockResolvedValueOnce("A completely different opening.");
+
+    const revision = await runAction(
+      test.runtime,
+      {
+        ...voiceMessage({ id: "note", url: "/note", contentType: "document" }),
+        content: { text: "Use my accepted line." },
+      },
+      {
+        action: "revise",
+        revision: {
+          instruction: "Use the approved opening.",
+          acceptedEdit: "Opening approved.",
+          replacementText: "This is the approved opening.",
+          revisedAt: "2026-08-07T12:00:00.000Z",
+        },
+      },
+    );
+
+    expect(revision.success).toBe(true);
+    expect(revision.text).toBe('Revised "Accepted Memo".');
+    expect(revision.data).toMatchObject({
+      draft: {
+        acceptedPassages: ["This is the approved opening."],
+      },
+    });
+    const revisedDraft = revision.data?.draft as
+      | { narrative?: string }
+      | undefined;
+    expect(revisedDraft?.narrative).toBeUndefined();
+  });
+
+  it("rejects ambiguous standing drafts instead of revising an arbitrary document", async () => {
+    const test = harness({ transcript: "One source section." });
+    const initial = await runAction(
+      test.runtime,
+      voiceMessage({
+        id: "ambiguous-memo",
+        url: "/api/media/ambiguous.wav",
+        contentType: "audio",
+        mimeType: "audio/wav",
+      }),
+      {
+        action: "compose",
+        request: {
+          title: "Ambiguous Memo",
+          targetForm: "memo",
+          ownerAsk: "Draft this memo.",
+        },
+      },
+    );
+    expect(initial.success).toBe(true);
+    const storedDraft = test.stored.get(DRAFT_DOCUMENT_ID) as string;
+    test.documents.listDocuments.mockResolvedValueOnce([
+      {
+        id: DRAFT_DOCUMENT_ID,
+        agentId: AGENT_ID,
+        entityId: OWNER_ID,
+        roomId: ROOM_ID,
+        content: { text: storedDraft },
+        metadata: { documentKind: "creative-owner-voice-draft" },
+      } as Memory,
+      {
+        id: "00000000-0000-4000-8000-000000000009" as UUID,
+        agentId: AGENT_ID,
+        entityId: OWNER_ID,
+        roomId: ROOM_ID,
+        content: { text: storedDraft },
+        metadata: { documentKind: "creative-owner-voice-draft" },
+      } as Memory,
+    ]);
+
+    const revision = await runAction(
+      test.runtime,
+      {
+        ...voiceMessage({ id: "note", url: "/note", contentType: "document" }),
+        content: { text: "Revise it." },
+      },
+      {
+        action: "revise",
+        revision: {
+          instruction: "Sharpen it.",
+          revisedAt: "2026-08-07T12:00:00.000Z",
+        },
+      },
+    );
+
+    expect(revision.success).toBe(false);
+    expect(revision.data).toMatchObject({ error: "CREATIVE_DRAFT_AMBIGUOUS" });
+    expect(test.documents.updateDocument).not.toHaveBeenCalled();
   });
 
   it("fails visibly instead of creating a draft when STT returns no transcript", async () => {
