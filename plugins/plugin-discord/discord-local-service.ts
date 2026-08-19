@@ -530,9 +530,15 @@ export class DiscordLocalService extends Service {
 		this.connected = false;
 		this.authenticated = false;
 		this.connectedIpcPath = null;
-		this.rejectPendingRequests(new Error("Discord local service stopped"));
-		this.socket?.destroy();
+		const error = new Error("Discord local service stopped");
+		this.rejectPendingRequests(error);
+		this.readyReject?.(error);
+		this.readyReject = null;
+		this.readyResolve = null;
+		this.readyPromise = null;
+		const socket = this.socket;
 		this.socket = null;
+		socket?.destroy();
 	}
 
 	isConnected(): boolean {
@@ -967,9 +973,9 @@ export class DiscordLocalService extends Service {
 			clearTimeout(this.reconnectTimer);
 		}
 		const timer = setTimeout(() => {
-			if (this.reconnectTimer !== timer || this.socket !== expectedSocket)
-				return;
+			if (this.reconnectTimer !== timer) return;
 			this.reconnectTimer = null;
+			if (this.socket !== expectedSocket) return;
 			this.socket = null;
 			void this.ensureAuthenticated().catch((error) => {
 				this.lastError = error instanceof Error ? error.message : String(error);

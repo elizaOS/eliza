@@ -90,12 +90,24 @@ describe("DiscordLocalService stale local-socket events", () => {
 		const second = ensure();
 		expect(sockets).toHaveLength(2);
 
-		// The first (now-superseded) socket's close event arrives late.
+		const serviceState = service as never as {
+			socket: FakeSocket | null;
+			readBuffer: Buffer;
+			lastError: string | null;
+		};
+		serviceState.readBuffer = Buffer.from("replacement");
+		serviceState.lastError = "replacement-state";
+
+		// Every callback from the first (now-superseded) socket arrives late.
+		sockets[0].emit("connect");
+		sockets[0].emit("data", Buffer.from("stale"));
+		sockets[0].emit("error", new Error("stale error"));
 		sockets[0].emit("close");
 
-		expect((service as never as { socket: FakeSocket | null }).socket).toBe(
-			sockets[1],
-		);
+		expect(serviceState.socket).toBe(sockets[1]);
+		expect(serviceState.readBuffer.toString()).toBe("replacement");
+		expect(serviceState.lastError).toBe("replacement-state");
+		expect(sockets[0].write).not.toHaveBeenCalled();
 
 		sockets[1].emit("error", new Error("second failed"));
 		await expect(second).rejects.toThrow("second failed");
@@ -116,5 +128,50 @@ describe("DiscordLocalService stale local-socket events", () => {
 		expect(
 			(service as never as { socket: FakeSocket | null }).socket,
 		).toBeNull();
+	});
+
+	it("clears a superseded reconnect timer without replacing the live socket", async () => {
+		vi.useFakeTimers();
+		const service = makeService();
+		const state = service as never as {
+			ensureRpcConnection(): Promise<void>;
+			session: { accessToken: string; scopes: string[] } | null;
+			reconnectTimer: NodeJS.Timeout | null;
+			socket: FakeSocket | null;
+		};
+		state.session = { accessToken: "persisted", scopes: [] };
+
+		const first = state.ensureRpcConnection();
+		sockets[0].emit("close");
+		await expect(first).rejects.toThrow("connection closed");
+		expect(state.reconnectTimer).not.toBeNull();
+
+		const second = state.ensureRpcConnection();
+		expect(state.socket).toBe(sockets[1]);
+		await vi.advanceTimersByTimeAsync(3_000);
+
+		expect(sockets).toHaveLength(2);
+		expect(state.socket).toBe(sockets[1]);
+		expect(state.reconnectTimer).toBeNull();
+		sockets[1].emit("error", new Error("second failed"));
+		await expect(second).rejects.toThrow("second failed");
+	});
+
+	it("stop detaches the socket and rejects an in-flight connection", async () => {
+		const service = makeService();
+		const state = service as never as {
+			ensureRpcConnection(): Promise<void>;
+			socket: FakeSocket | null;
+			readyPromise: Promise<void> | null;
+		};
+
+		const connecting = state.ensureRpcConnection();
+		const socket = sockets[0];
+		await service.stop();
+
+		await expect(connecting).rejects.toThrow("service stopped");
+		expect(state.socket).toBeNull();
+		expect(state.readyPromise).toBeNull();
+		expect(socket.destroyed).toBe(true);
 	});
 });
