@@ -377,6 +377,13 @@ export class StewardSidecar {
       `[StewardSidecar] Spawning steward on port ${this.config.port} (entryPoint=${entryPoint}, dataDir=${this.config.dataDir})`,
     );
 
+    // stop() may have run while the awaits above (entry-point resolution,
+    // port allocation) were in flight -- don't spawn a process for a
+    // sidecar the caller already tore down.
+    if (this.stopping) {
+      return;
+    }
+
     const bun = getBunRuntime();
     if (bun) {
       const proc = bun.spawn(["bun", "run", entryPoint], {
