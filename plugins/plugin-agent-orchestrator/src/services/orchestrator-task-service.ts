@@ -206,6 +206,7 @@ import {
 } from "./project-binding.js";
 import { extractPullRequestLink } from "./pull-request-link.js";
 import { requestVoiceKeyForMeta } from "./router-loop-guard.js";
+import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
@@ -3599,6 +3600,69 @@ export class OrchestratorTaskService extends Service {
    * the park already happened); the `verifyEscalationNotifiedAt` metadata
    * stamp makes the notice once-per-task.
    */
+  /**
+   * Corrective success notice: when a task promotes to `done` AFTER the room
+   * heard a failure-ish relay (a retry ran, or verification re-engaged the
+   * worker), the user's last impression is "failed" and the pass verdict is
+   * otherwise silent (live 2026-08-19: "it stopped before it finished …" was
+   * the final message on a task that verified done a minute later). Once per
+   * task; factual text takes the normal voice pass on delivery.
+   */
+  private async notifyVerifyRecovery(taskId: string): Promise<void> {
+    try {
+      const doc = await this.store.getTask(taskId);
+      if (!doc || doc.task.metadata?.verifyRecoveryNotifiedAt) return;
+      const reflections = readAttemptReflections(
+        doc.task.metadata ?? undefined,
+      );
+      const sawRetry = doc.sessions.some((session) => {
+        const meta = session.metadata as Record<string, unknown> | undefined;
+        return typeof meta?.retryCount === "number" && meta.retryCount > 0;
+      });
+      if (reflections.length === 0 && !sawRetry) return;
+      const origin = await this.getTaskOriginTarget(taskId);
+      if (!origin) return;
+      const send = (
+        this.runtime as IAgentRuntime & {
+          sendMessageToTarget?: (
+            target: { source: string; roomId?: UUID },
+            content: { text: string; source: string },
+          ) => Promise<unknown>;
+        }
+      ).sendMessageToTarget;
+      if (typeof send !== "function") return;
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...doc.task.metadata,
+          verifyRecoveryNotifiedAt: nowIso(),
+        },
+      });
+      const label = doc.task.title.trim() || "the coding task";
+      const deploy = resolveAppDeployConfig();
+      const workdir = doc.sessions.at(-1)?.workdir;
+      const url =
+        deploy.target === "custom" &&
+        deploy.customAppsDir &&
+        deploy.customBaseUrl &&
+        workdir &&
+        dirname(workdir) === deploy.customAppsDir.replace(/\/+$/, "")
+          ? `${deploy.customBaseUrl.replace(/\/+$/, "")}/apps/${basename(workdir)}/`
+          : undefined;
+      const text = `${label} recovered: the earlier failure was retried and every acceptance criterion now verifies.${url ? ` Live at ${url}` : ""}`;
+      await send(
+        { source: origin.source, roomId: origin.roomId },
+        { text, source: origin.source },
+      );
+    } catch (err) {
+      // error-policy:J7 a missed courtesy notice must not affect the verdict.
+      this.runtime.reportError?.(
+        "OrchestratorTaskService.notifyVerifyRecovery",
+        err,
+        { taskId },
+      );
+    }
+  }
+
   private async notifyVerifyEscalation(
     taskId: string,
     details: {
@@ -4161,6 +4225,11 @@ export class OrchestratorTaskService extends Service {
     // but must never reuse a stale verdict left in task metadata.
     if (next === "done" && groundTruth?.status === "verified") {
       await this.harvestCuratedCodingMemory(taskId);
+    }
+    if (next === "done") {
+      // error-policy:J5 fire-and-forget courtesy notice; failures are reported
+      // inside notifyVerifyRecovery itself.
+      void this.notifyVerifyRecovery(taskId);
     }
     return this.getTask(taskId);
   }
