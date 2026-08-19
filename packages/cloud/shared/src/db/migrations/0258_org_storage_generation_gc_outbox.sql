@@ -14,8 +14,10 @@ CREATE TABLE "org_storage_gc_outbox" (
     AND ("state" <> 'completed' OR "completed_at" IS NOT NULL)
   )
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX "org_storage_gc_outbox_operation_uidx"
   ON "org_storage_gc_outbox"("operation_id");
+--> statement-breakpoint
 CREATE INDEX "org_storage_gc_outbox_due_idx"
   ON "org_storage_gc_outbox"("state", "not_before");

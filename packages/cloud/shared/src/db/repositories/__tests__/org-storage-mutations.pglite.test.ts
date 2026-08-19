@@ -28,7 +28,7 @@ let repository: typeof import("../org-storage-mutations").orgStorageMutationsRep
 
 async function executeSqlFile(name: string): Promise<void> {
   const source = readFileSync(join(import.meta.dir, "../../migrations", name), "utf8");
-  for (const statement of source.split(";")) {
+  for (const statement of source.split("--> statement-breakpoint")) {
     if (statement.trim()) await dbWrite.execute(sql.raw(statement));
   }
 }
@@ -440,6 +440,13 @@ describe("OrgStorageMutationsRepository", () => {
           storage_operation_id: prepared.operation.id,
         })}::jsonb
       )`);
+    await expect(
+      Promise.resolve(
+        dbWrite.execute(sql`UPDATE credit_transactions
+          SET organization_id = ${ORG}
+          WHERE id = ${transactionId}`),
+      ),
+    ).rejects.toThrow();
     await expect(
       Promise.resolve(
         dbWrite.execute(sql`UPDATE org_storage_put_operations

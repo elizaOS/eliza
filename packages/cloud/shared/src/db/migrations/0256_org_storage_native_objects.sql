@@ -1,9 +1,11 @@
 -- Establishes authoritative native storage catalog and precise server-owned pricing.
 ALTER TABLE "service_pricing"
   ALTER COLUMN "cost" TYPE numeric(18,12);
+--> statement-breakpoint
 ALTER TABLE "service_pricing_audit"
   ALTER COLUMN "old_cost" TYPE numeric(18,12),
   ALTER COLUMN "new_cost" TYPE numeric(18,12);
+--> statement-breakpoint
 
 WITH stale_price AS (
   SELECT id, service_id, method, cost
@@ -23,6 +25,7 @@ UPDATE "service_pricing" AS pricing
 SET "cost" = 0.000000001, "updated_at" = NOW()
 FROM stale_price
 WHERE pricing.id = stale_price.id;
+--> statement-breakpoint
 
 CREATE TABLE "org_storage_objects" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -59,8 +62,10 @@ CREATE TABLE "org_storage_objects" (
     ))
   )
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX "org_storage_objects_tenant_key_uidx"
   ON "org_storage_objects"("organization_id", "logical_key");
+--> statement-breakpoint
 CREATE UNIQUE INDEX "org_storage_objects_provider_key_uidx"
   ON "org_storage_objects"("provider_key") WHERE "provider_key" IS NOT NULL;

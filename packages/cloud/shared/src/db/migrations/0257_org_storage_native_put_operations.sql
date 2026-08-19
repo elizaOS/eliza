@@ -8,6 +8,27 @@ AS 'SELECT $1 IS NULL OR EXISTS (
   SELECT 1 FROM credit_transactions
   WHERE id = $1 AND organization_id = $2
 )';
+--> statement-breakpoint
+
+CREATE FUNCTION "credit_transaction_tenant_is_immutable"()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
+    RAISE EXCEPTION 'credit transaction tenant provenance is immutable'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+
+CREATE TRIGGER "credit_transactions_tenant_immutable"
+BEFORE UPDATE OF "organization_id" ON "credit_transactions"
+FOR EACH ROW
+EXECUTE FUNCTION "credit_transaction_tenant_is_immutable"();
+--> statement-breakpoint
 
 CREATE TABLE "org_storage_put_operations" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -64,16 +85,21 @@ CREATE TABLE "org_storage_put_operations" (
     ))
   )
 );
+--> statement-breakpoint
 
 CREATE UNIQUE INDEX "org_storage_put_operations_idempotency_uidx"
   ON "org_storage_put_operations"("organization_id", "idempotency_key_hash");
+--> statement-breakpoint
 CREATE UNIQUE INDEX "org_storage_put_operations_provider_key_uidx"
   ON "org_storage_put_operations"("target_provider_key");
+--> statement-breakpoint
 CREATE UNIQUE INDEX "org_storage_put_operations_active_object_uidx"
   ON "org_storage_put_operations"("object_id")
   WHERE "state" IN ('prepared','reserved','provider_started','reconciling');
+--> statement-breakpoint
 CREATE INDEX "org_storage_put_operations_due_idx"
   ON "org_storage_put_operations"("state", "lease_expires_at");
+--> statement-breakpoint
 
 CREATE TABLE "org_storage_delete_operations" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -105,10 +131,13 @@ CREATE TABLE "org_storage_delete_operations" (
     ))
   )
 );
+--> statement-breakpoint
 CREATE UNIQUE INDEX "org_storage_delete_operations_idempotency_uidx"
   ON "org_storage_delete_operations"("organization_id", "idempotency_key_hash");
+--> statement-breakpoint
 CREATE UNIQUE INDEX "org_storage_delete_operations_active_object_uidx"
   ON "org_storage_delete_operations"("object_id")
   WHERE "state" IN ('prepared','provider_started');
+--> statement-breakpoint
 CREATE INDEX "org_storage_delete_operations_due_idx"
   ON "org_storage_delete_operations"("state", "lease_expires_at");
