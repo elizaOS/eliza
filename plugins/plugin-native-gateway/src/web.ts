@@ -184,22 +184,29 @@ export class GatewayWeb extends WebPlugin {
 
     this.notifyStateChange("connecting");
 
-    this.ws = new WebSocket(this.options.url);
+    const ws = new WebSocket(this.options.url);
+    this.ws = ws;
 
-    this.ws.addEventListener("open", () => {
+    ws.addEventListener("open", () => {
       this.sendConnectFrame();
     });
 
-    this.ws.addEventListener("message", (event) => {
+    ws.addEventListener("message", (event) => {
       this.handleMessage(String(event.data));
     });
 
-    this.ws.addEventListener("close", (event) => {
+    ws.addEventListener("close", (event) => {
+      // A socket replaced by a newer connect() (see connect()'s `this.ws.close()`)
+      // can still deliver its "close" event after `this.ws` has moved on to the
+      // replacement. Without this guard that stale event nulls out the live
+      // socket, rejects requests already pending on it, and schedules a
+      // spurious reconnect on top of the connection that is actually active.
+      if (this.ws !== ws) return;
       const reason = event.reason || "Connection closed";
       this.handleClose(event.code, reason);
     });
 
-    this.ws.addEventListener("error", (event) => {
+    ws.addEventListener("error", (event) => {
       console.warn("[Gateway] WebSocket error:", event);
     });
   }

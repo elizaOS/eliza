@@ -12,6 +12,7 @@ type Listener = (event: unknown) => void;
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
+  static deferClose = false;
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
   static readonly CLOSED = 3;
@@ -19,6 +20,7 @@ class FakeWebSocket {
   readyState = FakeWebSocket.CONNECTING;
   readonly sent: string[] = [];
   private readonly listeners = new Map<string, Listener[]>();
+  private deferredClose: { code: number; reason: string } | null = null;
 
   constructor(readonly url: string) {
     FakeWebSocket.instances.push(this);
@@ -36,7 +38,21 @@ class FakeWebSocket {
 
   close(code = 1000, reason = "closed"): void {
     this.readyState = FakeWebSocket.CLOSED;
+    if (FakeWebSocket.deferClose) {
+      this.deferredClose = { code, reason };
+      return;
+    }
     this.emit("close", { code, reason });
+  }
+
+  // Fires a close() that was deferred above, simulating a stale socket's
+  // "close" event arriving after a replacement connection has already begun.
+  flushClose(): void {
+    if (this.deferredClose) {
+      const close = this.deferredClose;
+      this.deferredClose = null;
+      this.emit("close", close);
+    }
   }
 
   open(): void {
@@ -65,6 +81,7 @@ function parseSent(
 describe("GatewayWeb", () => {
   beforeEach(() => {
     FakeWebSocket.instances = [];
+    FakeWebSocket.deferClose = false;
     Object.assign(FakeWebSocket, {
       CONNECTING: 0,
       OPEN: 1,
@@ -275,5 +292,69 @@ describe("GatewayWeb", () => {
         message: "Not connected to gateway",
       },
     });
+  });
+
+  it("ignores a stale close event from a socket replaced by a newer connect()", async () => {
+    const gateway = new GatewayWeb();
+    const states: unknown[] = [];
+    await gateway.addListener("stateChange", (event) => {
+      states.push(event);
+    });
+
+    const first = gateway.connect({ url: "ws://localhost:1234/first" });
+    const firstSocket = FakeWebSocket.instances[0];
+    firstSocket.open();
+    firstSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(firstSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await first;
+
+    // The first socket's close() is called (by the second connect()) but its
+    // "close" event doesn't fire until after the replacement is already open
+    // and connected -- reproducing the real out-of-order delivery this guards
+    // against, not just a same-tick call.
+    FakeWebSocket.deferClose = true;
+    const second = gateway.connect({ url: "ws://localhost:1234/second" });
+    const secondSocket = FakeWebSocket.instances[1];
+    secondSocket.open();
+    secondSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(secondSocket, 0).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await expect(second).resolves.toMatchObject({ connected: true });
+
+    states.length = 0;
+    firstSocket.flushClose();
+
+    // The stale close must not tear down the active (second) connection: no
+    // "reconnecting"/"disconnected" state change, and no spurious third
+    // socket created by scheduleReconnect().
+    expect(states).toEqual([]);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    // The second connection's own pending/reply plumbing must still work --
+    // the stale close must not have nulled out `this.ws` or rejected requests
+    // in flight on it.
+    const reply = gateway.send({ method: "chat.send" });
+    secondSocket.message(
+      JSON.stringify({
+        type: "res",
+        id: parseSent(secondSocket, 1).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await expect(reply).resolves.toMatchObject({ ok: true });
+
+    await gateway.disconnect();
   });
 });
