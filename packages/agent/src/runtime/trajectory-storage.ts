@@ -575,7 +575,7 @@ function completeTrajectoryAction(
       if (rewardComponents !== undefined) {
         trajectory.rewardComponents = {
           ...trajectory.rewardComponents,
-          ...rewardComponents,
+          ...(rewardComponents as Record<string, JsonValue>),
         };
       }
       trajectory.updatedAt = new Date(action.timestamp).toISOString();
