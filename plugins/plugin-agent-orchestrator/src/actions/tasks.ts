@@ -1263,13 +1263,14 @@ async function runCreateLegacy(
         : "On it — building that now.",
     );
     earlyAckText = text;
-    logger(runtime).info(
-      `[TASKS:create] ack ready at ${new Date().toISOString()} — invoking callback`,
-    );
-    await callbackText(callback, earlyAckText, { voiced: true });
-    logger(runtime).info(
-      `[TASKS:create] ack callback returned at ${new Date().toISOString()}`,
-    );
+    // `immediate` opts out of the capture-then-settle deferral (see the
+    // tasksAction handler wrapper) so this ack reaches chat BEFORE the lanes
+    // run instead of racing the completion relay at settle time.
+    await callback({
+      text: earlyAckText,
+      agentVoiced: true,
+      metadata: { immediate: true },
+    });
   }
 
   const settled = await Promise.allSettled(
@@ -5797,6 +5798,9 @@ type TasksEffectProof = {
 type CapturedCallback = {
   response: Content;
   actionName?: string;
+  /** Already forwarded to the real callback (immediate lane); settle must
+   *  bind receipts to it but never re-send it. */
+  delivered?: boolean;
 };
 
 const TASKS_READ_ONLY_OPERATIONS: ReadonlySet<TaskOp> = new Set([
@@ -6334,7 +6338,12 @@ async function settleTasksOperation(args: {
         : { userFacingText: canonical.response.text }
       : {}),
   };
-  if (canonical && args.callback && helperEmittedCallback) {
+  if (
+    canonical &&
+    args.callback &&
+    helperEmittedCallback &&
+    (canonical as { delivered?: boolean }).delivered !== true
+  ) {
     await args.callback(canonical.response, canonical.actionName);
   }
   return effectResult;
@@ -7043,6 +7052,18 @@ export const tasksAction: Action & {
     const capturedCallbacks: CapturedCallback[] = [];
     const captureCallback: HandlerCallback | undefined = callback
       ? async (response, actionName) => {
+          // An `immediate: true` metadata flag opts a notice OUT of the
+          // capture-then-settle deferral: acks composed before long-running
+          // work were otherwise held until the runner returned, and fast
+          // children's completion relays overtook them in chat (live
+          // 2026-08-19, three runs). Delivered-now entries still record so
+          // settle binds receipts, but settle must not re-send them.
+          const meta = (response as { metadata?: { immediate?: boolean } })
+            .metadata;
+          if (meta?.immediate === true) {
+            capturedCallbacks.push({ response, actionName, delivered: true });
+            return callback(response, actionName);
+          }
           capturedCallbacks.push({ response, actionName });
           return [];
         }
