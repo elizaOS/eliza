@@ -81,10 +81,25 @@ function parseRuntimeModeConfig(
  */
 export function resolveRuntimeMode(
   config: RuntimeModeConfigShape | null | undefined,
+  activeModeOverride?: string,
 ): RuntimeModeSnapshot {
   const deploymentTarget = normalizeDeploymentTargetConfig(
     config?.deploymentTarget,
   );
+  const cloudExplicitlyDisabled = config?.cloud?.enabled === false;
+  const normalizedOverride = activeModeOverride?.trim().toLowerCase();
+  if (normalizedOverride === "local" || normalizedOverride === "local-only") {
+    return {
+      mode:
+        normalizedOverride === "local-only" || cloudExplicitlyDisabled
+          ? "local-only"
+          : "local",
+      deploymentTarget: deploymentTarget ?? null,
+      remoteApiBase: null,
+      remoteApiBaseError: null,
+      remoteAccessToken: null,
+    };
+  }
 
   if (deploymentTarget?.runtime === "remote") {
     const remoteApiBase = deploymentTarget.remoteApiBase?.trim() || null;
@@ -118,8 +133,6 @@ export function resolveRuntimeMode(
   // Default and explicit `local` — `cloud.enabled === false` collapses
   // to `local-only`. The strong schema above means we can read the
   // field directly without a `typeof === "object"` guard.
-  const cloudExplicitlyDisabled = config?.cloud?.enabled === false;
-
   return {
     mode: cloudExplicitlyDisabled ? "local-only" : "local",
     deploymentTarget: deploymentTarget ?? null,
@@ -135,12 +148,18 @@ export function resolveRuntimeMode(
  * next request without a restart.
  */
 export function getRuntimeMode(): RuntimeMode {
-  return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig())).mode;
+  return resolveRuntimeMode(
+    parseRuntimeModeConfig(loadElizaConfig()),
+    process.env.ELIZA_ACTIVE_API_RUNTIME_MODE,
+  ).mode;
 }
 
 /** Disk-backed snapshot. */
 export function getRuntimeModeSnapshot(): RuntimeModeSnapshot {
-  return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig()));
+  return resolveRuntimeMode(
+    parseRuntimeModeConfig(loadElizaConfig()),
+    process.env.ELIZA_ACTIVE_API_RUNTIME_MODE,
+  );
 }
 
 /** True for both `local` and `local-only`. */

@@ -2278,6 +2278,8 @@ export async function resolvePlugins(
     quiet?: boolean;
     phase?: PluginResolutionPhase;
     forceIncludePluginNames?: readonly string[];
+    /** Durable config projection used when `config` is an ephemeral host view. */
+    installRepairPersistenceConfig?: ElizaConfig;
   },
 ): Promise<ResolvedPlugin[]> {
   const plugins: ResolvedPlugin[] = [];
@@ -2920,7 +2922,26 @@ export async function resolvePlugins(
   // from stale install directories.
   if (repairedInstallRecords.size > 0) {
     try {
-      saveElizaConfig(config);
+      const configToPersist = opts?.installRepairPersistenceConfig ?? config;
+      if (configToPersist !== config) {
+        for (const pluginName of repairedInstallRecords) {
+          const repairedRecord = config.plugins?.installs?.[pluginName];
+          if (!repairedRecord) {
+            throw new ElizaError(
+              `Repaired plugin install record disappeared: ${pluginName}`,
+              {
+                code: "PLUGIN_INSTALL_REPAIR_RECORD_MISSING",
+                context: { pluginName },
+              },
+            );
+          }
+          configToPersist.plugins ??= {};
+          configToPersist.plugins.installs ??= {};
+          configToPersist.plugins.installs[pluginName] =
+            structuredClone(repairedRecord);
+        }
+      }
+      saveElizaConfig(configToPersist);
       logger.info(
         `[eliza] Repaired ${repairedInstallRecords.size} plugin install record(s): ${Array.from(repairedInstallRecords).join(", ")}`,
       );

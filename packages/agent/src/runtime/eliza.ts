@@ -3905,6 +3905,32 @@ function ensureChatLogListenerAttached(): void {
 }
 
 /**
+ * Builds the serving topology selected by an embedded desktop host without
+ * mutating the persisted remote target that remains the user's durable intent.
+ *
+ * @internal Exported for embedded-host fallback coverage.
+ */
+export function applyActiveHostRuntimeMode(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): ElizaConfig {
+  const activeMode = env.ELIZA_ACTIVE_API_RUNTIME_MODE?.trim().toLowerCase();
+  if (activeMode !== "local" && activeMode !== "local-only") return config;
+
+  const effectiveMode =
+    activeMode === "local-only" || config.cloud?.enabled === false
+      ? "local-only"
+      : "local";
+  const activeConfig = structuredClone(config);
+  activeConfig.deploymentTarget = { runtime: "local" };
+  if (effectiveMode === "local-only") {
+    activeConfig.cloud = { ...activeConfig.cloud, enabled: false };
+  }
+  env.ELIZA_ACTIVE_API_RUNTIME_MODE = effectiveMode;
+  return activeConfig;
+}
+
+/**
  * Start the elizaOS runtime with Eliza's configuration.
  *
  * In headless mode the runtime is returned instead of entering the
@@ -3961,6 +3987,11 @@ export async function startEliza(
       }
     }
   }
+
+  const persistedConfig = config;
+  config = applyActiveHostRuntimeMode(config);
+  const installRepairPersistenceConfig =
+    config === persistedConfig ? undefined : persistedConfig;
 
   // 1a. Local / sandbox character override — must run before first-run setup
   //     so character.json (or ELIZA_AGENT_CHARACTER_JSON) sets the agent name
@@ -4469,6 +4500,7 @@ export async function startEliza(
     quiet: preOnboarding,
     phase: initialPluginResolutionPhase,
     forceIncludePluginNames: initialForceIncludePluginNames,
+    installRepairPersistenceConfig,
   });
   bootTimer.lap(`resolve-plugins-${initialPluginResolutionPhase}-import`);
   // #10203: exercise a fault right after the blocking plugin set resolves.
@@ -5626,6 +5658,7 @@ export async function startEliza(
     const deferredResolvedPlugins = await resolvePlugins(config, {
       quiet: preOnboarding,
       phase: "deferred",
+      installRepairPersistenceConfig,
     });
     bootTimer.lap("deferred:resolve-plugins-import");
     return deferredResolvedPlugins;
