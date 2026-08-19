@@ -52,10 +52,14 @@ const roots = process.argv
   .filter((arg) => !arg.startsWith("--"))
   .filter(Boolean);
 
+if (args.has("--self-test")) {
+  process.exit(selfTest());
+}
+
 const keywordKeys = loadKeywordKeys();
-const files = (roots.length > 0 ? roots : DEFAULT_ROOTS).flatMap((root) =>
-  walk(join(ROOT, root)),
-);
+const scanRoots = roots.length > 0 ? roots : DEFAULT_ROOTS;
+requireReadableDirectoryRoots(scanRoots);
+const files = scanRoots.flatMap((root) => walk(join(ROOT, root)));
 const actions = files
   .flatMap(scanFile)
   .sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file));
@@ -516,4 +520,94 @@ function capitalizeAscii(value) {
 
 function escapeCell(value) {
   return String(value).replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
+/**
+ * Fail closed when a configured scan root cannot be enumerated as a directory.
+ *
+ * `walk()` swallows a missing directory and returns no files, so a renamed or
+ * moved root previously reduced the action inventory silently. The generator
+ * that consumes this audit (`generate-action-search-keywords.mjs`) writes a
+ * committed keyword artifact and only observes a nonzero exit, so a silent
+ * shrink republished that artifact with entries missing and no diagnostic.
+ */
+function requireReadableDirectoryRoots(scanRoots) {
+  const invalid = findInvalidScanRoots(scanRoots);
+  if (invalid.length === 0) return;
+  console.error(
+    `[audit-action-availability] configured scan root(s) are not readable directories: ${invalid.join(", ")}. ` +
+      "Update the root list (or pass existing paths) instead of scanning nothing.",
+  );
+  process.exit(1);
+}
+
+/** Return actionable findings for roots that the production walker cannot scan. */
+function findInvalidScanRoots(scanRoots) {
+  const invalid = [];
+  for (const root of scanRoots) {
+    const absolute = join(ROOT, root);
+    let stat;
+    try {
+      stat = statSync(absolute);
+    } catch (error) {
+      // error-policy:J3 invalid configured input is reported explicitly.
+      invalid.push(`${root} (${error.code ?? "unreadable"})`);
+      continue;
+    }
+    if (!stat.isDirectory()) {
+      invalid.push(`${root} (not a directory)`);
+      continue;
+    }
+    try {
+      readdirSync(absolute);
+    } catch (error) {
+      // error-policy:J3 an unreadable root is an explicit invalid result.
+      invalid.push(`${root} (${error.code ?? "unreadable"})`);
+    }
+  }
+  return invalid;
+}
+
+/** Prove the production root validator rejects every silent-empty shape. */
+function selfTest() {
+  const cases = [
+    {
+      name: "missing root is refused",
+      roots: ["definitely/not/a/real/root"],
+      expectInvalid: true,
+    },
+    {
+      name: "present root is accepted",
+      roots: ["packages/scripts"],
+      expectInvalid: false,
+    },
+    {
+      name: "regular file root is refused",
+      roots: ["package.json"],
+      expectInvalid: true,
+    },
+    {
+      name: "one missing among present roots is refused",
+      roots: ["packages/scripts", "nope/missing"],
+      expectInvalid: true,
+    },
+  ];
+  let failed = 0;
+  for (const testCase of cases) {
+    const gotInvalid = findInvalidScanRoots(testCase.roots).length > 0;
+    if (gotInvalid !== testCase.expectInvalid) {
+      failed += 1;
+      console.error(
+        `  \u2717 ${testCase.name}: expected invalid=${testCase.expectInvalid}, got ${gotInvalid}`,
+      );
+    } else {
+      console.log(`  \u2713 ${testCase.name}`);
+    }
+  }
+  if (failed > 0) {
+    console.error(`\nself-test FAILED (${failed}/${cases.length})`);
+    return 1;
+  }
+  console.log(`\nself-test PASSED (${cases.length}/${cases.length})`);
+  return 0;
 }

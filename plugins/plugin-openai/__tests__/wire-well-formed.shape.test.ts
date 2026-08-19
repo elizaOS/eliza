@@ -9,7 +9,7 @@
  * raw request bytes; the assertions replay a strict parser's view of the body.
  */
 import { createServer, type Server } from "node:http";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type ElizaError, type IAgentRuntime, MAX_WELL_FORMED_VISITS } from "@elizaos/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models";
 
@@ -108,6 +108,21 @@ beforeEach(() => {
 });
 
 describe("#18025: request bodies are well-formed strict JSON", () => {
+  it("rejects an oversized sparse response schema before opening a provider request", async () => {
+    const sparseSchema = new Array(MAX_WELL_FORMED_VISITS);
+
+    await expect(
+      handleTextSmall(buildRuntime(), {
+        prompt: "return structured data",
+        responseSchema: sparseSchema,
+      } as never)
+    ).rejects.toMatchObject({
+      code: "WELL_FORMED_UNBOUNDED",
+      context: { reason: "visits" },
+    } satisfies Partial<ElizaError>);
+    expect(captured).toHaveLength(0);
+  });
+
   it("sanitizes a prompt truncated mid-emoji (lone leading surrogate)", async () => {
     const brokenPrompt = "summarize this page 🤖 please".slice(0, 21); // splits 🤖
     expect(LONE_SURROGATE_ESCAPE.test(JSON.stringify(brokenPrompt))).toBe(true);

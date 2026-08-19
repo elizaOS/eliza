@@ -15,7 +15,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import { convergeAgentSandboxSchema } from "@elizaos/cloud-shared/db/ensure-agent-sandbox-schema";
-import { PgDialect } from "drizzle-orm/pg-core";
+import { createMigrationClientSandboxExecutor } from "@elizaos/cloud-shared/db/migration-sandbox-schema-executor";
 import pg from "pg";
 import {
   type CleanupFailure,
@@ -113,13 +113,13 @@ type PostMigrationConvergence = (client: MigrationClient) => Promise<void>;
 export async function convergeAgentSandboxSchemaOnMigrationClient(
   migrationClient: MigrationClient,
 ): Promise<void> {
-  const dialect = new PgDialect();
-  await convergeAgentSandboxSchema({
-    execute: async (statement) => {
-      const query = dialect.sqlToQuery(statement);
-      await migrationClient.query(query.sql, query.params);
-    },
-  });
+  // The migration-only adapter owns SQL rendering without pulling PgDialect
+  // into the Worker-facing schema guard module.
+  await convergeAgentSandboxSchema(
+    createMigrationClientSandboxExecutor((text, params) =>
+      migrationClient.query(text, params),
+    ),
+  );
 }
 
 // Historical SQL files were edited after deployment, so their stored hashes
