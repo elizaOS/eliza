@@ -12,8 +12,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { getCliVersion } from "./package-info.js";
 import {
   buildFullstackTemplateValues,
   buildPluginTemplateValues,
@@ -70,6 +72,7 @@ describe("template value builders", () => {
   it("builds fullstack defaults from normalized project names", () => {
     expect(buildFullstackTemplateValues("My App!!")).toMatchObject({
       appName: "My App",
+      elizaVersion: getCliVersion(),
       appUrl: "https://example.com/my-app",
       bundleId: "com.example.myapp",
       fileExtension: ".my-app.agent",
@@ -83,6 +86,51 @@ describe("template value builders", () => {
       packageScope: "project",
       projectSlug: "project",
     });
+  });
+
+  it("maps the fullstack version token to the CLI's own version", () => {
+    const values = buildFullstackTemplateValues("my-app");
+    const entries = Object.fromEntries(
+      getTemplateReplacementEntries({ templateId: "project", values }),
+    );
+
+    expect(entries.__ELIZAOS_VERSION__).toBe(getCliVersion());
+  });
+
+  it("ships no npm dist-tag pins for workspace packages in the fullstack template", () => {
+    // "latest" resolves each @elizaos package independently on npm, which has
+    // produced installs mixing the v1 core with two different v2 alphas. The
+    // template must carry the version token so scaffolds pin the lockstep set.
+    const templateRoot = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "templates",
+      "project",
+    );
+    const manifests = [
+      join(templateRoot, "apps", "app", "package.json"),
+      join(templateRoot, "apps", "app", "electrobun", "package.json"),
+    ];
+
+    for (const manifest of manifests) {
+      const parsed = JSON.parse(readFileSync(manifest, "utf8")) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      for (const [name, spec] of Object.entries({
+        ...parsed.dependencies,
+        ...parsed.devDependencies,
+      })) {
+        if (!name.startsWith("@elizaos/")) continue;
+        expect(spec, `${manifest} pins ${name} to an npm dist-tag`).not.toBe(
+          "latest",
+        );
+        expect(
+          spec,
+          `${manifest} must carry the version token for ${name}`,
+        ).toBe("__ELIZAOS_VERSION__");
+      }
+    }
   });
 });
 
