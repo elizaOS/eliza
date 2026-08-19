@@ -5,6 +5,7 @@ import type {
   SystemStatus,
 } from "@elizaos/capacitor-system";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -584,6 +585,165 @@ describe("DeviceSettingsAppView — interactions", () => {
     const status = await screen.findByRole("status");
     expect(status.textContent).toContain("System settings opened.");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("DeviceSettingsAppView — concurrent unsaved volume edits", () => {
+  // Regression for #22648: applying one stream (or brightness) must NOT discard
+  // the in-progress slider edits the user made to OTHER streams. Previously a
+  // deviceSettings-change effect rebuilt the whole `volumes` map on every
+  // setDeviceSettings, silently snapping every other slider back to the last
+  // saved server value.
+  it("preserves an unsaved edit on stream A while applying stream B", async () => {
+    mockBridgeFull();
+    // Applying ring returns a merged server value of 8/10.
+    systemBridge.setVolume.mockResolvedValue({
+      stream: "ring",
+      current: 8,
+      max: 10,
+    });
+    renderView();
+
+    const music = (await screen.findByTestId(
+      "device-settings-volume-music",
+    )) as HTMLInputElement;
+    const ring = screen.getByTestId(
+      "device-settings-volume-ring",
+    ) as HTMLInputElement;
+
+    // Nudge Media (music) to 12 WITHOUT applying it — pending edit only.
+    fireEvent.change(music, { target: { value: "12" } });
+    await waitFor(() => expect(music.value).toBe("12"));
+
+    // Nudge Ring to 7 and apply ONLY Ring.
+    fireEvent.change(ring, { target: { value: "7" } });
+    await waitFor(() => expect(ring.value).toBe("7"));
+    fireEvent.click(screen.getByTestId("device-settings-apply-volume-ring"));
+
+    await waitFor(() =>
+      expect(systemBridge.setVolume).toHaveBeenCalledWith({
+        stream: "ring",
+        volume: 7,
+      }),
+    );
+
+    // Applied stream snaps to the merged server value (8), as before.
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("device-settings-volume-ring") as HTMLInputElement)
+          .value,
+      ).toBe("8"),
+    );
+
+    // The unrelated unsaved Media edit of 12 must SURVIVE the ring apply.
+    expect(
+      (screen.getByTestId("device-settings-volume-music") as HTMLInputElement)
+        .value,
+    ).toBe("12");
+  });
+
+  it("preserves an unsaved volume edit while applying brightness", async () => {
+    mockBridgeFull();
+    // setScreenBrightness returns a full DeviceSettingsStatus INCLUDING volumes
+    // at their last-saved values — the object identity change must not clobber
+    // the pending slider edit.
+    systemBridge.setScreenBrightness.mockResolvedValue({
+      brightness: 0.4,
+      brightnessMode: "automatic",
+      canWriteSettings: true,
+      volumes: fullDeviceSettings().volumes,
+    });
+    // The bridge returns Media at its last-saved 9 when Media is later applied,
+    // so the value written back proves whether the pending edit survived.
+    systemBridge.setVolume.mockResolvedValue({
+      stream: "music",
+      current: 13,
+      max: 15,
+    });
+    renderView();
+
+    const music = (await screen.findByTestId(
+      "device-settings-volume-music",
+    )) as HTMLInputElement;
+    // Pending edit: Media 9 -> 13, never applied.
+    fireEvent.change(music, { target: { value: "13" } });
+    await waitFor(() => expect(music.value).toBe("13"));
+
+    // Apply brightness (unrelated stream family). Its returned
+    // DeviceSettingsStatus carries the full volumes array at server values.
+    fireEvent.click(screen.getByTestId("device-settings-apply-brightness"));
+    await waitFor(() =>
+      expect(systemBridge.setScreenBrightness).toHaveBeenCalledTimes(1),
+    );
+    // Brightness readout reflects the merged 0.4 -> 40%, proving the
+    // deviceSettings object was actually replaced by the brightness apply.
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("device-settings-brightness") as HTMLInputElement)
+          .value,
+      ).toBe("40"),
+    );
+    // Flush any pending passive effect deterministically. In the buggy version
+    // a deviceSettings-change effect reseeds the whole volumes map here; act()
+    // guarantees it has run before we assert, removing the scheduler race.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // The pending Media slider must still read 13, not the server's 9.
+    expect(
+      (screen.getByTestId("device-settings-volume-music") as HTMLInputElement)
+        .value,
+    ).toBe("13");
+
+    // Deterministic proof (race-free): applying Media now must send the
+    // PENDING 13 to the bridge, not the clobbered server value 9. React flushes
+    // any pending passive effect before this click handler runs, so a
+    // deviceSettings-driven reseed (the old bug) would already have reset the
+    // slider to 9 by this point.
+    fireEvent.click(screen.getByTestId("device-settings-apply-volume-music"));
+    await waitFor(() =>
+      expect(systemBridge.setVolume).toHaveBeenCalledWith({
+        stream: "music",
+        volume: 13,
+      }),
+    );
+  });
+
+  it("explicit Refresh reloads every slider from the server, discarding pending edits", async () => {
+    // Initial load, then Refresh returns music raised to 11/15 server-side.
+    systemBridge.getDeviceSettings
+      .mockResolvedValueOnce(fullDeviceSettings())
+      .mockResolvedValueOnce({
+        ...fullDeviceSettings(),
+        volumes: fullDeviceSettings().volumes.map((v) =>
+          v.stream === "music" ? { ...v, current: 11 } : v,
+        ),
+      });
+    systemBridge.getStatus.mockResolvedValue(fullSystemStatus());
+    renderView();
+
+    const music = (await screen.findByTestId(
+      "device-settings-volume-music",
+    )) as HTMLInputElement;
+    expect(music.value).toBe("9");
+
+    // Pending edit that Refresh is EXPECTED to discard.
+    fireEvent.change(music, { target: { value: "2" } });
+    await waitFor(() => expect(music.value).toBe("2"));
+
+    fireEvent.click(screen.getByTestId("device-settings-refresh"));
+    await waitFor(() =>
+      expect(systemBridge.getDeviceSettings).toHaveBeenCalledTimes(2),
+    );
+
+    // Refresh is an explicit reseed: the slider reflects the new server value.
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("device-settings-volume-music") as HTMLInputElement)
+          .value,
+      ).toBe("11"),
+    );
   });
 });
 
