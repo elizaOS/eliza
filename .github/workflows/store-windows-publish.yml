@@ -1,0 +1,236 @@
+name: Publish Microsoft Store
+
+# Callable only: the canonical release transaction invokes this after the exact
+# tag and GitHub Release are finalized. Initial Partner Center product creation
+# remains a one-time portal prerequisite for Microsoft's update API.
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Exact canonical release commit
+        required: true
+        type: string
+      version:
+        description: Canonical stable release semver
+        required: true
+        type: string
+      channel:
+        description: Canonical release channel
+        required: true
+        type: string
+      tag:
+        description: Finalized Git tag
+        required: true
+        type: string
+    secrets:
+      MICROSOFT_STORE_TENANT_ID:
+        required: false
+      MICROSOFT_STORE_CLIENT_ID:
+        required: false
+      MICROSOFT_STORE_CLIENT_SECRET:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-publish:
+    name: Build, validate, and submit AppContainer MSIX
+    if: inputs.channel == 'latest'
+    runs-on: ${{ vars.RUNNER_WINDOWS || 'windows-2025' }}
+    timeout-minutes: 150
+    environment:
+      name: production-release
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    env:
+      CI: "true"
+      ELIZA_BUILD_VARIANT: store
+      ELIZA_RELEASE_AUTHORITY: microsoft-store
+      ELECTROBUN_SKIP_CODESIGN: "1"
+      SKIP_WINDOWS_SIGNING: "1"
+      SKIP_MSIX_SIGN: "1"
+      ELIZA_MSIX_IDENTITY_NAME: ${{ vars.MICROSOFT_STORE_IDENTITY_NAME }}
+      ELIZA_MSIX_PUBLISHER_ID: ${{ vars.MICROSOFT_STORE_PUBLISHER_ID }}
+      ELIZA_MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MICROSOFT_STORE_PUBLISHER_DISPLAY_NAME }}
+      MICROSOFT_STORE_APPLICATION_ID: ${{ vars.MICROSOFT_STORE_APPLICATION_ID }}
+      MICROSOFT_STORE_TENANT_ID: ${{ secrets.MICROSOFT_STORE_TENANT_ID }}
+      MICROSOFT_STORE_CLIENT_ID: ${{ secrets.MICROSOFT_STORE_CLIENT_ID }}
+      MICROSOFT_STORE_CLIENT_SECRET: ${{ secrets.MICROSOFT_STORE_CLIENT_SECRET }}
+    steps:
+      - name: Enable Git long paths
+        shell: pwsh
+        run: git config --global core.longpaths true
+
+      - name: Checkout exact release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+
+      - name: Bind build to finalized stable release
+        id: plan
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+          EXPECTED_TAG: ${{ inputs.tag }}
+        run: |
+          test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
+          test "$EXPECTED_TAG" = "v${{ inputs.version }}"
+          test "$(git rev-parse "refs/tags/$EXPECTED_TAG^{commit}")" = "$EXPECTED_SHA"
+          node packages/scripts/store-release-plan.mjs \
+            --version "${{ inputs.version }}" \
+            --channel "${{ inputs.channel }}" \
+            --source-sha "$EXPECTED_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+          test "${{ inputs.channel }}" = "latest"
+
+      - name: Require Partner Center identity and API credentials
+        shell: pwsh
+        run: |
+          $required = @(
+            "ELIZA_MSIX_IDENTITY_NAME",
+            "ELIZA_MSIX_PUBLISHER_ID",
+            "ELIZA_MSIX_PUBLISHER_DISPLAY_NAME",
+            "MICROSOFT_STORE_APPLICATION_ID",
+            "MICROSOFT_STORE_TENANT_ID",
+            "MICROSOFT_STORE_CLIENT_ID",
+            "MICROSOFT_STORE_CLIENT_SECRET"
+          )
+          $missing = @($required | Where-Object { -not (Get-Item "Env:$_" -ErrorAction SilentlyContinue).Value })
+          if ($missing.Count -gt 0) {
+            Write-Error "Missing required Microsoft Store release configuration: $($missing -join ', ')"
+            exit 1
+          }
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          node-version: "24.15.0"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+          install-native-deps: "false"
+          install-protoc: "false"
+
+      - name: Align Electrobun version with release
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          node packages/app-core/scripts/align-electrobun-version.mjs
+          node <<'NODE'
+          const fs = require("node:fs");
+          const version = process.env.RELEASE_VERSION;
+          const packagePath = "packages/app-core/platforms/electrobun/package.json";
+          const configPath = "packages/app-core/platforms/electrobun/electrobun.config.ts";
+          const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+          pkg.version = version;
+          fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
+          let config = fs.readFileSync(configPath, "utf8");
+          config = config.replace(/version:\s*"[^"]+"/, `version: "${version}"`);
+          fs.writeFileSync(configPath, config);
+          NODE
+
+      - name: Stage desktop bundle inputs
+        run: |
+          node packages/shared/scripts/generate-keywords.mjs
+          node packages/app-core/scripts/desktop-build.mjs stage --variant=base
+          mkdir -p dist/node_modules/@elizaos/shared/src/i18n/generated
+          cp packages/shared/src/i18n/generated/validation-keyword-data.ts dist/node_modules/@elizaos/shared/src/i18n/generated/
+          cp packages/shared/src/i18n/generated/validation-keyword-data.js dist/node_modules/@elizaos/shared/src/i18n/generated/
+          test -f dist/entry.js
+
+      - name: Resolve and build patched Electrobun CLI
+        id: electrobun
+        run: |
+          package_dir="$(node <<'NODE'
+          const { createRequire } = require("node:module");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const req = createRequire(path.resolve("packages/app-core/platforms/electrobun/package.json"));
+          let packageDir = path.dirname(req.resolve("electrobun"));
+          while (!fs.existsSync(path.join(packageDir, "package.json"))) {
+            const parent = path.dirname(packageDir);
+            if (parent === packageDir) throw new Error("electrobun package.json not found");
+            packageDir = parent;
+          }
+          process.stdout.write(packageDir);
+          NODE
+          )"
+          test -n "$package_dir"
+          node packages/app-core/scripts/build-patched-electrobun-cli.mjs "$package_dir" windows-x64
+
+      - name: Build Store-flavor Electrobun app
+        env:
+          ELIZA_RELEASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/
+        run: node packages/app-core/scripts/desktop-build.mjs package --env=stable
+
+      - name: Inject exact release identity into packaged resources
+        shell: pwsh
+        run: |
+          $buildRoot = "packages/app-core/platforms/electrobun/build"
+          $found = 0
+          Get-ChildItem -Path $buildRoot -Recurse -Directory -Filter "Resources" | ForEach-Object {
+            $versionJson = @{
+              identifier = "ai.elizaos.Eliza"
+              channel = "stable"
+              name = "eliza"
+              version = "${{ inputs.version }}"
+            } | ConvertTo-Json -Compress
+            Set-Content -Path (Join-Path $_.FullName "version.json") -Value $versionJson -Encoding utf8
+            $found++
+          }
+          if ($found -eq 0) { Write-Error "No packaged Resources directory found"; exit 1 }
+
+      - name: Build unsigned Store MSIX for Partner Center re-signing
+        shell: pwsh
+        run: |
+          pwsh -File packages/app-core/packaging/msix/build-msix.ps1 `
+            -BuildDir (Join-Path $PWD "packages/app-core/platforms/electrobun/build") `
+            -OutputDir (Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts") `
+            -Version "${{ inputs.version }}"
+
+      - name: Validate exact Store package and create upload archive
+        id: package
+        shell: pwsh
+        run: |
+          $sdkBin = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Directory |
+            Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
+            Sort-Object { [version]$_.Name } -Descending |
+            Select-Object -First 1
+          $makeappx = Join-Path $sdkBin.FullName "x64\makeappx.exe"
+          $msix = Get-ChildItem "packages/app-core/platforms/electrobun/artifacts" -File -Filter "*-store.msix" |
+            Select-Object -First 1
+          if (-not $msix) { Write-Error "Store MSIX was not produced"; exit 1 }
+          $unpack = Join-Path $env:RUNNER_TEMP "store-msix-unpacked"
+          & $makeappx unpack /p $msix.FullName /d $unpack /o
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [xml]$manifest = Get-Content (Join-Path $unpack "AppxManifest.xml") -Raw
+          $identity = $manifest.Package.Identity
+          if ($identity.Name -ne $env:ELIZA_MSIX_IDENTITY_NAME) { throw "MSIX Identity.Name mismatch" }
+          if ($identity.Publisher -ne $env:ELIZA_MSIX_PUBLISHER_ID) { throw "MSIX Identity.Publisher mismatch" }
+          if ($identity.Version -ne "${{ steps.plan.outputs.windows_package_version }}") { throw "MSIX version mismatch: $($identity.Version)" }
+          if ($manifest.OuterXml -match "runFullTrust|windows.fullTrustApplication") { throw "Store MSIX contains a full-trust declaration" }
+          if (-not (Test-Path (Join-Path $unpack "launcher.exe"))) { throw "Store MSIX lacks launcher.exe" }
+          $archive = Join-Path $env:RUNNER_TEMP "eliza-microsoft-store-${{ inputs.version }}.zip"
+          Compress-Archive -LiteralPath $msix.FullName -DestinationPath $archive -Force
+          "msix=$($msix.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "msix_name=$($msix.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "archive=$archive" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Upload Microsoft Store package evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eliza-microsoft-store-${{ inputs.version }}
+          path: ${{ steps.package.outputs.msix }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Submit exact package to Partner Center
+        run: >-
+          node packages/scripts/microsoft-store-submission.mjs
+          --archive "${{ steps.package.outputs.archive }}"
+          --package-file-name "${{ steps.package.outputs.msix_name }}"

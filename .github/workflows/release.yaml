@@ -575,3 +575,16 @@ jobs:
       tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
       channel: ${{ needs.finalize.outputs.channel }}
     secrets: inherit
+
+  publish-microsoft-store:
+    name: Publish Microsoft Store release
+    needs: finalize
+    permissions:
+      contents: read
+    uses: ./.github/workflows/store-windows-publish.yml
+    with:
+      source_sha: ${{ needs.finalize.outputs.source_sha }}
+      version: ${{ needs.finalize.outputs.version }}
+      tag: ${{ format('v{0}', needs.finalize.outputs.version) }}
+      channel: ${{ needs.finalize.outputs.channel }}
+    secrets: inherit

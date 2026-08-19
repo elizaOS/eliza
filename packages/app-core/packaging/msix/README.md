@@ -152,9 +152,26 @@ Output filenames:
 
 ## CI pipeline
 
-`release-electrobun.yml` runs the direct flavor automatically when
-`WINDOWS_SIGN_CERT_BASE64` is configured. The store flavor is opt-in: set
-`ELIZA_BUILD_VARIANT=store` on the CI step that targets Partner Center upload.
+`release-electrobun.yml` builds the direct flavor. The canonical transactional
+release separately calls `store-windows-publish.yml` for stable releases. That
+protected Windows job builds the AppContainer flavor from the finalized commit,
+unpacks and audits the MSIX, uploads evidence, and commits an update through the
+Microsoft Store submission API.
+
+The job fails before building if any required Partner Center configuration is
+missing:
+
+- Repository variables: `MICROSOFT_STORE_IDENTITY_NAME`,
+  `MICROSOFT_STORE_PUBLISHER_ID`,
+  `MICROSOFT_STORE_PUBLISHER_DISPLAY_NAME`, and
+  `MICROSOFT_STORE_APPLICATION_ID`.
+- Environment secrets: `MICROSOFT_STORE_TENANT_ID`,
+  `MICROSOFT_STORE_CLIENT_ID`, and `MICROSOFT_STORE_CLIENT_SECRET`.
+
+Microsoft's submission API can update only an existing Partner Center product
+that already has a completed submission with age ratings. The first product and
+first completed submission are therefore one-time portal prerequisites; after
+that, stable canonical releases use the API lane.
 
 ## Store submission
 
@@ -171,8 +188,8 @@ Output filenames:
    - `ELIZA_MSIX_PUBLISHER_DISPLAY_NAME` — human-readable publisher, e.g.
      `elizaOS Labs`. Defaults to the placeholder `elizaOS` if unset.
    `build-msix.ps1` substitutes these into the staged manifest before
-   `makeappx pack`. When unset, the script prints a `::warning::` and ships
-   the placeholder values (Partner Center will reject the upload).
+   `makeappx pack`. A store build fails closed when any value is unset, so CI
+   cannot silently produce a package that Partner Center will reject.
 4. Replace placeholder assets in `assets/` with final artwork.
 5. Add screenshots to `store/screenshots/`.
 6. Build the store MSIX (`ELIZA_BUILD_VARIANT=store` plus the three Identity
