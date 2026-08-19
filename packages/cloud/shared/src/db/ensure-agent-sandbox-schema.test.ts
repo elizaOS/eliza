@@ -12,9 +12,14 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 
 import { runWithCloudBindings } from "../lib/runtime/cloud-bindings";
-import { shouldSkipEnsure } from "./ensure-agent-sandbox-schema";
+import {
+  convergeAgentSandboxSchema,
+  createMigrationClientSandboxExecutor,
+  shouldSkipEnsure,
+} from "./ensure-agent-sandbox-schema";
 
 const globalRecord = globalThis as Record<string, unknown>;
 const hadWebSocketPair = Object.hasOwn(globalRecord, "WebSocketPair");
@@ -75,5 +80,65 @@ describe("shouldSkipEnsure", () => {
   test("local environment still skips", () => {
     process.env.ENVIRONMENT = "local";
     expect(shouldSkipEnsure()).toBe(true);
+  });
+});
+
+describe("createMigrationClientSandboxExecutor", () => {
+  test("renders each convergence statement into a parameterized query in order", async () => {
+    const rendered: Array<{ sql: string; params: unknown[] }> = [];
+    const executor = createMigrationClientSandboxExecutor(async (sql, params) => {
+      rendered.push({ sql, params });
+      return { rows: [] };
+    });
+
+    await convergeAgentSandboxSchema(executor);
+
+    // Every convergence statement must reach the raw query function as a
+    // finished { sql, params } pair; no unrendered Drizzle SQL object leaks out.
+    expect(rendered.length).toBeGreaterThan(30);
+    for (const { sql, params } of rendered) {
+      expect(typeof sql).toBe("string");
+      expect(sql.length).toBeGreaterThan(0);
+      expect(Array.isArray(params)).toBe(true);
+    }
+
+    // The batch opens with the agent_sandboxes column ALTER and includes the
+    // duplicate_object-guarded DO block that adds the deletion-intent check.
+    const first = rendered[0];
+    expect(first).toBeDefined();
+    expect(first?.sql).toContain('ALTER TABLE "agent_sandboxes"');
+    expect(first?.sql).toContain('ADD COLUMN IF NOT EXISTS "pool_status"');
+    expect(
+      rendered.some(({ sql }) =>
+        sql.includes('CREATE TABLE IF NOT EXISTS "agent_sandbox_backups"'),
+      ),
+    ).toBe(true);
+    expect(
+      rendered.some(({ sql }) => sql.includes("agent_sandboxes_deletion_intent_pair_check")),
+    ).toBe(true);
+
+    // The warm-pool organization seed is parameterized, not string-interpolated,
+    // so the WARM_POOL_ORG_ID crosses as a bound parameter.
+    const seed = rendered.find(({ sql }) => sql.includes('INSERT INTO "organizations"'));
+    expect(seed).toBeDefined();
+    expect(seed?.params.length).toBeGreaterThan(0);
+  });
+
+  test("forwards the raw query result back through the executor", async () => {
+    const sentinel = { rows: [{ ok: true }] };
+    let calls = 0;
+    const executor = createMigrationClientSandboxExecutor(async () => {
+      calls += 1;
+      return sentinel;
+    });
+
+    // The executor must return the raw query result unchanged so callers can
+    // read rows from the underlying session.
+    const result = await executor.execute(sql`SELECT 1`);
+    expect(result).toBe(sentinel);
+
+    // A full convergence run drives the raw query once per statement.
+    await convergeAgentSandboxSchema(executor);
+    expect(calls).toBeGreaterThan(30);
   });
 });
