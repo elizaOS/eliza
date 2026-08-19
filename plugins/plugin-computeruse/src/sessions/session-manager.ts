@@ -121,6 +121,7 @@ function sanitizeViewerUrl(value: string | undefined): string | undefined {
   const loopback =
     hostname === "localhost" ||
     hostname === "127.0.0.1" ||
+    hostname === "::1" ||
     hostname === "[::1]";
   if (parsed.protocol === "http:" && !loopback) {
     throw new ComputerUseSessionError(

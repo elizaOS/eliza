@@ -243,6 +243,21 @@ describe("ComputerUseSessionManager", () => {
     ).toThrow("viewerUrl must use HTTPS unless it is loopback");
   });
 
+  it("accepts cleartext IPv6 loopback viewer endpoints", () => {
+    const manager = new ComputerUseSessionManager({
+      idFactory: () => "session-one",
+      executor: async () => ({ success: true }),
+    });
+    const session = manager.create({
+      target: {
+        kind: "sandbox",
+        targetId: "sandbox-one",
+        viewerUrl: "http://[::1]:6080/vnc?token=secret#viewer",
+      },
+    });
+    expect(session.target.viewerUrl).toBe("http://[::1]:6080/vnc");
+  });
+
   it("captures frames without consuming action sequence or retaining bytes", async () => {
     const manager = new ComputerUseSessionManager({
       idFactory: () => "session-one",
