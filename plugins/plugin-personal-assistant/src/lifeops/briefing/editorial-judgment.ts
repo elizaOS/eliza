@@ -286,7 +286,7 @@ function isExplicitlyDemoted(
   );
 }
 
-/** True when the owner's newest explicit marker for a class is `kept`. */
+/** True when the owner's newest explicit marker restores the class. */
 function isExplicitlyRestored(
   summary: LifeOpsBriefItemEngagementSummary,
 ): boolean {
@@ -305,7 +305,7 @@ export function recalibrateBriefItemClasses(
   return summaries
     .filter((summary) => {
       // Explicit owner markers take precedence over inferred ignore history:
-      // a `demoted` marker demotes regardless of counts, and a newer `kept`
+      // a `demoted` marker demotes regardless of counts, and a newer `restored`
       // marker restores the class regardless of counts.
       if (isExplicitlyDemoted(summary)) return true;
       if (isExplicitlyRestored(summary)) return false;

@@ -307,10 +307,10 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
-function briefRewardMarkerId(engagementId: string): string {
+function briefRewardMarkerId(agentId: string, engagementId: string): string {
   return `brief_reward_${crypto
     .createHash("sha256")
-    .update(engagementId)
+    .update([agentId, engagementId].join("\0"))
     .digest("hex")
     .slice(0, 20)}`;
 }
@@ -2858,12 +2858,14 @@ export class LifeOpsRepository {
         source_id = EXCLUDED.source_id,
         item_class = EXCLUDED.item_class,
         weight = EXCLUDED.weight,
-        metadata_json = EXCLUDED.metadata_json`;
+        metadata_json = EXCLUDED.metadata_json
+      WHERE app_lifeops.life_brief_item_engagements.agent_id = EXCLUDED.agent_id`;
     if (tx) await executeRawSqlTx(tx, insertSql);
     else await executeRawSql(this.runtime, insertSql);
     const selectSql = `SELECT *
          FROM app_lifeops.life_brief_item_engagements
-        WHERE id = ${sqlQuote(id)}
+        WHERE agent_id = ${sqlQuote(input.agentId)}
+          AND id = ${sqlQuote(id)}
         LIMIT 1`;
     const rows = tx
       ? await executeRawSqlTx(tx, selectSql)
@@ -3161,7 +3163,7 @@ export class LifeOpsRepository {
     engagement: LifeOpsBriefItemEngagementRecord,
     options: { nowIso?: string; leaseSeconds?: number } = {},
   ): Promise<string | null> {
-    const id = briefRewardMarkerId(engagement.id);
+    const id = briefRewardMarkerId(engagement.agentId, engagement.id);
     const nowIso = options.nowIso ?? isoNow();
     const leaseSeconds = options.leaseSeconds ?? 60;
     const leaseExpiresAt = new Date(
@@ -3191,6 +3193,7 @@ export class LifeOpsRepository {
         event_at = EXCLUDED.event_at,
         metadata_json = EXCLUDED.metadata_json
       WHERE app_lifeops.life_brief_item_engagements.event_at <= ${sqlQuote(nowIso)}
+        AND app_lifeops.life_brief_item_engagements.agent_id = EXCLUDED.agent_id
         AND app_lifeops.life_brief_item_engagements.metadata_json NOT LIKE '%"rewardState":"completed"%'
       RETURNING id`,
     );
@@ -3210,7 +3213,8 @@ export class LifeOpsRepository {
             rewardState: "completed",
             trajectoryRewardKey: `brief-engagement:${engagement.id}`,
           })}
-        WHERE id = ${sqlQuote(briefRewardMarkerId(engagement.id))}
+        WHERE id = ${sqlQuote(briefRewardMarkerId(engagement.agentId, engagement.id))}
+          AND agent_id = ${sqlQuote(engagement.agentId)}
           AND metadata_json LIKE ${sqlQuote(`%"claimToken":"${claimToken}"%`)}`,
     );
   }
@@ -3223,7 +3227,8 @@ export class LifeOpsRepository {
     await executeRawSql(
       this.runtime,
       `DELETE FROM app_lifeops.life_brief_item_engagements
-        WHERE id = ${sqlQuote(briefRewardMarkerId(engagement.id))}
+        WHERE id = ${sqlQuote(briefRewardMarkerId(engagement.agentId, engagement.id))}
+          AND agent_id = ${sqlQuote(engagement.agentId)}
           AND metadata_json LIKE ${sqlQuote(`%"claimToken":"${claimToken}"%`)}`,
     );
   }

@@ -613,6 +613,71 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
     expect(applyReward).toHaveBeenCalledTimes(2);
   });
 
+  it("isolates explicit engagement ids and reward leases between agents", async () => {
+    const [item] = structureBriefingItems({ calendar: sections.calendar });
+    if (!item) throw new Error("fixture item missing");
+    const sharedId = "shared-explicit-engagement-id";
+    const engagement = await repository.recordBriefItemEngagement({
+      id: sharedId,
+      agentId: runtime.agentId,
+      briefingId: "brief-tenant-a",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "kept",
+      eventAt: "2026-08-17T17:00:00.000Z",
+      weight: 0.75,
+      metadata: { trajectoryId: "tenant-a-trajectory" },
+    });
+    const otherAgentId = "00000000-0000-4000-8000-000000000002";
+
+    await expect(
+      repository.recordBriefItemEngagement({
+        id: sharedId,
+        agentId: otherAgentId,
+        briefingId: "brief-tenant-b",
+        itemId: item.itemId,
+        source: item.source,
+        kind: item.kind,
+        sourceId: item.sourceId,
+        itemClass: item.itemClass,
+        eventType: "kept",
+        eventAt: "2026-08-17T17:00:00.000Z",
+        weight: 0.75,
+        metadata: { trajectoryId: "tenant-b-trajectory" },
+      }),
+    ).rejects.toThrow("Failed to reload brief engagement");
+    expect(
+      await repository.getBriefItemEngagement(runtime.agentId, sharedId),
+    ).toMatchObject({ agentId: runtime.agentId, briefingId: "brief-tenant-a" });
+
+    const tenantAClaim = await repository.claimBriefEngagementReward(
+      engagement,
+      { nowIso: "2026-08-17T18:00:00.000Z" },
+    );
+    const tenantBClaim = await repository.claimBriefEngagementReward(
+      { ...engagement, agentId: otherAgentId, briefingId: "brief-tenant-b" },
+      { nowIso: "2026-08-17T18:00:00.000Z" },
+    );
+    expect(tenantAClaim).not.toBeNull();
+    expect(tenantBClaim).not.toBeNull();
+
+    const markers = await executeRawSql(
+      runtime,
+      `SELECT id, agent_id
+         FROM app_lifeops.life_brief_item_engagements
+        WHERE event_type = 'rewarded'
+        ORDER BY agent_id`,
+    );
+    expect(markers).toHaveLength(2);
+    expect(new Set(markers.map((row) => row.id)).size).toBe(2);
+    expect(markers.map((row) => row.agent_id)).toEqual(
+      [runtime.agentId, otherAgentId].sort(),
+    );
+  });
+
   it("recovers an abandoned reward lease without letting its old owner erase the takeover", async () => {
     const [item] = structureBriefingItems({ calendar: sections.calendar });
     if (!item) throw new Error("fixture item missing");
