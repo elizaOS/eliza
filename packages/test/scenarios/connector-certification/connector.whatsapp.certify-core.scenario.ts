@@ -2,6 +2,8 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  evidenceClass: "runtime-observed",
+  certificationClass: "runtime-contract",
   lane: "live-only",
   id: "connector.whatsapp.certify-core",
   title: "Certify WhatsApp inbound and delivery behavior",

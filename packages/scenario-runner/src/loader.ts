@@ -12,6 +12,7 @@ import {
   DEFAULT_SCENARIO_LANE,
   type ScenarioDefinition,
   type ScenarioLane,
+  scenarioCertificationClass,
   scenarioLane,
   scenario as validateScenarioDefinition,
 } from "@elizaos/scenario-runner/schema";
@@ -55,6 +56,12 @@ export interface ScenarioMetadata {
   tier?: string;
   /** CI lane as declared in the file; absent means the default lane. */
   lane?: string;
+  /** Evidence boundary as declared in the file. */
+  evidenceClass?: string;
+  /** Maximum certification claim as declared in the file. */
+  certificationClass?: string;
+  /** Execution profile as declared in the file. */
+  executionProfile?: string;
   edgeVariant?: string;
   baseScenarioId?: string;
 }
@@ -299,6 +306,56 @@ function getStaticStringProperty(
   return undefined;
 }
 
+function getOptionalStaticStringProperty(
+  objectLiteral: ts.ObjectLiteralExpression,
+  propertyName: string,
+  file: string,
+): string | undefined {
+  for (const property of objectLiteral.properties) {
+    if (
+      ts.isShorthandPropertyAssignment(property) &&
+      property.name.text === propertyName
+    ) {
+      throw new Error(
+        `[scenario-loader] ${file}: ${propertyName} must be a statically readable string literal`,
+      );
+    }
+    if (!ts.isPropertyAssignment(property)) continue;
+    const name = propertyNameText(property.name);
+    if (name !== propertyName) continue;
+    const value = staticStringValue(property.initializer);
+    if (value === undefined) {
+      throw new Error(
+        `[scenario-loader] ${file}: ${propertyName} must be a statically readable string literal`,
+      );
+    }
+    return value;
+  }
+  return undefined;
+}
+
+function assertStaticScenarioMetadataObject(
+  objectLiteral: ts.ObjectLiteralExpression,
+  file: string,
+): void {
+  for (const property of objectLiteral.properties) {
+    if (ts.isSpreadAssignment(property)) {
+      throw new Error(
+        `[scenario-loader] ${file}: scenario metadata cannot use object spreads because certification fields would not be statically auditable`,
+      );
+    }
+    if (
+      "name" in property &&
+      property.name &&
+      ts.isComputedPropertyName(property.name)
+    ) {
+      throw new Error(
+        `[scenario-loader] ${file}: scenario metadata cannot use computed property names because certification fields would not be statically auditable`,
+      );
+    }
+  }
+}
+
 function scenarioObjectFromExpression(
   expression: ts.Expression,
 ): ts.ObjectLiteralExpression | null {
@@ -360,20 +417,50 @@ export async function loadScenarioMetadataFile(
       `[scenario-loader] ${file}: no statically readable scenario object in default export or exported 'scenario' value.`,
     );
   }
+  assertStaticScenarioMetadataObject(objectLiteral, file);
   const id = getStaticStringProperty(objectLiteral, "id");
   if (!id) {
     throw new Error(
       `[scenario-loader] ${file}: no statically readable scenario id in default export or exported 'scenario' value.`,
     );
   }
-  return {
+  const title = getOptionalStaticStringProperty(objectLiteral, "title", file);
+  if (!title) {
+    throw new Error(
+      `[scenario-loader] ${file}: no statically readable scenario title in default export or exported 'scenario' value.`,
+    );
+  }
+  const metadata = {
     file,
     id,
-    title: getStaticStringProperty(objectLiteral, "title"),
+    title,
     status: getStaticStringProperty(objectLiteral, "status"),
     tier: getStaticStringProperty(objectLiteral, "tier"),
-    lane: getStaticStringProperty(objectLiteral, "lane"),
+    lane: getOptionalStaticStringProperty(objectLiteral, "lane", file),
+    evidenceClass: getOptionalStaticStringProperty(
+      objectLiteral,
+      "evidenceClass",
+      file,
+    ),
+    certificationClass: getOptionalStaticStringProperty(
+      objectLiteral,
+      "certificationClass",
+      file,
+    ),
+    executionProfile: getOptionalStaticStringProperty(
+      objectLiteral,
+      "executionProfile",
+      file,
+    ),
   };
+  try {
+    scenarioCertificationClass(metadata as unknown as ScenarioDefinition);
+  } catch (err) {
+    throw new Error(
+      `[scenario-loader] ${file}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  return metadata;
 }
 
 export async function discoverScenarios(root: string): Promise<string[]> {

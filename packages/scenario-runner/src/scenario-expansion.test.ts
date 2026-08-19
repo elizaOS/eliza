@@ -136,6 +136,91 @@ describe("scenario-runner edge expansion", () => {
     );
   });
 
+  it("rejects a static corpus entry that inflates simulated evidence to provider certification", async () => {
+    const dir = await makeTempScenarioDir();
+    await writeScenarioFile(dir, "inflated.scenario.ts", [
+      "export default {",
+      '  id: "fixture.inflated",',
+      '  title: "Inflated provider claim",',
+      '  domain: "fixture",',
+      '  lane: "live-only",',
+      '  evidenceClass: "provider-observed",',
+      '  certificationClass: "provider",',
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+
+    await expect(validateScenarioCorpus(dir)).rejects.toThrow(
+      'evidenceClass "provider-observed" requires executionProfile "provider-qualified"',
+    );
+  });
+
+  it("rejects non-literal certification metadata without importing the module", async () => {
+    const dir = await makeTempScenarioDir();
+    await writeScenarioFile(dir, "dynamic.scenario.ts", [
+      'const evidenceClass = "provider-observed";',
+      "export default {",
+      '  id: "fixture.dynamic",',
+      '  title: "Dynamic evidence claim",',
+      '  domain: "fixture",',
+      "  evidenceClass,",
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+
+    await expect(validateScenarioCorpus(dir)).rejects.toThrow(
+      "evidenceClass must be a statically readable string literal",
+    );
+  });
+
+  it("rejects object spreads that could hide certification metadata", async () => {
+    const dir = await makeTempScenarioDir();
+    await writeScenarioFile(dir, "spread.scenario.ts", [
+      'const hidden = { evidenceClass: "provider-observed", certificationClass: "provider" };',
+      "export default {",
+      "  ...hidden,",
+      '  id: "fixture.spread",',
+      '  title: "Spread metadata",',
+      '  domain: "fixture",',
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+
+    await expect(validateScenarioCorpus(dir)).rejects.toThrow(
+      "scenario metadata cannot use object spreads",
+    );
+  });
+
+  it("rejects computed certification fields and non-literal titles", async () => {
+    const computedDir = await makeTempScenarioDir();
+    await writeScenarioFile(computedDir, "computed.scenario.ts", [
+      "export default {",
+      '  id: "fixture.computed",',
+      '  title: "Computed metadata",',
+      '  domain: "fixture",',
+      '  ["certificationClass"]: "provider",',
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+    await expect(validateScenarioCorpus(computedDir)).rejects.toThrow(
+      "scenario metadata cannot use computed property names",
+    );
+
+    const dynamicTitleDir = await makeTempScenarioDir();
+    await writeScenarioFile(dynamicTitleDir, "title.scenario.ts", [
+      'const title = "Certify hidden provider behavior";',
+      "export default {",
+      '  id: "fixture.dynamic-title",',
+      "  title,",
+      '  domain: "fixture",',
+      '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
+      "};",
+    ]);
+    await expect(validateScenarioCorpus(dynamicTitleDir)).rejects.toThrow(
+      "title must be a statically readable string literal",
+    );
+  });
+
   it("only appends edge context to non-blank message-like turn text", () => {
     const expanded = expandScenarioDefinition("fixture.scenario.ts", {
       id: "fixture.mixed",

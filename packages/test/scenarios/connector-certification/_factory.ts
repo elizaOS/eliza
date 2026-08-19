@@ -1,14 +1,17 @@
 /** Builds connector-certification scenarios against scenario-runner's real runtime. */
-import type {
-  ScenarioFinalCheck,
-  ScenarioSeedStep,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import type {
+  ScenarioCertificationClass,
+  ScenarioEvidenceClass,
+  ScenarioFinalCheck,
+  ScenarioSeedStep,
+} from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export const CONNECTOR_CERTIFICATION_AXES = [
   "core",
@@ -60,6 +63,10 @@ type ConnectorCertificationScenarioConfig = {
   axis: ConnectorCertificationAxis;
   /** CI lane; defaults to `live-only` (certification exercises real connectors). */
   lane?: "pr-deterministic" | "live-only";
+  /** Boundary observed; these fixtures exercise the runtime with simulated connectors. */
+  evidenceClass: ScenarioEvidenceClass;
+  /** Scope of the word "certification" in this corpus. */
+  certificationClass: ScenarioCertificationClass;
   tags?: string[];
   description: string;
   roomSource?: string;
@@ -97,6 +104,8 @@ export function buildConnectorCertificationScenario(
     title: config.title,
     domain: "connector-certification",
     lane: config.lane ?? "live-only",
+    evidenceClass: config.evidenceClass,
+    certificationClass: config.certificationClass,
     tags: [
       "connector-certification",
       config.connector,

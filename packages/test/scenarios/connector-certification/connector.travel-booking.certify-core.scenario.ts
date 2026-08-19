@@ -2,6 +2,8 @@
 import { buildConnectorCertificationScenario } from "./_factory.ts";
 
 export default buildConnectorCertificationScenario({
+  evidenceClass: "runtime-observed",
+  certificationClass: "runtime-contract",
   lane: "live-only",
   id: "connector.travel-booking.certify-core",
   title: "Certify travel booking adapter search and approval gating",

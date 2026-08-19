@@ -166,7 +166,12 @@ export default {
 } satisfies ScenarioDefinition;
 ```
 
-Loader discovers files recursively; entries starting with `_` are ignored. The `list` command reads only static metadata via TypeScript AST (no runtime import), so `id` must be a string literal.
+Loader discovers files recursively; entries starting with `_` are ignored. The
+`list` command reads only static metadata via TypeScript AST (no runtime
+import), so `id` and `title` must be string literals. Any authored `lane`,
+`executionProfile`, `evidenceClass`, and `certificationClass` must also be string
+literals. Top-level object spreads and computed property names are rejected
+because they could conceal or override certification metadata.
 
 ## Turn kinds
 
