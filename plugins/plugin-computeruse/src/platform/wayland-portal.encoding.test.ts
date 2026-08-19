@@ -1,5 +1,5 @@
 /** Exercises canonical and malformed Wayland portal file URI decoding. */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { portalFileUriToPath } from "./wayland-portal.ts";
 
 describe("wayland portal file URI encoding", () => {

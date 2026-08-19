@@ -2,6 +2,7 @@
  * Barrel exports for plugin-computeruse services.
  */
 
+export * from "../sessions/index.js";
 export { ComputerUseService } from "./computer-use-service.js";
 export type {
   DesktopControlCapabilities,

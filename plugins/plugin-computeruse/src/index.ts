@@ -37,6 +37,54 @@ import { VisionContextProvider } from "./services/vision-context-provider.js";
 const computerUseRoutes: Route[] = [
   {
     type: "GET",
+    path: "/api/computer-use/sessions",
+    rawPath: true,
+    handler: computerUseRouteHandler(),
+  },
+  {
+    type: "POST",
+    path: "/api/computer-use/sessions",
+    rawPath: true,
+    handler: computerUseRouteHandler(),
+  },
+  {
+    type: "GET",
+    path: "/api/computer-use/sessions/stream",
+    rawPath: true,
+    handler: computerUseRouteHandler(),
+  },
+  {
+    type: "GET",
+    path: "/api/computer-use/sessions/:id",
+    rawPath: true,
+    handler: computerUseRouteHandler(),
+  },
+  {
+    type: "DELETE",
+    path: "/api/computer-use/sessions/:id",
+    rawPath: true,
+    handler: computerUseRouteHandler(),
+  },
+  {
+    type: "POST",
+    path: "/api/computer-use/sessions/:id/actions",
+    rawPath: true,
+    handler: computerUseRouteHandler(),
+  },
+  {
+    type: "POST",
+    path: "/api/computer-use/sessions/:id/lease",
+    rawPath: true,
+    handler: computerUseRouteHandler(),
+  },
+  {
+    type: "GET",
+    path: "/api/computer-use/sessions/:id/frame",
+    rawPath: true,
+    handler: computerUseRouteHandler(),
+  },
+  {
+    type: "GET",
     path: "/api/computer-use/approvals",
     rawPath: true,
     handler: computerUseRouteHandler(),
@@ -100,6 +148,24 @@ export const computerUsePlugin: Plugin = {
   providers: [computerStateProvider, sceneProvider],
 
   routes: computerUseRoutes,
+
+  views: [
+    {
+      id: "computer-use-sessions",
+      label: "Computer Sessions",
+      description:
+        "Live host, browser, sandbox, and remote-guest computer-use sessions",
+      icon: "MonitorUp",
+      path: "/computer-use-sessions",
+      modalities: ["gui"],
+      bundlePath: "dist/views/bundle.js",
+      surface: { capabilities: ["agent-surface"] },
+      componentExport: "ComputerUseSessionsView",
+      tags: ["computer-use", "browser", "sessions", "monitor"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 
   autoEnable: {
     envKeys: ["COMPUTER_USE_ENABLED"],
@@ -199,6 +265,7 @@ export {
   VisionContextProvider,
   type VisionContextRecentAction,
 } from "./services/vision-context-provider.js";
+export * from "./sessions/index.js";
 // Re-export types for consumers
 export type {
   ActionHistoryEntry,

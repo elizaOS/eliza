@@ -55,10 +55,17 @@ the other.
   top-level actions (e.g. `COMPUTER_USE_CLICK`, `WINDOW_FOCUS`) so the
   planner picks a specific verb directly from the catalogue.
 - **Services** — `ComputerUseService` (`serviceType = "computeruse"`)
-  and `VisionContextProvider`.
+  owns platform dispatch, approvals, and isolated sessions;
+  `VisionContextProvider` exposes scene context.
 - **Providers** — `computerStateProvider`, `sceneProvider`.
 - **Routes** — approval inbox + SSE stream + approval-mode toggle under
   `/api/computer-use/...`.
+- **Sessions** — authenticated `/api/computer-use/sessions` CRUD, action,
+  read-only frame, lease-renewal, and SSE routes expose exclusive physical-host ownership plus
+  concurrent browser/sandbox/remote-guest targets. Each action carries a
+  unique id and expected sequence; stale, duplicate, busy, and cross-target
+  attempts fail closed. Cursor state is virtual per session. A desktop still
+  has one physical mouse and keyboard.
 
 ## File operations + shell
 

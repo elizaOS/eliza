@@ -35,6 +35,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["contacts", "gui", "/contacts"],
     ["focus", "gui", "/focus", { minVisibleTextLength: 4 }],
     ["calendar", "gui", "/calendar"],
+    ["computer-use-sessions", "gui", "/computer-use-sessions"],
     ["documents", "gui", "/documents"],
     ["finances", "gui", "/finances"],
     ["goals", "gui", "/goals"],

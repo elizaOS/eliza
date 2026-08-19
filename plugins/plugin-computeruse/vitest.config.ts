@@ -5,6 +5,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const coreSrcRoot = path.resolve(__dirname, "../../packages/core/src");
@@ -53,6 +54,7 @@ export default defineConfig({
         find: /^@elizaos\/logger\/(.*)$/,
         replacement: path.join(loggerSrcRoot, "$1"),
       },
+      ...buildWorkspaceSourceAliases(),
     ],
   },
   test: {
