@@ -13,7 +13,7 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, app, scenarios, cloud, voice, dedicated]
+        options: [all, app, scenarios, live-information, cloud, voice, dedicated]
       stale_canary_suffix:
         description: "Exact prior dedicated-canary suffix (r<run-id>a<attempt>) to verify and delete before the fresh canary"
         required: false
@@ -76,12 +76,24 @@ jobs:
       # @elizaos/core/edge export. The lean install above skips lifecycle
       # scripts, so build that contract before either consumer starts.
       - name: Build core runtime contract
-        if: inputs.suite == 'all' || inputs.suite == 'scenarios' || inputs.suite == 'cloud'
+        if: inputs.suite == 'all' || inputs.suite == 'scenarios' || inputs.suite == 'live-information' || inputs.suite == 'cloud'
         run: bun run build:core
 
       - name: Live scenarios
         if: inputs.suite == 'all' || inputs.suite == 'scenarios'
         run: bun run --cwd packages/scenario-runner test:live:e2e
+
+      - name: Live information routing
+        if: inputs.suite == 'live-information'
+        env:
+          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
+        run: >-
+          bun --conditions eliza-source --tsconfig-override tsconfig.json
+          packages/scenario-runner/src/cli.ts run packages/test/scenarios
+          --scenario cross.live-information-routing --lane live-only
+          --provider openai --run-dir reports/scenarios/live-information/run
+          --report-dir reports/scenarios/live-information/report
+          --export-native reports/scenarios/live-information/native.jsonl
 
       - name: Cloud end-to-end
         if: inputs.suite == 'all' || inputs.suite == 'cloud'
