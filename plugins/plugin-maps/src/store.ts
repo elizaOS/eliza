@@ -18,6 +18,7 @@ import {
 import * as z from "zod";
 import { MapsError } from "./errors.js";
 import {
+  elizaUuidSchema,
   type SavedPlace,
   type SavePlaceRequest,
   type SavePlaceResult,
@@ -46,7 +47,7 @@ const savedPlaceStateSchema = z
     version: z.literal(1),
     generation: z.string().uuid(),
     revision: z.number().int().nonnegative(),
-    ownerEntityId: z.string().uuid(),
+    ownerEntityId: elizaUuidSchema,
     savedPlaces: z.array(savedPlaceSchema),
     operations: z.array(savedPlaceOperationSchema),
   })
@@ -54,7 +55,7 @@ const savedPlaceStateSchema = z
 
 type SavedPlaceState = z.infer<typeof savedPlaceStateSchema>;
 type SavedPlaceOperation = z.infer<typeof savedPlaceOperationSchema>;
-const publicUuidSchema = z.string().uuid();
+const publicUuidSchema = elizaUuidSchema;
 
 function validatedUuid(value: string, field: string): string {
   const parsed = publicUuidSchema.safeParse(value);

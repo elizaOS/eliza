@@ -546,10 +546,7 @@ export async function runCli(
     exportScenarioNativeJsonl,
   } = dependencies ?? (await loadCliDependencies());
 
-  if (
-    availableProviderNames().length === 0 &&
-    !shouldUseDeterministicModel()
-  ) {
+  if (availableProviderNames().length === 0 && !shouldUseDeterministicModel()) {
     process.stderr.write(
       "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY,\n  or on a subscription-only host set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk (requires the CLI's own on-disk credentials),\n  or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.\n",
     );
@@ -643,10 +640,11 @@ export async function runCli(
   // PGLite is process-scoped. Simulated compatibility runs may share one
   // runtime, while provider-qualified runs are constrained above to a single
   // scenario so the observer interval and database cannot cross-contaminate.
-  const requiredPlugins =
-    executionProfile === "provider-qualified"
-      ? resolveRequiredPluginPackages(loaded[0].scenario)
-      : [];
+  const requiredPlugins = [
+    ...new Set(
+      loaded.flatMap(({ scenario }) => resolveRequiredPluginPackages(scenario)),
+    ),
+  ];
   const runtimeResult = await createScenarioRuntime({
     executionProfile,
     requiredPlugins,

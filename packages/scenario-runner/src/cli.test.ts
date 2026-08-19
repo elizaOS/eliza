@@ -303,6 +303,37 @@ describe("scenario-runner CLI", () => {
     );
   });
 
+  it("forwards declared plugins to a simulated scenario runtime", async () => {
+    writeScenario(tempDir, "maps-live", {
+      lane: "live-only",
+      requires: { plugins: ["@elizaos/plugin-maps"] },
+    });
+    const createScenarioRuntime = vi.fn(async () => ({
+      runtime: {} as never,
+      pgliteDir: tmpdir(),
+      executionProfile: "simulated" as const,
+      registeredPluginPackages: ["@elizaos/plugin-maps"],
+      providerName: DETERMINISTIC_PROVIDER_NAME,
+      providerConfig: {
+        name: DETERMINISTIC_PROVIDER_NAME,
+        env: {},
+        pluginPackage: null,
+      },
+      cleanup: vi.fn(async () => undefined),
+    }));
+    const dependencies = createDependencies(() => "passed", {
+      createScenarioRuntime,
+    });
+
+    await expect(
+      runCli(["run", tempDir, "--lane", "live-only"], dependencies),
+    ).resolves.toBe(0);
+    expect(createScenarioRuntime).toHaveBeenCalledWith({
+      executionProfile: "simulated",
+      requiredPlugins: ["@elizaos/plugin-maps"],
+    });
+  });
+
   it("rejects mixed or multi-scenario provider-qualified runs before runtime creation", async () => {
     expect(() =>
       resolveRunExecutionProfile([

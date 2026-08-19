@@ -153,3 +153,28 @@ export async function loadScenarioRequiredPlugin(
   }
   return candidate;
 }
+
+/** Registers every declared package once before scenario runtime startup. */
+export async function registerScenarioRequiredPlugins(
+  runtime: Pick<AgentRuntime, "plugins" | "registerPlugin">,
+  packageNames: readonly string[],
+  executionProfile: ScenarioExecutionProfile,
+): Promise<string[]> {
+  const registered: string[] = [];
+  for (const packageName of packageNames) {
+    if (!pluginPackageIsRegistered(runtime, packageName)) {
+      const plugin = await loadScenarioRequiredPlugin(
+        packageName,
+        executionProfile,
+      );
+      if (!plugin) {
+        throw new Error(
+          `[scenario-runner] required package ${packageName} did not export a Plugin`,
+        );
+      }
+      await runtime.registerPlugin(plugin);
+    }
+    registered.push(packageName);
+  }
+  return registered;
+}

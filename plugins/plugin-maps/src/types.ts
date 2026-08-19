@@ -5,6 +5,11 @@ import * as z from "zod";
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 const opaqueText = (max: number) => z.string().min(1).max(max);
 
+/** Accepts canonical UUIDs, including deterministic elizaOS version-0 IDs. */
+export const elizaUuidSchema = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu);
+
 export const coordinatesSchema = z
   .object({
     latitude: z.number().finite().min(-90).max(90),
@@ -51,8 +56,8 @@ export const routePlanSchema = z
 
 export const savedPlaceSchema = z
   .object({
-    id: z.string().uuid(),
-    ownerEntityId: z.string().uuid(),
+    id: elizaUuidSchema,
+    ownerEntityId: elizaUuidSchema,
     place: placeRefSchema,
     label: boundedText(120),
     createdAt: z.string().datetime({ offset: true }),

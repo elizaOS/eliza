@@ -9,6 +9,7 @@ import {
   isPromotedSubactionVirtual,
   type Memory,
   normalizeEffectReceipts,
+  stringToUuid,
   tagsRequireEffectReceipts,
   type UUID,
 } from "@elizaos/core";
@@ -282,6 +283,21 @@ describe("MapsService and MAPS action", () => {
       }),
     ).rejects.toMatchObject({ code: "MAPS_INVALID_INPUT" });
     expect(ensureWorld).not.toHaveBeenCalled();
+  });
+
+  it("accepts deterministic elizaOS IDs for scenario-owned saved places", async () => {
+    const ownerEntityId = stringToUuid("scenario-account:maps-owner");
+    const saved = await service.savePlace({
+      ownerEntityId,
+      roomId: ROOM_ID,
+      place: home,
+      idempotencyKey: "scenario-owner-save",
+    });
+
+    expect(saved.savedPlace.ownerEntityId).toBe(ownerEntityId);
+    expect(await service.listSavedPlaces(ownerEntityId)).toEqual([
+      saved.savedPlace,
+    ]);
   });
 
   it("persists saved places with concurrent idempotent replay and owner scoping", async () => {
