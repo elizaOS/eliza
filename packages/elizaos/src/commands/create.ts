@@ -165,7 +165,11 @@ async function promptPluginValues(
     `https://github.com/${githubUsername}/${defaultRepoName}`;
 
   return buildPluginTemplateValues({
-    elizaVersion: "latest",
+    // Pin the scaffold's @elizaos/core to the CLI's own lockstep-published
+    // version. The npm `latest` tag tracks the v1 line while this template
+    // targets the v2 API the CLI ships with, so "latest" scaffolds fail
+    // typecheck and tests out of the box.
+    elizaVersion: getCliVersion(),
     githubUsername,
     pluginDescription,
     projectName: defaultRepoName,
