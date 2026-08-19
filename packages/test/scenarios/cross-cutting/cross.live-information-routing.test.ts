@@ -189,12 +189,24 @@ describe("live-information scenario assertions", () => {
     ).toBeUndefined();
     expect(
       assertElizaNewsTurn(
-        turn("WEB_SEARCH", { query: "latest elizaOS project updates" }, true),
+        turn(
+          "WEB_SEARCH",
+          { query: "latest elizaOS project updates" },
+          true,
+          "Source: https://elizaos.ai/news/release",
+          "Release notes: https://elizaos.ai/news/release",
+        ),
       ),
     ).toBeUndefined();
     expect(
       assertTokyoRamenTurn(
-        turn("WEB_SEARCH", { query: "best reviewed ramen in Tokyo" }, true),
+        turn(
+          "WEB_SEARCH",
+          { query: "best reviewed ramen in Tokyo" },
+          true,
+          "Source: https://example.com/tokyo-ramen",
+          "Tokyo guide: https://example.com/tokyo-ramen",
+        ),
       ),
     ).toBeUndefined();
     expect(
@@ -243,6 +255,42 @@ describe("live-information scenario assertions", () => {
         ),
       ),
     ).toMatch(/no successful action satisfying its complete argument contract/);
+  });
+
+  it("binds citations to public HTTPS URLs returned by the successful search", () => {
+    expect(
+      assertElizaNewsTurn(
+        turn(
+          "WEB_SEARCH",
+          { query: "latest elizaOS news" },
+          true,
+          "A release shipped, according to https://invented.example/news",
+          "Result: https://elizaos.ai/news/release",
+        ),
+      ),
+    ).toMatch(/did not cite any URL returned/);
+    expect(
+      assertTokyoRamenTurn(
+        turn(
+          "WEB_SEARCH",
+          { query: "best reviewed ramen in Tokyo" },
+          true,
+          "Source: https://example.com/tokyo-ramen",
+          "Search backend returned an unlinked summary",
+        ),
+      ),
+    ).toMatch(/returned no public HTTPS source URL/);
+    expect(
+      assertElizaNewsTurn(
+        turn(
+          "WEB_SEARCH",
+          { query: "latest elizaOS news" },
+          true,
+          "Source: https://127.0.0.1/decoy",
+          "Result: https://127.0.0.1/decoy",
+        ),
+      ),
+    ).toMatch(/returned no public HTTPS source URL/);
   });
 
   it("requires private and unavailable endpoints to fail closed with a visible response", () => {
