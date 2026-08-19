@@ -8,6 +8,7 @@ import type {
 	MessageActionRowComponentBuilder,
 	TextChannel,
 } from "discord.js";
+import { truncateWellFormed } from "@elizaos/core";
 import {
 	DEFAULT_DRAFT_CHUNK_CONFIG,
 	type DraftChunkConfig,
@@ -241,8 +242,13 @@ export function createDraftStreamController(
 			maxChars,
 			chunkConfig.breakPreference,
 		);
-		const firstChunk = trimmed.slice(0, breakPoint).trimEnd();
-		let remaining = trimmed.slice(breakPoint).trimStart();
+		// findBreakPoint's raw maxLen fallback can land between the two UTF-16
+		// code units of a surrogate pair (most emoji), leaving a lone surrogate
+		// at the chunk boundary that corrupts the character in the delivered
+		// draft. truncateWellFormed backs the cut off by one unit instead.
+		const firstHead = truncateWellFormed(trimmed, breakPoint);
+		const firstChunk = firstHead.trimEnd();
+		let remaining = trimmed.slice(firstHead.length).trimStart();
 
 		await sendSnapshot(firstChunk);
 
@@ -252,8 +258,14 @@ export function createDraftStreamController(
 				maxChars,
 				chunkConfig.breakPreference,
 			);
-			const chunk = remaining.slice(0, nextBreak).trimEnd();
-			remaining = remaining.slice(nextBreak).trimStart();
+			const head = truncateWellFormed(remaining, nextBreak);
+			if (head.length === 0) {
+				throw new RangeError(
+					"Discord draft chunk limit made no UTF-16 progress",
+				);
+			}
+			const chunk = head.trimEnd();
+			remaining = remaining.slice(head.length).trimStart();
 			if (!chunk) {
 				continue;
 			}
