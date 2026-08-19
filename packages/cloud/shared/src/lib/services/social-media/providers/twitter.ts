@@ -1,4 +1,4 @@
-// Coordinates cloud service twitter behavior behind route handlers.
+/** Implements X publishing, media upload, and analytics for cloud social-media callers. */
 import type {
   AccountAnalytics,
   MediaAttachment,
@@ -12,6 +12,7 @@ import type {
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { TWITTER_API_BASE, TWITTER_UPLOAD_BASE } from "../../../utils/twitter-api";
+import { downloadSocialMediaBytes } from "../media-download";
 import { withRetry } from "../rate-limit";
 
 // Wrapped with retry logic for social media provider
@@ -44,8 +45,7 @@ async function uploadMedia(accessToken: string, media: MediaAttachment): Promise
   } else if (media.base64) {
     mediaData = Buffer.from(media.base64, "base64");
   } else if (media.url) {
-    const response = await fetch(media.url);
-    mediaData = Buffer.from(await response.arrayBuffer());
+    mediaData = await downloadSocialMediaBytes(media.url);
   } else {
     throw new Error("No media data provided");
   }

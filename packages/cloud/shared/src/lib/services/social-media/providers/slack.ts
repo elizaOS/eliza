@@ -1,4 +1,4 @@
-// Coordinates cloud service slack behavior behind route handlers.
+/** Implements Slack publishing, file upload, and reactions for cloud social-media callers. */
 import type {
   MediaAttachment,
   PlatformPostOptions,
@@ -9,6 +9,7 @@ import type {
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
+import { downloadSocialMediaBytes } from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const SLACK_API_BASE = "https://slack.com/api";
@@ -343,11 +344,9 @@ export const slackProvider: SocialMediaProvider = {
     } else if (media.base64) {
       fileData = Buffer.from(media.base64, "base64");
     } else if (media.url) {
-      const response = await fetch(media.url);
-      if (!response.ok) {
-        throw new Error(`Failed to download media from ${media.url}: ${response.status}`);
-      }
-      fileData = Buffer.from(await response.arrayBuffer());
+      fileData = await downloadSocialMediaBytes(media.url, {
+        httpErrorMessage: (status) => `Failed to download media from ${media.url}: ${status}`,
+      });
       const urlParts = media.url.split("/");
       filename = urlParts[urlParts.length - 1].split("?")[0] || filename;
     } else {
