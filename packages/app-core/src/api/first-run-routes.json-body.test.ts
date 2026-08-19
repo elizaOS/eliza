@@ -13,6 +13,25 @@ import type { CompatRuntimeState } from "./compat-route-shared";
 
 const saveElizaConfig = vi.fn();
 const extractAndPersistFirstRunApiKey = vi.fn();
+const readRequestBody = vi.fn(
+  async (
+    req: http.IncomingMessage,
+    options: { maxBytes?: number; returnNullOnTooLarge?: boolean },
+  ) => {
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    for await (const chunk of req) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += buffer.length;
+      if (totalBytes > (options.maxBytes ?? Number.POSITIVE_INFINITY)) {
+        if (options.returnNullOnTooLarge) return null;
+        throw new Error("Request body too large");
+      }
+      chunks.push(buffer);
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  },
+);
 
 vi.mock("@elizaos/core", () => ({
   logger: {
@@ -21,6 +40,7 @@ vi.mock("@elizaos/core", () => ({
     info: vi.fn(),
     warn: vi.fn(),
   },
+  readRequestBody,
 }));
 
 vi.mock("@elizaos/agent", () => ({
@@ -141,6 +161,20 @@ describe("POST /api/first-run JSON body", () => {
     expect(res.statusCode).toBe(200);
     expect(res.jsonBody()).toEqual({ ok: true });
     expect(saveElizaConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an oversized body with 413 before persisting", async () => {
+    const { MAX_FIRST_RUN_BODY_BYTES } = await import("./first-run-routes");
+    const req = requestWithRawBody("x".repeat(MAX_FIRST_RUN_BODY_BYTES + 1));
+    const res = responseSink();
+    const { handleFirstRunRoute } = await import("./first-run-routes");
+
+    const handled = await handleFirstRunRoute(req, res, emptyState());
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(413);
+    expect(res.jsonBody()).toEqual({ error: "Request body too large" });
+    expect(saveElizaConfig).not.toHaveBeenCalled();
   });
 
   it("returns 500 when the config commit fails", async () => {
