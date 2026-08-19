@@ -929,7 +929,7 @@ async function handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
   });
 
   if (purchaseSource === "miniapp_app" && appId && chargeRequestId) {
-    await appChargeCallbacksService.dispatch({
+    await appChargeCallbacksService.failChargeAndEnqueue({
       appId,
       chargeRequestId,
       status: "failed",

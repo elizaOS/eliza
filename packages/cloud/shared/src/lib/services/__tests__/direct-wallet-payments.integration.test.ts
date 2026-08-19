@@ -7,7 +7,7 @@
  * stubs — we drive the state machine, not the chain.
  *
  * To keep the surface tight we:
- *   - create only the `crypto_payments` table (the sole table the service writes)
+ *   - create the payment and durable sweep-outbox tables used by this boundary
  *   - mock `creditsService` and `invoicesService` with tiny stand-ins that
  *     preserve the stripePaymentIntentId idempotency contract, since that is
  *     what protects against double-credit on retry.
@@ -27,7 +27,7 @@ import {
 // undefined under bun). Register non-hoisted mocks only under Vitest, before
 // the service's dynamic import in `beforeAll`; bun-test selects a skipped
 // suite without invoking unsupported mock plumbing. The dedicated Vitest lane
-// runs all 40 state-machine cases in CI against real in-process PGlite.
+// runs the state-machine cases in CI against real in-process PGlite.
 const SUPPORTS_VITEST_MOCK_API =
   typeof vi.importActual === "function" && typeof vi.doMock === "function";
 
@@ -75,6 +75,9 @@ interface FakeTx {
 }
 
 const chainTxs = new Map<string, FakeTx>();
+let sweepSubmissions = 0;
+let sweepSubmitThrowsAfterAccept = false;
+const submittedSweepBytes: string[] = [];
 
 if (SUPPORTS_VITEST_MOCK_API) {
   vi.doMock("viem", async () => {
@@ -126,6 +129,15 @@ if (SUPPORTS_VITEST_MOCK_API) {
           if (!tx) throw new Error("not found");
           return { from: tx.from, to: tx.to, value: tx.value };
         },
+        async sendRawTransaction({ serializedTransaction }: { serializedTransaction: string }) {
+          sweepSubmissions += 1;
+          submittedSweepBytes.push(serializedTransaction);
+          if (sweepSubmitThrowsAfterAccept) {
+            sweepSubmitThrowsAfterAccept = false;
+            throw new Error("injected provider acknowledgement loss");
+          }
+          return actual.keccak256(serializedTransaction as `0x${string}`);
+        },
         async readContract() {
           return 18n;
         },
@@ -136,6 +148,18 @@ if (SUPPORTS_VITEST_MOCK_API) {
         // behaviourally identical.
         verifyTypedData: (args: Parameters<typeof actual.verifyTypedData>[0]) =>
           actual.verifyTypedData(args),
+      }),
+      createWalletClient: () => ({
+        async prepareTransactionRequest(input: { to: string; data: string }) {
+          return {
+            ...input,
+            chainId: 56,
+            gas: 100_000n,
+            gasPrice: 1n,
+            nonce: 0,
+            type: "legacy" as const,
+          };
+        },
       }),
       parseEventLogs: ({ logs }: { logs: Array<{ address: string }> }) => {
         // Map the stub-receipt log back to a parsed Transfer event using the
@@ -246,7 +270,7 @@ if (SUPPORTS_VITEST_MOCK_API) {
     creditsService: {
       async addCredits(params: {
         organizationId: string;
-        amount: number;
+        amount: number | string;
         description: string;
         stripePaymentIntentId?: string;
         metadata?: Record<string, unknown>;
@@ -261,10 +285,10 @@ if (SUPPORTS_VITEST_MOCK_API) {
         }
         creditsLedger.push({
           organizationId: params.organizationId,
-          amount: params.amount,
+          amount: Number(params.amount),
           stripePaymentIntentId: params.stripePaymentIntentId,
         });
-        return { transaction: { id: "new" }, newBalance: params.amount };
+        return { transaction: { id: "new" }, newBalance: Number(params.amount) };
       },
     },
   }));
@@ -336,6 +360,28 @@ beforeAll(async () => {
       metadata jsonb DEFAULT '{}'::jsonb
     )
   `);
+  await dbWrite.execute(`
+    CREATE TABLE IF NOT EXISTS crypto_sweep_outbox (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      payment_id uuid NOT NULL REFERENCES crypto_payments(id) ON DELETE CASCADE,
+      payload jsonb NOT NULL,
+      payload_digest text NOT NULL,
+      state text NOT NULL DEFAULT 'pending',
+      attempts integer NOT NULL DEFAULT 0,
+      next_attempt_at timestamptz NOT NULL DEFAULT now(),
+      claim_token uuid,
+      lease_expires_at timestamptz,
+      last_error text,
+      prepared_transaction text,
+      sweep_transaction_hash text,
+      prepared_metadata jsonb,
+      delivered_at timestamptz,
+      terminal_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE(payment_id)
+    )
+  `);
 }, 240_000);
 
 afterAll(async () => {
@@ -345,6 +391,9 @@ afterAll(async () => {
 beforeEach(() => {
   chainTxs.clear();
   creditsLedger.length = 0;
+  sweepSubmissions = 0;
+  sweepSubmitThrowsAfterAccept = false;
+  submittedSweepBytes.length = 0;
 });
 
 async function resetTable() {
@@ -427,7 +476,7 @@ describe.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
         network: "bsc",
         tokenSymbol: "USDT",
       });
-      const hash = `0x${"a".repeat(64)}`;
+      const hash = `0x${"Ab".repeat(32)}`;
       await trustPayerProof(payment);
       const attached = await service.attachTransaction(env, {
         paymentId: payment.id,
@@ -435,7 +484,7 @@ describe.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
         userId: USER_ID,
       });
       expect(attached.payment.status).toBe("broadcast");
-      expect(attached.payment.transaction_hash).toBe(hash);
+      expect(attached.payment.transaction_hash).toBe(hash.toLowerCase());
       expect(attached.alreadyAttached).toBe(false);
     });
 
@@ -528,6 +577,175 @@ describe.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
       // Retry — idempotency by stripePaymentIntentId means no new ledger entry.
       await service.confirmPayment(env, { paymentId: payment.id, txHash: hash, userId: USER_ID });
       expect(creditsLedger).toHaveLength(1);
+    });
+
+    test("post-sweep acknowledgement crash becomes terminal without rolling back or resubmitting", async () => {
+      await resetTable();
+      const originalReceive = env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS;
+      const originalPrivateKey = env.CRYPTO_DIRECT_BSC_PRIVATE_KEY;
+      const originalSecure = env.CRYPTO_DIRECT_BSC_SECURE_ADDRESS;
+      const matchingReceive = privateKeyToAccount(PROOF_PAYER_KEY).address;
+      env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS = matchingReceive;
+      env.CRYPTO_DIRECT_BSC_SECURE_ADDRESS = "0x2222222222222222222222222222222222222222";
+      env.CRYPTO_DIRECT_BSC_PRIVATE_KEY = ATTACKER_KEY;
+      try {
+        const { payment } = await service.createPayment(env, {
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          accountWalletAddress: null,
+          payerAddress: PAYER_EVM,
+          amountUsd: 10,
+          network: "bsc",
+          tokenSymbol: "USDT",
+        });
+        const meta = payment.metadata as Record<string, unknown>;
+        const expectedUnits = BigInt(meta.expected_token_units as string);
+        const tokenAddress = meta.token_address as string;
+        const hash = `0x${"6".repeat(64)}`;
+        chainTxs.set(hash, {
+          from: PAYER_EVM,
+          to: tokenAddress,
+          value: 0n,
+          status: "success",
+          receiveAddress: matchingReceive,
+          erc20: {
+            tokenAddress,
+            from: PAYER_EVM,
+            to: matchingReceive,
+            value: expectedUnits,
+          },
+        });
+        await trustPayerProof(payment);
+        await service.confirmPayment(env, { paymentId: payment.id, txHash: hash, userId: USER_ID });
+        expect((await dbWrite.query.cryptoPayments.findFirst())?.status).toBe("confirmed");
+        expect(creditsLedger).toHaveLength(1);
+        const initialOutbox = await dbWrite.execute(
+          `SELECT state, last_error FROM crypto_sweep_outbox WHERE payment_id='${payment.id}'`,
+        );
+        expect((initialOutbox.rows[0] as { state: string }).state).toBe("pending");
+        expect((initialOutbox.rows[0] as { last_error: string }).last_error).toContain(
+          "does not match the receive wallet",
+        );
+
+        env.CRYPTO_DIRECT_BSC_PRIVATE_KEY = PROOF_PAYER_KEY;
+        await dbWrite.execute(
+          "UPDATE crypto_sweep_outbox SET state='pending', claim_token=NULL, lease_expires_at=NULL, next_attempt_at=now() - interval '1 second'",
+        );
+        const crashed = await service.drainSweepOutbox(env, 1, {
+          afterExternalSweep: async () => {
+            throw new Error("injected post-sweep database outage");
+          },
+        });
+        expect(crashed.deferred).toBe(1);
+        let outbox = await dbWrite.execute(
+          `SELECT state, last_error, prepared_transaction, sweep_transaction_hash FROM crypto_sweep_outbox WHERE payment_id='${payment.id}'`,
+        );
+        expect((outbox.rows[0] as { state: string }).state).toBe("terminal");
+        expect((outbox.rows[0] as { last_error: string }).last_error).toContain("post-sweep");
+        expect(
+          (outbox.rows[0] as { prepared_transaction: string }).prepared_transaction,
+        ).toBeTruthy();
+        expect(
+          (outbox.rows[0] as { sweep_transaction_hash: string }).sweep_transaction_hash,
+        ).toMatch(/^0x[0-9a-f]{64}$/);
+        expect((await dbWrite.query.cryptoPayments.findFirst())?.status).toBe("confirmed");
+
+        const noReplay = await service.drainSweepOutbox(env, 1);
+        expect(noReplay.processed).toBe(0);
+        expect(sweepSubmissions).toBe(1);
+      } finally {
+        env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS = originalReceive;
+        if (originalSecure === undefined) delete env.CRYPTO_DIRECT_BSC_SECURE_ADDRESS;
+        else env.CRYPTO_DIRECT_BSC_SECURE_ADDRESS = originalSecure;
+        if (originalPrivateKey === undefined) delete env.CRYPTO_DIRECT_BSC_PRIVATE_KEY;
+        else env.CRYPTO_DIRECT_BSC_PRIVATE_KEY = originalPrivateKey;
+      }
+    });
+
+    test("provider acknowledgement loss retries the exact pre-signed sweep bytes", async () => {
+      await resetTable();
+      const originalReceive = env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS;
+      const originalPrivateKey = env.CRYPTO_DIRECT_BSC_PRIVATE_KEY;
+      const originalSecure = env.CRYPTO_DIRECT_BSC_SECURE_ADDRESS;
+      const matchingReceive = privateKeyToAccount(PROOF_PAYER_KEY).address;
+      env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS = matchingReceive;
+      env.CRYPTO_DIRECT_BSC_SECURE_ADDRESS = "0x2222222222222222222222222222222222222222";
+      env.CRYPTO_DIRECT_BSC_PRIVATE_KEY = ATTACKER_KEY;
+      try {
+        const { payment } = await service.createPayment(env, {
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          accountWalletAddress: null,
+          payerAddress: PAYER_EVM,
+          amountUsd: 10,
+          network: "bsc",
+          tokenSymbol: "USDT",
+        });
+        const meta = payment.metadata as Record<string, unknown>;
+        const expectedUnits = BigInt(meta.expected_token_units as string);
+        const tokenAddress = meta.token_address as string;
+        const hash = `0x${"7".repeat(64)}`;
+        chainTxs.set(hash, {
+          from: PAYER_EVM,
+          to: tokenAddress,
+          value: 0n,
+          status: "success",
+          receiveAddress: matchingReceive,
+          erc20: {
+            tokenAddress,
+            from: PAYER_EVM,
+            to: matchingReceive,
+            value: expectedUnits,
+          },
+        });
+        await trustPayerProof(payment);
+        await service.confirmPayment(env, { paymentId: payment.id, txHash: hash, userId: USER_ID });
+
+        env.CRYPTO_DIRECT_BSC_PRIVATE_KEY = PROOF_PAYER_KEY;
+        await dbWrite.execute(
+          "UPDATE crypto_sweep_outbox SET state='pending', claim_token=NULL, lease_expires_at=NULL, next_attempt_at=now() - interval '1 second'",
+        );
+        sweepSubmitThrowsAfterAccept = true;
+        const ambiguous = await service.drainSweepOutbox(env, 1);
+        expect(ambiguous.deferred).toBe(1);
+        let outbox = await dbWrite.execute(
+          `SELECT state, prepared_transaction, sweep_transaction_hash, prepared_metadata
+           FROM crypto_sweep_outbox WHERE payment_id='${payment.id}'`,
+        );
+        expect((outbox.rows[0] as { state: string }).state).toBe("pending");
+        expect((outbox.rows[0] as { prepared_transaction: string }).prepared_transaction).toBe(
+          submittedSweepBytes[0],
+        );
+        expect(
+          (
+            outbox.rows[0] as {
+              prepared_metadata: { network: string; nonce: string; sweepTo: string };
+            }
+          ).prepared_metadata,
+        ).toEqual({
+          network: "bsc",
+          nonce: "0",
+          sweepTo: env.CRYPTO_DIRECT_BSC_SECURE_ADDRESS,
+        });
+
+        await dbWrite.execute(
+          "UPDATE crypto_sweep_outbox SET next_attempt_at=now() - interval '1 second'",
+        );
+        const recovered = await service.drainSweepOutbox(env, 1);
+        expect(recovered.delivered).toBe(1);
+        expect(sweepSubmissions).toBe(2);
+        expect(submittedSweepBytes[1]).toBe(submittedSweepBytes[0]);
+        outbox = await dbWrite.execute(
+          `SELECT state FROM crypto_sweep_outbox WHERE payment_id='${payment.id}'`,
+        );
+        expect((outbox.rows[0] as { state: string }).state).toBe("delivered");
+      } finally {
+        env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS = originalReceive;
+        if (originalSecure === undefined) delete env.CRYPTO_DIRECT_BSC_SECURE_ADDRESS;
+        else env.CRYPTO_DIRECT_BSC_SECURE_ADDRESS = originalSecure;
+        if (originalPrivateKey === undefined) delete env.CRYPTO_DIRECT_BSC_PRIVATE_KEY;
+        else env.CRYPTO_DIRECT_BSC_PRIVATE_KEY = originalPrivateKey;
+      }
     });
 
     test("confirmPayment rejects amount-too-low; status stays broadcast; no credits", async () => {

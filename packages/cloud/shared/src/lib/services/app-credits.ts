@@ -3,18 +3,21 @@
  */
 
 import Decimal from "decimal.js";
+import { and, eq, sql } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
 import { appEarningsRepository } from "../../db/repositories/app-earnings";
 import * as appsRepositoryModule from "../../db/repositories/apps";
 import { type App, appsRepository } from "../../db/repositories/apps";
 import { organizationsRepository } from "../../db/repositories/organizations";
 import { usersRepository } from "../../db/repositories/users";
+import { apps, appUsers } from "../../db/schemas/apps";
+import { organizations } from "../../db/schemas/organizations";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getRequestIdempotencyKey } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import {
   computeInferenceCharge,
-  computePurchaseSplit,
   computeReconciliation,
   isAppMonetizationActive,
   parseAppMonetizationNumber,
@@ -313,8 +316,10 @@ export interface AppCreditPurchaseParams {
   appId: string;
   userId: string;
   organizationId: string;
-  purchaseAmount: number;
+  purchaseAmount: number | string;
   stripePaymentIntentId?: string; // For deduplication on webhook retries
+  /** Reuse the caller's settlement transaction so every purchase projection commits together. */
+  transaction?: DbTransaction;
 }
 
 /**
@@ -455,7 +460,18 @@ export interface AppCreditReconciliationResult {
  */
 export class AppCreditsService {
   /** The org credit balance — the single ledger app purchases fund and app inference debits (#8253). */
-  private async readOrgBalance(organizationId: string): Promise<number> {
+  private async readOrgBalance(
+    organizationId: string,
+    transaction?: DbTransaction,
+  ): Promise<number> {
+    if (transaction) {
+      const [org] = await transaction
+        .select({ creditBalance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .limit(1);
+      return org ? parseOrgCreditBalance(org.creditBalance) : 0;
+    }
     const org = await organizationsRepository.findById(organizationId);
     // error-policy:J6 missing org preserves the existing no-credit result path; a present
     // org with corrupt money data must fail closed.
@@ -463,9 +479,20 @@ export class AppCreditsService {
   }
 
   async processPurchase(params: AppCreditPurchaseParams): Promise<AppCreditPurchaseResult> {
-    const { appId, userId, organizationId, purchaseAmount, stripePaymentIntentId } = params;
+    const { appId, userId, organizationId, stripePaymentIntentId, transaction } = params;
+    const purchaseAmountDecimal = new Decimal(params.purchaseAmount);
+    if (!purchaseAmountDecimal.isFinite() || !purchaseAmountDecimal.gt(0)) {
+      throw new Error("App credit purchase amount must be a positive decimal");
+    }
+    const purchaseAmount = purchaseAmountDecimal.toFixed();
+    // Preserve string-valued provider money end to end. Existing internal
+    // number callers retain their metadata shape for API compatibility.
+    const purchaseAmountValue =
+      typeof params.purchaseAmount === "string" ? purchaseAmount : purchaseAmountDecimal.toNumber();
 
-    const app = await appsRepository.findById(appId);
+    const app = transaction
+      ? (await transaction.select().from(apps).where(eq(apps.id, appId)).limit(1))[0]
+      : await appsRepository.findById(appId);
     if (!app) {
       throw new Error(`App not found: ${appId}`);
     }
@@ -474,6 +501,7 @@ export class AppCreditsService {
       const existingTransaction = await appEarningsRepository.findTransactionByPaymentIntent(
         appId,
         stripePaymentIntentId,
+        transaction,
       );
       if (existingTransaction) {
         const existingMetadata =
@@ -484,7 +512,7 @@ export class AppCreditsService {
           existingTransaction.app_id !== appId ||
           existingTransaction.user_id !== userId ||
           existingMetadata.organizationId !== organizationId ||
-          existingMetadata.purchaseAmount !== purchaseAmount ||
+          !new Decimal(String(existingMetadata.purchaseAmount)).equals(purchaseAmountDecimal) ||
           existingMetadata.stripePaymentIntentId !== stripePaymentIntentId
         ) {
           throw new Error(`App purchase projection replay mismatch for ${stripePaymentIntentId}`);
@@ -494,7 +522,7 @@ export class AppCreditsService {
           creditsAdded: 0,
           platformOffset: 0,
           creatorEarnings: 0,
-          newBalance: await this.readOrgBalance(organizationId),
+          newBalance: await this.readOrgBalance(organizationId, transaction),
         };
       }
     }
@@ -503,23 +531,37 @@ export class AppCreditsService {
     // (enabled AND not review-rejected — a ban revokes earnings); users always
     // get full credits for their purchase. Math in app-credit-math.ts.
     const monetizationActive = isAppMonetizationActive(app);
-    const quotedSplit = computePurchaseSplit(purchaseAmount, {
-      monetizationEnabled: monetizationActive,
-      platformOffsetAmount: app.platform_offset_amount,
-      purchaseSharePercentage: app.purchase_share_percentage,
-      inferenceMarkupPercentage: app.inference_markup_percentage,
-    });
     const quotedCreatorSharePercentage = monetizationActive
       ? parseAppMonetizationNumber("purchase_share_percentage", app.purchase_share_percentage, {
           min: 0,
           max: 100,
         })
       : 0;
+    const quotedPlatformOffset = monetizationActive
+      ? Decimal.min(
+          purchaseAmountDecimal,
+          new Decimal(
+            parseAppMonetizationNumber("platform_offset_amount", app.platform_offset_amount, {
+              min: 0,
+            }),
+          ),
+        )
+      : new Decimal(0);
+    const quotedCreatorEarnings = purchaseAmountDecimal
+      .minus(quotedPlatformOffset)
+      .mul(quotedCreatorSharePercentage)
+      .div(100)
+      .toDecimalPlaces(6);
+    const quotedSplit = {
+      creditsToAdd: purchaseAmountDecimal.toDecimalPlaces(6).toFixed(6),
+      platformOffset: quotedPlatformOffset.toDecimalPlaces(6).toFixed(6),
+      creatorEarnings: quotedCreatorEarnings.toFixed(6),
+    };
 
     logger.info("[AppCredits] Processing purchase", {
       appId,
       userId,
-      purchaseAmount,
+      purchaseAmount: purchaseAmountValue,
       platformOffset: quotedSplit.platformOffset,
       creatorEarnings: quotedSplit.creatorEarnings,
       creditsToAdd: quotedSplit.creditsToAdd,
@@ -532,13 +574,16 @@ export class AppCreditsService {
     // purchased credits were stranded).
     const { transaction: purchaseCredit, newBalance } = await creditsService.addCredits({
       organizationId,
-      amount: quotedSplit.creditsToAdd,
+      amount:
+        typeof params.purchaseAmount === "string"
+          ? quotedSplit.creditsToAdd
+          : purchaseAmountDecimal.toNumber(),
       description: `App credit purchase (${app.name ?? appId})`,
       metadata: {
         appId,
         userId,
         organizationId,
-        purchaseAmount,
+        purchaseAmount: purchaseAmountValue,
         creditsToAdd: quotedSplit.creditsToAdd,
         platformOffset: quotedSplit.platformOffset,
         creatorEarnings: quotedSplit.creatorEarnings,
@@ -547,6 +592,7 @@ export class AppCreditsService {
         type: "app_credit_purchase",
       },
       ...(stripePaymentIntentId && { stripePaymentIntentId }),
+      db: transaction,
     });
 
     const persistedPurchaseMetadata =
@@ -582,11 +628,11 @@ export class AppCreditsService {
       purchaseCredit.organization_id !== organizationId ||
       purchaseCredit.type !== "credit" ||
       !persistedPurchaseAmount.isFinite() ||
-      !persistedPurchaseAmount.equals(new Decimal(purchaseAmount).toDecimalPlaces(6)) ||
+      !persistedPurchaseAmount.equals(purchaseAmountDecimal.toDecimalPlaces(6)) ||
       persistedPurchaseMetadata.appId !== appId ||
       persistedPurchaseMetadata.userId !== userId ||
       persistedPurchaseMetadata.organizationId !== organizationId ||
-      !new Decimal(creditsToAdd).equals(new Decimal(purchaseAmount)) ||
+      !new Decimal(creditsToAdd).equals(purchaseAmountDecimal.toDecimalPlaces(6)) ||
       new Decimal(platformOffset).greaterThan(persistedPurchaseAmount) ||
       new Decimal(creatorEarnings).greaterThan(persistedPurchaseAmount.minus(platformOffset)) ||
       !new Decimal(creatorEarnings)
@@ -612,12 +658,18 @@ export class AppCreditsService {
     };
 
     // Track app user activity for purchase (this will create app_users record if new user)
-    await this.trackAppUserActivity(app, userId, "0.00", {
-      type: "purchase",
-      purchaseAmount,
-      creditsAdded: creditsToAdd,
-      ...(stripePaymentIntentId && { stripePaymentIntentId }),
-    });
+    await this.trackAppUserActivity(
+      app,
+      userId,
+      "0.00",
+      {
+        type: "purchase",
+        purchaseAmount: purchaseAmountValue,
+        creditsAdded: creditsToAdd,
+        ...(stripePaymentIntentId && { stripePaymentIntentId }),
+      },
+      transaction,
+    );
 
     // CRITICAL: Always create a transaction record for deduplication purposes
     // Even when monetization is disabled, we need to track the purchase
@@ -630,7 +682,7 @@ export class AppCreditsService {
         platformOffset,
         "purchase",
         {
-          purchaseAmount,
+          purchaseAmount: purchaseAmountValue,
           organizationId,
           platformOffset,
           creatorSharePercentage,
@@ -638,23 +690,27 @@ export class AppCreditsService {
           ...(stripePaymentIntentId && { stripePaymentIntentId }),
         },
         chargeTimeApp,
+        transaction,
       );
     } else if (stripePaymentIntentId) {
       // Monetization disabled but still need transaction record for deduplication
-      await appEarningsRepository.createTransaction({
-        app_id: appId,
-        user_id: userId,
-        type: "credit_purchase",
-        amount: "0", // No earnings when monetization disabled
-        description: "Credit purchase (monetization disabled)",
-        metadata: {
-          organizationId,
-          purchaseAmount,
-          creditsAdded: creditsToAdd,
-          stripePaymentIntentId,
-          monetizationDisabled: true,
+      await appEarningsRepository.createTransaction(
+        {
+          app_id: appId,
+          user_id: userId,
+          type: "credit_purchase",
+          amount: "0", // No earnings when monetization disabled
+          description: "Credit purchase (monetization disabled)",
+          metadata: {
+            organizationId,
+            purchaseAmount: purchaseAmountValue,
+            creditsAdded: creditsToAdd,
+            stripePaymentIntentId,
+            monetizationDisabled: true,
+          },
         },
-      });
+        transaction,
+      );
     }
 
     return {
@@ -1548,6 +1604,7 @@ export class AppCreditsService {
     leg: CreatorEarningsLeg,
     metadata: Record<string, unknown>,
     providedApp?: AppCreditAccountingApp,
+    transaction?: DbTransaction,
   ): Promise<{ deduplicated: boolean; commitState: CreatorEarningsCommitState }> {
     const app: AppCreditAccountingApp | undefined =
       providedApp ?? (await appsRepository.findById(appId));
@@ -1608,12 +1665,17 @@ export class AppCreditsService {
           appCreatorShadowVersion: 1,
           appPlatformRevenueDelta: new Decimal(platformRevenueAmount).toFixed(6),
         },
+        transaction,
       });
     } catch (cause) {
       // error-policy:J2 attach explicit commit state so the caller can decide
       // whether compensating the backing debit is safe.
       if (!identity.dedupeBySourceId) {
         commitState.redeemable = "unknown";
+        throw new CreatorEarningsAccountingError(commitState, cause);
+      }
+      if (transaction) {
+        commitState.redeemable = "absent";
         throw new CreatorEarningsAccountingError(commitState, cause);
       }
       try {
@@ -1678,7 +1740,7 @@ export class AppCreditsService {
     }
 
     try {
-      const projection = await appEarningsRepository.applyCreatorMovement({
+      const movement = {
         appId,
         userId,
         type,
@@ -1689,7 +1751,10 @@ export class AppCreditsService {
         metadata,
         redeemableLedgerEntryId: result.ledgerEntryId,
         redeemableDeduplicated,
-      });
+      };
+      const projection = transaction
+        ? await appEarningsRepository.applyCreatorMovement(movement, transaction)
+        : await appEarningsRepository.applyCreatorMovement(movement);
       commitState.shadowBalanceRecorded = true;
       commitState.shadowTransactionRecorded = true;
       return { deduplicated: projection.deduplicated, commitState };
@@ -1819,8 +1884,50 @@ export class AppCreditsService {
     userId: string,
     creditsUsed: string,
     metadata?: Record<string, unknown>,
+    transaction?: DbTransaction,
   ): Promise<void> {
-    await appsRepository.trackAppUserActivity(app.id, userId, creditsUsed, metadata);
+    if (!transaction) {
+      await appsRepository.trackAppUserActivity(app.id, userId, creditsUsed, metadata);
+      return;
+    }
+
+    const [existing] = await transaction
+      .select({ id: appUsers.id })
+      .from(appUsers)
+      .where(and(eq(appUsers.app_id, app.id), eq(appUsers.user_id, userId)))
+      .for("update")
+      .limit(1);
+    if (existing) {
+      await transaction
+        .update(appUsers)
+        .set({
+          total_requests: sql`${appUsers.total_requests} + 1`,
+          total_credits_used: sql`${appUsers.total_credits_used} + ${creditsUsed}`,
+          last_seen_at: new Date(),
+        })
+        .where(eq(appUsers.id, existing.id));
+    } else {
+      await transaction.insert(appUsers).values({
+        app_id: app.id,
+        user_id: userId,
+        total_requests: 1,
+        total_credits_used: creditsUsed,
+        metadata: metadata ?? {},
+      });
+      await transaction
+        .update(apps)
+        .set({ total_users: sql`${apps.total_users} + 1`, updated_at: new Date() })
+        .where(eq(apps.id, app.id));
+    }
+    await transaction
+      .update(apps)
+      .set({
+        total_requests: sql`${apps.total_requests} + 1`,
+        total_credits_used: sql`${apps.total_credits_used} + ${creditsUsed}`,
+        last_used_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where(eq(apps.id, app.id));
   }
 
   async getMonetizationSettings(appId: string): Promise<{

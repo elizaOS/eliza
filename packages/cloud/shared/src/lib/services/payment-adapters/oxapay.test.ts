@@ -30,7 +30,7 @@ const getPaymentStatus = mock(async (trackId: string) => ({
   trackId,
   orderId: "pr_abc123",
   status: "paid",
-  amount: 25,
+  amount: "25",
   amountText: "25.00",
   currency: "USD",
   transactions: [],
@@ -38,7 +38,7 @@ const getPaymentStatus = mock(async (trackId: string) => ({
 const createInvoice = mock(async (input: { callbackUrl?: string }) => ({
   trackId: "trk_created",
   payLink: "https://pay.example.test/trk_created",
-  amount: 25,
+  amount: "25",
   currency: "USD",
   expiresAt: new Date(Date.now() + 60_000),
   input,
