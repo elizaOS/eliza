@@ -308,6 +308,9 @@ export interface CacheOptions {
 
 	/** Bypass cache entirely */
 	forceRefresh?: boolean;
+
+	/** Cancel an in-flight registry request when the caller is no longer waiting. */
+	signal?: AbortSignal;
 }
 
 /**
@@ -336,6 +339,22 @@ export interface InstallSkillOptions {
 
 	/** Force reinstall even if already installed */
 	force?: boolean;
+
+	/** Cancel all requests and body reads in this install lifecycle. */
+	signal?: AbortSignal;
+
+	/**
+	 * Wall-clock deadline shared by all network requests and body reads in this
+	 * install. Defaults to the service `fetchTimeoutMs`; `null` explicitly
+	 * disables the deadline for this install.
+	 */
+	downloadTimeoutMs?: number | null;
+
+	/**
+	 * Rethrow typed download-boundary failures instead of returning `false`.
+	 * Defaults to `false` to preserve the established boolean install API.
+	 */
+	throwOnDownloadError?: boolean;
 }
 
 // ============================================================

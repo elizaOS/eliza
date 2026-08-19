@@ -247,6 +247,20 @@ const content = await service.readReference('my-skill', 'api-docs.md');
 // Install a skill from registry
 await service.install('pdf-processing');
 
+// Every catalog, GitHub, and direct-URL install has one deadline spanning its
+// fetches and body reads. It inherits the service fetchTimeoutMs by default;
+// override it, propagate caller cancellation, or explicitly opt out with null.
+const controller = new AbortController();
+const installed = await service.installFromUrl('https://example.com/SKILL.md', {
+  signal: controller.signal,
+  downloadTimeoutMs: 10_000,
+  // Opt in when the caller needs the typed timeout/cancellation failure.
+  throwOnDownloadError: true,
+});
+await service.installFromGitHub('owner/repo', {
+  downloadTimeoutMs: null,
+});
+
 // Check storage mode
 if (service.isMemoryMode()) {
   // Load skill from content (memory mode only)
