@@ -9839,6 +9839,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			strippedPlannedReplyText || effectiveReplyText;
 		let shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
+			// suppressPlannerReply is the action's declaration that this turn's
+			// answer was already delivered outside the planner (out-of-band ack,
+			// IGNORE/STOP-style terminal). The flag gated the fallbacks but not
+			// the evaluator's own FINISH text, so a mimicked "On it — building
+			// that now." trailed the real result (live 2026-08-19, trajectory
+			// eval-FINISH evidence across four runs).
+			!suppressesPlannerReply &&
 			!plannedTextRepeatsEarlyReply &&
 			!plannedTextRepeatsActionReply &&
 			!plannedTextIsRedundantFailureFallback &&
