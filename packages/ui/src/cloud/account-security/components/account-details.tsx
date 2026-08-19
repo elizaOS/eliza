@@ -1,7 +1,6 @@
 /**
- * Read-only account details: account id, email + verification, and join date.
- * These are labelled 1:1 status rows, not the ProfileForm editor, so they
- * compose SettingsStack / SettingsGroup / SettingsRow.
+ * Read-only account details: account id and join date. Email belongs to the
+ * profile editor, so this card deliberately does not repeat it.
  */
 
 import {
@@ -9,7 +8,6 @@ import {
   SettingsRow,
   SettingsStack,
 } from "../../../components/settings/settings-layout";
-import { StatusBadge } from "../../../components/ui/status-badge";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { UserProfile } from "../data/user";
 
@@ -44,30 +42,6 @@ export function AccountDetails({ user }: AccountDetailsProps) {
             </span>
           }
         />
-
-        {user.email ? (
-          <SettingsRow
-            label={t("cloud.accountDetails.email", { defaultValue: "Email" })}
-            description={
-              <span className="break-all text-txt-strong">{user.email}</span>
-            }
-            control={
-              <StatusBadge
-                withDot
-                variant={user.email_verified ? "success" : "muted"}
-                label={
-                  user.email_verified
-                    ? t("cloud.accountDetails.verified", {
-                        defaultValue: "Verified",
-                      })
-                    : t("cloud.accountDetails.notVerified", {
-                        defaultValue: "Unverified",
-                      })
-                }
-              />
-            }
-          />
-        ) : null}
 
         {created ? (
           <SettingsRow

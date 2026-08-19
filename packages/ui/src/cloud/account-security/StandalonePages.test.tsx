@@ -22,17 +22,6 @@ vi.mock("./AccountSurface", async () => {
   };
 });
 
-vi.mock("./SecuritySurface", async () => {
-  const { useSetPageHeader } =
-    await vi.importActual<typeof import("../../cloud-ui")>("../../cloud-ui");
-  return {
-    SecuritySurface: () => {
-      useSetPageHeader({ title: "Security" });
-      return <div>security body</div>;
-    },
-  };
-});
-
 vi.mock("./PermissionsSurface", async () => {
   const { useSetPageHeader } =
     await vi.importActual<typeof import("../../cloud-ui")>("../../cloud-ui");
@@ -46,7 +35,6 @@ vi.mock("./PermissionsSurface", async () => {
 
 import { AccountPage } from "./AccountPage";
 import { PermissionsPage } from "./PermissionsPage";
-import { SecurityPage } from "./SecurityPage";
 
 describe("account/security standalone pages", () => {
   it("publishes the account header into the outer (shell) provider", () => {
@@ -59,18 +47,7 @@ describe("account/security standalone pages", () => {
       </PageHeaderProvider>,
     );
     expect(screen.getByText("account body")).toBeTruthy();
-    expect(
-      screen.getByRole("link", { name: /Sessions & security/ }),
-    ).toBeTruthy();
-  });
-
-  it("publishes the security header into the outer (shell) provider", () => {
-    render(
-      <PageHeaderProvider>
-        <SecurityPage />
-      </PageHeaderProvider>,
-    );
-    expect(screen.getByText("security body")).toBeTruthy();
+    expect(screen.queryByText("Sessions & security")).toBeNull();
   });
 
   it("publishes the permissions header into the outer (shell) provider", () => {
