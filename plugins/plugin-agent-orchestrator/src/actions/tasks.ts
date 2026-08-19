@@ -1835,7 +1835,15 @@ async function runCreateLegacy(
   // The visible ack already went out BEFORE the lanes ran (earlyAckText).
   // Re-sending here would double-bubble; the widget appendix rides on the
   // result text for the app UI's task card without another chat message.
-  const proseText = composeCreateText(earlyAckText ?? createdFallback);
+  // When the ack already posted out-of-band, result.text must NOT be that
+  // same ack: the turn's answerless floor re-shipped it byte-identical after
+  // the result (live 2026-08-19, three variants). Grounding prose states the
+  // pending contract instead — safe if any floor leaks it.
+  const proseText = ackPostedOutOfBand
+    ? composeCreateText(
+        `Acknowledged and started ${results.length > 1 ? `${results.length} builds` : "the build"}; results arrive as follow-up messages.`,
+      )
+    : composeCreateText(earlyAckText ?? createdFallback);
 
   // The creation ack is the complete answer to a single-operation turn:
   // verified + turnComplete make the callback the sole delivery instead of
