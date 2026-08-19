@@ -153,6 +153,24 @@ describe("ChatOverlay first-run gating", () => {
     expect(controller.toggleHandsFree).not.toHaveBeenCalled();
   });
 
+  it("describes the active Cloud connection instead of asking for sign-in again", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-connecting",
+          role: "assistant",
+          content: "Opening your personal Eliza…",
+          createdAt: 2,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.placeholder).toBe("Connecting to Eliza Cloud…");
+  });
+
   it("ignores prefill/free-text entry during onboarding so setup stays sign-in-first", () => {
     const sendActionMessage = seedAppStoreWithActionSpy();
     const controller = makeController();

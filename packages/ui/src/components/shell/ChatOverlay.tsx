@@ -1269,6 +1269,20 @@ export function ChatOverlay({
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
+  const firstRunComposerPlaceholder = React.useMemo(() => {
+    const latestStatus = messages.at(-1)?.content ?? "";
+    if (/waiting for sign-in/i.test(latestStatus)) {
+      return "Waiting for sign-in…";
+    }
+    if (
+      /opening your personal eliza|setting up your agent|connecting to eliza cloud/i.test(
+        latestStatus,
+      )
+    ) {
+      return "Connecting to Eliza Cloud…";
+    }
+    return "Sign in to start chatting";
+  }, [messages]);
   // Local text-model readiness (#12178 WI-4). While it `blocksSend`, the
   // composer stays usable and the in-chat model-status card carries progress +
   // cancel/switch controls; the placeholder tells the user they can keep typing.
@@ -6542,7 +6556,7 @@ export function ChatOverlay({
                     compactLanding
                       ? "Message"
                       : firstRunOpen
-                        ? "Sign in to start chatting"
+                        ? firstRunComposerPlaceholder
                         : noProviderConfigured
                           ? "Connect a model provider in Settings to chat"
                           : modelBlocksSend
