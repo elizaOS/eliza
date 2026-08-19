@@ -65,6 +65,9 @@ const BACKUP_CATALOGUE_MIGRATION_TAGS = [
   "0248_agent_vault_key_seed_receipts",
   "0249_agent_backup_restore_receipts",
   "0250_agent_restore_receipt_guards",
+  "0251_agent_backup_restore_operations",
+  "0252_agent_backup_restore_operation_guard",
+  "0253_job_retryable_requeues",
 ] as const;
 
 function journalEntries(): JournalEntry[] {

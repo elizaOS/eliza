@@ -1765,6 +1765,13 @@
       "when": 1790884800000,
       "tag": "0252_agent_backup_restore_operation_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1790971200000,
+      "tag": "0253_job_retryable_requeues",
+      "breakpoints": true
     }
   ]
 }
