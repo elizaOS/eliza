@@ -11,6 +11,7 @@ import {
   readFile,
   rm,
   stat,
+  symlink,
   utimes,
   writeFile,
 } from "node:fs/promises";
@@ -18,7 +19,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { parseArgs, resolveDefaultBundleDir } from "./generate.mjs";
+import {
+  assertSafeOutputDir,
+  parseArgs,
+  resolveDefaultBundleDir,
+} from "./generate.mjs";
 import { analyzeImageFile, classifyArtifactPath, inferSource } from "./lib.mjs";
 
 const WHITE_PIXEL_PNG = Buffer.from(
@@ -35,7 +40,10 @@ const REPO_ROOT = path.resolve(
 const GENERATE = "scripts/evidence-review/generate.mjs";
 
 /** Write a minimal schema-1 evidence bundle with a screenshot and a log. */
-async function writeBundle(dir, { runId = "bundle-run-001" } = {}) {
+async function writeBundle(
+  dir,
+  { runId = "bundle-run-001", extraReports = 0 } = {},
+) {
   await mkdir(path.join(dir, "screens"), { recursive: true });
   await writeFile(path.join(dir, "screens", "a.png"), WHITE_PIXEL_PNG);
   await writeFile(
@@ -68,6 +76,23 @@ async function writeBundle(dir, { runId = "bundle-run-001" } = {}) {
     })}\n`,
   );
   await writeFile(path.join(dir, "meta.json"), metaBytes);
+  const artifacts = [
+    entry(
+      "screens/a.png",
+      "screenshot",
+      WHITE_PIXEL_PNG.length,
+      sha256(WHITE_PIXEL_PNG),
+    ),
+    entry("notes.log", "log", 29, sha256("hello from the bundle\nsecond\n")),
+    entry("sound.wav", "other", 10, sha256("wave-bytes")),
+  ];
+  for (let index = 0; index < extraReports; index += 1) {
+    const rel = `reports/${String(index).padStart(3, "0")}.json`;
+    const bytes = Buffer.from(`{"index":${index}}\n`);
+    await mkdir(path.join(dir, "reports"), { recursive: true });
+    await writeFile(path.join(dir, rel), bytes);
+    artifacts.push(entry(rel, "report", bytes.length, sha256(bytes)));
+  }
   await writeFile(
     path.join(dir, "manifest.json"),
     JSON.stringify(
@@ -76,21 +101,7 @@ async function writeBundle(dir, { runId = "bundle-run-001" } = {}) {
         runId,
         createdAt: now,
         metaSha256: sha256(metaBytes),
-        artifacts: [
-          entry(
-            "screens/a.png",
-            "screenshot",
-            WHITE_PIXEL_PNG.length,
-            sha256(WHITE_PIXEL_PNG),
-          ),
-          entry(
-            "notes.log",
-            "log",
-            29,
-            sha256("hello from the bundle\nsecond\n"),
-          ),
-          entry("sound.wav", "other", 10, sha256("wave-bytes")),
-        ],
+        artifacts,
       },
       null,
       2,
@@ -229,6 +240,61 @@ test("zero-argument bundle resolution selects the newest finalized run", async (
       new Date(2_000),
     );
     assert.equal(resolveDefaultBundleDir(tmpDir), newBundle);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("bundle review never silently truncates a verified manifest", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-complete-"));
+  try {
+    const bundleDir = path.join(tmpDir, "bundle");
+    const outDir = path.join(tmpDir, "out");
+    await writeBundle(bundleDir, { extraReports: 101 });
+    const result = runGenerate([
+      `--bundle=${bundleDir}`,
+      `--out=${outDir}`,
+      "--ocr=off",
+      "--no-open",
+      "--max-artifacts=100",
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    const review = JSON.parse(
+      await readFile(path.join(outDir, "manifest.json"), "utf8"),
+    );
+    assert.equal(review.artifacts.length, 104);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("rejects reviewer output that could mutate the verified bundle", () => {
+  const bundle = path.resolve("/tmp/evidence-bundle");
+  assert.throws(() => assertSafeOutputDir(bundle, bundle), /must not overlap/);
+  assert.throws(
+    () => assertSafeOutputDir(path.join(bundle, "review"), bundle),
+    /must not overlap/,
+  );
+  assert.throws(
+    () => assertSafeOutputDir(path.dirname(bundle), bundle),
+    /must not overlap/,
+  );
+  assert.doesNotThrow(() =>
+    assertSafeOutputDir(path.resolve("/tmp/evidence-review"), bundle),
+  );
+});
+
+test("rejects a reviewer output symlink into the verified bundle", async () => {
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-overlap-"));
+  try {
+    const bundle = path.join(tmpDir, "bundle");
+    await mkdir(bundle);
+    const linkedOutput = path.join(tmpDir, "linked-output");
+    await symlink(bundle, linkedOutput, "dir");
+    assert.throws(
+      () => assertSafeOutputDir(linkedOutput, bundle),
+      /must not overlap/,
+    );
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }

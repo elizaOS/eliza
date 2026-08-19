@@ -104,6 +104,7 @@ bun run --cwd packages/evidence test         # vitest suite
 bun run --cwd packages/evidence typecheck    # tsc --noEmit
 bun run --cwd packages/evidence lint         # biome
 bun run --cwd packages/evidence bundle:create -- --tier cpu
+bun run --cwd packages/evidence bundle:snapshot -- --repo-root <dir> --out <snapshot.json>
 bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>
 bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>
 bun run --cwd packages/evidence certify:keygen -- [--print-private-key]

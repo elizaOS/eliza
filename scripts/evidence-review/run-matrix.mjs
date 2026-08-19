@@ -34,7 +34,7 @@ export const MATRIX_STEPS = [
   {
     id: "e2e-recordings",
     label: "Recorded UI e2e sweep",
-    command: ["node", "scripts/e2e-recordings/run-all.mjs", "--review"],
+    command: ["node", "scripts/e2e-recordings/run-all.mjs"],
     tags: ["ui", "recordings"],
   },
   {
@@ -292,6 +292,24 @@ function commandFailure(label, result) {
   );
 }
 
+/** Capture content hashes for every pre-existing producer artifact. */
+export function captureEvidenceBaseline(stagingDir, { run = spawnSync } = {}) {
+  const cli = path.join(REPO_ROOT, "packages", "evidence", "src", "cli.ts");
+  const baselinePath = path.join(stagingDir, "silo-baseline.json");
+  const result = run(
+    "bun",
+    [cli, "snapshot", "--repo-root", REPO_ROOT, "--out", baselinePath],
+    { cwd: REPO_ROOT, encoding: "utf8", env: { ...process.env } },
+  );
+  if (result.error || result.status !== 0) {
+    throw commandFailure("evidence baseline capture", result);
+  }
+  if (!fs.existsSync(baselinePath)) {
+    throw new Error("evidence baseline capture did not write its snapshot");
+  }
+  return baselinePath;
+}
+
 /**
  * Create one exact bundle for this matrix report, then run the canonical
  * integrity verifier before returning its directory. Exported so contract tests
@@ -300,6 +318,7 @@ function commandFailure(label, result) {
 export function createVerifiedBundle(
   options,
   matrixManifestPath,
+  baselinePath,
   { run = spawnSync } = {},
 ) {
   const cli = path.join(REPO_ROOT, "packages", "evidence", "src", "cli.ts");
@@ -314,6 +333,8 @@ export function createVerifiedBundle(
       DEFAULT_BUNDLE_ROOT,
       "--repo-root",
       REPO_ROOT,
+      "--baseline",
+      baselinePath,
       "--lane-report",
       `matrix=${matrixManifestPath}`,
       "--json",
@@ -453,9 +474,8 @@ async function main() {
     reporter.header();
   }
 
-  const results = executeSteps(steps, options, { reporter });
-
   if (options.dryRun) {
+    const results = executeSteps(steps, options, { reporter });
     const outputDir =
       options.outputDir ??
       path.join(REPO_ROOT, "evidence", "review", "planned");
@@ -475,39 +495,40 @@ async function main() {
   }
 
   const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-matrix-"));
-  let bundle;
   try {
+    const baselinePath = captureEvidenceBaseline(stagingDir);
+    const results = executeSteps(steps, options, { reporter });
     const { manifestPath: stagedManifest } = writeManifest(
       options,
       results,
       null,
       stagingDir,
     );
-    bundle = createVerifiedBundle(options, stagedManifest);
+    const bundle = createVerifiedBundle(options, stagedManifest, baselinePath);
+    console.log(bundle.createOutput);
+    console.log(bundle.verifyOutput);
+    const reviewer = runReviewer(options, bundle.bundleDir);
+    const manifest = {
+      status: results.some((step) => step.status === "failed")
+        ? "failed"
+        : "passed",
+    };
+    const manifestPath = bundle.manifestPath;
+
+    const summary = renderMatrixSummary(results, {
+      manifestPath,
+      dashboardPath: reviewer?.dashboardPath ?? null,
+    });
+    console.log(summary.text);
+
+    if (
+      manifest.status === "failed" ||
+      (reviewer && reviewer.status === "failed")
+    ) {
+      process.exitCode = 1;
+    }
   } finally {
     fs.rmSync(stagingDir, { recursive: true, force: true });
-  }
-  console.log(bundle.createOutput);
-  console.log(bundle.verifyOutput);
-  const reviewer = runReviewer(options, bundle.bundleDir);
-  const manifest = {
-    status: results.some((step) => step.status === "failed")
-      ? "failed"
-      : "passed",
-  };
-  const manifestPath = bundle.manifestPath;
-
-  const summary = renderMatrixSummary(results, {
-    manifestPath,
-    dashboardPath: reviewer?.dashboardPath ?? null,
-  });
-  console.log(summary.text);
-
-  if (
-    manifest.status === "failed" ||
-    (reviewer && reviewer.status === "failed")
-  ) {
-    process.exit(1);
   }
 }
 

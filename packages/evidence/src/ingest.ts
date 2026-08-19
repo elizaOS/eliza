@@ -7,9 +7,12 @@
  * artifacts) when a root exists but is empty — absent and empty are different
  * results and are never conflated. This list is the sole normal-path producer
  * inventory. The reviewer consumes the resulting verified bundle rather than
- * independently crawling these roots.
+ * independently crawling these roots. Coordinated runs snapshot content and
+ * filesystem identity before executing lanes so unchanged persistent output is
+ * excluded from the new run's provenance.
  */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { EvidenceBundle } from "./bundle.ts";
@@ -37,6 +40,34 @@ interface SiloDefinition {
   roots: SiloRoot[];
   /** Per-silo kind override; receives the root-relative posix path. */
   classify?: (relPath: string, defaultKind: ArtifactKind) => ArtifactKind;
+}
+
+export interface SiloSnapshot {
+  schema: 1;
+  files: Record<
+    string,
+    { sha256: string; size: number; mtimeMs: number; ctimeMs: number }
+  >;
+}
+
+function snapshotKey(silo: string, rootLabel: string, relPath: string): string {
+  return `${silo}\0${rootLabel}\0${relPath}`;
+}
+
+function hashFile(filePath: string): string {
+  const hash = createHash("sha256");
+  const descriptor = fs.openSync(filePath, "r");
+  const chunk = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    let bytesRead = 0;
+    do {
+      bytesRead = fs.readSync(descriptor, chunk, 0, chunk.length, null);
+      if (bytesRead > 0) hash.update(chunk.subarray(0, bytesRead));
+    } while (bytesRead > 0);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+  return hash.digest("hex");
 }
 
 // Directory names that never contain evidence; everything else in a silo is
@@ -84,6 +115,7 @@ async function ingestSilo(
   bundle: EvidenceBundle,
   repoRoot: string,
   definition: SiloDefinition,
+  baseline?: SiloSnapshot,
 ): Promise<IngestResult> {
   const presentRoots = definition.roots.filter((root) =>
     fs.existsSync(path.join(repoRoot, root.dir)),
@@ -96,9 +128,23 @@ async function ingestSilo(
   for (const root of presentRoots) {
     const rootDir = path.join(repoRoot, root.dir);
     for (const rel of walkSiloFiles(rootDir)) {
+      const sourcePath = path.join(rootDir, ...rel.split("/"));
+      const previous =
+        baseline?.files[snapshotKey(definition.silo, root.label, rel)];
+      if (previous !== undefined) {
+        const stat = fs.statSync(sourcePath);
+        if (
+          previous.size === stat.size &&
+          previous.mtimeMs === stat.mtimeMs &&
+          previous.ctimeMs === stat.ctimeMs &&
+          previous.sha256 === hashFile(sourcePath)
+        ) {
+          continue;
+        }
+      }
       const defaultKind = classifyByExtension(rel);
       const kind = definition.classify?.(rel, defaultKind) ?? defaultKind;
-      await bundle.addArtifact(path.join(rootDir, ...rel.split("/")), {
+      await bundle.addArtifact(sourcePath, {
         kind,
         source: definition.source,
         ...(definition.lane !== undefined ? { lane: definition.lane } : {}),
@@ -180,6 +226,35 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   },
 ];
 
+/**
+ * Hash the current canonical producer inventory before a coordinated run.
+ * Passing the result back to ingestion makes the resulting bundle contain only
+ * new or content-changed artifacts from that run; an untouched stale file can
+ * never be relabeled with the new bundle's commit provenance.
+ */
+export function captureSiloSnapshot(repoRoot: string): SiloSnapshot {
+  const files: SiloSnapshot["files"] = {};
+  for (const definition of SILO_DEFINITIONS) {
+    for (const root of definition.roots) {
+      const rootDir = path.join(repoRoot, root.dir);
+      if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
+        continue;
+      }
+      for (const rel of walkSiloFiles(rootDir)) {
+        const filePath = path.join(rootDir, ...rel.split("/"));
+        const stat = fs.statSync(filePath);
+        files[snapshotKey(definition.silo, root.label, rel)] = {
+          sha256: hashFile(filePath),
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          ctimeMs: stat.ctimeMs,
+        };
+      }
+    }
+  }
+  return { schema: 1, files };
+}
+
 /** Silo names, exported for CLI help and downstream orchestration. */
 export const SILO_NAMES: readonly string[] = SILO_DEFINITIONS.map(
   (definition) => definition.silo,
@@ -189,10 +264,11 @@ export const SILO_NAMES: readonly string[] = SILO_DEFINITIONS.map(
 export async function ingestAllSilos(
   bundle: EvidenceBundle,
   repoRoot: string,
+  baseline?: SiloSnapshot,
 ): Promise<IngestResult[]> {
   const results: IngestResult[] = [];
   for (const definition of SILO_DEFINITIONS) {
-    results.push(await ingestSilo(bundle, repoRoot, definition));
+    results.push(await ingestSilo(bundle, repoRoot, definition, baseline));
   }
   return results;
 }

@@ -8,11 +8,19 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  captureEvidenceBaseline,
   createVerifiedBundle,
   executeSteps,
   MATRIX_STEPS,
@@ -60,6 +68,10 @@ function recordingReporter() {
 test("selects all real matrix lanes by default", () => {
   const options = parseMatrixArgs([]);
   const steps = selectMatrixSteps(MATRIX_STEPS, options);
+  assert.deepEqual(steps.find((step) => step.id === "e2e-recordings").command, [
+    "node",
+    "scripts/e2e-recordings/run-all.mjs",
+  ]);
   assert.deepEqual(
     steps.map((step) => step.id),
     [
@@ -194,12 +206,16 @@ test("creates and verifies the exact matrix bundle before reviewing it", () => {
     return { status: 0, stdout: "", stderr: "" };
   };
   const options = parseMatrixArgs(["--no-open"]);
-  const bundled = createVerifiedBundle(options, "/tmp/matrix-run.json", {
-    run,
-  });
+  const bundled = createVerifiedBundle(
+    options,
+    "/tmp/matrix-run.json",
+    "/tmp/silo-baseline.json",
+    { run },
+  );
   assert.equal(bundled.bundleDir, bundleDir);
   assert.equal(calls.length, 2);
   assert.ok(calls[0][1].includes("matrix=/tmp/matrix-run.json"));
+  assert.ok(calls[0][1].includes("/tmp/silo-baseline.json"));
   assert.ok(calls[0][1].includes("--json"));
   assert.deepEqual(calls[1][1].slice(-2), ["verify", bundleDir]);
 
@@ -215,7 +231,7 @@ test("matrix rejects noisy or redirected bundle-create output", () => {
   const options = parseMatrixArgs([]);
   assert.throws(
     () =>
-      createVerifiedBundle(options, "/tmp/matrix.json", {
+      createVerifiedBundle(options, "/tmp/matrix.json", "/tmp/base.json", {
         run: () => ({
           status: 0,
           stdout: 'progress\n{"schema":1}',
@@ -226,7 +242,7 @@ test("matrix rejects noisy or redirected bundle-create output", () => {
   );
   assert.throws(
     () =>
-      createVerifiedBundle(options, "/tmp/matrix.json", {
+      createVerifiedBundle(options, "/tmp/matrix.json", "/tmp/base.json", {
         run: () => ({
           status: 0,
           stdout: JSON.stringify({
@@ -242,6 +258,26 @@ test("matrix rejects noisy or redirected bundle-create output", () => {
       }),
     /paths outside its run/,
   );
+});
+
+test("captures the producer baseline before lane execution", () => {
+  const staging = mkdtempSync(path.join(os.tmpdir(), "matrix-baseline-"));
+  try {
+    const calls = [];
+    const baselinePath = captureEvidenceBaseline(staging, {
+      run: (command, args) => {
+        calls.push([command, args]);
+        const outIndex = args.indexOf("--out") + 1;
+        writeFileSync(args[outIndex], '{"schema":1,"files":{}}\n');
+        return { status: 0, stdout: args[outIndex], stderr: "" };
+      },
+    });
+    assert.equal(baselinePath, path.join(staging, "silo-baseline.json"));
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0][1].includes("snapshot"));
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
 });
 
 test("a filter combination selecting zero lanes fails with an actionable message", () => {

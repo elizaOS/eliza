@@ -1,10 +1,9 @@
 /**
  * #8798 acceptance criterion 2 — STATIC view-capability audit (registration DENSITY).
  *
- * This is the source-static complement of the runtime crawler under
- * `scripts/view-audit/` (which walks a *running* shell and confirms every
- * *rendered* control is agent-addressable) and the agent-surface `__e2e__`
- * harness. With no browser, no runtime, and no mounted registry, it reads each
+ * This is the source-static complement of the maintained app interaction and
+ * agent-surface `__e2e__` harnesses. With no browser, no runtime, and no mounted
+ * registry, it reads each
  * registered plugin view's `.tsx` source and asserts a per-view MINIMUM number
  * of agent-addressable element registrations proportional to that view's
  * interactive-control surface.
@@ -12,7 +11,7 @@
  * What it PROVES — and ONLY this: a control-bearing view cannot ship a large
  * interactive surface while registering zero / too few agent-addressable
  * elements. It does NOT prove runtime hittability — that a given rendered
- * control is actually reachable end to end is the crawler's / e2e harness's job.
+ * control is actually reachable end to end is the e2e harness's job.
  *
  * Two agent-addressability dialects each count as a registration:
  *   1. DOM views     — `useAgentElement(...)` call sites (the ViewAgentRegistry).

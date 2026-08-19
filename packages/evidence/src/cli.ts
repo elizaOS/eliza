@@ -20,7 +20,11 @@ import {
 import { parseRequirements } from "./certify/rollup.ts";
 import { REVIEWER_KINDS, type ReviewerKind } from "./certify/schema.ts";
 import { EvidenceError } from "./errors.ts";
-import { ingestAllSilos } from "./ingest.ts";
+import {
+  captureSiloSnapshot,
+  ingestAllSilos,
+  type SiloSnapshot,
+} from "./ingest.ts";
 import {
   buildEnvFingerprint,
   collectGitProvenance,
@@ -30,7 +34,9 @@ import { TIERS, type Tier } from "./schema.ts";
 
 const USAGE = `Usage:
   bundle:create -- --tier <cpu|gpu|full> [--out <dir>] [--repo-root <dir>]
+                   [--baseline <snapshot-json>]
                    [--lane-report <lane>=<json-file>]... [--json]
+  bundle:snapshot -- --repo-root <dir> --out <snapshot-json>
   bundle:verify -- <bundle-dir>
   certify       -- --tier <cpu|gpu|full> --reviewer-id <id> --reviewer-kind <agent|human>
                    [--reviewer-model <m>] [--reviewer-verdicts <file>] [--skip-matrix]
@@ -42,6 +48,7 @@ const USAGE = `Usage:
 
 create   Open a new evidence bundle, ingest every known silo plus explicit
          matrix lane reports, finalize.
+snapshot Hash the current producer inventory for exact-run delta ingestion.
 verify   Re-hash every artifact in an existing bundle and report integrity.
 certify  One command: matrix → ingest → analyze → vision-qa → rollup →
          reviewer merge → sign → self-verify. Writes a signed certification.json
@@ -62,12 +69,14 @@ function parseCreateArgs(argv: string[]): {
   outDir?: string;
   repoRoot?: string;
   laneReports: Array<{ lane: string; filePath: string }>;
+  baselinePath?: string;
   json: boolean;
 } {
   let tier: Tier | undefined;
   let outDir: string | undefined;
   let repoRoot: string | undefined;
   const laneReports: Array<{ lane: string; filePath: string }> = [];
+  let baselinePath: string | undefined;
   let json = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -96,6 +105,8 @@ function parseCreateArgs(argv: string[]): {
       outDir = value();
     } else if (arg === "--repo-root") {
       repoRoot = value();
+    } else if (arg === "--baseline") {
+      baselinePath = value();
     } else if (arg === "--lane-report") {
       const raw = value();
       const separator = raw.indexOf("=");
@@ -122,7 +133,7 @@ function parseCreateArgs(argv: string[]): {
   if (tier === undefined) {
     throw new EvidenceError("--tier is required", { code: "CLI_USAGE" });
   }
-  return { tier, outDir, repoRoot, laneReports, json };
+  return { tier, outDir, repoRoot, laneReports, baselinePath, json };
 }
 
 function defaultRepoRoot(): string {
@@ -143,6 +154,40 @@ async function runCreate(argv: string[], io: CliIo): Promise<number> {
     readJson(filePath, `lane report ${report.lane}`);
     return { ...report, filePath };
   });
+  let baseline: SiloSnapshot | undefined;
+  if (args.baselinePath !== undefined) {
+    const value = readJson(path.resolve(args.baselinePath), "silo baseline");
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      (value as { schema?: unknown }).schema !== 1 ||
+      typeof (value as { files?: unknown }).files !== "object" ||
+      (value as { files?: unknown }).files === null ||
+      Array.isArray((value as { files?: unknown }).files) ||
+      Object.values((value as { files: Record<string, unknown> }).files).some(
+        (entry) => {
+          if (typeof entry !== "object" || entry === null) return true;
+          const snapshot = entry as Record<string, unknown>;
+          return (
+            typeof snapshot.sha256 !== "string" ||
+            !/^[0-9a-f]{64}$/u.test(snapshot.sha256) ||
+            typeof snapshot.size !== "number" ||
+            !Number.isSafeInteger(snapshot.size) ||
+            snapshot.size < 0 ||
+            typeof snapshot.mtimeMs !== "number" ||
+            !Number.isFinite(snapshot.mtimeMs) ||
+            typeof snapshot.ctimeMs !== "number" ||
+            !Number.isFinite(snapshot.ctimeMs)
+          );
+        },
+      )
+    ) {
+      throw new EvidenceError("silo baseline is not a schema-1 snapshot", {
+        code: "CLI_INPUT_INVALID",
+      });
+    }
+    baseline = value as SiloSnapshot;
+  }
   const bundle = createBundle({
     rootDir,
     provenance: {
@@ -154,7 +199,7 @@ async function runCreate(argv: string[], io: CliIo): Promise<number> {
     },
   });
   const ingestStart = Date.now();
-  const results = await ingestAllSilos(bundle, repoRoot);
+  const results = await ingestAllSilos(bundle, repoRoot, baseline);
   for (const report of laneReports) {
     await bundle.addArtifact(report.filePath, {
       kind: "report",
@@ -203,6 +248,40 @@ async function runCreate(argv: string[], io: CliIo): Promise<number> {
   io.out(`  artifacts: ${total}`);
   io.out(`  manifest:  ${finalized.manifestPath}`);
   io.out(`  sha256:    ${finalized.manifestSha256}`);
+  return 0;
+}
+
+async function runSnapshot(argv: string[], io: CliIo): Promise<number> {
+  let repoRoot: string | undefined;
+  let outPath: string | undefined;
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const next = argv[index + 1];
+    if ((arg === "--repo-root" || arg === "--out") && next === undefined) {
+      throw new EvidenceError(`${arg} requires a value`, { code: "CLI_USAGE" });
+    }
+    if (arg === "--repo-root") {
+      repoRoot = next;
+      index += 1;
+    } else if (arg === "--out") {
+      outPath = next;
+      index += 1;
+    } else {
+      throw new EvidenceError(`unknown argument: ${arg}`, {
+        code: "CLI_USAGE",
+      });
+    }
+  }
+  if (repoRoot === undefined || outPath === undefined) {
+    throw new EvidenceError("snapshot requires --repo-root and --out", {
+      code: "CLI_USAGE",
+    });
+  }
+  const resolvedOut = path.resolve(outPath);
+  fs.mkdirSync(path.dirname(resolvedOut), { recursive: true });
+  const snapshot = captureSiloSnapshot(path.resolve(repoRoot));
+  fs.writeFileSync(resolvedOut, `${JSON.stringify(snapshot)}\n`, "utf8");
+  io.out(resolvedOut);
   return 0;
 }
 
@@ -485,6 +564,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
   const [command, ...rest] = argv;
   try {
     if (command === "create") return await runCreate(rest, io);
+    if (command === "snapshot") return await runSnapshot(rest, io);
     if (command === "verify") return await runVerify(rest, io);
     if (command === "certify") return await runCertify(rest, io);
     io.err(USAGE);

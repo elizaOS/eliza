@@ -174,6 +174,49 @@ export function resolveDefaultBundleDir(bundleRoot = DEFAULT_BUNDLE_ROOT) {
   return candidates[0]?.dir ?? null;
 }
 
+function resolveBundleDirForOptions(options) {
+  return (
+    options.bundleDir ??
+    (options.scanDirs.length === 0 ? resolveDefaultBundleDir() : null)
+  );
+}
+
+function pathsOverlap(left, right) {
+  const relative = path.relative(left, right);
+  return (
+    relative === "" ||
+    (!relative.startsWith(`..${path.sep}`) && relative !== "..")
+  );
+}
+
+function physicalPath(filePath) {
+  let cursor = path.resolve(filePath);
+  const missing = [];
+  while (!fs.existsSync(cursor)) {
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    missing.push(path.basename(cursor));
+    cursor = parent;
+  }
+  const existing = fs.existsSync(cursor) ? fs.realpathSync(cursor) : cursor;
+  return path.join(existing, ...missing.reverse());
+}
+
+/** Refuse to mutate the verified bundle while writing reviewer output. */
+export function assertSafeOutputDir(outputDir, bundleDir) {
+  const physicalOutput = physicalPath(outputDir);
+  const physicalBundle = bundleDir ? physicalPath(bundleDir) : null;
+  if (
+    physicalBundle &&
+    (pathsOverlap(physicalBundle, physicalOutput) ||
+      pathsOverlap(physicalOutput, physicalBundle))
+  ) {
+    throw new Error(
+      "review output and evidence bundle directories must not overlap",
+    );
+  }
+}
+
 /**
  * Verify bytes, hashes, provenance binding, and the unlisted-file sweep before
  * rendering. The reviewer is a process boundary, so it invokes the canonical
@@ -368,7 +411,6 @@ async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
   const manifest = readBundleManifest(bundleDir);
   const runId = typeof manifest.runId === "string" ? manifest.runId : null;
   for (const entry of manifest.artifacts) {
-    if (out.length >= options.maxArtifacts) break;
     const rel = typeof entry?.path === "string" ? entry.path : "";
     const full = path.resolve(bundleDir, rel);
     if (full !== bundleDir && !full.startsWith(bundleDir + path.sep)) {
@@ -401,9 +443,7 @@ async function collectBundleArtifacts(bundleDir, options, counters, seen, out) {
 
 async function collectArtifacts(options) {
   const scanDirs = resolveScanDirs(options);
-  const bundleDir =
-    options.bundleDir ??
-    (options.scanDirs.length === 0 ? resolveDefaultBundleDir() : null);
+  const bundleDir = resolveBundleDirForOptions(options);
   if (bundleDir === null && options.scanDirs.length === 0) {
     throw new Error(
       "no finalized evidence bundle found under evidence/runs; run `bun run --cwd packages/evidence bundle:create -- --tier cpu` or pass --bundle/--source explicitly",
@@ -703,6 +743,7 @@ function openFile(filePath) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  assertSafeOutputDir(options.outputDir, resolveBundleDirForOptions(options));
   fs.mkdirSync(options.outputDir, { recursive: true });
 
   const manifest = await collectArtifacts(options);

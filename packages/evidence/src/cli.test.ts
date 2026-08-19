@@ -156,6 +156,52 @@ describe("runCli create", () => {
     });
   });
 
+  it("uses a pre-run snapshot to exclude stale producer artifacts", async () => {
+    const repo = initFixtureRepo();
+    const baselinePath = path.join(tmpDir(), "baseline.json");
+    const snapshotOutput = capture();
+    expect(
+      await runCli(
+        ["snapshot", "--repo-root", repo, "--out", baselinePath],
+        snapshotOutput.io,
+      ),
+    ).toBe(0);
+    expect(fs.existsSync(baselinePath)).toBe(true);
+
+    const current = path.join(repo, "packages", "app", "test-results");
+    fs.mkdirSync(current, { recursive: true });
+    fs.writeFileSync(path.join(current, "current.log"), "new-run\n");
+    const captured = capture();
+    expect(
+      await runCli(
+        [
+          "create",
+          "--tier",
+          "cpu",
+          "--out",
+          tmpDir(),
+          "--repo-root",
+          repo,
+          "--baseline",
+          baselinePath,
+        ],
+        captured.io,
+      ),
+    ).toBe(0);
+    const manifest = parseManifest(
+      JSON.parse(
+        fs.readFileSync(
+          path.join(bundleDirFrom(captured.outLines), "manifest.json"),
+          "utf8",
+        ),
+      ),
+      "baseline CLI test",
+    );
+    expect(manifest.artifacts.map((artifact) => artifact.path)).toEqual([
+      "lanes/e2e/logs/current.log",
+    ]);
+  });
+
   it("adds an explicit matrix lane report to the verified bundle", async () => {
     const repo = initFixtureRepo();
     const out = tmpDir();
@@ -218,6 +264,35 @@ describe("runCli create", () => {
       ),
     ).toBe(1);
     expect(captured.errLines.join("\n")).toContain("CLI_INPUT_INVALID");
+  });
+
+  it("rejects malformed baseline entries before creating a bundle", async () => {
+    const repo = initFixtureRepo();
+    const baseline = path.join(tmpDir(), "bad-baseline.json");
+    fs.writeFileSync(
+      baseline,
+      JSON.stringify({ schema: 1, files: { stale: { sha256: "not-a-hash" } } }),
+    );
+    const out = tmpDir();
+    const captured = capture();
+    expect(
+      await runCli(
+        [
+          "create",
+          "--tier",
+          "cpu",
+          "--out",
+          out,
+          "--repo-root",
+          repo,
+          "--baseline",
+          baseline,
+        ],
+        captured.io,
+      ),
+    ).toBe(1);
+    expect(captured.errLines.join("\n")).toContain("CLI_INPUT_INVALID");
+    expect(fs.readdirSync(out)).toEqual([]);
   });
 
   it("fails loud outside a git repository", async () => {

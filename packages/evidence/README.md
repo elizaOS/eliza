@@ -110,6 +110,8 @@ add time.
 
 ```bash
 bun run --cwd packages/evidence bundle:create -- --tier cpu [--out evidence/runs] [--repo-root <dir>]
+bun run --cwd packages/evidence bundle:snapshot -- --repo-root <dir> --out <snapshot.json>
+bun run --cwd packages/evidence bundle:create -- --tier cpu --baseline <snapshot.json>
 bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>
 bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>
 ```
@@ -123,6 +125,10 @@ re-hashes every artifact and reports `missing` /
 findings; non-zero exit on any issue. Verification is lstat-based: a verified
 bundle contains no symlinks anywhere — a symlinked artifact would be mutable
 after signing, and a symlinked directory would mount an unswept external tree.
+
+The coordinated matrix captures a content-hash snapshot before its lanes run
+and passes it through `--baseline`; unchanged files in persistent producer
+roots are excluded rather than relabeled with the current commit.
 
 ## How later pieces slot in
 

@@ -14,7 +14,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createBundle, type EvidenceBundle } from "./bundle.ts";
 import { EvidenceError } from "./errors.ts";
-import { ingestAllSilos, ingestNamedSilo, SILO_NAMES } from "./ingest.ts";
+import {
+  captureSiloSnapshot,
+  ingestAllSilos,
+  ingestNamedSilo,
+  SILO_NAMES,
+} from "./ingest.ts";
 import type { ArtifactEntry } from "./schema.ts";
 
 const tmpDirs: string[] = [];
@@ -125,6 +130,70 @@ async function build(repo: string): Promise<{
 }
 
 describe("ingestAllSilos", () => {
+  it("excludes unchanged stale files and includes only exact-run deltas", async () => {
+    const repo = tmpDir();
+    write(repo, "packages/app/test-results/stale.log", "old");
+    write(repo, "reports/scenarios/stale.jsonl", "old\n");
+    const baseline = captureSiloSnapshot(repo);
+
+    write(repo, "packages/app/test-results/current.log", "new");
+    write(repo, "reports/scenarios/stale.jsonl", "changed\n");
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: {
+        commit: "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "fix/exact-run",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: {
+          node: "v24",
+          platform: "linux",
+          arch: "x64",
+          tier: "cpu",
+        },
+      },
+    });
+    const results = await ingestAllSilos(bundle, repo, baseline);
+    const { manifest } = await bundle.finalize();
+
+    expect(manifest.artifacts.map((artifact) => artifact.path)).toEqual([
+      "lanes/e2e/logs/current.log",
+      "trajectories/scenario-runner/stale.jsonl",
+    ]);
+    expect(
+      results.find((result) => result.silo === "playwright-test-results"),
+    ).toMatchObject({ status: "ingested", artifactCount: 1 });
+    expect(
+      manifest.artifacts.some((artifact) =>
+        artifact.path.includes("stale.log"),
+      ),
+    ).toBe(false);
+  });
+
+  it("contributes zero artifacts when every producer file is unchanged", async () => {
+    const repo = buildFixtureRepo();
+    const baseline = captureSiloSnapshot(repo);
+    const bundle = createBundle({
+      rootDir: tmpDir(),
+      provenance: {
+        commit: "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "fix/skipped-lane",
+        runner: "local",
+        tier: "cpu",
+        envFingerprint: {
+          node: "v24",
+          platform: "linux",
+          arch: "x64",
+          tier: "cpu",
+        },
+      },
+    });
+    const results = await ingestAllSilos(bundle, repo, baseline);
+    const { manifest } = await bundle.finalize();
+    expect(manifest.artifacts).toEqual([]);
+    expect(results.every((result) => result.artifactCount === 0)).toBe(true);
+  });
+
   it("ingests every fixture silo with honest per-silo counts", async () => {
     const { results } = await build(buildFixtureRepo());
     expect(Object.fromEntries(results.map((r) => [r.silo, r]))).toEqual({

@@ -10,7 +10,9 @@ bun run evidence:review:no-open -- --bundle=evidence/runs/<run-id>
 
 `test:matrix` always passes its exact newly-created bundle to the reviewer. It
 does not select “latest,” so a stale or concurrent run cannot replace the
-evidence being reviewed. The standalone zero-argument review command selects
+evidence being reviewed. Before any lane runs it hashes the named producer
+inventory; bundle creation then admits only new or content-changed files, so a
+skipped lane contributes zero stale artifacts. The standalone zero-argument review command selects
 the newest finalized bundle as a convenience. In both cases the canonical
 `@elizaos/evidence` verifier checks artifact bytes, sizes, hashes, provenance,
 unlisted files, and symlinks before the dashboard is written.
@@ -18,6 +20,10 @@ unlisted files, and symlinks before the dashboard is written.
 `--source=<dir>` is an explicit compatibility escape hatch for archived or
 ad-hoc material. It may be repeated and may accompany `--bundle`; no producer
 directory is scanned implicitly.
+
+Bundle review renders every manifest entry regardless of the compatibility
+scan limit. Reviewer output must be disjoint from the bundle directory so the
+dashboard cannot overwrite the signed manifest or add unlisted files.
 
 ## Producer-to-bundle map
 
