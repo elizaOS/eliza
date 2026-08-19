@@ -440,6 +440,7 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   "attempts" integer NOT NULL DEFAULT 0,
   "max_attempts" integer NOT NULL DEFAULT 3,
   "execution_interruptions" integer NOT NULL DEFAULT 0,
+  "retryable_requeues" integer NOT NULL DEFAULT 0,
   "organization_id" uuid NOT NULL,
   "user_id" uuid,
   "api_key_id" uuid,
@@ -455,6 +456,68 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   "created_at" timestamp NOT NULL DEFAULT now(),
   "updated_at" timestamp NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
+)`,
+  `CREATE TABLE IF NOT EXISTS "agent_compute_stop_intents" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL,
+  "agent_id" uuid NOT NULL,
+  "lifecycle_revision" bigint NOT NULL,
+  "status" text NOT NULL DEFAULT 'pending',
+  "job_id" uuid REFERENCES "jobs"("id") ON DELETE SET NULL,
+  "attempts" integer NOT NULL DEFAULT 0,
+  "last_error" text,
+  "next_attempt_at" timestamptz NOT NULL DEFAULT now(),
+  "provider_started_at" timestamptz,
+  "provider_confirmed_at" timestamptz,
+  "superseded_at" timestamptz,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT "agent_compute_stop_intents_status_check" CHECK (
+    "status" IN ('pending', 'dispatching', 'retry', 'terminal_attention', 'provider_confirmed', 'superseded')
+  )
+)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "agent_compute_stop_intents_active_unique"
+  ON "agent_compute_stop_intents" ("organization_id", "agent_id")
+  WHERE "status" IN ('pending', 'dispatching', 'retry', 'terminal_attention')`,
+  `CREATE INDEX IF NOT EXISTS "agent_compute_stop_intents_recovery_idx"
+  ON "agent_compute_stop_intents" ("status", "next_attempt_at")
+  WHERE "status" IN ('pending', 'retry', 'terminal_attention')`,
+  `CREATE TABLE IF NOT EXISTS "credit_transactions" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL,
+  "user_id" uuid,
+  "amount" numeric(16,6) NOT NULL,
+  "type" text NOT NULL,
+  "description" text,
+  "metadata" jsonb,
+  "stripe_payment_intent_id" text,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "settled_at" timestamptz,
+  CONSTRAINT "credit_transactions_id_organization_unique" UNIQUE ("id", "organization_id")
+)`,
+  `CREATE TABLE IF NOT EXISTS "agent_billing_records" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL,
+  "sandbox_id" uuid NOT NULL,
+  "sandbox_status" text NOT NULL,
+  "billing_period_start" timestamptz NOT NULL,
+  "billing_period_end" timestamptz NOT NULL,
+  "hourly_rate" numeric(16,6) NOT NULL,
+  "amount" numeric(16,6) NOT NULL,
+  "rate_segments" jsonb NOT NULL DEFAULT '[]'::jsonb,
+  "credit_transaction_id" uuid NOT NULL,
+  "created_at" timestamptz NOT NULL DEFAULT now()
+)`,
+  `CREATE TABLE IF NOT EXISTS "compute_billing_rate_segments" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL,
+  "workload_kind" text NOT NULL,
+  "workload_id" uuid NOT NULL,
+  "lifecycle_revision" bigint NOT NULL,
+  "billing_state" text NOT NULL,
+  "rate_per_hour" numeric(16,6) NOT NULL,
+  "effective_at" timestamptz NOT NULL DEFAULT now(),
+  "created_at" timestamptz NOT NULL DEFAULT now()
 )`,
   `CREATE TABLE IF NOT EXISTS "job_execution_leases" (
   "job_id" uuid NOT NULL,

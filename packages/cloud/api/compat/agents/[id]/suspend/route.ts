@@ -80,6 +80,7 @@ async function __hono_POST(
       agentId,
       organizationId: user.organization_id,
       userId: user.id,
+      authorization: "user_request",
     });
 
     void provisioningJobService.triggerImmediate(env).catch(() => {

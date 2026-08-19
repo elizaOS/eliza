@@ -247,6 +247,9 @@ export const redeemableEarningsLedger = pgTable(
         tokens?: number;
         protocol?: string;
         type?: string;
+        container_id?: string;
+        billing_period_start?: string;
+        billing_period_end?: string;
       }>()
       .default({})
       .notNull(),

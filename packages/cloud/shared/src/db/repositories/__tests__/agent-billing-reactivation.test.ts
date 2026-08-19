@@ -140,8 +140,14 @@ describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
 
     await agentBillingRepository.reactivateSandboxBillingAfterFunding(sandboxId, new Date());
 
-    // Leak closed: active + back in the billable set, with the pending shutdown cleared.
+    // Leak closed: active with a fresh cursor, so suspended wall time is not
+    // charged and the row becomes due after the next full interval.
     expect(await billingStatusOf(sandboxId)).toBe("active");
+    expect(await billableIds()).not.toContain(sandboxId);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ last_billed_at: new Date(Date.now() - 2 * 60 * 60 * 1000) })
+      .where(eq(agentSandboxes.id, sandboxId));
     expect(await billableIds()).toContain(sandboxId);
 
     const [row] = await dbWrite
@@ -187,6 +193,7 @@ describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
 
     await agentBillingRepository.scheduleShutdownWarning(
       sandboxId,
+      organizationId,
       new Date("2026-07-23T14:01:00.000Z"),
       new Date("2026-07-23T15:00:00.000Z"),
     );
@@ -196,6 +203,7 @@ describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
     );
     await agentBillingRepository.suspendSandboxForInsufficientCredits(
       sandboxId,
+      organizationId,
       new Date("2026-07-23T14:03:00.000Z"),
     );
 

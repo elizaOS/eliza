@@ -38,6 +38,22 @@ app.post("/", async (c) => {
 
     logger.info("[service-api] Resuming agent", { agentId });
 
+    const funding =
+      await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
+        agentId,
+        agent.organization_id,
+        new Date(),
+      );
+    if (funding.status === "insufficient_credits") {
+      return c.json(
+        {
+          success: false,
+          error: "Insufficient credits to settle accrued agent compute charges",
+        },
+        402,
+      );
+    }
+
     const result = await elizaSandboxService.provision(
       agentId,
       agent.organization_id,
@@ -58,11 +74,6 @@ app.post("/", async (c) => {
         status,
       );
     }
-
-    await agentBillingRepository.reactivateSandboxBillingAfterFunding(
-      agentId,
-      new Date(),
-    );
 
     return c.json({
       success: true,

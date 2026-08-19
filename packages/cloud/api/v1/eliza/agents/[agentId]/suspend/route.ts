@@ -105,6 +105,7 @@ async function __hono_POST(
       agentId,
       organizationId: user.organization_id,
       userId: user.id,
+      authorization: "user_request",
     });
 
     // Best-effort wake of the orchestrator so the user does not wait for the
