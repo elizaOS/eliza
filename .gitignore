@@ -1040,6 +1040,12 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 /fused-lib/
 /.fused-lib/
 
+# Repo-root local state written by app-core scripts (run-mobile-build.mjs
+# artifacts, bluebubbles/homepage evidence JSON, and
+# .eliza-local/bluebubbles-bridge.env, which can hold a gateway secret).
+# Machine-local by design and easy to sweep into a commit (#22348 review).
+/.eliza-local/
+
 # App-create scaffolds: the workspace app root the APP create flow builds into
 # (<checkout>/eliza/apps/<dir>). Generated per-user app workdirs, never repo code.
 /eliza/
