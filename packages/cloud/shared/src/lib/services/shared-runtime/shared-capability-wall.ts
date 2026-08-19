@@ -1,4 +1,6 @@
-/** Keeps Shared honest when a request requires stateful tools or device control. */
+/** Keeps Shared honest and returns a resumable setup handoff for unavailable work. */
+
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
 
 export type SharedDedicatedCapability =
   | "calendar"
@@ -37,23 +39,22 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     label: "Reminders",
     pattern:
       /\b(?:remind\s+me|(?:set|create|add|schedule|cancel|delete|change|list|show)\b[\s\S]{0,36}\breminders?)\b/i,
-    reply:
-      "Reminders need Dedicated. I can still help you plan it here, but Shared can't schedule or deliver reminders.",
+    reply: "Reminders need your personal workspace. I can keep this ready while you set it up.",
   },
   {
     capability: "todos",
     label: "Todos",
     pattern:
       /\b(?:add|create|make|write|show|list|get|update|edit|complete|finish|cancel|delete|remove|clear)\b[\s\S]{0,48}\b(?:to[ -]?dos?|task\s+list|checklist|my\s+tasks?)\b/i,
-    reply: "Todos are unavailable on this chat path right now. I didn't save or change anything.",
+    reply:
+      "Todos aren't available in this chat. I can keep this ready while you open your personal workspace.",
   },
   {
     capability: "calendar",
     label: "Calendar",
     pattern:
       /\b(?:(?:add|create|book|schedule|cancel|delete|move|reschedule)\b[\s\S]{0,36}\b(?:calendar|events?|appointments?|meetings?)|(?:check|show|list|open)\b\s+(?:me\s+)?(?:(?:my|our|the|upcoming|next|today(?:'s)?|tomorrow(?:'s)?)\s+){0,2}(?:calendar|events?|appointments?|meetings?)|(?:check|show)\b\s+(?:me\s+)?(?:if|whether)\s+(?:(?:i|we)\s+have|there\s+(?:is|are))\s+(?:(?:any|some|an?)\s+)?(?:events?|appointments?|meetings?))\b/i,
-    reply:
-      "Calendar actions need Dedicated. I can help plan the event here, but Shared can't read or change your calendar.",
+    reply: "Calendar needs your personal workspace. I can plan it now and keep the request ready.",
   },
   {
     capability: "bookings",
@@ -61,15 +62,14 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     pattern:
       /\b(?:(?:can|could|would|will)\s+you\s+)?(?:(?:book|reserve)\s+(?:it|that|this)|(?:book|reserve)\b[\s\S]{0,48}\b(?:flights?|tables?|restaurants?|reservations?|hotels?|rooms?|tickets?|dinner|lunch|appointments?)|make\b[\s\S]{0,36}\b(?:reservations?|bookings?))\b/i,
     reply:
-      "Bookings need Dedicated. I can research options and help you choose, but Shared can't make the reservation or purchase.",
+      "Booking needs your personal workspace. I can research options now and keep the request ready.",
   },
   {
     capability: "communications",
     label: "Calls and messages",
     pattern:
       /(?:(?<=^|[.!?;,]\s*|\b(?:and\s+)?then\s+|\band\s+|\bto\s+|\bplease\s+|\b(?:can|could|would|will)\s+you\s+)(?:email|call|text|message|dm)\s+(?!(?:this|the|a|an)\s+(?:\w+\s+){0,2}(?:function|method|api|endpoint|class|variable|command)\b)|\bsend\b[\s\S]{0,32}\b(?:email|text|message|dm)\b)/i,
-    reply:
-      "I can talk with you and reply through Eliza's connected voice and messaging channels. I can't initiate a separate call, email, text, or DM to another person from this session.",
+    reply: "I can reply on this channel. Contacting someone else needs your personal workspace.",
   },
   {
     capability: "purchases",
@@ -77,30 +77,29 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     pattern:
       /\b(?:(?:can|could|would|will)\s+you\s+)?(?:order|buy|purchase)\b[\s\S]{0,48}\b(?:food|groceries|meal|dinner|lunch|breakfast|item|product|gift|flowers|bottle|coffee|pizza|tickets?)\b/i,
     reply:
-      "Purchases need Dedicated. I can compare options here, but Shared can't place an order or buy anything.",
+      "Purchases need your personal workspace. I can compare options now and keep the request ready.",
   },
   {
     capability: "notes",
     label: "Notes",
     pattern:
       /\b(?:create|save|add|store|write|read|show|list|open|delete|remove|update|edit)\b[\s\S]{0,28}\bnotes?\b/i,
-    reply:
-      "Persistent notes need Dedicated. I can remember this conversation, but Shared doesn't manage a separate notes store.",
+    reply: "Persistent notes need your personal workspace. I can keep the note ready until then.",
   },
   {
     capability: "cloud-apps",
     label: "Cloud apps",
     pattern:
       /\b(?:connect|open|read|send|search|manage|update|upload|download)\b[\s\S]{0,36}\b(?:gmail|google\s+drive|google\s+docs?|slack|notion|dropbox|microsoft\s+365|outlook)\b/i,
-    reply: "Connected apps need Dedicated. Shared can't access or act inside external accounts.",
+    reply:
+      "Connected apps need your personal workspace. I can keep the request ready while you set it up.",
   },
   {
     capability: "shell",
     label: "Shell",
     pattern:
       /\b(?:run|execute|start)\b[\s\S]{0,20}\b(?:a\s+)?(?:shell|terminal|command|script|npm|bun|git|docker)\b/i,
-    reply:
-      "Running commands needs Dedicated. I can reason about commands here, but Shared has no shell.",
+    reply: "Running commands needs your personal workspace. I can draft the command here first.",
   },
   {
     capability: "filesystem",
@@ -108,14 +107,14 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     pattern:
       /\b(?:read|open|edit|write|create|delete|remove|move|rename|upload|download|search)\b[\s\S]{0,28}\b(?:files?|folders?|directories|workspace|path)\b/i,
     reply:
-      "File access needs Dedicated. Shared can use text you paste here, but it can't read or change a filesystem.",
+      "File access needs your personal workspace. Paste the relevant text and I can work on it now.",
   },
   {
     capability: "browser-control",
     label: "Browser control",
     pattern:
       /\b(?:open|navigate|visit|click|fill|submit|scroll|control|log\s*in)\b[\s\S]{0,32}\b(?:browser|website|webpage|page|tab|form)\b/i,
-    reply: "Browser control needs Dedicated. Shared can't operate websites or a browser session.",
+    reply: "Browser control needs your personal workspace. I can research the public page now.",
   },
   {
     capability: "coding-runtime",
@@ -123,7 +122,7 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     pattern:
       /\b(?:run|execute|test|build|compile|deploy|debug|fix|refactor)\b[\s\S]{0,36}\b(?:repository|repo|codebase|project|workspace|tests?|build)\b/i,
     reply:
-      "A coding workspace needs Dedicated. I can write and explain code here, but Shared can't execute or edit a repository.",
+      "Running or editing a repository needs your personal workspace. I can draft the change here first.",
   },
 ];
 
@@ -231,7 +230,47 @@ export function resolveSharedCapabilityIntent(
   };
 }
 
-export function capabilityWallActionResult(wall: SharedCapabilityWall) {
+export function capabilityWallActionResult(
+  wall: SharedCapabilityWall,
+  context: {
+    agentId?: string;
+    originalIntent?: string;
+    clientMessageId?: string;
+  } = {},
+) {
+  const handoff: CapabilityHandoffRequest = {
+    version: 1,
+    kind: "capability_handoff",
+    capabilityId: wall.capability,
+    label: wall.label,
+    availability: "needs_workspace",
+    reason: wall.reply,
+    currentTier: "shared",
+    requiredTier: "personal",
+    nextAction: "upgrade_workspace",
+    requiresConfirmation: [
+      "calendar",
+      "bookings",
+      "communications",
+      "purchases",
+      "shell",
+      "browser-control",
+    ].includes(wall.capability),
+    cta: {
+      label: "Set up personal workspace",
+      href: context.agentId
+        ? `/cloud/agents/${encodeURIComponent(context.agentId)}`
+        : "/cloud/agents",
+    },
+    ...(context.originalIntent || context.clientMessageId
+      ? {
+          continuation: {
+            ...(context.originalIntent ? { originalIntent: context.originalIntent } : {}),
+            ...(context.clientMessageId ? { clientMessageId: context.clientMessageId } : {}),
+          },
+        }
+      : {}),
+  };
   return {
     actionName: "DEDICATED_CAPABILITY_REQUIRED" as const,
     success: false as const,
@@ -242,6 +281,7 @@ export function capabilityWallActionResult(wall: SharedCapabilityWall) {
       requiredExecutionTier: "dedicated-always" as const,
       automatic: false as const,
       source: "agent" as const,
+      capabilityHandoff: handoff,
     },
   };
 }

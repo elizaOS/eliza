@@ -46,6 +46,7 @@ import {
   isWorkerOutboundWsAvailable,
 } from "../../../voice/session/lib/provider-socket-factory";
 import { VoiceSession } from "../../../voice/session/lib/session";
+import { createCallerSmsHandoff } from "../lib/caller-sms-handoff";
 import {
   awaitTwilioBootstrapPhase,
   resolveTwilioBootstrapLimits,
@@ -427,6 +428,12 @@ app.get("/", async (c) => {
       fetchImpl: elizaFetch,
       prewarmElizaContext: prewarmAndRecordCallStart,
       openingGreeting: callOpeningGreeting(claims.returningCaller),
+      handleTranscriptAction: createCallerSmsHandoff({
+        accountSid: claims.accountSid,
+        authToken: streamSigningSecret,
+        fromNumber: claims.calledNumber,
+        callerNumber: claims.callerNumber ?? "",
+      }),
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
       isRevoked: (jti) =>

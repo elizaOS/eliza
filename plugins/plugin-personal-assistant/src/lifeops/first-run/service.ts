@@ -181,6 +181,7 @@ function makeFirstRunProvenance(note?: string): OwnerFactProvenance {
   const provenance: OwnerFactProvenance = {
     source: "first_run",
     recordedAt: new Date().toISOString(),
+    confidence: 1,
   };
   if (note) provenance.note = note;
   return provenance;
@@ -198,6 +199,17 @@ function makeInferredProvenance(note?: string): OwnerFactProvenance {
   const provenance: OwnerFactProvenance = {
     source: "agent_inferred",
     recordedAt: new Date().toISOString(),
+    confidence: 0.75,
+  };
+  if (note) provenance.note = note;
+  return provenance;
+}
+
+function makeDeviceProvenance(note?: string): OwnerFactProvenance {
+  const provenance: OwnerFactProvenance = {
+    source: "device_inferred",
+    recordedAt: new Date().toISOString(),
+    confidence: 0.75,
   };
   if (note) provenance.note = note;
   return provenance;
@@ -426,19 +438,21 @@ export class FirstRunService {
       input.channel ?? "in_app",
       this.runtime,
     );
-    // The windows are DERIVED (wake+5h heuristic + a default evening), and the
-    // timezone is the device zone — all inferred, none typed by the owner. They
-    // are stamped `agent_inferred` so `window-learning` keeps refining them from
-    // observed activity instead of being frozen out by user-owned provenance.
-    const factsPatch: OwnerFactsPatch = {
+    // Windows are agent-derived heuristics, while timezone comes from the
+    // device. Keep those sources separate so later correction and learning can
+    // apply the right confidence policy to each fact.
+    const inferredFactsPatch: OwnerFactsPatch = {
       morningWindow,
-      timezone,
       eveningWindow: DEFAULT_EVENING_WINDOW,
       preferredNotificationChannel: channelValidation.channel,
     };
-    const facts = await this.factStore.update(
-      factsPatch,
+    await this.factStore.update(
+      inferredFactsPatch,
       makeInferredProvenance("defaults path: inferred from wake time + device"),
+    );
+    const facts = await this.factStore.update(
+      { timezone },
+      makeDeviceProvenance("device timezone (inferred, agent may confirm)"),
     );
 
     const pack = buildDefaultsPack({
@@ -649,7 +663,7 @@ export class FirstRunService {
     );
     return this.factStore.update(
       { timezone: finalized.timezone },
-      makeInferredProvenance("device timezone (inferred, agent may confirm)"),
+      makeDeviceProvenance("device timezone (inferred, agent may confirm)"),
     );
   }
 

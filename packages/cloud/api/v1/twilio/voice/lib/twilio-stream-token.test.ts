@@ -14,6 +14,7 @@ const input = {
   agentId: "agent-1",
   conversationId: "11111111-1111-4111-8111-111111111111",
   calledNumber: "+14484080429",
+  callerNumber: "+12525914471",
   returningCaller: true,
   previousInteractionAt: 987_654,
 };

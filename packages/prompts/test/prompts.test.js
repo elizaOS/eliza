@@ -89,6 +89,13 @@ describe("prompt template exports", () => {
         /unless the user explicitly asks for raw or technical output/,
       );
       assert.match(template, /Preserve exact code and user-provided values/);
+      assert.match(template, /Do the useful part first/);
+      assert.match(template, /do not automatically end with a question/);
+      assert.match(template, /make one grounded guess from trusted context/);
+      assert.match(
+        template,
+        /Never ask for information already present in trusted context/,
+      );
     }
   });
 

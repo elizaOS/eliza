@@ -9,6 +9,7 @@ import type {
   ResponseHandlerEvaluator,
   ResponseHandlerPatch,
 } from "@elizaos/core";
+import { isValidTimeZone } from "../defaults.js";
 import { SELF_ENTITY_ID } from "../entities/types.js";
 import {
   createOwnerFactStore,
@@ -60,30 +61,36 @@ type ProfileExtraction = {
   travel: TravelSignal | null;
 };
 
-const FACT_PATTERNS = [
-  {
-    key: "preferredName",
-    pattern:
-      /\b(?:my name is|people call me|you can call me)\s+([^,.!?]{2,60})/iu,
-  },
-  {
-    key: "preferredName",
-    pattern: /\bcall me\s+(?!at\b|on\b)([^,.!?]{2,60})/iu,
-  },
-  {
-    key: "location",
-    pattern:
-      /\b(?:i live in|i'm in|i am in|my location is)\s+([^,.!?]{2,80})/iu,
-  },
-  {
-    key: "timezone",
-    pattern: /\bmy timezone is\s+([A-Za-z0-9_/+.-]{2,60})/iu,
-  },
+const NAME_PATTERNS = [
+  /\b(?:my name is|my name's|people call me|you can call me|i go by)\s+([^,.!?;\n]{2,60})/iu,
+  /\b(?:please\s+)?call me\s+(?!at\b|on\b)([^,.!?;\n]{2,60})/iu,
+] as const;
+
+/**
+ * Only durable home/base declarations qualify. A bare "I'm in X" is a
+ * transient check-in and must never overwrite the owner's home location.
+ */
+const HOME_LOCATION_PATTERNS = [
+  /\b(?:i live in|i am based in|i'm based in)\s+([^,.!?;\n]{2,80})/iu,
+  /\bmy (?:home|home base) is (?:in\s+)?([^,.!?;\n]{2,80})/iu,
+  /\bi moved to\s+([^,.!?;\n]{2,80})/iu,
+] as const;
+
+const TIMEZONE_PATTERNS = [
+  /\bmy time\s*zone is\s+([A-Za-z0-9_/+.:-]{2,60})/iu,
+  /\b(?:use|set)\s+([A-Za-z0-9_/+.:-]{2,60})\s+as my time\s*zone\b/iu,
+  /\b(?:use|set)\s+my time\s*zone to\s+([A-Za-z0-9_/+.:-]{2,60})/iu,
+] as const;
+
+const OTHER_FACT_PATTERNS = [
   {
     key: "partnerName",
     pattern: /\bmy partner(?:'s name)? is\s+([^,.!?]{2,60})/iu,
   },
 ] as const;
+
+const UTC_TIMEZONE_PATTERN =
+  /^(?:z|zulu|utc|gmt|etc\/utc|etc\/gmt|utc[+-]0{1,2}(?::?00)?|gmt[+-]0{1,2}(?::?00)?|[+-]00:?00)$/iu;
 
 const TRAVEL_PREFERENCE_CONTEXT =
   /\b(?:travel|booking|bookings|trip|trips|flight|flights|hotel|hotels)\b/iu;
@@ -98,10 +105,59 @@ function messageText(value: unknown): string {
   return typeof text === "string" ? text : "";
 }
 
+function cleanExplicitValue(raw: string | undefined): string | null {
+  return cleanName(
+    raw
+      ?.replace(/\s+(?:and|but)\s+i\b.*$/iu, "")
+      .replace(/\s+from now on$/iu, "")
+      .replace(/\s+please$/iu, ""),
+  );
+}
+
+function cleanExplicitTimeZone(raw: string | undefined): string | null {
+  const candidate = raw?.trim().replace(/[),.;!?]+$/u, "") ?? "";
+  if (!candidate) return null;
+  if (UTC_TIMEZONE_PATTERN.test(candidate)) return "UTC";
+  // ICU accepts several short abbreviations even though they are ambiguous
+  // across regions. Persist only explicit IANA identifiers here.
+  if (!candidate.includes("/")) return null;
+  return isValidTimeZone(candidate) ? candidate : null;
+}
+
+function firstExplicitValue(
+  text: string,
+  patterns: readonly RegExp[],
+): string | null {
+  for (const pattern of patterns) {
+    const value = cleanExplicitValue(pattern.exec(text)?.[1]);
+    if (value) return value;
+  }
+  return null;
+}
+
 function collectFactHints(text: string, facts: OwnerFactsPatch): void {
-  for (const entry of FACT_PATTERNS) {
+  for (const pattern of NAME_PATTERNS) {
+    const value = cleanExplicitValue(pattern.exec(text)?.[1]);
+    if (value) {
+      // A later, more specific "call me" clause should override a legal name.
+      facts.preferredName = value;
+    }
+  }
+
+  const location = firstExplicitValue(text, HOME_LOCATION_PATTERNS);
+  if (location) facts.location = location;
+
+  for (const pattern of TIMEZONE_PATTERNS) {
+    const timezone = cleanExplicitTimeZone(pattern.exec(text)?.[1]);
+    if (timezone) {
+      facts.timezone = timezone;
+      break;
+    }
+  }
+
+  for (const entry of OTHER_FACT_PATTERNS) {
     const match = entry.pattern.exec(text);
-    const value = cleanName(match?.[1]);
+    const value = cleanExplicitValue(match?.[1]);
     if (value) {
       facts[entry.key] = value;
     }
@@ -350,8 +406,9 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
 
     if (Object.keys(extraction.facts).length > 0) {
       await createOwnerFactStore(runtime).update(extraction.facts, {
-        source: "agent_inferred",
+        source: "owner_explicit",
         recordedAt,
+        confidence: 0.98,
         note: `response-handler extraction from ${evidenceId}`,
       });
       debug.push(`facts=${Object.keys(extraction.facts).length}`);
@@ -360,8 +417,9 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
     if (extraction.travel !== null) {
       const store = createOwnerFactStore(runtime);
       const provenance = {
-        source: "agent_inferred" as const,
+        source: "owner_explicit" as const,
         recordedAt,
+        confidence: 0.98,
         note: `travel-state extraction from ${evidenceId}`,
       };
       if (extraction.travel.kind === "clear") {

@@ -30,9 +30,14 @@ import {
 } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
+import { formatAgentCapabilityCatalog } from "@elizaos/shared";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import { hasLanguageModelProviderConfigured } from "../../providers/language-model";
+import {
+  buildSharedCapabilityCatalog,
+  type SharedCapabilityFlags,
+} from "./shared-capability-catalog";
 import {
   resolveSharedCapabilityIntent,
   type SharedCapabilityResolution,
@@ -139,6 +144,8 @@ export interface RunSharedAgentTurnInput {
      * must never populate this grant.
      */
     authenticatedPersonalSharedUser?: true;
+    /** Host-attested entry surface used only to project truthful availability. */
+    transport?: "app" | "web" | "sms" | "voice" | "discord" | "telegram" | "api";
     todos?: {
       scope: { agentId: UUID; entityId: UUID };
       store: TodoStore;
@@ -288,30 +295,25 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  */
 function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
-  capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
+  capabilities: SharedCapabilityFlags,
   recallContext?: string,
 ): string {
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
+  if (character.bio?.length) {
+    parts.push(
+      `About you:\n- ${character.bio
+        .map((b) => replaceNameTokens(b, character.name).trim())
+        .filter(Boolean)
+        .join("\n- ")}`,
+    );
+  }
+  const catalog = buildSharedCapabilityCatalog(capabilities);
   parts.push(
-    "Shared runtime boundaries:\n" +
-      (capabilities.webSearch
-        ? "- You can converse, reason, draft, help the user plan, and use WEB_SEARCH for current public information.\n" +
-          "- WEB_SEARCH reads public results only; it does not operate websites, access accounts, submit forms, or make changes.\n"
-        : "- You can converse, reason, draft, and help the user plan; public web search is unavailable for this turn.\n") +
-      (capabilities.reminders
-        ? "- REMINDERS can create, list, snooze, complete, and dismiss reminders delivered to this private chat.\n"
-        : "- Reminders are unavailable on this transport.\n") +
-      (capabilities.todos
-        ? "- TODO can create, list, update, complete, cancel, and delete this account's persistent checklist.\n"
-        : "- Persistent todos are unavailable on this chat path.\n") +
-      (capabilities.media
-        ? "- GENERATE_MEDIA can create one organization-credit-funded image and return its public artifact URL.\n"
-        : "- Image generation is unavailable on this chat path.\n") +
-      "- You have no connected accounts, calendar, calling, arbitrary messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
-      "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
-      "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
+    `Shared runtime capabilities:\n${formatAgentCapabilityCatalog(catalog)}\n` +
+      "Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
+      "When setup is needed, preserve the user's intent, offer the smallest valid handoff, and continue useful planning or drafting now.",
   );
   if (recallContext?.trim()) parts.push(recallContext.trim());
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;

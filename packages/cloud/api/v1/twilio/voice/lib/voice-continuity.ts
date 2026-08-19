@@ -38,7 +38,9 @@ export function callStartedEvent(
 
 /** The opener is intentionally model-free so runtime warm-up fits under speech. */
 export function callOpeningGreeting(returningCaller: boolean): string {
-  return returningCaller ? "hey whats up" : "hello? who's this?";
+  return returningCaller
+    ? "Hey, good to hear from you. Want to pick up where we left off?"
+    : "Hi, it's Eliza. Want help planning today? I can text you anything we need.";
 }
 
 export function callEndedEvent(reason: string): string {

@@ -7,9 +7,9 @@
  * (`travelBookingPreferences`, `quietHours`, `morningWindow`,
  * `eveningWindow`, `preferredNotificationChannel`, `locale`, and the learned
  * `scheduleStyle`/`chronotype` classifications). Each entry carries a
- * provenance record so call sites can distinguish a value the user typed in
- * first-run customize from one the agent inferred from a connector — and so
- * audits can trace the origin.
+ * provenance record so call sites can distinguish a value the owner stated
+ * directly from one inferred by an agent or connector — and so audits can
+ * trace the origin and confidence.
  *
  * Reminder intensity and escalation policy flows write into the store's policy
  * entries.
@@ -69,16 +69,19 @@ export interface OwnerActiveTravel {
 }
 
 /**
- * Source of truth for a stored fact. `first_run` distinguishes answers
- * captured by the first-run capability from answers captured by the
- * owner-profile extraction evaluator. `connector_inferred` covers values an
- * adapter wrote (e.g. timezone from Google Calendar). `agent_inferred`
- * covers LLM-derived values (e.g. relationshipStatus extracted from a
- * conversation).
+ * Source of truth for a stored fact. `owner_explicit` is reserved for values
+ * the owner directly stated in conversation; deterministic extraction of such
+ * a statement is not an agent inference. Account/channel/device/network
+ * sources remain distinct because their trust and precision differ.
  */
 export type OwnerFactProvenanceSource =
   | "first_run"
   | "profile_save"
+  | "owner_explicit"
+  | "account_profile"
+  | "channel_identity"
+  | "device_inferred"
+  | "network_inferred"
   | "connector_inferred"
   | "agent_inferred"
   | "policy_action";
@@ -87,6 +90,8 @@ export interface OwnerFactProvenance {
   source: OwnerFactProvenanceSource;
   /** ISO-8601 timestamp of the write that produced this value. */
   recordedAt: string;
+  /** Confidence in the value, from 0 (unknown) through 1 (certain). */
+  confidence?: number;
   /** Optional free-form note explaining the write (audit trail). */
   note?: string;
 }
@@ -138,6 +143,7 @@ export interface OwnerFacts {
   orientation?: OwnerFactEntry<string>;
   gender?: OwnerFactEntry<string>;
   age?: OwnerFactEntry<string>;
+  /** Stable home/base location, never a transient check-in or travel stop. */
   location?: OwnerFactEntry<string>;
 
   /**
@@ -324,6 +330,11 @@ function isProvenanceSource(
   return (
     value === "first_run" ||
     value === "profile_save" ||
+    value === "owner_explicit" ||
+    value === "account_profile" ||
+    value === "channel_identity" ||
+    value === "device_inferred" ||
+    value === "network_inferred" ||
     value === "connector_inferred" ||
     value === "agent_inferred" ||
     value === "policy_action"
@@ -340,6 +351,14 @@ function normalizeProvenance(value: unknown): OwnerFactProvenance | null {
     source: value.source,
     recordedAt: value.recordedAt,
   };
+  if (
+    typeof value.confidence === "number" &&
+    Number.isFinite(value.confidence) &&
+    value.confidence >= 0 &&
+    value.confidence <= 1
+  ) {
+    provenance.confidence = value.confidence;
+  }
   if (typeof value.note === "string" && value.note.length > 0) {
     provenance.note = value.note;
   }

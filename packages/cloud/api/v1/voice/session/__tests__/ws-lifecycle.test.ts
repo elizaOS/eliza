@@ -491,6 +491,9 @@ async function connectSession(opts: {
   sttPendingFrameLimit?: number;
   prewarmElizaContext?: () => Promise<void>;
   openingGreeting?: string;
+  handleTranscriptAction?: (
+    transcript: string,
+  ) => Promise<{ handled: boolean; response?: string }>;
   openingPrompt?: string;
   openingClientMessageId?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
@@ -536,6 +539,9 @@ async function connectSession(opts: {
           : {}),
         ...(opts.openingGreeting
           ? { openingGreeting: opts.openingGreeting }
+          : {}),
+        ...(opts.handleTranscriptAction
+          ? { handleTranscriptAction: opts.handleTranscriptAction }
           : {}),
         ...(opts.openingPrompt ? { openingPrompt: opts.openingPrompt } : {}),
         ...(opts.openingClientMessageId
@@ -662,6 +668,34 @@ describe("voice-session WS lifecycle", () => {
     client.clientSend(JSON.stringify({ t: "bye" }));
     await flush();
     expect(cartesia.closed).toBe(true);
+  });
+
+  test("speaks a handled transcript action without invoking the agent", async () => {
+    const client = new FakeClientSocket();
+    const handleTranscriptAction = mock(async () => ({
+      handled: true,
+      response: "Sent it to the number you're calling from.",
+    }));
+    let responseRequests = 0;
+    await connectSession({
+      client,
+      handleTranscriptAction,
+      fetchImpl: (async () => {
+        responseRequests += 1;
+        return makeCanonicalChunkFetch(["unused"])("", {});
+      }) as unknown as typeof fetch,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "text me");
+    await flush();
+
+    expect(handleTranscriptAction).toHaveBeenCalledWith("text me");
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
+      "Sent it to the number you're calling from.",
+    );
+    expect(responseRequests).toBe(0);
   });
 
   test("generates the call opener as a stable canonical system turn", async () => {

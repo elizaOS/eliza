@@ -26,8 +26,12 @@ describe("voice continuity", () => {
   });
 
   test("uses the exact model-free first and returning call openers", () => {
-    expect(callOpeningGreeting(false)).toBe("hello? who's this?");
-    expect(callOpeningGreeting(true)).toBe("hey whats up");
+    expect(callOpeningGreeting(false)).toBe(
+      "Hi, it's Eliza. Want help planning today? I can text you anything we need.",
+    );
+    expect(callOpeningGreeting(true)).toBe(
+      "Hey, good to hear from you. Want to pick up where we left off?",
+    );
   });
 
   test("sanitizes teardown reasons", () => {

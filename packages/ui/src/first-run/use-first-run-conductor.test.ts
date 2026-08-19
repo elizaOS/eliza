@@ -1443,7 +1443,9 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
 
     const greeting = await waitForTurn(turn, "first-run:greeting");
     const signIn = await waitForTurn(turn, "first-run:cloud-oauth");
-    expect(greeting.text).toBe("Hi, I'm Eliza.");
+    expect(greeting.text).toBe(
+      "Hi, I'm Eliza. I'll help keep your day moving.",
+    );
     expect(signIn.text).toContain("Let's get you signed in.");
     expect(signIn.text).toContain("__first_run__:runtime:cloud=");
     expect(signIn.text).not.toContain("__first_run__:runtime:local=");
@@ -1722,7 +1724,9 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // normal first transcript turn, no fabricated session, nothing provisioned.
     const greeting = await waitForTurn(turn, "first-run:greeting");
     const signIn = await waitForTurn(turn, "first-run:cloud-oauth");
-    expect(greeting.text).toBe("Hi, I'm Eliza.");
+    expect(greeting.text).toBe(
+      "Hi, I'm Eliza. I'll help keep your day moving.",
+    );
     expect(signIn.text).toContain("Let's get you signed in.");
     expect(signIn.text).toContain("Sign in to Eliza Cloud");
     expect(spies.completeFirstRun).not.toHaveBeenCalled();

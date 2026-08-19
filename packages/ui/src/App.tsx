@@ -30,6 +30,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { anticipatoryGreetingForHour } from "./anticipatory-greeting";
 import { getCloudAuthToken } from "./api/client-cloud";
 import {
   type ActiveViewLayout,
@@ -1604,13 +1605,6 @@ function ViewRouter({
   );
 }
 
-function greetingForTimeOfDay(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning! What would you like to do?";
-  if (hour < 18) return "Good afternoon! What would you like to do?";
-  return "Good evening! What would you like to do?";
-}
-
 const APP_SHELL_CLASS =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg";
 
@@ -2066,7 +2060,7 @@ function ShellFoundationMount({
                 messages={controller.messages}
                 onSend={controller.send}
                 canSend={controller.canSend}
-                greeting={greetingForTimeOfDay()}
+                greeting={anticipatoryGreetingForHour(new Date().getHours())}
                 recording={controller.recording}
                 onToggleRecording={controller.toggleRecording}
                 onDictateStart={() => controller.startRecording("dictate")}

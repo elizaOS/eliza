@@ -19,7 +19,12 @@ import type {
   ImageAttachment,
 } from "../api";
 import { StreamGenerationError } from "../api/client-base";
-import { CLOUD_HANDOFF_PHASE_EVENT, NAVIGATE_VIEW_EVENT } from "../events";
+import { persistCapabilityWorkspaceHandoff } from "../capability-workspace-handoff";
+import {
+  CHAT_PREFILL_EVENT,
+  CLOUD_HANDOFF_PHASE_EVENT,
+  NAVIGATE_VIEW_EVENT,
+} from "../events";
 import { onViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
 import type { LoadConversationMessagesResult } from "./internal";
@@ -871,6 +876,59 @@ describe("useChatSend action handoff", () => {
     vi.unstubAllGlobals();
   });
 
+  it("stamps a failed capability gate on the inline reply with the original intent", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Calendar needs your personal workspace. I can keep this ready.",
+      completed: true,
+      userMessageId: "persisted-user",
+      messageId: "persisted-assistant",
+      actionResults: [
+        {
+          actionName: "DEDICATED_CAPABILITY_REQUIRED",
+          success: false,
+          values: {
+            capabilityHandoff: {
+              version: 1,
+              kind: "capability_handoff",
+              capabilityId: "calendar",
+              label: "Calendar",
+              availability: "needs_workspace",
+              reason: "Calendar needs your personal workspace.",
+              currentTier: "shared",
+              requiredTier: "personal",
+              nextAction: "upgrade_workspace",
+              requiresConfirmation: false,
+              cta: {
+                label: "Set up personal workspace",
+                href: "/cloud/agents/agent-1",
+              },
+            },
+          },
+        },
+      ],
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result: hook } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await hook.current.sendChatText("Move tomorrow's meeting to 3pm", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const assistant = deps.conversationMessagesRef.current.find(
+      (message) => message.id === "persisted-assistant",
+    );
+    expect(assistant?.capabilityHandoff).toMatchObject({
+      capabilityId: "calendar",
+      continuation: { originalIntent: "Move tomorrow's meeting to 3pm" },
+    });
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
   it("opens the completed action target without a WebSocket frame or global-state fetch", async () => {
     mocks.client.sendConversationMessageStream.mockResolvedValue({
       text: "Opening Calendar.",
@@ -1588,6 +1646,42 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
     vi.clearAllMocks();
     mocks.client.getBaseUrl.mockReturnValue(SHARED_BASE);
     mocks.client.renameConversation.mockResolvedValue(undefined);
+  });
+
+  it("prefills the preserved request after its personal workspace switches on", () => {
+    persistCapabilityWorkspaceHandoff({
+      version: 1,
+      kind: "capability_handoff",
+      capabilityId: "calendar",
+      label: "Calendar",
+      availability: "needs_workspace",
+      reason: "Calendar needs your personal workspace.",
+      currentTier: "shared",
+      requiredTier: "personal",
+      nextAction: "upgrade_workspace",
+      requiresConfirmation: false,
+      cta: {
+        label: "Set up personal workspace",
+        href: "/cloud/agents/agent-123",
+      },
+      continuation: { originalIntent: "Move tomorrow's meeting to 3pm" },
+    });
+    const prefills: CustomEvent[] = [];
+    const onPrefill = (event: Event) => prefills.push(event as CustomEvent);
+    window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    renderHook(() => useChatSend(deps));
+
+    act(() => dispatchHandoffPhase("switched"));
+
+    expect(prefills.at(-1)?.detail).toEqual({
+      text: "Move tomorrow's meeting to 3pm",
+      select: true,
+    });
+    window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
   });
 
   it("paints two accepted user turns immediately, then drains each matching assistant placeholder FIFO exactly once", async () => {

@@ -15,8 +15,9 @@
  * The composer is UNLOCKED during onboarding (#12178): the user can type
  * freely, and a second channel handler (`setFirstRunTextHandler`) answers that
  * free text with a local user turn + a deterministic assistant reply that
- * varies by flow position. Free text NEVER reaches the server pre-completion —
- * the AppContext funnel enforces that; this hook only renders the local echo.
+ * varies by flow position. Free text never reaches the server pre-completion;
+ * the exact latest request is preserved and restored into the real composer
+ * after setup so the user can review and send it instead of starting over.
  *
  * Provisioning runs exactly once and POSTs /api/first-run exactly once (the
  * finish module funnels + idempotency-guards it). The real `firstRunComplete`
@@ -74,7 +75,7 @@ import {
 } from "../api/client-cloud";
 import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
-import { APP_RESUME_EVENT } from "../events";
+import { APP_RESUME_EVENT, dispatchChatPrefill } from "../events";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import {
@@ -123,6 +124,10 @@ import {
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "./first-run-greeting";
 import { isRuntimeChooserEnabled } from "./first-run-runtime-flag";
+import {
+  consumePendingFirstIntent,
+  persistPendingFirstIntent,
+} from "./pending-first-intent";
 import { revertLocalRuntimeCommitment } from "./revert-local-runtime-commitment";
 
 const GREETING = `${FIRST_RUN_GREETING} First, where should your agent run?`;
@@ -145,7 +150,7 @@ const CLOUD_SIGN_IN_CHOICE = [
 const CLOUD_WELCOME_BACK =
   "Welcome back — you're already signed in to Eliza Cloud. Setting up your agent…";
 const CLOUD_ONLY_DONE =
-  'You\'re all set — ask me anything. Want a quick tour? Type "restart tutorial" whenever you like.';
+  'Ready. I can start with today\'s plan; type "restart tutorial" anytime.';
 
 // Bounded cookie-recovery refresh at conductor mount (#15133). Mirrors
 // STEWARD_RESTORE_REFRESH_TIMEOUT_MS in startup-phase-restore.ts so a hung
@@ -183,19 +188,19 @@ const RESTORE_GREETING =
 const FIRST_RUN_TEXT_REPLY = {
   // Before a runtime is picked / mid-choice: no agent exists yet.
   choosing:
-    "I'm not fully set up yet — pick one of the options above and I'll get your agent running. You can ask me anything the moment I'm ready.",
+    "Saved it — pick one of the options above, then I'll continue that request.",
   // Cloud-only mode: the only pending step is the Eliza Cloud sign-in.
   signIn:
-    "I'm not fully set up yet — sign in to Eliza Cloud above and I'll get your agent running. You can ask me anything the moment I'm ready.",
+    "Saved it — sign in to Eliza Cloud above, then I'll continue that request.",
   // A finish/provision call is in flight.
   provisioning:
-    "Hang tight — I'm getting your agent ready right now. I'll answer as soon as I'm set up.",
+    "Hang tight — I saved that and will continue when setup finishes.",
   // Provisioning succeeded; only the accent + tutorial wrap-up remains.
   wrapUp:
-    "Almost there — pick a tutorial option above (or skip) and I'm all yours.",
+    "Almost there — pick a tutorial option, then I'll continue your request.",
   // A finish failed and the recovery choice is on screen.
   error:
-    "Setup hit a snag. Use one of the options above to try again, choose another way to run, or open Settings — then I'll be right with you.",
+    "Setup hit a snag. Pick a recovery option above; your request is saved.",
 } as const;
 
 function makeTurn(
@@ -1423,6 +1428,7 @@ export function useFirstRunConductor(): void {
     (text: string): boolean => {
       const trimmed = text.trim();
       if (!trimmed) return true;
+      persistPendingFirstIntent(trimmed);
       // A silent cloud entry counts as provisioning even before its first
       // network call lands (the bounded cookie refresh): there is no sign-in
       // ask on screen, so the signIn nudge would point at nothing.
@@ -1471,6 +1477,12 @@ export function useFirstRunConductor(): void {
       // filter: it never touches a real server or optimistic `temp-*` turn, and
       // is a no-op when onboarding seeded nothing (silent reuse, #15133).
       setConversationMessages(clearFirstRunTranscriptMessages);
+      const pendingIntent = consumePendingFirstIntent();
+      if (pendingIntent) {
+        queueMicrotask(() =>
+          dispatchChatPrefill({ text: pendingIntent, select: true }),
+        );
+      }
       return;
     }
     resetFirstRunPersistGuard();

@@ -714,9 +714,10 @@ describe("SharedRuntimeChatService", () => {
       funding: "platform",
     });
 
-    expect(lastTurnInput?.execution).toEqual({
-      agentKey: agent.id,
-      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      expect(lastTurnInput?.execution).toEqual({
+        agentKey: agent.id,
+        channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+        transport: "web",
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
@@ -748,9 +749,10 @@ describe("SharedRuntimeChatService", () => {
       funding: "platform",
     });
 
-    expect(lastTurnInput?.execution).toEqual({
-      agentKey: forgedAgent.id,
-      channel: { type: ChannelType.DM, source: "shared-runtime" },
+      expect(lastTurnInput?.execution).toEqual({
+        agentKey: forgedAgent.id,
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
+        transport: "web",
       todos: expectedTodoExecution,
     });
   });
@@ -776,9 +778,10 @@ describe("SharedRuntimeChatService", () => {
     expect(await response.text()).toContain(
       JSON.stringify({ actionResults: [expectedTodoActionResult] }).slice(1, -1),
     );
-    expect(lastStreamTurnInput?.execution).toEqual({
-      agentKey: agent.id,
-      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      expect(lastStreamTurnInput?.execution).toEqual({
+        agentKey: agent.id,
+        channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+        transport: "web",
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
@@ -816,6 +819,9 @@ describe("SharedRuntimeChatService", () => {
     expect(body).toContain(JSON.stringify(expectedTodoActionResult));
     expect(body).toContain('"actionName":"DEDICATED_CAPABILITY_REQUIRED"');
     expect(body).toContain('"capability":"communications"');
+    expect(body).toContain('"kind":"capability_handoff"');
+    expect(body).toContain('"originalIntent":"hello"');
+    expect(body).toContain(`/cloud/agents/${encodeURIComponent(agent.id)}`);
     expect(memoryPairs).toEqual([
       expect.objectContaining({
         assistantReply: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
@@ -842,9 +848,10 @@ describe("SharedRuntimeChatService", () => {
       ...harness(),
       funding: "platform",
     });
-    expect(lastTurnInput?.execution).toEqual({
-      agentKey: agent.id,
-      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+      expect(lastTurnInput?.execution).toEqual({
+        agentKey: agent.id,
+        channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
+        transport: "telegram",
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
       reminders: {
@@ -861,9 +868,10 @@ describe("SharedRuntimeChatService", () => {
       ...harness(),
       funding: "organization-credits",
     });
-    expect(lastTurnInput?.execution).toEqual({
-      agentKey: agent.id,
-      channel: { type: ChannelType.DM, source: "shared-runtime" },
+      expect(lastTurnInput?.execution).toEqual({
+        agentKey: agent.id,
+        channel: { type: ChannelType.DM, source: "shared-runtime" },
+        transport: "web",
       todos: expectedTodoExecution,
     });
 

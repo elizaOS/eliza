@@ -32,6 +32,7 @@ const ClaimsSchema = z.object({
   agentId: z.string().min(1),
   conversationId: ConversationIdSchema,
   calledNumber: z.string().min(1),
+  callerNumber: z.string().min(1).optional(),
   returningCaller: z.boolean(),
   previousInteractionAt: z.number().int().positive().optional(),
 });
@@ -48,6 +49,7 @@ const WireClaimsSchema = z.object({
   g: z.string().min(1),
   n: ConversationIdSchema,
   p: z.string().min(1),
+  f: z.string().min(1).optional(),
   r: z.boolean(),
   l: z.number().int().positive().optional(),
 });
@@ -83,7 +85,9 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
 }
 
 export async function mintTwilioStreamToken(
-  input: Omit<TwilioStreamTokenClaims, "v" | "sessionId" | "jti" | "exp">,
+  input: Omit<TwilioStreamTokenClaims, "v" | "sessionId" | "jti" | "exp"> & {
+    callerNumber: string;
+  },
   secret: string,
   now: () => number = Date.now,
 ): Promise<{ token: string; claims: TwilioStreamTokenClaims }> {
@@ -110,6 +114,7 @@ export async function mintTwilioStreamToken(
         g: claims.agentId,
         n: claims.conversationId,
         p: claims.calledNumber,
+        ...(claims.callerNumber ? { f: claims.callerNumber } : {}),
         r: claims.returningCaller,
         ...(claims.previousInteractionAt
           ? { l: claims.previousInteractionAt }
@@ -158,6 +163,7 @@ export async function verifyTwilioStreamToken(
       agentId: wire.data.g,
       conversationId: wire.data.n,
       calledNumber: wire.data.p,
+      callerNumber: wire.data.f,
       returningCaller: wire.data.r,
       previousInteractionAt: wire.data.l,
     });

@@ -97,6 +97,33 @@ describe("applyStreamingTextModification", () => {
     expect(harness.current[0].failureKind).toBe("no_provider");
   });
 
+  it("complete stamps a capability handoff on the assistant turn", () => {
+    const harness = makeSetter([assistantMsg("a1", "partial")]);
+    const capabilityHandoff = {
+      version: 1,
+      kind: "capability_handoff",
+      capabilityId: "calendar",
+      label: "Calendar",
+      availability: "needs_workspace",
+      reason: "Calendar needs your personal workspace.",
+      currentTier: "shared",
+      requiredTier: "personal",
+      nextAction: "upgrade_workspace",
+      requiresConfirmation: false,
+      cta: { label: "Set up personal workspace", href: "/cloud/agents" },
+      continuation: { originalIntent: "Move my meeting" },
+    } as const;
+
+    applyStreamingTextModification(harness.setter, {
+      messageId: "a1",
+      mode: "complete",
+      fullText: capabilityHandoff.reason,
+      capabilityHandoff,
+    });
+
+    expect(harness.current[0].capabilityHandoff).toBe(capabilityHandoff);
+  });
+
   it("complete clears a stale failureKind when none is provided", () => {
     const initial = [
       assistantMsg("a1", "partial", { failureKind: "no_provider" }),

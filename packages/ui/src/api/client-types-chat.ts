@@ -4,7 +4,10 @@
  * surface, re-exported through client-types.ts.
  */
 
-import type { LinkedAccountProviderId } from "@elizaos/shared";
+import type {
+  CapabilityHandoffRequest,
+  LinkedAccountProviderId,
+} from "@elizaos/shared";
 import type {
   ChatFailureKind,
   ChatToolCallEvent,
@@ -398,6 +401,8 @@ export interface ConversationMessage {
    * `AddAccountDialog`) for the plain reply text.
    */
   accountConnect?: AccountConnectRequest;
+  /** Shared-runtime gate rendered as an inline personal-workspace setup card. */
+  capabilityHandoff?: CapabilityHandoffRequest;
   /**
    * Voice speaker attribution carried back from the server when this turn was
    * captured via voice and R2's speaker-id pipeline labelled it. Populated by

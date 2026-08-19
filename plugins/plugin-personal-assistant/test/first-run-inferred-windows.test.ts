@@ -1,9 +1,8 @@
 /**
  * First-run × window-learning integration (#14691). The keystone regression
- * guard for the architecture fix: first-run must record timezone and the
- * morning/evening windows as INFERRED facts (`agent_inferred`), never as
- * user-owned (`first_run`) answers, so `activity-profile/window-learning.ts`
- * keeps refining the owner's real rhythm afterwards.
+ * guard for the architecture fix: first-run records the timezone as
+ * `device_inferred` and morning/evening windows as `agent_inferred`, never as
+ * user-owned (`first_run`) answers, so activity learning keeps refining them.
  *
  * These drive the real FirstRunService against the real cache-backed
  * OwnerFactStore, then feed the resulting facts through the real
@@ -31,7 +30,7 @@ function serviceWith(runtime: IAgentRuntime, factStore: OwnerFactStore) {
 }
 
 describe("first-run keeps window learning live (#14691)", () => {
-  it("defaults path stamps inferred windows/timezone as agent_inferred", async () => {
+  it("distinguishes inferred windows from the device timezone", async () => {
     const runtime = createMinimalRuntimeStub();
     const factStore = createOwnerFactStore(runtime);
     const service = serviceWith(runtime, factStore);
@@ -50,7 +49,8 @@ describe("first-run keeps window learning live (#14691)", () => {
     expect(facts.eveningWindow?.provenance.source).toBe("agent_inferred");
     // The timezone is the device zone, inferred not stated.
     expect(facts.timezone?.value).toBe("America/New_York");
-    expect(facts.timezone?.provenance.source).toBe("agent_inferred");
+    expect(facts.timezone?.provenance.source).toBe("device_inferred");
+    expect(facts.timezone?.provenance.confidence).toBe(0.75);
   });
 
   it("the learner can still refine windows after the defaults path", async () => {
@@ -99,7 +99,7 @@ describe("first-run keeps window learning live (#14691)", () => {
     // day one — so any window the learner derives is writable.
     expect(facts.morningWindow).toBeUndefined();
     expect(facts.eveningWindow).toBeUndefined();
-    expect(facts.timezone?.provenance.source).toBe("agent_inferred");
+    expect(facts.timezone?.provenance.source).toBe("device_inferred");
 
     const patch = resolveWindowPatch(facts, {
       morningWindow: { startLocal: "07:30", endLocal: "10:30" },

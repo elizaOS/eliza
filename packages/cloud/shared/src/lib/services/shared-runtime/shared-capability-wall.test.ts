@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  capabilityWallActionResult,
   resolveSharedCapabilityIntent,
   resolveSharedCapabilityWall,
 } from "./shared-capability-wall";
@@ -166,8 +167,34 @@ describe("Shared capability wall", () => {
 
   test("does not falsely claim voice and messaging require Dedicated", () => {
     const wall = resolveSharedCapabilityWall("call Mom");
-    expect(wall?.reply).toContain("connected voice and messaging channels");
+    expect(wall?.reply).toContain("reply on this channel");
+    expect(wall?.reply).toContain("Contacting someone else");
     expect(wall?.reply).not.toContain("Dedicated");
+  });
+
+  test("returns a safe workspace handoff with the exact pending intent", () => {
+    const wall = resolveSharedCapabilityWall("connect my Gmail");
+    expect(wall).not.toBeNull();
+    const result = capabilityWallActionResult(wall!, {
+      agentId: "agent/shared",
+      originalIntent: "connect my Gmail",
+      clientMessageId: "turn-1",
+    });
+    expect(result).toMatchObject({
+      actionName: "DEDICATED_CAPABILITY_REQUIRED",
+      success: false,
+      values: {
+        capabilityHandoff: {
+          kind: "capability_handoff",
+          capabilityId: "cloud-apps",
+          cta: { href: "/cloud/agents/agent%2Fshared" },
+          continuation: {
+            originalIntent: "connect my Gmail",
+            clientMessageId: "turn-1",
+          },
+        },
+      },
+    });
   });
 
   test.each(["channel", "voice"])(

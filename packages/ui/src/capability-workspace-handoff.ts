@@ -1,0 +1,191 @@
+/**
+ * Validates Shared-runtime capability gates and preserves their continuation
+ * metadata until the user reaches the in-app personal-workspace setup flow.
+ */
+
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
+import type { ChatActionResultSummary } from "./api/client-types-chat";
+
+export const CAPABILITY_WORKSPACE_HANDOFF_STORAGE_KEY =
+  "elizaos:capability-workspace-handoff";
+const CAPABILITY_WORKSPACE_HANDOFF_TTL_MS = 30 * 60 * 1_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSafeAppPath(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//")
+  );
+}
+
+/**
+ * Return the newest typed capability handoff from a completed action set.
+ * Action values are an untrusted wire boundary, so malformed or successful
+ * lookalikes are ignored. `fallbackIntent` retains the exact submitted turn
+ * when an older server did not yet include continuation metadata.
+ */
+export function findCapabilityWorkspaceHandoff(
+  actionResults: readonly ChatActionResultSummary[] | undefined,
+  fallbackIntent?: string,
+): CapabilityHandoffRequest | null {
+  if (!Array.isArray(actionResults)) return null;
+  for (let index = actionResults.length - 1; index >= 0; index--) {
+    const result = actionResults[index];
+    const isCapabilityWall =
+      result?.actionName === "DEDICATED_CAPABILITY_REQUIRED" && !result.success;
+    const isPlannerHandoff =
+      result?.actionName === "ENABLE_CAPABILITY" && result.success;
+    if (
+      (!isCapabilityWall && !isPlannerHandoff) ||
+      !isRecord(result.values) ||
+      !isRecord(result.values.capabilityHandoff)
+    ) {
+      continue;
+    }
+
+    const candidate = result.values.capabilityHandoff;
+    const cta = candidate.cta;
+    const continuation = candidate.continuation;
+    if (
+      candidate.version !== 1 ||
+      candidate.kind !== "capability_handoff" ||
+      typeof candidate.capabilityId !== "string" ||
+      !candidate.capabilityId ||
+      typeof candidate.label !== "string" ||
+      !candidate.label ||
+      typeof candidate.reason !== "string" ||
+      !candidate.reason ||
+      candidate.currentTier !== "shared" ||
+      candidate.requiredTier !== "personal" ||
+      candidate.availability !== "needs_workspace" ||
+      candidate.nextAction !== "upgrade_workspace" ||
+      typeof candidate.requiresConfirmation !== "boolean" ||
+      !isRecord(cta) ||
+      typeof cta.label !== "string" ||
+      !cta.label ||
+      !isSafeAppPath(cta.href) ||
+      (continuation !== undefined && !isRecord(continuation))
+    ) {
+      continue;
+    }
+
+    const originalIntent =
+      isRecord(continuation) &&
+      typeof continuation.originalIntent === "string" &&
+      continuation.originalIntent.trim()
+        ? continuation.originalIntent
+        : fallbackIntent?.trim()
+          ? fallbackIntent
+          : undefined;
+    const clientMessageId =
+      isRecord(continuation) &&
+      typeof continuation.clientMessageId === "string" &&
+      continuation.clientMessageId.trim()
+        ? continuation.clientMessageId
+        : undefined;
+
+    return {
+      version: 1,
+      kind: "capability_handoff",
+      capabilityId:
+        candidate.capabilityId as CapabilityHandoffRequest["capabilityId"],
+      label: candidate.label,
+      availability:
+        candidate.availability as CapabilityHandoffRequest["availability"],
+      reason: candidate.reason,
+      currentTier: "shared",
+      requiredTier: "personal",
+      nextAction:
+        candidate.nextAction as CapabilityHandoffRequest["nextAction"],
+      requiresConfirmation: candidate.requiresConfirmation,
+      cta: { label: cta.label, href: cta.href },
+      ...(originalIntent || clientMessageId
+        ? {
+            continuation: {
+              ...(originalIntent ? { originalIntent } : {}),
+              ...(clientMessageId ? { clientMessageId } : {}),
+            },
+          }
+        : {}),
+    };
+  }
+  return null;
+}
+
+/** Save a setup handoff so provisioning can resume the exact user request. */
+export function persistCapabilityWorkspaceHandoff(
+  handoff: CapabilityHandoffRequest,
+  now: () => number = Date.now,
+): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    window.sessionStorage.setItem(
+      CAPABILITY_WORKSPACE_HANDOFF_STORAGE_KEY,
+      JSON.stringify({ savedAt: now(), handoff }),
+    );
+    return true;
+  } catch {
+    // error-policy:J4 caller surfaces that automatic continuation is unavailable
+    // while still allowing the requested setup navigation to proceed.
+    return false;
+  }
+}
+
+/**
+ * Consume the pending intent only when the completed personal workspace is the
+ * setup target that created it. A generic agents-page target may be consumed by
+ * the next successful workspace handoff; a different explicit agent is kept.
+ */
+export function consumeCapabilityWorkspaceHandoff(
+  agentId: string,
+  now: () => number = Date.now,
+): CapabilityHandoffRequest | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const serialized = window.sessionStorage.getItem(
+      CAPABILITY_WORKSPACE_HANDOFF_STORAGE_KEY,
+    );
+    if (!serialized) return null;
+    const parsed: unknown = JSON.parse(serialized);
+    const currentTime = now();
+    if (
+      !isRecord(parsed) ||
+      typeof parsed.savedAt !== "number" ||
+      !Number.isFinite(parsed.savedAt) ||
+      parsed.savedAt > currentTime ||
+      currentTime - parsed.savedAt > CAPABILITY_WORKSPACE_HANDOFF_TTL_MS
+    ) {
+      window.sessionStorage.removeItem(
+        CAPABILITY_WORKSPACE_HANDOFF_STORAGE_KEY,
+      );
+      return null;
+    }
+    const handoff = findCapabilityWorkspaceHandoff([
+      {
+        actionName: "ENABLE_CAPABILITY",
+        success: true,
+        values: { capabilityHandoff: parsed.handoff },
+      },
+    ]);
+    if (!handoff) return null;
+    const explicitTarget = handoff.cta.href.match(
+      /^\/cloud\/agents\/([^/?#]+)$/,
+    );
+    if (
+      explicitTarget &&
+      decodeURIComponent(explicitTarget[1] ?? "") !== agentId
+    ) {
+      return null;
+    }
+    window.sessionStorage.removeItem(CAPABILITY_WORKSPACE_HANDOFF_STORAGE_KEY);
+    return handoff;
+  } catch {
+    // error-policy:J3 malformed or unavailable session storage is treated as no
+    // resumable handoff; never manufacture an intent or remove another target.
+    return null;
+  }
+}

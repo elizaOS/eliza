@@ -28,6 +28,10 @@ import {
 } from "../api/client-base";
 import { describeCreditGateError } from "../api/credit-gate-error";
 import {
+  consumeCapabilityWorkspaceHandoff,
+  findCapabilityWorkspaceHandoff,
+} from "../capability-workspace-handoff";
+import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
   normalizeSlashCommandName,
@@ -36,6 +40,8 @@ import { dispatchWorkflowActionHandoff } from "../components/pages/workflow-acti
 import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
+  dispatchChatOpen,
+  dispatchChatPrefill,
 } from "../events";
 import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
@@ -638,6 +644,14 @@ export function useChatSend(deps: UseChatSendDeps) {
         return null;
       }
 
+      const capabilityHandoff = findCapabilityWorkspaceHandoff(
+        data.actionResults,
+        options.origin.text,
+      );
+      const terminalText = data.text.trim()
+        ? data.text
+        : (capabilityHandoff?.reason ?? data.text);
+
       // A non-durable failure belongs only to the turn that produced it. If a
       // later user turn already exists, this request settled out of order after
       // a remount/history reload; dropping its placeholder prevents an old
@@ -670,7 +684,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
       }
 
-      if (!data.text.trim()) {
+      if (!terminalText.trim()) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           ...(data.failureKind
@@ -678,18 +692,19 @@ export function useChatSend(deps: UseChatSendDeps) {
             : { mode: "drop" }),
         });
       } else if (
-        shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
+        shouldApplyFinalStreamText(streamedAssistantText, terminalText) ||
         (options.includeReasoning && data.reasoning) ||
         data.messageId
       ) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           mode: "complete",
-          fullText: data.text,
+          fullText: terminalText,
           ...(data.failureKind ? { failureKind: data.failureKind } : {}),
           ...(options.includeAccountConnect && data.accountConnect
             ? { accountConnect: data.accountConnect }
             : {}),
+          ...(capabilityHandoff ? { capabilityHandoff } : {}),
           ...(options.includeReasoning && data.reasoning
             ? { reasoning: data.reasoning }
             : {}),
@@ -706,8 +721,17 @@ export function useChatSend(deps: UseChatSendDeps) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           mode: "complete",
-          fullText: data.text,
+          fullText: terminalText,
           accountConnect: data.accountConnect,
+          ...(data.assistantEphemeral ? { assistantEphemeral: true } : {}),
+          ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
+        });
+      } else if (capabilityHandoff) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "complete",
+          fullText: terminalText,
+          capabilityHandoff,
           ...(data.assistantEphemeral ? { assistantEphemeral: true } : {}),
           ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
         });
@@ -2172,6 +2196,17 @@ export function useChatSend(deps: UseChatSendDeps) {
       if (detail.phase === "migrating") {
         handoffFrozenRef.current = true;
         return;
+      }
+      if (detail.phase === "switched" || detail.phase === "switched-empty") {
+        const pending = consumeCapabilityWorkspaceHandoff(detail.agentId);
+        const originalIntent = pending?.continuation?.originalIntent?.trim();
+        if (originalIntent) {
+          // The workspace is ready, but consequential capabilities may still
+          // need confirmation or an account connection. Put the exact request
+          // back in the composer for review instead of executing it silently.
+          dispatchChatPrefill({ text: originalIntent, select: true });
+          dispatchChatOpen();
+        }
       }
       // Any terminal phase ends the window. Drain whatever queued up — by now
       // the client base is the dedicated container (on a switch) or unchanged

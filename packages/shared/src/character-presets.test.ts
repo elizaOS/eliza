@@ -108,10 +108,34 @@ describe("default Eliza persona safety", () => {
         .filter(({ user }) => user === "{{agentName}}")
         .map(({ content }) => content.text),
     );
-    expect(replies).toContain("What time tomorrow?");
+    expect(replies).toContain(
+      "I'll use 9am tomorrow unless you want another time.",
+    );
     expect(replies?.join("\n")).not.toMatch(
       /Done\. 9am|Give me a minute|Three more minutes|I'll ping you/u,
     );
+  });
+
+  it("does useful work before asking and anticipates without forcing a question", () => {
+    expect(definition).toBeDefined();
+    expect(definition?.bio).toContain(
+      "Does the useful part first, then anticipates one grounded next step when it helps.",
+    );
+    expect(definition?.style.chat).toContain(
+      "don't end every reply with a question; ask only when the answer unlocks useful work",
+    );
+    expect(definition?.style.chat).toContain(
+      "when intent is vague, offer one grounded guess and make correction easy",
+    );
+    expect(definition?.variants.en.catchphrase).not.toMatch(/how can i help/i);
+
+    const replies = definition?.messageExamples.flatMap((conversation) =>
+      conversation
+        .filter(({ user }) => user === "{{agentName}}")
+        .map(({ content }) => content.text),
+    );
+    expect(replies).not.toContain("Sure. What is it?");
+    expect(replies?.join("\n")).not.toMatch(/Warmer\? Funnier\? Shorter\?/u);
   });
 
   it("treats brevity as a default that explicit depth requests override", () => {

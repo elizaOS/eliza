@@ -160,6 +160,10 @@ export interface VoiceSessionConfig {
   prewarmElizaContext?: () => Promise<void>;
   /** Optional provider-synthesized opener that runs while agent context warms. */
   openingGreeting?: string;
+  /** Optional authenticated transport action checked before an ordinary agent turn. */
+  handleTranscriptAction?: (
+    transcript: string,
+  ) => Promise<{ handled: boolean; response?: string }>;
   /** Optional canonical agent turn that generates and persists the opener. */
   openingPrompt?: string;
   openingClientMessageId?: string;
@@ -842,7 +846,37 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     }
 
     this.state = "thinking";
-    void this.runResponseTurn(transcript, traceId);
+    void this.runTranscriptActionOrResponse(transcript, traceId);
+  }
+
+  /** Let an authenticated transport complete a narrow action before model inference. */
+  private async runTranscriptActionOrResponse(
+    transcript: string,
+    traceId: string,
+  ): Promise<void> {
+    const handler = this.config.handleTranscriptAction;
+    if (!handler) {
+      await this.runResponseTurn(transcript, traceId);
+      return;
+    }
+    try {
+      const result = await handler(transcript);
+      if (this.currentVoiceTurnId !== traceId) return;
+      if (result.handled && result.response?.trim()) {
+        this.speakFixedTurn(result.response.trim(), traceId);
+        return;
+      }
+    } catch (error) {
+      // error-policy:J4 a transport action failure remains a normal agent turn;
+      // no side effect is claimed and the caller can continue the conversation.
+      logger.warn("[voice-session] transcript action unavailable", {
+        sessionId: this.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    if (this.currentVoiceTurnId === traceId) {
+      await this.runResponseTurn(transcript, traceId);
+    }
   }
 
   /** Speak a fixed live opener while the first agent context is warming. */
@@ -851,6 +885,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const traceId = this.mintTraceId("turn");
     this.currentTraceId = traceId;
     this.currentVoiceTurnId = traceId;
+    this.speakFixedTurn(text, traceId);
+  }
+
+  /** Speak a deterministic response for the active turn without model inference. */
+  private speakFixedTurn(text: string, traceId: string): void {
+    if (this.closed || this.currentVoiceTurnId !== traceId) return;
     this.turnTtsChars = text.length;
     this.firstLlmTextEmitted = false;
     const greetingStartedAt = this.now();

@@ -141,6 +141,7 @@ describe("first-run flow", () => {
         crypto: { enabled: true },
         browser: { enabled: true },
         voice: { enabled: true, firstRun: true },
+        form: { enabled: true },
       },
     });
     expect(plan.payload).not.toHaveProperty("ownerName");

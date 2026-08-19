@@ -245,6 +245,7 @@ export function buildFirstRunSubmitPlan(args: {
         crypto: { enabled: true },
         browser: { enabled: true },
         voice: { enabled: true, firstRun: true },
+        form: { enabled: true },
       },
     },
   };

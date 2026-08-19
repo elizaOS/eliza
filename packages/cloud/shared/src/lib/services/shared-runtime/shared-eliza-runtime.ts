@@ -6,6 +6,8 @@
  */
 
 import {
+  type Action,
+  type ActionResult,
   type AgentEventPayload,
   AgentEventService,
   type AgentNotification,
@@ -26,6 +28,8 @@ import {
   NOTIFICATION_STREAM,
   NotificationService,
   type Plugin,
+  type Provider,
+  type ProviderResult,
   ServiceType,
   type StreamingContext,
   setStreamingContextManager,
@@ -38,6 +42,14 @@ import {
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
+import {
+  type AgentCapabilityCatalog,
+  type AgentCapabilityDescriptor,
+  type AgentCapabilityId,
+  type CapabilityHandoffRequest,
+  findAgentCapability,
+  formatAgentCapabilityCatalog,
+} from "@elizaos/shared";
 import {
   generateText,
   type JSONSchema7,
@@ -64,6 +76,7 @@ import {
   REQUEST_DEDICATED_UPGRADE_ACTION,
   SHARED_RUNTIME_CAPABILITIES_PROVIDER,
 } from "./shared-runtime-capabilities";
+import { buildSharedCapabilityCatalog } from "./shared-capability-catalog";
 import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
@@ -225,6 +238,149 @@ const sharedSystemLifecyclePlugin: Plugin = {
   services: basicServices,
 };
 
+function capabilityHandoff(
+  agentKey: string,
+  capability: AgentCapabilityDescriptor,
+  messageText?: string,
+  clientMessageId?: string,
+): CapabilityHandoffRequest {
+  if (capability.availability === "available") {
+    throw new Error(`Capability ${capability.id} does not need a handoff`);
+  }
+  const workspaceHref = `/cloud/agents/${encodeURIComponent(agentKey)}`;
+  const label =
+    capability.nextAction === "upgrade_workspace"
+      ? "Set up personal workspace"
+      : capability.nextAction === "connect_account"
+        ? "Connect account"
+        : "Open setup";
+  return {
+    version: 1,
+    kind: "capability_handoff",
+    capabilityId: capability.id,
+    label: capability.label,
+    availability: capability.availability,
+    reason: `${capability.label} needs setup before I can do it safely.`,
+    currentTier: capability.currentTier,
+    requiredTier: capability.requiredTier,
+    nextAction: capability.nextAction === "none" ? "retry" : capability.nextAction,
+    requiresConfirmation: capability.requiresConfirmation,
+    cta: { label, href: workspaceHref },
+    ...(messageText || clientMessageId
+      ? {
+          continuation: {
+            ...(clientMessageId ? { clientMessageId } : {}),
+            ...(messageText ? { originalIntent: messageText } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function readCapabilityId(value: unknown): AgentCapabilityId | undefined {
+  return typeof value === "string" && value.trim()
+    ? (value.trim() as AgentCapabilityId)
+    : undefined;
+}
+
+function readCapabilityParameter(value: unknown): AgentCapabilityId | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return readCapabilityId((value as Record<string, unknown>).capabilityId);
+}
+
+/** Shared context plus a planner fallback for capability requests the wall misses. */
+export function createSharedCapabilityPlugin(options: {
+  agentKey: string;
+  catalog: AgentCapabilityCatalog;
+}): Plugin {
+  const provider: Provider = {
+    name: "AGENT_CAPABILITIES",
+    description:
+      "Truthful per-turn capabilities, prerequisites, execution tier, and next setup transition.",
+    descriptionCompressed: "Current capabilities + required setup.",
+    dynamic: true,
+    alwaysInResponseState: true,
+    cacheScope: "turn",
+    get: async (): Promise<ProviderResult> => ({
+      text: formatAgentCapabilityCatalog(options.catalog),
+      values: {
+        capabilityTier: options.catalog.tier,
+        capabilityTransport: options.catalog.transport,
+      },
+      data: { agentCapabilityCatalog: options.catalog },
+    }),
+  };
+  const action: Action = {
+    name: "ENABLE_CAPABILITY",
+    description:
+      "Create the smallest signup, personal-workspace, connection, or permission handoff for an unavailable capability while preserving the user's request.",
+    descriptionCompressed: "Handoff unavailable capability to account/workspace/connection setup.",
+    contexts: ["general", "connectors", "settings"],
+    contextGate: { anyOf: ["general", "connectors", "settings"] },
+    roleGate: { minRole: "GUEST" },
+    parameters: [
+      {
+        name: "capabilityId",
+        description: "Capability id from AGENT_CAPABILITIES.",
+        required: true,
+        schema: {
+          type: "string",
+          enum: options.catalog.capabilities.map((capability) => capability.id),
+        },
+      },
+    ],
+    validate: async () =>
+      options.catalog.capabilities.some((capability) => capability.availability !== "available"),
+    handler: async (_runtime, message, _state, handlerOptions, callback) => {
+      const capabilityId = readCapabilityParameter(handlerOptions?.parameters);
+      const capability = capabilityId
+        ? findAgentCapability(options.catalog, capabilityId)
+        : undefined;
+      if (!capability) {
+        return {
+          success: false,
+          text: "I couldn't identify which capability needs setup.",
+          error: new Error("Unknown capability id"),
+        } satisfies ActionResult;
+      }
+      if (capability.availability === "available") {
+        return {
+          success: false,
+          text: `${capability.label} is already available. Use its action instead.`,
+          error: new Error("Capability already available"),
+        } satisfies ActionResult;
+      }
+      const content =
+        message.content && typeof message.content.text === "string"
+          ? message.content.text.trim()
+          : undefined;
+      const clientMessageId =
+        message.content?.chatIdempotency &&
+        typeof message.content.chatIdempotency === "object" &&
+        "clientMessageId" in message.content.chatIdempotency &&
+        typeof message.content.chatIdempotency.clientMessageId === "string"
+          ? message.content.chatIdempotency.clientMessageId
+          : undefined;
+      const handoff = capabilityHandoff(options.agentKey, capability, content, clientMessageId);
+      const text = `I can keep this ready while you set up ${capability.label.toLowerCase()}.`;
+      await callback?.({ text });
+      return {
+        success: true,
+        text,
+        data: { actionName: "ENABLE_CAPABILITY", capabilityHandoff: handoff },
+        values: { capabilityHandoff: handoff },
+        turnComplete: true,
+      } satisfies ActionResult;
+    },
+  };
+  return {
+    name: "shared-capability-catalog",
+    description: "Runtime-derived capability context and setup handoff.",
+    providers: [provider],
+    actions: [action],
+  };
+}
+
 function createRuntime(options: {
   agentKey: string;
   agentId?: UUID;
@@ -232,6 +388,7 @@ function createRuntime(options: {
   adapter: InMemoryDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
+  capabilityCatalog: AgentCapabilityCatalog;
   mediaPlugin?: Plugin;
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
@@ -264,6 +421,10 @@ function createRuntime(options: {
     adapter: options.adapter,
     plugins: [
       options.modelPlugin,
+      createSharedCapabilityPlugin({
+        agentKey: options.agentKey,
+        catalog: options.capabilityCatalog,
+      }),
       ...(!options.actionsEnabled ? [sharedSystemLifecyclePlugin] : []),
       ...(options.actionsEnabled ? [capabilityPlugin] : []),
       ...(options.actionsEnabled ? [webSearchEdgePlugin] : []),
@@ -295,6 +456,12 @@ export async function prewarmSharedElizaRuntime(): Promise<void> {
         system: "Shared runtime initialization prewarm.",
       },
       modelPlugin: sharedModelPlugin(async () => prewarmModelHandler()),
+      capabilityCatalog: buildSharedCapabilityCatalog({
+        webSearch: true,
+        reminders: false,
+        todos: false,
+        media: false,
+      }),
     });
     let initializationError: unknown;
     try {
@@ -680,6 +847,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const incomingEntityId = actionsEnabled ? userEntityId : lifecycleEntityId;
   const authenticatedPersonalSharedUser =
     actionsEnabled && input.execution?.authenticatedPersonalSharedUser === true;
+  const capabilityCatalog = buildSharedCapabilityCatalog({
+    webSearch: actionsEnabled,
+    reminders: Boolean(reminderPlugin),
+    todos: Boolean(todoPlugin),
+    media: Boolean(mediaPlugin),
+    transport: input.execution?.transport,
+  });
   const runtime = createRuntime({
     agentKey: input.agentKey,
     agentId,
@@ -687,6 +861,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     adapter,
     character: input.character,
     modelPlugin,
+    capabilityCatalog,
     mediaPlugin,
     reminderPlugin,
     todoPlugin,

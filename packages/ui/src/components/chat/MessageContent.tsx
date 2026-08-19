@@ -29,9 +29,13 @@ import {
 import { client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
+import { persistCapabilityWorkspaceHandoff } from "../../capability-workspace-handoff";
 import { splitLeadingSlashCommand } from "../../chat/slash-menu";
 import type { UiSpec } from "../../config/ui-spec";
-import { dispatchConnectRequest } from "../../events";
+import {
+  dispatchConnectRequest,
+  dispatchNavigateViewEvent,
+} from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { isDesktopPlatform, isNative } from "../../platform";
@@ -42,6 +46,7 @@ import {
 import { useAppSelectorShallow } from "../../state";
 import { useChatComposer } from "../../state/ChatComposerContext.hooks";
 import { canNavigateSameTabForBlockedPopup } from "../../state/cloud-login-launch";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import {
   createClientPermissionsRegistry,
   type PermissionCardPayload,
@@ -332,7 +337,14 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
             }),
         );
       }
-      window.open(authUrl, "_blank", "noopener,noreferrer");
+      const opened = await openExternalUrl(authUrl);
+      if (!opened) {
+        throw new Error(
+          t("messagecontent.OAuthOpenFailed", {
+            defaultValue: "Couldn't open the authorization page.",
+          }),
+        );
+      }
       beginConnectPolling();
     } catch (e: unknown) {
       // error-policy:J4 sign-in failure renders the card's error state
@@ -1320,13 +1332,14 @@ export function MessageContent({
   analysisMode = false,
 }: MessageContentProps) {
   useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
-  const { sendActionMessage, setTab, handleChatRetry } = useAppSelectorShallow(
-    (s) => ({
+  const { sendActionMessage, setTab, handleChatRetry, setActionNotice, t } =
+    useAppSelectorShallow((s) => ({
       sendActionMessage: s.sendActionMessage,
       setTab: s.setTab,
       handleChatRetry: s.handleChatRetry,
-    }),
-  );
+      setActionNotice: s.setActionNotice,
+      t: s.t,
+    }));
   // Composer prefill for followup `prompt` chips. Outside the chat provider,
   // `useChatComposer` returns an inert setter, so this is safe everywhere.
   const { setChatInput } = useChatComposer();
@@ -1385,6 +1398,48 @@ export function MessageContent({
 
   if (message.accountConnect) {
     return <AccountConnectBlock request={message.accountConnect} />;
+  }
+
+  if (message.capabilityHandoff) {
+    const handoff = message.capabilityHandoff;
+    return (
+      <div
+        className="rounded-sm border border-accent/30 bg-accent/5 p-3 text-sm"
+        data-testid="capability-workspace-setup"
+      >
+        <div className="mb-1 font-medium">
+          {t("messagecontent.CapabilitySetupTitle", {
+            defaultValue: "Set up {{capability}}",
+            capability: handoff.label,
+          })}
+        </div>
+        <div className="mb-2 whitespace-pre-wrap text-muted">
+          {message.text || handoff.reason}
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => {
+            const preserved = persistCapabilityWorkspaceHandoff(handoff);
+            if (!preserved) {
+              setActionNotice(
+                t("messagecontent.CapabilitySetupResumeUnavailable", {
+                  defaultValue:
+                    "Workspace setup will open, but you'll need to resend this request afterward.",
+                }),
+                "info",
+                8_000,
+              );
+            }
+            const path = handoff.cta.href;
+            const viewId = path.slice(1).split("/")[0] || undefined;
+            dispatchNavigateViewEvent({ viewId, viewPath: path });
+          }}
+        >
+          {handoff.cta.label}
+        </Button>
+      </div>
+    );
   }
 
   if (

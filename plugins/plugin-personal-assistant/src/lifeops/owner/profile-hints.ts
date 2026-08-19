@@ -24,7 +24,10 @@ export const RELATIONSHIP_TYPE_BY_ROLE: Record<string, string> = {
 };
 
 export function cleanName(raw: string | undefined): string | null {
-  const value = raw?.replace(/["'`]/g, "").replace(/\s+/g, " ").trim();
+  const value = raw
+    ?.replace(/^["'`]+|["'`]+$/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!value || value.length < 2 || value.length > 80) return null;
   if (/^(?:me|my|mine|you|them|someone|somebody|at|on)$/iu.test(value)) {
     return null;

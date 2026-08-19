@@ -4,7 +4,7 @@
  * steps, that a follow-ups category does not force a typed relationship list,
  * channel-validation produces a fallback warning, and the seeded ScheduledTask
  * set matches the answers. Also asserts provenance: the device timezone lands
- * as `agent_inferred` and no window is stamped `first_run`, so the observed
+ * as `device_inferred` and no window is stamped `first_run`, so the observed
  * activity learner stays live (#14691). Deterministic in-memory runtime stub.
  */
 
@@ -74,7 +74,7 @@ describe("first-run customize e2e", () => {
     expect(tasks.length).toBe(6);
   });
 
-  it("infers the device timezone as agent_inferred and writes no first_run window", async () => {
+  it("records device timezone provenance and writes no first_run window", async () => {
     const runtime = createMinimalRuntimeStub();
     const factStore = createOwnerFactStore(runtime);
     const service = new FirstRunService(runtime, {
@@ -95,9 +95,11 @@ describe("first-run customize e2e", () => {
     const facts = await factStore.read();
     // Timezone captured from the device is inferred, never a typed answer.
     expect(facts.timezone?.value).toBe("America/Los_Angeles");
-    expect(facts.timezone?.provenance.source).toBe("agent_inferred");
+    expect(facts.timezone?.provenance.source).toBe("device_inferred");
+    expect(facts.timezone?.provenance.confidence).toBe(0.75);
     // The name IS a stated answer.
     expect(facts.preferredName?.provenance.source).toBe("first_run");
+    expect(facts.preferredName?.provenance.confidence).toBe(1);
     // No window is written as a user-owned fact — the learner owns windows.
     expect(facts.morningWindow?.provenance.source).not.toBe("first_run");
     expect(facts.eveningWindow?.provenance.source).not.toBe("first_run");

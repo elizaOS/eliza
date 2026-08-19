@@ -264,6 +264,7 @@ app.post("/", async (c) => {
       agentId: phoneNumber.agentId,
       conversationId,
       calledNumber: publicLineNumber,
+      callerNumber,
       returningCaller: Boolean(priorCall || priorConversation),
       previousInteractionAt:
         previousInteractionAt > 0 ? previousInteractionAt : undefined,
