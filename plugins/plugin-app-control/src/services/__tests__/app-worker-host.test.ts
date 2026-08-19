@@ -16,7 +16,8 @@
  * called directly with a fixture SpawnOptions. The
  * `startForRegisteredApp` path that pulls from AppRegistryService is covered
  * by the registry-to-worker end-to-end test. FS cases include a real
- * symlink whose lexical name sits inside statePath.
+ * symlink whose lexical name sits inside statePath, and a TOCTOU swap
+ * between validation and the no-follow open.
  */
 
 import {
@@ -543,6 +544,58 @@ describe("AppWorkerHostService worker bridge", () => {
 				if (writeReply.ok) return;
 				expect(writeReply.reason).toContain("escapes the sandbox statePath");
 			} finally {
+				rmSync(outside, { force: true });
+			}
+		});
+
+		it("fs: rejects a symlink swapped in after validation and before open", async () => {
+			const outside = path.join(
+				tmpdir(),
+				`app-worker-fs-toctou-${Date.now()}.txt`,
+			);
+			writeFileSync(outside, "SECRET_PAYLOAD_TOCTOU_SWAP");
+			const inside = path.join(stateRoot, "safe.txt");
+			writeFileSync(inside, "inside-ok");
+			process.env.ELIZA_APP_WORKER_FS_TOCTOU_HOOK = "1";
+			process.env.ELIZA_APP_WORKER_FS_TOCTOU_TARGET = outside;
+			try {
+				await service.spawn({
+					slug: "fixture-fs-toctou",
+					isolation: "worker",
+					pluginEntryPath: FIXTURE_PLUGIN_PATH,
+					statePath: stateRoot,
+					requestedPermissions: { fs: { read: ["**"], write: ["**"] } },
+					grantedNamespaces: ["fs"],
+				});
+				const readReply = await service.invoke(
+					"fixture-fs-toctou",
+					"invokeAction",
+					{
+						actionName: "FS_ESCAPE_ATTEMPT",
+						content: { absolutePath: inside },
+					},
+				);
+				expect(readReply.ok).toBe(false);
+				if (readReply.ok) return;
+				expect(readReply.reason).toContain("escapes the sandbox statePath");
+				expect(readReply.reason).not.toContain("SECRET_PAYLOAD_TOCTOU_SWAP");
+
+				rmSync(inside, { force: true });
+				writeFileSync(inside, "inside-ok");
+				const writeReply = await service.invoke(
+					"fixture-fs-toctou",
+					"invokeAction",
+					{
+						actionName: "FS_WRITE_THEN_READ",
+						content: { relPath: "safe.txt", payload: "overwrite" },
+					},
+				);
+				expect(writeReply.ok).toBe(false);
+				if (writeReply.ok) return;
+				expect(writeReply.reason).toContain("escapes the sandbox statePath");
+			} finally {
+				delete process.env.ELIZA_APP_WORKER_FS_TOCTOU_HOOK;
+				delete process.env.ELIZA_APP_WORKER_FS_TOCTOU_TARGET;
 				rmSync(outside, { force: true });
 			}
 		});
