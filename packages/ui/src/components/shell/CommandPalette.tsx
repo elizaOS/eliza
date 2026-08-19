@@ -71,6 +71,7 @@ export function CommandPalette() {
     handleChatClear,
     activeGameViewerUrl,
     setState,
+    setActionNotice,
     t,
   } = useAppSelectorShallow((s) => ({
     commandPaletteOpen: s.commandPaletteOpen,
@@ -88,6 +89,7 @@ export function CommandPalette() {
     handleChatClear: s.handleChatClear,
     activeGameViewerUrl: s.activeGameViewerUrl,
     setState: s.setState,
+    setActionNotice: s.setActionNotice,
     t: s.t,
   }));
   const { open: openBugReport } = useBugReport();
@@ -159,7 +161,15 @@ export function CommandPalette() {
         );
       },
       openDesktopWorkspaceWindow: () => {
-        void openDesktopWorkspaceWindow();
+        void openDesktopWorkspaceWindow().catch(() => {
+          // error-policy:J4 a native window launch failure remains visible in
+          // the shell instead of becoming an unhandled command rejection.
+          setActionNotice(
+            "Unable to open the desktop workspace. Please retry.",
+            "error",
+            7_000,
+          );
+        });
       },
       openDesktopSettingsWindow: (tabHint?: string) => {
         void openDesktopSettingsWindow(tabHint);
@@ -183,6 +193,7 @@ export function CommandPalette() {
     loadLogs,
     loadWorkbench,
     handleChatClear,
+    setActionNotice,
     openBugReport,
     desktopRuntime,
   ]);
