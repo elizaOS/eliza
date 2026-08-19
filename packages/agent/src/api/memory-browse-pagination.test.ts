@@ -5,7 +5,12 @@
  * verified without replacing the route logic under test.
  */
 
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  compareMemoryIds,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
 import type { MemoryRouteContext } from "./memory-routes.ts";
 import { handleMemoryRoutes } from "./memory-routes.ts";
@@ -64,7 +69,7 @@ function makeRuntime(tables: Record<string, Memory[]>): {
       const timeOrder = (b.createdAt ?? 0) - (a.createdAt ?? 0);
       return timeOrder !== 0
         ? timeOrder
-        : (b.id ?? "").localeCompare(a.id ?? "");
+        : compareMemoryIds(b.id ?? "", a.id ?? "");
     });
     if (query.cursor) {
       const cursor = query.cursor;
@@ -72,7 +77,8 @@ function makeRuntime(tables: Record<string, Memory[]>): {
         const createdAt = row.createdAt ?? 0;
         return (
           createdAt < cursor.createdAt ||
-          (createdAt === cursor.createdAt && (row.id ?? "") < cursor.id)
+          (createdAt === cursor.createdAt &&
+            compareMemoryIds(row.id ?? "", cursor.id) < 0)
         );
       });
     }

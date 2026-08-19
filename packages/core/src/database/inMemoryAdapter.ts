@@ -13,7 +13,11 @@
  * containment all mirror the SQL adapters. Persistence is process-local and
  * lost on restart.
  */
-import { DatabaseAdapter, validateQueryEntitiesPagination } from "../database";
+import {
+	compareMemoryIds,
+	DatabaseAdapter,
+	validateQueryEntitiesPagination,
+} from "../database";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -1017,8 +1021,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			const aId = typeof a.id === "string" ? a.id : "";
 			const bId = typeof b.id === "string" ? b.id : "";
 			return direction === "asc"
-				? aId.localeCompare(bId)
-				: bId.localeCompare(aId);
+				? compareMemoryIds(aId, bId)
+				: compareMemoryIds(bId, aId);
 		});
 
 		if (params.cursor) {
@@ -1032,7 +1036,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 						? createdAt > cursor.createdAt
 						: createdAt < cursor.createdAt;
 				}
-				return direction === "asc" ? id > cursor.id : id < cursor.id;
+				const idOrder = compareMemoryIds(id, cursor.id);
+				return direction === "asc" ? idOrder > 0 : idOrder < 0;
 			});
 		}
 

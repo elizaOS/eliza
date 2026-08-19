@@ -202,6 +202,33 @@ describe("InMemoryDatabaseAdapter — textContains", () => {
 		).rejects.toThrow("cursor and offset are mutually exclusive");
 	});
 
+	it("matches PostgreSQL UUID ordering across hexadecimal case at cursor boundaries", async () => {
+		const ids = [
+			"A0000000-0000-0000-0000-000000000001",
+			"a0000000-0000-0000-0000-000000000002",
+			"A0000000-0000-0000-0000-000000000003",
+			"a0000000-0000-0000-0000-000000000004",
+		] as UUID[];
+		const adapter = await seed(
+			ids.map((id, index) => msg(`case ${index}`, 1_000, id)),
+		);
+
+		const first = await adapter.getMemories({
+			roomId,
+			tableName: "messages",
+			limit: 2,
+		});
+		expect(first.map((memory) => memory.id)).toEqual([ids[3], ids[2]]);
+
+		const second = await adapter.getMemories({
+			roomId,
+			tableName: "messages",
+			limit: 2,
+			cursor: { createdAt: 1_000, id: ids[2] },
+		});
+		expect(second.map((memory) => memory.id)).toEqual([ids[1], ids[0]]);
+	});
+
 	it("stays bounded: a keyword scan over many messages returns only matches, quickly", async () => {
 		const many: Memory[] = [];
 		for (let i = 0; i < 20000; i++) {

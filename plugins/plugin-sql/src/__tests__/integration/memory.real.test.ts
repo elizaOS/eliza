@@ -667,6 +667,52 @@ describe("Memory Integration Tests", () => {
       ).rejects.toThrow("cursor and offset are mutually exclusive");
     });
 
+    it("does not skip rows whose database timestamps differ below cursor precision", async () => {
+      const ids = [
+        "00000000-0000-4000-8000-0000000000b1",
+        "00000000-0000-4000-8000-0000000000b2",
+        "00000000-0000-4000-8000-0000000000b3",
+        "00000000-0000-4000-8000-0000000000b4",
+      ] as UUID[];
+      const db = adapter.getDatabase() as DrizzleDatabase;
+      for (const [index, id] of ids.entries()) {
+        const micros = 400 - index * 100;
+        await db.execute(sql`
+          INSERT INTO ${memoryTable}
+            (id, type, created_at, content, entity_id, agent_id, room_id, world_id, "unique", metadata)
+          VALUES
+            (
+              ${id}::uuid,
+              'memories',
+              ('2025-01-01T00:00:00.123000Z'::timestamptz + ${micros} * interval '1 microsecond'),
+              ${JSON.stringify({ text: `sub-millisecond ${index}` })}::jsonb,
+              ${testEntityId}::uuid,
+              ${testAgentId}::uuid,
+              ${testRoomId}::uuid,
+              ${testWorldId}::uuid,
+              false,
+              '{}'::jsonb
+            )
+        `);
+      }
+
+      const first = await adapter.getMemories({
+        roomId: testRoomId,
+        tableName: "memories",
+        limit: 2,
+      });
+      expect(first.map((memory) => memory.id)).toEqual([ids[3], ids[2]]);
+      expect(new Set(first.map((memory) => memory.createdAt))).toHaveLength(1);
+
+      const second = await adapter.getMemories({
+        roomId: testRoomId,
+        tableName: "memories",
+        limit: 2,
+        cursor: { createdAt: first[1].createdAt as number, id: ids[2] },
+      });
+      expect(second.map((memory) => memory.id)).toEqual([ids[1], ids[0]]);
+    });
+
     it("should handle offset without count parameter", async () => {
       for (let i = 0; i < 5; i++) {
         await adapter.createMemory(createTestMemory({ text: `mem${i}` }), "memories");

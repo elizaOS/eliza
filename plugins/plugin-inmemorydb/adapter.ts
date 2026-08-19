@@ -19,6 +19,7 @@ import {
   type Component,
   type Content,
   canRequesterMutateDocument,
+  compareMemoryIds,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
@@ -824,7 +825,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
       const aId = typeof a.id === "string" ? a.id : "";
       const bId = typeof b.id === "string" ? b.id : "";
-      return direction === "asc" ? aId.localeCompare(bId) : bId.localeCompare(aId);
+      return direction === "asc" ? compareMemoryIds(aId, bId) : compareMemoryIds(bId, aId);
     });
 
     if (params.cursor) {
@@ -835,7 +836,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         if (createdAt !== cursor.createdAt) {
           return direction === "asc" ? createdAt > cursor.createdAt : createdAt < cursor.createdAt;
         }
-        return direction === "asc" ? id > cursor.id : id < cursor.id;
+        const idOrder = compareMemoryIds(id, cursor.id);
+        return direction === "asc" ? idOrder > 0 : idOrder < 0;
       });
     }
 

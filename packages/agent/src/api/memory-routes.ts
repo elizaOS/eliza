@@ -16,6 +16,7 @@ import {
   type AgentRuntime,
   BM25,
   ChannelType,
+  compareMemoryIds,
   composePrompt,
   createMessageMemory,
   ElizaError,
@@ -795,7 +796,7 @@ const byNewestFirst = (
 ): number => {
   const timestampOrder = memoryCreatedAt(b) - memoryCreatedAt(a);
   if (timestampOrder !== 0) return timestampOrder;
-  const idOrder = (b.id ?? "").localeCompare(a.id ?? "");
+  const idOrder = compareMemoryIds(b.id ?? "", a.id ?? "");
   if (idOrder !== 0) return idOrder;
   return (a._table ?? "").localeCompare(b._table ?? "");
 };

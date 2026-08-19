@@ -12,7 +12,12 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+	compareMemoryIds,
+	type IAgentRuntime,
+	type Memory,
+	type UUID,
+} from "@elizaos/core";
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -62,7 +67,7 @@ function createFakeRuntime(): IAgentRuntime {
 				const timeOrder = dir * ((a.createdAt ?? 0) - (b.createdAt ?? 0));
 				return timeOrder !== 0
 					? timeOrder
-					: dir * (a.id ?? "").localeCompare(b.id ?? "");
+					: dir * compareMemoryIds(a.id ?? "", b.id ?? "");
 			});
 			if (params.cursor) {
 				const cursor = params.cursor;
@@ -70,7 +75,8 @@ function createFakeRuntime(): IAgentRuntime {
 					const createdAt = row.createdAt ?? 0;
 					return (
 						createdAt < cursor.createdAt ||
-						(createdAt === cursor.createdAt && (row.id ?? "") < cursor.id)
+						(createdAt === cursor.createdAt &&
+							compareMemoryIds(row.id ?? "", cursor.id) < 0)
 					);
 				});
 			}

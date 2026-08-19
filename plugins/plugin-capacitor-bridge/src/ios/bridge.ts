@@ -14,6 +14,7 @@ import process from "node:process";
 import { Readable } from "node:stream";
 import {
 	ChannelType,
+	compareMemoryIds,
 	createMessageMemory,
 	ElizaError,
 	type GenerateTextParams,
@@ -1175,7 +1176,7 @@ function byNewestFirst(
 ): number {
 	const timestampOrder = memoryCreatedAt(b) - memoryCreatedAt(a);
 	if (timestampOrder !== 0) return timestampOrder;
-	const idOrder = (b.id ?? "").localeCompare(a.id ?? "");
+	const idOrder = compareMemoryIds(b.id ?? "", a.id ?? "");
 	if (idOrder !== 0) return idOrder;
 	return (a._table ?? "").localeCompare(b._table ?? "");
 }
