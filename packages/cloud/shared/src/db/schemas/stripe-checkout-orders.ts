@@ -132,12 +132,12 @@ export const stripeCheckoutLegacyQuarantine = pgTable(
   {
     checkout_session_id: text("checkout_session_id").primaryKey(),
     stripe_payment_intent_id: text("stripe_payment_intent_id").notNull().unique(),
-    organization_id: uuid("organization_id").references(() => organizations.id, {
-      onDelete: "restrict",
-    }),
-    initiated_by_user_id: uuid("initiated_by_user_id").references(() => users.id, {
-      onDelete: "restrict",
-    }),
+    organization_id: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    initiated_by_user_id: uuid("initiated_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     stripe_customer_id: text("stripe_customer_id"),
     credit_pack_id: uuid("credit_pack_id"),
     claimed_credits: text("claimed_credits"),

@@ -195,6 +195,26 @@ describe("Stripe Checkout queue authority", () => {
     expect(createInvoice).toHaveBeenCalled();
   });
 
+  test("does not project invoice or referral effects when legacy tenant binding fails", async () => {
+    settleLegacy.mockImplementationOnce(async () => {
+      throw new Error(
+        "Legacy Stripe Checkout user tenant could not be verified",
+      );
+    });
+    expect(
+      await processStripeEvent(
+        checkoutDelivery({
+          organization_id: "org-a",
+          user_id: "user-b",
+          credits: "5.00",
+          type: "custom_amount",
+        }),
+      ),
+    ).toBe("retry");
+    expect(calculateRevenueSplits).not.toHaveBeenCalled();
+    expect(createInvoice).not.toHaveBeenCalled();
+  });
+
   test("repairs a missing invoice when the durable credit is already settled", async () => {
     settle.mockImplementationOnce(async () => ({
       order: {

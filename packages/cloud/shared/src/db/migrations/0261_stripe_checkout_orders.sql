@@ -55,8 +55,8 @@ CREATE TABLE IF NOT EXISTS "stripe_checkout_orders" (
 CREATE TABLE IF NOT EXISTS "stripe_checkout_legacy_quarantine" (
   "checkout_session_id" text PRIMARY KEY,
   "stripe_payment_intent_id" text NOT NULL UNIQUE,
-  "organization_id" uuid REFERENCES "organizations"("id") ON DELETE RESTRICT,
-  "initiated_by_user_id" uuid REFERENCES "users"("id") ON DELETE RESTRICT,
+  "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE RESTRICT,
+  "initiated_by_user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE RESTRICT,
   "stripe_customer_id" text,
   "credit_pack_id" uuid,
   "claimed_credits" text,
@@ -68,6 +68,39 @@ CREATE TABLE IF NOT EXISTS "stripe_checkout_legacy_quarantine" (
   "updated_at" timestamptz NOT NULL DEFAULT now(),
   "resolved_at" timestamptz
 );
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION "enforce_stripe_checkout_legacy_quarantine_tenant"()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  linked_organization_id uuid;
+BEGIN
+  IF TG_OP = 'UPDATE' AND (
+    NEW."organization_id" IS DISTINCT FROM OLD."organization_id"
+    OR NEW."initiated_by_user_id" IS DISTINCT FROM OLD."initiated_by_user_id"
+  ) THEN
+    RAISE EXCEPTION 'legacy Stripe quarantine tenant binding is immutable';
+  END IF;
+
+  SELECT "organization_id"
+    INTO linked_organization_id
+    FROM "users"
+    WHERE "id" = NEW."initiated_by_user_id"
+    FOR KEY SHARE;
+  IF NOT FOUND OR linked_organization_id IS DISTINCT FROM NEW."organization_id" THEN
+    RAISE EXCEPTION 'legacy Stripe quarantine user organization mismatch';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS "stripe_checkout_legacy_quarantine_tenant_trigger"
+  ON "stripe_checkout_legacy_quarantine";
+--> statement-breakpoint
+CREATE TRIGGER "stripe_checkout_legacy_quarantine_tenant_trigger"
+  BEFORE INSERT OR UPDATE ON "stripe_checkout_legacy_quarantine"
+  FOR EACH ROW EXECUTE FUNCTION "enforce_stripe_checkout_legacy_quarantine_tenant"();
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "stripe_checkout_legacy_quarantine_org_created_idx"
   ON "stripe_checkout_legacy_quarantine" ("organization_id", "created_at");

@@ -34,7 +34,10 @@ beforeAll(async () => {
       stripe_customer_id text, settings jsonb NOT NULL DEFAULT '{}',
       updated_at timestamptz NOT NULL DEFAULT now()
     );
-    CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE users (
+      id uuid PRIMARY KEY,
+      organization_id uuid REFERENCES organizations(id)
+    );
     CREATE TABLE credit_packs (
       id uuid PRIMARY KEY, name text NOT NULL, description text,
       credits numeric(10,2) NOT NULL, price_cents integer NOT NULL,
@@ -77,13 +80,33 @@ beforeAll(async () => {
     CREATE TABLE stripe_checkout_legacy_quarantine (
       checkout_session_id text PRIMARY KEY,
       stripe_payment_intent_id text NOT NULL UNIQUE,
-      organization_id uuid REFERENCES organizations(id),
-      initiated_by_user_id uuid REFERENCES users(id),
+      organization_id uuid NOT NULL REFERENCES organizations(id),
+      initiated_by_user_id uuid NOT NULL REFERENCES users(id),
       stripe_customer_id text, credit_pack_id uuid, claimed_credits text,
       charge_amount_cents bigint, currency text, reason text NOT NULL,
       provider_receipt jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz
     );
+    CREATE FUNCTION enforce_test_quarantine_tenant() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE linked_organization_id uuid;
+    BEGIN
+      IF TG_OP = 'UPDATE' AND (
+        NEW.organization_id IS DISTINCT FROM OLD.organization_id
+        OR NEW.initiated_by_user_id IS DISTINCT FROM OLD.initiated_by_user_id
+      ) THEN
+        RAISE EXCEPTION 'legacy Stripe quarantine tenant binding is immutable';
+      END IF;
+      SELECT organization_id INTO linked_organization_id
+        FROM users WHERE id = NEW.initiated_by_user_id FOR KEY SHARE;
+      IF NOT FOUND OR linked_organization_id IS DISTINCT FROM NEW.organization_id THEN
+        RAISE EXCEPTION 'legacy Stripe quarantine user organization mismatch';
+      END IF;
+      RETURN NEW;
+    END;
+    $$;
+    CREATE TRIGGER test_quarantine_tenant_trigger
+      BEFORE INSERT OR UPDATE ON stripe_checkout_legacy_quarantine
+      FOR EACH ROW EXECUTE FUNCTION enforce_test_quarantine_tenant();
   `);
 });
 
@@ -100,7 +123,10 @@ beforeEach(async () => {
     sql.raw(`INSERT INTO organizations (id, name, slug, stripe_customer_id) VALUES
     ('${ORG_A}', 'A', 'a', 'cus_a'), ('${ORG_B}', 'B', 'b', 'cus_b')`),
   );
-  await dbWrite.execute(sql.raw(`INSERT INTO users (id) VALUES ('${USER_A}'), ('${USER_B}')`));
+  await dbWrite.execute(
+    sql.raw(`INSERT INTO users (id, organization_id) VALUES
+      ('${USER_A}', '${ORG_A}'), ('${USER_B}', '${ORG_B}')`),
+  );
   await dbWrite.execute(
     sql.raw(`INSERT INTO credit_packs
     (id, name, credits, price_cents, stripe_price_id, stripe_product_id)
@@ -470,5 +496,34 @@ describe("Stripe Checkout order authority", () => {
     expect(quarantined).toHaveLength(3);
     expect(quarantined.every((row) => row.reason.includes("immutable"))).toBe(true);
     expect((await rows()).credits).toHaveLength(1);
+  });
+
+  test("legacy cutover rejects a cross-tenant user before grant or quarantine", async () => {
+    const crossTenant = (purchaseType: "custom_amount" | "credit_pack") =>
+      service.settleLegacy({
+        checkoutSessionId: `cs_cross_tenant_${purchaseType}`,
+        paymentIntentId: `pi_cross_tenant_${purchaseType}`,
+        paymentStatus: "paid",
+        amountTotal: 500,
+        currency: "usd",
+        customerId: "cus_a",
+        organizationId: ORG_A,
+        initiatedByUserId: USER_B,
+        purchaseType,
+        creditPackId: purchaseType === "credit_pack" ? PACK_A : null,
+        claimedCredits: purchaseType === "credit_pack" ? "25.00" : "5.00",
+      });
+
+    await expect(crossTenant("custom_amount")).rejects.toThrow("user tenant");
+    await expect(crossTenant("credit_pack")).rejects.toThrow("user tenant");
+
+    const state = await rows();
+    expect(state.credits).toHaveLength(0);
+    expect(state.balances.map((row) => row.credit_balance)).toEqual(["0.000000", "0.000000"]);
+    const quarantined = await sqlRows<{ count: string }>(
+      dbWrite,
+      sql`SELECT count(*)::text AS count FROM stripe_checkout_legacy_quarantine`,
+    );
+    expect(quarantined[0]?.count).toBe("0");
   });
 });

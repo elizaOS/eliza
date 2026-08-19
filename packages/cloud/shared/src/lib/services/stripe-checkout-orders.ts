@@ -6,6 +6,7 @@ import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";
+import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { organizations } from "../../db/schemas/organizations";
 import {
   type StripeCheckoutOrder,
@@ -13,6 +14,7 @@ import {
   stripeCheckoutLegacyQuarantine,
   stripeCheckoutOrders,
 } from "../../db/schemas/stripe-checkout-orders";
+import { users } from "../../db/schemas/users";
 import { creditsService } from "./credits";
 
 const FULFILLABLE_STATUSES = ["delivered"] as const;
@@ -559,101 +561,127 @@ export class StripeCheckoutOrdersService {
     }
     const verifiedAmountTotal = amountTotal as number;
 
-    const [organization] = await dbWrite
-      .select({ stripeCustomerId: organizations.stripe_customer_id })
-      .from(organizations)
-      .where(eq(organizations.id, verifiedOrganizationId))
-      .limit(1);
-    if (!organization) mismatch("STRIPE_CHECKOUT_ORGANIZATION_NOT_FOUND", "organization");
-    if (!organization.stripeCustomerId || organization.stripeCustomerId !== receipt.customerId) {
-      mismatch("STRIPE_LEGACY_CHECKOUT_CUSTOMER_MISMATCH", "customer");
-    }
-
-    if (receipt.purchaseType === "credit_pack") {
-      await dbWrite
-        .insert(stripeCheckoutLegacyQuarantine)
-        .values({
-          checkout_session_id: receipt.checkoutSessionId,
-          stripe_payment_intent_id: receipt.paymentIntentId,
-          organization_id: verifiedOrganizationId,
-          initiated_by_user_id: verifiedInitiatedByUserId,
-          stripe_customer_id: receipt.customerId,
-          credit_pack_id: receipt.creditPackId,
-          claimed_credits: receipt.claimedCredits,
-          charge_amount_cents: BigInt(verifiedAmountTotal),
-          currency: receipt.currency?.toLowerCase() ?? null,
-          reason: "missing_immutable_pre_authority_pack_quote",
-          provider_receipt: {
-            checkout_session_id: receipt.checkoutSessionId,
-            payment_intent_id: receipt.paymentIntentId,
-            payment_status: receipt.paymentStatus,
-            amount_total: receipt.amountTotal,
-            currency: receipt.currency,
-            customer_id: receipt.customerId,
-            credit_pack_id: receipt.creditPackId,
-            claimed_credits: receipt.claimedCredits,
-          },
-          updated_at: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: stripeCheckoutLegacyQuarantine.checkout_session_id,
-          set: { updated_at: new Date() },
-        });
-      mismatch("STRIPE_LEGACY_CHECKOUT_PACK_QUARANTINED", "immutable pack authority");
-    }
-
-    if (receipt.purchaseType !== "custom_amount") {
+    const isLegacyPack = receipt.purchaseType === "credit_pack";
+    if (!isLegacyPack && receipt.purchaseType !== "custom_amount") {
       mismatch("STRIPE_LEGACY_CHECKOUT_TYPE_MISMATCH", "purchase type");
     }
-    const authority: { purchaseType: StripeCheckoutPurchaseType; credits: Decimal } = {
-      purchaseType: "custom_amount",
-      credits: new Decimal(verifiedAmountTotal).div(100),
-    };
-    const { purchaseType, credits } = authority;
+    const credits = isLegacyPack ? null : new Decimal(verifiedAmountTotal).div(100);
     if (
-      !credits.isFinite() ||
-      !credits.gt(0) ||
-      credits.gt(10_000) ||
-      credits.decimalPlaces() > 6
+      credits &&
+      (!credits.isFinite() || !credits.gt(0) || credits.gt(10_000) || credits.decimalPlaces() > 6)
     ) {
       mismatch("STRIPE_LEGACY_CHECKOUT_CREDITS_MISMATCH", "credits");
     }
-    let claimedCredits: Decimal;
-    try {
-      claimedCredits = new Decimal(receipt.claimedCredits ?? "invalid");
-    } catch {
-      return mismatch("STRIPE_LEGACY_CHECKOUT_CREDITS_MISMATCH", "claimed credits");
-    }
-    if (!claimedCredits.eq(credits)) {
-      mismatch("STRIPE_LEGACY_CHECKOUT_CREDITS_MISMATCH", "claimed credits");
+    if (credits) {
+      let claimedCredits: Decimal;
+      try {
+        claimedCredits = new Decimal(receipt.claimedCredits ?? "invalid");
+      } catch {
+        return mismatch("STRIPE_LEGACY_CHECKOUT_CREDITS_MISMATCH", "claimed credits");
+      }
+      if (!claimedCredits.eq(credits)) {
+        mismatch("STRIPE_LEGACY_CHECKOUT_CREDITS_MISMATCH", "claimed credits");
+      }
     }
 
-    const existing = await creditsService.getTransactionByStripePaymentIntent(
-      receipt.paymentIntentId,
-    );
-    if (existing && existing.organization_id !== verifiedOrganizationId) {
-      mismatch("STRIPE_CHECKOUT_ORGANIZATION_MISMATCH", "ledger organization");
-    }
-    const grant = await creditsService.addCredits({
-      organizationId: verifiedOrganizationId,
-      amount: credits.toNumber(),
-      description: `Stripe legacy ${purchaseType === "credit_pack" ? "credit pack" : "balance top-up"}`,
-      metadata: {
-        type: purchaseType,
-        session_id: receipt.checkoutSessionId,
-        payment_intent_id: receipt.paymentIntentId,
-        initiated_by_user_id: verifiedInitiatedByUserId,
-        source: "legacy_checkout_cutover",
-      },
-      stripePaymentIntentId: receipt.paymentIntentId,
+    const result = await writeTransaction<
+      | { kind: "quarantined" }
+      | { kind: "settled"; alreadyApplied: boolean; grant: { newBalance: number } }
+    >(async (tx) => {
+      const [organization] = await tx
+        .select({ stripeCustomerId: organizations.stripe_customer_id })
+        .from(organizations)
+        .where(eq(organizations.id, verifiedOrganizationId))
+        .limit(1)
+        .for("update");
+      if (!organization) mismatch("STRIPE_CHECKOUT_ORGANIZATION_NOT_FOUND", "organization");
+      if (!organization.stripeCustomerId || organization.stripeCustomerId !== receipt.customerId) {
+        mismatch("STRIPE_LEGACY_CHECKOUT_CUSTOMER_MISMATCH", "customer");
+      }
+      const [member] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          and(
+            eq(users.id, verifiedInitiatedByUserId),
+            eq(users.organization_id, verifiedOrganizationId),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!member) mismatch("STRIPE_LEGACY_CHECKOUT_USER_TENANT_MISMATCH", "user tenant");
+
+      if (isLegacyPack) {
+        await tx
+          .insert(stripeCheckoutLegacyQuarantine)
+          .values({
+            checkout_session_id: receipt.checkoutSessionId,
+            stripe_payment_intent_id: receipt.paymentIntentId,
+            organization_id: verifiedOrganizationId,
+            initiated_by_user_id: verifiedInitiatedByUserId,
+            stripe_customer_id: receipt.customerId,
+            credit_pack_id: receipt.creditPackId,
+            claimed_credits: receipt.claimedCredits,
+            charge_amount_cents: BigInt(verifiedAmountTotal),
+            currency: receipt.currency?.toLowerCase() ?? null,
+            reason: "missing_immutable_pre_authority_pack_quote",
+            provider_receipt: {
+              checkout_session_id: receipt.checkoutSessionId,
+              payment_intent_id: receipt.paymentIntentId,
+              payment_status: receipt.paymentStatus,
+              amount_total: receipt.amountTotal,
+              currency: receipt.currency,
+              customer_id: receipt.customerId,
+              credit_pack_id: receipt.creditPackId,
+              claimed_credits: receipt.claimedCredits,
+            },
+            updated_at: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: stripeCheckoutLegacyQuarantine.checkout_session_id,
+            set: { updated_at: new Date() },
+          });
+        return { kind: "quarantined" as const };
+      }
+
+      const [existing] = await tx
+        .select({ organizationId: creditTransactions.organization_id })
+        .from(creditTransactions)
+        .where(eq(creditTransactions.stripe_payment_intent_id, receipt.paymentIntentId))
+        .limit(1)
+        .for("update");
+      if (existing && existing.organizationId !== verifiedOrganizationId) {
+        mismatch("STRIPE_CHECKOUT_ORGANIZATION_MISMATCH", "ledger organization");
+      }
+      const grant = await creditsService.addCredits({
+        organizationId: verifiedOrganizationId,
+        amount: credits!.toFixed(6),
+        description: "Stripe legacy balance top-up",
+        metadata: {
+          type: "custom_amount",
+          session_id: receipt.checkoutSessionId,
+          payment_intent_id: receipt.paymentIntentId,
+          initiated_by_user_id: verifiedInitiatedByUserId,
+          source: "legacy_checkout_cutover",
+        },
+        stripePaymentIntentId: receipt.paymentIntentId,
+        db: tx,
+        deferCacheInvalidation: true,
+      });
+      return { kind: "settled" as const, alreadyApplied: !!existing, grant };
     });
+
+    if (result.kind !== "settled") {
+      return mismatch("STRIPE_LEGACY_CHECKOUT_PACK_QUARANTINED", "immutable pack authority");
+    }
+    await creditsService.invalidateCreditCaches(verifiedOrganizationId);
     return {
       organizationId: verifiedOrganizationId,
       initiatedByUserId: verifiedInitiatedByUserId,
-      purchaseType,
-      creditsToGrant: credits.toFixed(6),
-      alreadyApplied: !!existing,
-      newBalance: grant.newBalance,
+      purchaseType: "custom_amount",
+      creditsToGrant: credits!.toFixed(6),
+      alreadyApplied: result.alreadyApplied,
+      newBalance: result.grant.newBalance,
     };
   }
 }

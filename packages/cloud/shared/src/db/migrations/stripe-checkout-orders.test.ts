@@ -8,6 +8,7 @@ import { PGlite } from "@electric-sql/pglite";
 const ORG_A = "10000000-0000-4000-8000-000000000001";
 const ORG_B = "10000000-0000-4000-8000-000000000002";
 const USER_A = "20000000-0000-4000-8000-000000000001";
+const USER_B = "20000000-0000-4000-8000-000000000002";
 const PACK_A = "30000000-0000-4000-8000-000000000001";
 const ORDER_A = "40000000-0000-4000-8000-000000000001";
 const migration = await readFile(
@@ -21,7 +22,10 @@ async function database(): Promise<PGlite> {
   databases.push(db);
   await db.exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY);
-    CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE users (
+      id uuid PRIMARY KEY,
+      organization_id uuid REFERENCES organizations(id)
+    );
     CREATE TABLE credit_packs (id uuid PRIMARY KEY);
     CREATE TABLE credit_transactions (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -32,7 +36,8 @@ async function database(): Promise<PGlite> {
       stripe_payment_intent_id text
     );
     INSERT INTO organizations(id) VALUES ('${ORG_A}'), ('${ORG_B}');
-    INSERT INTO users(id) VALUES ('${USER_A}');
+    INSERT INTO users(id, organization_id) VALUES
+      ('${USER_A}', '${ORG_A}'), ('${USER_B}', '${ORG_B}');
     INSERT INTO credit_packs(id) VALUES ('${PACK_A}');
   `);
   return db;
@@ -93,6 +98,12 @@ describe("0261 Stripe Checkout orders migration", () => {
       WHERE table_name = 'stripe_checkout_legacy_quarantine'
     `);
     expect(quarantine.rows).toEqual([{ count: 1 }]);
+    const quarantineTrigger = await db.query<{ count: number }>(`
+      SELECT count(*)::int AS count FROM pg_trigger
+      WHERE tgname = 'stripe_checkout_legacy_quarantine_tenant_trigger'
+        AND NOT tgisinternal
+    `);
+    expect(quarantineTrigger.rows).toEqual([{ count: 1 }]);
   });
 
   test("fails closed instead of accepting a colliding partial table", async () => {
@@ -195,5 +206,30 @@ describe("0261 Stripe Checkout orders migration", () => {
           WHERE id = '${ORDER_A}'`),
       ).rejects.toThrow(/credit transaction binding mismatch/i);
     }
+  });
+
+  test("enforces and freezes the legacy quarantine user tenant binding", async () => {
+    const db = await database();
+    await db.exec(migration);
+    await expect(
+      db.exec(`INSERT INTO stripe_checkout_legacy_quarantine (
+        checkout_session_id, stripe_payment_intent_id, organization_id,
+        initiated_by_user_id, reason, provider_receipt
+      ) VALUES ('cs_cross', 'pi_cross', '${ORG_A}', '${USER_B}', 'test', '{}')`),
+    ).rejects.toThrow(/user organization mismatch/i);
+    await db.exec(`INSERT INTO stripe_checkout_legacy_quarantine (
+      checkout_session_id, stripe_payment_intent_id, organization_id,
+      initiated_by_user_id, reason, provider_receipt
+    ) VALUES ('cs_valid', 'pi_valid', '${ORG_A}', '${USER_A}', 'test', '{}')`);
+    await expect(
+      db.exec(`UPDATE stripe_checkout_legacy_quarantine
+        SET initiated_by_user_id = '${USER_B}', organization_id = '${ORG_B}'
+        WHERE checkout_session_id = 'cs_valid'`),
+    ).rejects.toThrow(/tenant binding is immutable/i);
+    const rows = await db.query<{ organization_id: string; initiated_by_user_id: string }>(`
+      SELECT organization_id::text, initiated_by_user_id::text
+      FROM stripe_checkout_legacy_quarantine
+    `);
+    expect(rows.rows).toEqual([{ organization_id: ORG_A, initiated_by_user_id: USER_A }]);
   });
 });
