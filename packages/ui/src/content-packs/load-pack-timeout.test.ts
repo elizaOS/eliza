@@ -1,7 +1,5 @@
-/**
- * Exercises the content-pack manifest deadline, provider errors, successful
- * body consumption, and the exported URL-loader wiring.
- */
+/** Exercises content-pack transport and body deadlines through the public URL loader. */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/shared", () => ({
@@ -9,92 +7,78 @@ vi.mock("@elizaos/shared", () => ({
   validateContentPackManifest: () => [],
 }));
 
-import {
-  CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS,
-  ContentPackLoadError,
-  getContentPackManifestJsonWithFetch,
-  loadContentPackFromUrl,
-} from "./load-pack";
+import { ContentPackLoadError, loadContentPackFromUrl } from "./load-pack";
 
-const MANIFEST_URL = "https://example.com/packs/cyberpunk-neon/pack.json";
-
-function stallUntilAborted(): typeof fetch {
-  return ((_input, init) =>
-    new Promise<Response>((_resolve, reject) => {
-      const signal = init?.signal;
-      if (!signal) throw new Error("expected content-pack abort signal");
-      signal.addEventListener("abort", () => reject(signal.reason), {
-        once: true,
-      });
-    })) as typeof fetch;
-}
+const BASE_URL = "https://example.com/packs/cyberpunk-neon/";
+const MANIFEST_URL = `${BASE_URL}pack.json`;
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("content-pack manifest deadline", () => {
-  it("keeps a documented UI fetch budget", () => {
-    expect(CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS).toBe(15_000);
-  });
+  it("keeps the 15-second deadline active while the response body stalls", async () => {
+    const timeoutController = new AbortController();
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timeoutController.signal);
+    let bodyStarted = false;
 
-  it("aborts a stalled manifest GET at the injected deadline", async () => {
-    await expect(
-      getContentPackManifestJsonWithFetch(
-        MANIFEST_URL,
-        stallUntilAborted(),
-        10,
-      ),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
-  });
-
-  it("keeps the same deadline active while the response body stalls", async () => {
-    const fetchImpl: typeof fetch = async (_input, init) =>
-      ({
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => ({
         ok: true,
-        json: () =>
-          new Promise((_resolve, reject) => {
-            const signal = init?.signal;
-            if (!signal) throw new Error("expected content-pack abort signal");
-            signal.addEventListener("abort", () => reject(signal.reason), {
-              once: true,
-            });
-          }),
-      }) as Response;
+        json: () => {
+          bodyStarted = true;
+          return new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => reject(init.signal?.reason),
+              { once: true },
+            );
+          });
+        },
+      })) as unknown as typeof fetch,
+    );
 
-    await expect(
-      getContentPackManifestJsonWithFetch(MANIFEST_URL, fetchImpl, 10),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
+    const pending = loadContentPackFromUrl(BASE_URL);
+    await vi.waitFor(() => expect(bodyStarted).toBe(true));
+    expect(timeoutSpy).toHaveBeenCalledWith(15_000);
+    timeoutController.abort(new DOMException("timed out", "TimeoutError"));
+
+    const error = await pending.catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(ContentPackLoadError);
+    expect(error).toMatchObject({ cause: { name: "TimeoutError" } });
   });
 
-  it("surfaces a provider error from a completed manifest GET", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("nope", { status: 503, statusText: "Service Unavailable" });
+  it("composes caller cancellation with the manifest deadline", async () => {
+    const caller = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(requestSignal?.reason),
+            { once: true },
+          );
+        });
+      }) as unknown as typeof fetch,
+    );
 
-    await expect(
-      getContentPackManifestJsonWithFetch(MANIFEST_URL, fetchImpl, 1_000),
-    ).rejects.toThrow("503");
+    const pending = loadContentPackFromUrl(BASE_URL, { signal: caller.signal });
+    await vi.waitFor(() => expect(requestSignal).toBeDefined());
+    caller.abort(new DOMException("unmounted", "AbortError"));
+
+    const error = await pending.catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(ContentPackLoadError);
+    expect(error).toMatchObject({ cause: { name: "AbortError" } });
   });
 
-  it("consumes successful JSON with a live, non-aborted signal", async () => {
-    const signals: AbortSignal[] = [];
-    const fetchImpl: typeof fetch = async (_input, init) => {
-      if (init?.signal) signals.push(init.signal);
-      return Response.json({ id: "cyberpunk-neon" });
-    };
-
-    await expect(
-      getContentPackManifestJsonWithFetch<{ id: string }>(
-        MANIFEST_URL,
-        fetchImpl,
-        1_000,
-      ),
-    ).resolves.toEqual({ id: "cyberpunk-neon" });
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
-  });
-
-  it("wires the exported URL loader through the bounded fetch seam", async () => {
+  it("consumes a successful manifest through the public loader", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
       expect(init?.method).toBe("GET");
       expect(init?.signal).toBeInstanceOf(AbortSignal);
@@ -107,37 +91,35 @@ describe("content-pack manifest deadline", () => {
     });
     vi.stubGlobal("fetch", fetchImpl);
 
-    const pack = await loadContentPackFromUrl(
-      "https://example.com/packs/cyberpunk-neon",
-    );
+    const pack = await loadContentPackFromUrl(BASE_URL);
 
     expect(fetchImpl).toHaveBeenCalledOnce();
     expect(fetchImpl.mock.calls[0]?.[0]).toBe(MANIFEST_URL);
-    expect(pack.source).toEqual({
-      kind: "url",
-      url: "https://example.com/packs/cyberpunk-neon/",
-    });
+    expect(pack.source).toEqual({ kind: "url", url: BASE_URL });
   });
 
-  it("preserves the loader's structured boundary error", async () => {
+  it("preserves provider errors at the structured loader boundary", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>(async () =>
-        Promise.reject(new DOMException("deadline", "TimeoutError")),
+      vi.fn<typeof fetch>(
+        async () =>
+          new Response("nope", {
+            status: 503,
+            statusText: "Service Unavailable",
+          }),
       ),
     );
 
-    const error = await loadContentPackFromUrl(
-      "https://example.com/packs/cyberpunk-neon/",
-    ).catch((cause: unknown) => cause);
+    const error = await loadContentPackFromUrl(BASE_URL).catch(
+      (cause: unknown) => cause,
+    );
 
     expect(error).toBeInstanceOf(ContentPackLoadError);
     expect(error).toMatchObject({
-      source: {
-        kind: "url",
-        url: "https://example.com/packs/cyberpunk-neon/",
-      },
-      cause: { name: "TimeoutError" },
+      source: { kind: "url", url: BASE_URL },
+    });
+    expect((error as ContentPackLoadError).cause).toMatchObject({
+      message: "HTTP 503 Service Unavailable",
     });
   });
 });
