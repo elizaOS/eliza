@@ -91,6 +91,12 @@ target_include_directories(face_embed_runtime_test PRIVATE test src)
 target_compile_options(face_embed_runtime_test PRIVATE -O2 -Wall -Wextra -Wno-unused-parameter)
 add_test(NAME face_embed_runtime_test COMMAND face_embed_runtime_test)
 
+add_executable(face_gguf_hostile_test test/face_gguf_hostile_test.c)
+target_link_libraries(face_gguf_hostile_test PRIVATE face)
+target_include_directories(face_gguf_hostile_test PRIVATE src)
+target_compile_options(face_gguf_hostile_test PRIVATE -O2 -Wall -Wextra)
+add_test(NAME face_gguf_hostile_test COMMAND face_gguf_hostile_test)
+
 # Optional Python-driven parity test against MediaPipe / hollance/BlazeFace-PyTorch.
 # Skips itself when torch / Pillow / the reference checkpoint are unavailable so it
 # never blocks the C-only build but always runs in the dev environment.
