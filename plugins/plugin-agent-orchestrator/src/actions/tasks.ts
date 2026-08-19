@@ -1622,7 +1622,28 @@ async function runCreateLegacy(
   const turnAborted =
     typeof message.roomId === "string" &&
     runtime.turnControllers?.signalFor?.(message.roomId)?.aborted === true;
-  if (failed.length > 0 && turnAborted) {
+  // A worker whose workflow died AFTER its child already reported completion
+  // did not fail to launch — the deliverable is relayed and verifying. The
+  // "No task agents could be started" line landed one second after "done…
+  // verified live" for the same build (live 2026-08-19). Log-only there.
+  let completionAlreadyReported = false;
+  if (failed.length > 0 && smithersOwnerTaskId && taskService) {
+    try {
+      const ownerDoc = await taskService.getTask(smithersOwnerTaskId);
+      completionAlreadyReported =
+        ownerDoc !== null &&
+        ["completion_reported", "validating", "done"].includes(
+          String(ownerDoc.status),
+        );
+    } catch {
+      // error-policy:J4 status lookup failure keeps today's failure report.
+    }
+  }
+  if (failed.length > 0 && completionAlreadyReported && !turnAborted) {
+    logger(runtime).warn(
+      `[TASKS:create] worker exit after completion already reported; suppressing launch-failed notice (labels=${failed.map((f) => f.label).join(",")})`,
+    );
+  } else if (failed.length > 0 && turnAborted) {
     const text = "stopped the launch — you cancelled it before it got going.";
     await callbackText(callback, text);
     return {
@@ -1634,7 +1655,7 @@ async function runCreateLegacy(
       data: { cancelled: true, failedLabels: failed.map((f) => f.label) },
     };
   }
-  if (failed.length > 0) {
+  if (failed.length > 0 && !completionAlreadyReported && !turnAborted) {
     // ONE model-phrased message from structured facts. The raw error.message
     // joins stay in logs (above) and in data.agents alongside the per-lane
     // session ids, which remain the receipts.
