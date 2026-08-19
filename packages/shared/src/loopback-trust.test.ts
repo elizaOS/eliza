@@ -334,6 +334,18 @@ describe("isTrustedLocalRequest — shared host/origin classification", () => {
             options,
           ),
         ).toBe(true);
+        expect(
+          isTrustedLocalRequest(
+            makeReq({
+              headers: {
+                host: "[::1]:2138",
+                origin: "http://[::1]:2138",
+                "sec-fetch-site": "same-origin",
+              },
+            }),
+            options,
+          ),
+        ).toBe(true);
       });
 
       it("binds a browser Referer to Host but preserves native app origins", () => {
