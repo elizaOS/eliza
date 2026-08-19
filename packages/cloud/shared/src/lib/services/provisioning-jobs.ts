@@ -967,6 +967,9 @@ export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
  *  operators enable the lane. */
 const SNAPSHOT_GATE_RETRY_DELAY_MS = 10 * 60 * 1000;
 const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
+/** Retryable provider/transport outcomes allowed before the logical job is
+ * settled terminally without restarting its ordinary-attempt ladder. */
+const PROVISION_TRANSPORT_MAX_FREE_RETRIES = 5;
 /** How many times a transient pre-deletion capture may requeue WITHOUT
  *  consuming the delete's attempt budget. At the transport retry delay above
  *  this is ~20 minutes of tolerance for a capture outage; past it the failure
@@ -1083,9 +1086,14 @@ export class UpgradeFailedError extends Error {
 }
 
 class RetryableProvisionTransportError extends Error {
-  constructor(message: string) {
+  readonly retrySnapshot: Job;
+  readonly maxRequeues: number;
+
+  constructor(message: string, retrySnapshot: Job, maxRequeues: number) {
     super(message);
     this.name = "RetryableProvisionTransportError";
+    this.retrySnapshot = retrySnapshot;
+    this.maxRequeues = maxRequeues;
   }
 }
 
@@ -1107,6 +1115,7 @@ class PreDeleteCaptureExhaustedError extends Error {
 
 class RetryableReplacementCleanupError extends Error {
   readonly retrySnapshot: Job;
+  readonly maxRequeues = PROVISION_TRANSPORT_MAX_FREE_RETRIES;
 
   constructor(message: string, retrySnapshot: Job, options?: { cause?: unknown }) {
     super(message, options);
@@ -3330,21 +3339,32 @@ export class ProvisioningJobService {
       err instanceof RetryableProvisionTransportError ||
       err instanceof RetryableReplacementCleanupError
     ) {
-      const retrySnapshot =
-        err instanceof RetryableReplacementCleanupError ? err.retrySnapshot : job;
-      const requeued = await this.retryOwnedWrite(job, "retry-later", () =>
+      const retrySnapshot = err.retrySnapshot;
+      const onExhaustedInTx = this.buildPermanentFailureWriteback(retrySnapshot, errorMsg);
+      const transition = await this.retryOwnedWrite(job, "retry-later", () =>
         jobsRepository.retryLaterWithoutIncrementingAttempts(
           retrySnapshot,
           errorMsg,
           PROVISION_TRANSPORT_RETRY_DELAY_MS,
           this.executionOwnerId,
+          { maxRequeues: err.maxRequeues, onExhaustedInTx },
         ),
       );
-      if (requeued) {
+      if (transition?.status === "pending") {
         if (result) result.retried++;
         logger.warn("[provisioning-jobs] Requeued retryable provision transport failure", {
           jobId: job.id,
           delayMs: PROVISION_TRANSPORT_RETRY_DELAY_MS,
+          requeues: transition.retryable_requeues,
+          maxRequeues: err.maxRequeues,
+          error: errorMsg,
+        });
+      } else if (transition?.status === "failed") {
+        if (result) result.failed++;
+        logger.error("[provisioning-jobs] Retryable failure exhausted its requeue budget", {
+          jobId: job.id,
+          requeues: transition.retryable_requeues,
+          maxRequeues: err.maxRequeues,
           error: errorMsg,
         });
       } else {
@@ -4225,7 +4245,7 @@ export class ProvisioningJobService {
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
-      await this.updateClaimedExecution(job, {
+      const retrySnapshot = await this.updateClaimedExecution(job, {
         result: agentRestartJobResultToRecord({
           cloudAgentId: data.agentId,
           containerStopped: result.containerStopped,
@@ -4236,6 +4256,8 @@ export class ProvisioningJobService {
       if (result.retryable) {
         throw new RetryableProvisionTransportError(
           result.error ?? "Snapshot capture temporarily unavailable",
+          retrySnapshot,
+          PROVISION_TRANSPORT_MAX_FREE_RETRIES,
         );
       }
       throw new Error(result.error ?? "Unknown agent_restart failure");
@@ -5043,7 +5065,7 @@ export class ProvisioningJobService {
     }
 
     if (!result.success) {
-      await this.updateClaimedExecution(job, {
+      const retrySnapshot = await this.updateClaimedExecution(job, {
         result: agentSnapshotJobResultToRecord({
           cloudAgentId: data.agentId,
           error: result.error,
@@ -5052,6 +5074,8 @@ export class ProvisioningJobService {
       if (result.retryable) {
         throw new RetryableProvisionTransportError(
           result.error ?? "Snapshot capture temporarily unavailable",
+          retrySnapshot,
+          PROVISION_TRANSPORT_MAX_FREE_RETRIES,
         );
       }
       throw new Error(result.error ?? "Unknown agent_snapshot failure");
@@ -5111,13 +5135,16 @@ export class ProvisioningJobService {
       // transient would requeue forever and a user-requested delete would
       // become an immortal — still billed — agent. Count the free requeues on
       // the job result and escalate past the cap.
-      const priorCaptureRetries = readAgentDeleteCaptureRetryCount(job.result);
+      const priorCaptureRetries = Math.max(
+        job.retryable_requeues,
+        readAgentDeleteCaptureRetryCount(job.result),
+      );
       const captureRetryExhausted =
         delResult.retryable && priorCaptureRetries >= PRE_DELETE_CAPTURE_MAX_FREE_RETRIES;
       const captureRetryCount = delResult.retryable ? priorCaptureRetries + 1 : priorCaptureRetries;
       // Persist a partial result and rethrow so the jobs runner counts an
       // attempt and retries (or marks failed on exhaustion).
-      await this.updateClaimedExecution(job, {
+      const retrySnapshot = await this.updateClaimedExecution(job, {
         result: agentDeleteJobResultToRecord({
           cloudAgentId: data.agentId,
           containerStopped: delResult.containerStopped,
@@ -5133,6 +5160,8 @@ export class ProvisioningJobService {
         // budget and strand the deletion (#18517).
         throw new RetryableProvisionTransportError(
           delResult.error ?? "Pre-deletion capture temporarily unavailable",
+          retrySnapshot,
+          PRE_DELETE_CAPTURE_MAX_FREE_RETRIES,
         );
       }
       if (captureRetryExhausted) {
@@ -5200,7 +5229,7 @@ export class ProvisioningJobService {
     if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;
 
     if (!provResult.success) {
-      await this.updateClaimedExecution(job, {
+      const retrySnapshot = await this.updateClaimedExecution(job, {
         result: agentProvisionJobResultToRecord({
           cloudAgentId: data.agentId,
           status: provResult.sandboxRecord?.status ?? "error",
@@ -5208,7 +5237,11 @@ export class ProvisioningJobService {
         }),
       });
       if (provResult.retryable) {
-        throw new RetryableProvisionTransportError(provResult.error);
+        throw new RetryableProvisionTransportError(
+          provResult.error,
+          retrySnapshot,
+          PROVISION_TRANSPORT_MAX_FREE_RETRIES,
+        );
       }
       throw new Error(provResult.error);
     }

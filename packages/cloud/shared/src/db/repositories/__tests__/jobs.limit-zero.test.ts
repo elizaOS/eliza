@@ -41,6 +41,7 @@ beforeAll(async () => {
         attempts integer NOT NULL DEFAULT 0,
         max_attempts integer NOT NULL DEFAULT 3,
         execution_interruptions integer NOT NULL DEFAULT 0,
+        retryable_requeues integer NOT NULL DEFAULT 0,
         organization_id uuid NOT NULL,
         user_id uuid,
         api_key_id uuid,

@@ -60,6 +60,8 @@ function makeJob(
     error_key: null,
     attempts: 1,
     max_attempts: 3,
+    execution_interruptions: 0,
+    retryable_requeues: 0,
     execution_generation: "55555555-5555-4555-8555-555555555555",
     execution_quiesced_at: null,
     organization_id: ORG,
@@ -119,7 +121,11 @@ function harness(job: Job) {
   const retryLaterSpy = spyOn(
     jobsRepository,
     "retryLaterWithoutIncrementingAttempts",
-  ).mockResolvedValue(job);
+  ).mockImplementation(async (retrySnapshot, _error, _delayMs, _owner, bounded) => ({
+    ...retrySnapshot,
+    status: "pending",
+    retryable_requeues: retrySnapshot.retryable_requeues + (bounded ? 1 : 0),
+  }));
   return {
     job,
     claimSpy,
@@ -744,6 +750,36 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_provision retryable transport settles when the database bound is exhausted", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION, {}, { retryable_requeues: 5 }));
+    ctx.retryLaterSpy.mockImplementation(async (retrySnapshot) => ({
+      ...retrySnapshot,
+      status: "failed",
+      retryable_requeues: 6,
+      completed_at: new Date(),
+    }));
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "readiness probe transport_unresolved",
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION);
+      expect(res).toMatchObject({ retried: 0, failed: 1 });
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[4]).toMatchObject({ maxRequeues: 5 });
+      expect(typeof ctx.retryLaterSpy.mock.calls[0]?.[4]?.onExhaustedInTx).toBe("function");
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("agent_restart transient snapshot failure → requeued without burning an attempt", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_RESTART));
     stub("executeRestart", {
@@ -784,10 +820,14 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       const res = await run(JOB_TYPES.AGENT_PROVISION);
       expect(res).toMatchObject({ claimed: 1, retried: 0, failed: 0 });
       expect(ctx.retryLaterSpy).toHaveBeenCalledWith(
-        ctx.job,
+        expect.objectContaining({
+          id: ctx.job.id,
+          result: expect.objectContaining({ error: "readiness probe transport_unresolved" }),
+        }),
         "readiness probe transport_unresolved",
         expect.any(Number),
         expect.any(String),
+        expect.objectContaining({ maxRequeues: 5 }),
       );
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
