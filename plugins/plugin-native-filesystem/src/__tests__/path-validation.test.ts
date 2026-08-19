@@ -161,6 +161,21 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 		}
 	});
 
+	it("does not mkdir missing descendants through a symlink parent outside the root", async () => {
+		const outside = mkdtempSync(path.join(tmpdir(), "device-fs-outside-"));
+		try {
+			symlinkSync(outside, path.join(tempRoot, "linked-outside"), "dir");
+
+			await expect(
+				bridge.write("linked-outside/nested/new.txt", "nope"),
+			).rejects.toThrow(/escapes workspace root/);
+			expect(existsSync(path.join(outside, "nested"))).toBe(false);
+			expect(existsSync(path.join(outside, "nested", "new.txt"))).toBe(false);
+		} finally {
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+
 	it("rejects writes through a symlinked target file pointing outside the root", async () => {
 		const outside = mkdtempSync(path.join(tmpdir(), "device-fs-outside-"));
 		try {
