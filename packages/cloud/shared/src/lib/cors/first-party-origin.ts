@@ -41,10 +41,7 @@ const STATIC_ALLOWED_ORIGINS = new Set<string>([
 /** Whether an origin may receive credentialed browser responses. */
 export function isFirstPartyOrigin(origin: string): boolean {
   if (STATIC_ALLOWED_ORIGINS.has(origin)) return true;
-  if (
-    origin === CAPACITOR_WEBVIEW_ORIGIN ||
-    APP_SCHEME_ORIGIN_RE.test(origin)
-  ) {
+  if (origin === CAPACITOR_WEBVIEW_ORIGIN || APP_SCHEME_ORIGIN_RE.test(origin)) {
     return true;
   }
   if (isLocalDevLoopbackOrigin(origin)) {

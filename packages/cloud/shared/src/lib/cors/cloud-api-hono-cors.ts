@@ -108,19 +108,14 @@ const publicCors = cors({
 
 function appendExposedHeaders(headers: Headers): void {
   const exposed = new Map<string, string>();
-  for (const name of (headers.get("Access-Control-Expose-Headers") ?? "").split(
-    ",",
-  )) {
+  for (const name of (headers.get("Access-Control-Expose-Headers") ?? "").split(",")) {
     const trimmed = name.trim();
     if (trimmed) exposed.set(trimmed.toLowerCase(), trimmed);
   }
   for (const name of CORS_EXPOSE_HEADER_NAMES) {
     exposed.set(name.toLowerCase(), name);
   }
-  headers.set(
-    "Access-Control-Expose-Headers",
-    [...exposed.values()].join(", "),
-  );
+  headers.set("Access-Control-Expose-Headers", [...exposed.values()].join(", "));
 }
 
 export const corsMiddleware: MiddlewareHandler = (c, next) => {
