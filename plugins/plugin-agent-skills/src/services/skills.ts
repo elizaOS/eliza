@@ -15,6 +15,10 @@
  * 4. plugin - Plugin-contributed skills
  * 5. extra - Extra directories from config
  *
+ * Zip / SKILL.md downloads are read through {@link readCappedSkillPackage}
+ * so a lying or missing Content-Length cannot force an unbounded allocation
+ * before the 10MB package cap is applied.
+ *
  * @see https://agentskills.io/specification
  */
 
@@ -53,6 +57,10 @@ import type {
 } from "../types";
 import { SKILL_SOURCE_PRECEDENCE } from "../types";
 import { binaryExistsInPath } from "./bin-lookup";
+import {
+	readCappedSkillPackage,
+	readCappedSkillText,
+} from "./skill-package-bytes";
 
 // ============================================================
 // CONSTANTS
@@ -81,9 +89,6 @@ class CatalogPaginationError extends Error {
 		this.name = "CatalogPaginationError";
 	}
 }
-
-/** Maximum package size for downloads */
-const MAX_PACKAGE_SIZE = 10 * 1024 * 1024; // 10MB
 
 /** Default auto-refresh interval (5 seconds) */
 const DEFAULT_AUTO_REFRESH_INTERVAL = 5000;
@@ -2208,18 +2213,13 @@ export class AgentSkillsService extends Service {
 				throw new Error(`Download failed: ${response.status}`);
 			}
 
-			const zipBuffer = await response.arrayBuffer();
-			if (zipBuffer.byteLength > MAX_PACKAGE_SIZE) {
-				throw new Error(
-					`Package too large (max ${MAX_PACKAGE_SIZE / 1024 / 1024}MB)`,
-				);
-			}
+			const zipBuffer = await readCappedSkillPackage(response);
 
 			// Extract and save based on storage type
 			if (this.storage instanceof MemorySkillStore) {
 				await (this.storage as MemorySkillStore).loadFromZip(
 					safeSlug,
-					new Uint8Array(zipBuffer),
+					zipBuffer,
 				);
 			} else if (this.storage instanceof FileSystemSkillStore) {
 				await (this.storage as FileSystemSkillStore).saveFromZip(
@@ -2334,7 +2334,7 @@ export class AgentSkillsService extends Service {
 				);
 			}
 
-			const skillMdContent = await response.text();
+			const skillMdContent = await readCappedSkillText(response);
 
 			// Create a minimal skill package
 			const files: Array<{ name: string; content: string | Uint8Array }> = [
@@ -2346,7 +2346,7 @@ export class AgentSkillsService extends Service {
 				const readmeUrl = `${rawBase}README.md`;
 				const readmeResponse = await fetch(readmeUrl);
 				if (readmeResponse.ok) {
-					const readmeContent = await readmeResponse.text();
+					const readmeContent = await readCappedSkillText(readmeResponse);
 					files.push({ name: "README.md", content: readmeContent });
 				}
 			} catch {
@@ -2422,27 +2422,22 @@ export class AgentSkillsService extends Service {
 
 			if (contentType.includes("application/zip") || url.endsWith(".zip")) {
 				// Handle zip package
-				const zipBuffer = await response.arrayBuffer();
-				if (zipBuffer.byteLength > MAX_PACKAGE_SIZE) {
-					throw new Error(
-						`Package too large (max ${MAX_PACKAGE_SIZE / 1024 / 1024}MB)`,
-					);
-				}
+				const zipBuffer = await readCappedSkillPackage(response);
 
 				if (this.storage instanceof MemorySkillStore) {
 					await (this.storage as MemorySkillStore).loadFromZip(
 						safeSlug,
-						new Uint8Array(zipBuffer),
+						zipBuffer,
 					);
 				} else if (this.storage instanceof FileSystemSkillStore) {
 					await (this.storage as FileSystemSkillStore).saveFromZip(
 						safeSlug,
-						new Uint8Array(zipBuffer),
+						zipBuffer,
 					);
 				}
 			} else {
 				// Assume it's a SKILL.md file
-				const content = await response.text();
+				const content = await readCappedSkillText(response);
 
 				const files: Array<{ name: string; content: string | Uint8Array }> = [
 					{ name: "SKILL.md", content },
