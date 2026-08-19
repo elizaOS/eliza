@@ -46,17 +46,169 @@ ALTER TABLE container_billing_records
   DROP CONSTRAINT IF EXISTS container_billing_records_credit_transaction_id_credit_transactions_id_fk,
   DROP CONSTRAINT IF EXISTS container_billing_records_organization_id_organizations_id_fk;
 
+-- Historical container receipts predate durable ledger binding. Preserve the
+-- receipt verbatim and record every absent or cross-tenant transaction for
+-- explicit reconciliation instead of inventing or deleting ledger history.
+CREATE TABLE container_billing_legacy_ledger_bindings (
+  receipt_id uuid PRIMARY KEY
+    REFERENCES container_billing_records(id) ON DELETE RESTRICT,
+  organization_id uuid NOT NULL
+    REFERENCES organizations(id) ON DELETE RESTRICT,
+  credit_transaction_id uuid,
+  classification text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT container_billing_legacy_ledger_bindings_classification_check
+    CHECK (classification IN ('missing_reference', 'missing_transaction', 'tenant_mismatch'))
+);
+
+CREATE OR REPLACE FUNCTION guard_container_billing_legacy_ledger_binding() RETURNS trigger AS $$
+DECLARE
+  receipt_organization_id uuid;
+  receipt_credit_transaction_id uuid;
+  receipt_status text;
+  transaction_organization_id uuid;
+  expected_classification text;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'legacy compute ledger binding audit is immutable'
+      USING ERRCODE = '23514',
+            CONSTRAINT = 'container_billing_legacy_ledger_bindings_immutable';
+  END IF;
+
+  IF TG_OP = 'UPDATE' THEN
+    RAISE EXCEPTION 'legacy compute ledger binding authority is immutable'
+      USING ERRCODE = '23514',
+            CONSTRAINT = 'container_billing_legacy_ledger_bindings_immutable';
+  END IF;
+
+  SELECT receipt.organization_id, receipt.credit_transaction_id, receipt.status
+    INTO receipt_organization_id, receipt_credit_transaction_id, receipt_status
+  FROM container_billing_records receipt
+  WHERE receipt.id = NEW.receipt_id;
+  IF NOT FOUND
+     OR receipt_organization_id IS DISTINCT FROM NEW.organization_id
+     OR receipt_credit_transaction_id IS DISTINCT FROM NEW.credit_transaction_id THEN
+    RAISE EXCEPTION 'legacy compute ledger binding does not match its receipt'
+      USING ERRCODE = '23503',
+            CONSTRAINT = 'container_billing_legacy_ledger_bindings_receipt_match';
+  END IF;
+
+  IF NEW.credit_transaction_id IS NULL AND receipt_status = 'success' THEN
+    expected_classification := 'missing_reference';
+  ELSIF NEW.credit_transaction_id IS NULL THEN
+    RAISE EXCEPTION 'non-success receipt without a transaction cannot be quarantined'
+      USING ERRCODE = '23514',
+            CONSTRAINT = 'container_billing_legacy_ledger_bindings_reason';
+  ELSE
+    SELECT transaction.organization_id
+      INTO transaction_organization_id
+    FROM credit_transactions transaction
+    WHERE transaction.id = NEW.credit_transaction_id;
+  END IF;
+  IF NEW.credit_transaction_id IS NOT NULL AND NOT FOUND THEN
+    expected_classification := 'missing_transaction';
+  ELSIF NEW.credit_transaction_id IS NOT NULL
+        AND transaction_organization_id IS DISTINCT FROM NEW.organization_id THEN
+    expected_classification := 'tenant_mismatch';
+  ELSIF NEW.credit_transaction_id IS NOT NULL THEN
+    RAISE EXCEPTION 'valid compute ledger binding cannot be quarantined'
+      USING ERRCODE = '23514',
+            CONSTRAINT = 'container_billing_legacy_ledger_bindings_reason';
+  END IF;
+
+  IF NEW.classification IS DISTINCT FROM expected_classification THEN
+    RAISE EXCEPTION 'legacy compute ledger binding classification is incorrect'
+      USING ERRCODE = '23514',
+            CONSTRAINT = 'container_billing_legacy_ledger_bindings_reason';
+  END IF;
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER container_billing_legacy_ledger_bindings_guard
+  BEFORE INSERT OR UPDATE OR DELETE ON container_billing_legacy_ledger_bindings
+  FOR EACH ROW EXECUTE FUNCTION guard_container_billing_legacy_ledger_binding();
+
+CREATE OR REPLACE FUNCTION reject_container_billing_legacy_ledger_bindings_truncate()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'legacy compute ledger binding audit is immutable'
+    USING ERRCODE = '23514',
+          CONSTRAINT = 'container_billing_legacy_ledger_bindings_immutable';
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER container_billing_legacy_ledger_bindings_truncate_guard
+  BEFORE TRUNCATE ON container_billing_legacy_ledger_bindings
+  FOR EACH STATEMENT EXECUTE FUNCTION reject_container_billing_legacy_ledger_bindings_truncate();
+
+CREATE INDEX container_billing_legacy_ledger_bindings_org_created_idx
+  ON container_billing_legacy_ledger_bindings (organization_id, created_at);
+
+INSERT INTO container_billing_legacy_ledger_bindings (
+  receipt_id,
+  organization_id,
+  credit_transaction_id,
+  classification
+)
+SELECT receipt.id,
+       receipt.organization_id,
+       receipt.credit_transaction_id,
+       CASE
+         WHEN receipt.credit_transaction_id IS NULL THEN 'missing_reference'
+         WHEN transaction.id IS NULL THEN 'missing_transaction'
+         ELSE 'tenant_mismatch'
+       END
+FROM container_billing_records receipt
+LEFT JOIN credit_transactions transaction
+  ON transaction.id = receipt.credit_transaction_id
+WHERE (receipt.status = 'success' AND receipt.credit_transaction_id IS NULL)
+   OR (receipt.credit_transaction_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1
+    FROM credit_transactions exact_transaction
+    WHERE exact_transaction.id = receipt.credit_transaction_id
+      AND exact_transaction.organization_id = receipt.organization_id
+  ));
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM container_billing_records receipt
+    WHERE ((
+        receipt.status = 'success'
+        AND receipt.credit_transaction_id IS NULL
+      ) OR (
+        receipt.credit_transaction_id IS NOT NULL
+        AND NOT EXISTS (
+        SELECT 1
+        FROM credit_transactions transaction
+        WHERE transaction.id = receipt.credit_transaction_id
+          AND transaction.organization_id = receipt.organization_id
+      )
+      ))
+      AND NOT EXISTS (
+        SELECT 1
+        FROM container_billing_legacy_ledger_bindings legacy
+        WHERE legacy.receipt_id = receipt.id
+          AND legacy.organization_id = receipt.organization_id
+          AND legacy.credit_transaction_id IS NOT DISTINCT FROM receipt.credit_transaction_id
+      )
+  ) THEN
+    RAISE EXCEPTION 'legacy container billing receipt was not quarantined';
+  END IF;
+END $$;
+
 ALTER TABLE container_billing_records
   ADD CONSTRAINT container_billing_records_organization_id_organizations_id_fk
   FOREIGN KEY (organization_id)
   REFERENCES organizations(id) ON DELETE RESTRICT NOT VALID,
   ADD CONSTRAINT container_billing_records_credit_transaction_tenant_fk
   FOREIGN KEY (credit_transaction_id, organization_id)
-  REFERENCES credit_transactions(id, organization_id) ON DELETE RESTRICT NOT VALID;
+  REFERENCES credit_transactions(id, organization_id) ON DELETE RESTRICT NOT VALID,
+  ADD CONSTRAINT container_billing_records_success_ledger_check
+  CHECK (status <> 'success' OR credit_transaction_id IS NOT NULL) NOT VALID;
 
 ALTER TABLE container_billing_records
-  VALIDATE CONSTRAINT container_billing_records_organization_id_organizations_id_fk,
-  VALIDATE CONSTRAINT container_billing_records_credit_transaction_tenant_fk;
+  VALIDATE CONSTRAINT container_billing_records_organization_id_organizations_id_fk;
 
 CREATE TABLE agent_billing_records (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
