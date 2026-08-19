@@ -1,7 +1,2 @@
 "Ask ${applicationName}" = "Ask ${applicationName}";
-"Start voice with ${applicationName}" = "Start voice with ${applicationName}";
-"Start ${applicationName} voice" = "Start ${applicationName} voice";
-"Open ${applicationName} daily brief" = "Open ${applicationName} daily brief";
-"Show my daily brief in ${applicationName}" = "Show my daily brief in ${applicationName}";
-"Create a task in ${applicationName}" = "Create a task in ${applicationName}";
-"Draft a reply with ${applicationName}" = "Draft a reply with ${applicationName}";
+"Talk to ${applicationName}" = "Talk to ${applicationName}";
