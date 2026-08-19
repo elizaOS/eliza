@@ -15,7 +15,6 @@ export class BaileysConnection extends EventEmitter {
   private socket?: WASocket;
   private readonly authManager: BaileysAuthManager;
   private connectionStatus: ConnectionStatus = "close";
-  private reconnecting = false;
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 10;
 
@@ -42,6 +41,9 @@ export class BaileysConnection extends EventEmitter {
   }
 
   private setupEventHandlers(socket: WASocket): void {
+    // Backoff ownership is socket-local so a stale timer cannot suppress a
+    // replacement socket's own reconnect attempt.
+    let reconnecting = false;
     socket.ev.on("connection.update", async (update) => {
       if (this.socket !== socket) return;
       const { connection, qr, lastDisconnect } = update;
@@ -76,7 +78,7 @@ export class BaileysConnection extends EventEmitter {
         return;
       }
 
-      if (this.reconnecting) {
+      if (reconnecting) {
         return;
       }
 
@@ -85,18 +87,18 @@ export class BaileysConnection extends EventEmitter {
         return;
       }
 
-      this.reconnecting = true;
+      reconnecting = true;
       try {
         this.reconnectAttempts += 1;
         const baseDelayMs = isQRTimeout ? 1000 : 3000;
         const backoffMs = Math.min(baseDelayMs * 2 ** (this.reconnectAttempts - 1), 30000);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
-        if (this.socket !== socket) return;
+        if (this.socket !== socket || this.connectionStatus !== "close") return;
         await this.connect();
       } catch (error) {
         this.emit("error", error);
       } finally {
-        this.reconnecting = false;
+        reconnecting = false;
       }
     });
 
