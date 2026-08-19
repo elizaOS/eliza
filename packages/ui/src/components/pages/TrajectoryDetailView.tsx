@@ -56,6 +56,11 @@ import {
   getToolCallName,
 } from "../tool-events/ToolCallEventLog.helpers";
 import { Button } from "../ui/button";
+import {
+  countTrajectoryCallTextLines,
+  formatTrajectoryCallPayload,
+  normalizeTrajectoryCallText,
+} from "./trajectory-call-text";
 
 // ---------------------------------------------------------------------------
 // Pipeline stage mapping
@@ -126,35 +131,6 @@ function formatTrajectoryStepLabel(
   const normalized = typeof value === "string" ? value.trim() : "";
   if (!normalized) return fallback;
   return normalized.replace(/_/g, " ");
-}
-
-function formatProviderPayload(value: unknown): string {
-  if (value == null) {
-    return "null";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-/**
- * Trajectory records are intentionally append-only and may omit prompt fields
- * for provider failures, embeddings, or legacy rows. Normalize those sparse
- * records at the rendering boundary so one missing prompt cannot crash the
- * complete trajectory viewer. Structured fallbacks remain inspectable JSON.
- */
-export function normalizeTrajectoryCallText(...candidates: unknown[]): string {
-  for (const candidate of candidates) {
-    if (candidate == null) continue;
-    if (typeof candidate === "string" && candidate.length === 0) continue;
-    return formatProviderPayload(candidate);
-  }
-  return "";
 }
 
 function isNativeToolCallEvent(
@@ -247,7 +223,7 @@ function labelForEvent(event: TrajectoryEvent): string {
 function descriptionForEvent(event: TrajectoryEvent): string | undefined {
   if (isNativeToolCallEvent(event)) {
     const args = event.args ?? event.input;
-    return args ? formatProviderPayload(args) : undefined;
+    return args ? formatTrajectoryCallPayload(args) : undefined;
   }
   if (isEvaluationEvent(event)) {
     return event.thought || event.decision || event.error;
@@ -587,10 +563,10 @@ export function TrajectoryDetailView({
 
       {trajectory.metadata &&
       Object.keys(trajectory.metadata).length > 0 &&
-      formatProviderPayload(trajectory.metadata).trim().length > 0 ? (
+      formatTrajectoryCallPayload(trajectory.metadata).trim().length > 0 ? (
         <PagePanel variant="section" className="p-5">
           <pre className="max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
-            {formatProviderPayload(trajectory.metadata)}
+            {formatTrajectoryCallPayload(trajectory.metadata)}
           </pre>
         </PagePanel>
       ) : null}
@@ -700,7 +676,7 @@ export function TrajectoryDetailView({
                       })}
                     </div>
                     <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
-                      {formatProviderPayload(access.query)}
+                      {formatTrajectoryCallPayload(access.query)}
                     </pre>
                   </div>
                 ) : null}
@@ -711,7 +687,7 @@ export function TrajectoryDetailView({
                     })}
                   </div>
                   <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
-                    {formatProviderPayload(access.data)}
+                    {formatTrajectoryCallPayload(access.data)}
                   </pre>
                 </div>
               </PagePanel>
@@ -772,18 +748,15 @@ export function TrajectoryDetailView({
                 })}
                 inputLabel={t("trajectorydetailview.InputUser")}
                 outputLabel={t("trajectorydetailview.OutputResponse")}
-                inputLinesLabel={`${
-                  normalizeTrajectoryCallText(
-                    call.userPrompt,
-                    call.prompt,
-                    call.messages,
-                  ).split("\n").length
-                } ${t("trajectorydetailview.lines")}`}
-                outputLinesLabel={`${
-                  normalizeTrajectoryCallText(call.response, call.output).split(
-                    "\n",
-                  ).length
-                } ${t("trajectorydetailview.lines")}`}
+                inputLinesLabel={`${countTrajectoryCallTextLines(
+                  call.userPrompt,
+                  call.prompt,
+                  call.messages,
+                )} ${t("trajectorydetailview.lines")}`}
+                outputLinesLabel={`${countTrajectoryCallTextLines(
+                  call.response,
+                  call.output,
+                )} ${t("trajectorydetailview.lines")}`}
                 tags={(call.tags ?? []).filter((tag) => tag !== "llm")}
                 userPrompt={normalizeTrajectoryCallText(
                   call.userPrompt,
