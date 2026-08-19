@@ -111,11 +111,11 @@ software loopbacks, monitors, virtual cables, aggregate devices, and multi-outpu
 devices before recording `physical-microphone` provenance. Desktop media APIs do
 not provide a portable cryptographic hardware attestation. The finalizer reruns
 the classifier against the OS endpoint and browser-selected track label and
-requires their non-generic label tokens to match exactly, so an added substring
-or virtual-device suffix cannot impersonate the captured endpoint. The
-owner-operated runner must still pin an actual microphone; a deliberately
-renamed virtual driver remains outside what this software-only check can
-establish.
+requires all normalized label tokens, including repeated and generic tokens, to
+match exactly. Case, punctuation, and token order may differ, but an added or
+missing token cannot impersonate the captured endpoint. The owner-operated
+runner must still pin an actual microphone; a deliberately renamed virtual
+driver remains outside what this software-only check can establish.
 
 ## Launch surfaces
 
