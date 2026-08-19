@@ -1,5 +1,5 @@
 /**
- * ElizaAgentActions — start/stop/deactivate/reactivate/snapshot/upgrade/delete
+ * ElizaAgentActions — start/stop/deactivate/reactivate/upgrade/delete
  * controls on the agent detail page.
  *
  * **Upgrade to Dedicated** (shared-tier agents only, #15355) drives the whole
@@ -38,10 +38,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   BrandButton,
-  BrandCard,
 } from "@elizaos/ui/cloud-ui";
+import { useQuery } from "@tanstack/react-query";
 import {
-  Camera,
   ExternalLink,
   Loader2,
   Moon,
@@ -184,6 +183,25 @@ export function ElizaAgentActions({
   // Tier upgrade is a shared-agent-only promotion (#15355); a dedicated agent
   // already runs on its own container.
   const canUpgrade = isRunning && !isDedicated && !upgradeTargetId;
+  const upgradeQuoteQuery = useQuery({
+    queryKey: ["agent-dedicated-upgrade-quote", agentId],
+    queryFn: async () => {
+      const { status: httpStatus, data } = await apiWithStatus<{
+        success?: boolean;
+        data?: DedicatedActivationQuote;
+        error?: string;
+      }>(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`, {
+        method: "GET",
+      });
+      if (httpStatus < 200 || httpStatus >= 300 || !data?.data) {
+        throw new Error(data?.error ?? `HTTP ${httpStatus}`);
+      }
+      return data.data;
+    },
+    enabled: canUpgrade,
+    staleTime: 15_000,
+    retry: false,
+  });
   const upgradeJob = upgradePoller.getStatus(agentId);
   const isStopped = ["stopped", "error", "pending", "disconnected"].includes(
     effectiveStatus,
@@ -200,8 +218,6 @@ export function ElizaAgentActions({
         url = `/api/v1/eliza/agents/${agentId}/resume`;
       } else if (action === "provision") {
         url = `/api/v1/eliza/agents/${agentId}/provision`;
-      } else if (action === "snapshot") {
-        url = `/api/v1/eliza/agents/${agentId}/snapshot`;
       } else if (action === "sleep") {
         url = `/api/v1/eliza/agents/${agentId}/sleep`;
       } else if (action === "wake") {
@@ -250,9 +266,6 @@ export function ElizaAgentActions({
           resume: t("cloud.containers.agentActions.resumeQueued", {
             defaultValue: "Agent resume queued",
           }),
-          snapshot: t("cloud.containers.agentActions.snapshotQueued", {
-            defaultValue: "Snapshot queued",
-          }),
           suspend: t("cloud.containers.agentActions.suspendQueued", {
             defaultValue: "Suspend queued",
           }),
@@ -298,9 +311,6 @@ export function ElizaAgentActions({
         resume: t("cloud.containers.agentActions.resumingSnapshot", {
           defaultValue: "Agent resuming from snapshot",
         }),
-        snapshot: t("cloud.containers.agentActions.snapshotSaved", {
-          defaultValue: "Snapshot saved",
-        }),
         suspend: t("cloud.containers.agentActions.suspended", {
           defaultValue: "Agent suspended (snapshot saved)",
         }),
@@ -331,17 +341,14 @@ export function ElizaAgentActions({
   async function reviewDedicatedQuote() {
     setLoading("upgrade-quote");
     try {
-      const { status: httpStatus, data } = await apiWithStatus<{
-        success?: boolean;
-        data?: DedicatedActivationQuote;
-        error?: string;
-      }>(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`, {
-        method: "GET",
-      });
-      if (httpStatus < 200 || httpStatus >= 300 || !data?.data) {
-        throw new Error(data?.error ?? `HTTP ${httpStatus}`);
+      const quote =
+        upgradeQuoteQuery.data ?? (await upgradeQuoteQuery.refetch()).data;
+      if (!quote) {
+        throw (
+          upgradeQuoteQuery.error ?? new Error("Dedicated quote unavailable")
+        );
       }
-      setUpgradeQuote(data.data);
+      setUpgradeQuote(quote);
       setShowUpgradeConfirm(true);
     } catch (err) {
       toast.error(
@@ -499,20 +506,8 @@ export function ElizaAgentActions({
   }
 
   return (
-    <BrandCard className="relative" cornerSize="md">
-      <div className="relative z-10 space-y-4">
-        <div className="flex items-center gap-2 pb-4 border-b border-white/10">
-          <span className="inline-block w-2 h-2 rounded-full bg-muted" />
-          <h2
-            className="text-xl font-normal text-white"
-            style={{ fontFamily: "var(--font-roboto-mono)" }}
-          >
-            {t("cloud.containers.agentActions.title", {
-              defaultValue: "Agent Actions",
-            })}
-          </h2>
-        </div>
-
+    <>
+      <div className="space-y-4">
         {isSleeping && (
           <div
             className="flex items-start gap-3 rounded-sm border border-white/10 bg-white/5 p-3"
@@ -555,7 +550,7 @@ export function ElizaAgentActions({
                 data-testid="agent-upgrade-tier-button"
                 title={t("cloud.containers.agentActions.upgradeHint", {
                   defaultValue:
-                    "Move this agent to its own always-on container. Your conversation moves with it.",
+                    "Move to a private, always-on Dedicated Agent. Your conversation moves with it.",
                 })}
               >
                 {loading === "upgrade-tier" || loading === "upgrade-quote" ? (
@@ -563,9 +558,13 @@ export function ElizaAgentActions({
                 ) : (
                   <Rocket className="h-4 w-4" />
                 )}
-                {t("cloud.containers.agentActions.upgrade", {
-                  defaultValue: "Upgrade to Dedicated",
-                })}
+                {upgradeQuoteQuery.data?.canActivate === false
+                  ? t("cloud.containers.agentActions.addCredits", {
+                      defaultValue: "Add funds to upgrade",
+                    })
+                  : t("cloud.containers.agentActions.upgrade", {
+                      defaultValue: "Upgrade to Dedicated",
+                    })}
               </BrandButton>
             )}
 
@@ -609,25 +608,7 @@ export function ElizaAgentActions({
               </BrandButton>
             )}
 
-            {isRunning && (
-              <BrandButton
-                variant="outline"
-                size="sm"
-                onClick={() => doAction("snapshot")}
-                disabled={!!loading || isBusy}
-              >
-                {loading === "snapshot" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Camera className="h-4 w-4" />
-                )}
-                {t("cloud.containers.agentActions.saveSnapshot", {
-                  defaultValue: "Save Snapshot",
-                })}
-              </BrandButton>
-            )}
-
-            {isRunning && (
+            {isRunning && isDedicated && (
               <BrandButton
                 variant="outline"
                 size="sm"
@@ -669,7 +650,7 @@ export function ElizaAgentActions({
               </BrandButton>
             )}
 
-            {!showDeleteConfirm ? (
+            {isDedicated && !showDeleteConfirm ? (
               <BrandButton
                 variant="outline"
                 size="sm"
@@ -682,7 +663,7 @@ export function ElizaAgentActions({
                   defaultValue: "Delete Agent",
                 })}
               </BrandButton>
-            ) : (
+            ) : isDedicated ? (
               <div className="flex flex-wrap items-center gap-2 rounded-sm border border-red-500/30 bg-red-950/20 p-3">
                 <span
                   className="text-sm text-red-400"
@@ -717,7 +698,7 @@ export function ElizaAgentActions({
                   })}
                 </BrandButton>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -802,7 +783,7 @@ export function ElizaAgentActions({
           <AlertDialogHeader>
             <AlertDialogTitle className="text-txt-strong">
               {t("cloud.containers.agentActions.upgradeTitle", {
-                defaultValue: "Upgrade to a dedicated agent?",
+                defaultValue: "Upgrade to a Dedicated Agent?",
               })}
             </AlertDialogTitle>
             {upgradeQuote ? (
@@ -810,7 +791,7 @@ export function ElizaAgentActions({
                 <span className="block">
                   {t("cloud.containers.agentActions.upgradeBody1", {
                     defaultValue:
-                      "Your Eliza moves to private, always-on compute. Dedicated hosting uses {{daily}} per day ({{rate}}) while running.",
+                      "Your Shared Agent becomes a private, always-on Dedicated Agent. Dedicated hosting uses {{daily}} per day ({{rate}}) while running.",
                     daily: formatUSD(upgradeQuote.dailyRateUsd),
                     rate: formatHourlyRate(upgradeQuote.hourlyRateUsd),
                   })}
@@ -878,7 +859,7 @@ export function ElizaAgentActions({
                 }}
               >
                 {t("cloud.containers.agentActions.addCredits", {
-                  defaultValue: "Add credits",
+                  defaultValue: "Add funds to upgrade",
                 })}
               </Button>
             )}
@@ -944,6 +925,6 @@ export function ElizaAgentActions({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </BrandCard>
+    </>
   );
 }
