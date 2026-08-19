@@ -360,6 +360,42 @@ describe("tileScreenshot — overlap math", () => {
     ).rejects.toThrow(new RegExp(`exceeds ${MAX_SCREEN_TILES}`));
     expect(performance.now() - started).toBeLessThan(50);
   });
+
+  it("allows exactly the configured tile ceiling to reach image validation", async () => {
+    const invalidPng = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+    await expect(
+      tileScreenshot(
+        {
+          displayId: "x",
+          width: 32 * 64,
+          height: 32 * 64,
+          pngBytes: invalidPng,
+        },
+        { maxEdge: 64, overlapFraction: 0 },
+      ),
+    ).rejects.not.toThrow(/exceeds/);
+  });
+
+  it("rejects the first grid above the tile ceiling before image validation", async () => {
+    const invalidPng = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+    await expect(
+      tileScreenshot(
+        {
+          displayId: "x",
+          width: 41 * 64,
+          height: 25 * 64,
+          pngBytes: invalidPng,
+        },
+        { maxEdge: 64, overlapFraction: 0 },
+      ),
+    ).rejects.toThrow(
+      new RegExp(`\\(${MAX_SCREEN_TILES + 1}\\) exceeds ${MAX_SCREEN_TILES}`),
+    );
+  });
 });
 
 describe("reconstructAbsoluteCoords", () => {
