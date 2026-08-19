@@ -101,7 +101,12 @@ export class TalkModeWeb extends WebPlugin {
       };
 
       recognition.onend = () => {
-        if (this.enabled && this.state === "listening") {
+        // Chrome ends a continuous session spontaneously, including mid-
+        // utterance while state is "speaking". Recognition is never paused
+        // during speak (it keeps capturing), so restart whenever the session
+        // is still enabled; gating on state === "listening" would swallow a
+        // mid-TTS onend and leave the recognizer permanently dead (#22369).
+        if (this.enabled) {
           // Restart recognition if still enabled
           try {
             this.recognition?.start();
