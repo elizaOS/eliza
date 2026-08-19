@@ -20,12 +20,18 @@ const DATE_COLUMN_HINTS = ["date", "posted", "posted date", "transaction date"];
 const AMOUNT_COLUMN_HINTS = ["amount", "amount (usd)", "transaction amount"];
 const DEBIT_COLUMN_HINTS = ["debit", "withdrawal", "amount debit"];
 const CREDIT_COLUMN_HINTS = ["credit", "deposit", "amount credit"];
-// Standalone direction words that make a single column one-sided. "amount"/
-// "usd" are value qualifiers, not directions, and are stripped before a single
-// matched column is classified so "Amount Debit" reduces to a pure debit word.
+// Standalone direction words that make a single column one-sided. A header
+// naming exactly one of these families is a one-sided column regardless of any
+// surrounding value/descriptor tokens ("Debit Transaction Amount" is still a
+// pure debit column).
 const DEBIT_DIRECTION_WORDS = ["debit", "withdrawal"];
 const CREDIT_DIRECTION_WORDS = ["credit", "deposit"];
-const AMOUNT_QUALIFIER_WORDS = ["amount", "usd"];
+// Narrowly reviewed compound descriptors where a direction word is part of a
+// noun phrase, not an actual debit/credit direction. "Credit Card Amount" is a
+// signed statement amount, not a credit-only column; the same holds for a debit
+// card. These phrases are neutralized before direction words are counted so the
+// residual header carries no false direction signal.
+const NON_DIRECTIONAL_DESCRIPTORS = ["credit card", "debit card"];
 const MERCHANT_COLUMN_HINTS = [
   "merchant",
   "payee",
@@ -105,37 +111,38 @@ type DirectionColumnKind = "debit" | "credit" | "signed";
 
 /**
  * Classifies a single physical column that matched a debit and/or credit hint.
- * A header naming exactly one direction ("Amount Debit", "Withdrawal Amount") is
- * a one-sided column whose every row is that direction. A header naming both
- * directions ("Debit/Credit") or embedding a direction word inside an unrelated
- * noun ("Credit Card Amount") is a signed amount column where the value's sign
- * chooses the direction. Amount qualifier words are dropped first, so a residual
- * token that is neither a direction word nor a qualifier (e.g. "card") marks a
- * compound descriptor and forces the signed reading.
+ * A header naming exactly one direction family is a one-sided column whose every
+ * row is that direction, and descriptive amount tokens do not change that:
+ * "Amount Debit", "Withdrawal Amount", and "Debit Transaction Amount" are all
+ * one-sided debit. Signedness is inferred only from an explicit shared-direction
+ * header naming both families ("Debit/Credit", "Debit/Credit Amount") or from a
+ * narrowly reviewed compound descriptor in which the direction word is part of a
+ * noun ("Credit Card Amount"). Those descriptors are neutralized first, so a
+ * header whose only direction word belonged to such a phrase carries no
+ * surviving direction and is read as a signed amount whose sign chooses the
+ * direction. Arbitrary extra words ("transaction") never imply signedness.
  */
 function classifyDirectionColumn(headerCell: string): DirectionColumnKind {
-  const tokens = headerCell
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(
-      (token) => token.length > 0 && !AMOUNT_QUALIFIER_WORDS.includes(token),
-    );
+  let normalized = headerCell.toLowerCase();
+  for (const descriptor of NON_DIRECTIONAL_DESCRIPTORS) {
+    normalized = normalized.split(descriptor).join(" ");
+  }
+  const tokens = normalized.split(/[^a-z0-9]+/).filter((t) => t.length > 0);
   let debitWords = 0;
   let creditWords = 0;
-  let otherWords = 0;
   for (const token of tokens) {
     if (DEBIT_DIRECTION_WORDS.includes(token)) {
       debitWords += 1;
     } else if (CREDIT_DIRECTION_WORDS.includes(token)) {
       creditWords += 1;
-    } else {
-      otherWords += 1;
     }
   }
+  // Both families present, or no direction word survived descriptor removal:
+  // the sign of each value chooses the direction.
   if (debitWords > 0 && creditWords > 0) {
     return "signed";
   }
-  if (otherWords > 0) {
+  if (debitWords === 0 && creditWords === 0) {
     return "signed";
   }
   return debitWords > 0 ? "debit" : "credit";

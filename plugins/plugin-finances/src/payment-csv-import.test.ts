@@ -261,6 +261,71 @@ describe("parseTransactionsCsv", () => {
     });
   });
 
+  it("treats one-sided directional columns with descriptive amount tokens as one-sided, not signed", () => {
+    // Regression for the re-review at 123d1980: classifyDirectionColumn must not
+    // infer signedness from arbitrary extra words. A header with exactly one
+    // direction family plus a descriptor token ("transaction") that also matches
+    // the parser's "transaction amount" hint is still a one-sided column, so a
+    // positive value keeps the header's declared direction on every row.
+    const debitHeaders = [
+      "Debit Transaction Amount",
+      "Transaction Amount Debit",
+      "Withdrawal Transaction Amount",
+    ];
+    for (const headerCell of debitHeaders) {
+      const r = parseTransactionsCsv(
+        `Date,Payee,${headerCell}\n2026-01-15,Coffee,4.50\n2026-01-16,Gas,20.00\n`,
+      );
+      expect(r.errors).toEqual([]);
+      expect(r.transactions).toHaveLength(2);
+      expect(r.transactions[0]).toMatchObject({
+        direction: "debit",
+        amountUsd: 4.5,
+      });
+      expect(r.transactions[1]).toMatchObject({
+        direction: "debit",
+        amountUsd: 20,
+      });
+    }
+
+    const creditHeaders = [
+      "Credit Transaction Amount",
+      "Transaction Amount Credit",
+      "Deposit Transaction Amount",
+    ];
+    for (const headerCell of creditHeaders) {
+      const r = parseTransactionsCsv(
+        `Date,Payee,${headerCell}\n2026-02-01,Payroll,2500.00\n`,
+      );
+      expect(r.errors).toEqual([]);
+      expect(r.transactions).toHaveLength(1);
+      expect(r.transactions[0]).toMatchObject({
+        direction: "credit",
+        amountUsd: 2500,
+      });
+    }
+  });
+
+  it("keeps 'Credit Card Amount'/'Debit Card Amount' compound descriptors as signed", () => {
+    // The narrowly reviewed compound-descriptor rule: "credit"/"debit" here name
+    // a card noun, not a direction, so the sign of each value decides direction.
+    for (const headerCell of ["Credit Card Amount", "Debit Card Amount"]) {
+      const r = parseTransactionsCsv(
+        `Date,Payee,${headerCell}\n2026-01-15,Coffee,-4.50\n2026-01-16,Refund,10.00\n`,
+      );
+      expect(r.errors).toEqual([]);
+      expect(r.transactions).toHaveLength(2);
+      expect(r.transactions[0]).toMatchObject({
+        direction: "debit",
+        amountUsd: 4.5,
+      });
+      expect(r.transactions[1]).toMatchObject({
+        direction: "credit",
+        amountUsd: 10,
+      });
+    }
+  });
+
   it("normalizes US-format and 2-digit-year dates to a 2026 calendar date", () => {
     const r = parseTransactionsCsv("Date,Amount,Merchant\n1/16/26,-5,Gym\n");
     expect(r.transactions).toHaveLength(1);
