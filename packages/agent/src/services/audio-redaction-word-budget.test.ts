@@ -8,11 +8,13 @@ import { describe, expect, it } from "bun:test";
 import {
   AudioRedactionWordBudgetError,
   assertAudioRedactionInputBudget,
+  assertAudioRedactionWordBudget,
   MAX_AUDIO_REDACTION_MATCH_CANDIDATES,
   MAX_AUDIO_REDACTION_NORMALIZED_CHARS,
   MAX_AUDIO_REDACTION_PII_NORMALIZED_CHARS,
   MAX_AUDIO_REDACTION_PII_SPAN_CHARS,
   MAX_AUDIO_REDACTION_PII_SPANS,
+  MAX_AUDIO_REDACTION_RAW_CHARS,
   MAX_AUDIO_REDACTION_WORD_CHARS,
   MAX_AUDIO_REDACTION_WORDS,
   selectAudioRedactionSentinels,
@@ -145,6 +147,39 @@ describe("selectAudioRedactionSentinels", () => {
     );
     expect(() => selectAudioRedactionSentinels(words, [])).toThrow(
       /normalized timed-word stream exceeds/,
+    );
+  });
+
+  it("fails closed on aggregate raw punctuation before normalization", () => {
+    const words = Array.from(
+      {
+        length:
+          Math.floor(
+            MAX_AUDIO_REDACTION_RAW_CHARS / MAX_AUDIO_REDACTION_WORD_CHARS,
+          ) + 1,
+      },
+      (_, index) => ({
+        text: "!".repeat(MAX_AUDIO_REDACTION_WORD_CHARS),
+        startMs: index,
+        endMs: index + 1,
+      }),
+    );
+    try {
+      assertAudioRedactionWordBudget(words);
+      throw new Error("expected AUDIO_REDACTION_UNBOUNDED");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AudioRedactionWordBudgetError);
+      expect((error as AudioRedactionWordBudgetError).code).toBe(
+        "AUDIO_REDACTION_UNBOUNDED",
+      );
+      expect((error as Error).message).toMatch(/raw timed-word stream exceeds/);
+      expect((error as AudioRedactionWordBudgetError).context).toEqual({
+        rawChars: words.length * MAX_AUDIO_REDACTION_WORD_CHARS,
+        maxRawChars: MAX_AUDIO_REDACTION_RAW_CHARS,
+      });
+    }
+    expect(() => assertAudioRedactionInputBudget(words, [])).toThrow(
+      /raw timed-word stream exceeds/,
     );
   });
 
