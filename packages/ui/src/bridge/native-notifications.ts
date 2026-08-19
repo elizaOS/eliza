@@ -189,7 +189,7 @@ export function initLocalNotificationTapRouting(
         const deepLink = localNotificationTapDeepLink(action);
         if (deepLink) {
           logger.info(
-            { src: "local-notification-tap", deepLink },
+            { src: "local-notification-tap" },
             "[local-notification-tap] routed native notification action",
           );
           deps.navigate(deepLink);

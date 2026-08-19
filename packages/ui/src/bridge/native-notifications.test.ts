@@ -8,9 +8,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { platform, plugins } = vi.hoisted(() => ({
+const { loggerInfo, platform, plugins } = vi.hoisted(() => ({
+  loggerInfo: vi.fn(),
   platform: { value: "android" },
   plugins: {} as Record<string, unknown>,
+}));
+
+vi.mock("@elizaos/logger", () => ({
+  logger: { info: loggerInfo },
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -330,6 +335,13 @@ describe("initLocalNotificationTapRouting", () => {
 
     expect(addListener).toHaveBeenCalledOnce();
     expect(navigate).toHaveBeenCalledWith("/notifications");
+    expect(loggerInfo).toHaveBeenCalledWith(
+      { src: "local-notification-tap" },
+      "[local-notification-tap] routed native notification action",
+    );
+    expect(JSON.stringify(loggerInfo.mock.calls)).not.toContain(
+      "/notifications",
+    );
   });
 
   it("deduplicates concurrent initialization before invoking the bridge", async () => {
