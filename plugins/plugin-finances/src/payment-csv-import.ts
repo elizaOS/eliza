@@ -20,6 +20,12 @@ const DATE_COLUMN_HINTS = ["date", "posted", "posted date", "transaction date"];
 const AMOUNT_COLUMN_HINTS = ["amount", "amount (usd)", "transaction amount"];
 const DEBIT_COLUMN_HINTS = ["debit", "withdrawal", "amount debit"];
 const CREDIT_COLUMN_HINTS = ["credit", "deposit", "amount credit"];
+// Standalone direction words that make a single column one-sided. "amount"/
+// "usd" are value qualifiers, not directions, and are stripped before a single
+// matched column is classified so "Amount Debit" reduces to a pure debit word.
+const DEBIT_DIRECTION_WORDS = ["debit", "withdrawal"];
+const CREDIT_DIRECTION_WORDS = ["credit", "deposit"];
+const AMOUNT_QUALIFIER_WORDS = ["amount", "usd"];
 const MERCHANT_COLUMN_HINTS = [
   "merchant",
   "payee",
@@ -93,6 +99,46 @@ export function parseCsv(text: string): string[][] {
     rows.push(current);
   }
   return rows.filter((row) => row.some((value) => value.trim().length > 0));
+}
+
+type DirectionColumnKind = "debit" | "credit" | "signed";
+
+/**
+ * Classifies a single physical column that matched a debit and/or credit hint.
+ * A header naming exactly one direction ("Amount Debit", "Withdrawal Amount") is
+ * a one-sided column whose every row is that direction. A header naming both
+ * directions ("Debit/Credit") or embedding a direction word inside an unrelated
+ * noun ("Credit Card Amount") is a signed amount column where the value's sign
+ * chooses the direction. Amount qualifier words are dropped first, so a residual
+ * token that is neither a direction word nor a qualifier (e.g. "card") marks a
+ * compound descriptor and forces the signed reading.
+ */
+function classifyDirectionColumn(headerCell: string): DirectionColumnKind {
+  const tokens = headerCell
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(
+      (token) => token.length > 0 && !AMOUNT_QUALIFIER_WORDS.includes(token),
+    );
+  let debitWords = 0;
+  let creditWords = 0;
+  let otherWords = 0;
+  for (const token of tokens) {
+    if (DEBIT_DIRECTION_WORDS.includes(token)) {
+      debitWords += 1;
+    } else if (CREDIT_DIRECTION_WORDS.includes(token)) {
+      creditWords += 1;
+    } else {
+      otherWords += 1;
+    }
+  }
+  if (debitWords > 0 && creditWords > 0) {
+    return "signed";
+  }
+  if (otherWords > 0) {
+    return "signed";
+  }
+  return debitWords > 0 ? "debit" : "credit";
 }
 
 function findColumn(
@@ -307,54 +353,68 @@ export function parseTransactionsCsv(
   );
   let debitIndex = findColumn(header, DEBIT_COLUMN_HINTS);
   let creditIndex = findColumn(header, CREDIT_COLUMN_HINTS);
-  // A single physical column can satisfy multiple hint families at once:
-  // "Debit/Credit Amount" matches amount+debit+credit and "Credit Card Amount"
-  // matches amount+credit. Such a column is a signed amount, not a
-  // direction-specific column, so separate debit/credit mode is only correct
-  // when debit and credit resolve to two DISTINCT physical columns.
-  const hasSeparateDebitCredit =
-    debitIndex >= 0 && creditIndex >= 0 && debitIndex !== creditIndex;
-  // A lone column that matched both direction hints (e.g. "Debit/Credit") is a
-  // signed amount column; promote it so parseAmount reads its sign instead of
-  // treating every value as a debit.
-  if (
-    !hasSeparateDebitCredit &&
-    debitIndex >= 0 &&
-    debitIndex === creditIndex &&
-    amountIndex < 0
-  ) {
-    amountIndex = debitIndex;
-  }
-  // When debit/credit collapse onto a single signed amount column, clear the
-  // direction indices so parseAmount never falls through to a direction-only
-  // branch that would discard the sign.
-  if (!hasSeparateDebitCredit && amountIndex >= 0) {
-    if (debitIndex === amountIndex) {
-      debitIndex = -1;
-    }
-    if (creditIndex === amountIndex) {
-      creditIndex = -1;
-    }
-  }
-  // The AMOUNT substring fallback in findColumn matches a separate
-  // "Amount Debit"/"Amount Credit" bank header (both contain "amount").
-  // Left alone, that single-amount branch reads the debit column as a signed
-  // amount — flipping debit rows to credit and dropping credit-only rows.
-  // Drop an inferred amount index that points at one of two DISTINCT
-  // debit/credit columns so the intended separate-column path runs. An
-  // explicit options.amountColumn match is honored and never collapsed here.
   const amountExplicit =
     options.amountColumn !== undefined &&
     amountIndex >= 0 &&
     header[amountIndex]?.trim().toLowerCase() ===
       options.amountColumn.trim().toLowerCase();
-  if (
-    !amountExplicit &&
-    amountIndex >= 0 &&
-    hasSeparateDebitCredit &&
-    (amountIndex === debitIndex || amountIndex === creditIndex)
-  ) {
-    amountIndex = -1;
+  // Two DISTINCT physical columns are a genuine separate debit/credit layout.
+  // Anything else is at most one matched direction column, resolved below.
+  const hasSeparateDebitCredit =
+    debitIndex >= 0 && creditIndex >= 0 && debitIndex !== creditIndex;
+  if (hasSeparateDebitCredit) {
+    // The AMOUNT substring fallback in findColumn also matches a separate
+    // "Amount Debit"/"Amount Credit" bank header (both contain "amount"). Left
+    // alone, the single-amount branch reads the debit column as a signed amount
+    // — flipping debit rows to credit and dropping credit-only rows. Drop an
+    // inferred amount index pointing at either directional column so the
+    // separate-column path runs. An explicit options.amountColumn match is
+    // honored and never collapsed.
+    if (
+      !amountExplicit &&
+      amountIndex >= 0 &&
+      (amountIndex === debitIndex || amountIndex === creditIndex)
+    ) {
+      amountIndex = -1;
+    }
+  } else {
+    // At most one physical column matched a direction hint. It is either a
+    // one-sided directional column (every row is that direction) or a signed
+    // amount column whose sign chooses direction. classifyDirectionColumn tells
+    // them apart: "Amount Debit"/"Withdrawal Amount" are one-sided debit while
+    // "Debit/Credit"/"Credit Card Amount" are signed. An explicit amountColumn
+    // pointed at that column keeps the signed reading the user asked for.
+    const directionIndex = debitIndex >= 0 ? debitIndex : creditIndex;
+    if (directionIndex >= 0) {
+      const kind =
+        amountExplicit && amountIndex === directionIndex
+          ? "signed"
+          : classifyDirectionColumn(header[directionIndex]);
+      if (kind === "signed") {
+        // Promote the shared column to the signed amount path and clear the
+        // direction indices so parseAmount reads the sign instead of treating
+        // every row as one direction.
+        if (amountIndex < 0) {
+          amountIndex = directionIndex;
+        }
+        debitIndex = -1;
+        creditIndex = -1;
+      } else if (kind === "debit") {
+        debitIndex = directionIndex;
+        creditIndex = -1;
+        // Drop a coincident amount index so the debit-first branch runs and a
+        // positive value stays a debit instead of flipping to credit.
+        if (amountIndex === directionIndex) {
+          amountIndex = -1;
+        }
+      } else {
+        creditIndex = directionIndex;
+        debitIndex = -1;
+        if (amountIndex === directionIndex) {
+          amountIndex = -1;
+        }
+      }
+    }
   }
   const merchantIndex = resolveColumnIndex(
     header,

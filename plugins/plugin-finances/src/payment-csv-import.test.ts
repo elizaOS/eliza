@@ -193,6 +193,74 @@ describe("parseTransactionsCsv", () => {
     });
   });
 
+  it("treats a lone 'Amount Debit' column as one-sided debit, not signed", () => {
+    // Regression for the re-review at 66739d13: a single directional column
+    // must classify every row by the header's declared direction, not by sign.
+    // The prior guard dropped the amount index onto the signed branch, so a
+    // positive debit value was wrongly reported as a credit.
+    const r = parseTransactionsCsv(
+      "Date,Payee,Amount Debit\n2026-01-15,Coffee,4.50\n2026-01-16,Gas,20.00\n",
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.transactions).toHaveLength(2);
+    expect(r.transactions[0]).toMatchObject({
+      direction: "debit",
+      amountUsd: 4.5,
+    });
+    expect(r.transactions[1]).toMatchObject({
+      direction: "debit",
+      amountUsd: 20,
+    });
+  });
+
+  it("treats a lone 'Debit Amount' column as one-sided debit", () => {
+    const r = parseTransactionsCsv(
+      "Date,Payee,Debit Amount\n2026-01-15,Coffee,4.50\n",
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.transactions).toHaveLength(1);
+    expect(r.transactions[0]).toMatchObject({
+      direction: "debit",
+      amountUsd: 4.5,
+    });
+  });
+
+  it("treats a lone 'Withdrawal Amount' column as one-sided debit", () => {
+    const r = parseTransactionsCsv(
+      "Date,Payee,Withdrawal Amount\n2026-01-15,ATM,60.00\n",
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.transactions).toHaveLength(1);
+    expect(r.transactions[0]).toMatchObject({
+      direction: "debit",
+      amountUsd: 60,
+    });
+  });
+
+  it("treats a lone 'Amount Credit' column as one-sided credit", () => {
+    const r = parseTransactionsCsv(
+      "Date,Payee,Amount Credit\n2026-02-01,Payroll,2500.00\n",
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.transactions).toHaveLength(1);
+    expect(r.transactions[0]).toMatchObject({
+      direction: "credit",
+      amountUsd: 2500,
+    });
+  });
+
+  it("treats a lone 'Deposit Amount' column as one-sided credit", () => {
+    const r = parseTransactionsCsv(
+      "Date,Payee,Deposit Amount\n2026-02-01,Refund,10.00\n",
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.transactions).toHaveLength(1);
+    expect(r.transactions[0]).toMatchObject({
+      direction: "credit",
+      amountUsd: 10,
+    });
+  });
+
   it("normalizes US-format and 2-digit-year dates to a 2026 calendar date", () => {
     const r = parseTransactionsCsv("Date,Amount,Merchant\n1/16/26,-5,Gym\n");
     expect(r.transactions).toHaveLength(1);
