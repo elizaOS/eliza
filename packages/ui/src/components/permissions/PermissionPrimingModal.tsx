@@ -190,6 +190,7 @@ function PermissionPrimingModalView({
             onOpenSettings={() => openSettings(active.id)}
             onRecheck={() => void recheck(active.id)}
             onSkipAll={skipAll}
+            cloudOnly={branding.cloudOnly === true}
           />
         ) : (
           <div
@@ -218,6 +219,7 @@ interface PrimingCardProps {
   onOpenSettings: () => void | Promise<void>;
   onRecheck: () => void;
   onSkipAll: () => void;
+  cloudOnly: boolean;
 }
 
 function PrimingCard({
@@ -234,6 +236,7 @@ function PrimingCard({
   onOpenSettings,
   onRecheck,
   onSkipAll,
+  cloudOnly,
 }: PrimingCardProps): React.JSX.Element {
   const t = useAppSelector((s) => s.t);
   const copy = PRIMING_COPY[id];
@@ -246,7 +249,17 @@ function PrimingCard({
         permission: fallbackName,
       });
   const rationale = copy
-    ? t(copy.rationaleKey, { defaultValue: copy.rationale })
+    ? t(
+        id === "microphone" && cloudOnly
+          ? "permissionpriming.microphone.cloudRationale"
+          : copy.rationaleKey,
+        {
+          defaultValue:
+            id === "microphone" && cloudOnly
+              ? "Turn on your microphone so you can speak instead of type. Audio is sent to Eliza Cloud only when you use voice."
+              : copy.rationale,
+        },
+      )
     : t("permissionpriming.generic.rationale", {
         defaultValue:
           "Enable this permission so I can complete the request you just made.",

@@ -28,6 +28,102 @@ import { preOpenWindow } from "../utils/openExternalUrl";
 
 export const CLOUD_LOGIN_POPUP_NAME = "eliza-cloud-auth";
 
+/** Result shape shared by the direct Cloud session warm-up and login hook. */
+export interface DirectCloudLoginSession {
+  ok: boolean;
+  apiBase?: string;
+  browserUrl?: string;
+  sessionId?: string;
+  error?: string;
+}
+
+type DirectCloudLoginSessionStarter = () => Promise<DirectCloudLoginSession>;
+
+// CLI sessions live for ten minutes server-side. Stop offering a prepared
+// session after five so a user who clicks near the cache boundary still has
+// the full five-minute desktop completion window once Safari opens.
+const PREPARED_DESKTOP_LOGIN_MAX_AGE_MS = 5 * 60_000;
+
+let preparedDesktopLogin: {
+  baseKey: string;
+  preparedAt: number;
+  request: Promise<DirectCloudLoginSession>;
+} | null = null;
+
+function cloudBaseKey(cloudApiBase: string): string {
+  return cloudApiBase.trim().replace(/\/+$/, "");
+}
+
+function isPreparedDesktopLoginFresh(
+  prepared: NonNullable<typeof preparedDesktopLogin>,
+  cloudApiBase: string,
+): boolean {
+  return (
+    prepared.baseKey === cloudBaseKey(cloudApiBase) &&
+    Date.now() - prepared.preparedAt < PREPARED_DESKTOP_LOGIN_MAX_AGE_MS
+  );
+}
+
+/**
+ * Begin the server-issued CLI-session request while the desktop sign-in CTA is
+ * visible. The click can then hand the finished URL straight to macOS instead
+ * of putting a database/network round trip between the gesture and Safari.
+ * Plain web and native mobile do not pre-create unused sessions here.
+ */
+export function prepareDesktopCloudLoginSession(
+  cloudApiBase: string,
+  start: DirectCloudLoginSessionStarter,
+): Promise<DirectCloudLoginSession> | null {
+  if (!isElectrobunRuntime()) return null;
+  if (
+    preparedDesktopLogin &&
+    isPreparedDesktopLoginFresh(preparedDesktopLogin, cloudApiBase)
+  ) {
+    return preparedDesktopLogin.request;
+  }
+
+  preparedDesktopLogin = null;
+  const request = Promise.resolve().then(start);
+  preparedDesktopLogin = {
+    baseKey: cloudBaseKey(cloudApiBase),
+    preparedAt: Date.now(),
+    request,
+  };
+
+  // A failed speculative request must not poison the real click. Clear it so
+  // handleCloudLogin starts a fresh request when the user acts.
+  void request.then(
+    (result) => {
+      if (!result.ok && preparedDesktopLogin?.request === request) {
+        preparedDesktopLogin = null;
+      }
+    },
+    () => {
+      if (preparedDesktopLogin?.request === request) {
+        preparedDesktopLogin = null;
+      }
+    },
+  );
+  return request;
+}
+
+/** Consume a fresh prepared session exactly once for the matching Cloud base. */
+export function takePreparedDesktopCloudLoginSession(
+  cloudApiBase: string,
+): Promise<DirectCloudLoginSession> | null {
+  const prepared = preparedDesktopLogin;
+  preparedDesktopLogin = null;
+  if (!prepared || !isPreparedDesktopLoginFresh(prepared, cloudApiBase)) {
+    return null;
+  }
+  return prepared.request;
+}
+
+/** Test isolation for the module-level warm-session slot. */
+export function __resetPreparedDesktopCloudLoginSessionForTests(): void {
+  preparedDesktopLogin = null;
+}
+
 function isCapacitorNativeRuntime(): boolean {
   if (typeof globalThis === "undefined") return false;
   const capacitor = (
@@ -81,6 +177,10 @@ export function hasSameOriginStewardLogin(): boolean {
  * a popup/tab the flow would immediately abandon.
  */
 export function preOpenCloudLoginWindow(): Window | null {
+  // Electrobun must not create a renderer popup: `window.open` is hosted by
+  // the app WebView, not the system browser. The eventual login URL goes
+  // through desktopOpenExternal instead (see useCloudState).
+  if (isElectrobunRuntime()) return null;
   if (
     isPlainWebPlatform() &&
     hasSameOriginStewardLogin() &&

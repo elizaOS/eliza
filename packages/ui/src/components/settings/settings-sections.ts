@@ -239,6 +239,8 @@ interface BuiltinSectionDefinition {
   developerOnly?: boolean;
   /** Hide on the cloud mobile build (no host machine). */
   hideOnCloud?: boolean;
+  /** Hide when Eliza Cloud owns the active runtime configuration. */
+  hideOnManagedCloud?: boolean;
   /** Show only for a managed Eliza Cloud runtime target. */
   cloudOnly?: boolean;
   /**
@@ -303,6 +305,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     tone: "accent",
     hue: "accent",
     labelKey: "settings.sections.aimodel.label",
+    hideOnManagedCloud: true,
     Component: ProviderSwitcher,
   },
   {
@@ -587,6 +590,7 @@ function toSettingsSectionDef(
     bodyClassName: def.bodyClassName,
     developerOnly: def.developerOnly,
     hideOnCloud: def.hideOnCloud,
+    hideOnManagedCloud: def.hideOnManagedCloud,
     cloudOnly: def.cloudOnly,
     order: def.order ?? order,
     Component: def.Component,

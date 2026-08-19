@@ -26,6 +26,9 @@ import type { ShellPhase } from "./shell-state";
 
 export interface HomePillProps {
   phase: ShellPhase;
+  /** Whether the chat overlay is actually open. Voice activity can enter
+   *  `responding` while the pill remains closed, so phase cannot own this. */
+  open?: boolean;
   onOpen: () => void;
   onClose: () => void;
   /** Begin hold-to-talk capture (wired to `startRecording("ptt")`). When
@@ -49,6 +52,9 @@ export interface HomePillProps {
    *  and listening lanes stay compact until then so WKWebView cannot clip them
    *  into the resting 96px window. Web callers leave this unset. */
   previewHostReady?: boolean;
+  /** Whether hovering may render HomePill's lightweight visual preview. Hosts
+   *  that mount the real ChatOverlay input detent must disable this duplicate. */
+  showComposerPreview?: boolean;
 }
 
 /** How long the pointer must stay down before a press becomes a hold. Above
@@ -113,6 +119,7 @@ const PROCESS_DOTS = [
  */
 export function HomePill({
   phase,
+  open,
   onOpen,
   onClose,
   onHoldStart,
@@ -122,15 +129,16 @@ export function HomePill({
   signingIn = false,
   onPreviewHoverChange,
   previewHostReady = true,
+  showComposerPreview = true,
 }: HomePillProps): React.JSX.Element {
   const { appName } = useBranding();
   const needsAuth = phase === "needs-auth";
-  // The pill reads as "open" (its click will close) only for the overlay
-  // surfaces. `listening` is deliberately NOT included: hold-to-talk runs with
-  // the overlay closed, and treating it as open would flash the label/pressed
-  // state during every hold (#20483).
-  const isOpen = phase === "summoned" || phase === "responding";
-  const previewEligible = phase === "idle" || needsAuth;
+  // Hosts with a controller must pass its real overlay state. The phase-only
+  // fallback preserves standalone stories and consumers, but cannot distinguish
+  // a closed-pill voice response from a response inside an open chat.
+  const isOpen = open ?? (phase === "summoned" || phase === "responding");
+  const previewEligible =
+    showComposerPreview && (phase === "idle" || needsAuth);
   const [previewHovered, setPreviewHovered] = React.useState(false);
 
   const setPreviewHover = React.useCallback(

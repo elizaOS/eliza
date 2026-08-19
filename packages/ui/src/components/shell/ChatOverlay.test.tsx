@@ -36,8 +36,14 @@ import {
 // The resting overlay's suggestion strip fetches model suggestions via the
 // shared client; stub it so the strip stays on its static fallback in tests.
 vi.mock("../../api/client", () => ({
+  ElizaClient: class {
+    fetch = vi.fn();
+  },
   client: {
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
+    // Shell capability gates consult the configured agent base before mounting
+    // the composer-adjacent provider indicator.
+    getBaseUrl: vi.fn(() => ""),
     // Transcription archival is best-effort and fire-and-forget; resolve so the
     // attachment path (the user-facing behavior) is what the test asserts.
     createTranscript: vi
@@ -58,6 +64,19 @@ vi.mock("../../utils/clipboard", () => ({
 
 vi.mock("../../chat/report-composer-activity", () => ({
   reportComposerActivity: vi.fn(),
+}));
+
+const desktopBridgeEventHandlers = vi.hoisted(
+  () => new Map<string, (payload: unknown) => void>(),
+);
+
+vi.mock("../../hooks/useDesktopBridgeEvent", () => ({
+  useDesktopBridgeEvent: (
+    options: { rpcMessage: string },
+    handler: (payload: unknown) => void,
+  ) => {
+    desktopBridgeEventHandlers.set(options.rpcMessage, handler);
+  },
 }));
 
 import * as React from "react";
@@ -173,6 +192,12 @@ function makeController(
     clearConversation: vi.fn(),
     ...overrides,
   } as unknown as ShellController;
+}
+
+function emitDesktopWindowBlur(): void {
+  const handler = desktopBridgeEventHandlers.get("desktopWindowBlur");
+  expect(handler).toBeTypeOf("function");
+  act(() => handler?.(undefined));
 }
 
 /**
@@ -1797,6 +1822,25 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("collapses an open desktop chat when the user clicks another window", () => {
+    const onStateChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        onStateChange={onStateChange}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
+
+    emitDesktopWindowBlur();
+
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+  });
+
   it("cedes taps to a layer painted ABOVE the chat (stacked dialog) instead of collapsing", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
@@ -2375,6 +2419,65 @@ describe("ChatOverlay", () => {
     expect(screen.queryByText("Record long-form transcript…")).toBeNull();
     expect(screen.queryByText("Enable camera")).toBeNull();
     expect(screen.queryByText("Stop transcribing")).toBeNull();
+  });
+
+  it("grows only the native input host height while the portaled chat-actions menu is open", () => {
+    const onStateChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        onStateChange={onStateChange}
+      />,
+    );
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(screen.getByText("Upload file")).toBeTruthy();
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT_MENU");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+  });
+
+  it("releases the temporary menu host bounds when the desktop window loses focus", () => {
+    const onStateChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        onStateChange={onStateChange}
+      />,
+    );
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    expect(screen.getByText("Upload file")).toBeTruthy();
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT_MENU");
+
+    emitDesktopWindowBlur();
+
+    expect(screen.queryByText("Upload file")).toBeNull();
+    expect(onStateChange).toHaveBeenLastCalledWith("INPUT");
   });
 
   it("returns to Home from the chat-actions menu", () => {
@@ -2977,6 +3080,43 @@ describe("ChatOverlay", () => {
     // pill→input morph but made inert (opacity 0 + `inert`) so it's unreachable
     // behind the pill capsule.
     expect(content.hasAttribute("inert")).toBe(true);
+  });
+
+  it("returns an idle desktop input bar to the existing pill after 10 seconds", () => {
+    vi.useFakeTimers();
+    try {
+      render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
+      const sheet = screen.getByTestId("chat-sheet");
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+      expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
+
+      act(() => vi.advanceTimersByTime(9_999));
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+      act(() => vi.advanceTimersByTime(1));
+      expect(sheet.getAttribute("data-detent")).toBe("pill");
+      expect(sheet.getAttribute("data-chat-state")).toBe("CLOSED");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restarts the desktop input idle timer when the user interacts", () => {
+    vi.useFakeTimers();
+    try {
+      render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
+      const sheet = screen.getByTestId("chat-sheet");
+
+      act(() => vi.advanceTimersByTime(9_000));
+      fireEvent.pointerDown(screen.getByTestId("chat-composer-row"));
+      act(() => vi.advanceTimersByTime(9_999));
+      expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+      act(() => vi.advanceTimersByTime(1));
+      expect(sheet.getAttribute("data-detent")).toBe("pill");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the collapsed pill handle non-interactive while the input is formed", () => {

@@ -13,6 +13,7 @@ import {
   type HydrateConversationClient,
   type HydrateInitialConversationDeps,
   hydrateInitialConversation,
+  settleConversationHydrationForSend,
   shouldSeedSyntheticConversationGreeting,
 } from "./useChatCallbacks";
 
@@ -324,5 +325,29 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     const { deps } = makeDeps(client);
 
     expect(await hydrateInitialConversation(deps)).toBeNull();
+  });
+});
+
+describe("settleConversationHydrationForSend", () => {
+  it("lets a completed startup restore retain conversation ownership", async () => {
+    const taskRef = { current: Promise.resolve<string | null>("c1") };
+    const epochRef = { current: 4 };
+
+    await settleConversationHydrationForSend(taskRef, epochRef, 100);
+
+    expect(epochRef.current).toBe(4);
+    expect(taskRef.current).toBeNull();
+  });
+
+  it("invalidates a hung restore before the send claims conversation ownership", async () => {
+    const taskRef = {
+      current: new Promise<string | null>(() => {}),
+    };
+    const epochRef = { current: 4 };
+
+    await settleConversationHydrationForSend(taskRef, epochRef, 0);
+
+    expect(epochRef.current).toBe(5);
+    expect(taskRef.current).toBeNull();
   });
 });

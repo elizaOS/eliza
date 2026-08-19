@@ -74,6 +74,10 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     clientMock.getBootProgress.mockResolvedValue(null);
     clientMock.getStatus.mockResolvedValue(RUNNING_STATUS);
     clientMock.hasToken.mockReturnValue(true);
+    clientMock.fetch.mockResolvedValue({
+      state: "starting",
+      canRespond: false,
+    });
     // Default: no persisted server (behaves as non-cloud for the shared paths).
     persistenceMock.loadPersistedActiveServer.mockReturnValue(null);
   });
@@ -166,6 +170,37 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
       ([e]) => e.type === "AGENT_RUNNING",
     );
     expect(runningDispatches).toHaveLength(1);
+  });
+
+  it("advances from the genuine proxy status when conversations are slow or unavailable", async () => {
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Eliza Cloud",
+    });
+    clientMock.listConversations.mockRejectedValue({
+      status: 404,
+      message: "Agent not found",
+    });
+    clientMock.fetch.mockResolvedValue({ state: "running", canRespond: true });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    );
+
+    expect(clientMock.fetch).toHaveBeenCalledWith("/api/status", undefined, {
+      timeoutMs: 30_000,
+    });
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+    expect(deps.setStartupError).not.toHaveBeenCalled();
   });
 
   it("warms first, then advances: 404 → 404 → serving dispatches AGENT_RUNNING once", async () => {
@@ -303,7 +338,9 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     );
 
     // We fell back to /api/status once the 5xx streak crossed threshold.
-    expect(clientMock.fetch).toHaveBeenCalledWith("/api/status");
+    expect(clientMock.fetch).toHaveBeenCalledWith("/api/status", undefined, {
+      timeoutMs: 30_000,
+    });
     // And advanced to chat exactly once instead of stranding on the boot screen.
     const runningDispatches = dispatch.mock.calls.filter(
       ([e]) => e.type === "AGENT_RUNNING",
@@ -387,9 +424,9 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
       "cloud-managed",
     );
 
-    // A single blip never crossed the streak threshold, so /api/status was not
-    // consulted and no error was surfaced — it simply advanced when serving.
-    expect(clientMock.fetch).not.toHaveBeenCalled();
+    // The genuine proxy status is consulted concurrently on each warmup probe;
+    // its non-ready result does not turn a one-off list failure into an error.
+    expect(clientMock.fetch).toHaveBeenCalledTimes(2);
     expect(deps.setStartupError).not.toHaveBeenCalled();
     const runningDispatches = dispatch.mock.calls.filter(
       ([e]) => e.type === "AGENT_RUNNING",

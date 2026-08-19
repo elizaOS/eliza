@@ -265,6 +265,7 @@ export async function openDesktopLauncherWindow(): Promise<{
 export type DesktopBottomBarSurfaceState =
   | "CLOSED"
   | "INPUT"
+  | "INPUT_MENU"
   | "OPEN_UNDER_HALF"
   | "OPEN_HALF_OR_OVER"
   | "MAXIMIZED";

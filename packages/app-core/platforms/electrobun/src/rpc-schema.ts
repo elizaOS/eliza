@@ -1462,6 +1462,7 @@ export type ElizaDesktopRPCSchema = {
           state:
             | "CLOSED"
             | "INPUT"
+            | "INPUT_MENU"
             | "OPEN_UNDER_HALF"
             | "OPEN_HALF_OR_OVER"
             | "MAXIMIZED";

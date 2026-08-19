@@ -224,7 +224,9 @@ async function probeCloudProxyPassthrough(): Promise<PassthroughProbe> {
  */
 async function isCloudProxyStatusReady(): Promise<boolean> {
   try {
-    const status = await client.fetch<AgentStatus>("/api/status");
+    const status = await client.fetch<AgentStatus>("/api/status", undefined, {
+      timeoutMs: 30_000,
+    });
     return status?.state === "running" && status?.canRespond === true;
   } catch {
     return false;
@@ -661,11 +663,50 @@ async function runCloudManagedWarmup(
       return;
     }
 
-    const probe = await probeCloudProxyPassthrough();
+    // Both requests traverse the genuine per-agent proxy. A direct
+    // `/api/status` response with `running + canRespond` is as authoritative as
+    // a successful conversation list and is substantially cheaper for a
+    // returning shared Cloud agent whose list endpoint is cold or slow. Run
+    // them concurrently so startup pays one proxy wake, not serial 10-second
+    // timeouts. The status request has a 30s budget because production shared
+    // runtimes regularly answer just beyond the generic 10s client timeout.
+    const conversationProbe = probeCloudProxyPassthrough();
+    const statusProbe = isCloudProxyStatusReady();
+    const firstPositive = await Promise.race([
+      conversationProbe.then((probe) =>
+        probe.kind === "serving" ? "conversations" : null,
+      ),
+      statusProbe.then((ready) => (ready ? "status" : null)),
+    ]);
     if (cancelled.current || effectRunRef.current !== effectRunId) return;
 
-    if (probe.kind === "serving") {
+    if (firstPositive === "status") {
+      await advanceReady("status reports running and canRespond");
+      return;
+    }
+
+    if (firstPositive === "conversations") {
       // The passthrough answers → the warmed runtime is genuinely serving.
+      await advanceReady("conversations passthrough serving");
+      return;
+    }
+
+    // The first request completed without proving readiness. Await the other
+    // already-running request before classifying the iteration; this preserves
+    // the existing auth/error handling without making a positive fast signal
+    // wait for the slower endpoint.
+    const [probe, statusReady] = await Promise.all([
+      conversationProbe,
+      statusProbe,
+    ]);
+    if (cancelled.current || effectRunRef.current !== effectRunId) return;
+
+    if (statusReady) {
+      await advanceReady("status reports running and canRespond");
+      return;
+    }
+
+    if (probe.kind === "serving") {
       await advanceReady("conversations passthrough serving");
       return;
     }
@@ -687,19 +728,9 @@ async function runCloudManagedWarmup(
       // NOT treat it as a warming 404.
       consecutive5xx += 1;
       if (consecutive5xx >= PERSISTENT_5XX_THRESHOLD) {
-        // Confirm readiness off /api/status so a broken LIST endpoint alone
-        // can't strand a genuinely-serving agent on the boot screen.
-        const statusReady = await isCloudProxyStatusReady();
-        if (cancelled.current || effectRunRef.current !== effectRunId) return;
-        if (statusReady) {
-          logger.warn(
-            `[eliza][startup:init] cloud-managed conversations passthrough is persistently ${probe.status}, but /api/status reports canRespond — advancing to chat despite the broken list endpoint`,
-          );
-          await advanceReady(
-            `status canRespond despite conversations ${probe.status}`,
-          );
-          return;
-        }
+        // The concurrent status probe above already failed to confirm
+        // readiness. Do not issue the same potentially slow request a second
+        // time in this iteration.
         // Runtime is up (5xx, not 404) but neither the list read nor /status
         // can confirm it can serve. Surface an ACTIONABLE error with Retry
         // instead of spinning "initializing agent" to the absolute-max deadline.
