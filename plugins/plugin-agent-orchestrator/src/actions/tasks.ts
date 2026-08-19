@@ -3099,9 +3099,25 @@ async function runSpawnAgent(
     // correctly if a transport falls back to this text verbatim (the api
     // response path does when no callback fired), so no planner-directed
     // imperatives here.
+    // User-facing ack is a SHORT model-phrased line — the structured spawn
+    // status below stays planner-facing only. The verbose "Spawned coding
+    // sub-agent … working asynchronously" text reached normies verbatim
+    // (owner feedback 2026-08-19: dev-speak; wants "on it"-class acks).
+    const { text: spawnAckText } = await phraseForUser(
+      runtime,
+      {
+        intent: "notify",
+        facts: { label, working: true, resultWillFollow: true },
+        mustNotClaim: ["the work is finished"],
+      },
+      "on it.",
+    );
+    await callbackText(callback, spawnAckText, { voiced: true });
     return {
       success: true,
       text: `Spawned coding sub-agent "${label}" (${session.agentType}). It is working asynchronously — its result is not available yet and will arrive as a follow-up message.`,
+      userFacingText: spawnAckText,
+      verifiedUserFacing: true,
       // Terminate the planner loop after the first spawn fires.
       //
       // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the
