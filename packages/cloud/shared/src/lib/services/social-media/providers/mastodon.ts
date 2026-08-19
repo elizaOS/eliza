@@ -1,4 +1,4 @@
-// Coordinates cloud service mastodon behavior behind route handlers.
+/** Implements Mastodon publishing, media upload, and analytics for cloud social-media callers. */
 import type {
   AccountAnalytics,
   MediaAttachment,
@@ -10,6 +10,7 @@ import type {
   SocialMediaProvider,
 } from "../../../types/social-media";
 import { logger } from "../../../utils/logger";
+import { downloadSocialMediaBytes } from "../media-download";
 import { withRetry } from "../rate-limit";
 
 interface MastodonStatus {
@@ -101,8 +102,7 @@ async function uploadMedia(
   } else if (media.base64) {
     fileData = Buffer.from(media.base64, "base64");
   } else if (media.url) {
-    const response = await fetch(media.url);
-    fileData = Buffer.from(await response.arrayBuffer());
+    fileData = await downloadSocialMediaBytes(media.url);
   } else {
     throw new Error("No media data provided");
   }

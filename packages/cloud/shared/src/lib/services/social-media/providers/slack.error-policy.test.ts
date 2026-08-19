@@ -20,6 +20,7 @@
  */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { MediaAttachment, PostContent, SocialCredentials } from "../../../types/social-media";
+import * as realMediaDownload from "../media-download";
 import * as realRateLimit from "../rate-limit";
 
 // bun's `mock.restore()` (afterEach below) restores spies but does NOT undo
@@ -31,6 +32,16 @@ import * as realRateLimit from "../rate-limit";
 // which share the same rate-limit module. Snapshot the real exports now and
 // reinstall them in afterAll so this file's stub is strictly local.
 const realRateLimitExports = { ...realRateLimit };
+const realMediaDownloadExports = { ...realMediaDownload };
+
+const downloadSocialMediaBytes = mock(
+  async (
+    _url: string,
+    _options?: { httpErrorMessage?: (status: number) => string },
+  ): Promise<Buffer> => Buffer.from("PNGBYTES"),
+);
+
+mock.module("../media-download", () => ({ downloadSocialMediaBytes }));
 
 mock.module("../rate-limit", () => ({
   withRetry: async (fn: () => Promise<Response>, parser: (r: Response) => Promise<unknown>) => {
@@ -54,9 +65,6 @@ const json = (body: unknown, status = 200): Response =>
     headers: { "content-type": "application/json" },
   });
 
-const raw = (body: string, status = 200): Response =>
-  new Response(body, { status, headers: { "content-type": "text/plain" } });
-
 const BOT_CREDS = { botToken: "xoxb-token", channelId: "C123" } as SocialCredentials;
 
 let fetchQueue: Array<(input: unknown) => Response>;
@@ -64,6 +72,8 @@ const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   fetchQueue = [];
+  downloadSocialMediaBytes.mockClear();
+  downloadSocialMediaBytes.mockImplementation(async () => Buffer.from("PNGBYTES"));
   globalThis.fetch = mock(async (input: unknown) => {
     const next = fetchQueue.shift();
     if (!next) throw new Error("unexpected fetch call — queue empty");
@@ -78,6 +88,7 @@ afterEach(() => {
 
 afterAll(() => {
   mock.module("../rate-limit", () => realRateLimitExports);
+  mock.module("../media-download", () => realMediaDownloadExports);
 });
 
 async function rejects(p: Promise<unknown>): Promise<Error> {
@@ -97,21 +108,20 @@ describe("slackProvider.uploadMedia — fail closed on a failed source download"
   } as MediaAttachment;
 
   test("PROPAGATES a non-OK media download instead of uploading the error body", async () => {
-    // Only the download is attempted; the files.upload fetch must never run.
-    fetchQueue = [() => raw("not found", 404)];
+    downloadSocialMediaBytes.mockImplementation(async (_url, options) => {
+      throw new Error(options?.httpErrorMessage?.(404) ?? "download failed");
+    });
 
     const err = await rejects(slackProvider.uploadMedia!(BOT_CREDS, urlMedia));
     expect(err.message).toContain("Failed to download media");
     expect(err.message).toContain("404");
     // The upload call was never reached — the download failure short-circuited.
     expect(fetchQueue.length).toBe(0);
+    expect(downloadSocialMediaBytes).toHaveBeenCalledTimes(1);
   });
 
   test("uploads successfully when the download AND files.upload both succeed (drives the real path)", async () => {
-    fetchQueue = [
-      () => raw("PNGBYTES", 200),
-      () => json({ ok: true, file: { id: "F1", permalink: "https://files/x" } }),
-    ];
+    fetchQueue = [() => json({ ok: true, file: { id: "F1", permalink: "https://files/x" } })];
 
     const result = await slackProvider.uploadMedia!(BOT_CREDS, urlMedia);
     expect(result.mediaId).toBe("F1");
@@ -119,7 +129,7 @@ describe("slackProvider.uploadMedia — fail closed on a failed source download"
   });
 
   test("PROPAGATES a files.upload rejection (ok:false) instead of returning a fake mediaId", async () => {
-    fetchQueue = [() => raw("PNGBYTES", 200), () => json({ ok: false, error: "invalid_auth" })];
+    fetchQueue = [() => json({ ok: false, error: "invalid_auth" })];
 
     const err = await rejects(slackProvider.uploadMedia!(BOT_CREDS, urlMedia));
     expect(err.message).toContain("invalid_auth");

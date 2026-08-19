@@ -178,6 +178,28 @@ describe("safeFetch fail-closed", () => {
     );
   });
 
+  test("revalidates a redirect target and refuses a private second hop", async () => {
+    lookupMock
+      .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }])
+      .mockResolvedValueOnce([{ address: "127.0.0.1", family: 4 }]);
+    requestMock.mockImplementation((_options, onResponse) => {
+      const req = createFakeClientRequest(() => {
+        const res = createFakeIncomingMessage({
+          headers: { location: "http://private.example/internal" },
+          statusCode: 302,
+          statusMessage: "Found",
+        });
+        onResponse(res);
+      });
+      return req;
+    });
+
+    await expect(safeFetch("http://public.example/media")).rejects.toThrow(
+      "Endpoint resolves to a private or reserved IP address",
+    );
+    expect(requestMock).toHaveBeenCalledTimes(1);
+  });
+
   test("does not connect when DNS resolves after the request is aborted", async () => {
     let finishLookup: ((records: Array<{ address: string; family: number }>) => void) | undefined;
     lookupMock.mockReturnValue(

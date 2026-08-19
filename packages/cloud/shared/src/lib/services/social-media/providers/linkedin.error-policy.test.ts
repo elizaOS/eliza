@@ -10,8 +10,18 @@
 //      social actions) DISTINGUISHABLE from an internal failure, which throws.
 // The rate-limit backoff sleeps are collapsed so a retrying failure rejects
 // promptly instead of waiting out real exponential-backoff delays.
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { MediaAttachment, SocialCredentials } from "../../../types/social-media";
+import * as realMediaDownload from "../media-download";
+
+const realMediaDownloadExports = { ...realMediaDownload };
+const downloadSocialMediaBytes = mock(
+  async (
+    _url: string,
+    _options?: { httpErrorMessage?: (status: number) => string },
+  ): Promise<Buffer> => Buffer.from([1, 2, 3]),
+);
+mock.module("../media-download", () => ({ downloadSocialMediaBytes }));
 
 mock.module("../../../utils/logger", () => ({
   logger: { info: mock(), warn: mock(), error: mock(), debug: mock() },
@@ -55,6 +65,8 @@ const REGISTER_RESPONSE = {
 };
 
 beforeEach(() => {
+  downloadSocialMediaBytes.mockClear();
+  downloadSocialMediaBytes.mockImplementation(async () => Buffer.from([1, 2, 3]));
   (globalThis as unknown as { setTimeout: typeof setTimeout }).setTimeout = ((fn: () => void) => {
     fn();
     return 0 as unknown as ReturnType<typeof setTimeout>;
@@ -64,6 +76,10 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = realFetch;
   globalThis.setTimeout = realSetTimeout;
+});
+
+afterAll(() => {
+  mock.module("../media-download", () => realMediaDownloadExports);
 });
 
 async function rejects(p: Promise<unknown>): Promise<Error> {
@@ -122,6 +138,9 @@ describe("linkedinProvider.uploadMedia — fail closed", () => {
 
   it("PROPAGATES a non-OK image download instead of uploading garbage bytes", async () => {
     mockLinkedInFetch({ uploadStatus: 200, downloadStatus: 404 });
+    downloadSocialMediaBytes.mockImplementation(async (_url, options) => {
+      throw new Error(options?.httpErrorMessage?.(404) ?? "download failed");
+    });
     const media: MediaAttachment = {
       type: "image",
       mimeType: "image/png",
@@ -131,6 +150,7 @@ describe("linkedinProvider.uploadMedia — fail closed", () => {
     const err = await rejects(linkedinProvider.uploadMedia!(CREDS, media));
     expect(err.message).toContain("download failed");
     expect(err.message).toContain("404");
+    expect(downloadSocialMediaBytes).toHaveBeenCalledTimes(1);
   });
 
   it("throws (designed invalid input) without any fetch when the access token is absent", async () => {
