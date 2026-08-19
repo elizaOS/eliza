@@ -2452,6 +2452,56 @@ export class AcpService extends Service {
   // prompt at each one (background) so claude-agent-sdk reloads its stream
   // and picks the work back up without waiting for new user input. Mirrors
   // moltbot's recoverOrphanedSubagentSessions pattern.
+  /**
+   * Terminalize stored non-terminal NATIVE sessions from a previous process.
+   * Native ACP clients live only in process memory, so a restart orphans the
+   * row while its status stays "ready"/"busy" — and non-terminal rows hold
+   * worker slots forever (live 2026-08-19: 8/8 phantom "ready" sessions from
+   * the night's restarts blocked every spawn with a cap error). CLI-transport
+   * sessions are left alone: their acpx state survives on disk and feeds the
+   * orphan-resume and label-resume paths.
+   */
+  async sweepDeadNativeSessions(): Promise<number> {
+    let sessions: SessionInfo[];
+    try {
+      sessions = await this.store.list();
+    } catch (err) {
+      // error-policy:J7 sweep is boot hygiene; a store read failure is
+      // reported and the resume scan surfaces its own failure separately.
+      this.runtime.reportError("AcpService.sweepDeadNativeSessions", err, {
+        phase: "store.list",
+      });
+      return 0;
+    }
+    let swept = 0;
+    for (const session of sessions) {
+      if (!AcpService.isActiveSession(session)) continue;
+      if (sessionTransportMode(session, this.transportMode) !== "native") {
+        continue;
+      }
+      if (this.nativeClients.has(session.id)) continue;
+      try {
+        await this.store.updateStatus(
+          session.id,
+          "stopped",
+          "native session did not survive a runtime restart",
+        );
+        swept += 1;
+      } catch (err) {
+        // error-policy:J7 one unsweepable row must not abort the rest.
+        this.runtime.reportError("AcpService.sweepDeadNativeSessions", err, {
+          sessionId: session.id,
+        });
+      }
+    }
+    if (swept > 0) {
+      this.log("info", "swept dead native sessions from previous process", {
+        swept,
+      });
+    }
+    return swept;
+  }
+
   async resumeOrphanedBusySessions(): Promise<{
     resumed: number;
     skipped: number;

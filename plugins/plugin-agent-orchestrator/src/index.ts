@@ -471,14 +471,19 @@ export function createAgentOrchestratorPlugin(): Plugin {
             });
           }
           // error-policy:J7 best-effort orphan-session recovery at boot; a failure
-          // warns and does not abort the init chain.
-          void acp?.resumeOrphanedBusySessions?.().catch((err: unknown) =>
+          // warns and does not abort the init chain. Sweep dead native rows
+          // FIRST so restart phantoms free their worker slots before the
+          // resume scan (and the first spawn) read the cap.
+          void (async () => {
+            await acp?.sweepDeadNativeSessions?.();
+            await acp?.resumeOrphanedBusySessions?.();
+          })().catch((err: unknown) =>
             runtime.logger?.warn?.(
               {
                 src: "@elizaos/plugin-agent-orchestrator",
                 err: err instanceof Error ? err.message : String(err),
               },
-              "resumeOrphanedBusySessions failed",
+              "boot session sweep/resume failed",
             ),
           );
         })();
