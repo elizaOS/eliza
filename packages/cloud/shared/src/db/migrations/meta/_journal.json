@@ -1863,6 +1863,13 @@
       "when": 1792440000000,
       "tag": "0266_org_storage_read_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 266,
+      "version": "7",
+      "when": 1792526400000,
+      "tag": "0267_stripe_customer_attempts",
+      "breakpoints": true
     }
   ]
 }
