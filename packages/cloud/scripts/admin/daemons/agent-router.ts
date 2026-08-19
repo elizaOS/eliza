@@ -24,11 +24,7 @@ import * as path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import {
-  APP_SCHEME_ORIGIN_RE,
-  CAPACITOR_WEBVIEW_ORIGIN,
-  isLocalDevLoopbackOrigin,
-} from "../../../shared/src/lib/cors-constants.ts";
+import { isFirstPartyOrigin } from "../../../shared/src/lib/cors/first-party-origin.ts";
 import { loadLocalEnv } from "./shared/load-env";
 
 type Logger = typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
@@ -327,45 +323,12 @@ export function buildProxyHeaders(
 }
 
 /**
- * First-party dashboard / app origins that may ride cookies across the nginx
- * agent-host hop. Tenant agent subdomains are intentionally absent: they must
- * not borrow a visitor's Cloud session against a different agent. Same list
- * family as `packages/cloud/shared/src/lib/utils/cors.ts`.
- */
-const CREDENTIALED_AGENT_ROUTER_ORIGINS = new Set([
-  "https://eliza.app",
-  "https://cloud.eliza.app",
-  "https://staging.eliza.app",
-  "https://cloud-staging.eliza.app",
-  "https://eliza.ai",
-  "https://www.eliza.ai",
-  "https://elizacloud.ai",
-  "https://www.elizacloud.ai",
-  "https://app.elizacloud.ai",
-  "https://app-staging.elizacloud.ai",
-  "https://develop.eliza-app.pages.dev",
-  "capacitor://localhost",
-]);
-
-/**
  * True when `origin` may be reflected with `Allow-Credentials: true`.
- * `https://evil.example` must stay false — origin + credentials is an
- * auth-bind (any site can read cookie-authenticated router JSON).
+ * The shared Cloud policy is authoritative so new production and legacy
+ * origins cannot drift between the edge Worker and its router origin.
  */
 export function isCredentialedAgentRouterOrigin(origin: string): boolean {
-  if (CREDENTIALED_AGENT_ROUTER_ORIGINS.has(origin)) return true;
-  if (
-    process.env.NEXT_PUBLIC_APP_URL &&
-    origin === process.env.NEXT_PUBLIC_APP_URL
-  ) {
-    return true;
-  }
-  if (origin === CAPACITOR_WEBVIEW_ORIGIN) return true;
-  if (APP_SCHEME_ORIGIN_RE.test(origin)) return true;
-  if (isLocalDevLoopbackOrigin(origin)) {
-    return process.env.ENVIRONMENT !== "production";
-  }
-  return false;
+  return isFirstPartyOrigin(origin);
 }
 
 /**

@@ -372,6 +372,17 @@ describe("corsHeaders — credentialed origin allowlist", () => {
     expect(none["access-control-allow-origin"]).toBe("*");
     expect(none["access-control-allow-credentials"]).toBeUndefined();
   });
+
+  it("uses the complete shared Cloud first-party origin policy", () => {
+    for (const origin of [
+      "https://www.eliza.app",
+      "https://elizaos.ai",
+      "https://os.eliza.app",
+    ]) {
+      expect(isCredentialedAgentRouterOrigin(origin)).toBe(true);
+      expect(corsHeaders(origin)["access-control-allow-origin"]).toBe(origin);
+    }
+  });
 });
 
 describe("handleRequest — agent-host CORS preflight (#15347)", () => {
