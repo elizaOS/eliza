@@ -333,3 +333,139 @@ describe("CameraWeb settings validation", () => {
     );
   });
 });
+
+// Regression coverage for the microphone leak: startRecording({ audio: true })
+// acquires a separate mic MediaStream whose tracks live in neither the camera
+// stream nor the MediaRecorder, so teardown must stop them explicitly.
+describe("CameraWeb recording lifecycle releases the microphone", () => {
+  beforeEach(() => {
+    // stopRecording() creates a probe <video> and resolves on its metadata/
+    // error events, which jsdom never fires. Resolve deterministically by
+    // firing onloadedmetadata whenever src is assigned.
+    Object.defineProperty(HTMLVideoElement.prototype, "src", {
+      configurable: true,
+      set() {
+        setTimeout(
+          () =>
+            (this as HTMLVideoElement).onloadedmetadata?.(
+              new Event("loadedmetadata"),
+            ),
+          0,
+        );
+      },
+      get() {
+        return "";
+      },
+    });
+    (globalThis as unknown as { MediaRecorder: unknown }).MediaRecorder =
+      class {
+        static isTypeSupported = () => true;
+        mimeType = "video/webm";
+        onstop: (() => void) | null = null;
+        ondataavailable: ((event: unknown) => void) | null = null;
+        onerror: ((event: unknown) => void) | null = null;
+        start() {}
+        stop() {
+          this.onstop?.();
+        }
+      };
+    (globalThis as unknown as { MediaStream: unknown }).MediaStream = class {
+      private readonly tracks: unknown[];
+      constructor(tracks: unknown[] = []) {
+        this.tracks = tracks;
+      }
+      getTracks() {
+        return this.tracks;
+      }
+    };
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:mock-recording");
+  });
+
+  afterEach(() => {
+    delete (globalThis as unknown as { MediaRecorder?: unknown }).MediaRecorder;
+    delete (globalThis as unknown as { MediaStream?: unknown }).MediaStream;
+  });
+
+  function makeAudioTrack() {
+    return { stop: vi.fn(), kind: "audio" } as unknown as MediaStreamTrack;
+  }
+
+  function installCameraAndMic(audioTracks: MediaStreamTrack[]) {
+    let micIndex = 0;
+    const getUserMedia = vi.fn((constraints: MediaStreamConstraints) => {
+      if (constraints.audio === true && !constraints.video) {
+        const track = audioTracks[micIndex++];
+        return Promise.resolve({
+          getTracks: () => [track],
+          getVideoTracks: () => [],
+          getAudioTracks: () => [track],
+        } as unknown as MediaStream);
+      }
+      return Promise.resolve(makeMediaStream());
+    });
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { mediaDevices: { getUserMedia } },
+    });
+    return { getUserMedia };
+  }
+
+  it("stops the mic track after stopRecording and stopPreview teardown", async () => {
+    const audioTrack = makeAudioTrack();
+    installCameraAndMic([audioTrack]);
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+    await camera.startRecording({ audio: true });
+
+    expect(audioTrack.stop).not.toHaveBeenCalled();
+
+    await camera.stopRecording();
+
+    // stopRecording() must release the mic even though MediaRecorder.stop()
+    // does not touch the underlying tracks.
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+
+    await camera.stopPreview();
+
+    // The defensive stopPreview() release must not re-stop an already-cleared
+    // stream, so the count stays at one.
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-leak a fresh mic track across a second record cycle", async () => {
+    const firstMic = makeAudioTrack();
+    const secondMic = makeAudioTrack();
+    installCameraAndMic([firstMic, secondMic]);
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+
+    await camera.startRecording({ audio: true });
+    await camera.stopRecording();
+    expect(firstMic.stop).toHaveBeenCalledTimes(1);
+
+    await camera.startRecording({ audio: true });
+    await camera.stopRecording();
+
+    // Each cycle acquires and releases exactly its own mic track; the first
+    // track is never re-stopped and the second is fully released.
+    expect(firstMic.stop).toHaveBeenCalledTimes(1);
+    expect(secondMic.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the mic when stopPreview interrupts an active recording", async () => {
+    const audioTrack = makeAudioTrack();
+    installCameraAndMic([audioTrack]);
+
+    const camera = new CameraWeb();
+    await camera.startPreview({ element: document.createElement("div") });
+    await camera.startRecording({ audio: true });
+
+    // stopPreview() detects the in-flight recording, drives stopRecording(),
+    // and must leave no live microphone track behind.
+    await camera.stopPreview();
+
+    expect(audioTrack.stop).toHaveBeenCalledTimes(1);
+  });
+});

@@ -84,6 +84,11 @@ export class CameraWeb extends WebPlugin {
   private currentDeviceId: string | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
+  // Microphone stream acquired separately in startRecording() when audio is
+  // requested. MediaRecorder.stop() and the camera stream teardown never touch
+  // these tracks, so we retain the stream here and stop it explicitly on
+  // recording/preview teardown to avoid leaving the OS microphone engaged.
+  private recordingAudioStream: MediaStream | null = null;
   private recordingStartTime = 0;
   private recordingStateInterval: ReturnType<typeof setInterval> | null = null;
   private isRecording = false;
@@ -233,6 +238,11 @@ export class CameraWeb extends WebPlugin {
       this.mediaStream = null;
     }
 
+    // Defensive: stopRecording() already releases the mic on a normal stop, but
+    // if the stream was torn down while a recording was mid-flight or the
+    // recorder never fired onstop, the mic could still be live here.
+    this.releaseRecordingAudio();
+
     if (this.videoElement) {
       if (this.previewElement?.contains(this.videoElement)) {
         this.previewElement.removeChild(this.videoElement);
@@ -349,6 +359,7 @@ export class CameraWeb extends WebPlugin {
       const audioStream = await getMediaDevices().getUserMedia({
         audio: true,
       });
+      this.recordingAudioStream = audioStream;
       streamToRecord = new MediaStream([
         ...this.mediaStream.getVideoTracks(),
         ...audioStream.getAudioTracks(),
@@ -437,6 +448,7 @@ export class CameraWeb extends WebPlugin {
         }
 
         this.isRecording = false;
+        this.releaseRecordingAudio();
 
         const blob = new Blob(this.recordedChunks, {
           type: this.mediaRecorder?.mimeType || "video/webm",
@@ -477,6 +489,18 @@ export class CameraWeb extends WebPlugin {
 
       this.mediaRecorder.stop();
     });
+  }
+
+  // Stops and clears the separately-acquired microphone stream. Safe to call
+  // when no audio was recorded; the null guard makes it idempotent across the
+  // stopRecording onstop handler and the defensive stopPreview() teardown.
+  private releaseRecordingAudio(): void {
+    if (this.recordingAudioStream) {
+      this.recordingAudioStream.getTracks().forEach((track) => {
+        track.stop();
+      });
+      this.recordingAudioStream = null;
+    }
   }
 
   async getRecordingState(): Promise<VideoRecordingState> {
