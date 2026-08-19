@@ -16,6 +16,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapsAction } from "./action.js";
 import { JsonMapsHttpAdapter, type MapsProviderAdapter } from "./adapter.js";
+import { MapsError } from "./errors.js";
 import { mapsPlugin } from "./plugin.js";
 import { MAPS_SERVICE_TYPE, MapsService } from "./service.js";
 import {
@@ -225,7 +226,37 @@ describe("MapsService and MAPS action", () => {
     });
     expect(result).toMatchObject({
       success: false,
-      data: { error: "MAPS_INVALID_INPUT" },
+      data: { error: "MAPS_INVALID_INPUT", retryable: false },
+    });
+  });
+
+  it("marks transient provider failures retryable for the planner", async () => {
+    const limitedService = new MapsService(runtime);
+    limitedService.registerAdapter(
+      {
+        ...adapter,
+        async searchPlaces() {
+          throw new MapsError("The maps provider is rate limited.", {
+            code: "MAPS_RATE_LIMITED",
+            retryAfterMs: 2_000,
+          });
+        },
+      },
+      true,
+    );
+    vi.spyOn(runtime, "getService").mockImplementation((serviceType) =>
+      serviceType === MAPS_SERVICE_TYPE ? limitedService : null,
+    );
+
+    await expect(
+      invoke(runtime, { action: "place", query: "home" }),
+    ).resolves.toMatchObject({
+      success: false,
+      data: {
+        error: "MAPS_RATE_LIMITED",
+        retryable: true,
+        retry: { retryable: true, retryAfterMs: 2_000 },
+      },
     });
   });
 

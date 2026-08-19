@@ -191,6 +191,11 @@ async function resolvedPlace(
 
 function actionError(error: MapsError): ActionResult {
   const retryAfterMs = error.retryAfterMs;
+  const retryable =
+    error.code === "MAPS_RATE_LIMITED" ||
+    error.code === "MAPS_PROVIDER_FAILURE" ||
+    error.code === "MAPS_PROVIDER_TIMEOUT" ||
+    error.code === "MAPS_PROVIDER_NETWORK";
   return {
     success: false,
     text: error.message,
@@ -198,6 +203,7 @@ function actionError(error: MapsError): ActionResult {
     data: {
       actionName: "MAPS",
       error: error.code,
+      retryable,
       ...(retryAfterMs !== undefined
         ? { retry: { retryable: true, retryAfterMs } }
         : {}),
