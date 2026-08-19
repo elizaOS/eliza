@@ -214,6 +214,7 @@ type GoogleCalendarSyncBatch = {
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
 const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
+export const MAX_GOOGLE_CALENDAR_PAGES = 100;
 
 type CalendarSecretsService = {
   getGlobal(key: string): Promise<string | null>;
@@ -2979,8 +2980,24 @@ export class CalendarService extends Service {
     const seenPageTokens = new Set<string>();
     let pageToken: string | undefined;
     let nextSyncToken: string | null = null;
+    let pageCount = 0;
 
     do {
+      pageCount += 1;
+      if (pageCount > MAX_GOOGLE_CALENDAR_PAGES) {
+        throw new ElizaError(
+          "Google Calendar event pagination exceeded maximum page limit.",
+          {
+            code: "GOOGLE_CALENDAR_PAGE_LIMIT_EXCEEDED",
+            context: {
+              accountId: args.accountId,
+              calendarId: args.calendarId,
+              maxPages: MAX_GOOGLE_CALENDAR_PAGES,
+            },
+            severity: "fatal",
+          },
+        );
+      }
       const page = await listEventPage({
         accountId: args.accountId,
         calendarId: args.calendarId,
