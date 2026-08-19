@@ -11,6 +11,7 @@
   },
   "scripts": {
     "bundle:create": "bun src/cli.ts create",
+    "bundle:snapshot": "bun src/cli.ts snapshot",
     "bundle:verify": "bun src/cli.ts verify",
     "certify": "bun src/cli.ts certify",
     "certify:keygen": "bun src/certify/cli.ts keygen",

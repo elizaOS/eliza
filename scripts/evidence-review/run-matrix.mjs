@@ -2,10 +2,10 @@
 /**
  * Full evidence matrix runner for end-of-work verification. It executes the
  * repo's real test, recording, audit, and device-capture lanes in sequence,
- * streams each lane's status through the human-speed reporter (reporter.mjs) so
- * an operator watches the run advance, writes one run manifest, opens the local
- * evidence reviewer, and prints a single admin-readable summary of what passed,
- * failed, or was skipped and where the artifacts landed.
+ * streams each lane's status through the human-speed reporter (reporter.mjs),
+ * ingests every producer into one named evidence bundle, verifies its bytes,
+ * opens the local reviewer on that exact bundle, and prints a single
+ * admin-readable summary of what passed, failed, or was skipped.
  *
  * Device lanes whose simulator/emulator is unreachable are reported `skipped`
  * with a reason (probeRequirement) — never dropped silently and never faked
@@ -14,6 +14,7 @@
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createMatrixReporter, renderMatrixSummary } from "./reporter.mjs";
@@ -21,7 +22,7 @@ import { createMatrixReporter, renderMatrixSummary } from "./reporter.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const DEFAULT_OUTPUT_DIR = path.join(REPO_ROOT, "evidence");
+const DEFAULT_BUNDLE_ROOT = path.join(REPO_ROOT, "evidence", "runs");
 
 export const MATRIX_STEPS = [
   {
@@ -33,7 +34,7 @@ export const MATRIX_STEPS = [
   {
     id: "e2e-recordings",
     label: "Recorded UI e2e sweep",
-    command: ["node", "scripts/e2e-recordings/run-all.mjs", "--review"],
+    command: ["node", "scripts/e2e-recordings/run-all.mjs"],
     tags: ["ui", "recordings"],
   },
   {
@@ -45,7 +46,7 @@ export const MATRIX_STEPS = [
   {
     id: "ios-sim-capture",
     label: "iOS simulator capture",
-    command: ["bun", "run", "--cwd", "packages/app", "capture:ios-sim"],
+    command: ["node", "scripts/e2e-recordings/capture-ios-sim.mjs"],
     tags: ["device", "ios"],
     // Requires a booted iOS Simulator; probed via `xcrun simctl` so the lane is
     // honestly skipped (not silently dropped) on a host without one.
@@ -54,7 +55,7 @@ export const MATRIX_STEPS = [
   {
     id: "android-emu-capture",
     label: "Android emulator capture",
-    command: ["bun", "run", "--cwd", "packages/app", "capture:android-emu"],
+    command: ["node", "scripts/e2e-recordings/capture-android-emu.mjs"],
     tags: ["device", "android"],
     requires: "android-emulator",
   },
@@ -110,7 +111,8 @@ function printHelp() {
 Options:
   --only=<ids>             Comma-separated step ids to run.
   --skip-devices           Skip iOS/Android device capture lanes.
-  --out=<dir>              Output directory for matrix-run.json and reviewer.
+  --out=<dir>              Dashboard output directory. Default: evidence/review/<run-id>.
+  --tier=<cpu|gpu|full>    Bundle evidence tier. Default: cpu.
   --review / --no-review   Generate the evidence reviewer after the matrix.
   --open / --no-open       Open the reviewer after generation. Default: no-open.
   --review-ocr=on          OCR mode passed to evidence:review. Packaged OCR is required.
@@ -123,7 +125,8 @@ export function parseMatrixArgs(argv) {
   const options = {
     only: null,
     skipDevices: false,
-    outputDir: DEFAULT_OUTPUT_DIR,
+    outputDir: null,
+    tier: "cpu",
     review: true,
     open: false,
     reviewOcr: "on",
@@ -147,6 +150,8 @@ export function parseMatrixArgs(argv) {
         .filter(Boolean);
     } else if (arg.startsWith("--out=")) {
       options.outputDir = path.resolve(REPO_ROOT, arg.slice("--out=".length));
+    } else if (arg.startsWith("--tier=")) {
+      options.tier = arg.slice("--tier=".length);
     } else if (arg.startsWith("--review-ocr=")) {
       options.reviewOcr = arg.slice("--review-ocr=".length);
     } else if (arg === "--help" || arg === "-h") {
@@ -160,6 +165,9 @@ export function parseMatrixArgs(argv) {
     throw new Error(
       "--review-ocr must be on; OCR is required for evidence review and uses the packaged tesseract.js dependency",
     );
+  }
+  if (!["cpu", "gpu", "full"].includes(options.tier)) {
+    throw new Error("--tier must be cpu, gpu, or full");
   }
   return options;
 }
@@ -246,8 +254,8 @@ function skippedStep(step, reason) {
   };
 }
 
-function writeManifest(options, steps, reviewer) {
-  fs.mkdirSync(options.outputDir, { recursive: true });
+function writeManifest(options, steps, reviewer, outputDir) {
+  fs.mkdirSync(outputDir, { recursive: true });
   const manifest = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -261,6 +269,7 @@ function writeManifest(options, steps, reviewer) {
       reviewOcr: options.reviewOcr,
       stopOnFailure: options.stopOnFailure,
       dryRun: options.dryRun,
+      tier: options.tier,
     },
     status: steps.some((step) => step.status === "failed")
       ? "failed"
@@ -270,12 +279,117 @@ function writeManifest(options, steps, reviewer) {
     steps,
     reviewer,
   };
-  const manifestPath = path.join(options.outputDir, "matrix-run.json");
+  const manifestPath = path.join(outputDir, "matrix-run.json");
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
   return { manifest, manifestPath };
 }
 
-function runReviewer(options) {
+function commandFailure(label, result) {
+  const detail = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
+  return new Error(
+    `${label} failed${result.status === null ? " to start" : ` with exit ${result.status}`}${detail ? `\n${detail}` : ""}`,
+    result.error ? { cause: result.error } : undefined,
+  );
+}
+
+/** Capture content hashes for every pre-existing producer artifact. */
+export function captureEvidenceBaseline(stagingDir, { run = spawnSync } = {}) {
+  const cli = path.join(REPO_ROOT, "packages", "evidence", "src", "cli.ts");
+  const baselinePath = path.join(stagingDir, "silo-baseline.json");
+  const result = run(
+    "bun",
+    [cli, "snapshot", "--repo-root", REPO_ROOT, "--out", baselinePath],
+    { cwd: REPO_ROOT, encoding: "utf8", env: { ...process.env } },
+  );
+  if (result.error || result.status !== 0) {
+    throw commandFailure("evidence baseline capture", result);
+  }
+  if (!fs.existsSync(baselinePath)) {
+    throw new Error("evidence baseline capture did not write its snapshot");
+  }
+  return baselinePath;
+}
+
+/**
+ * Create one exact bundle for this matrix report, then run the canonical
+ * integrity verifier before returning its directory. Exported so contract tests
+ * can prove command ordering without executing the expensive matrix lanes.
+ */
+export function createVerifiedBundle(
+  options,
+  matrixManifestPath,
+  baselinePath,
+  { run = spawnSync } = {},
+) {
+  const cli = path.join(REPO_ROOT, "packages", "evidence", "src", "cli.ts");
+  const created = run(
+    "bun",
+    [
+      cli,
+      "create",
+      "--tier",
+      options.tier,
+      "--out",
+      DEFAULT_BUNDLE_ROOT,
+      "--repo-root",
+      REPO_ROOT,
+      "--baseline",
+      baselinePath,
+      "--lane-report",
+      `matrix=${matrixManifestPath}`,
+      "--json",
+    ],
+    { cwd: REPO_ROOT, encoding: "utf8", env: { ...process.env } },
+  );
+  if (created.error || created.status !== 0) {
+    throw commandFailure("evidence bundle creation", created);
+  }
+  let payload;
+  try {
+    payload = JSON.parse(`${created.stdout ?? ""}`);
+  } catch (error) {
+    throw new Error("evidence bundle creation returned invalid JSON", {
+      cause: error,
+    });
+  }
+  if (
+    payload?.schema !== 1 ||
+    payload?.command !== "bundle:create" ||
+    typeof payload.runId !== "string" ||
+    typeof payload.bundleDir !== "string" ||
+    typeof payload.manifestPath !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(payload.manifestSha256)
+  ) {
+    throw new Error(
+      "evidence bundle creation returned an invalid result object",
+    );
+  }
+  const bundleDir = path.resolve(payload.bundleDir);
+  const manifestPath = path.resolve(payload.manifestPath);
+  if (
+    !bundleDir.startsWith(`${DEFAULT_BUNDLE_ROOT}${path.sep}`) ||
+    path.basename(bundleDir) !== payload.runId ||
+    manifestPath !== path.join(bundleDir, "manifest.json")
+  ) {
+    throw new Error("evidence bundle creation returned paths outside its run");
+  }
+  const verified = run("bun", [cli, "verify", bundleDir], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: { ...process.env },
+  });
+  if (verified.error || verified.status !== 0) {
+    throw commandFailure("evidence bundle verification", verified);
+  }
+  return {
+    bundleDir,
+    manifestPath,
+    createOutput: `bundle ${payload.runId}\n  artifacts: ${payload.artifactCount}\n  manifest: ${manifestPath}\n  sha256: ${payload.manifestSha256}`,
+    verifyOutput: `${verified.stdout ?? ""}`.trim(),
+  };
+}
+
+export function runReviewer(options, bundleDir, { run = spawnSync } = {}) {
   if (!options.review || options.dryRun) return null;
   const script = path.join(
     REPO_ROOT,
@@ -283,13 +397,17 @@ function runReviewer(options) {
     "evidence-review",
     "generate.mjs",
   );
+  const outputDir =
+    options.outputDir ??
+    path.join(REPO_ROOT, "evidence", "review", path.basename(bundleDir));
   const args = [
     script,
-    `--out=${options.outputDir}`,
+    `--bundle=${bundleDir}`,
+    `--out=${outputDir}`,
     `--ocr=${options.reviewOcr}`,
     options.open ? "--open" : "--no-open",
   ];
-  const result = spawnSync(process.execPath, args, {
+  const result = run(process.execPath, args, {
     cwd: REPO_ROOT,
     stdio: "inherit",
     env: { ...process.env },
@@ -298,7 +416,8 @@ function runReviewer(options) {
     command: `node ${args.join(" ")}`,
     exitCode: result.status ?? 1,
     status: result.status === 0 ? "passed" : "failed",
-    dashboardPath: path.join(options.outputDir, "index.html"),
+    dashboardPath: path.join(outputDir, "index.html"),
+    bundleDir,
   };
 }
 
@@ -355,23 +474,61 @@ async function main() {
     reporter.header();
   }
 
-  const results = executeSteps(steps, options, { reporter });
+  if (options.dryRun) {
+    const results = executeSteps(steps, options, { reporter });
+    const outputDir =
+      options.outputDir ??
+      path.join(REPO_ROOT, "evidence", "review", "planned");
+    const { manifest, manifestPath } = writeManifest(
+      options,
+      results,
+      null,
+      outputDir,
+    );
+    const summary = renderMatrixSummary(results, {
+      manifestPath,
+      dashboardPath: null,
+    });
+    console.log(summary.text);
+    if (manifest.status === "failed") process.exit(1);
+    return;
+  }
 
-  writeManifest(options, results, null);
-  const reviewer = runReviewer(options);
-  const { manifest, manifestPath } = writeManifest(options, results, reviewer);
+  const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-matrix-"));
+  try {
+    const baselinePath = captureEvidenceBaseline(stagingDir);
+    const results = executeSteps(steps, options, { reporter });
+    const { manifestPath: stagedManifest } = writeManifest(
+      options,
+      results,
+      null,
+      stagingDir,
+    );
+    const bundle = createVerifiedBundle(options, stagedManifest, baselinePath);
+    console.log(bundle.createOutput);
+    console.log(bundle.verifyOutput);
+    const reviewer = runReviewer(options, bundle.bundleDir);
+    const manifest = {
+      status: results.some((step) => step.status === "failed")
+        ? "failed"
+        : "passed",
+    };
+    const manifestPath = bundle.manifestPath;
 
-  const summary = renderMatrixSummary(results, {
-    manifestPath,
-    dashboardPath: reviewer?.dashboardPath ?? null,
-  });
-  console.log(summary.text);
+    const summary = renderMatrixSummary(results, {
+      manifestPath,
+      dashboardPath: reviewer?.dashboardPath ?? null,
+    });
+    console.log(summary.text);
 
-  if (
-    manifest.status === "failed" ||
-    (reviewer && reviewer.status === "failed")
-  ) {
-    process.exit(1);
+    if (
+      manifest.status === "failed" ||
+      (reviewer && reviewer.status === "failed")
+    ) {
+      process.exitCode = 1;
+    }
+  } finally {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
   }
 }
 

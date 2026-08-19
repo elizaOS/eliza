@@ -343,6 +343,22 @@ invalid-input, concurrency, authorization, and adversarial paths where they are
 meaningful. A mock or stub standing in for the system under test is useful for
 unit coverage but is not end-to-end proof.
 
+### Evidence bundles and review
+
+The normal evidence path is bundle-first. `bun run test:matrix:review` executes
+the named producers after hashing their pre-run inventory, creates one
+`evidence/runs/<run-id>/` bundle from only new or written/replaced artifacts, runs the
+canonical integrity verifier, and reviews that exact run. Standalone
+`bun run evidence:review:no-open` selects the newest finalized bundle;
+`--bundle=evidence/runs/<run-id>` pins a specific one. Raw producer directories
+are never scanned implicitly. `--source=<dir>` is only for deliberate archived
+or ad-hoc compatibility review.
+
+`packages/evidence/src/ingest.ts` is the normal producer inventory. A new or
+moved producer must have a named ingestor, producer-to-bundle regression test,
+and real generated-bundle inspection. Do not add another scan-root list or let
+a coordinated command discover its run by recency.
+
 ### App visual review
 
 Any change in `packages/app`, or a shared UI change that reaches it, must run:
@@ -386,7 +402,7 @@ A reviewer must be able to verify the behavior without reading the code:
 For frontend-testable work, include before/after full-page desktop and mobile
 screenshots, an MP4 walkthrough, backend logs, frontend console/network logs,
 and any applicable live-model trajectories. Use `bun run test:matrix:review`
-for the full evidence matrix, `bun run test:e2e:record:review` for scoped UI
+for the full verified evidence bundle, `bun run test:e2e:record:review` for scoped UI
 recording, and the platform capture commands documented in `CONTRIBUTING.md` for
 native targets. Build, install, and verify the current revision before capture;
 capture tools do not prove that the installed application is current.
