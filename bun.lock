@@ -830,9 +830,13 @@
     "packages/corpus-tools": {
       "name": "@elizaos/corpus-tools",
       "version": "0.0.0",
+      "bin": {
+        "corpus": "./src/cli.ts",
+      },
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "fflate": "^0.8.3",
+        "yaml": "^2.9.0",
         "zod": "^4.4.3",
       },
       "devDependencies": {

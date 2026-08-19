@@ -24,24 +24,29 @@ import {
   type ActionResult,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
+  type MessageExampleGroup,
   replaceNameTokens,
   type UUID,
 } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
-import { generateText, streamText } from "ai";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
-import {
-  getInteractiveCerebrasLanguageModel,
-  hasLanguageModelProviderConfigured,
-} from "../../providers/language-model";
+import { hasLanguageModelProviderConfigured } from "../../providers/language-model";
 import {
   resolveSharedCapabilityIntent,
   type SharedCapabilityResolution,
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
+import type { SharedRuntimeChannel } from "./shared-runtime-channel";
+import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
+
+export type { SharedRuntimeChannel } from "./shared-runtime-channel";
+export {
+  resolveSharedTurnMaxRetries,
+  SHARED_TURN_MAX_RETRIES,
+} from "./shared-turn-retry-budget";
 
 export interface SharedTurnMessage {
   /** Stable message id used by SSE, REST history, and storage merge paths. */
@@ -64,6 +69,14 @@ export interface SharedAgentCharacter {
   system: string;
   /** Optional bio/lore bullets folded into the system prompt. */
   bio?: string[];
+  /** Canonical behavioral persona fields projected into AgentRuntime providers. */
+  messageExamples?: MessageExampleGroup[];
+  postExamples?: string[];
+  topics?: string[];
+  adjectives?: string[];
+  style?: { all?: string[]; chat?: string[]; post?: string[] };
+  /** Character-owned response templates; server code still owns plugins and authority. */
+  templates?: Record<string, string>;
   /** Optional model id override; otherwise the shared default is used. */
   model?: string;
 }
@@ -95,30 +108,31 @@ export interface RunSharedAgentTurnInput {
   originClientMessageId?: string;
   /** Durable accounting transition invoked at the final provider handoff. */
   onProviderDispatch?: () => Promise<void>;
+  /** Non-authoritative diagnostics observer; runtime failures never depend on it. */
+  onRuntimeTiming?: (receipt: SharedRuntimeTimingReceipt) => void;
+  /** Request correlation identity propagated from the HTTP ingress. */
+  traceId?: string;
   /** Cancels provider generation when the response consumer disconnects. */
   abortSignal?: AbortSignal;
   /**
    * Flag-gated durable mirror of the landed user/assistant pair into the
    * tenant-scoped `shared_agent_memories` table (P2 edge memory store).
    * Attached by the caller only while `SHARED_MEMORY_TABLES_ENABLED === "true"`;
-   * both the direct-model and eliza-runtime engines commit through it.
+   * the AgentRuntime boundary commits through it.
    */
   memory?: SharedMemoryStore;
   /**
    * Pre-rendered semantic-recall block (P3, `buildSharedRecallContext`) the
    * caller computed from the tenant memory store when the recall flag is on
    * and the recent window missed. Appended verbatim to the system prompt on
-   * every engine path; absent means recall contributed nothing this turn.
+   * every runtime path; absent means recall contributed nothing this turn.
    */
   recallContext?: string;
-  /**
-   * Transition-only selector for the genuine Workerd AgentRuntime path. The
-   * direct model path remains the control until the runtime path has passed
-   * live model and connector proof.
-   */
+  /** Server-owned execution authority for the canonical edge AgentRuntime. */
   execution?: {
-    engine: "eliza-runtime";
     agentKey: string;
+    /** Trusted transport semantics projected into the runtime connection and memories. */
+    channel: SharedRuntimeChannel;
     /**
      * Server-only attestation that the hosting boundary resolved this turn to an
      * authenticated Personal Shared tenant/account. Transport payload fields
@@ -141,11 +155,24 @@ export interface RunSharedAgentTurnInput {
   };
 }
 
+type SharedRuntimeExecution = NonNullable<RunSharedAgentTurnInput["execution"]>;
+
+function resolveRuntimeExecution(input: RunSharedAgentTurnInput): SharedRuntimeExecution {
+  return (
+    input.execution ?? {
+      agentKey: `shared:${input.character.name}`,
+      channel: { type: "DM", source: "shared-runtime" },
+    }
+  );
+}
+
 /** Streaming persistence belongs to the consumer-aware transport finalizer. */
 export type RunSharedAgentTurnStreamInput = Omit<RunSharedAgentTurnInput, "memory">;
 
 export interface RunSharedAgentTurnResult {
   reply: string;
+  /** False when the canonical runtime deliberately chose IGNORE/STOP. */
+  responded?: boolean;
   /** history + the new user message + the assistant reply (persist this). */
   history: SharedTurnMessage[];
   model: string;
@@ -170,6 +197,7 @@ export type SharedAgentTurnStreamPart =
   | {
       type: "finish";
       text: string;
+      responded?: boolean;
       usage?: SharedAgentTurnUsage;
       /** Applied plugin effects that must land with the terminal turn. */
       actionResults?: ActionResult[];
@@ -224,17 +252,6 @@ const DEFAULT_SHARED_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
  * Ops can raise it, but the healthy default keeps zero SDK backoff on the
  * interactive path since the failover wrapper owns resilience now.
  */
-function resolveSharedTurnMaxRetries(
-  raw: string | undefined = process.env.SHARED_TURN_MAX_RETRIES,
-): number {
-  if (raw === undefined || raw.trim() === "") return 0;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.min(parsed, 2);
-}
-
-export const SHARED_TURN_MAX_RETRIES = resolveSharedTurnMaxRetries();
-
 /** Token counts the shared-runtime billing path consumes (input/output/total). */
 export interface SharedAgentTurnUsage {
   promptTokens?: number;
@@ -266,10 +283,10 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * reach this path still carrying them: the shipped presets ship tokenized
  * `system` / `bio` so a later rename keeps propagating, and the cloud create
  * path seeds one verbatim. A container-backed agent gets the same substitution
- * from `@elizaos/core`'s prompt builder; the shared turn talks to the provider
- * directly, so it is the only renderer on this side.
+ * from `@elizaos/core`'s prompt builder; the Shared runtime receives the
+ * already-projected edge character, so this is the renderer on this side.
  */
-function buildSystemPrompt(
+function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
   capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
   recallContext?: string,
@@ -277,14 +294,6 @@ function buildSystemPrompt(
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
-  if (character.bio?.length) {
-    parts.push(
-      `About you:\n- ${character.bio
-        .map((b) => replaceNameTokens(b, character.name).trim())
-        .filter(Boolean)
-        .join("\n- ")}`,
-    );
-  }
   parts.push(
     "Shared runtime boundaries:\n" +
       (capabilities.webSearch
@@ -323,6 +332,24 @@ export function appendSharedTurn(
   ];
 }
 
+/** Persist an observed turn without inventing an assistant message for IGNORE. */
+export function appendSharedInput(
+  history: SharedTurnMessage[],
+  userMessage: string,
+  messageIds?: RunSharedAgentTurnInput["messageIds"],
+  messageRole: "system" | "user" = "user",
+): SharedTurnMessage[] {
+  return [
+    ...history,
+    {
+      id: messageIds?.user,
+      role: messageRole,
+      content: userMessage,
+      createdAt: Date.now(),
+    },
+  ];
+}
+
 /**
  * Durable commit of the landed user/assistant pair into the tenant-scoped
  * memory table. Runs only when the caller attached a flag-gated
@@ -348,14 +375,8 @@ async function commitSharedTurnMemory(
     assistantReply: reply,
     ...(input.messageIds ? { messageIds: input.messageIds } : {}),
     ...(input.messageRole ? { messageRole: input.messageRole } : {}),
+    ...(input.execution?.channel ? { channel: input.execution.channel } : {}),
   });
-}
-
-function modelHistoryContent(message: SharedTurnMessage): string {
-  if (message.role === "assistant" && message.interrupted) {
-    return `[interrupted assistant partial]\n${message.content}`;
-  }
-  return message.content;
 }
 
 function capabilityResolution(
@@ -385,6 +406,7 @@ function withBlockedSecondaryCapabilities(
   return {
     ...result,
     reply,
+    responded: true,
     history: appendSharedTurn(
       input.history,
       input.message.trim(),
@@ -467,87 +489,38 @@ export async function runSharedAgentTurn(
     };
   }
 
-  if (input.execution?.engine === "eliza-runtime") {
-    const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
-    const result = await runSharedElizaRuntimeTurn({
-      ...input,
-      character: {
-        ...input.character,
-        system: buildSystemPrompt(
-          input.character,
-          {
-            webSearch: actionsEnabled,
-            reminders: remindersEnabled,
-            todos: todosEnabled,
-            media: actionsEnabled && Boolean(input.execution.media),
-          },
-          input.recallContext,
-        ),
-      },
-      agentKey: input.execution.agentKey,
-      model: modelId,
-    });
-    const turn = withBlockedSecondaryCapabilities(result, input, blockedSecondary);
-    await commitSharedTurnMemory(input, turn.reply);
-    return turn;
-  }
-
   let turn: RunSharedAgentTurnResult;
   try {
-    const model = getInteractiveCerebrasLanguageModel(modelId);
-    const system = buildSystemPrompt(
-      input.character,
-      {
-        webSearch: actionsEnabled,
-        reminders: remindersEnabled,
-        todos: todosEnabled,
-        media: false,
-      },
-      input.recallContext,
-    );
-    const messages = [
-      ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
-      { role: input.messageRole ?? ("user" as const), content: message },
-    ];
-    await input.onProviderDispatch?.();
-    const { text, usage } = await generateText({
-      model,
-      // Zero SDK backoff on the interactive turn (see SHARED_TURN_MAX_RETRIES):
-      // the model wrapper fails over to a healthy provider INSTANTLY on a 5xx,
-      // so the SDK's 2-6s sleeping retry is redundant and only adds latency.
-      maxRetries: SHARED_TURN_MAX_RETRIES,
-      system,
-      messages,
-      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
-    });
-    const reply = text.trim() || "…";
+    const execution = resolveRuntimeExecution(input);
+    const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
     turn = withBlockedSecondaryCapabilities(
-      {
-        reply,
-        history: appendSharedTurn(
-          input.history,
-          message,
-          reply,
-          input.messageIds,
-          input.messageRole,
-        ),
+      await runSharedElizaRuntimeTurn({
+        ...input,
+        character: {
+          ...input.character,
+          system: buildSharedRuntimeSystem(
+            input.character,
+            {
+              webSearch: actionsEnabled,
+              reminders: remindersEnabled,
+              todos: todosEnabled,
+              media: actionsEnabled && Boolean(execution.media),
+            },
+            input.recallContext,
+          ),
+        },
+        execution,
+        agentKey: execution.agentKey,
         model: modelId,
-        degraded: false,
-        usage,
-      },
+      }),
       input,
       blockedSecondary,
     );
   } catch (error) {
-    // error-policy:J2 context-adding rethrow. An inference/provider failure is an
-    // INTERNAL failure, not a designed-empty result: swallowing it into a
-    // `degraded: true` reply made a broken turn indistinguishable from the
-    // no-model-configured unavailable state above and let it read as a delivered
-    // (if apologetic) chat message. Rethrow with `cause` so it surfaces and the
-    // caller can distinguish explicit rejection from an ambiguous provider
-    // outcome before choosing zero-cost versus estimate settlement.
+    // error-policy:J2 the runtime is the sole inference engine; preserve its
+    // cause while adding the agent/model identity used by billing boundaries.
     throw new Error(
-      `[shared-runtime] agent turn failed (agent=${input.character.name}, model=${modelId})`,
+      `[shared-runtime] AgentRuntime turn failed (agent=${input.character.name}, model=${modelId})`,
       { cause: error },
     );
   }
@@ -608,181 +581,36 @@ export async function runSharedAgentTurnStream(
     };
   }
 
-  if (input.execution?.engine === "eliza-runtime") {
+  try {
+    const execution = resolveRuntimeExecution(input);
     const { runSharedElizaRuntimeTurnStream } = await import("./shared-eliza-runtime");
     return withBlockedSecondaryStream(
       await runSharedElizaRuntimeTurnStream({
         ...input,
         character: {
           ...input.character,
-          system: buildSystemPrompt(
+          system: buildSharedRuntimeSystem(
             input.character,
             {
               webSearch: actionsEnabled,
               reminders: remindersEnabled,
               todos: todosEnabled,
-              media: actionsEnabled && Boolean(input.execution.media),
+              media: actionsEnabled && Boolean(execution.media),
             },
             input.recallContext,
           ),
         },
-        agentKey: input.execution.agentKey,
+        execution,
+        agentKey: execution.agentKey,
         model: modelId,
       }),
       blockedSecondary,
     );
-  }
-
-  try {
-    const model = getInteractiveCerebrasLanguageModel(modelId);
-    const system = buildSystemPrompt(
-      input.character,
-      {
-        webSearch: actionsEnabled,
-        reminders: remindersEnabled,
-        todos: todosEnabled,
-        media: false,
-      },
-      input.recallContext,
-    );
-    const messages = [
-      ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
-      { role: input.messageRole ?? ("user" as const), content: message },
-    ];
-    await input.onProviderDispatch?.();
-    const result = streamText({
-      model,
-      // Zero SDK backoff on the interactive turn (see SHARED_TURN_MAX_RETRIES):
-      // the model wrapper fails over to a healthy provider INSTANTLY on a 5xx,
-      // so the SDK's 2-6s sleeping retry is redundant and only adds latency.
-      maxRetries: SHARED_TURN_MAX_RETRIES,
-      system,
-      messages,
-      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
-    });
-
-    const providerReader = result.fullStream.getReader();
-    // error-policy:J5 cancel(reason) rejects the SDK's pending result
-    // promises; the parts iterator below is the observed failure channel, so
-    // mark every promise-typed result property handled here to keep a
-    // barge-in from surfacing its cancellation reason as unhandled
-    // rejections on the event loop. Stream-typed getters (fullStream,
-    // textStream, ...) are deliberately NOT touched — accessing them tees or
-    // locks the provider stream.
-    const settledResultProps = [
-      "content",
-      "text",
-      "reasoning",
-      "reasoningText",
-      "files",
-      "sources",
-      "toolCalls",
-      "staticToolCalls",
-      "dynamicToolCalls",
-      "staticToolResults",
-      "dynamicToolResults",
-      "toolResults",
-      "finishReason",
-      "rawFinishReason",
-      "usage",
-      "totalUsage",
-      "warnings",
-      "steps",
-      "request",
-      "response",
-      "providerMetadata",
-    ] as const;
-    for (const prop of settledResultProps) {
-      const pending = (result as unknown as Record<string, unknown>)[prop];
-      if (pending && typeof (pending as PromiseLike<unknown>).then === "function") {
-        void Promise.resolve(pending as PromiseLike<unknown>).catch(() => {});
-      }
-    }
-    let providerStreamDone = false;
-    let providerStreamCancelled = false;
-    let providerCancelPromise: Promise<void> | null = null;
-    const cancel = async (reason?: unknown): Promise<void> => {
-      if (providerStreamDone) return;
-      providerStreamCancelled = true;
-      providerCancelPromise ??= providerReader.cancel(reason).finally(() => {
-        providerStreamDone = true;
-      });
-      await providerCancelPromise;
-    };
-    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
-      let reply = "";
-      let finishSeen = false;
-      try {
-        for (;;) {
-          const next = await providerReader.read();
-          if (next.done) {
-            providerStreamDone = true;
-            if (!finishSeen && !providerStreamCancelled) {
-              // Some AI SDK provider streams close cleanly after their text deltas
-              // without forwarding a finish part. The SDK result promises are the
-              // authoritative completion signal: they reject for a failed stream.
-              const finalText = (await result.text).trim();
-              if (!finalText) {
-                throw new Error("provider stream ended without text or a finish part");
-              }
-              yield {
-                type: "finish",
-                text: finalText,
-                usage: await result.totalUsage,
-              };
-            }
-            break;
-          }
-          const part = next.value;
-          if (part.type === "text-delta") {
-            reply += part.text;
-            yield { type: "text-delta", text: part.text };
-          }
-          if (part.type === "error") {
-            throw part.error instanceof Error
-              ? part.error
-              : new Error("provider stream reported an unknown error");
-          }
-          if (part.type === "finish") {
-            finishSeen = true;
-            yield {
-              type: "finish",
-              text: reply.trim() || "…",
-              usage: part.totalUsage,
-            };
-          }
-        }
-      } catch (error) {
-        providerStreamDone = true;
-        // error-policy:J2 context-adding rethrow. Stream failures happen after
-        // the HTTP response may have started, so callers need this failure to
-        // classify the preserved provider outcome before settling the reservation.
-        throw new Error(
-          `[shared-runtime] streaming agent turn failed (agent=${input.character.name}, model=${modelId})`,
-          { cause: error },
-        );
-      } finally {
-        if (!providerStreamDone) {
-          await cancel("shared runtime stream consumer stopped");
-        }
-        providerReader.releaseLock();
-      }
-    })();
-
-    return withBlockedSecondaryStream(
-      {
-        model: modelId,
-        degraded: false,
-        parts,
-        cancel,
-      },
-      blockedSecondary,
-    );
   } catch (error) {
-    // error-policy:J2 context-adding rethrow. Preserve the setup/provider cause
-    // so the caller refunds only a provably unaccepted invocation.
+    // error-policy:J2 no SSE bytes exist during setup, so retain the exact
+    // runtime cause and add stable billing/diagnostic context for the caller.
     throw new Error(
-      `[shared-runtime] streaming agent turn failed (agent=${input.character.name}, model=${modelId})`,
+      `[shared-runtime] AgentRuntime stream setup failed (agent=${input.character.name}, model=${modelId})`,
       { cause: error },
     );
   }

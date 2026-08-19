@@ -101,6 +101,7 @@ describe("createVoiceCapture", () => {
           stop,
           cancel: vi.fn(),
           analyser: null,
+          inputDevice: { deviceId: "test-mic", label: "Test microphone" },
         };
       },
     );
@@ -138,6 +139,7 @@ describe("createVoiceCapture", () => {
       stop: vi.fn().mockResolvedValue(new Uint8Array([1])),
       cancel: vi.fn(),
       analyser,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const capture = createVoiceCapture({
       asrProvider: "local-inference",
@@ -187,6 +189,7 @@ describe("createVoiceCapture", () => {
       stop: vi.fn().mockResolvedValue(wav),
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const onTranscript = vi.fn();
     const capture = createVoiceCapture({
@@ -216,6 +219,7 @@ describe("createVoiceCapture", () => {
       stop: vi.fn().mockResolvedValue(wav),
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const onTranscript = vi.fn();
     const capture = createVoiceCapture({
@@ -381,6 +385,7 @@ describe("createVoiceCapture", () => {
       stop,
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const onTranscript = vi.fn();
     const onStateChange = vi.fn();
@@ -418,6 +423,7 @@ describe("createVoiceCapture", () => {
       stop: vi.fn().mockResolvedValue(wav),
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const onTranscript = vi.fn();
     const capture = createVoiceCapture({
@@ -444,6 +450,7 @@ describe("createVoiceCapture", () => {
       stop: vi.fn().mockResolvedValue(wav),
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     isSilentWavMock.mockReturnValue(true);
     const onTranscript = vi.fn();
@@ -479,6 +486,7 @@ describe("createVoiceCapture", () => {
       stop: vi.fn().mockResolvedValue(new Uint8Array([1])),
       cancel: vi.fn(),
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     transcribeCloudWavMock.mockRejectedValue(new Error("Cloud ASR 502: down"));
     const onTranscript = vi.fn();

@@ -8,9 +8,11 @@
  * contract cannot select the legacy database-backed bridge.
  */
 
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys } from "@/lib/cache/keys";
+import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import {
   hasCloudBindingsContext,
   runWithCloudBindingsAsync,
@@ -331,6 +333,7 @@ async function dispatchInternalElizaConversationFetch(
   }
 
   return handleCanonicalScopedAgentStream({
+    traceId: resolveElizaTraceId(headers),
     abortSignal: request.signal,
     agent,
     agentId: claims.agentId,
@@ -344,6 +347,10 @@ async function dispatchInternalElizaConversationFetch(
       (body as { messageRole?: unknown }).messageRole === "system"
         ? "system"
         : undefined,
+    channel: {
+      type: ChannelType.VOICE_DM,
+      source: MESSAGE_SOURCE_CLIENT_CHAT,
+    },
     body,
     origin: headers.get("origin"),
     namespace: runtime.namespace,

@@ -8,6 +8,7 @@
 process.env.MOCK_REDIS = "1";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 
 let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
@@ -172,11 +173,13 @@ mock.module("./run-shared-agent-turn", () => ({
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
-          index === turn.history.length - 2
+          turn.responded === false && index === turn.history.length - 1
             ? { ...message, id: input.messageIds?.user }
-            : index === turn.history.length - 1
-              ? { ...message, id: input.messageIds?.assistant }
-              : message,
+            : index === turn.history.length - 2
+              ? { ...message, id: input.messageIds?.user }
+              : index === turn.history.length - 1
+                ? { ...message, id: input.messageIds?.assistant }
+                : message,
         )
       : turn.history;
     return { ...turn, history };
@@ -545,7 +548,41 @@ describe("SharedRuntimeChatService", () => {
     expect(h.history()).toHaveLength(3);
   });
 
-  test("passes the explicit AgentRuntime transition gate without changing identity", async () => {
+  test("lands a deliberate silent group turn without fabricating an assistant message", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    turn = {
+      degraded: false,
+      responded: false,
+      reply: "",
+      history: [
+        { role: "assistant", content: "prior" },
+        { role: "user", content: "ambient guild chatter" },
+      ],
+      model: "openai/gpt-oss-120b",
+    };
+
+    const response = await service.bridge(
+      agent,
+      { ...rpc, params: { text: "ambient guild chatter", roomId: "guild-room" } },
+      {
+        ...h,
+        funding: "platform",
+        channel: { type: ChannelType.GROUP, source: "discord" },
+      },
+    );
+
+    expect(response.result).toMatchObject({ text: "", responded: false });
+    expect(h.history()).toEqual([
+      { role: "assistant", content: "prior" },
+      expect.objectContaining({ role: "user", content: "ambient guild chatter" }),
+    ]);
+    expect(lastTurnInput?.execution).toMatchObject({
+      channel: { type: ChannelType.GROUP, source: "discord" },
+    });
+  });
+
+  test("always uses AgentRuntime execution without changing identity", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
     turn.actionResults = [expectedTodoActionResult];
@@ -553,12 +590,11 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.bridge(agent, rpc, {
       ...h,
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
 
     expect(lastTurnInput?.execution).toEqual({
-      engine: "eliza-runtime",
       agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
@@ -588,12 +624,11 @@ describe("SharedRuntimeChatService", () => {
     await service.bridge(forgedAgent, forgedRpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
 
     expect(lastTurnInput?.execution).toEqual({
-      engine: "eliza-runtime",
       agentKey: forgedAgent.id,
+      channel: { type: ChannelType.DM, source: "shared-runtime" },
       todos: expectedTodoExecution,
     });
   });
@@ -613,7 +648,6 @@ describe("SharedRuntimeChatService", () => {
     const response = await new SharedRuntimeChatService().stream(agent, rpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
 
     expect(response.status).toBe(200);
@@ -621,8 +655,8 @@ describe("SharedRuntimeChatService", () => {
       JSON.stringify({ actionResults: [expectedTodoActionResult] }).slice(1, -1),
     );
     expect(lastStreamTurnInput?.execution).toEqual({
-      engine: "eliza-runtime",
       agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
     });
@@ -654,7 +688,6 @@ describe("SharedRuntimeChatService", () => {
     const response = await new SharedRuntimeChatService().stream(agent, rpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
 
     const body = await response.text();
@@ -686,11 +719,10 @@ describe("SharedRuntimeChatService", () => {
     await service.bridge(agent, trustedRpc, {
       ...harness(),
       funding: "platform",
-      executionEngine: "eliza-runtime",
     });
     expect(lastTurnInput?.execution).toEqual({
-      engine: "eliza-runtime",
       agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
       reminders: {
@@ -706,11 +738,10 @@ describe("SharedRuntimeChatService", () => {
     await service.bridge(agent, trustedRpc, {
       ...harness(),
       funding: "organization-credits",
-      executionEngine: "eliza-runtime",
     });
     expect(lastTurnInput?.execution).toEqual({
-      engine: "eliza-runtime",
       agentKey: agent.id,
+      channel: { type: ChannelType.DM, source: "shared-runtime" },
       todos: expectedTodoExecution,
     });
 
@@ -734,7 +765,6 @@ describe("SharedRuntimeChatService", () => {
         {
           ...harness(),
           funding: "platform",
-          executionEngine: "eliza-runtime",
         },
       );
       expect(lastTurnInput?.execution).toMatchObject({

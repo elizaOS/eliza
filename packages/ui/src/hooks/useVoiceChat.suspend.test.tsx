@@ -71,6 +71,7 @@ describe("useVoiceChat — app-suspend capture teardown (#voice-V1)", () => {
       stop,
       cancel,
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
     const onTranscript = vi.fn();
 
@@ -127,6 +128,7 @@ describe("useVoiceChat — app-suspend capture teardown (#voice-V1)", () => {
       stop: vi.fn(),
       cancel,
       analyser: null,
+      inputDevice: { deviceId: "test-mic", label: "Test microphone" },
     });
 
     const { result } = renderHook(() =>

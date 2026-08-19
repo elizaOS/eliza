@@ -4,6 +4,7 @@
  */
 
 import { afterEach, expect, test } from "bun:test";
+import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import type { Bindings } from "@/types/cloud-worker-env";
 
 process.env.MOCK_REDIS = "1";
@@ -132,6 +133,10 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
   expect(JSON.parse(String(coordinatorCalls[1]?.init?.body))).toMatchObject({
     operation: "stream",
     agent: cachedAgent,
+    channel: {
+      type: ChannelType.VOICE_DM,
+      source: MESSAGE_SOURCE_CLIENT_CHAT,
+    },
     rpc: {
       method: "message.send",
       params: {

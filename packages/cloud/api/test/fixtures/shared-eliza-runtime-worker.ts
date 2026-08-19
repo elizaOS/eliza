@@ -4,6 +4,7 @@
  */
 
 import {
+  ChannelType,
   type MediaGenerationRequest,
   searchKeylessWeb,
   type UUID,
@@ -140,7 +141,7 @@ function createCoordinatorProbe(agent: SharedRuntimeAgent) {
               assistant: "70000000-0000-5000-8000-000000000084",
             },
             execution: {
-              engine: "eliza-runtime",
+              channel: { type: ChannelType.DM, source: "shared-runtime" },
               agentKey: agent.id,
               ...(serverAttestedPersonalSharedUser
                 ? { authenticatedPersonalSharedUser: true as const }
@@ -390,7 +391,7 @@ export default {
             assistant: "70000000-0000-5000-8000-000000000004",
           },
           execution: {
-            engine: "eliza-runtime",
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000005",
             todos: {
               scope,
@@ -415,7 +416,7 @@ export default {
             assistant: "70000000-0000-5000-8000-000000000014",
           },
           execution: {
-            engine: "eliza-runtime",
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000015",
             reminders: {
               delivery: {
@@ -444,7 +445,7 @@ export default {
             assistant: "70000000-0000-5000-8000-000000000024",
           },
           execution: {
-            engine: "eliza-runtime",
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000025",
             authenticatedPersonalSharedUser: true,
             media: {
@@ -505,7 +506,7 @@ export default {
             assistant: "70000000-0000-5000-8000-000000000054",
           },
           execution: {
-            engine: "eliza-runtime",
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000055",
             authenticatedPersonalSharedUser: true,
           },
@@ -529,7 +530,7 @@ export default {
             assistant: "70000000-0000-5000-8000-000000000044",
           },
           execution: {
-            engine: "eliza-runtime",
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:70000000-0000-5000-8000-000000000045",
             authenticatedPersonalSharedUser: true,
             media: {
@@ -559,7 +560,7 @@ export default {
             assistant: "059e33bc-8215-49f4-841f-7642e7505bc7",
           },
           execution: {
-            engine: "eliza-runtime",
+            channel: { type: ChannelType.DM, source: "shared-runtime" },
             agentKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
           },
         });
@@ -584,7 +585,7 @@ export default {
           assistant: "f492130b-2fc6-4b2b-bdca-51f441b0483d",
         },
         execution: {
-          engine: "eliza-runtime",
+          channel: { type: ChannelType.DM, source: "shared-runtime" },
           agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
         },
       });
