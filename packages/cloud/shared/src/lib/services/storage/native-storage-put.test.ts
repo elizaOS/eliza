@@ -287,6 +287,28 @@ describe("executeNativeStoragePut", () => {
     expect(bucket.put).not.toHaveBeenCalled();
   });
 
+  test("replays a concurrent commit observed while waiting on atomic credit reservation", async () => {
+    preparePut.mockResolvedValue({ operation: operation("prepared"), replay: false });
+    reservePutCredits.mockResolvedValue({
+      operation: operation("committed"),
+      insufficient: false,
+      available: 9,
+    });
+    const bucket = fakeR2({ value: false });
+    const response = await executeNativeStoragePut({
+      bucket,
+      organizationId: ORG,
+      logicalKey: "concurrent.txt",
+      idempotencyKey: "concurrent-1",
+      body: new TextEncoder().encode("payload").buffer,
+      contentType: "text/plain",
+      priceUsd: 1,
+    });
+    expect(response.etag).toBe("etag-1");
+    expect(bucket.put).not.toHaveBeenCalled();
+    expect(claimProviderLease).not.toHaveBeenCalled();
+  });
+
   test("replays an ambiguous native delete without releasing authority early", async () => {
     let state: "prepared" | "provider_started" | "committed" = "prepared";
     const deleteOperation = () => ({

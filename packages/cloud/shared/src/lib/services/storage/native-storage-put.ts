@@ -301,6 +301,13 @@ export async function executeNativeStoragePut(
     throw new NativeStoragePutError("OPERATION_IN_PROGRESS", "The prior PUT is reconciling");
   }
   operation = await reserveCredits(prepared);
+  if (operation.state === "committed") return responseFor(operation, input.logicalKey);
+  if (operation.state === "refunded" || operation.state === "reconciling") {
+    throw new NativeStoragePutError(
+      "OPERATION_IN_PROGRESS",
+      "The prior PUT cannot continue provider dispatch",
+    );
+  }
 
   if (operation.state === "provider_started") {
     const observed = await input.bucket.head(operation.target_provider_key);
