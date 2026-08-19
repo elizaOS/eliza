@@ -25,6 +25,8 @@ import { ElizaClient } from "./client-base";
 import "./client-cloud";
 import { setBootConfig } from "../config/boot-config";
 
+const SERVER_SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
+
 function calledNativeUrls(): string[] {
   return [
     ...capacitorMocks.get.mock.calls,
@@ -62,7 +64,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
   it("creates native CLI sessions through the Cloud API host and opens the web auth host", async () => {
     capacitorMocks.post.mockResolvedValue({
       status: 201,
-      data: { sessionId: "server-issued-session" },
+      data: { sessionId: SERVER_SESSION_ID },
     });
 
     const client = new ElizaClient("https://www.elizacloud.ai");
@@ -71,7 +73,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
         url: "https://api.eliza.app/api/auth/cli-session",
-        data: expect.objectContaining({ sessionId: expect.any(String) }),
+        data: {},
       }),
     );
     // The browser URL normalizes the configured www base to the apex host: the
@@ -81,16 +83,18 @@ describe("ElizaClient direct Cloud auth on native", () => {
       expect.objectContaining({
         ok: true,
         apiBase: "https://api.eliza.app",
-        sessionId: "server-issued-session",
-        browserUrl:
-          "https://eliza.app/auth/cli-login?session=server-issued-session",
+        sessionId: SERVER_SESSION_ID,
+        browserUrl: `https://eliza.app/auth/cli-login?session=${SERVER_SESSION_ID}`,
       }),
     );
     expectNoLocalPersistOrStatusProbe();
   });
 
   it("creates staging CLI sessions through the staging API host and opens the staging web auth host", async () => {
-    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+    capacitorMocks.post.mockResolvedValue({
+      status: 201,
+      data: { sessionId: SERVER_SESSION_ID },
+    });
 
     const client = new ElizaClient("https://staging.elizacloud.ai");
     const result = await client.cloudLoginDirect(
@@ -100,7 +104,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
         url: "https://api-staging.eliza.app/api/auth/cli-session",
-        data: expect.objectContaining({ sessionId: expect.any(String) }),
+        data: {},
       }),
     );
     expect(result).toEqual(
@@ -114,8 +118,26 @@ describe("ElizaClient direct Cloud auth on native", () => {
     );
   });
 
+  it.each([{}, { sessionId: "not-a-uuid" }])(
+    "rejects a successful native response without a server-issued UUID",
+    async (data) => {
+      capacitorMocks.post.mockResolvedValue({ status: 201, data });
+
+      const client = new ElizaClient("https://www.elizacloud.ai");
+      const result = await client.cloudLoginDirect("https://www.elizacloud.ai");
+
+      expect(result).toEqual({
+        ok: false,
+        error: "Login failed: Eliza Cloud returned an invalid session ID",
+      });
+    },
+  );
+
   it("maps staging API bases back to the staging web auth host", async () => {
-    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+    capacitorMocks.post.mockResolvedValue({
+      status: 201,
+      data: { sessionId: SERVER_SESSION_ID },
+    });
 
     const client = new ElizaClient("https://api-staging.elizacloud.ai");
     const result = await client.cloudLoginDirect(
@@ -144,7 +166,10 @@ describe("ElizaClient direct Cloud auth on native", () => {
     // Auth for it must ride the staging API/auth hosts — a hop to the
     // production apex would mint a production session that can never see the
     // staging agent.
-    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+    capacitorMocks.post.mockResolvedValue({
+      status: 201,
+      data: { sessionId: SERVER_SESSION_ID },
+    });
 
     const client = new ElizaClient(
       "https://0b5fca39-8d55-4c96-a1a3-000000000000.staging.elizacloud.ai",
@@ -899,7 +924,10 @@ describe("ElizaClient direct Cloud auth on native", () => {
         new Error("native direct Cloud auth must not use fetch"),
       );
 
-    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+    capacitorMocks.post.mockResolvedValue({
+      status: 201,
+      data: { sessionId: SERVER_SESSION_ID },
+    });
     capacitorMocks.get.mockResolvedValue({
       status: 200,
       data: {

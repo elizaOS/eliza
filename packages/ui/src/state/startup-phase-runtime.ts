@@ -661,6 +661,12 @@ async function runCloudManagedWarmup(
     dispatch({ type: "AGENT_RUNNING" });
   };
 
+  const advanceAuthGate = (): void => {
+    deps.setConnected(false);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "AGENT_RUNNING" });
+  };
+
   logger.info(
     "[eliza][startup:init] cloud-managed agent; waiting on proxy passthrough to warm before declaring ready",
   );
@@ -689,22 +695,34 @@ async function runCloudManagedWarmup(
     // runtimes regularly answer just beyond the generic 10s client timeout.
     const conversationProbe = probeCloudProxyPassthrough();
     const statusProbe = isCloudProxyStatusReady();
-    const firstPositive = await Promise.race([
+    const firstDecisive = await Promise.race([
       conversationProbe.then((probe) =>
-        probe.kind === "serving" ? "conversations" : null,
+        probe.kind === "serving"
+          ? "conversations"
+          : probe.kind === "auth-required"
+            ? "auth-required"
+            : null,
       ),
       statusProbe.then((ready) => (ready ? "status" : null)),
     ]);
     if (cancelled.current || effectRunRef.current !== effectRunId) return;
 
-    if (firstPositive === "status") {
+    if (firstDecisive === "status") {
       await advanceReady("status reports running and canRespond");
       return;
     }
 
-    if (firstPositive === "conversations") {
+    if (firstDecisive === "conversations") {
       // The passthrough answers → the warmed runtime is genuinely serving.
       await advanceReady("conversations passthrough serving");
+      return;
+    }
+
+    if (firstDecisive === "auth-required") {
+      // Authentication is a definitive routing result; a concurrent status
+      // probe cannot make the adopted bearer valid. Mount the auth gate now
+      // instead of waiting through the status request's 30-second budget.
+      advanceAuthGate();
       return;
     }
 
@@ -733,9 +751,7 @@ async function runCloudManagedWarmup(
       // the normal auth gate, where managed Cloud recovery can exchange a
       // fresh agent credential; treating this as warmup would hide that gate
       // behind the startup screen until the absolute timeout.
-      deps.setConnected(false);
-      deps.setFirstRunLoading(false);
-      dispatch({ type: "AGENT_RUNNING" });
+      advanceAuthGate();
       return;
     }
 

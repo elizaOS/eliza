@@ -40,6 +40,8 @@ import {
   STAGING_DIRECT_CLOUD_BASE_URL,
 } from "./direct-cloud-endpoints";
 
+const SERVER_SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -91,7 +93,7 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
   it("creates CLI sessions through the same-origin proxy and opens staging auth", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(jsonResponse({ ok: true }));
+      .mockResolvedValue(jsonResponse({ sessionId: SERVER_SESSION_ID }, 201));
 
     const client = new ElizaClient("http://localhost:31337");
     const result = await client.cloudLoginDirect(
@@ -103,14 +105,14 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: expect.stringContaining("sessionId"),
+        body: "{}",
       }),
     );
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
         apiBase: STAGING_DIRECT_CLOUD_API_BASE_URL,
-        sessionId: expect.any(String),
+        sessionId: SERVER_SESSION_ID,
         browserUrl: expect.stringMatching(
           new RegExp(
             `^${STAGING_DIRECT_CLOUD_BASE_URL}/auth/cli-login\\?session=`,
@@ -119,6 +121,23 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
       }),
     );
   });
+
+  it.each([{}, { sessionId: "not-a-uuid" }])(
+    "rejects a successful web response without a server-issued UUID",
+    async (body) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(body, 201));
+
+      const client = new ElizaClient("http://localhost:31337");
+      const result = await client.cloudLoginDirect(
+        "https://staging.elizacloud.ai",
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        error: "Login failed: Eliza Cloud returned an invalid session ID",
+      });
+    },
+  );
 
   it("polls CLI sessions through the same-origin proxy", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -197,7 +216,7 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
   it("creates CLI sessions against the absolute cloud URL, not the local agent", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(jsonResponse({ ok: true }));
+      .mockResolvedValue(jsonResponse({ sessionId: SERVER_SESSION_ID }, 201));
 
     const client = new ElizaClient("http://localhost:31337");
     const result = await client.cloudLoginDirect(
@@ -304,7 +323,7 @@ describe("ElizaClient direct Cloud auth served from Electrobun", () => {
 
   it("keeps the browser callback out of the loopback renderer", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      jsonResponse({ sessionId: "server-issued-electrobun-session" }, 201),
+      jsonResponse({ sessionId: SERVER_SESSION_ID }, 201),
     );
 
     const client = new ElizaClient("http://127.0.0.1:31337");
@@ -315,10 +334,8 @@ describe("ElizaClient direct Cloud auth served from Electrobun", () => {
     const browserUrl = new URL(result.browserUrl ?? "");
     expect(browserUrl.origin).toBe(STAGING_DIRECT_CLOUD_BASE_URL);
     expect(browserUrl.pathname).toBe("/auth/cli-login");
-    expect(result.sessionId).toBe("server-issued-electrobun-session");
-    expect(browserUrl.searchParams.get("session")).toBe(
-      "server-issued-electrobun-session",
-    );
+    expect(result.sessionId).toBe(SERVER_SESSION_ID);
+    expect(browserUrl.searchParams.get("session")).toBe(SERVER_SESSION_ID);
     expect(browserUrl.searchParams.has("returnTo")).toBe(false);
   });
 });

@@ -316,6 +316,49 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     },
   );
 
+  it("advances to the auth gate without waiting for a stalled status probe", async () => {
+    vi.useFakeTimers();
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Eliza Cloud",
+    });
+    clientMock.hasToken.mockReturnValue(true);
+    clientMock.listConversations.mockRejectedValue({
+      status: 401,
+      message: "Unauthorized",
+    });
+    clientMock.fetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () => resolve({ state: "starting", canRespond: false }),
+            30_000,
+          );
+        }),
+    );
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+    let settled = false;
+    const run = runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+      "cloud-managed",
+    ).then(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+    await run;
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+  });
+
   it("keeps a tokenless native 401 in warmup while credential injection is pending", async () => {
     persistenceMock.loadPersistedActiveServer.mockReturnValue({
       id: "cloud:agent-123",

@@ -419,18 +419,14 @@ function parseCloudLoginPollData(data: unknown): {
   };
 }
 
-function generateCloudLoginSessionId(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  if (typeof globalThis.crypto?.getRandomValues === "function") {
-    const bytes = new Uint8Array(16);
-    globalThis.crypto.getRandomValues(bytes);
-    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-      "",
-    );
-  }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+const CLOUD_LOGIN_SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function cloudLoginSessionIdOrNull(value: unknown): string | null {
+  const sessionId = stringOrNull(value);
+  return sessionId && CLOUD_LOGIN_SESSION_ID_RE.test(sessionId)
+    ? sessionId
+    : null;
 }
 
 function resolveCloudCliLoginReturnUrl(sessionId: string): string | null {
@@ -3208,7 +3204,6 @@ ElizaClient.prototype.cloudLoginDirect = async function (
   this: ElizaClient,
   cloudApiBase,
 ) {
-  const requestedSessionId = generateCloudLoginSessionId();
   const cloudWebBase = resolveDirectCloudWebBase(cloudApiBase);
   const authApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   try {
@@ -3216,7 +3211,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       const res = await CapacitorHttp.post({
         url: `${authApiBase}/api/auth/cli-session`,
         headers: { "Content-Type": "application/json" },
-        data: { sessionId: requestedSessionId },
+        data: {},
         responseType: "json",
         connectTimeout: 10_000,
         readTimeout: 10_000,
@@ -3225,8 +3220,13 @@ ElizaClient.prototype.cloudLoginDirect = async function (
         return { ok: false, error: `Login failed (${res.status})` };
       }
       const responseData = recordOrNull(parseDirectCloudJsonSafe(res.data));
-      const sessionId =
-        stringOrNull(responseData?.sessionId) ?? requestedSessionId;
+      const sessionId = cloudLoginSessionIdOrNull(responseData?.sessionId);
+      if (!sessionId) {
+        return {
+          ok: false,
+          error: "Login failed: Eliza Cloud returned an invalid session ID",
+        };
+      }
       return {
         ok: true,
         apiBase: authApiBase,
@@ -3240,15 +3240,20 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: requestedSessionId }),
+        body: JSON.stringify({}),
       },
     );
     if (!res.ok) {
       return { ok: false, error: `Login failed (${res.status})` };
     }
     const responseData = recordOrNull(await res.json());
-    const sessionId =
-      stringOrNull(responseData?.sessionId) ?? requestedSessionId;
+    const sessionId = cloudLoginSessionIdOrNull(responseData?.sessionId);
+    if (!sessionId) {
+      return {
+        ok: false,
+        error: "Login failed: Eliza Cloud returned an invalid session ID",
+      };
+    }
     return {
       ok: true,
       apiBase: authApiBase,
