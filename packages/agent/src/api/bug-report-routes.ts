@@ -187,7 +187,7 @@ function getRemoteBugReportToken(): string | undefined {
   return process.env.ELIZA_BUG_REPORT_API_TOKEN;
 }
 
-export async function submitToRemoteBugIntake(body: BugReportBody) {
+async function submitToRemoteBugIntake(body: BugReportBody) {
   const remoteBugReportUrl = getRemoteBugReportUrl();
   if (!remoteBugReportUrl) return null;
   const payload = {

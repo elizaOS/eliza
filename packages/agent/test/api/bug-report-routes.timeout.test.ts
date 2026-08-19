@@ -1,7 +1,9 @@
 /**
  * Bug report fetch deadlines — proves remote and GitHub intake abort on
  * timeout, covers stalled headers and stalled bodies with a real hanging
- * server, and pins the documented budget.
+ * server, and pins the documented budget. All remote-intake paths are
+ * exercised through the owning route handler so the timeout translation into
+ * a structured 502 response is validated at the route boundary.
  */
 import http from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +12,6 @@ import {
   DEFAULT_BUG_REPORT_FETCH_TIMEOUT_MS,
   handleBugReportRoutes,
   resetBugReportRateLimit,
-  submitToRemoteBugIntake,
 } from "../../src/api/bug-report-routes.ts";
 
 type BugReportRouteContext = Parameters<typeof handleBugReportRoutes>[0];
@@ -103,7 +104,7 @@ describe("bug report fetch timeout", () => {
     expect(DEFAULT_BUG_REPORT_FETCH_TIMEOUT_MS).toBe(10_000);
   });
 
-  it("aborts a stalled remote intake at the deadline (hanging fetch)", async () => {
+  it("aborts a stalled remote intake at the deadline (hanging fetch) via route", async () => {
     vi.spyOn(AbortSignal, "timeout").mockImplementation(() =>
       originalTimeout(10),
     );
@@ -113,13 +114,13 @@ describe("bug report fetch timeout", () => {
       "https://intake.example.test/reports",
     );
 
-    await expect(
-      submitToRemoteBugIntake(
-        validBugReport as unknown as Parameters<
-          typeof submitToRemoteBugIntake
-        >[0],
-      ),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
+    const ctx = createContext();
+    await handleBugReportRoutes(ctx);
+
+    expect(ctx.responseStatus).toBe(502);
+    expect((ctx.responseBody as { error?: string })?.error).toBe(
+      "Failed to submit bug report",
+    );
   });
 
   it("aborts a stalled GitHub intake at the deadline (hanging fetch via route)", async () => {
@@ -143,7 +144,7 @@ describe("bug report fetch timeout", () => {
     );
   });
 
-  it("keeps the deadline armed while the response body stalls (real server)", async () => {
+  it("keeps the deadline armed while the response body stalls (real server) via route", async () => {
     const server = http.createServer((_req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.write('{"accepted":true,');
@@ -158,22 +159,19 @@ describe("bug report fetch timeout", () => {
       originalTimeout(10),
     );
     vi.stubEnv("ELIZA_BUG_REPORT_API_URL", url);
-    // Use real fetch for this test (don't stub global fetch) - it will hit the real server
-    // Ensure we don't have a fetch mock; the injected timeout will abort the stalled body
+    const ctx = createContext();
     try {
-      await expect(
-        submitToRemoteBugIntake(
-          validBugReport as unknown as Parameters<
-            typeof submitToRemoteBugIntake
-          >[0],
-        ),
-      ).rejects.toMatchObject({ name: "TimeoutError" });
+      await handleBugReportRoutes(ctx);
+      expect(ctx.responseStatus).toBe(502);
+      expect((ctx.responseBody as { error?: string })?.error).toBe(
+        "Failed to submit bug report",
+      );
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
-  it("succeeds on a fast upstream and passes the abort signal", async () => {
+  it("succeeds on a fast remote upstream (via route) and passes the abort signal", async () => {
     const signals: AbortSignal[] = [];
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -195,18 +193,16 @@ describe("bug report fetch timeout", () => {
     );
     vi.stubEnv("ELIZA_BUG_REPORT_API_TOKEN", "remote-test-token");
 
-    const result = await submitToRemoteBugIntake(
-      validBugReport as unknown as Parameters<
-        typeof submitToRemoteBugIntake
-      >[0],
-    );
+    const ctx = createContext();
+    await handleBugReportRoutes(ctx);
 
-    expect(result).toEqual({
+    expect(ctx.responseBody).toEqual({
       accepted: true,
       id: "report-1",
       url: "https://intake.example.test/reports/report-1",
       destination: "remote",
     });
+    expect(ctx.responseStatus).toBe(200);
     expect(signals).toHaveLength(1);
     expect(signals[0]?.aborted).toBe(false);
     const [, init] = fetchMock.mock.calls[0] as [unknown, RequestInit];
