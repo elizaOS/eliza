@@ -35,7 +35,9 @@ function streamOf(
 	);
 }
 
-function openOverflowStream(onCancel: () => void): Response {
+function openOverflowStream(
+	onCancel: () => void | Promise<void>,
+): Response {
 	return new Response(
 		new ReadableStream<Uint8Array>({
 			start(controller) {
@@ -79,11 +81,33 @@ describe("readCappedSkillPackage", () => {
 		const cancel = vi.fn();
 		const response = openOverflowStream(cancel);
 
-		await expect(readCappedSkillPackage(response)).rejects.toThrow(
-			"Package too large (max 10MB)",
-		);
+		await expect(readCappedSkillPackage(response)).rejects.toMatchObject({
+			message: "Package too large (max 10MB)",
+			code: "SKILL_PACKAGE_TOO_LARGE",
+			context: {
+				maxBytes: MAX_SKILL_PACKAGE_BYTES,
+				receivedBytes: MAX_SKILL_PACKAGE_BYTES + 1,
+			},
+		});
 		expect(cancel).toHaveBeenCalledOnce();
 		expect(response.body?.locked).toBe(false);
+	});
+
+	it("does not let cancellation failure mask the typed size error", async () => {
+		const cancel = vi.fn(async () => {
+			throw new Error("transport cancel failed");
+		});
+
+		await expect(
+			readCappedSkillPackage(openOverflowStream(cancel)),
+		).rejects.toMatchObject({ code: "SKILL_PACKAGE_TOO_LARGE" });
+		expect(cancel).toHaveBeenCalledOnce();
+	});
+
+	it("returns empty bytes for a response without a body", async () => {
+		await expect(
+			readCappedSkillPackage(new Response(null)),
+		).resolves.toEqual(new Uint8Array());
 	});
 
 	it("decodes a capped SKILL.md body as UTF-8", async () => {
@@ -91,6 +115,16 @@ describe("readCappedSkillPackage", () => {
 			new Response("name: demo\n", { headers: { "content-type": "text/markdown" } }),
 		);
 		expect(text).toBe("name: demo\n");
+	});
+
+	it("rejects malformed UTF-8 instead of changing skill instructions", async () => {
+		await expect(
+			readCappedSkillText(new Response(new Uint8Array([0xc3, 0x28]))),
+		).rejects.toMatchObject({
+			code: "SKILL_PACKAGE_INVALID_UTF8",
+			context: { byteLength: 2 },
+			cause: expect.any(TypeError),
+		});
 	});
 
 	it("fails a real direct-URL install and cancels before saving an oversized body", async () => {

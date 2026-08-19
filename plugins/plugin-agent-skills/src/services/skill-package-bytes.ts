@@ -5,6 +5,8 @@
  * `arrayBuffer()` / `text()` allocation.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 /** Maximum zip / SKILL.md download size (10MB). */
 export const MAX_SKILL_PACKAGE_BYTES = 10 * 1024 * 1024;
 
@@ -15,17 +17,20 @@ export const MAX_SKILL_PACKAGE_BYTES = 10 * 1024 * 1024;
 export async function readCappedSkillPackage(
 	response: Response,
 ): Promise<Uint8Array> {
-	const tooLarge = (): Error =>
-		new Error(
+	const tooLarge = (receivedBytes: number): ElizaError =>
+		new ElizaError(
 			`Package too large (max ${MAX_SKILL_PACKAGE_BYTES / 1024 / 1024}MB)`,
+			{
+				code: "SKILL_PACKAGE_TOO_LARGE",
+				context: {
+					maxBytes: MAX_SKILL_PACKAGE_BYTES,
+					receivedBytes,
+				},
+			},
 		);
 	const body = response.body;
 	if (!body) {
-		const fallback = new Uint8Array(await response.arrayBuffer());
-		if (fallback.byteLength > MAX_SKILL_PACKAGE_BYTES) {
-			throw tooLarge();
-		}
-		return fallback;
+		return new Uint8Array();
 	}
 	const reader = body.getReader();
 	const chunks: Uint8Array[] = [];
@@ -42,7 +47,7 @@ export async function readCappedSkillPackage(
 				} catch {
 					// error-policy:J6 cancel is best-effort after the byte-cap failure.
 				}
-				throw tooLarge();
+				throw tooLarge(total);
 			}
 			chunks.push(value);
 		}
@@ -66,5 +71,16 @@ export async function readCappedSkillPackage(
 export async function readCappedSkillText(
 	response: Response,
 ): Promise<string> {
-	return new TextDecoder().decode(await readCappedSkillPackage(response));
+	const bytes = await readCappedSkillPackage(response);
+	try {
+		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+	} catch (cause) {
+		// error-policy:J2 malformed authored instructions are rejected without
+		// silently replacing invalid bytes and changing the package contents.
+		throw new ElizaError("Skill package text is not valid UTF-8", {
+			code: "SKILL_PACKAGE_INVALID_UTF8",
+			context: { byteLength: bytes.byteLength },
+			cause,
+		});
+	}
 }
