@@ -1375,6 +1375,16 @@ export class GatewayManager {
         error: errorMessage,
       });
 
+      // disconnectBot() may have already torn this connection down (or a
+      // newer connectBot() call may have replaced it) while login() was in
+      // flight -- its own cleanup already ran. Don't double-clean a
+      // connection this invocation no longer owns, and don't overwrite a
+      // legitimate "disconnected" status (or a newer connection's status)
+      // with "error", which would incorrectly flag it for reassignment.
+      if (this.connections.get(assignment.connectionId) !== conn) {
+        return;
+      }
+
       // Releases the failed connection so it can be retried
       this.removeAllListeners(conn);
       client.destroy();
