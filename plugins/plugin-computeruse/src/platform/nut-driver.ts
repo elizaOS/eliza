@@ -68,14 +68,28 @@ interface NutModule {
 let cachedModule: NutModule | null = null;
 let loadError: Error | null = null;
 
+export const NUT_INPUT_SETTLE_DELAY_MS = 20;
+
+interface NutInputConfigTarget {
+  mouse: { config: { mouseSpeed: number; autoDelayMs: number } };
+  keyboard: { config: { autoDelayMs: number } };
+}
+
+/** Applies the input pacing required for native event delivery. nut.js waits
+ * before each affected action; zero-delay dispatch can acknowledge commands
+ * before macOS has delivered the preceding focus or input event. */
+export function configureNutInput(target: NutInputConfigTarget): void {
+  target.mouse.config.mouseSpeed = 1000;
+  target.mouse.config.autoDelayMs = NUT_INPUT_SETTLE_DELAY_MS;
+  target.keyboard.config.autoDelayMs = NUT_INPUT_SETTLE_DELAY_MS;
+}
+
 function loadNut(): NutModule | null {
   if (cachedModule !== null) return cachedModule;
   if (loadError !== null) return null;
   try {
     const mod = requireFromHere("@nut-tree-fork/nut-js") as NutModule;
-    mod.mouse.config.mouseSpeed = 1000;
-    mod.mouse.config.autoDelayMs = 0;
-    mod.keyboard.config.autoDelayMs = 0;
+    configureNutInput(mod);
     cachedModule = mod;
     return mod;
   } catch (err) {

@@ -14,9 +14,29 @@
 import { describe, expect, it } from "vitest";
 import {
   clampScrollNotches,
+  configureNutInput,
   densifyDragPath,
   interpolateDragSteps,
+  NUT_INPUT_SETTLE_DELAY_MS,
 } from "../platform/nut-driver.js";
+
+describe("configureNutInput", () => {
+  it("retains nonzero settling for both native input channels", () => {
+    const target = {
+      mouse: { config: { mouseSpeed: 1, autoDelayMs: 0 } },
+      keyboard: { config: { autoDelayMs: 0 } },
+    };
+
+    configureNutInput(target);
+
+    expect(NUT_INPUT_SETTLE_DELAY_MS).toBeGreaterThan(0);
+    expect(target.mouse.config).toEqual({
+      mouseSpeed: 1000,
+      autoDelayMs: NUT_INPUT_SETTLE_DELAY_MS,
+    });
+    expect(target.keyboard.config.autoDelayMs).toBe(NUT_INPUT_SETTLE_DELAY_MS);
+  });
+});
 
 describe("clampScrollNotches", () => {
   it("clamps to the 1..20 notch range and rounds", () => {
