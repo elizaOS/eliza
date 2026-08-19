@@ -4,6 +4,8 @@
  * the already-running local elizaOS API rather than a second model runtime.
  */
 
+import { resolveLocalVoiceRuntimeIdentity } from "./local-voice-runtime-identity";
+
 const DEFAULT_RUNTIME_ORIGIN = "http://127.0.0.1:31337";
 const DEFAULT_GATEWAY_PORT = 31_338;
 const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
@@ -53,80 +55,10 @@ function assertUuid(label: string, value: string): string {
   return value;
 }
 
-async function readLocalIdentity(runtimeOrigin: string): Promise<{
-  agentId: string;
-  conversationId: string;
-}> {
-  const healthResponse = await fetch(new URL("/api/health", runtimeOrigin));
-  if (!healthResponse.ok) {
-    throw new Error(
-      `local runtime health returned HTTP ${healthResponse.status}`,
-    );
-  }
-  const health = (await healthResponse.json()) as {
-    ready?: unknown;
-    canRespond?: unknown;
-  };
-  if (health.ready !== true || health.canRespond !== true) {
-    throw new Error("local runtime is not ready to respond");
-  }
-
-  const configuredAgentId = process.env.ELIZA_LOCAL_VOICE_AGENT_ID?.trim();
-  let discoveredAgentId: string | undefined;
-  if (!configuredAgentId) {
-    const agentResponse = await fetch(new URL("/api/agents", runtimeOrigin));
-    if (!agentResponse.ok) {
-      throw new Error(
-        `local agents route returned HTTP ${agentResponse.status}`,
-      );
-    }
-    const agentsBody = (await agentResponse.json()) as {
-      agents?: Array<{ id?: unknown; status?: unknown }>;
-    };
-    discoveredAgentId = agentsBody.agents?.find(
-      (agent) => agent.status === "running" && typeof agent.id === "string",
-    )?.id as string | undefined;
-  }
-  const agentId = assertUuid(
-    "local agent id",
-    configuredAgentId || discoveredAgentId || "",
-  );
-
-  const configuredConversationId =
-    process.env.ELIZA_LOCAL_VOICE_CONVERSATION_ID?.trim();
-  let discoveredConversationId: string | undefined;
-  if (!configuredConversationId) {
-    const conversationResponse = await fetch(
-      new URL("/api/conversations", runtimeOrigin),
-    );
-    if (!conversationResponse.ok) {
-      throw new Error(
-        `local conversations route returned HTTP ${conversationResponse.status}`,
-      );
-    }
-    const conversationsBody = (await conversationResponse.json()) as {
-      conversations?: Array<{ id?: unknown; updatedAt?: unknown }>;
-    };
-    discoveredConversationId = conversationsBody.conversations
-      ?.filter((conversation) => typeof conversation.id === "string")
-      .sort((left, right) =>
-        String(right.updatedAt ?? "").localeCompare(
-          String(left.updatedAt ?? ""),
-        ),
-      )[0]?.id as string | undefined;
-  }
-  const conversationId = assertUuid(
-    "local conversation id",
-    configuredConversationId || discoveredConversationId || "",
-  );
-
-  return { agentId, conversationId };
-}
-
 async function main(): Promise<void> {
   const cartesiaApiKey = requiredSecret("CARTESIA_API_KEY");
-  const runtimeOrigin =
-    process.env.ELIZA_LOCAL_API_ORIGIN?.trim() || DEFAULT_RUNTIME_ORIGIN;
+  const configuredRuntimeOrigin =
+    process.env.ELIZA_LOCAL_API_ORIGIN || DEFAULT_RUNTIME_ORIGIN;
   const gatewayPort = readPort(
     "ELIZA_LOCAL_VOICE_GATEWAY_PORT",
     DEFAULT_GATEWAY_PORT,
@@ -136,7 +68,12 @@ async function main(): Promise<void> {
     process.env.VOICE_REALTIME_CARTESIA_VOICE_ID?.trim() ||
       DEFAULT_CARTESIA_VOICE_ID,
   );
-  const { agentId, conversationId } = await readLocalIdentity(runtimeOrigin);
+  const { runtimeOrigin, agentId, conversationId } =
+    await resolveLocalVoiceRuntimeIdentity({
+      runtimeOrigin: configuredRuntimeOrigin,
+      configuredAgentId: process.env.ELIZA_LOCAL_VOICE_AGENT_ID,
+      configuredConversationId: process.env.ELIZA_LOCAL_VOICE_CONVERSATION_ID,
+    });
   const [{ createLocalRuntimeConversationFetch }, harness] = await Promise.all([
     import("../v1/voice/session/lib/local-runtime-conversation-fetch"),
     import("../v1/voice/session/lib/harness-real-server"),
