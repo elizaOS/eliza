@@ -298,6 +298,14 @@ describe("0262-0263 payment request receipts migrations", () => {
       { provider: "oxapay", proof: { ...oxapayProof, provider: "stripe" } },
       { provider: "oxapay", proof: { ...oxapayProof, oxapay_amount_cents: 2499 } },
       { provider: "oxapay", proof: { ...oxapayProof, oxapay_currency: "EUR" } },
+      {
+        provider: "oxapay",
+        proof: { ...oxapayProof, oxapay_callback_currency: "POL" },
+      },
+      {
+        provider: "oxapay",
+        proof: { ...oxapayProof, oxapay_type: "payer@example.invalid" },
+      },
     ];
 
     for (const input of cases) {

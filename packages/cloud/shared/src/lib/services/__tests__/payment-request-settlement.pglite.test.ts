@@ -378,7 +378,8 @@ describe("durable payment request settlement", () => {
         ...oxapay.proof,
         raw_webhook: "must-not-copy",
         arbitrary: ["nested"],
-        oxapay_type: { arbitrary: "nested" },
+        oxapay_callback_currency: "POL",
+        oxapay_type: "payer@example.invalid",
       },
     });
 
@@ -396,6 +397,10 @@ describe("durable payment request settlement", () => {
     ]);
     expect(JSON.stringify({ requests, receipts: await receiptRows() })).not.toContain(
       "must-not-copy",
+    );
+    expect(JSON.stringify({ requests, receipts: await receiptRows() })).not.toContain("POL");
+    expect(JSON.stringify({ requests, receipts: await receiptRows() })).not.toContain(
+      "payer@example.invalid",
     );
   });
 

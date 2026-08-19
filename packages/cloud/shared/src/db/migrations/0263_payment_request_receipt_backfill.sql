@@ -74,8 +74,7 @@ BEGIN
             ))
             OR (request."provider" = 'oxapay' AND proof.key NOT IN (
               'provider', 'oxapay_track_id', 'oxapay_order_id', 'oxapay_status',
-              'oxapay_amount_cents', 'oxapay_currency', 'oxapay_callback_currency',
-              'oxapay_type'
+              'oxapay_amount_cents', 'oxapay_currency'
             ))
         )
         OR (request."provider" = 'stripe' AND (

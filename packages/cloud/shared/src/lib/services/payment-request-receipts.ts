@@ -40,8 +40,6 @@ const SETTLEMENT_PROOF_FIELDS = {
     "oxapay_status",
     "oxapay_amount_cents",
     "oxapay_currency",
-    "oxapay_callback_currency",
-    "oxapay_type",
   ],
 } as const satisfies Record<"stripe" | "oxapay", readonly string[]>;
 
