@@ -1,10 +1,11 @@
 /**
  * Character-count text chunker: recursively splits text on separators from
- * coarsest to finest (paragraph, line, space, character) and re-merges adjacent
- * pieces up to chunkSize, carrying chunkOverlap between successive chunks. The
- * length function may be async; chunkOverlap must be < chunkSize or the
- * constructor throws. Pieces that still exceed chunkSize are emitted and logged
- * as a warning.
+ * coarsest to finest (paragraph, line, space, Unicode code point) and re-merges
+ * adjacent pieces up to chunkSize, carrying chunkOverlap between successive
+ * chunks. The finest grain is a code point, not a UTF-16 unit, so an astral
+ * character cannot be emitted as a lone surrogate. The length function may be
+ * async; chunkOverlap must be < chunkSize or the constructor throws. Pieces
+ * that still exceed chunkSize are emitted and logged as a warning.
  */
 import logger from "../logger";
 
@@ -54,7 +55,10 @@ export class RecursiveCharacterTextSplitter {
 				splits = text.split(separator);
 			}
 		} else {
-			splits = text.split("");
+			// Finest grain is a Unicode code point. text.split("") yields UTF-16
+			// units and cuts astral-plane characters, leaving lone surrogates
+			// that JSON.stringify as \uD8xx and that embed APIs reject.
+			splits = Array.from(text);
 		}
 		return splits.filter((s) => s !== "");
 	}
