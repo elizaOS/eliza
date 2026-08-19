@@ -187,7 +187,30 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
     CREATE TABLE organizations (
       id uuid PRIMARY KEY,
       credit_balance numeric(16, 6) NOT NULL DEFAULT '0.000000',
+      stripe_customer_id text,
+      billing_email text,
+      stripe_payment_method_id text,
+      stripe_default_payment_method text,
+      auto_top_up_enabled boolean DEFAULT false,
+      auto_top_up_amount numeric(12, 6),
+      auto_top_up_threshold numeric(12, 6),
       CONSTRAINT credit_balance_non_negative CHECK (credit_balance >= 0)
+    );
+    CREATE TABLE organization_billing (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL,
+      stripe_customer_id text,
+      billing_email text,
+      tax_id_type text,
+      tax_id_value text,
+      billing_address jsonb,
+      stripe_payment_method_id text,
+      stripe_default_payment_method text,
+      auto_top_up_enabled boolean NOT NULL DEFAULT false,
+      auto_top_up_amount numeric(12, 6),
+      auto_top_up_threshold numeric(12, 6),
+      updated_at timestamp with time zone NOT NULL DEFAULT now(),
+      CONSTRAINT organization_billing_organization_id_unique UNIQUE (organization_id)
     );
     CREATE TABLE credit_transactions (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -236,7 +259,16 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
       updated_at timestamp with time zone NOT NULL DEFAULT now()
     );
     CREATE TABLE payment_requests (
-      id uuid PRIMARY KEY
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL,
+      provider text NOT NULL,
+      amount_cents bigint NOT NULL,
+      currency text NOT NULL DEFAULT 'usd',
+      status text NOT NULL DEFAULT 'pending',
+      provider_intent jsonb NOT NULL DEFAULT '{}'::jsonb,
+      settled_at timestamp with time zone,
+      settlement_tx_ref text,
+      settlement_proof jsonb
     );
     CREATE TABLE payment_request_events (
       id uuid PRIMARY KEY,
@@ -499,6 +531,75 @@ describe.skipIf(!ENABLED)(
         data_type: "text",
         is_nullable: "NO",
         column_default: "'open'::text",
+      });
+
+      // 0262 pivots payment receipts on the historical (id, organization_id,
+      // provider) tenant authority of payment_requests. If the pre-0185
+      // checkpoint fixture regresses back to the id-only shape, 0262 fails with
+      // 42703 before this index exists, so asserting both the columns and the
+      // unique index guards the fixture against that drift.
+      const paymentRequestAuthority = await database.client.query<{
+        organization_id: string;
+        provider: string;
+        tenant_authority_index: string;
+      }>(`
+        SELECT
+          (SELECT count(*)::text
+           FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'payment_requests'
+             AND column_name = 'organization_id') AS organization_id,
+          (SELECT count(*)::text
+           FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'payment_requests'
+             AND column_name = 'provider') AS provider,
+          (SELECT count(*)::text
+           FROM pg_indexes
+           WHERE schemaname = 'public' AND tablename = 'payment_requests'
+             AND indexname
+               = 'payment_requests_id_organization_provider_unique')
+             AS tenant_authority_index
+      `);
+      expect(paymentRequestAuthority.rows[0]).toEqual({
+        organization_id: "1",
+        provider: "1",
+        tenant_authority_index: "1",
+      });
+
+      // 0264 folds the organization_billing shadow into organizations, so the
+      // pre-0185 checkpoint must already carry the historical shadow table plus
+      // the organizations billing-authority columns. If the fixture drops them,
+      // 0264 aborts with 42P01/42703 before this row can be observed.
+      const billingAuthority = await database.client.query<{
+        shadow_table: string;
+        shadow_auto_top_up_amount: string;
+        organizations_stripe_customer_id: string;
+        organizations_auto_top_up_amount: string;
+      }>(`
+        SELECT
+          (SELECT count(*)::text
+           FROM information_schema.tables
+           WHERE table_schema = 'public'
+             AND table_name = 'organization_billing') AS shadow_table,
+          (SELECT count(*)::text
+           FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'organization_billing'
+             AND column_name = 'auto_top_up_amount') AS shadow_auto_top_up_amount,
+          (SELECT count(*)::text
+           FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'organizations'
+             AND column_name = 'stripe_customer_id')
+             AS organizations_stripe_customer_id,
+          (SELECT count(*)::text
+           FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'organizations'
+             AND column_name = 'auto_top_up_amount')
+             AS organizations_auto_top_up_amount
+      `);
+      expect(billingAuthority.rows[0]).toEqual({
+        shadow_table: "1",
+        shadow_auto_top_up_amount: "1",
+        organizations_stripe_customer_id: "1",
+        organizations_auto_top_up_amount: "1",
       });
 
       const second = await runScript(MIGRATOR, database.url);
