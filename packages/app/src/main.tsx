@@ -89,7 +89,6 @@ import {
   type AppBootConfig,
   getBootConfig,
   setBootConfig,
-  shouldUseCloudOnlyBranding,
 } from "@elizaos/ui/config";
 import {
   AGENT_READY_EVENT,
@@ -187,6 +186,7 @@ import { renderBootFailure } from "./boot-failure";
 import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { resolveAppCloudOnlyBranding } from "./cloud-only-branding";
 import { isTrustedAppLink } from "./deep-link-handler";
 import {
   buildAssistantLaunchHashRoute,
@@ -375,7 +375,7 @@ function isShareTargetQueue(value: unknown): value is ShareTargetPayload[] {
   return Array.isArray(value);
 }
 
-function getInjectedAppApiBase(): string | undefined {
+function getLegacyInjectedAppApiBase(): string | undefined {
   const brandedApiBase: unknown = Reflect.get(
     window,
     BRANDED_WINDOW_KEYS.apiBase,
@@ -409,15 +409,16 @@ function getInjectedDesktopRuntimeMode(): string | undefined {
 const APP_BRANDING: Partial<BrandingConfig> = {
   ...APP_BRANDING_BASE,
   theme: ELIZA_DEFAULT_THEME,
-  // The hosted web bundle stays cloud-only in production. Desktop shells and
-  // other hosts inject an explicit API base before React boots, and that host
-  // backend should control first-run capabilities instead — UNLESS the desktop
-  // shell explicitly opted into cloud-only mode (desktopRuntimeMode === "cloud"),
-  // which forces cloud-only regardless of the injected loopback proxy base.
-  cloudOnly: shouldUseCloudOnlyBranding({
+  // The hosted web bundle stays cloud-only in production. Desktop shells seed
+  // the typed boot config before renderer modules evaluate (with the branded
+  // window key retained as a legacy fallback), and that host backend should
+  // control first-run capabilities instead — UNLESS the desktop shell explicitly
+  // opted into cloud-only mode, which remains authoritative over a loopback base.
+  cloudOnly: resolveAppCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
-    injectedApiBase:
-      typeof window === "undefined" ? undefined : getInjectedAppApiBase(),
+    bootApiBase: getBootConfig().apiBase,
+    legacyInjectedApiBase:
+      typeof window === "undefined" ? undefined : getLegacyInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
