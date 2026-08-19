@@ -11,7 +11,7 @@ Most scripts here are invoked from **root `package.json`** (`bun run …`). **Ap
 
 **Why a dedicated script:** Electrobun needs a renderer URL, often a running API, and (in dev) a root `dist/` bundle. Starting each piece by hand drifts on ports and env vars; one orchestrator keeps **startup and shutdown** symmetric.
 
-**Full guide (WHYs for signals, `detached`, HMR vs Rollup watch, multiple `bun` PIDs):** [Desktop local development](../docs/apps/desktop-local-development.md)
+**Full guide (WHYs for signals, `detached`, HMR vs Rollup watch, multiple `bun` PIDs):** [Desktop local development](../../docs/apps/desktop-local-development.md)
 
 ### Production and staging Cloud targets
 
