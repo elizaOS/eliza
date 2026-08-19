@@ -24,6 +24,11 @@
  * `127.0.0.1.evil.com`), which the strict parser correctly rejects. The change
  * can only ever turn a previously-trusted request into an untrusted one, never
  * the reverse.
+ *
+ * Browser HTTP(S) origins and referrers must match the request Host authority,
+ * including an explicit non-default port. This prevents another loopback web
+ * server from inheriting owner trust merely because it also uses localhost.
+ * Native application schemes remain eligible for the same-machine policy.
  */
 
 import type http from "node:http";
@@ -310,7 +315,90 @@ const LOCAL_APP_PROTOCOLS = new Set([
   "electrobun:",
 ]);
 
-function isTrustedLocalOrigin(raw: string): boolean {
+type LocalHttpAuthority = {
+  hostname: string;
+  port: number | null;
+};
+
+function normalizeAuthorityHostname(hostname: string): string {
+  const normalized = hostname.trim().toLowerCase();
+  return normalized.startsWith("[") && normalized.endsWith("]")
+    ? normalized.slice(1, -1)
+    : normalized;
+}
+
+function parseLoopbackHostAuthority(raw: string): LocalHttpAuthority | null {
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed || /[/\\?#@]/.test(trimmed)) return null;
+
+  let hostname: string;
+  let portText: string | null = null;
+  if (trimmed.startsWith("[")) {
+    const closingBracket = trimmed.indexOf("]");
+    if (closingBracket < 0) return null;
+    hostname = trimmed.slice(1, closingBracket);
+    const suffix = trimmed.slice(closingBracket + 1);
+    if (suffix) {
+      if (!/^:\d+$/.test(suffix)) return null;
+      portText = suffix.slice(1);
+    }
+  } else {
+    const match = /^([^:]+)(?::(\d+))?$/.exec(trimmed);
+    if (!match?.[1]) return null;
+    hostname = match[1];
+    portText = match[2] ?? null;
+  }
+
+  if (!isLoopbackBindHost(hostname)) return null;
+  if (portText === null) return { hostname, port: null };
+  const port = Number(portText);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) return null;
+  return { hostname, port };
+}
+
+function isTrustedLocalBrowserUrl(
+  raw: string,
+  host: string | null,
+  allowPath: boolean,
+): boolean {
+  if (!host) return false;
+  const hostAuthority = parseLoopbackHostAuthority(host);
+  if (!hostAuthority) return false;
+
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+    if (parsed.username || parsed.password) return false;
+    if (
+      !allowPath &&
+      (parsed.pathname !== "/" || parsed.search || parsed.hash)
+    ) {
+      return false;
+    }
+
+    const originHostname = normalizeAuthorityHostname(parsed.hostname);
+    if (
+      !isLoopbackBindHost(originHostname) ||
+      originHostname !== hostAuthority.hostname
+    ) {
+      return false;
+    }
+
+    const explicitOriginPort = parsed.port ? Number(parsed.port) : null;
+    if (hostAuthority.port === null) return explicitOriginPort === null;
+    const effectiveOriginPort =
+      explicitOriginPort ?? (parsed.protocol === "https:" ? 443 : 80);
+    return effectiveOriginPort === hostAuthority.port;
+  } catch {
+    // error-policy:J3 untrusted browser URL metadata is invalid unless its
+    // authority can be parsed and proven to match the request Host.
+    return false;
+  }
+}
+
+function isTrustedLocalOrigin(raw: string, host: string | null): boolean {
   const trimmed = raw.trim();
   if (!trimmed || trimmed === "null") return true;
   try {
@@ -318,10 +406,15 @@ function isTrustedLocalOrigin(raw: string): boolean {
     if (LOCAL_APP_PROTOCOLS.has(parsed.protocol)) {
       return true;
     }
-    return isLoopbackBindHost(parsed.hostname);
+    return isTrustedLocalBrowserUrl(trimmed, host, false);
   } catch {
+    // error-policy:J3 untrusted Origin metadata with an invalid URL is denied.
     return false;
   }
+}
+
+function isTrustedLocalReferer(raw: string, host: string | null): boolean {
+  return isTrustedLocalBrowserUrl(raw.trim(), host, true);
 }
 
 function cloudBlocksLocalTrust(cloudCheck: "env" | "container"): boolean {
@@ -376,13 +469,19 @@ export function isTrustedLocalRequest(
   const secFetchSite = firstHeaderValue(
     req.headers["sec-fetch-site"],
   )?.toLowerCase();
-  if (secFetchSite === "cross-site") return false;
+  if (
+    secFetchSite &&
+    secFetchSite !== "same-origin" &&
+    secFetchSite !== "none"
+  ) {
+    return false;
+  }
 
   const origin = firstHeaderValue(req.headers.origin);
-  if (origin && !isTrustedLocalOrigin(origin)) return false;
+  if (origin && !isTrustedLocalOrigin(origin, host)) return false;
 
   const referer = firstHeaderValue(req.headers.referer);
-  if (!origin && referer && !isTrustedLocalOrigin(referer)) return false;
+  if (!origin && referer && !isTrustedLocalReferer(referer, host)) return false;
 
   return true;
 }
