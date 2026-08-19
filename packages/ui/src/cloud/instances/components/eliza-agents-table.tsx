@@ -1103,7 +1103,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                               {getAgentDisplayName(
                                 sb,
                                 t("cloud.elizaAgentsTable.sharedAgentName", {
-                                  defaultValue: "Eliza Cloud Agent",
+                                  defaultValue: "Shared Agent",
                                 }),
                                 t("cloud.elizaAgentsTable.unnamedAgent", {
                                   defaultValue: "Unnamed Agent",
@@ -1344,7 +1344,7 @@ export function ElizaAgentsTable({ agents }: { agents: AgentListItemDto[] }) {
                         {getAgentDisplayName(
                           sb,
                           t("cloud.elizaAgentsTable.sharedAgentName", {
-                            defaultValue: "Eliza Cloud Agent",
+                            defaultValue: "Shared Agent",
                           }),
                           t("cloud.elizaAgentsTable.unnamedAgent", {
                             defaultValue: "Unnamed Agent",

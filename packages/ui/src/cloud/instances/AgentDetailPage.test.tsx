@@ -108,10 +108,8 @@ describe("AgentDetailPage product detail", () => {
       bridgeUrl: "https://private-bridge.example",
     });
 
-    expect(
-      screen.getByRole("heading", { name: "Eliza Cloud Agent" }),
-    ).toBeTruthy();
-    expect(screen.getByText("Shared Agent")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Shared Agent" })).toBeTruthy();
+    expect(screen.getAllByText("Shared Agent")).toHaveLength(1);
     expect(screen.getAllByText("running")).toHaveLength(1);
     expect(screen.getByText("Free")).toBeTruthy();
     expect(screen.getByText("Lifecycle actions")).toBeTruthy();

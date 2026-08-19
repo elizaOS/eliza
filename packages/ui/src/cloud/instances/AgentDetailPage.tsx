@@ -76,7 +76,7 @@ export default function AgentDetailPage() {
   const agentType = getUserFacingAgentType(agent.executionTier);
   const agentName = isShared
     ? t("cloud.agents.detail.sharedAgentName", {
-        defaultValue: "Eliza Cloud Agent",
+        defaultValue: "Shared Agent",
       })
     : (agent.agentName ??
       t("cloud.agents.detail.unnamedAgent", {
@@ -115,12 +115,14 @@ export default function AgentDetailPage() {
               <h1 className="text-2xl font-semibold text-txt-strong truncate font-mono">
                 {agentName}
               </h1>
-              <Badge
-                variant="outline"
-                className="text-xs font-medium px-2 py-0.5"
-              >
-                {agentType}
-              </Badge>
+              {!isShared ? (
+                <Badge
+                  variant="outline"
+                  className="text-xs font-medium px-2 py-0.5"
+                >
+                  {agentType}
+                </Badge>
+              ) : null}
             </div>
           </div>
         </div>
