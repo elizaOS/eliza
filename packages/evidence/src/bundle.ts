@@ -290,7 +290,13 @@ export function assertSafeCertificationOutput(
   outputPath: string,
 ): void {
   const physicalBundle = physicalPath(bundleDir);
-  const physicalOutput = physicalPath(outputPath);
+  // Publication replaces the final directory entry rather than following it,
+  // so resolve aliases in its parent while preserving the owned leaf itself.
+  const resolvedOutput = path.resolve(outputPath);
+  const physicalOutput = path.join(
+    physicalPath(path.dirname(resolvedOutput)),
+    path.basename(resolvedOutput),
+  );
   const relative = path.relative(physicalBundle, physicalOutput);
   const insideBundle =
     relative === "" ||

@@ -272,6 +272,15 @@ describe("EvidenceBundle", () => {
     const alias = path.join(tmpDir(), "bundle-alias");
     fs.symlinkSync(bundleDir, alias, "dir");
     const outside = path.join(tmpDir(), "certification.json");
+    const outsideTarget = writeFixture(
+      tmpDir(),
+      "external-manifest.json",
+      "protected",
+    );
+    const reservedLeafSymlink = path.join(bundleDir, "manifest.json");
+    fs.symlinkSync(outsideTarget, reservedLeafSymlink);
+    const externalLeafSymlink = path.join(tmpDir(), "external-output.json");
+    fs.symlinkSync(path.join(bundleDir, "manifest.json"), externalLeafSymlink);
     expect(() =>
       assertSafeCertificationOutput(
         bundleDir,
@@ -281,6 +290,20 @@ describe("EvidenceBundle", () => {
     expect(() =>
       assertSafeCertificationOutput(bundleDir, outside),
     ).not.toThrow();
+    expect(() =>
+      assertSafeCertificationOutput(bundleDir, externalLeafSymlink),
+    ).not.toThrow();
+    writeOwnedFileAtomic(externalLeafSymlink, "external certification");
+    expect(fs.readFileSync(externalLeafSymlink, "utf8")).toBe(
+      "external certification",
+    );
+    expect(fs.readFileSync(outsideTarget, "utf8")).toBe("protected");
+    expect(fs.lstatSync(reservedLeafSymlink).isSymbolicLink()).toBe(true);
+    expect(() =>
+      assertSafeCertificationOutput(bundleDir, reservedLeafSymlink),
+    ).toThrowError(
+      expect.objectContaining({ code: "CERTIFICATION_OUTPUT_UNSAFE" }),
+    );
     expect(() =>
       assertSafeCertificationOutput(
         bundleDir,
