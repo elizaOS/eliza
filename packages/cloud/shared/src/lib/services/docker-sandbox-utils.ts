@@ -492,6 +492,9 @@ export function getVolumePath(agentId: string): string {
  */
 export const CONTAINER_DURABLE_STATE_DIR = "/root/.eliza";
 
+const VOLUME_VAULT_STDIN_FRAME_VERSION = "ELIZA_VAULT_STDIN_V1";
+const VOLUME_VAULT_STDIN_FRAME_END = "ELIZA_VAULT_STDIN_V1_END";
+
 /** Host-side path of the persisted per-agent vault master passphrase. */
 export function getVolumeVaultPassphrasePath(volumePath: string): string {
   return `${volumePath}/.vault-passphrase`;
@@ -499,25 +502,56 @@ export function getVolumeVaultPassphrasePath(volumePath: string): string {
 
 /**
  * Shell command that establishes and validates the per-agent vault master
- * passphrase persisted on the host volume. An optional operator seed arrives
- * only on stdin; the command emits no passphrase bytes. Replacement containers
- * therefore derive the same per-volume key without exposing it to the caller.
+ * passphrase persisted on the host volume. A versioned frame containing an
+ * optional operator seed arrives only on stdin; the command emits no
+ * passphrase bytes. Replacement containers therefore derive the same
+ * per-volume key without exposing it to the caller.
  */
-export function buildVolumeVaultPassphraseCommand(volumePath: string): string {
+export function buildVolumeVaultPassphraseCommand(
+  volumePath: string,
+  overrideByteLength = 0,
+): string {
+  if (!Number.isSafeInteger(overrideByteLength) || overrideByteLength < 0) {
+    throw new Error("Vault passphrase override byte length must be a non-negative integer.");
+  }
   const keyPath = getVolumeVaultPassphrasePath(volumePath);
   const keyFile = shellQuote(keyPath);
+  const stdinFile = `${shellQuote(`${keyPath}.stdin`)}.$$`;
   const overrideFile = `${shellQuote(`${keyPath}.override`)}.$$`;
   const generatedFile = `${shellQuote(`${keyPath}.generated`)}.$$`;
   const normalizedFile = `${shellQuote(`${keyPath}.normalized`)}.$$`;
+  const expectedHeader = `${VOLUME_VAULT_STDIN_FRAME_VERSION} ${overrideByteLength}`;
+  const expectedFrameByteLength =
+    Buffer.byteLength(expectedHeader) +
+    1 +
+    overrideByteLength +
+    1 +
+    Buffer.byteLength(VOLUME_VAULT_STDIN_FRAME_END) +
+    1;
   return [
     "set -eu",
+    `stdin_file=${stdinFile}`,
     `override_file=${overrideFile}`,
     `generated_file=${generatedFile}`,
     `normalized_file=${normalizedFile}`,
-    'trap \'rm -f "$override_file" "$generated_file" "$normalized_file"\' EXIT',
+    'trap \'rm -f "$stdin_file" "$override_file" "$generated_file" "$normalized_file"\' EXIT',
     "trap 'exit 1' HUP INT TERM",
     "umask 077",
-    'cat > "$override_file"',
+    'cat > "$stdin_file"',
+    `stdin_length=$(wc -c < "$stdin_file" | tr -d ' ')`,
+    `if test "$stdin_length" != ${expectedFrameByteLength}; then exit 44; fi`,
+    `frame_header=$(sed -n '1p' "$stdin_file")`,
+    `if test "$frame_header" != ${shellQuote(expectedHeader)}; then exit 44; fi`,
+    "frame_lines=$(awk 'END { print NR }' \"$stdin_file\")",
+    'if test "$frame_lines" != 3; then exit 44; fi',
+    `if test "$(tail -n 1 "$stdin_file")" != ${shellQuote(VOLUME_VAULT_STDIN_FRAME_END)}; then exit 44; fi`,
+    'sed \'1d;$d\' "$stdin_file" > "$override_file"',
+    "override_framed_length=$(wc -c < \"$override_file\" | tr -d ' ')",
+    'if test "$override_framed_length" -lt 1; then exit 44; fi',
+    'truncate -s -1 "$override_file"',
+    "override_length=$(wc -c < \"$override_file\" | tr -d ' ')",
+    `if test "$override_length" != ${overrideByteLength}; then exit 44; fi`,
+    'if test -s "$override_file"; then override_safe_length=$(LC_ALL=C tr -d \'[:space:][:cntrl:]\' < "$override_file" | wc -c | tr -d \' \'); if test "$override_length" -lt 12 || test "$override_length" != "$override_safe_length"; then exit 43; fi; fi',
     `if test ! -s ${keyFile}; then if test -s "$override_file"; then candidate_file="$override_file"; else head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > "$generated_file"; candidate_file="$generated_file"; fi; if ln "$candidate_file" ${keyFile} 2>/dev/null; then :; elif test -s ${keyFile}; then :; else exit 43; fi; fi`,
     // A shell variable cannot represent NUL bytes: command substitution would
     // silently delete them and rewrite the durable key. Validate the raw file
@@ -589,8 +623,14 @@ export async function ensureVolumeVaultPassphrase(
       },
     );
   }
+  const overrideBytes = Buffer.byteLength(override ?? "", "utf8");
+  const framedOverride = `${VOLUME_VAULT_STDIN_FRAME_VERSION} ${overrideBytes}\n${override ?? ""}\n${VOLUME_VAULT_STDIN_FRAME_END}\n`;
   try {
-    await execStdin(buildVolumeVaultPassphraseCommand(volumePath), override ?? "", timeoutMs);
+    await execStdin(
+      buildVolumeVaultPassphraseCommand(volumePath, overrideBytes),
+      framedOverride,
+      timeoutMs,
+    );
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     const exitCode =
@@ -612,6 +652,16 @@ export async function ensureVolumeVaultPassphrase(
         `[docker-sandbox] persisted vault passphrase at ${getVolumeVaultPassphrasePath(volumePath)} is unusable; refusing to mint a fresh per-launch key`,
         {
           code: "SANDBOX_VAULT_PASSPHRASE_UNUSABLE",
+          context: { volumePath },
+          cause,
+        },
+      );
+    }
+    if (exitCode === 44 || message.includes("exited with code 44")) {
+      throw new ElizaError(
+        `[docker-sandbox] vault passphrase transport to ${getVolumeVaultPassphrasePath(volumePath)} was incomplete or invalid; refusing to change durable vault state`,
+        {
+          code: "SANDBOX_VAULT_PASSPHRASE_STDIN_INCOMPLETE",
           context: { volumePath },
           cause,
         },

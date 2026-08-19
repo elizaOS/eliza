@@ -436,7 +436,7 @@ describe("resolveVpnTeardown (#16565)", () => {
   });
 });
 
-describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
+describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
   // Runs the EXACT shell command the provider sends over SSH, against a real
   // local /bin/sh and a real temp "agent volume" directory — the same
   // read-or-create the deployed node executes.
@@ -479,7 +479,9 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     );
     expect(command).not.toContain(override);
     expect(command).not.toContain("ELIZA_VAULT_PASSPHRASE");
-    expect(input).toBe(override);
+    expect(input).toContain(override);
+    expect(input).toMatch(/^ELIZA_VAULT_STDIN_V1 \d+\n/);
+    expect(input).toEndWith("\nELIZA_VAULT_STDIN_V1_END\n");
     expect("ssh transport unavailable").not.toContain(override);
     const fs = await import("node:fs");
     fs.rmSync(volume, { recursive: true, force: true });
@@ -495,6 +497,131 @@ describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
     expect(fs.readFileSync(keyPath, "utf-8")).toBe(key);
     expect(fs.statSync(keyPath).mode & 0o777).toBe(0o600);
     fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("rejects malformed framed stdin before first-provision mutation", async () => {
+    const fs = await import("node:fs");
+    for (const override of [undefined, "operator-secret-value"] as const) {
+      const volume = await makeVolume();
+      let command = "";
+      let validFrame = "";
+      await ensureVolumeVaultPassphrase(
+        async (cmd, input) => {
+          command = cmd;
+          validFrame = input;
+          return "";
+        },
+        volume,
+        5_000,
+        override,
+      );
+      const terminator = validFrame.split("\n").at(-2);
+      expect(terminator).toBe("ELIZA_VAULT_STDIN_V1_END");
+      const malformedFrames = [
+        validFrame.slice(0, -1),
+        `${validFrame}x`,
+        `${validFrame}${terminator}\n`,
+      ];
+
+      for (const malformedFrame of malformedFrames) {
+        await expect(shExecStdin(command, malformedFrame, 5_000)).rejects.toMatchObject({
+          code: 44,
+        });
+        expect(fs.readdirSync(volume)).toEqual([]);
+      }
+      expect(command).not.toContain(override ?? "operator-secret-value");
+      fs.rmSync(volume, { recursive: true, force: true });
+    }
+  });
+
+  test("maps an invalid frame to a non-secret typed boundary error", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const override = "operator-secret-value";
+    let failure: unknown;
+    try {
+      await ensureVolumeVaultPassphrase(
+        async () => {
+          throw Object.assign(new Error("shell exited 44"), { code: 44 });
+        },
+        volume,
+        5_000,
+        override,
+      );
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({
+      code: "SANDBOX_VAULT_PASSPHRASE_STDIN_INCOMPLETE",
+      context: { volumePath: volume },
+    });
+    expect(String(failure)).not.toContain(override);
+    expect(JSON.stringify((failure as { context?: unknown }).context)).not.toContain(override);
+    expect(fs.readdirSync(volume)).toEqual([]);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("frames a multibyte override by byte length and rejects truncation", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const override = "operator-🔐-密钥-value";
+    await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, override);
+    const keyPath = getVolumeVaultPassphrasePath(volume);
+    expect(fs.readFileSync(keyPath, "utf-8")).toBe(override);
+
+    await expect(
+      ensureVolumeVaultPassphrase(
+        async (command, input, timeoutMs) => shExecStdin(command, input.slice(0, -1), timeoutMs),
+        volume,
+        5_000,
+        override,
+      ),
+    ).rejects.toMatchObject({ code: "SANDBOX_VAULT_PASSPHRASE_STDIN_INCOMPLETE" });
+    expect(fs.readFileSync(keyPath, "utf-8")).toBe(override);
+    expect(fs.readdirSync(volume)).toEqual([".vault-passphrase"]);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("rejects malformed framed stdin before inspecting an existing volume", async () => {
+    const fs = await import("node:fs");
+    for (const override of [undefined, "operator-secret-value"] as const) {
+      const volume = await makeVolume();
+      await ensureVolumeVaultPassphrase(shExecStdin, volume, 5_000, override);
+      const keyPath = getVolumeVaultPassphrasePath(volume);
+      const persisted = fs.readFileSync(keyPath);
+      const mode = fs.statSync(keyPath).mode & 0o777;
+      let command = "";
+      let validFrame = "";
+      await ensureVolumeVaultPassphrase(
+        async (cmd, input) => {
+          command = cmd;
+          validFrame = input;
+          return "";
+        },
+        volume,
+        5_000,
+        override,
+      );
+      const terminator = validFrame.split("\n").at(-2);
+      expect(terminator).toBe("ELIZA_VAULT_STDIN_V1_END");
+      const malformedFrames = [
+        validFrame.slice(0, -1),
+        `${validFrame}x`,
+        `${validFrame}${terminator}\n`,
+      ];
+
+      for (const malformedFrame of malformedFrames) {
+        await expect(shExecStdin(command, malformedFrame, 5_000)).rejects.toMatchObject({
+          code: 44,
+        });
+        expect(fs.readFileSync(keyPath)).toEqual(persisted);
+        expect(fs.statSync(keyPath).mode & 0o777).toBe(mode);
+        expect(fs.readdirSync(volume)).toEqual([".vault-passphrase"]);
+      }
+      expect(command).not.toContain(override ?? "operator-secret-value");
+      fs.rmSync(volume, { recursive: true, force: true });
+    }
   });
 
   test("replacement container B over the same volume derives the SAME key from a newly constructed env", async () => {
