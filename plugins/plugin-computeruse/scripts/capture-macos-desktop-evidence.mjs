@@ -354,7 +354,7 @@ async function runCheck(checks, details, id, fn, options = {}) {
 
 async function runTextEditInputCheck(service, displays) {
   let previousWindow = null;
-  let createdDocument = false;
+  let createdDocumentName = null;
   const token = `macos-cua-${Date.now()}`;
 
   try {
@@ -365,7 +365,7 @@ async function runTextEditInputCheck(service, displays) {
       previousWindow = activeBefore.window;
     }
 
-    runText(
+    createdDocumentName = runText(
       "osascript",
       [
         "-e",
@@ -373,50 +373,51 @@ async function runTextEditInputCheck(service, displays) {
         "-e",
         "activate",
         "-e",
-        'make new document with properties {text:""}',
+        'set evidenceDocument to make new document with properties {text:""}',
+        "-e",
+        "return name of evidenceDocument",
         "-e",
         "end tell",
       ],
       { timeout: 30_000 },
     );
-    createdDocument = true;
-    let active = null;
-    let boundsResult = null;
+    let bounds = null;
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      active = await service.executeWindowAction({
-        action: "get_current_window_id",
-      });
-      if (active.success && active.window?.app === "TextEdit") {
-        boundsResult = await service.executeWindowAction({
-          action: "get_window_position",
-          windowId: active.window.id,
-        });
-        if (boundsResult.success && boundsResult.bounds) break;
+      try {
+        const rawBounds = runText(
+          "osascript",
+          [
+            "-e",
+            `tell application "System Events" to tell process "TextEdit" to tell window ${JSON.stringify(createdDocumentName)}`,
+            "-e",
+            "set windowPosition to position",
+            "-e",
+            "set windowSize to size",
+            "-e",
+            'return ((item 1 of windowPosition) as text) & "," & ((item 2 of windowPosition) as text) & "," & ((item 1 of windowSize) as text) & "," & ((item 2 of windowSize) as text)',
+            "-e",
+            "end tell",
+          ],
+          { timeout: 15_000 },
+        );
+        const [x, y, width, height] = rawBounds
+          .split(",")
+          .map((value) => Number(value));
+        if ([x, y, width, height].every(Number.isFinite)) {
+          bounds = { x, y, width, height };
+          break;
+        }
+      } catch {
+        // TextEdit can create the document before its accessibility window exists.
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    if (
-      !active?.success ||
-      !active.window ||
-      active.window.app !== "TextEdit"
-    ) {
+    if (!bounds) {
       throw new Error(
-        `could not identify active TextEdit window: ${active?.error ?? "unknown"}`,
+        `could not read TextEdit bounds for ${createdDocumentName ?? "unknown"}; grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry`,
       );
     }
 
-    if (!boundsResult) {
-      throw new Error("could not query TextEdit window bounds");
-    }
-    if (!boundsResult.success || !boundsResult.bounds) {
-      const rawReason = boundsResult.error ?? "unknown";
-      const reason = String(rawReason).includes("Window not found")
-        ? `${rawReason}; listWindows could not resolve the TextEdit window. Grant Accessibility permission in System Settings > Privacy & Security > Accessibility, then retry.`
-        : rawReason;
-      throw new Error(`could not read TextEdit bounds: ${reason}`);
-    }
-
-    const bounds = boundsResult.bounds;
     const globalX = Math.round(bounds.x + bounds.width / 2);
     const globalY = Math.round(bounds.y + Math.max(90, bounds.height / 2));
     const display = displayForPoint(displays, globalX, globalY);
@@ -500,7 +501,7 @@ async function runTextEditInputCheck(service, displays) {
         "post-action screenshots were requested by service configuration",
       ],
       details: {
-        activeWindow: active.window,
+        activeWindow: { app: "TextEdit", title: createdDocumentName },
         bounds,
         coordinate,
         displayId: display.id,
@@ -508,7 +509,7 @@ async function runTextEditInputCheck(service, displays) {
       },
     };
   } finally {
-    if (createdDocument) {
+    if (createdDocumentName) {
       // The close Apple Event is blocked by the same transient post-input state
       // as the read above; retry with a short delay so the document still closes
       // and runs don't accumulate stale windows (which slow TextEdit further).
@@ -518,7 +519,7 @@ async function runTextEditInputCheck(service, displays) {
             "osascript",
             [
               "-e",
-              'tell application "TextEdit" to close front document saving no',
+              `tell application "TextEdit" to close document ${JSON.stringify(createdDocumentName)} saving no`,
             ],
             { timeout: 20_000 },
           );
