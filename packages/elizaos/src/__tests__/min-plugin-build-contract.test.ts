@@ -14,6 +14,8 @@ const rootPackageJson = JSON.parse(
   readFileSync(resolve(templateDir, "../../../../package.json"), "utf8"),
 ) as { devDependencies: Record<string, string> };
 const canonicalBiomeVersion = rootPackageJson.devDependencies["@biomejs/biome"];
+const canonicalTsc6Version =
+  rootPackageJson.devDependencies["@typescript/typescript6"];
 
 describe("min-plugin build contract", () => {
   it("uses an emitting build config and requires the loadable build step", () => {
@@ -28,7 +30,15 @@ describe("min-plugin build contract", () => {
     ) as { compilerOptions?: Record<string, unknown>; include?: string[] };
     const scaffold = readFileSync(resolve(templateDir, "SCAFFOLD.md"), "utf8");
 
-    expect(packageJson.scripts?.build).toContain("tsconfig.build.json");
+    expect(packageJson.scripts?.build).toBe(
+      "tsc6 --noCheck -p tsconfig.build.json",
+    );
+    // The tsc6 bin only exists when the scaffold itself depends on the
+    // renamed-bin package; the monorepo root provides it here, but a
+    // standalone `bun install` of the scaffold does not (#16655 gap).
+    expect(packageJson.devDependencies?.["@typescript/typescript6"]).toBe(
+      canonicalTsc6Version,
+    );
     expect(packageJson.scripts?.lint).toBe("biome check src/");
     expect(packageJson.scripts?.["lint:check"]).toBe("biome check src/");
     expect(packageJson.scripts?.lint).not.toContain("||");
@@ -42,6 +52,13 @@ describe("min-plugin build contract", () => {
       rootDir: "src",
     });
     expect(buildConfig.include).toContain("src/**/*.tsx");
+    // Without a shipped biome config, a standalone `biome check src/` runs on
+    // Biome defaults (tab indentation) and rejects the scaffold's own source.
+    const biomeConfig = JSON.parse(
+      readFileSync(resolve(templateDir, "biome.json"), "utf8"),
+    ) as { $schema?: string; formatter?: { indentStyle?: string } };
+    expect(biomeConfig.$schema).toContain(canonicalBiomeVersion);
+    expect(biomeConfig.formatter?.indentStyle).toBe("space");
     expect(scaffold).toContain("bun install");
     expect(scaffold).toContain("bun run build");
     expect(scaffold).toContain("bundlePath");
