@@ -20,6 +20,7 @@ import {
   getDefaultTriageService,
   runWithTrajectoryContext,
 } from "@elizaos/core";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
   afterAll,
   beforeAll,
@@ -49,6 +50,7 @@ import {
   mapCalendarFeedEventToBriefingItem,
   setBriefComposers,
 } from "../src/actions/brief.js";
+import { attributeBuiltInCalendarBriefReschedule } from "../src/actions/calendar.js";
 import { structureBriefingItems } from "../src/lifeops/briefing/editorial-judgment.js";
 import {
   retryBriefEngagementRewards,
@@ -1547,6 +1549,67 @@ describe("BRIEF recalibration feedback loop (real PGLite)", () => {
           row.sourceId === providerEvent.id && row.eventType === "rescheduled",
       ),
     ).toEqual([expect.objectContaining({ itemId: item.itemId })]);
+  });
+
+  it("attributes built-in calendar time updates without rewarding title-only edits", async () => {
+    const renderedAt = new Date(Date.now() - 2_000).toISOString();
+    const previous = {
+      id: "agent-brief-recal:eliza:calendar:primary:event-7",
+      provider: "eliza",
+      title: "Board prep",
+      startAt: new Date(Date.now() + 3_600_000).toISOString(),
+      endAt: new Date(Date.now() + 7_200_000).toISOString(),
+      updatedAt: renderedAt,
+    } as unknown as LifeOpsCalendarEvent;
+    const briefingItem = mapCalendarFeedEventToBriefingItem(previous, {
+      startAt: previous.startAt,
+      endAt: previous.endAt,
+    });
+    const [item] = structureBriefingItems({ calendar: [briefingItem] });
+    if (!item) throw new Error("built-in calendar brief mapping failed");
+    await repository.recordBriefItemEngagement({
+      agentId: runtime.agentId,
+      briefingId: "brief-built-in-calendar",
+      itemId: item.itemId,
+      source: item.source,
+      kind: item.kind,
+      sourceId: item.sourceId,
+      itemClass: item.itemClass,
+      eventType: "rendered",
+      eventAt: renderedAt,
+      weight: 0,
+      metadata: {},
+    });
+
+    const rescheduled = {
+      ...previous,
+      startAt: new Date(Date.now() + 5_400_000).toISOString(),
+      endAt: new Date(Date.now() + 9_000_000).toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as LifeOpsCalendarEvent;
+    await attributeBuiltInCalendarBriefReschedule({
+      runtime,
+      event: rescheduled,
+      previous,
+    });
+    await attributeBuiltInCalendarBriefReschedule({
+      runtime,
+      event: {
+        ...rescheduled,
+        title: "Board prep renamed",
+        updatedAt: new Date(Date.now() + 1_000).toISOString(),
+      },
+      previous: rescheduled,
+    });
+
+    expect(
+      (await allRows()).filter((row) => row.eventType === "rescheduled"),
+    ).toEqual([
+      expect.objectContaining({
+        sourceId: previous.id,
+        weight: 1,
+      }),
+    ]);
   });
 
   it("links delivered morning-brief output to a real trajectory and settles reward end to end", async () => {
