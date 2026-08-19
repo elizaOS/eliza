@@ -1144,6 +1144,37 @@ async function runCreateLegacy(
       return duplicateSpawnGuardResult(runtime, callback, duplicate);
     }
   }
+
+  // Ack FIRST — before task-record creation (whose criteria generation can
+  // spend a model call) and before the lanes run. Every later placement of
+  // this ack lost the delivery race to fast workers' completion relays
+  // (live 2026-08-19: three separate orderings observed).
+  let earlyAckText: string | undefined;
+  if (!syntheticRespawnInbound && callback) {
+    const ackTitles = tasks.map(
+      (part, index) =>
+        baseLabel ?? labelFrom(parseAgentPrefix(part, baseAgentType).task, index),
+    );
+    const { text } = await phraseForUser(
+      runtime,
+      {
+        intent: "confirm",
+        facts: { createdCount: tasks.length, titles: ackTitles },
+      },
+      tasks.length > 1
+        ? `On it — starting ${tasks.length} builds.`
+        : "On it — building that now.",
+      { timeoutMs: 1_500 },
+    );
+    earlyAckText = text;
+    // `immediate` opts out of the capture-then-settle deferral (see the
+    // tasksAction handler wrapper).
+    await callback({
+      text: earlyAckText,
+      agentVoiced: true,
+      metadata: { immediate: true },
+    });
+  }
   const useSmithers = shouldUseSmithersTaskRunner();
   let threadId: string | null = null;
   try {
@@ -1246,38 +1277,6 @@ async function runCreateLegacy(
       text: "No durable task owner could be established, so no workflow agent was started.",
       data: { nothingStarted: true },
     };
-  }
-
-  // Ack BEFORE the lanes run. The lane loop awaits the entire durable run,
-  // so with fast workers the completion relay overtook the "ack" and users
-  // read the result before "On it — building that now." (live 2026-08-19:
-  // gratitude-journal). Failure legs still report after this, which is the
-  // truthful order: acknowledged, then what happened.
-  let earlyAckText: string | undefined;
-  if (!syntheticRespawnInbound && callback) {
-    const ackTitles = tasks.map(
-      (part, index) =>
-        baseLabel ?? labelFrom(parseAgentPrefix(part, baseAgentType).task, index),
-    );
-    const { text } = await phraseForUser(
-      runtime,
-      {
-        intent: "confirm",
-        facts: { createdCount: tasks.length, titles: ackTitles },
-      },
-      tasks.length > 1
-        ? `On it — starting ${tasks.length} builds.`
-        : "On it — building that now.",
-    );
-    earlyAckText = text;
-    // `immediate` opts out of the capture-then-settle deferral (see the
-    // tasksAction handler wrapper) so this ack reaches chat BEFORE the lanes
-    // run instead of racing the completion relay at settle time.
-    await callback({
-      text: earlyAckText,
-      agentVoiced: true,
-      metadata: { immediate: true },
-    });
   }
 
   const settled = await Promise.allSettled(
