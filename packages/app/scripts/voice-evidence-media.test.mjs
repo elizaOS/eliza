@@ -12,6 +12,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   finalizeDesktopVoiceEvidence,
   finalizeWebVoiceEvidence,
+  correlateAudioWindow,
   inspectAudibleMp4,
   resolveMediaTools,
 } from "./voice-evidence-media.mjs";
@@ -62,6 +63,8 @@ function audio(file, tools, frequency = 440, seconds = 1) {
     "lavfi",
     "-i",
     `sine=frequency=${frequency}:duration=${seconds}`,
+    "-af",
+    `volume=0.5+0.4*sin(2*PI*t*${frequency / 100}):eval=frame`,
     file,
   ]);
 }
@@ -86,8 +89,16 @@ function webFixture(root, tools) {
   const attachments = path.join(live, "attachments");
   video(path.join(live, "video.webm"), tools, 3);
   fs.writeFileSync(path.join(live, "trace.zip"), "trace");
-  audio(path.join(attachments, "voice-live-input-deadbeef.wav"), tools, 440);
-  audio(path.join(attachments, "voice-live-tts-cafebabe.wav"), tools, 660);
+  const micPayload = path.join(
+    attachments,
+    "voice-live-input-deadbeef.wav",
+  );
+  const ttsPayload = path.join(
+    attachments,
+    "voice-live-tts-cafebabe.wav",
+  );
+  audio(micPayload, tools, 440);
+  audio(ttsPayload, tools, 660);
   writeJson(path.join(attachments, "voice-live-trajectory-abc123.json"), {
     trajectory: {
       id: "trajectory-1",
@@ -124,7 +135,20 @@ function webFixture(root, tools) {
     video(path.join(failures, name, "video.webm"), tools);
   }
   const loopback = path.join(root, "system-loopback.wav");
-  audio(loopback, tools, 880, 3);
+  run(tools.ffmpeg, [
+    "-y",
+    "-v",
+    "error",
+    "-i",
+    micPayload,
+    "-i",
+    ttsPayload,
+    "-filter_complex",
+    "[0:a]adelay=200:all=1[reference];[1:a]adelay=1500:all=1[tts];[reference][tts]amix=inputs=2:duration=longest:normalize=0[out]",
+    "-map",
+    "[out]",
+    loopback,
+  ]);
   const loopbackClock = path.join(root, "system-loopback-clock.json");
   writeJson(loopbackClock, {
     source: "pulse-monitor",
@@ -278,13 +302,37 @@ describe("packaged desktop voice media evidence", () => {
         ttsRoute: "/api/tts/local-inference",
         sendBackend: "local-inference:eliza-1",
         stages: [
-          { stage: "asr", status: "pass" },
+          {
+            stage: "asr",
+            status: "pass",
+            detail: {
+              captureStartedAt: new Date(Date.now() - 1_000).toISOString(),
+              captureFinishedAt: new Date().toISOString(),
+              referenceStartedAt: new Date(Date.now() - 900).toISOString(),
+              referenceFinishedAt: new Date(Date.now() - 200).toISOString(),
+              inputDeviceId: "browser-mic-id",
+              inputDeviceLabel: "USB test microphone",
+            },
+          },
           {
             stage: "send",
             status: "pass",
-            detail: { conversationId: "desktop-conversation-1" },
+            detail: {
+              conversationId: "desktop-conversation-1",
+              userMessageId: "desktop-user-message-1",
+            },
           },
-          { stage: "tts", status: "pass" },
+          {
+            stage: "tts",
+            status: "pass",
+            detail: {
+              playbackStartedAt: new Date(Date.now() - 900).toISOString(),
+              playbackFinishedAt: new Date(Date.now() - 100).toISOString(),
+              outputDeviceId: "browser-speaker-id",
+              played: true,
+              outputObserved: true,
+            },
+          },
         ],
       },
     });
@@ -292,7 +340,10 @@ describe("packaged desktop voice media evidence", () => {
     writeJson(trajectory, {
       trajectory: {
         id: "desktop-trajectory-1",
-        metadata: { conversationId: "desktop-conversation-1" },
+        metadata: {
+          conversationId: "desktop-conversation-1",
+          messageId: "desktop-user-message-1",
+        },
       },
       llmCalls: [{ model: "eliza-1", response: "It is noon." }],
     });
@@ -305,9 +356,15 @@ describe("packaged desktop voice media evidence", () => {
       root,
       "desktop-capture-provenance.json",
     );
+    const microphonePayload = path.join(root, "app-input.wav");
+    const ttsPayload = path.join(root, "returned-tts.wav");
+    const referencePayload = path.join(root, "known-reference.wav");
     video(screenRecording, tools, 3);
     audio(microphoneAudio, tools, 440, 3);
-    audio(speakerLoopbackAudio, tools, 660, 3);
+    audio(speakerLoopbackAudio, tools, 440, 3);
+    audio(microphonePayload, tools, 440, 3);
+    audio(ttsPayload, tools, 440, 3);
+    audio(referencePayload, tools, 440, 3);
     writeJson(captureProvenance, {
       kind: "physical-hardware",
       revision: currentHead(),
@@ -315,16 +372,22 @@ describe("packaged desktop voice media evidence", () => {
       microphone: {
         kind: "physical-microphone",
         device: "USB test microphone",
+        enumeratedLabel: "USB test microphone",
       },
       speakerLoopback: {
         kind: "system-output-loopback",
         device: "BlackHole 2ch",
+      },
+      browserDevices: {
+        microphone: "browser-mic-id",
+        speaker: "browser-speaker-id",
       },
       captures: Object.fromEntries(
         [
           ["screen", screenRecording],
           ["microphone", microphoneAudio],
           ["speakerLoopback", speakerLoopbackAudio],
+          ["backend", backendLog],
         ].map(([name, file], index) => [
           name,
           {
@@ -334,6 +397,9 @@ describe("packaged desktop voice media evidence", () => {
               .createHash("sha256")
               .update(fs.readFileSync(file))
               .digest("hex"),
+            ...(name === "backend"
+              ? { source: backendLog, startOffset: 0, endOffset: 32 }
+              : {}),
           },
         ]),
       ),
@@ -346,6 +412,9 @@ describe("packaged desktop voice media evidence", () => {
       microphoneAudio,
       speakerLoopbackAudio,
       captureProvenance,
+      microphonePayload,
+      ttsPayload,
+      referencePayload,
       outDir: path.join(root, "desktop-final"),
       tools,
     };
@@ -359,11 +428,27 @@ describe("packaged desktop voice media evidence", () => {
         }),
       ]),
     );
+    const validProvenance = fs.readFileSync(captureProvenance, "utf8");
+    const wrongDevice = JSON.parse(validProvenance);
+    wrongDevice.microphone.enumeratedLabel = "Unrelated webcam microphone";
+    writeJson(captureProvenance, wrongDevice);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /physical microphone and system-output loopback capture/,
+    );
+    fs.writeFileSync(captureProvenance, validProvenance);
+    const unboundBackend = JSON.parse(validProvenance);
+    unboundBackend.captures.backend.endOffset =
+      unboundBackend.captures.backend.startOffset;
+    writeJson(captureProvenance, unboundBackend);
+    expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
+      /session-bounded log delta/,
+    );
+    fs.writeFileSync(captureProvenance, validProvenance);
     fs.unlinkSync(speakerLoopbackAudio);
     expect(() => finalizeDesktopVoiceEvidence(fixture)).toThrow(
       /Missing speaker loopback capture/,
     );
-    audio(speakerLoopbackAudio, tools, 660, 3);
+    audio(speakerLoopbackAudio, tools, 440, 3);
     const unsynchronized = JSON.parse(
       fs.readFileSync(captureProvenance, "utf8"),
     );
@@ -425,5 +510,49 @@ describe("packaged desktop voice media evidence", () => {
         tools,
       }),
     ).toThrow(/not a local real-mic pass/);
+  });
+});
+
+describe("hardware audio fingerprint correlation", () => {
+  test("accepts bounded latency and noise but rejects unrelated audio", () => {
+    const tools = resolveMediaTools();
+    const root = fixtureRoot();
+    const reference = path.join(root, "reference.wav");
+    const shifted = path.join(root, "shifted-noisy.wav");
+    const unrelated = path.join(root, "unrelated.wav");
+    audio(reference, tools, 440, 2);
+    run(tools.ffmpeg, [
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=r=48000:cl=mono:d=0.35",
+      "-i",
+      reference,
+      "-f",
+      "lavfi",
+      "-i",
+      "anoisesrc=d=2.35:a=0.003",
+      "-filter_complex",
+      "[0:a][1:a]concat=n=2:v=0:a=1[signal];[signal][2:a]amix=inputs=2:normalize=0[out]",
+      "-map",
+      "[out]",
+      shifted,
+    ]);
+    audio(unrelated, tools, 930, 2.35);
+    expect(
+      correlateAudioWindow(reference, shifted, {
+        startSeconds: 0,
+        durationSeconds: 2.35,
+      }, tools),
+    ).toMatchObject({ correlation: expect.any(Number) });
+    expect(() =>
+      correlateAudioWindow(reference, unrelated, {
+        startSeconds: 0,
+        durationSeconds: 2.35,
+      }, tools),
+    ).toThrow(/fingerprint/);
   });
 });

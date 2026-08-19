@@ -952,10 +952,10 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
         response.request().method() === "POST",
       { timeout: 120_000 },
     );
-    const ttsResponsePromise = page.waitForResponse(
-      (response) => response.url().includes("/api/tts/cloud"),
-      { timeout: 120_000 },
-    );
+    const ttsResponses: Response[] = [];
+    page.on("response", (response) => {
+      if (response.url().includes("/api/tts/cloud")) ttsResponses.push(response);
+    });
 
     await openAppPath(page, "/chat");
     await expect(page.getByTestId("chat-overlay")).toBeVisible({
@@ -1019,6 +1019,7 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
             type?: unknown;
             messageId?: unknown;
             userMessageId?: unknown;
+            fullText?: unknown;
           };
         } catch {
           // error-policy:J3 the SSE stream is untrusted response data; invalid
@@ -1039,6 +1040,7 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
       /\/api\/conversations\/([^/]+)\/messages\/stream$/,
     )?.[1];
     expect(conversationId).toEqual(expect.any(String));
+    expect(streamDone?.fullText).toEqual(expect.any(String));
     const conversationsResponse = await page.request.get("/api/conversations");
     expect(conversationsResponse.ok()).toBe(true);
     const conversationsPayload = (await conversationsResponse.json()) as {
@@ -1054,7 +1056,30 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
     ).toEqual(expect.any(String));
 
     // Real cloud TTS returned decoded, non-silent audio that actually played.
-    const ttsResponse = await ttsResponsePromise;
+    const responseMatchesVoiceReply = (response: Response) => {
+      try {
+        const body = JSON.parse(
+          response.request().postData() ?? "{}",
+        ) as { text?: unknown };
+        return body.text === streamDone?.fullText;
+      } catch {
+        // error-policy:J3 captured request bodies are untrusted input;
+        // malformed candidates cannot match the exact completed turn.
+        return false;
+      }
+    };
+    await expect
+      .poll(
+        () => ttsResponses.some(responseMatchesVoiceReply),
+        {
+          timeout: 120_000,
+          message: "cloud TTS must synthesize the exact persisted voice reply",
+        },
+      )
+      .toBe(true);
+    const ttsResponse = ttsResponses.find(responseMatchesVoiceReply);
+    expect(ttsResponse).toBeDefined();
+    if (!ttsResponse) return;
     expect(ttsResponse.ok(), await describeVoiceRouteFailure(ttsResponse)).toBe(
       true,
     );

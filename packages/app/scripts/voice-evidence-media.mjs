@@ -220,6 +220,124 @@ function inspectAudibleSegment(file, startSeconds, durationSeconds, tools) {
   return { startSeconds, durationSeconds, maxVolumeDb };
 }
 
+function audioEnvelope(file, tools, { startSeconds, durationSeconds } = {}) {
+  const args = ["-v", "error"];
+  if (Number.isFinite(startSeconds)) args.push("-ss", startSeconds.toFixed(3));
+  if (Number.isFinite(durationSeconds)) {
+    args.push("-t", durationSeconds.toFixed(3));
+  }
+  args.push(
+    "-i",
+    file,
+    "-map",
+    "0:a:0",
+    "-ac",
+    "1",
+    "-ar",
+    "8000",
+    "-f",
+    "f32le",
+    "-",
+  );
+  const result = spawnSync(tools.ffmpeg, args, {
+    encoding: null,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      `audio fingerprint decode failed: ${result.error?.message ?? String(result.stderr)}`,
+    );
+  }
+  const sampleCount = Math.floor(result.stdout.byteLength / 4);
+  const values = [];
+  for (let offset = 0; offset + 80 <= sampleCount; offset += 80) {
+    let sum = 0;
+    for (let index = offset; index < offset + 80; index += 1) {
+      const sample = result.stdout.readFloatLE(index * 4);
+      sum += sample * sample;
+    }
+    values.push(Math.sqrt(sum / 80));
+  }
+  return values;
+}
+
+function normalized(values) {
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance =
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
+    values.length;
+  const deviation = Math.sqrt(variance);
+  if (!Number.isFinite(deviation) || deviation < 1e-5) {
+    throw new Error("Audio fingerprint has no usable amplitude modulation.");
+  }
+  return {
+    values: values.map((value) => (value - mean) / deviation),
+    mean,
+    deviation,
+  };
+}
+
+export function correlateAudioWindow(
+  referenceFile,
+  observedFile,
+  window,
+  tools = resolveMediaTools(),
+) {
+  const reference = normalized(audioEnvelope(referenceFile, tools));
+  const observed = normalized(audioEnvelope(observedFile, tools, window));
+  if (reference.values.length < 50 || observed.values.length < 50) {
+    throw new Error(
+      "Audio fingerprint requires at least 500ms of matched media.",
+    );
+  }
+  const maxLag = Math.min(150, observed.values.length - 50);
+  const minimumMatchedBins = Math.max(
+    50,
+    Math.floor(
+      Math.min(reference.values.length, observed.values.length) * 0.65,
+    ),
+  );
+  let best = { correlation: -1, lagMs: 0, matchedDurationMs: 0 };
+  for (let lag = -maxLag; lag <= maxLag; lag += 1) {
+    const referenceStart = Math.max(0, -lag);
+    const observedStart = Math.max(0, lag);
+    const count = Math.min(
+      reference.values.length - referenceStart,
+      observed.values.length - observedStart,
+    );
+    if (count < minimumMatchedBins) continue;
+    let dot = 0;
+    let leftNorm = 0;
+    let rightNorm = 0;
+    for (let index = 0; index < count; index += 1) {
+      const left = reference.values[referenceStart + index] ?? 0;
+      const right = observed.values[observedStart + index] ?? 0;
+      dot += left * right;
+      leftNorm += left * left;
+      rightNorm += right * right;
+    }
+    const correlation = dot / Math.sqrt(leftNorm * rightNorm);
+    if (correlation > best.correlation) {
+      best = { correlation, lagMs: lag * 10, matchedDurationMs: count * 10 };
+    }
+  }
+  const modulationSnrDb = 20 * Math.log10(observed.deviation / observed.mean);
+  if (
+    !Number.isFinite(best.correlation) ||
+    best.correlation < 0.45 ||
+    best.matchedDurationMs < minimumMatchedBins * 10 ||
+    !Number.isFinite(modulationSnrDb) ||
+    modulationSnrDb < -24
+  ) {
+    throw new Error(
+      `Audio fingerprint mismatch (correlation=${best.correlation.toFixed(3)}, ` +
+        `matched=${best.matchedDurationMs}ms, ` +
+        `modulationSNR=${modulationSnrDb.toFixed(1)}dB).`,
+    );
+  }
+  return { ...best, modulationSnrDb };
+}
+
 function assertTrajectory(file) {
   const value = readJson(file, "live trajectory");
   if (
@@ -265,7 +383,14 @@ function assertNetwork(file) {
   return value;
 }
 
-function assertLoopbackSegments(file, clockFile, network, tools) {
+function assertLoopbackSegments(
+  file,
+  clockFile,
+  network,
+  referencePayload,
+  ttsPayload,
+  tools,
+) {
   const clock = readJson(clockFile, "system loopback clock");
   if (
     clock?.source !== "pulse-monitor" ||
@@ -303,6 +428,26 @@ function assertLoopbackSegments(file, clockFile, network, tools) {
       tools,
     ),
     tts: inspectAudibleSegment(file, ttsStart, 3, tools),
+    correlations: {
+      reference: correlateAudioWindow(
+        referencePayload,
+        file,
+        {
+          startSeconds: referenceStart,
+          durationSeconds: referenceDuration,
+        },
+        tools,
+      ),
+      tts: correlateAudioWindow(
+        ttsPayload,
+        file,
+        {
+          startSeconds: ttsStart,
+          durationSeconds: inspectAudibleMedia(ttsPayload, tools).duration + 2,
+        },
+        tools,
+      ),
+    },
   };
 }
 
@@ -518,6 +663,8 @@ export function finalizeWebVoiceEvidence({
     systemLoopback,
     loopbackClock,
     networkValue,
+    mic,
+    tts,
     tools,
   );
   requireFile(backendLog, "backend log");
@@ -604,6 +751,15 @@ function assertDesktopReport(file, head) {
   ) {
     throw new Error("Packaged desktop report contains a non-pass stage.");
   }
+  const ttsStage = report.stages.find((stage) => stage.stage === "tts");
+  if (
+    ttsStage?.detail?.played !== true ||
+    ttsStage?.detail?.outputObserved !== true
+  ) {
+    throw new Error(
+      "Packaged desktop report did not observe real TTS output playback.",
+    );
+  }
   return evidence;
 }
 
@@ -614,6 +770,31 @@ function assertPhysicalCaptureProvenance(
   captureFiles,
 ) {
   const provenance = readJson(file, "physical capture provenance");
+  const deviceLabel = (value) =>
+    String(value ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const sameDeviceLabel = (left, right) => {
+    const generic = new Set([
+      "audio",
+      "default",
+      "device",
+      "input",
+      "microphone",
+    ]);
+    const tokens = (value) =>
+      deviceLabel(value)
+        .split(" ")
+        .filter((token) => token && !generic.has(token));
+    const leftTokens = new Set(tokens(left));
+    const rightTokens = new Set(tokens(right));
+    if (leftTokens.size === 0 || rightTokens.size === 0) return false;
+    const smaller =
+      leftTokens.size <= rightTokens.size ? leftTokens : rightTokens;
+    const larger = smaller === leftTokens ? rightTokens : leftTokens;
+    return [...smaller].every((token) => larger.has(token));
+  };
   const reportStartedAt = Date.parse(desktopEvidence.report.startedAt);
   const reportFinishedAt = Date.parse(desktopEvidence.report.finishedAt);
   const captureClocks = [
@@ -638,9 +819,27 @@ function assertPhysicalCaptureProvenance(
     provenance.microphone?.kind !== "physical-microphone" ||
     typeof provenance.microphone?.device !== "string" ||
     provenance.microphone.device.trim().length === 0 ||
+    deviceLabel(
+      desktopEvidence.report.stages.find((stage) => stage.stage === "asr")
+        ?.detail?.inputDeviceLabel,
+    ).length === 0 ||
+    !sameDeviceLabel(
+      provenance.microphone?.enumeratedLabel,
+      desktopEvidence.report.stages.find((stage) => stage.stage === "asr")
+        ?.detail?.inputDeviceLabel,
+    ) ||
     provenance.speakerLoopback?.kind !== "system-output-loopback" ||
     typeof provenance.speakerLoopback?.device !== "string" ||
     provenance.speakerLoopback.device.trim().length === 0 ||
+    provenance.microphone.device === provenance.speakerLoopback.device ||
+    provenance.browserDevices?.microphone !==
+      desktopEvidence.report.stages.find((stage) => stage.stage === "asr")
+        ?.detail?.inputDeviceId ||
+    provenance.browserDevices?.speaker !==
+      desktopEvidence.report.stages.find((stage) => stage.stage === "tts")
+        ?.detail?.outputDeviceId ||
+    provenance.browserDevices?.microphone ===
+      provenance.browserDevices?.speaker ||
     !Number.isFinite(reportStartedAt) ||
     !Number.isFinite(reportFinishedAt)
   ) {
@@ -673,6 +872,20 @@ function assertPhysicalCaptureProvenance(
       "Desktop physical microphone, speaker loopback, and screen captures did not start within 250ms.",
     );
   }
+  const backendClock = provenance.captures?.backend;
+  if (
+    typeof backendClock?.source !== "string" ||
+    !Number.isInteger(backendClock?.startOffset) ||
+    !Number.isInteger(backendClock?.endOffset) ||
+    backendClock.endOffset <= backendClock.startOffset ||
+    backendClock.sha256 !== sha256(captureFiles.backend) ||
+    Date.parse(backendClock.startedAt) > reportStartedAt ||
+    Date.parse(backendClock.finishedAt) < reportFinishedAt
+  ) {
+    throw new Error(
+      "Desktop backend evidence is not the session-bounded log delta for this packaged run.",
+    );
+  }
   return provenance;
 }
 
@@ -684,6 +897,9 @@ export function finalizeDesktopVoiceEvidence({
   microphoneAudio,
   speakerLoopbackAudio,
   captureProvenance,
+  microphonePayload,
+  referencePayload,
+  ttsPayload,
   outDir,
   expectedRevision,
   tools = resolveMediaTools(),
@@ -695,23 +911,35 @@ export function finalizeDesktopVoiceEvidence({
     [microphoneAudio, "physical microphone capture"],
     [speakerLoopbackAudio, "speaker loopback capture"],
     [captureProvenance, "physical capture provenance"],
+    [microphonePayload, "app-captured microphone payload"],
+    [referencePayload, "known-phrase reference payload"],
+    [ttsPayload, "returned TTS payload"],
     [backendLog, "desktop backend log"],
   ]) {
     assertFreshCapture(file, desktopEvidence.report.startedAt, label);
   }
-  assertPhysicalCaptureProvenance(captureProvenance, head, desktopEvidence, {
-    screen: screenRecording,
-    microphone: microphoneAudio,
-    speakerLoopback: speakerLoopbackAudio,
-  });
+  const provenance = assertPhysicalCaptureProvenance(
+    captureProvenance,
+    head,
+    desktopEvidence,
+    {
+      screen: screenRecording,
+      microphone: microphoneAudio,
+      speakerLoopback: speakerLoopbackAudio,
+      backend: backendLog,
+    },
+  );
   const trajectoryValue = assertTrajectory(trajectory);
   const sendStage = desktopEvidence.report.stages.find(
     (stage) => stage.stage === "send",
   );
   if (
     typeof sendStage?.detail?.conversationId !== "string" ||
+    typeof sendStage?.detail?.userMessageId !== "string" ||
     trajectoryValue.trajectory?.metadata?.conversationId !==
-      sendStage.detail.conversationId
+      sendStage.detail.conversationId ||
+    trajectoryValue.trajectory?.metadata?.messageId !==
+      sendStage.detail.userMessageId
   ) {
     throw new Error(
       "Desktop trajectory is not correlated to the self-test conversation.",
@@ -719,6 +947,69 @@ export function finalizeDesktopVoiceEvidence({
   }
   inspectAudibleMedia(microphoneAudio, tools);
   inspectAudibleMedia(speakerLoopbackAudio, tools);
+  const asrStage = desktopEvidence.report.stages.find(
+    (stage) => stage.stage === "asr",
+  );
+  const ttsStage = desktopEvidence.report.stages.find(
+    (stage) => stage.stage === "tts",
+  );
+  const captureStartedAt = Date.parse(provenance.captures.screen.startedAt);
+  const correlationWindow = (startedAt, finishedAt, label) => {
+    const start = Date.parse(startedAt);
+    const finish = Date.parse(finishedAt);
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(finish) ||
+      start < captureStartedAt ||
+      finish <= start ||
+      finish > Date.parse(provenance.captures.screen.finishedAt)
+    ) {
+      throw new Error(`${label} timing is outside the synchronized capture.`);
+    }
+    return {
+      startSeconds: Math.max(0, (start - captureStartedAt) / 1_000 - 1),
+      durationSeconds: (finish - start) / 1_000 + 2,
+    };
+  };
+  const microphoneCorrelation = correlateAudioWindow(
+    microphonePayload,
+    microphoneAudio,
+    correlationWindow(
+      asrStage?.detail?.captureStartedAt,
+      asrStage?.detail?.captureFinishedAt,
+      "ASR capture",
+    ),
+    tools,
+  );
+  const acousticReferenceCorrelation = correlateAudioWindow(
+    referencePayload,
+    microphonePayload,
+    {
+      startSeconds: 0,
+      durationSeconds: inspectAudibleMedia(microphonePayload, tools).duration,
+    },
+    tools,
+  );
+  const loopbackReferenceCorrelation = correlateAudioWindow(
+    referencePayload,
+    speakerLoopbackAudio,
+    correlationWindow(
+      asrStage?.detail?.referenceStartedAt,
+      asrStage?.detail?.referenceFinishedAt,
+      "known-phrase playback",
+    ),
+    tools,
+  );
+  const ttsCorrelation = correlateAudioWindow(
+    ttsPayload,
+    speakerLoopbackAudio,
+    correlationWindow(
+      ttsStage?.detail?.playbackStartedAt,
+      ttsStage?.detail?.playbackFinishedAt,
+      "TTS playback",
+    ),
+    tools,
+  );
   fs.mkdirSync(outDir, { recursive: true });
   const mp4 = path.join(outDir, "voice-desktop-live-roundtrip.mp4");
   mux(screenRecording, [microphoneAudio, speakerLoopbackAudio], mp4, tools);
@@ -730,6 +1021,9 @@ export function finalizeDesktopVoiceEvidence({
     { file: copy(backendLog, outDir), role: "backend-log" },
     { file: copy(microphoneAudio, outDir), role: "physical-microphone" },
     { file: copy(speakerLoopbackAudio, outDir), role: "speaker-loopback" },
+    { file: copy(microphonePayload, outDir), role: "app-microphone-payload" },
+    { file: copy(referencePayload, outDir), role: "known-phrase-reference" },
+    { file: copy(ttsPayload, outDir), role: "returned-tts-payload" },
     {
       file: copy(captureProvenance, outDir),
       role: "physical-hardware-capture-provenance",
@@ -741,7 +1035,16 @@ export function finalizeDesktopVoiceEvidence({
       outDir,
       "desktop",
       head,
-      { ...inspected, synchronization: "session-clock-aligned-within-250ms" },
+      {
+        ...inspected,
+        synchronization: "session-clock-aligned-within-250ms",
+        correlations: {
+          microphone: microphoneCorrelation,
+          acousticReference: acousticReferenceCorrelation,
+          loopbackReference: loopbackReferenceCorrelation,
+          tts: ttsCorrelation,
+        },
+      },
       artifacts,
     ),
   };
@@ -787,6 +1090,9 @@ function main() {
             microphoneAudio: values.mic,
             speakerLoopbackAudio: values.speaker,
             captureProvenance: values["capture-provenance"],
+            microphonePayload: values["microphone-payload"],
+            referencePayload: values["reference-payload"],
+            ttsPayload: values["tts-payload"],
           })
         : (() => {
             throw new Error(

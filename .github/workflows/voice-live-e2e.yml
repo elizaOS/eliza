@@ -307,6 +307,11 @@ jobs:
             -ac 2 -ar 48000 \
             "$RUNNER_TEMP/voice-web-live/system-loopback.wav" &
           echo "VOICE_LOOPBACK_PID=$!" >> "$GITHUB_ENV"
+          sleep 1
+          if ! kill -0 "$!" 2>/dev/null; then
+            echo "::error::Pulse monitor recorder exited before the browser lane started."
+            exit 1
+          fi
 
       - name: Run the provisioned live browser matrix cell
         env:
@@ -329,6 +334,13 @@ jobs:
               kill -0 "$VOICE_LOOPBACK_PID" 2>/dev/null || break
               sleep 0.1
             done
+            if kill -0 "$VOICE_LOOPBACK_PID" 2>/dev/null; then
+              kill -KILL "$VOICE_LOOPBACK_PID" 2>/dev/null || true
+              wait "$VOICE_LOOPBACK_PID" 2>/dev/null || true
+              echo "::error::Browser loopback recorder required forced termination."
+              exit 1
+            fi
+            wait "$VOICE_LOOPBACK_PID" 2>/dev/null || true
           fi
           jq -n \
             --argjson startedAtMs "$VOICE_LOOPBACK_STARTED_AT_MS" \
@@ -679,11 +691,13 @@ jobs:
     timeout-minutes: 90
     env:
       ELIZA_VOICE_MACOS_ELECTROBUN_READY: ${{ vars.ELIZA_VOICE_MACOS_ELECTROBUN_READY }}
-      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_TEST_PACKAGED_LAUNCHER_PATH }}
+      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_VOICE_MACOS_PACKAGED_LAUNCHER_PATH }}
       ELIZA_VOICE_DESKTOP_API_BASE: ${{ vars.ELIZA_VOICE_DESKTOP_API_BASE }}
       ELIZA_VOICE_HARDWARE_SCREEN_DEVICE: ${{ vars.ELIZA_VOICE_MACOS_SCREEN_DEVICE }}
       ELIZA_VOICE_HARDWARE_MIC_DEVICE: ${{ vars.ELIZA_VOICE_MACOS_MIC_DEVICE }}
       ELIZA_VOICE_HARDWARE_SPEAKER_LOOPBACK_DEVICE: ${{ vars.ELIZA_VOICE_MACOS_SPEAKER_LOOPBACK_DEVICE }}
+      ELIZA_VOICE_BROWSER_MIC_DEVICE_ID: ${{ vars.ELIZA_VOICE_MACOS_BROWSER_MIC_DEVICE_ID }}
+      ELIZA_VOICE_BROWSER_SPEAKER_DEVICE_ID: ${{ vars.ELIZA_VOICE_MACOS_BROWSER_SPEAKER_DEVICE_ID }}
       ELIZA_VOICE_DESKTOP_BACKEND_LOG: ${{ vars.ELIZA_VOICE_MACOS_BACKEND_LOG }}
     steps:
       - name: Checkout
@@ -724,10 +738,13 @@ jobs:
           bun run --cwd packages/app voice:evidence -- desktop \
             --report "$CELL/voice-desktop-selftest-darwin.json" \
             --trajectory "$CELL/voice-desktop-selftest-darwin-trajectory.json" \
-            --backend "$ELIZA_VOICE_DESKTOP_BACKEND_LOG" \
+            --backend "$RUNNER_TEMP/voice-macos-hardware-capture/backend-session.log" \
             --screen "$RUNNER_TEMP/voice-macos-hardware-capture/screen.mp4" \
             --mic "$RUNNER_TEMP/voice-macos-hardware-capture/microphone.wav" \
             --speaker "$RUNNER_TEMP/voice-macos-hardware-capture/speaker-loopback.wav" \
+            --microphone-payload "$CELL/voice-desktop-selftest-darwin-input.wav" \
+            --reference-payload "$CELL/voice-desktop-selftest-darwin-reference.wav" \
+            --tts-payload "$CELL/voice-desktop-selftest-darwin-tts.audio" \
             --capture-provenance "$RUNNER_TEMP/voice-macos-hardware-capture/capture-provenance.json" \
             --out "$RUNNER_TEMP/voice-macos-electrobun-final"
 
@@ -751,10 +768,12 @@ jobs:
     timeout-minutes: 90
     env:
       ELIZA_VOICE_WINDOWS_ELECTROBUN_READY: ${{ vars.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY }}
-      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_TEST_PACKAGED_LAUNCHER_PATH }}
+      ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_VOICE_WINDOWS_PACKAGED_LAUNCHER_PATH }}
       ELIZA_VOICE_DESKTOP_API_BASE: ${{ vars.ELIZA_VOICE_DESKTOP_API_BASE }}
       ELIZA_VOICE_HARDWARE_MIC_DEVICE: ${{ vars.ELIZA_VOICE_WINDOWS_MIC_DEVICE }}
       ELIZA_VOICE_HARDWARE_SPEAKER_LOOPBACK_DEVICE: ${{ vars.ELIZA_VOICE_WINDOWS_SPEAKER_LOOPBACK_DEVICE }}
+      ELIZA_VOICE_BROWSER_MIC_DEVICE_ID: ${{ vars.ELIZA_VOICE_WINDOWS_BROWSER_MIC_DEVICE_ID }}
+      ELIZA_VOICE_BROWSER_SPEAKER_DEVICE_ID: ${{ vars.ELIZA_VOICE_WINDOWS_BROWSER_SPEAKER_DEVICE_ID }}
       ELIZA_VOICE_DESKTOP_BACKEND_LOG: ${{ vars.ELIZA_VOICE_WINDOWS_BACKEND_LOG }}
     steps:
       - name: Checkout
@@ -797,10 +816,13 @@ jobs:
           bun run --cwd packages/app voice:evidence -- desktop \
             --report "$CELL/voice-desktop-selftest-win32.json" \
             --trajectory "$CELL/voice-desktop-selftest-win32-trajectory.json" \
-            --backend "$ELIZA_VOICE_DESKTOP_BACKEND_LOG" \
+            --backend "$RUNNER_TEMP/voice-windows-hardware-capture/backend-session.log" \
             --screen "$RUNNER_TEMP/voice-windows-hardware-capture/screen.mp4" \
             --mic "$RUNNER_TEMP/voice-windows-hardware-capture/microphone.wav" \
             --speaker "$RUNNER_TEMP/voice-windows-hardware-capture/speaker-loopback.wav" \
+            --microphone-payload "$CELL/voice-desktop-selftest-win32-input.wav" \
+            --reference-payload "$CELL/voice-desktop-selftest-win32-reference.wav" \
+            --tts-payload "$CELL/voice-desktop-selftest-win32-tts.audio" \
             --capture-provenance "$RUNNER_TEMP/voice-windows-hardware-capture/capture-provenance.json" \
             --out "$RUNNER_TEMP/voice-windows-electrobun-final"
 

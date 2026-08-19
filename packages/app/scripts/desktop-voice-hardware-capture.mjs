@@ -7,6 +7,7 @@
  * command, then emits separate media files plus a clock/hash provenance record.
  */
 
+import { Buffer } from "node:buffer";
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -35,6 +36,20 @@ export function captureInputs(platform, env = process.env) {
     env.ELIZA_VOICE_HARDWARE_SPEAKER_LOOPBACK_DEVICE,
     "ELIZA_VOICE_HARDWARE_SPEAKER_LOOPBACK_DEVICE",
   );
+  const browserMicrophone = required(
+    env.ELIZA_VOICE_BROWSER_MIC_DEVICE_ID,
+    "ELIZA_VOICE_BROWSER_MIC_DEVICE_ID",
+  );
+  const browserSpeaker = required(
+    env.ELIZA_VOICE_BROWSER_SPEAKER_DEVICE_ID,
+    "ELIZA_VOICE_BROWSER_SPEAKER_DEVICE_ID",
+  );
+  if (microphone === speakerLoopback) {
+    throw new Error("Physical microphone and speaker loopback must be distinct.");
+  }
+  if (browserMicrophone === browserSpeaker) {
+    throw new Error("Browser microphone and speaker device ids must be distinct.");
+  }
   if (platform === "darwin") {
     const screen = required(
       env.ELIZA_VOICE_HARDWARE_SCREEN_DEVICE,
@@ -44,6 +59,8 @@ export function captureInputs(platform, env = process.env) {
       screen,
       microphone,
       speakerLoopback,
+      browserMicrophone,
+      browserSpeaker,
       args: [
         "-f",
         "avfoundation",
@@ -67,6 +84,8 @@ export function captureInputs(platform, env = process.env) {
       screen: "desktop",
       microphone,
       speakerLoopback,
+      browserMicrophone,
+      browserSpeaker,
       args: [
         "-f",
         "gdigrab",
@@ -88,6 +107,38 @@ export function captureInputs(platform, env = process.env) {
   throw new Error(
     `Hardware capture supports darwin or win32, not ${platform}.`,
   );
+}
+
+export function assertConfiguredDevicesListed(platform, inputs, listing) {
+  const normalized = String(listing);
+  const resolved = {};
+  for (const [label, device] of [
+    ["microphone", inputs.microphone],
+    ["speaker loopback", inputs.speakerLoopback],
+    ...(platform === "darwin" ? [["screen", inputs.screen]] : []),
+  ]) {
+    const quoted = `"${device}"`;
+    const escaped = String(device).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const indexed = new RegExp(`\\[${escaped}\\]`);
+    if (!normalized.includes(quoted) && !indexed.test(normalized)) {
+      throw new Error(
+        `Configured ${label} device ${device} is absent from ffmpeg enumeration.`,
+      );
+    }
+    const line = normalized
+      .split(/\r?\n/)
+      .find((candidate) => candidate.includes(quoted) || indexed.test(candidate));
+    resolved[label] = line?.match(/"([^"]+)"/)?.[1] ?? String(device);
+  }
+  if (
+    resolved.microphone.trim().toLowerCase() ===
+    resolved["speaker loopback"].trim().toLowerCase()
+  ) {
+    throw new Error(
+      "Enumerated physical microphone and speaker loopback resolve to the same device.",
+    );
+  }
+  return resolved;
 }
 
 function parse(argv) {
@@ -130,11 +181,16 @@ function sha256(file) {
 
 function waitForClose(child, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
+    let forced = false;
+    let timeout = setTimeout(() => {
+      forced = true;
       child.kill("SIGTERM");
-      reject(
-        new Error("ffmpeg did not finalize the hardware capture in time."),
-      );
+      timeout = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(
+          new Error("ffmpeg did not finalize the hardware capture in time."),
+        );
+      }, 5_000);
     }, timeoutMs);
     child.once("error", (error) => {
       clearTimeout(timeout);
@@ -142,8 +198,14 @@ function waitForClose(child, timeoutMs) {
     });
     child.once("close", (code) => {
       clearTimeout(timeout);
-      if (code === 0 || code === 255) resolve();
-      else reject(new Error(`ffmpeg hardware capture exited ${code}.`));
+      if (!forced && (code === 0 || code === 255)) resolve();
+      else if (forced) {
+        reject(
+          new Error("ffmpeg required forced termination during finalization."),
+        );
+      } else {
+        reject(new Error(`ffmpeg hardware capture exited ${code}.`));
+      }
     });
   });
 }
@@ -152,17 +214,44 @@ async function main() {
   const { platform, outDir, command } = parse(process.argv.slice(2));
   const tools = resolveMediaTools();
   const inputs = captureInputs(platform);
-  const deviceProbe = spawnSync(tools.ffmpeg, ["-hide_banner", "-devices"], {
-    encoding: "utf8",
-  });
-  if (deviceProbe.status !== 0) {
-    throw new Error("ffmpeg device preflight failed before packaged launch.");
-  }
+  const backendSource = path.resolve(
+    required(
+      process.env.ELIZA_VOICE_DESKTOP_BACKEND_LOG,
+      "ELIZA_VOICE_DESKTOP_BACKEND_LOG",
+    ),
+  );
+  const deviceProbe = spawnSync(
+    tools.ffmpeg,
+    platform === "darwin"
+      ? [
+          "-hide_banner",
+          "-f",
+          "avfoundation",
+          "-list_devices",
+          "true",
+          "-i",
+          "",
+        ]
+      : ["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
+    {
+      encoding: "utf8",
+      timeout: 10_000,
+    },
+  );
+  if (deviceProbe.error) throw deviceProbe.error;
+  const enumeratedDevices = assertConfiguredDevicesListed(
+    platform,
+    inputs,
+    `${deviceProbe.stdout ?? ""}\n${deviceProbe.stderr ?? ""}`,
+  );
 
   fs.mkdirSync(outDir, { recursive: true });
   const archive = path.join(outDir, "synchronized-capture.mkv");
   const startedAt = new Date().toISOString();
   const sessionId = `voice-${crypto.randomUUID()}`;
+  const backendStartOffset = fs.existsSync(backendSource)
+    ? fs.statSync(backendSource).size
+    : 0;
   const recorder = spawn(
     tools.ffmpeg,
     [
@@ -210,11 +299,46 @@ async function main() {
       child.once("close", (code) => resolve(code ?? 1));
     });
   } finally {
-    recorder.stdin.write("q\n");
-    recorder.stdin.end();
+    if (!recorder.stdin.destroyed) {
+      recorder.stdin.write("q\n");
+      recorder.stdin.end();
+    }
     await waitForClose(recorder, 15_000);
   }
   const finishedAt = new Date().toISOString();
+  if (!fs.existsSync(backendSource)) {
+    throw new Error("Desktop backend log was not created during the run.");
+  }
+  const backendEndOffset = fs.statSync(backendSource).size;
+  if (backendEndOffset <= backendStartOffset) {
+    throw new Error("Desktop backend log did not grow during the captured run.");
+  }
+  const backendDeltaBytes = backendEndOffset - backendStartOffset;
+  if (backendDeltaBytes > 64 * 1024 * 1024) {
+    throw new Error(
+      "Desktop backend session log exceeds the 64 MiB evidence bound.",
+    );
+  }
+  const backendSessionLog = path.join(outDir, "backend-session.log");
+  const backendDelta = Buffer.allocUnsafe(backendDeltaBytes);
+  const backendFd = fs.openSync(backendSource, "r");
+  try {
+    const bytesRead = fs.readSync(
+      backendFd,
+      backendDelta,
+      0,
+      backendDelta.length,
+      backendStartOffset,
+    );
+    if (bytesRead !== backendDelta.length) {
+      throw new Error(
+        "Desktop backend log changed while its session delta was read.",
+      );
+    }
+  } finally {
+    fs.closeSync(backendFd);
+  }
+  fs.writeFileSync(backendSessionLog, backendDelta);
 
   const screen = path.join(outDir, "screen.mp4");
   const microphone = path.join(outDir, "microphone.wav");
@@ -261,15 +385,29 @@ async function main() {
         kind: "physical-hardware",
         revision,
         sessionId,
-        microphone: { kind: "physical-microphone", device: inputs.microphone },
+        microphone: {
+          kind: "physical-microphone",
+          device: inputs.microphone,
+          enumeratedLabel: enumeratedDevices.microphone,
+        },
         speakerLoopback: {
           kind: "system-output-loopback",
           device: inputs.speakerLoopback,
+        },
+        browserDevices: {
+          microphone: inputs.browserMicrophone,
+          speaker: inputs.browserSpeaker,
         },
         captures: {
           screen: clock(screen),
           microphone: clock(microphone),
           speakerLoopback: clock(speakerLoopback),
+          backend: {
+            ...clock(backendSessionLog),
+            source: backendSource,
+            startOffset: backendStartOffset,
+            endOffset: backendEndOffset,
+          },
         },
       },
       null,

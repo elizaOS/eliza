@@ -67,6 +67,9 @@ async function writeEvidence(args: {
   sessionId: string;
   packagedRevision: string;
   rendererBuildId: string;
+  microphoneBase64: string;
+  referenceBase64: string;
+  ttsBase64: string;
 }): Promise<void> {
   const matrixOut = process.env.ELIZA_VOICE_MATRIX_OUT?.trim();
   const cellId = process.env.ELIZA_VOICE_MATRIX_CELL_ID?.trim();
@@ -111,6 +114,19 @@ async function writeEvidence(args: {
     path: trajectoryPath,
     contentType: "application/json",
   });
+
+  for (const [suffix, encoded, contentType] of [
+    ["input.wav", args.microphoneBase64, "audio/wav"],
+    ["reference.wav", args.referenceBase64, "audio/wav"],
+    ["tts.audio", args.ttsBase64, "application/octet-stream"],
+  ] as const) {
+    const artifactPath = path.join(evidenceDir, `${prefix}-${suffix}`);
+    await fs.writeFile(artifactPath, Buffer.from(encoded, "base64"));
+    await args.testInfo.attach(`voice-desktop-${suffix}`, {
+      path: artifactPath,
+      contentType,
+    });
+  }
 
   const logPath = path.join(evidenceDir, `${prefix}.log`);
   await fs.writeFile(
@@ -167,6 +183,13 @@ test.describe("packaged desktop live voice self-test", () => {
       sessionId,
       "ELIZA_VOICE_CAPTURE_SESSION_ID must bind external hardware captures to this packaged run.",
     ).toMatch(/^[a-zA-Z0-9_.-]{12,128}$/);
+    const microphoneDeviceId =
+      process.env.ELIZA_VOICE_BROWSER_MIC_DEVICE_ID?.trim() ?? "";
+    const speakerDeviceId =
+      process.env.ELIZA_VOICE_BROWSER_SPEAKER_DEVICE_ID?.trim() ?? "";
+    expect(microphoneDeviceId).not.toBe("");
+    expect(speakerDeviceId).not.toBe("");
+    expect(microphoneDeviceId).not.toBe(speakerDeviceId);
 
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "eliza-desktop-voice-selftest-"),
@@ -265,7 +288,11 @@ test.describe("packaged desktop live voice self-test", () => {
           if (typeof run !== "function") {
             return { ok: false, error: "__voiceSelfTest is not installed" };
           }
-          const report = await run({ mode: "mic-capture" });
+          const report = await run({
+            mode: "mic-capture",
+            microphoneDeviceId: ${JSON.stringify(microphoneDeviceId)},
+            speakerDeviceId: ${JSON.stringify(speakerDeviceId)},
+          });
           return { ok: true, report };
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -284,7 +311,9 @@ test.describe("packaged desktop live voice self-test", () => {
           const report = JSON.parse(document.querySelector('[data-testid="voice-selftest-report"]')?.textContent || '{}');
           const send = report.stages?.find((stage) => stage.stage === 'send');
           const conversationId = send?.detail?.conversationId;
+          const userMessageId = send?.detail?.userMessageId;
           if (typeof conversationId !== 'string') throw new Error('missing SEND conversation id');
+          if (typeof userMessageId !== 'string') throw new Error('missing SEND user message id');
           const conversationsResponse = await fetch('/api/conversations');
           if (!conversationsResponse.ok) throw new Error('conversation list HTTP ' + conversationsResponse.status);
           const conversations = await conversationsResponse.json();
@@ -297,6 +326,7 @@ test.describe("packaged desktop live voice self-test", () => {
           const matches = (list.trajectories || []).filter((item) =>
             item.roomId === roomId &&
             item.conversationId === conversationId &&
+            item.metadata?.messageId === userMessageId &&
             item.startTime >= startedAt &&
             item.llmCallCount > 0
           );
@@ -306,6 +336,7 @@ test.describe("packaged desktop live voice self-test", () => {
           const trajectory = await detailResponse.json();
           if (trajectory.trajectory?.id !== matches[0].id) throw new Error('trajectory detail id mismatch');
           if (trajectory.trajectory?.metadata?.conversationId !== conversationId) throw new Error('trajectory conversation id mismatch');
+          if (trajectory.trajectory?.metadata?.messageId !== userMessageId) throw new Error('trajectory user message id mismatch');
           return { ok: true, trajectory };
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -317,6 +348,33 @@ test.describe("packaged desktop live voice self-test", () => {
       ).toBe(true);
       if (!trajectoryResult.ok) return;
 
+      const artifactResult = await harness.eval<
+        EvalResult<{
+          microphoneBase64: string;
+          referenceBase64: string;
+          ttsBase64: string;
+        }>
+      >(`(() => {
+        try {
+          const artifacts = window.__voiceSelfTestArtifacts?.();
+          if (
+            !artifacts?.microphoneBase64 ||
+            !artifacts?.referenceBase64 ||
+            !artifacts?.ttsBase64
+          ) {
+            throw new Error('voice self-test payload artifacts are missing');
+          }
+          return { ok: true, ...artifacts };
+        } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
+      })()`);
+      expect(
+        artifactResult.ok,
+        artifactResult.ok ? undefined : artifactResult.error,
+      ).toBe(true);
+      if (!artifactResult.ok) return;
+
       await writeEvidence({
         testInfo,
         harness,
@@ -326,6 +384,9 @@ test.describe("packaged desktop live voice self-test", () => {
         sessionId,
         packagedRevision: packagedRevision.commit,
         rendererBuildId: packagedRevision.buildId,
+        microphoneBase64: artifactResult.microphoneBase64,
+        referenceBase64: artifactResult.referenceBase64,
+        ttsBase64: artifactResult.ttsBase64,
       });
 
       expect(
@@ -345,6 +406,9 @@ test.describe("packaged desktop live voice self-test", () => {
       const tts = result.report.stages.find((stage) => stage.stage === "tts");
       expect(tts?.detail?.played).toBe(true);
       expect(tts?.detail?.outputObserved).toBe(true);
+      expect(tts?.detail?.outputDeviceId).toBe(speakerDeviceId);
+      const asr = result.report.stages.find((stage) => stage.stage === "asr");
+      expect(asr?.detail?.inputDeviceId).toBe(microphoneDeviceId);
       expect(result.report.transcript.toLowerCase()).toContain("time");
       expect(result.report.reply.length).toBeGreaterThan(0);
     } finally {
