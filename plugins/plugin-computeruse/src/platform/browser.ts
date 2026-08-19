@@ -6,6 +6,8 @@
  * Uses puppeteer-core (not full puppeteer) to avoid bundling Chromium.
  * Auto-detects installed Chrome, Edge, or Brave at launch.
  * Each session uses a temp user data directory to prevent conflicts.
+ * Navigation is HTTP(S)-only so `file:` / `javascript:` cannot bypass the
+ * FILE-action path blocklist through the screenshot surface.
  */
 
 import { execFileSync } from "node:child_process";
@@ -15,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
 import { assertBrowserExecuteAllowed } from "../security/browser-script-policy.js";
+import { assertHttpBrowserUrl } from "../security/browser-url-policy.js";
 import type {
   BrowserInfo,
   BrowserState,
@@ -170,6 +173,7 @@ async function ensureBrowser(): Promise<Page> {
 }
 
 export async function openBrowser(url?: string): Promise<BrowserState> {
+  const target = url ? assertHttpBrowserUrl(url) : undefined;
   const pup = await getPuppeteer();
   const executablePath = detectBrowserPath();
   if (!executablePath) {
@@ -223,8 +227,8 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
       const pages = await browser.pages();
       activePage = pages[0] ?? (await browser.newPage());
 
-      if (url) {
-        await activePage.goto(url, {
+      if (target) {
+        await activePage.goto(target, {
           waitUntil: "domcontentloaded",
           timeout: 30000,
         });
@@ -285,8 +289,12 @@ export async function closeBrowser(): Promise<void> {
 // ── Navigation ──────────────────────────────────────────────────────────────
 
 export async function navigateBrowser(url: string): Promise<BrowserState> {
+  const target = assertHttpBrowserUrl(url);
   const page = await ensureBrowser();
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.goto(target, {
+    waitUntil: "domcontentloaded",
+    timeout: 30000,
+  });
   return {
     url: page.url(),
     title: await page.title(),
@@ -532,11 +540,15 @@ export async function listBrowserTabs(): Promise<BrowserTab[]> {
 }
 
 export async function openBrowserTab(url?: string): Promise<BrowserTab> {
+  const target = url ? assertHttpBrowserUrl(url) : undefined;
   if (!browser) throw new Error("Browser not open.");
   const page = await browser.newPage();
   activePage = page;
-  if (url) {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+  if (target) {
+    await page.goto(target, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
   }
   const pages = await browser.pages();
   return {
