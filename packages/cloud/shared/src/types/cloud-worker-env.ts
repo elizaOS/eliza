@@ -285,6 +285,11 @@ export interface Bindings {
    */
   R2_PUBLIC_HOST?: string;
   /**
+   * Comma-separated HMAC keys for opaque private-storage capabilities. The
+   * first key signs and all keys verify, allowing bounded rotation overlap.
+   */
+  STORAGE_READ_SIGNING_SECRETS?: string;
+  /**
    * Base domain for managed frontend hosting system hosts. When set (e.g.
    * "sites.eliza.app"), a request to `<app-slug>.<suffix>` is served from
    * the app's active frontend deployment by the Worker entry (see

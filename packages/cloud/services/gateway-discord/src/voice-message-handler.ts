@@ -58,6 +58,13 @@ interface StorageConfig {
   token: string;
 }
 
+class ExpiredVoicePresignError extends Error {
+  constructor() {
+    super("Voice storage capability receipt expired");
+    this.name = "ExpiredVoicePresignError";
+  }
+}
+
 function getStorageConfig(): StorageConfig | null {
   const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
   const apiBaseUrl = (
@@ -77,9 +84,8 @@ function storageHeaders(config: StorageConfig): Record<string, string> {
   };
 }
 
-function objectUrl(config: StorageConfig, key: string): string {
-  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
-  return `${config.apiBaseUrl}/api/v1/apis/storage/objects/${encodedKey}`;
+function objectUrl(config: StorageConfig): string {
+  return `${config.apiBaseUrl}/api/v1/apis/storage/objects/_`;
 }
 
 function sanitizeFilename(name: string): string {
@@ -107,6 +113,7 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
   try {
     return JSON.parse(text);
   } catch {
+    // error-policy:J3 a non-JSON error body remains explicit text for boundary diagnostics.
     return text;
   }
 }
@@ -116,12 +123,15 @@ async function uploadVoiceObject(
   key: string,
   audioBuffer: Buffer,
   contentType: string,
+  idempotencyKey: string,
 ): Promise<void> {
-  const response = await fetch(objectUrl(config, key), {
+  const response = await fetch(objectUrl(config), {
     method: "PUT",
     headers: {
       ...storageHeaders(config),
       "Content-Type": contentType,
+      "Idempotency-Key": idempotencyKey,
+      "X-Storage-Object-Key": key,
     },
     body: new Uint8Array(audioBuffer),
     signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
@@ -137,6 +147,7 @@ async function uploadVoiceObject(
 async function presignVoiceObject(
   config: StorageConfig,
   key: string,
+  idempotencyKey: string,
 ): Promise<{ url: string; expiresAt: Date }> {
   const response = await fetch(
     `${config.apiBaseUrl}/api/v1/apis/storage/presign`,
@@ -145,6 +156,7 @@ async function presignVoiceObject(
       headers: {
         ...storageHeaders(config),
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify({
         key,
@@ -156,6 +168,15 @@ async function presignVoiceObject(
   );
   const body = await parseJsonResponse(response);
   if (!response.ok) {
+    if (
+      response.status === 409 &&
+      body &&
+      typeof body === "object" &&
+      typeof (body as { error?: unknown }).error === "string" &&
+      (body as { error: string }).error.toLowerCase().includes("expired")
+    ) {
+      throw new ExpiredVoicePresignError();
+    }
     throw new Error(
       `Voice presign failed: ${response.status} ${response.statusText} ${JSON.stringify(body)}`,
     );
@@ -172,6 +193,20 @@ async function presignVoiceObject(
     url: (body as { url: string }).url,
     expiresAt: new Date((body as { expiresAt: string }).expiresAt),
   };
+}
+
+async function storageIdempotencyKey(
+  purpose: string,
+  value: string,
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`discord-voice-storage:v2:${purpose}:${value}`),
+  );
+  const encoded = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `discord-voice:${purpose}:${encoded}`;
 }
 
 /**
@@ -282,18 +317,35 @@ export class VoiceMessageHandler {
         messageId,
         attachment,
       );
+      const operationIdentity = `${connectionId}:${messageId}:${attachment.id}`;
       await uploadVoiceObject(
         storageConfig,
         objectKey,
         audioBuffer,
         contentType,
+        await storageIdempotencyKey("put", operationIdentity),
       );
-      const signed = await presignVoiceObject(storageConfig, objectKey);
+      let signed: { url: string; expiresAt: Date };
+      try {
+        signed = await presignVoiceObject(
+          storageConfig,
+          objectKey,
+          await storageIdempotencyKey("presign-0", operationIdentity),
+        );
+      } catch (error) {
+        // error-policy:J4 one deterministic renewal handles replay after the
+        // first capability expires; any other presign failure remains visible.
+        if (!(error instanceof ExpiredVoicePresignError)) throw error;
+        signed = await presignVoiceObject(
+          storageConfig,
+          objectKey,
+          await storageIdempotencyKey("presign-1", operationIdentity),
+        );
+      }
       logger.info("Uploaded voice attachment to managed storage", {
         connectionId,
         messageId,
         attachmentId: attachment.id,
-        objectKey,
       });
       return {
         audioUrl: signed.url,
@@ -409,14 +461,19 @@ export class VoiceMessageHandler {
       return 0;
     }
 
-    const listUrl = new URL(
-      `${storageConfig.apiBaseUrl}/api/v1/apis/storage/list`,
-    );
-    listUrl.searchParams.set("prefix", VOICE_STORAGE_PREFIX);
-    listUrl.searchParams.set("recursive", "true");
+    const listUrl = `${storageConfig.apiBaseUrl}/api/v1/apis/storage/list`;
+    const cleanupWindow = Math.floor(Date.now() / CLEANUP_INTERVAL_MS);
 
     const response = await fetch(listUrl, {
-      headers: storageHeaders(storageConfig),
+      headers: {
+        ...storageHeaders(storageConfig),
+        "Idempotency-Key": await storageIdempotencyKey(
+          "list",
+          String(cleanupWindow),
+        ),
+        "X-Storage-Prefix": VOICE_STORAGE_PREFIX,
+        "X-Storage-Recursive": "true",
+      },
       signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
     });
     const body = await parseJsonResponse(response);
@@ -433,7 +490,8 @@ export class VoiceMessageHandler {
       throw new Error("Voice cleanup list response missing items");
     }
 
-    const cutoff = Date.now() - VOICE_AUDIO_TTL_SECONDS * 1000;
+    const cutoff =
+      Date.now() - (2 * VOICE_AUDIO_TTL_SECONDS * 1000 + CLEANUP_INTERVAL_MS);
     let deleted = 0;
     for (const item of (body as { items: unknown[] }).items) {
       if (!item || typeof item !== "object") continue;
@@ -445,15 +503,18 @@ export class VoiceMessageHandler {
       const modifiedTime = new Date(modifiedAt).getTime();
       if (!Number.isFinite(modifiedTime) || modifiedTime >= cutoff) continue;
 
-      const deleteResponse = await fetch(objectUrl(storageConfig, key), {
+      const deleteResponse = await fetch(objectUrl(storageConfig), {
         method: "DELETE",
-        headers: storageHeaders(storageConfig),
+        headers: {
+          ...storageHeaders(storageConfig),
+          "Idempotency-Key": await storageIdempotencyKey("delete", key),
+          "X-Storage-Object-Key": key,
+        },
         signal: AbortSignal.timeout(STORAGE_FETCH_TIMEOUT_MS),
       });
       if (!deleteResponse.ok) {
         const deleteBody = await parseJsonResponse(deleteResponse);
         logger.warn("Failed to delete expired voice object", {
-          key,
           status: deleteResponse.status,
           body: deleteBody,
         });
@@ -482,6 +543,7 @@ export class VoiceMessageHandler {
     });
 
     const runCleanup = () => {
+      // error-policy:J5 this scheduled rejection is observed and logged here.
       this.cleanupExpiredAudio().catch((error) => {
         logger.error("Error in voice audio cleanup job", { error });
       });

@@ -897,6 +897,16 @@ export class OrgStorageMutationsRepository {
       if (!object.provider_key || object.size_bytes <= 0n) {
         throw new StoragePutConflictError("object_busy");
       }
+      const retainedRead = await sqlRows<{ id: string }>(
+        tx,
+        sql`SELECT id FROM org_storage_read_operations
+          WHERE object_id = ${object.id}
+            AND method = 'get'
+            AND state IN ('provider_succeeded', 'committed')
+            AND retain_until > NOW()
+          LIMIT 1`,
+      );
+      if (retainedRead.length > 0) throw new StoragePutConflictError("object_busy");
       const activePut = await tx.query.orgStoragePutOperations.findFirst({
         where: and(
           eq(orgStoragePutOperations.object_id, object.id),

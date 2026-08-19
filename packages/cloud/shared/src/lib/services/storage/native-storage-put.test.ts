@@ -30,6 +30,7 @@ const prepareDelete = mock();
 const claimDeleteLease = mock();
 const commitObservedDelete = mock();
 const listDueDeletes = mock();
+const revokeCapabilitiesForObject = mock();
 const loggerWarn = mock();
 
 class TestInsufficientCreditsError extends Error {}
@@ -58,6 +59,9 @@ mock.module("../../../db/repositories/org-storage-mutations", () => ({
     listDueDeletes,
   },
   StoragePutConflictError: TestStoragePutConflictError,
+}));
+mock.module("../../../db/repositories/org-storage-reads", () => ({
+  orgStorageReadsRepository: { revokeCapabilitiesForObject },
 }));
 mock.module("../credits", () => ({ InsufficientCreditsError: TestInsufficientCreditsError }));
 mock.module("../../utils/logger", () => ({ logger: { warn: loggerWarn } }));
@@ -152,6 +156,7 @@ beforeEach(() => {
     claimDeleteLease,
     commitObservedDelete,
     listDueDeletes,
+    revokeCapabilitiesForObject,
     loggerWarn,
   ]) {
     fn.mockReset();
@@ -159,6 +164,7 @@ beforeEach(() => {
   listDueOperations.mockResolvedValue([]);
   listDueGc.mockResolvedValue([]);
   listDueDeletes.mockResolvedValue([]);
+  revokeCapabilitiesForObject.mockResolvedValue(0);
   quotaNeedsNativeCatalogReconciliation.mockResolvedValue(false);
   reservePutCredits.mockImplementation(async () => ({
     operation: operation("reserved"),

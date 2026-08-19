@@ -2,11 +2,12 @@
  * Lists attachment objects under a prefix.
  *
  * Routes:
- *   GET /api/v1/apis/storage/list?prefix=...&recursive=true|false
+ *   GET /api/v1/apis/storage/list with X-Storage-Prefix and
+ *       X-Storage-Recursive headers
  *       → { items: [{ key, size, contentType, modifiedAt }] }
  *
  * Auth: requireUserOrApiKeyWithOrg.
- * Pricing: explicitly unbilled until durable paid-list receipts are available.
+ * Pricing: one durable server-priced receipt per idempotent list request.
  *
  * Native R2 enumeration discovers and adopts legacy tenant-prefixed objects;
  * the catalog remains authoritative for immutable generations and tombstones.
@@ -14,10 +15,13 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { orgStorageMutationsRepository } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { ensureNativeStorageQuotaReconciled } from "@/lib/services/storage/native-storage-put";
+import { getServiceMethodCost } from "@/lib/services/proxy/pricing";
+import {
+  executeNativeStorageList,
+  NativeStorageReadError,
+} from "@/lib/services/storage/native-storage-read";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_LIST_RESULTS = 1000;
@@ -49,9 +53,17 @@ app.get("/", async (c) => {
       );
     }
 
+    if (c.req.query("prefix") !== undefined) {
+      return c.json(
+        {
+          error: "List prefixes are not accepted in URLs; use X-Storage-Prefix",
+        },
+        400,
+      );
+    }
     const parsed = listQuerySchema.safeParse({
-      prefix: c.req.query("prefix") ?? "",
-      recursive: c.req.query("recursive") ?? "true",
+      prefix: c.req.header("X-Storage-Prefix") ?? "",
+      recursive: c.req.header("X-Storage-Recursive") ?? "true",
     });
     if (!parsed.success) {
       return c.json(
@@ -62,31 +74,38 @@ app.get("/", async (c) => {
     const { prefix, recursive } = parsed.data;
 
     const trimmedPrefix = prefix.replace(/^\/+|\/+$/g, "");
-    await ensureNativeStorageQuotaReconciled(bucket, organization_id);
-
-    const catalog = await orgStorageMutationsRepository.listObjects(
-      organization_id,
-      trimmedPrefix,
-      MAX_LIST_RESULTS + 1,
+    const result = await executeNativeStorageList({
+      bucket,
+      organizationId: organization_id,
+      userId: user.id,
+      rawIdempotencyKey: c.req.header("Idempotency-Key") ?? "",
+      priceUsd: await getServiceMethodCost("storage", "list"),
+      prefix: trimmedPrefix,
       recursive,
-    );
-    const items = catalog.slice(0, MAX_LIST_RESULTS).map((object) => {
-      if (!object.content_type || !object.uploaded_at) {
-        throw new Error("[storage list] catalog object metadata is incomplete");
-      }
-      return {
-        key: object.logical_key,
-        size: Number(object.size_bytes),
-        contentType: object.content_type,
-        modifiedAt: object.uploaded_at.toISOString(),
-      };
+      limit: MAX_LIST_RESULTS,
     });
-
-    return c.json({
-      items,
-      truncated: catalog.length > MAX_LIST_RESULTS,
-    });
+    c.header("X-Storage-Receipt-Id", result.operation.id);
+    return c.json(result.body);
   } catch (error) {
+    if (error instanceof NativeStorageReadError) {
+      if (error.code === "INSUFFICIENT_CREDITS") {
+        return c.json(
+          {
+            error: "Insufficient credits",
+            topUpUrl: "https://cloud.eliza.app/cloud/settings?tab=billing",
+          },
+          402,
+        );
+      }
+      const status =
+        error.code === "IDEMPOTENCY_REQUIRED" ||
+        error.code === "IDEMPOTENCY_INVALID"
+          ? 400
+          : error.code === "IDEMPOTENCY_MISMATCH"
+            ? 409
+            : 503;
+      return c.json({ error: error.message, code: error.code }, status);
+    }
     // error-policy:J1 route boundary — every catch in v1/apis/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty).
     return failureResponse(c, error);
   }

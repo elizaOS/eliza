@@ -10,6 +10,7 @@ import {
   type PreparedStoragePut,
   StoragePutConflictError,
 } from "../../../db/repositories/org-storage-mutations";
+import { orgStorageReadsRepository } from "../../../db/repositories/org-storage-reads";
 import type {
   OrgStorageObject,
   OrgStoragePutOperation,
@@ -464,6 +465,11 @@ export async function executeNativeStorageDelete(
   });
   let operation = prepared.operation;
   if (operation.state === "committed") return;
+  await orgStorageReadsRepository.revokeCapabilitiesForObject({
+    organizationId: operation.organization_id,
+    objectId: operation.object_id,
+    now: new Date(),
+  });
   if (
     operation.state === "provider_started" &&
     operation.lease_expires_at &&

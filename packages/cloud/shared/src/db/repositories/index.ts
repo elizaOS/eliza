@@ -108,6 +108,7 @@ export * from "./model-pricing";
 // ============================================
 export * from "./org-rate-limit-overrides";
 export * from "./org-storage-mutations";
+export * from "./org-storage-reads";
 export * from "./org-storage-quota";
 export * from "./organization-invites";
 export * from "./organizations";
