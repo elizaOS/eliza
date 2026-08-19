@@ -12,7 +12,8 @@
  * Plugins, services, and CLI helpers that previously called `child_process.spawn`
  * for one-shot command execution should call `runShell()` instead. This keeps
  * the mode dispatch in one place and lets the privacy/sandbox guarantees of
- * `local-safe` actually hold.
+ * `local-safe` actually hold. Host stdio is byte-capped so a flooding child
+ * cannot retain an unbounded stdout/stderr string during the timeout window.
  */
 
 import { spawn } from "node:child_process";
@@ -32,6 +33,11 @@ import {
 } from "@elizaos/shared/host-execution-env";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
+import {
+  appendShellStdio,
+  createShellStdioState,
+  MAX_SHELL_STDIO_BYTES,
+} from "./shell-stdio-budget.ts";
 import { isVfsUri, runVfsBuiltinShell } from "./vfs-builtin-shell.ts";
 import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
 
@@ -186,9 +192,9 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
       detached: useDetachedProcessGroup,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    let stdout = "";
-    let stderr = "";
+    const stdio = createShellStdioState();
     let timedOut = false;
+    let overflowed = false;
 
     const killChildTree = () => {
       try {
@@ -212,35 +218,57 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     }, timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
 
-    child.stdout.on("data", (chunk: Buffer) => {
+    const takeChunk = (target: "stdout" | "stderr", chunk: Buffer): void => {
+      if (overflowed) return;
+      const verdict = appendShellStdio(stdio, target, chunk);
+      if (verdict === "overflow") {
+        overflowed = true;
+        killChildTree();
+        return;
+      }
       const text = chunk.toString("utf8");
-      stdout += text;
-      req.onStdout?.(text);
+      if (target === "stdout") req.onStdout?.(text);
+      else req.onStderr?.(text);
+    };
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      takeChunk("stdout", chunk);
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf8");
-      stderr += text;
-      req.onStderr?.(text);
+      takeChunk("stderr", chunk);
     });
     child.on("error", (err) => {
       clearTimeout(timer);
       resolve({
         exitCode: -1,
-        stdout,
-        stderr: stderr.length > 0 ? `${stderr}\n${err.message}` : err.message,
+        stdout: stdio.stdout,
+        stderr:
+          stdio.stderr.length > 0
+            ? `${stdio.stderr}\n${err.message}`
+            : err.message,
         durationMs: Date.now() - start,
         sandbox: "host",
       });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      if (overflowed) {
+        resolve({
+          exitCode: -1,
+          stdout: stdio.stdout,
+          stderr: `${stdio.stderr}${stdio.stderr.endsWith("\n") || stdio.stderr.length === 0 ? "" : "\n"}[shell-router] stdio exceeded ${MAX_SHELL_STDIO_BYTES} bytes`,
+          durationMs: Date.now() - start,
+          sandbox: "host",
+        });
+        return;
+      }
       const exitCode = timedOut ? 124 : (code ?? -1);
       resolve({
         exitCode,
-        stdout,
+        stdout: stdio.stdout,
         stderr: timedOut
-          ? `${stderr}${stderr.endsWith("\n") || stderr.length === 0 ? "" : "\n"}[shell-router] command timed out after ${timeoutMs}ms`
-          : stderr,
+          ? `${stdio.stderr}${stdio.stderr.endsWith("\n") || stdio.stderr.length === 0 ? "" : "\n"}[shell-router] command timed out after ${timeoutMs}ms`
+          : stdio.stderr,
         durationMs: Date.now() - start,
         sandbox: "host",
       });
