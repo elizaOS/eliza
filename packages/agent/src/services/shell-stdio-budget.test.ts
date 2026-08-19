@@ -20,9 +20,9 @@ describe("appendShellStdio", () => {
   it("keeps the leading slice of an oversized first chunk", () => {
     const state = createShellStdioState();
     const max = 8;
-    expect(appendShellStdio(state, "stdout", Buffer.from("x".repeat(20)), max)).toBe(
-      "overflow",
-    );
+    expect(
+      appendShellStdio(state, "stdout", Buffer.from("x".repeat(20)), max),
+    ).toBe("overflow");
     expect(state.stdout).toBe("xxxxxxxx");
     expect(state.bytes).toBe(max);
   });

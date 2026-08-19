@@ -218,17 +218,23 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     }, timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
 
+    const overflowMarker = () =>
+      `${stdio.stderr}${stdio.stderr.endsWith("\n") || stdio.stderr.length === 0 ? "" : "\n"}[shell-router] stdio exceeded ${MAX_SHELL_STDIO_BYTES} bytes`;
+
     const takeChunk = (target: "stdout" | "stderr", chunk: Buffer): void => {
       if (overflowed) return;
+      const before = target === "stdout" ? stdio.stdout : stdio.stderr;
       const verdict = appendShellStdio(stdio, target, chunk);
+      const after = target === "stdout" ? stdio.stdout : stdio.stderr;
+      const appended = after.slice(before.length);
+      if (appended.length > 0) {
+        if (target === "stdout") req.onStdout?.(appended);
+        else req.onStderr?.(appended);
+      }
       if (verdict === "overflow") {
         overflowed = true;
         killChildTree();
-        return;
       }
-      const text = chunk.toString("utf8");
-      if (target === "stdout") req.onStdout?.(text);
-      else req.onStderr?.(text);
     };
 
     child.stdout.on("data", (chunk: Buffer) => {
@@ -239,6 +245,16 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     });
     child.on("error", (err) => {
       clearTimeout(timer);
+      if (overflowed) {
+        resolve({
+          exitCode: -1,
+          stdout: stdio.stdout,
+          stderr: overflowMarker(),
+          durationMs: Date.now() - start,
+          sandbox: "host",
+        });
+        return;
+      }
       resolve({
         exitCode: -1,
         stdout: stdio.stdout,
@@ -252,11 +268,13 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      // Overflow wins over timeout: a flood that also hits the timer still
+      // reports the stdio cap, because that is what killed the child.
       if (overflowed) {
         resolve({
           exitCode: -1,
           stdout: stdio.stdout,
-          stderr: `${stdio.stderr}${stdio.stderr.endsWith("\n") || stdio.stderr.length === 0 ? "" : "\n"}[shell-router] stdio exceeded ${MAX_SHELL_STDIO_BYTES} bytes`,
+          stderr: overflowMarker(),
           durationMs: Date.now() - start,
           sandbox: "host",
         });

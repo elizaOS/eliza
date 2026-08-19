@@ -16,6 +16,7 @@ import {
   __resetShellRouterBrokerForTests,
   runShell,
 } from "./shell-execution-router.ts";
+import { MAX_SHELL_STDIO_BYTES } from "./shell-stdio-budget.ts";
 import { createVirtualFilesystemService } from "./virtual-filesystem.ts";
 
 const MODE_ENV_KEYS = [
@@ -91,6 +92,30 @@ describe("runShell", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("hello");
     expect(result.stderr).toBe("");
+  });
+
+  it("kills a flooding host child and streams the same prefix it retains", async () => {
+    const streamed: string[] = [];
+    const result = await runShell({
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.stdout.write('p'.repeat(100));process.stdout.write(Buffer.alloc(1024*1024,120));process.stdout.write(Buffer.alloc(10*1024*1024,120));",
+      ],
+      toolName: "test:stdio-overflow",
+      timeoutMs: 15_000,
+      onStdout: (chunk) => {
+        streamed.push(chunk);
+      },
+    });
+    const streamedOut = streamed.join("");
+    expect(result.exitCode).toBe(-1);
+    expect(result.stderr).toContain(
+      `[shell-router] stdio exceeded ${MAX_SHELL_STDIO_BYTES} bytes`,
+    );
+    expect(Buffer.byteLength(result.stdout, "utf8")).toBe(MAX_SHELL_STDIO_BYTES);
+    expect(result.stdout.startsWith("p".repeat(100))).toBe(true);
+    expect(streamedOut).toBe(result.stdout);
   });
 
   it("local-yolo defaults to local-yolo when no mode is set", async () => {
