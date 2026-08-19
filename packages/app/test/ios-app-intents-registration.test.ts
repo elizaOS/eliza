@@ -288,20 +288,20 @@ describe("native assistant entry contracts", () => {
     }
 
     expect(appIntentsSwift).toContain("ios-app-intents");
-    expect(appIntentsSwift).toContain("Ask \\(.applicationName)");
+    expect(appIntentsSwift).toContain("Message \\(.applicationName)");
     expect(appIntentsSwift).toContain("Talk to \\(.applicationName)");
     expect(appIntentsSwift.match(/AppShortcut\(/g)).toHaveLength(2);
   });
 
   it("ships Spanish App Intent, widget, control, and Live Activity copy", () => {
     const requiredKeys = [
-      "Ask Eliza",
-      "Ask Eliza a question or hand off a request to chat.",
+      "Message Eliza",
+      "Message Eliza or hand off a request to chat.",
       "Prompt",
       "What would you like to ask Eliza?",
       "Talk to Eliza",
       "Eliza Quick Actions",
-      "Ask or talk to Eliza from your Home and Lock Screen.",
+      "Message or talk to Eliza from your Home and Lock Screen.",
       "Keyboard dictation",
       "Recording",
       "Ready",
@@ -343,7 +343,7 @@ describe("native assistant entry contracts", () => {
 
   it("ships localized App Shortcut phrases with the required app-name token", () => {
     const expectedKeys = [
-      `Ask ${appNamePlaceholder}`,
+      `Message ${appNamePlaceholder}`,
       `Talk to ${appNamePlaceholder}`,
     ];
     expect([...englishAppShortcuts.keys()]).toEqual(expectedKeys);
@@ -516,7 +516,7 @@ describe("native assistant entry contracts", () => {
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "testHomeScreenWidgetTapForegroundsApp",
     );
-    expect(deviceExtensionSurfaceUITestsSwift).toContain("Ask Eliza");
+    expect(deviceExtensionSurfaceUITestsSwift).toContain("Message Eliza");
     expect(deviceExtensionSurfaceUITestsSwift).toContain("Talk to Eliza");
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "elizaos://assistant?source=ios-widget&action=ask",

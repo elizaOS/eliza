@@ -15,7 +15,7 @@ import WidgetKit
 
 @available(iOS 18.0, *)
 struct AskElizaControlIntent: AppIntent {
-    static var title: LocalizedStringResource = "Ask Eliza"
+    static var title: LocalizedStringResource = "Message Eliza"
     static var description = IntentDescription("Open Eliza chat to ask a question.")
     static var isDiscoverable = false
     static var openAppWhenRun = true
@@ -46,10 +46,10 @@ struct ElizaAskControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: Self.kind) {
             ControlWidgetButton(action: AskElizaControlIntent()) {
-                Label("Ask Eliza", systemImage: "sparkles")
+                Label("Message Eliza", systemImage: "sparkles")
             }
         }
-        .displayName("Ask Eliza")
+        .displayName("Message Eliza")
         .description("Open Eliza chat from Control Center, the Lock Screen, or the Action button.")
     }
 }
