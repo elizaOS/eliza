@@ -4,12 +4,13 @@
  */
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import { organizations } from "../../db/schemas/organizations";
 import {
   type StripeCheckoutOrder,
   type StripeCheckoutPurchaseType,
+  stripeCheckoutLegacyQuarantine,
   stripeCheckoutOrders,
 } from "../../db/schemas/stripe-checkout-orders";
 import { creditsService } from "./credits";
@@ -34,12 +35,14 @@ export interface CreateStripeCheckoutOrderInput {
   creditsToGrant: string;
   chargeAmountCents: number;
   currency: string;
-  stripeCustomerId: string;
+  stripeCustomerId?: string | null;
   metadata?: Record<string, unknown>;
 }
 
 export interface StripeCheckoutReceipt {
   checkoutOrderId: string;
+  clientReferenceId: string | null;
+  metadataOrderId: string | null;
   checkoutSessionId: string;
   paymentIntentId: string;
   paymentStatus: string;
@@ -138,7 +141,13 @@ function assertReceiptMatches(
     });
   };
 
-  if (receipt.checkoutOrderId !== order.id) mismatch("STRIPE_CHECKOUT_ORDER_MISMATCH", "order");
+  if (
+    receipt.checkoutOrderId !== order.id ||
+    receipt.clientReferenceId !== order.id ||
+    receipt.metadataOrderId !== order.id
+  ) {
+    mismatch("STRIPE_CHECKOUT_ORDER_MISMATCH", "order receipt");
+  }
   if (options.callerOrganizationId && options.callerOrganizationId !== order.organization_id) {
     mismatch("STRIPE_CHECKOUT_ORGANIZATION_MISMATCH", "organization");
   }
@@ -153,10 +162,13 @@ function assertReceiptMatches(
   if (receipt.currency?.toLowerCase() !== order.currency) {
     mismatch("STRIPE_CHECKOUT_CURRENCY_MISMATCH", "currency");
   }
-  if (receipt.customerId !== order.stripe_customer_id) {
+  if (!order.stripe_customer_id || receipt.customerId !== order.stripe_customer_id) {
     mismatch("STRIPE_CHECKOUT_CUSTOMER_MISMATCH", "customer");
   }
-  if (order.stripe_checkout_session_id !== receipt.checkoutSessionId) {
+  if (
+    order.stripe_checkout_session_id &&
+    order.stripe_checkout_session_id !== receipt.checkoutSessionId
+  ) {
     mismatch("STRIPE_CHECKOUT_SESSION_MISMATCH", "session");
   }
   if (
@@ -182,7 +194,7 @@ export class StripeCheckoutOrdersService {
         credits_to_grant: new Decimal(input.creditsToGrant).toFixed(6),
         charge_amount_cents: BigInt(input.chargeAmountCents),
         currency: input.currency,
-        stripe_customer_id: input.stripeCustomerId,
+        stripe_customer_id: input.stripeCustomerId ?? null,
         metadata: input.metadata ?? {},
       })
       .onConflictDoNothing({
@@ -217,6 +229,72 @@ export class StripeCheckoutOrdersService {
       );
     }
     return existing;
+  }
+
+  /** Pins the customer on the idempotency winner before any Session request. */
+  async bindCustomer(orderId: string, candidateCustomerId: string): Promise<StripeCheckoutOrder> {
+    return await writeTransaction(async (tx) => {
+      const [order] = await tx
+        .select()
+        .from(stripeCheckoutOrders)
+        .where(eq(stripeCheckoutOrders.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!order) {
+        throw new StripeCheckoutAuthorityError(
+          "STRIPE_CHECKOUT_ORDER_NOT_FOUND",
+          "Checkout order was not found while pinning its customer",
+          { checkoutOrderId: orderId },
+        );
+      }
+      if (order.stripe_customer_id) return order;
+      if (order.status !== "quoted") {
+        throw new StripeCheckoutAuthorityError(
+          "STRIPE_CHECKOUT_CUSTOMER_BIND_CONFLICT",
+          "Checkout customer cannot change after provider creation starts",
+          { checkoutOrderId: orderId, status: order.status },
+        );
+      }
+      const [organization] = await tx
+        .select({ stripeCustomerId: organizations.stripe_customer_id })
+        .from(organizations)
+        .where(eq(organizations.id, order.organization_id))
+        .for("update")
+        .limit(1);
+      if (!organization) {
+        throw new StripeCheckoutAuthorityError(
+          "STRIPE_CHECKOUT_ORGANIZATION_NOT_FOUND",
+          "Checkout organization was not found while pinning its customer",
+          { checkoutOrderId: orderId },
+        );
+      }
+      const winnerCustomerId = organization.stripeCustomerId ?? candidateCustomerId;
+      if (!organization.stripeCustomerId) {
+        await tx
+          .update(organizations)
+          .set({ stripe_customer_id: winnerCustomerId, updated_at: new Date() })
+          .where(eq(organizations.id, order.organization_id));
+      }
+      const [bound] = await tx
+        .update(stripeCheckoutOrders)
+        .set({ stripe_customer_id: winnerCustomerId, updated_at: new Date() })
+        .where(
+          and(
+            eq(stripeCheckoutOrders.id, order.id),
+            eq(stripeCheckoutOrders.status, "quoted"),
+            isNull(stripeCheckoutOrders.stripe_customer_id),
+          ),
+        )
+        .returning();
+      if (!bound) {
+        throw new StripeCheckoutAuthorityError(
+          "STRIPE_CHECKOUT_CUSTOMER_BIND_CONFLICT",
+          "Checkout customer lost its compare-and-set",
+          { checkoutOrderId: order.id },
+        );
+      }
+      return bound;
+    });
   }
 
   async markProviderStarted(orderId: string): Promise<void> {
@@ -323,52 +401,88 @@ export class StripeCheckoutOrdersService {
         );
       }
 
-      assertReceiptMatches(order, receipt, options);
-      if (order.status === "settled") {
+      let authoritativeOrder = order;
+      if (
+        !order.stripe_checkout_session_id &&
+        (order.status === "provider_started" || order.status === "provider_ambiguous")
+      ) {
+        // The signed webhook or an authenticated provider retrieval is a
+        // trusted receipt after every immutable field below matches. Binding
+        // under the row lock closes Session-create ACK loss without allowing
+        // metadata alone to select or mutate the order.
+        assertReceiptMatches(order, receipt, options);
+        const [bound] = await tx
+          .update(stripeCheckoutOrders)
+          .set({
+            status: "delivered",
+            stripe_checkout_session_id: receipt.checkoutSessionId,
+            provider_error_code: null,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(stripeCheckoutOrders.id, order.id),
+              inArray(stripeCheckoutOrders.status, ["provider_started", "provider_ambiguous"]),
+              isNull(stripeCheckoutOrders.stripe_checkout_session_id),
+            ),
+          )
+          .returning();
+        if (!bound) {
+          throw new StripeCheckoutAuthorityError(
+            "STRIPE_CHECKOUT_SESSION_BIND_CONFLICT",
+            "Trusted Checkout receipt lost its session bind race",
+            { checkoutOrderId: order.id, checkoutSessionId: receipt.checkoutSessionId },
+          );
+        }
+        authoritativeOrder = bound;
+      }
+
+      assertReceiptMatches(authoritativeOrder, receipt, options);
+      if (authoritativeOrder.status === "settled") {
         const [organization] = await tx
           .select({ creditBalance: organizations.credit_balance })
           .from(organizations)
-          .where(eq(organizations.id, order.organization_id))
+          .where(eq(organizations.id, authoritativeOrder.organization_id))
           .limit(1);
         if (!organization) {
           throw new StripeCheckoutAuthorityError(
             "STRIPE_CHECKOUT_ORGANIZATION_NOT_FOUND",
             "Settled Checkout organization no longer exists",
-            { checkoutOrderId: order.id },
+            { checkoutOrderId: authoritativeOrder.id },
           );
         }
         return {
-          order,
+          order: authoritativeOrder,
           alreadyApplied: true,
           newBalance: Number(organization.creditBalance),
         };
       }
-      if (!FULFILLABLE_STATUSES.includes(order.status as "delivered")) {
+      if (!FULFILLABLE_STATUSES.includes(authoritativeOrder.status as "delivered")) {
         throw new StripeCheckoutAuthorityError(
           "STRIPE_CHECKOUT_NOT_FULFILLABLE",
           "Stripe Checkout order is not in a fulfillable state",
-          { checkoutOrderId: order.id, status: order.status },
+          { checkoutOrderId: authoritativeOrder.id, status: authoritativeOrder.status },
         );
       }
 
-      const credits = Number(order.credits_to_grant);
+      const credits = Number(authoritativeOrder.credits_to_grant);
       if (!Number.isFinite(credits) || credits <= 0) {
         throw new StripeCheckoutAuthorityError(
           "STRIPE_CHECKOUT_CORRUPT_CREDITS",
           "Stored Checkout credits are invalid",
-          { checkoutOrderId: order.id },
+          { checkoutOrderId: authoritativeOrder.id },
         );
       }
       const grant = await creditsService.addCredits({
-        organizationId: order.organization_id,
+        organizationId: authoritativeOrder.organization_id,
         amount: credits,
-        description: `Stripe ${order.purchase_type === "credit_pack" ? "credit pack" : "balance top-up"}`,
+        description: `Stripe ${authoritativeOrder.purchase_type === "credit_pack" ? "credit pack" : "balance top-up"}`,
         metadata: {
-          type: order.purchase_type,
-          checkout_order_id: order.id,
+          type: authoritativeOrder.purchase_type,
+          checkout_order_id: authoritativeOrder.id,
           session_id: receipt.checkoutSessionId,
           payment_intent_id: receipt.paymentIntentId,
-          initiated_by_user_id: order.initiated_by_user_id,
+          initiated_by_user_id: authoritativeOrder.initiated_by_user_id,
         },
         stripePaymentIntentId: receipt.paymentIntentId,
         db: tx,
@@ -384,14 +498,17 @@ export class StripeCheckoutOrdersService {
           updated_at: new Date(),
         })
         .where(
-          and(eq(stripeCheckoutOrders.id, order.id), eq(stripeCheckoutOrders.status, "delivered")),
+          and(
+            eq(stripeCheckoutOrders.id, authoritativeOrder.id),
+            eq(stripeCheckoutOrders.status, "delivered"),
+          ),
         )
         .returning();
       if (!settled) {
         throw new StripeCheckoutAuthorityError(
           "STRIPE_CHECKOUT_SETTLEMENT_CONFLICT",
           "Stripe Checkout order changed during settlement",
-          { checkoutOrderId: order.id },
+          { checkoutOrderId: authoritativeOrder.id },
         );
       }
       return { order: settled, alreadyApplied: false, newBalance: grant.newBalance };
@@ -403,9 +520,10 @@ export class StripeCheckoutOrdersService {
 
   /**
    * Settles a pre-authority Checkout Session created by the retired routes.
-   * This compatibility path derives custom credits from Stripe's paid cents and
-   * pack credits from the current server catalog; metadata must agree but never
-   * supplies either value.
+   * This compatibility path derives custom credits from Stripe's paid cents.
+   * Pre-authority packs have no immutable historical grant quote, so they are
+   * durably quarantined for operator reconciliation instead of consulting a
+   * mutable current catalog or trusting metadata.
    */
   async settleLegacy(
     receipt: LegacyStripeCheckoutReceipt,
@@ -451,22 +569,46 @@ export class StripeCheckoutOrdersService {
       mismatch("STRIPE_LEGACY_CHECKOUT_CUSTOMER_MISMATCH", "customer");
     }
 
-    const authority: { purchaseType: StripeCheckoutPurchaseType; credits: Decimal } =
-      receipt.purchaseType === "custom_amount"
-        ? { purchaseType: "custom_amount", credits: new Decimal(verifiedAmountTotal).div(100) }
-        : await (async () => {
-            if (receipt.purchaseType !== "credit_pack" || !receipt.creditPackId) {
-              return mismatch("STRIPE_LEGACY_CHECKOUT_TYPE_MISMATCH", "purchase type");
-            }
-            const pack = await creditsService.getCreditPackById(receipt.creditPackId);
-            if (!pack?.is_active) {
-              return mismatch("STRIPE_LEGACY_CHECKOUT_PACK_MISMATCH", "credit pack");
-            }
-            if (pack.price_cents !== verifiedAmountTotal) {
-              mismatch("STRIPE_LEGACY_CHECKOUT_PACK_PRICE_MISMATCH", "pack price");
-            }
-            return { purchaseType: "credit_pack" as const, credits: new Decimal(pack.credits) };
-          })();
+    if (receipt.purchaseType === "credit_pack") {
+      await dbWrite
+        .insert(stripeCheckoutLegacyQuarantine)
+        .values({
+          checkout_session_id: receipt.checkoutSessionId,
+          stripe_payment_intent_id: receipt.paymentIntentId,
+          organization_id: verifiedOrganizationId,
+          initiated_by_user_id: verifiedInitiatedByUserId,
+          stripe_customer_id: receipt.customerId,
+          credit_pack_id: receipt.creditPackId,
+          claimed_credits: receipt.claimedCredits,
+          charge_amount_cents: BigInt(verifiedAmountTotal),
+          currency: receipt.currency?.toLowerCase() ?? null,
+          reason: "missing_immutable_pre_authority_pack_quote",
+          provider_receipt: {
+            checkout_session_id: receipt.checkoutSessionId,
+            payment_intent_id: receipt.paymentIntentId,
+            payment_status: receipt.paymentStatus,
+            amount_total: receipt.amountTotal,
+            currency: receipt.currency,
+            customer_id: receipt.customerId,
+            credit_pack_id: receipt.creditPackId,
+            claimed_credits: receipt.claimedCredits,
+          },
+          updated_at: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: stripeCheckoutLegacyQuarantine.checkout_session_id,
+          set: { updated_at: new Date() },
+        });
+      mismatch("STRIPE_LEGACY_CHECKOUT_PACK_QUARANTINED", "immutable pack authority");
+    }
+
+    if (receipt.purchaseType !== "custom_amount") {
+      mismatch("STRIPE_LEGACY_CHECKOUT_TYPE_MISMATCH", "purchase type");
+    }
+    const authority: { purchaseType: StripeCheckoutPurchaseType; credits: Decimal } = {
+      purchaseType: "custom_amount",
+      credits: new Decimal(verifiedAmountTotal).div(100),
+    };
     const { purchaseType, credits } = authority;
     if (
       !credits.isFinite() ||

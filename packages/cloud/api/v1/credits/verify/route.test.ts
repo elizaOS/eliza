@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 const retrieveSession = mock(
   async (): Promise<Record<string, unknown>> => ({
     id: "cs_durable",
+    client_reference_id: "order-a",
     payment_status: "paid",
     amount_total: 500,
     currency: "usd",
@@ -79,6 +80,8 @@ describe("v1 credits verification authority", () => {
     expect(settle).toHaveBeenCalledWith(
       {
         checkoutOrderId: "order-a",
+        clientReferenceId: "order-a",
+        metadataOrderId: "order-a",
         checkoutSessionId: "cs_durable",
         paymentIntentId: "pi_a",
         paymentStatus: "paid",

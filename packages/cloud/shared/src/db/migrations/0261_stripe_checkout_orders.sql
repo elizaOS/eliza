@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS "stripe_checkout_orders" (
   "credits_to_grant" numeric(16,6) NOT NULL,
   "charge_amount_cents" bigint NOT NULL,
   "currency" text NOT NULL,
-  "stripe_customer_id" text NOT NULL,
+  "stripe_customer_id" text,
   "stripe_checkout_session_id" text,
   "stripe_payment_intent_id" text,
   "credit_transaction_id" uuid REFERENCES "credit_transactions"("id") ON DELETE RESTRICT,
@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS "stripe_checkout_orders" (
       OR ("purchase_type" = 'custom_amount' AND "credit_pack_id" IS NULL)),
   CONSTRAINT "stripe_checkout_orders_settlement_shape_check"
     CHECK (("status" = 'settled'
+      AND "stripe_customer_id" IS NOT NULL
       AND "stripe_checkout_session_id" IS NOT NULL
       AND "stripe_payment_intent_id" IS NOT NULL
       AND "credit_transaction_id" IS NOT NULL
@@ -43,11 +44,33 @@ CREATE TABLE IF NOT EXISTS "stripe_checkout_orders" (
       OR ("status" <> 'settled' AND "credit_transaction_id" IS NULL AND "settled_at" IS NULL)),
   CONSTRAINT "stripe_checkout_orders_phase_shape_check"
     CHECK (("status" IN ('quoted','provider_started','provider_ambiguous')
-        AND "stripe_checkout_session_id" IS NULL AND "stripe_payment_intent_id" IS NULL)
+        AND "stripe_checkout_session_id" IS NULL AND "stripe_payment_intent_id" IS NULL
+        AND ("status" = 'quoted' OR "stripe_customer_id" IS NOT NULL))
       OR ("status" = 'delivered'
+        AND "stripe_customer_id" IS NOT NULL
         AND "stripe_checkout_session_id" IS NOT NULL AND "stripe_payment_intent_id" IS NULL)
       OR "status" IN ('settled','failed'))
 );
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "stripe_checkout_legacy_quarantine" (
+  "checkout_session_id" text PRIMARY KEY,
+  "stripe_payment_intent_id" text NOT NULL UNIQUE,
+  "organization_id" uuid REFERENCES "organizations"("id") ON DELETE RESTRICT,
+  "initiated_by_user_id" uuid REFERENCES "users"("id") ON DELETE RESTRICT,
+  "stripe_customer_id" text,
+  "credit_pack_id" uuid,
+  "claimed_credits" text,
+  "charge_amount_cents" bigint,
+  "currency" text,
+  "reason" text NOT NULL,
+  "provider_receipt" jsonb NOT NULL,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now(),
+  "resolved_at" timestamptz
+);
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "stripe_checkout_legacy_quarantine_org_created_idx"
+  ON "stripe_checkout_legacy_quarantine" ("organization_id", "created_at");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "stripe_checkout_orders_org_created_idx"
   ON "stripe_checkout_orders" ("organization_id", "created_at");
@@ -87,7 +110,8 @@ BEGIN
     OR NEW."credits_to_grant" IS DISTINCT FROM OLD."credits_to_grant"
     OR NEW."charge_amount_cents" IS DISTINCT FROM OLD."charge_amount_cents"
     OR NEW."currency" IS DISTINCT FROM OLD."currency"
-    OR NEW."stripe_customer_id" IS DISTINCT FROM OLD."stripe_customer_id"
+    OR (OLD."stripe_customer_id" IS NOT NULL
+      AND NEW."stripe_customer_id" IS DISTINCT FROM OLD."stripe_customer_id")
     OR (OLD."stripe_checkout_session_id" IS NOT NULL
       AND NEW."stripe_checkout_session_id" IS DISTINCT FROM OLD."stripe_checkout_session_id")
     OR (OLD."stripe_payment_intent_id" IS NOT NULL
@@ -111,11 +135,11 @@ BEGIN
     SELECT * INTO credit_row
       FROM "credit_transactions" WHERE "id" = NEW."credit_transaction_id";
     IF NOT FOUND
-      OR credit_row."organization_id" <> NEW."organization_id"
-      OR credit_row."type" <> 'credit'
-      OR credit_row."amount" <> NEW."credits_to_grant"
-      OR credit_row."stripe_payment_intent_id" <> NEW."stripe_payment_intent_id"
-      OR credit_row."metadata"->>'checkout_order_id' <> NEW."id"::text
+      OR credit_row."organization_id" IS DISTINCT FROM NEW."organization_id"
+      OR credit_row."type" IS DISTINCT FROM 'credit'
+      OR credit_row."amount" IS DISTINCT FROM NEW."credits_to_grant"
+      OR credit_row."stripe_payment_intent_id" IS DISTINCT FROM NEW."stripe_payment_intent_id"
+      OR credit_row."metadata"->>'checkout_order_id' IS DISTINCT FROM NEW."id"::text
     THEN
       RAISE EXCEPTION 'stripe checkout credit transaction binding mismatch';
     END IF;

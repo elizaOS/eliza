@@ -59,7 +59,7 @@ beforeAll(async () => {
       client_request_key text NOT NULL, request_digest text NOT NULL,
       purchase_type text NOT NULL, credit_pack_id uuid REFERENCES credit_packs(id),
       credits_to_grant numeric(16,6) NOT NULL, charge_amount_cents bigint NOT NULL,
-      currency text NOT NULL, stripe_customer_id text NOT NULL,
+      currency text NOT NULL, stripe_customer_id text,
       stripe_checkout_session_id text, stripe_payment_intent_id text,
       credit_transaction_id uuid REFERENCES credit_transactions(id),
       status text NOT NULL DEFAULT 'quoted', provider_error_code text,
@@ -74,12 +74,23 @@ beforeAll(async () => {
       ON stripe_checkout_orders(credit_transaction_id) WHERE credit_transaction_id IS NOT NULL;
     CREATE UNIQUE INDEX stripe_checkout_orders_org_request_idx
       ON stripe_checkout_orders(organization_id, client_request_key);
+    CREATE TABLE stripe_checkout_legacy_quarantine (
+      checkout_session_id text PRIMARY KEY,
+      stripe_payment_intent_id text NOT NULL UNIQUE,
+      organization_id uuid REFERENCES organizations(id),
+      initiated_by_user_id uuid REFERENCES users(id),
+      stripe_customer_id text, credit_pack_id uuid, claimed_credits text,
+      charge_amount_cents bigint, currency text, reason text NOT NULL,
+      provider_receipt jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz
+    );
   `);
 });
 
 afterAll(async () => closeDb());
 
 beforeEach(async () => {
+  await dbWrite.execute(sql`DELETE FROM stripe_checkout_legacy_quarantine`);
   await dbWrite.execute(sql`DELETE FROM stripe_checkout_orders`);
   await dbWrite.execute(sql`DELETE FROM credit_transactions`);
   await dbWrite.execute(sql`DELETE FROM credit_packs`);
@@ -124,6 +135,8 @@ async function deliveredOrder(input?: {
 function receipt(orderId: string, overrides: Record<string, unknown> = {}) {
   return {
     checkoutOrderId: orderId,
+    clientReferenceId: orderId,
+    metadataOrderId: orderId,
     checkoutSessionId: "cs_a",
     paymentIntentId: "pi_a",
     paymentStatus: "paid",
@@ -227,6 +240,122 @@ describe("Stripe Checkout order authority", () => {
     expect(state.balances[0]?.credit_balance).toBe("17.000000");
   });
 
+  test("trusted webhook or verify receipts recover Session-create ACK loss exactly once", async () => {
+    const order = await service.create({
+      organizationId: ORG_A,
+      initiatedByUserId: USER_A,
+      clientRequestKey: "request-ack-loss-a",
+      requestDigest: "c".repeat(64),
+      purchaseType: "custom_amount",
+      creditsToGrant: "5.000000",
+      chargeAmountCents: 500,
+      currency: "usd",
+      stripeCustomerId: null,
+    });
+    const pinned = await service.bindCustomer(order.id, "cus_a");
+    expect(pinned.stripe_customer_id).toBe("cus_a");
+    await service.markProviderStarted(order.id);
+
+    const results = await Promise.all([
+      service.settle(receipt(order.id)),
+      service.settle(receipt(order.id)),
+    ]);
+    expect(results.filter((result) => !result.alreadyApplied)).toHaveLength(1);
+    expect(results.every((result) => result.order.stripe_checkout_session_id === "cs_a")).toBe(
+      true,
+    );
+    expect((await rows()).credits).toHaveLength(1);
+  });
+
+  test("webhook-first and verify-first ACK-loss receipts both settle and replay", async () => {
+    for (const [channel, sessionId, paymentIntentId] of [
+      ["webhook-first", "cs_webhook_first", "pi_webhook_first"],
+      ["verify-first", "cs_verify_first", "pi_verify_first"],
+    ] as const) {
+      const order = await service.create({
+        organizationId: ORG_A,
+        initiatedByUserId: USER_A,
+        clientRequestKey: `request-${channel}`,
+        requestDigest: channel === "webhook-first" ? "f".repeat(64) : "1".repeat(64),
+        purchaseType: "custom_amount",
+        creditsToGrant: "5.000000",
+        chargeAmountCents: 500,
+        currency: "usd",
+        stripeCustomerId: "cus_a",
+      });
+      await service.markProviderStarted(order.id);
+      const trustedReceipt = receipt(order.id, {
+        checkoutSessionId: sessionId,
+        paymentIntentId,
+      });
+      const first = await service.settle(trustedReceipt);
+      const replay = await service.settle(trustedReceipt);
+      expect(first.alreadyApplied).toBe(false);
+      expect(replay.alreadyApplied).toBe(true);
+    }
+    expect((await rows()).credits).toHaveLength(2);
+  });
+
+  test("ACK-loss recovery rejects wrong client reference, metadata order, and Session races", async () => {
+    const makeStarted = async (key: string) => {
+      const order = await service.create({
+        organizationId: ORG_A,
+        initiatedByUserId: USER_A,
+        clientRequestKey: key,
+        requestDigest: "d".repeat(64),
+        purchaseType: "custom_amount",
+        creditsToGrant: "5.000000",
+        chargeAmountCents: 500,
+        currency: "usd",
+        stripeCustomerId: "cus_a",
+      });
+      await service.markProviderStarted(order.id);
+      return order;
+    };
+    const wrongReference = await makeStarted("request-wrong-ref-a");
+    await expect(
+      service.settle(receipt(wrongReference.id, { clientReferenceId: "wrong" })),
+    ).rejects.toThrow("order receipt");
+    const wrongMetadata = await makeStarted("request-wrong-meta-a");
+    await expect(
+      service.settle(receipt(wrongMetadata.id, { metadataOrderId: "wrong" })),
+    ).rejects.toThrow("order receipt");
+    const raced = await makeStarted("request-session-race-a");
+    await service.settle(receipt(raced.id));
+    await expect(
+      service.settle(receipt(raced.id, { checkoutSessionId: "cs_other" })),
+    ).rejects.toThrow("session");
+  });
+
+  test("customer pinning uses the durable winner across concurrency and org changes", async () => {
+    const order = await service.create({
+      organizationId: ORG_A,
+      initiatedByUserId: USER_A,
+      clientRequestKey: "request-customer-race-a",
+      requestDigest: "e".repeat(64),
+      purchaseType: "custom_amount",
+      creditsToGrant: "5.000000",
+      chargeAmountCents: 500,
+      currency: "usd",
+      stripeCustomerId: null,
+    });
+    await dbWrite.execute(
+      sql`UPDATE organizations SET stripe_customer_id = NULL WHERE id = ${ORG_A}`,
+    );
+    const [first, second] = await Promise.all([
+      service.bindCustomer(order.id, "cus_candidate_a"),
+      service.bindCustomer(order.id, "cus_candidate_b"),
+    ]);
+    expect(first.stripe_customer_id).toBe(second.stripe_customer_id);
+    const pinned = first.stripe_customer_id;
+    await dbWrite.execute(
+      sql`UPDATE organizations SET stripe_customer_id = 'cus_changed_later' WHERE id = ${ORG_A}`,
+    );
+    expect((await service.bindCustomer(order.id, "cus_changed_later")).stripe_customer_id).toBe(
+      pinned,
+    );
+  });
+
   test("fails closed on tenant, user, amount, currency, customer, session, and payment status", async () => {
     const mutations: Array<
       [string, Parameters<typeof service.settle>[0], Parameters<typeof service.settle>[1]]
@@ -293,7 +422,7 @@ describe("Stripe Checkout order authority", () => {
     }
   });
 
-  test("legacy cutover derives grants from Stripe cents or the active pack catalog", async () => {
+  test("legacy custom cutover derives from paid cents and packs are durably quarantined", async () => {
     const custom = await service.settleLegacy({
       checkoutSessionId: "cs_legacy_custom",
       paymentIntentId: "pi_legacy_custom",
@@ -309,24 +438,10 @@ describe("Stripe Checkout order authority", () => {
     });
     expect(custom).toMatchObject({ creditsToGrant: "5.000000", newBalance: 5 });
 
-    const pack = await service.settleLegacy({
-      checkoutSessionId: "cs_legacy_pack",
-      paymentIntentId: "pi_legacy_pack",
-      paymentStatus: "paid",
-      amountTotal: 500,
-      currency: "usd",
-      customerId: "cus_a",
-      organizationId: ORG_A,
-      initiatedByUserId: USER_A,
-      purchaseType: "credit_pack",
-      creditPackId: PACK_A,
-      claimedCredits: "25.00",
-    });
-    expect(pack).toMatchObject({ creditsToGrant: "25.000000", newBalance: 30 });
-    await expect(
+    const quarantinePack = async (session: string, paymentIntent: string) =>
       service.settleLegacy({
-        checkoutSessionId: "cs_legacy_hostile",
-        paymentIntentId: "pi_legacy_hostile",
+        checkoutSessionId: session,
+        paymentIntentId: paymentIntent,
         paymentStatus: "paid",
         amountTotal: 500,
         currency: "usd",
@@ -335,9 +450,25 @@ describe("Stripe Checkout order authority", () => {
         initiatedByUserId: USER_A,
         purchaseType: "credit_pack",
         creditPackId: PACK_A,
-        claimedCredits: "9999",
-      }),
-    ).rejects.toThrow("claimed credits");
-    expect((await rows()).credits).toHaveLength(2);
+        claimedCredits: "25.00",
+      });
+    await expect(quarantinePack("cs_legacy_changed", "pi_legacy_changed")).rejects.toThrow(
+      "immutable pack authority",
+    );
+    await dbWrite.execute(sql`UPDATE credit_packs SET is_active = false WHERE id = ${PACK_A}`);
+    await expect(quarantinePack("cs_legacy_inactive", "pi_legacy_inactive")).rejects.toThrow(
+      "immutable pack authority",
+    );
+    await dbWrite.execute(sql`DELETE FROM credit_packs WHERE id = ${PACK_A}`);
+    await expect(quarantinePack("cs_legacy_deleted", "pi_legacy_deleted")).rejects.toThrow(
+      "immutable pack authority",
+    );
+    const quarantined = await sqlRows<{ checkout_session_id: string; reason: string }>(
+      dbWrite,
+      sql`SELECT checkout_session_id, reason FROM stripe_checkout_legacy_quarantine ORDER BY checkout_session_id`,
+    );
+    expect(quarantined).toHaveLength(3);
+    expect(quarantined.every((row) => row.reason.includes("immutable"))).toBe(true);
+    expect((await rows()).credits).toHaveLength(1);
   });
 });

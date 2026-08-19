@@ -68,6 +68,8 @@ app.get("/", async (c) => {
       ? await stripeCheckoutOrdersService.settle(
           {
             checkoutOrderId: orderId,
+            clientReferenceId: session.client_reference_id,
+            metadataOrderId: metadata.checkout_order_id ?? null,
             checkoutSessionId: session.id,
             paymentIntentId,
             paymentStatus: session.payment_status,

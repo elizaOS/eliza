@@ -88,6 +88,11 @@ describe("0261 Stripe Checkout orders migration", () => {
       WHERE tgname = 'stripe_checkout_order_binding_guard' AND NOT tgisinternal
     `);
     expect(trigger.rows).toEqual([{ count: 1 }]);
+    const quarantine = await db.query<{ count: number }>(`
+      SELECT count(*)::int AS count FROM information_schema.tables
+      WHERE table_name = 'stripe_checkout_legacy_quarantine'
+    `);
+    expect(quarantine.rows).toEqual([{ count: 1 }]);
   });
 
   test("fails closed instead of accepting a colliding partial table", async () => {
@@ -160,5 +165,35 @@ describe("0261 Stripe Checkout orders migration", () => {
       db.exec(`UPDATE stripe_checkout_orders SET stripe_payment_intent_id = 'pi_other'
         WHERE id = '${ORDER_A}'`),
     ).rejects.toThrow(/immutable authority/i);
+  });
+
+  test("rejects NULL payment-intent and metadata ledger bindings", async () => {
+    const db = await database();
+    await db.exec(migration);
+    for (const [suffix, paymentIntent, metadata] of [
+      ["1", "NULL", `'{"checkout_order_id":"${ORDER_A}"}'`],
+      ["2", "'pi_a'", "'{}'"],
+    ] as const) {
+      await db.exec(`DELETE FROM stripe_checkout_orders; DELETE FROM credit_transactions;`);
+      await db.exec(customOrderSql());
+      await db.exec(`
+        UPDATE stripe_checkout_orders SET status = 'provider_started' WHERE id = '${ORDER_A}';
+        UPDATE stripe_checkout_orders
+          SET status = 'delivered', stripe_checkout_session_id = 'cs_a'
+          WHERE id = '${ORDER_A}';
+        INSERT INTO credit_transactions(
+          id, organization_id, amount, type, metadata, stripe_payment_intent_id
+        ) VALUES (
+          '50000000-0000-4000-8000-00000000000${suffix}', '${ORG_A}', 25, 'credit',
+          ${metadata}, ${paymentIntent}
+        );
+      `);
+      await expect(
+        db.exec(`UPDATE stripe_checkout_orders SET
+          status = 'settled', stripe_payment_intent_id = 'pi_a',
+          credit_transaction_id = '50000000-0000-4000-8000-00000000000${suffix}', settled_at = now()
+          WHERE id = '${ORDER_A}'`),
+      ).rejects.toThrow(/credit transaction binding mismatch/i);
+    }
   });
 });

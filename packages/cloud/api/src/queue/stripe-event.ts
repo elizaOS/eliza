@@ -224,6 +224,8 @@ async function handleCheckoutSessionCompleted(
         : (session.customer?.id ?? null);
     const settlement = await stripeCheckoutOrdersService.settle({
       checkoutOrderId,
+      clientReferenceId: session.client_reference_id,
+      metadataOrderId: session.metadata?.checkout_order_id ?? null,
       checkoutSessionId: session.id,
       paymentIntentId,
       paymentStatus: session.payment_status,
@@ -1141,19 +1143,11 @@ async function clawbackForReversal(params: {
         )
       : minBigInt(reversedMicros, grantAmountMicros);
   const cappedUsdReversed = Number(targetMicros) / 1_000_000;
-  const alreadyClawed =
-    await creditsService.getClawedBackUsdForPaymentIntent(paymentIntentId);
-  const delta = Math.round((cappedUsdReversed - alreadyClawed) * 1e6) / 1e6;
-  if (delta <= 0) {
-    logger.info(
-      `[Stripe Queue] ${source} ${reference}: $${cappedUsdReversed.toFixed(2)} already clawed back for PI ${paymentIntentId}`,
-    );
-    return;
-  }
-
   const result = await creditsService.clawbackCredits({
     organizationId: grant.organization_id,
-    amount: delta,
+    amount: cappedUsdReversed,
+    cumulativeTargetAmount: cappedUsdReversed,
+    originalPaymentIntentId: paymentIntentId,
     description: `Stripe ${source} clawback — ${reference}`,
     stripePaymentIntentId: idempotencyKey,
     metadata: {
@@ -1174,7 +1168,7 @@ async function clawbackForReversal(params: {
 
   if (result.alreadyProcessed) {
     logger.info(
-      `[Stripe Queue] ${source} ${reference}: clawback key ${idempotencyKey} already processed`,
+      `[Stripe Queue] ${source} ${reference}: cumulative target $${cappedUsdReversed.toFixed(6)} already processed`,
     );
     return;
   }
@@ -1182,7 +1176,7 @@ async function clawbackForReversal(params: {
   logger.warn(
     `[Stripe Queue] Clawed back $${result.appliedAmount.toFixed(2)} from org ${grant.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
     {
-      requestedUsd: delta,
+      cumulativeTargetUsd: cappedUsdReversed,
       unrecoveredUsd: result.shortfallAmount,
     },
   );
@@ -1240,10 +1234,12 @@ async function handleChargeDisputeFundsReinstated(
   const clawback =
     await creditsService.getTransactionByStripePaymentIntent(clawbackKey);
   if (clawback?.type !== "clawback") {
-    logger.info(
-      `[Stripe Queue] ${source} ${reference}: no dispute clawback found; nothing to reinstate`,
+    // Stripe does not guarantee event ordering. Retry until the corresponding
+    // funds-withdrawn mutation commits (or the message reaches reconciliation)
+    // instead of acknowledging and permanently dropping a valid reinstatement.
+    throw new Error(
+      `Dispute clawback is not yet available for reinstatement ${reference}`,
     );
-    return;
   }
 
   const appliedClawbackUsd = Math.abs(Number(clawback.amount));

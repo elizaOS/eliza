@@ -1,4 +1,4 @@
-// Exercises cloud API tests stripe event clawback.test behavior with deterministic Worker route fixtures.
+/** Exercises Stripe reversal queue behavior with deterministic Worker route fixtures. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 type MockCreditTransaction = {
@@ -18,7 +18,6 @@ const getTransactionByStripePaymentIntent = mock(
     type: "credit",
   }),
 );
-const getClawedBackUsdForPaymentIntent = mock(async () => 0);
 const clawbackCredits = mock(async () => ({
   newBalance: 25,
   appliedAmount: 20,
@@ -95,7 +94,6 @@ mock.module("@/lib/services/ai-billing", () => ({
 mock.module("@/lib/services/credits", () => ({
   creditsService: {
     getTransactionByStripePaymentIntent,
-    getClawedBackUsdForPaymentIntent,
     clawbackCredits,
     refundCredits,
   },
@@ -136,8 +134,6 @@ describe("stripe queue credit clawbacks", () => {
       amount: "100",
       type: "credit",
     });
-    getClawedBackUsdForPaymentIntent.mockClear();
-    getClawedBackUsdForPaymentIntent.mockResolvedValue(0);
     clawbackCredits.mockClear();
     clawbackCredits.mockResolvedValue({
       newBalance: 25,
@@ -158,9 +154,7 @@ describe("stripe queue credit clawbacks", () => {
     getCheckoutOrderByPaymentIntent.mockResolvedValue(null);
   });
 
-  test("charge.refunded claws back only the new cumulative refund delta", async () => {
-    getClawedBackUsdForPaymentIntent.mockResolvedValueOnce(30);
-
+  test("charge.refunded delegates the cumulative target to the atomic ledger mutation", async () => {
     const result = await processStripeEvent({
       attempts: 1,
       body: {
@@ -184,10 +178,11 @@ describe("stripe queue credit clawbacks", () => {
 
     expect(result).toBe("ack");
     expect(getTransactionByStripePaymentIntent).toHaveBeenCalledWith("pi_1");
-    expect(getClawedBackUsdForPaymentIntent).toHaveBeenCalledWith("pi_1");
     expect(clawbackCredits).toHaveBeenCalledWith({
       organizationId: "org-1",
-      amount: 20,
+      amount: 50,
+      cumulativeTargetAmount: 50,
+      originalPaymentIntentId: "pi_1",
       description: "Stripe charge.refunded clawback — charge ch_1",
       stripePaymentIntentId: "stripe:refund:ch_1:5000",
       metadata: {
@@ -232,6 +227,8 @@ describe("stripe queue credit clawbacks", () => {
     expect(clawbackCredits).toHaveBeenCalledWith({
       organizationId: "org-1",
       amount: 40,
+      cumulativeTargetAmount: 40,
+      originalPaymentIntentId: "pi_taxed",
       description: "Stripe charge.refunded clawback — charge ch_taxed",
       stripePaymentIntentId: "stripe:refund:ch_taxed:5000",
       metadata: {
@@ -291,7 +288,12 @@ describe("stripe queue credit clawbacks", () => {
   });
 
   test("re-delivered charge.refunded is a no-op once the cumulative amount was clawed", async () => {
-    getClawedBackUsdForPaymentIntent.mockResolvedValueOnce(50);
+    clawbackCredits.mockResolvedValueOnce({
+      newBalance: 25,
+      appliedAmount: 0,
+      shortfallAmount: 0,
+      alreadyProcessed: true,
+    });
 
     const result = await processStripeEvent({
       attempts: 2,
@@ -315,7 +317,7 @@ describe("stripe queue credit clawbacks", () => {
     } as unknown as Parameters<typeof processStripeEvent>[0]);
 
     expect(result).toBe("ack");
-    expect(clawbackCredits).not.toHaveBeenCalled();
+    expect(clawbackCredits).toHaveBeenCalledTimes(1);
   });
 
   test("charge.dispute.funds_withdrawn claws back the disputed amount with a dispute key", async () => {
@@ -345,6 +347,8 @@ describe("stripe queue credit clawbacks", () => {
     expect(clawbackCredits).toHaveBeenCalledWith({
       organizationId: "org-1",
       amount: 75,
+      cumulativeTargetAmount: 75,
+      originalPaymentIntentId: "pi_1",
       description:
         "Stripe charge.dispute.funds_withdrawn clawback — dispute dp_1 (charge ch_1)",
       stripePaymentIntentId: "stripe:dispute:dp_1",
@@ -409,7 +413,7 @@ describe("stripe queue credit clawbacks", () => {
     });
   });
 
-  test("charge.dispute.funds_reinstated is a no-op without a matching clawback", async () => {
+  test("out-of-order funds_reinstated retries until the matching clawback commits", async () => {
     getTransactionByStripePaymentIntent.mockResolvedValueOnce(undefined);
 
     const result = await processStripeEvent({
@@ -434,7 +438,7 @@ describe("stripe queue credit clawbacks", () => {
       },
     } as unknown as Parameters<typeof processStripeEvent>[0]);
 
-    expect(result).toBe("ack");
+    expect(result).toBe("retry");
     expect(refundCredits).not.toHaveBeenCalled();
   });
 });

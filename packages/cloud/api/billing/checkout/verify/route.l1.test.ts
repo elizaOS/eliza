@@ -20,6 +20,7 @@ const createInvoice = mock(async () => undefined);
 const webhookFetch = mock(async () => Response.json({ ok: true }));
 const retrieveSession = mock(async () => ({
   id: "cs_agent_paid",
+  client_reference_id: "30000000-0000-4000-8000-000000000001",
   payment_status: "paid",
   amount_total: 500,
   currency: "usd",

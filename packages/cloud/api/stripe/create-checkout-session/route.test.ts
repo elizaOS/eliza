@@ -27,19 +27,29 @@ const createOrder = mock(async () => ({
   id: "30000000-0000-4000-8000-000000000001",
   status: "quoted",
   purchase_type: "credit_pack",
+  stripe_customer_id: null,
+  stripe_checkout_session_id: null,
+}));
+const bindCustomer = mock(async (orderId: string, customerId: string) => ({
+  id: orderId,
+  status: "quoted",
+  purchase_type: "credit_pack",
+  stripe_customer_id: customerId,
   stripe_checkout_session_id: null,
 }));
 const markProviderStarted = mock(async () => undefined);
 const bindSession = mock(async () => undefined);
+const customerCreate = mock(async () => ({ id: "cus_a" }));
+const requireUserWithOrg = mock(async () => ({
+  id: "user-a",
+  email: "user@example.test",
+  wallet_address: null,
+  organization_id: "org-a",
+  organization: { stripe_customer_id: "cus_a", name: "Org A" },
+}));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
-  requireUserWithOrg: mock(async () => ({
-    id: "user-a",
-    email: "user@example.test",
-    wallet_address: null,
-    organization_id: "org-a",
-    organization: { stripe_customer_id: "cus_a", name: "Org A" },
-  })),
+  requireUserWithOrg,
 }));
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STRICT: {} },
@@ -54,6 +64,7 @@ mock.module("@/lib/services/organizations", () => ({
 mock.module("@/lib/services/stripe-checkout-orders", () => ({
   stripeCheckoutOrdersService: {
     create: createOrder,
+    bindCustomer,
     markProviderStarted,
     bindSession,
     markProviderAmbiguous: mock(async () => undefined),
@@ -70,7 +81,7 @@ mock.module("@/lib/stripe", () => ({
         list: mock(async () => ({ data: [], has_more: false })),
       },
     },
-    customers: { create: mock(async () => ({ id: "cus_a" })) },
+    customers: { create: customerCreate },
   }),
 }));
 mock.module("@/lib/utils/logger", () => ({
@@ -100,8 +111,18 @@ beforeEach(() => {
   priceRetrieve.mockClear();
   sessionCreate.mockClear();
   createOrder.mockClear();
+  bindCustomer.mockClear();
   markProviderStarted.mockClear();
   bindSession.mockClear();
+  customerCreate.mockClear();
+  requireUserWithOrg.mockClear();
+  requireUserWithOrg.mockResolvedValue({
+    id: "user-a",
+    email: "user@example.test",
+    wallet_address: null,
+    organization_id: "org-a",
+    organization: { stripe_customer_id: "cus_a", name: "Org A" },
+  });
   priceRetrieve.mockImplementation(async () => ({
     id: "price_pack",
     active: true,
@@ -168,5 +189,35 @@ describe("Stripe credit-pack Checkout authority", () => {
       "30000000-0000-4000-8000-000000000001",
       "cs_pack",
     );
+    expect(bindCustomer).toHaveBeenCalledWith(
+      "30000000-0000-4000-8000-000000000001",
+      "cus_a",
+    );
+  });
+
+  test("concurrent no-customer retries use one provider customer idempotency authority", async () => {
+    requireUserWithOrg.mockResolvedValue({
+      id: "user-a",
+      email: "user@example.test",
+      wallet_address: null,
+      organization_id: "org-a",
+      organization: { stripe_customer_id: null, name: "Org A" },
+    });
+    customerCreate.mockResolvedValue({ id: "cus_race_winner" });
+    const responses = await Promise.all([
+      app.fetch(request("pack-customer-race-1"), { STRIPE_CURRENCY: "usd" }),
+      app.fetch(request("pack-customer-race-1"), { STRIPE_CURRENCY: "usd" }),
+    ]);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(customerCreate).toHaveBeenCalledTimes(2);
+    for (const call of customerCreate.mock.calls) {
+      expect(call[1]).toEqual({ idempotencyKey: "checkout-customer:org-a" });
+    }
+    expect(
+      sessionCreate.mock.calls.every(
+        (call) =>
+          (call[0] as { customer?: string }).customer === "cus_race_winner",
+      ),
+    ).toBe(true);
   });
 });

@@ -1169,6 +1169,69 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
  */
 describe("CreditsService.clawbackCredits (#10920)", () => {
   test(
+    "serializes concurrent and out-of-order cumulative reversal targets under the org lock",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("100");
+      await dbWrite.execute(`
+        INSERT INTO credit_transactions (
+          organization_id, amount, type, description, metadata, stripe_payment_intent_id
+        ) VALUES (
+          '${ORG_ID}', 100, 'credit', 'original Stripe grant', '{}', 'pi_cumulative_atomic'
+        )
+      `);
+      const applyTarget = (target: number, key: string) =>
+        creditsService.clawbackCredits({
+          organizationId: ORG_ID,
+          amount: target,
+          cumulativeTargetAmount: target,
+          originalPaymentIntentId: "pi_cumulative_atomic",
+          description: `cumulative ${target}`,
+          stripePaymentIntentId: key,
+          metadata: { payment_intent_id: "pi_cumulative_atomic" },
+        });
+      await Promise.all([
+        applyTarget(30, "stripe:refund:atomic:3000"),
+        applyTarget(50, "stripe:refund:atomic:5000"),
+      ]);
+      await applyTarget(20, "stripe:refund:atomic:2000");
+      await applyTarget(50, "stripe:refund:atomic:5000");
+
+      expect(await getBalance()).toBeCloseTo(50, 6);
+      expect(
+        await creditsService.getClawedBackUsdForPaymentIntent("pi_cumulative_atomic"),
+      ).toBeCloseTo(50, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "records cumulative reversal shortfall without over-clawing",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("20");
+      await dbWrite.execute(`
+        INSERT INTO credit_transactions (
+          organization_id, amount, type, description, metadata, stripe_payment_intent_id
+        ) VALUES ('${ORG_ID}', 100, 'credit', 'original Stripe grant', '{}', 'pi_shortfall_atomic')
+      `);
+      const result = await creditsService.clawbackCredits({
+        organizationId: ORG_ID,
+        amount: 80,
+        cumulativeTargetAmount: 80,
+        originalPaymentIntentId: "pi_shortfall_atomic",
+        description: "cumulative shortfall",
+        stripePaymentIntentId: "stripe:refund:shortfall:8000",
+        metadata: { payment_intent_id: "pi_shortfall_atomic" },
+      });
+      expect(result.appliedAmount).toBeCloseTo(20, 6);
+      expect(result.shortfallAmount).toBeCloseTo(60, 6);
+      expect(await getBalance()).toBeCloseTo(0, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "floors the balance at zero and records unrecovered shortfall metadata",
     async () => {
       if (!pgliteReady) return;

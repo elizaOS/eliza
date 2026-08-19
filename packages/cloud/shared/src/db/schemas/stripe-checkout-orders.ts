@@ -50,7 +50,7 @@ export const stripeCheckoutOrders = pgTable(
     credits_to_grant: numeric("credits_to_grant", { precision: 16, scale: 6 }).notNull(),
     charge_amount_cents: bigint("charge_amount_cents", { mode: "bigint" }).notNull(),
     currency: text("currency").notNull(),
-    stripe_customer_id: text("stripe_customer_id").notNull(),
+    stripe_customer_id: text("stripe_customer_id"),
     stripe_checkout_session_id: text("stripe_checkout_session_id"),
     stripe_payment_intent_id: text("stripe_payment_intent_id"),
     credit_transaction_id: uuid("credit_transaction_id").references(() => creditTransactions.id, {
@@ -115,14 +115,44 @@ export const stripeCheckoutOrders = pgTable(
     ),
     settlement_shape_check: check(
       "stripe_checkout_orders_settlement_shape_check",
-      sql`(${table.status} = 'settled' AND ${table.stripe_checkout_session_id} IS NOT NULL AND ${table.stripe_payment_intent_id} IS NOT NULL AND ${table.credit_transaction_id} IS NOT NULL AND ${table.settled_at} IS NOT NULL) OR (${table.status} <> 'settled' AND ${table.credit_transaction_id} IS NULL AND ${table.settled_at} IS NULL)`,
+      sql`(${table.status} = 'settled' AND ${table.stripe_customer_id} IS NOT NULL AND ${table.stripe_checkout_session_id} IS NOT NULL AND ${table.stripe_payment_intent_id} IS NOT NULL AND ${table.credit_transaction_id} IS NOT NULL AND ${table.settled_at} IS NOT NULL) OR (${table.status} <> 'settled' AND ${table.credit_transaction_id} IS NULL AND ${table.settled_at} IS NULL)`,
     ),
     phase_shape_check: check(
       "stripe_checkout_orders_phase_shape_check",
-      sql`(${table.status} IN ('quoted','provider_started','provider_ambiguous') AND ${table.stripe_checkout_session_id} IS NULL AND ${table.stripe_payment_intent_id} IS NULL) OR (${table.status} = 'delivered' AND ${table.stripe_checkout_session_id} IS NOT NULL AND ${table.stripe_payment_intent_id} IS NULL) OR ${table.status} IN ('settled','failed')`,
+      sql`(${table.status} IN ('quoted','provider_started','provider_ambiguous') AND ${table.stripe_checkout_session_id} IS NULL AND ${table.stripe_payment_intent_id} IS NULL AND (${table.status} = 'quoted' OR ${table.stripe_customer_id} IS NOT NULL)) OR (${table.status} = 'delivered' AND ${table.stripe_customer_id} IS NOT NULL AND ${table.stripe_checkout_session_id} IS NOT NULL AND ${table.stripe_payment_intent_id} IS NULL) OR ${table.status} IN ('settled','failed')`,
     ),
   }),
 );
 
 export type StripeCheckoutOrder = InferSelectModel<typeof stripeCheckoutOrders>;
 export type NewStripeCheckoutOrder = InferInsertModel<typeof stripeCheckoutOrders>;
+
+export const stripeCheckoutLegacyQuarantine = pgTable(
+  "stripe_checkout_legacy_quarantine",
+  {
+    checkout_session_id: text("checkout_session_id").primaryKey(),
+    stripe_payment_intent_id: text("stripe_payment_intent_id").notNull().unique(),
+    organization_id: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "restrict",
+    }),
+    initiated_by_user_id: uuid("initiated_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    stripe_customer_id: text("stripe_customer_id"),
+    credit_pack_id: uuid("credit_pack_id"),
+    claimed_credits: text("claimed_credits"),
+    charge_amount_cents: bigint("charge_amount_cents", { mode: "bigint" }),
+    currency: text("currency"),
+    reason: text("reason").notNull(),
+    provider_receipt: jsonb("provider_receipt").$type<Record<string, unknown>>().notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    resolved_at: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => ({
+    organization_created_idx: index("stripe_checkout_legacy_quarantine_org_created_idx").on(
+      table.organization_id,
+      table.created_at,
+    ),
+  }),
+);

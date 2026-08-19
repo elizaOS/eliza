@@ -1,4 +1,4 @@
-// Exercises cloud API v1 credits checkout route.test behavior with deterministic Worker route fixtures.
+/** Exercises v1 credit Checkout authority with deterministic Worker route fixtures. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const agentId = "123e4567-e89b-12d3-a456-426614174000";
@@ -29,6 +29,12 @@ const updateOrganization = mock(async () => undefined);
 const createOrder = mock(async () => ({
   id: "30000000-0000-4000-8000-000000000001",
   status: "quoted",
+  stripe_customer_id: null,
+}));
+const bindCustomer = mock(async (orderId: string, customerId: string) => ({
+  id: orderId,
+  status: "quoted",
+  stripe_customer_id: customerId,
 }));
 const markProviderStarted = mock(async () => undefined);
 const bindSession = mock(async () => undefined);
@@ -91,6 +97,7 @@ mock.module("@/lib/services/organizations", () => ({
 mock.module("@/lib/services/stripe-checkout-orders", () => ({
   stripeCheckoutOrdersService: {
     create: createOrder,
+    bindCustomer,
     markProviderStarted,
     bindSession,
     markProviderAmbiguous,
@@ -132,6 +139,7 @@ describe("credits checkout service-key agent bridge", () => {
     checkoutCreate.mockClear();
     checkoutList.mockClear();
     createOrder.mockClear();
+    bindCustomer.mockClear();
     markProviderStarted.mockClear();
     bindSession.mockClear();
     validateServiceKey.mockClear();
@@ -197,7 +205,7 @@ describe("credits checkout service-key agent bridge", () => {
     createOrder.mockImplementationOnce(async () => ({
       id: orderId,
       status: "provider_ambiguous",
-      stripe_customer_id: "cus_agent",
+      stripe_customer_id: "cus_order_winner",
       updated_at: new Date(),
     }));
     checkoutList.mockImplementationOnce(async () => ({
@@ -235,6 +243,9 @@ describe("credits checkout service-key agent bridge", () => {
     });
     expect(bindSession).toHaveBeenCalledWith(orderId, "cs_recovered");
     expect(checkoutCreate).not.toHaveBeenCalled();
+    expect(checkoutList).toHaveBeenCalledWith(
+      expect.objectContaining({ customer: "cus_order_winner" }),
+    );
     expect(markProviderStarted).not.toHaveBeenCalled();
   });
 });

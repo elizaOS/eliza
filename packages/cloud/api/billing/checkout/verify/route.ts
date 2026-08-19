@@ -98,6 +98,8 @@ app.post("/", async (c) => {
       ? await stripeCheckoutOrdersService.settle(
           {
             checkoutOrderId,
+            clientReferenceId: session.client_reference_id,
+            metadataOrderId: session.metadata?.checkout_order_id ?? null,
             checkoutSessionId: session.id,
             paymentIntentId,
             paymentStatus: session.payment_status,
@@ -146,6 +148,12 @@ app.post("/", async (c) => {
             purchaseType: settlement.purchaseType,
           };
     const { durableOrder, credits, purchaseType } = authority;
+    if (!authority.stripeCustomerId) {
+      throw new StripeCheckoutAuthorityError(
+        "STRIPE_CHECKOUT_CUSTOMER_MISMATCH",
+        "Settled Checkout order has no pinned Stripe customer",
+      );
+    }
 
     const existingInvoice = await invoicesService.getByStripeInvoiceId(
       `cs_${sessionId}`,

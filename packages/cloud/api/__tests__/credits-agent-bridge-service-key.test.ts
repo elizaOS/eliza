@@ -46,7 +46,15 @@ const updateOrganization = mock(async () => undefined);
 const createCheckoutOrder = mock(async () => ({
   id: "order-authority",
   status: "quoted",
+  stripe_customer_id: null,
 }));
+const bindCheckoutCustomer = mock(
+  async (orderId: string, customerId: string) => ({
+    id: orderId,
+    status: "quoted",
+    stripe_customer_id: customerId,
+  }),
+);
 const getWithOrganization = mock(async () => ({
   id: "agent-user",
   email: "agent@example.test",
@@ -90,6 +98,7 @@ mock.module("@/lib/services/organizations", () => ({
 mock.module("@/lib/services/stripe-checkout-orders", () => ({
   stripeCheckoutOrdersService: {
     create: createCheckoutOrder,
+    bindCustomer: bindCheckoutCustomer,
     markProviderStarted: mock(async () => undefined),
     bindSession: mock(async () => undefined),
     markProviderAmbiguous: mock(async () => undefined),
@@ -136,6 +145,8 @@ describe("credits agent-bridge — real service-key scope (#10852)", () => {
     requireUserOrApiKeyWithOrg.mockClear();
     checkoutSessionsCreate.mockClear();
     customersCreate.mockClear();
+    createCheckoutOrder.mockClear();
+    bindCheckoutCustomer.mockClear();
     updateOrganization.mockClear();
     getWithOrganization.mockClear();
     dbRead.select.mockClear();

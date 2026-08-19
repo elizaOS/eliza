@@ -1,4 +1,4 @@
-// Exercises cloud API billing checkout verify route.test behavior with deterministic Worker route fixtures.
+/** Exercises billing Checkout verification with deterministic Worker route fixtures. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const agentId = "123e4567-e89b-12d3-a456-426614174000";
@@ -40,6 +40,7 @@ const getByStripeInvoiceId = mock(async () => null);
 const createInvoice = mock(async () => undefined);
 const retrieveSession = mock(async () => ({
   id: "cs_agent_paid",
+  client_reference_id: "30000000-0000-4000-8000-000000000001",
   payment_status: "paid",
   amount_total: 500,
   currency: "usd",

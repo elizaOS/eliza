@@ -108,6 +108,7 @@ function checkoutDelivery(metadata: Record<string, string>) {
         data: {
           object: {
             id: "cs_authoritative",
+            client_reference_id: metadata.checkout_order_id ?? null,
             payment_status: "paid",
             amount_total: 500,
             currency: "usd",
@@ -141,6 +142,8 @@ describe("Stripe Checkout queue authority", () => {
     expect(await processStripeEvent(delivery)).toBe("ack");
     expect(settle).toHaveBeenCalledWith({
       checkoutOrderId: "30000000-0000-4000-8000-000000000001",
+      clientReferenceId: "30000000-0000-4000-8000-000000000001",
+      metadataOrderId: "30000000-0000-4000-8000-000000000001",
       checkoutSessionId: "cs_authoritative",
       paymentIntentId: "pi_authoritative",
       paymentStatus: "paid",

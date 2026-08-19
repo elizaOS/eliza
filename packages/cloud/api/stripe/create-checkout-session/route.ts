@@ -231,28 +231,6 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     };
     let customerId = orgFull.stripe_customer_id ?? null;
 
-    if (!customerId) {
-      const customerData: Stripe.CustomerCreateParams = {
-        name: orgFull.name,
-        metadata: { organization_id: organizationId },
-      };
-      const email = orgFull.billing_email || user.email;
-      if (email) customerData.email = email;
-      if (user.wallet_address) {
-        customerData.metadata = {
-          ...customerData.metadata,
-          wallet_address: user.wallet_address,
-        };
-      }
-      const customer = await requireStripe().customers.create(customerData);
-      customerId = customer.id;
-
-      await organizationsService.update(organizationId, {
-        stripe_customer_id: customerId,
-        updated_at: new Date(),
-      });
-    }
-
     const envAppUrl = c.env.NEXT_PUBLIC_APP_URL;
     const requestOrigin =
       c.req.header("origin") ||
@@ -303,7 +281,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
           }),
         )
       : null;
-    const checkoutOrder = creditQuote
+    let checkoutOrder = creditQuote
       ? await stripeCheckoutOrdersService.create({
           organizationId,
           initiatedByUserId: user.id,
@@ -314,10 +292,51 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
           creditsToGrant: creditQuote.creditsToGrant,
           chargeAmountCents: creditQuote.chargeAmountCents,
           currency: stripeCurrency.toLowerCase(),
-          stripeCustomerId: customerId,
+          stripeCustomerId: null,
           metadata: { return_url: returnUrl },
         })
       : null;
+    if (checkoutOrder) {
+      if (!checkoutOrder.stripe_customer_id) {
+        const candidateCustomerId =
+          customerId ??
+          (
+            await requireStripe().customers.create(
+              stripeCustomerCreateParams({
+                organizationId,
+                organizationName: orgFull.name,
+                billingEmail: orgFull.billing_email,
+                userEmail: user.email,
+                walletAddress: user.wallet_address,
+              }),
+              { idempotencyKey: `checkout-customer:${organizationId}` },
+            )
+          ).id;
+        checkoutOrder = await stripeCheckoutOrdersService.bindCustomer(
+          checkoutOrder.id,
+          candidateCustomerId,
+        );
+      }
+      customerId = checkoutOrder.stripe_customer_id;
+    } else if (!customerId) {
+      const customer = await requireStripe().customers.create(
+        stripeCustomerCreateParams({
+          organizationId,
+          organizationName: orgFull.name,
+          billingEmail: orgFull.billing_email,
+          userEmail: user.email,
+          walletAddress: user.wallet_address,
+        }),
+      );
+      customerId = customer.id;
+      await organizationsService.update(organizationId, {
+        stripe_customer_id: customerId,
+        updated_at: new Date(),
+      });
+    }
+    if (!customerId) {
+      throw new Error("Stripe customer authority was not established");
+    }
     if (
       checkoutOrder?.stripe_checkout_session_id &&
       (checkoutOrder.status === "delivered" ||
@@ -419,14 +438,39 @@ function canonicalCredits(value: string | number): string {
   return `${match[1]}.${(match[2] ?? "").padEnd(6, "0")}`;
 }
 
+function stripeCustomerCreateParams(input: {
+  organizationId: string;
+  organizationName?: string;
+  billingEmail?: string | null;
+  userEmail?: string | null;
+  walletAddress?: string | null;
+}): Stripe.CustomerCreateParams {
+  const customerData: Stripe.CustomerCreateParams = {
+    name: input.organizationName,
+    metadata: { organization_id: input.organizationId },
+  };
+  const email = input.billingEmail || input.userEmail;
+  if (email) customerData.email = email;
+  if (input.walletAddress) {
+    customerData.metadata = {
+      ...customerData.metadata,
+      wallet_address: input.walletAddress,
+    };
+  }
+  return customerData;
+}
+
 async function findCheckoutSessionForOrder(
   stripe: Stripe,
   order: {
     id: string;
-    stripe_customer_id: string;
+    stripe_customer_id: string | null;
     updated_at: Date;
   },
 ): Promise<Stripe.Checkout.Session | null> {
+  if (!order.stripe_customer_id) {
+    throw new Error("Checkout order has no pinned Stripe customer");
+  }
   const providerAttemptSeconds = Math.floor(order.updated_at.getTime() / 1000);
   let startingAfter: string | undefined;
   for (let page = 0; page < 10; page += 1) {
