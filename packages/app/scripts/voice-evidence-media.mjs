@@ -8,6 +8,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -474,6 +475,33 @@ function copy(file, outDir, name = path.basename(file)) {
   return destination;
 }
 
+export function snapshotEvidenceFile(
+  file,
+  root,
+  name,
+  label = "evidence snapshot input",
+) {
+  requireFile(file, label);
+  const destination = path.join(root, name);
+  fs.copyFileSync(file, destination);
+  return destination;
+}
+
+function snapshotDirectory(directory, root, name) {
+  if (
+    !directory ||
+    !fs.existsSync(directory) ||
+    !fs.statSync(directory).isDirectory()
+  ) {
+    throw new Error(
+      `Missing evidence snapshot directory: ${directory || "<unset>"}`,
+    );
+  }
+  const destination = path.join(root, name);
+  fs.cpSync(directory, destination, { recursive: true });
+  return destination;
+}
+
 function sha256(file) {
   return createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
@@ -594,7 +622,51 @@ function transcodeFailures(root, outDir, tools) {
   });
 }
 
-export function finalizeWebVoiceEvidence({
+export function finalizeWebVoiceEvidence(args) {
+  const snapshotRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-voice-web-evidence-"),
+  );
+  try {
+    return finalizeWebVoiceEvidenceSnapshot({
+      ...args,
+      resultsDir: snapshotDirectory(
+        args.resultsDir,
+        snapshotRoot,
+        "results",
+      ),
+      failureResultsDir: snapshotDirectory(
+        args.failureResultsDir,
+        snapshotRoot,
+        "failures",
+      ),
+      systemLoopback: snapshotEvidenceFile(
+        args.systemLoopback,
+        snapshotRoot,
+        "system-loopback.wav",
+        "system loopback",
+      ),
+      loopbackClock: snapshotEvidenceFile(
+        args.loopbackClock,
+        snapshotRoot,
+        "loopback-clock.json",
+      ),
+      backendLog: snapshotEvidenceFile(
+        args.backendLog,
+        snapshotRoot,
+        "backend.log",
+      ),
+      matrixReport: snapshotEvidenceFile(
+        args.matrixReport,
+        snapshotRoot,
+        "matrix-report.json",
+      ),
+    });
+  } finally {
+    fs.rmSync(snapshotRoot, { recursive: true, force: true });
+  }
+}
+
+function finalizeWebVoiceEvidenceSnapshot({
   resultsDir,
   failureResultsDir,
   systemLoopback,
@@ -889,7 +961,77 @@ function assertPhysicalCaptureProvenance(
   return provenance;
 }
 
-export function finalizeDesktopVoiceEvidence({
+export function finalizeDesktopVoiceEvidence(args) {
+  const snapshotRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-voice-desktop-evidence-"),
+  );
+  try {
+    const head = revision(args.expectedRevision);
+    const report = snapshotEvidenceFile(
+      args.report,
+      snapshotRoot,
+      "report.json",
+      "packaged desktop report",
+    );
+    // Reject a non-live packaged run before requiring the downstream acoustic
+    // artifacts, preserving the report as the authoritative stage boundary.
+    assertDesktopReport(report, head);
+    return finalizeDesktopVoiceEvidenceSnapshot({
+      ...args,
+      report,
+      trajectory: snapshotEvidenceFile(
+        args.trajectory,
+        snapshotRoot,
+        "trajectory.json",
+      ),
+      backendLog: snapshotEvidenceFile(
+        args.backendLog,
+        snapshotRoot,
+        "backend.log",
+      ),
+      screenRecording: snapshotEvidenceFile(
+        args.screenRecording,
+        snapshotRoot,
+        "screen.mp4",
+      ),
+      microphoneAudio: snapshotEvidenceFile(
+        args.microphoneAudio,
+        snapshotRoot,
+        "microphone.wav",
+      ),
+      speakerLoopbackAudio: snapshotEvidenceFile(
+        args.speakerLoopbackAudio,
+        snapshotRoot,
+        "speaker-loopback.wav",
+        "speaker loopback capture",
+      ),
+      captureProvenance: snapshotEvidenceFile(
+        args.captureProvenance,
+        snapshotRoot,
+        "capture-provenance.json",
+      ),
+      microphonePayload: snapshotEvidenceFile(
+        args.microphonePayload,
+        snapshotRoot,
+        "microphone-payload.audio",
+      ),
+      referencePayload: snapshotEvidenceFile(
+        args.referencePayload,
+        snapshotRoot,
+        "reference-payload.audio",
+      ),
+      ttsPayload: snapshotEvidenceFile(
+        args.ttsPayload,
+        snapshotRoot,
+        "tts-payload.audio",
+      ),
+    });
+  } finally {
+    fs.rmSync(snapshotRoot, { recursive: true, force: true });
+  }
+}
+
+function finalizeDesktopVoiceEvidenceSnapshot({
   report,
   trajectory,
   backendLog,

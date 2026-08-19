@@ -15,6 +15,7 @@ import {
   correlateAudioWindow,
   inspectAudibleMp4,
   resolveMediaTools,
+  snapshotEvidenceFile,
 } from "./voice-evidence-media.mjs";
 
 const roots = [];
@@ -30,6 +31,23 @@ function fixtureRoot() {
   roots.push(root);
   return root;
 }
+
+test("evidence snapshot remains bound when the live source changes", () => {
+  const root = fixtureRoot();
+  const source = path.join(root, "live-artifact.bin");
+  const snapshotRoot = path.join(root, "snapshot");
+  fs.mkdirSync(snapshotRoot);
+  fs.writeFileSync(source, "validated bytes");
+
+  const snapshot = snapshotEvidenceFile(
+    source,
+    snapshotRoot,
+    "artifact.bin",
+  );
+  fs.writeFileSync(source, "bytes changed after capture");
+
+  expect(fs.readFileSync(snapshot, "utf8")).toBe("validated bytes");
+});
 
 function run(bin, args) {
   const result = spawnSync(bin, args, { encoding: "utf8" });
