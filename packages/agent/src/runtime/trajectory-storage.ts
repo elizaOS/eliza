@@ -182,10 +182,14 @@ function reportLateTrajectoryCapture(
   // (delivery does not wait for the diagnostic copy); a same-instant reject
   // is expected once per racy turn and had the overnight watch paging on
   // every boot. Anything older still reports in full.
-  if (purpose === "voice-gate-rephrase" && ageMs < 5_000) {
+  if (ageMs < 2_000 || (purpose === "voice-gate-rephrase" && ageMs < 5_000)) {
+    // Sub-2s rejects are the designed delivery/terminalization race (the turn
+    // does not wait for diagnostic copies) — same-instant `purpose=action`
+    // pairs joined the rephrase class on every build turn. Older captures
+    // still report in full; they are the real leak signal.
     runtime.logger.debug?.(
       { stepId, captureType, purpose, ageMs },
-      `[trajectory-db] Expected rephrase-terminalization race (${detail})`,
+      `[trajectory-db] Expected capture-terminalization race (${detail})`,
     );
     return;
   }

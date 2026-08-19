@@ -278,6 +278,16 @@ export async function phraseForUser(
     });
     const text = typeof raw === "string" ? tidyModelOutput(raw) : "";
     if (!validatePhrasedText(text, req, maxChars)) {
+      // Reason-tagged: the canned fallbacks kept reaching users and the cause
+      // (timeout vs rejected output) was invisible (2026-08-19).
+      runtime.logger?.debug?.(
+        {
+          reason: raw === null ? "timeout-or-error" : "validation-reject",
+          rejected: text.slice(0, 120),
+          intent: req.intent,
+        },
+        "[phrase-for-user] fell back to canned text",
+      );
       return { text: fallback, phrased: false };
     }
     if (cacheKey) {

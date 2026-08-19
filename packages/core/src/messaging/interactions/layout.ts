@@ -163,13 +163,17 @@ export function toNeutralLayout(
 			return { rows: chunk(buttons, perRow).map((b) => ({ buttons: b })) };
 		}
 		case "task": {
+			// Without a resolvable link the card is dashboard-only; its bare
+			// title rendered as a dangling duplicate line under the ack on chat
+			// connectors ("On it — building that now.\n\nWater Tracker Page",
+			// 2026-08-19). With a URL the title labels the button as before.
 			const url = resolveUrl?.(block);
 			return {
-				text: block.title,
+				text: url ? block.title : "",
 				rows: url
 					? [{ buttons: [{ label: "Open task", url, style: "primary" }] }]
 					: [],
-				needsFallback: !url,
+				needsFallback: false,
 			};
 		}
 		case "form": {
