@@ -27,7 +27,7 @@ const COMMON_VIRTUAL_MICROPHONE_PATTERNS = [
   /(?:^| )monitor(?: |$)/,
   /(?:^| )null(?: |$)/,
   /snd ?aloop/,
-  /(?:^| )pulse(?: audio)?(?: |$)/,
+  /(?:^| )pulse(?: ?audio)?(?: |$)/,
 ];
 
 const PLATFORM_VIRTUAL_MICROPHONE_PATTERNS = {

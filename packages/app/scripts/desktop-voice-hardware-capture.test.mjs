@@ -156,6 +156,7 @@ describe("desktop hardware capture inputs", () => {
     ["win32", "CABLE Output (VB-Audio Virtual Cable)"],
     ["win32", "Stereo Mix (Realtek Audio)"],
     ["win32", "virtual-audio-capturer"],
+    ["win32", "PulseAudio"],
     ["darwin", "PulseAudio monitor"],
     ["win32", "Null Audio Input"],
     ["darwin", "Aggregate Device"],
