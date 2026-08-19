@@ -463,4 +463,136 @@ describe("GatewayWeb", () => {
     await rejected;
     expect(await gateway.isConnected()).toEqual({ connected: false });
   });
+
+  // Regression for #22594: a socket that errors/closes before it ever reaches
+  // `open` (the normal browser behavior for a refused/unreachable gateway) must
+  // reject connect() and must NOT spin an unbounded background reconnect loop
+  // behind a promise the caller can never observe. Before the fix, connect()
+  // stayed pending forever while fresh sockets were opened indefinitely.
+  it("rejects connect() when the socket closes before it opens", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gateway = new GatewayWeb();
+    const states: unknown[] = [];
+    await gateway.addListener("stateChange", (event) => {
+      states.push(event);
+    });
+
+    const connected = gateway.connect({ url: "ws://localhost:9/socket" });
+    let settled = "pending";
+    connected.then(
+      () => {
+        settled = "resolved";
+      },
+      () => {
+        settled = "rejected";
+      },
+    );
+    const socket = FakeWebSocket.instances[0];
+    expect(socket).toBeDefined();
+
+    // Refused/unreachable gateway: 'error' then 'close', never 'open'.
+    socket.error(new Error("connection refused"));
+    socket.close(1006, "connection refused");
+
+    await expect(connected).rejects.toThrow(
+      /Connection failed: connection refused/,
+    );
+    expect(settled).toBe("rejected");
+    // No background reconnect socket must be created, even long after backoff.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(states).toEqual([
+      { state: "connecting" },
+      {
+        state: "disconnected",
+        reason: "Connection failed: connection refused",
+      },
+    ]);
+    warn.mockRestore();
+  });
+
+  it("rejects connect() after the handshake timeout when the socket never opens", async () => {
+    vi.useFakeTimers();
+    const gateway = new GatewayWeb();
+    const connected = gateway.connect({ url: "ws://localhost:9/socket" });
+    let settled = "pending";
+    connected.then(
+      () => {
+        settled = "resolved";
+      },
+      () => {
+        settled = "rejected";
+      },
+    );
+
+    // The socket neither opens nor closes; only the bounded connect timeout
+    // can settle the promise.
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(settled).toBe("pending");
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(connected).rejects.toThrow(/Connection timeout/);
+    expect(settled).toBe("rejected");
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it("does not spawn an unbounded reconnect loop after an initial-connect failure", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gateway = new GatewayWeb();
+    const connected = gateway.connect({ url: "ws://localhost:9/socket" });
+    connected.catch(() => {
+      // observed below; prevents an unhandled rejection
+    });
+
+    FakeWebSocket.instances[0].close(1006, "connection refused");
+
+    // Advance far past many exponential-backoff windows (800ms → 15s cap).
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    await expect(connected).rejects.toThrow(/Connection failed/);
+    await expect(gateway.isConnected()).resolves.toEqual({ connected: false });
+    warn.mockRestore();
+  });
+
+  it("resolves a normal handshake and still reconnects after a post-connect drop", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const gateway = new GatewayWeb();
+    const states: unknown[] = [];
+    await gateway.addListener("stateChange", (event) => {
+      states.push(event);
+    });
+
+    const connected = gateway.connect({ url: "wss://gateway.example/socket" });
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    const connectFrame = parseSent(socket, 0);
+    socket.message(
+      JSON.stringify({
+        type: "res",
+        id: connectFrame.id,
+        ok: true,
+        payload: { protocol: 3 },
+      }),
+    );
+    await expect(connected).resolves.toMatchObject({
+      connected: true,
+      protocol: 3,
+    });
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    // A drop AFTER a successful handshake must still reconnect (unchanged).
+    socket.close(1006, "network blip");
+    expect(states[states.length - 1]).toEqual({
+      state: "reconnecting",
+      reason: "network blip",
+    });
+    await vi.advanceTimersByTimeAsync(1_000); // first backoff is 800ms
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    const socket2 = FakeWebSocket.instances[1];
+    socket2.open();
+    expect(parseSent(socket2, 0)).toMatchObject({ method: "connect" });
+    warn.mockRestore();
+  });
 });

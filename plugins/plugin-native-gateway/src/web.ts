@@ -27,6 +27,12 @@ interface PendingRequest {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+// Upper bound on the initial handshake. Covers the pre-open phase (socket never
+// reaches `open`) as well as the post-open wait for the gateway `hello`, so a
+// refused, unreachable, or silently stalled gateway rejects `connect()` instead
+// of leaving the caller's promise pending forever.
+const CONNECT_TIMEOUT_MS = 30000;
+
 function generateUUID(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -121,8 +127,10 @@ export class GatewayWeb extends WebPlugin {
   private events: string[] = [];
   private lastSeq: number | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private backoffMs = 800;
   private closed = false;
+  private handshakeComplete = false;
   private connectResolve: ((result: GatewayConnectResult) => void) | null =
     null;
   private connectReject: ((error: Error) => void) | null = null;
@@ -160,6 +168,10 @@ export class GatewayWeb extends WebPlugin {
 
   async connect(options: GatewayConnectOptions): Promise<GatewayConnectResult> {
     const url = assertGatewayUrl(options.url);
+    if (this.connectTimer) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -176,14 +188,56 @@ export class GatewayWeb extends WebPlugin {
 
     this.options = { ...options, url };
     this.closed = false;
+    this.handshakeComplete = false;
     this.backoffMs = 800;
     this.resetSessionState();
 
     return new Promise<GatewayConnectResult>((resolve, reject) => {
       this.connectResolve = resolve;
       this.connectReject = reject;
+      // Arm the handshake timeout here — not only in sendConnectFrame — so a
+      // socket that errors/closes before `open` (or never opens at all) still
+      // settles connect() rather than hanging behind an unresolved promise.
+      this.connectTimer = setTimeout(() => {
+        this.connectTimer = null;
+        this.failConnect(new Error("Connection timeout"));
+      }, CONNECT_TIMEOUT_MS);
       this.establishConnection();
     });
+  }
+
+  /**
+   * Settle a failed initial handshake: reject the pending connect() promise,
+   * tear down the socket, and stop the reconnect loop. A gateway that never
+   * completes its first handshake must not spawn sockets forever behind a
+   * promise the caller can neither observe nor cancel except via disconnect().
+   * Post-connect drops keep the normal reconnect behavior and never reach here.
+   */
+  private failConnect(error: Error): void {
+    const reject = this.connectReject;
+    this.connectResolve = null;
+    this.connectReject = null;
+    if (this.connectTimer) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.closed = true;
+    const socket = this.ws;
+    this.ws = null;
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timeout);
+    }
+    this.pending.clear();
+    this.resetSessionState();
+    // Detach before close: browser and test WebSockets may emit `close`
+    // synchronously, and that stale event must not re-enter this failure path.
+    socket?.close(1000, error.message);
+    this.notifyStateChange("disconnected", error.message);
+    reject?.(error);
   }
 
   private establishConnection(): void {
@@ -260,37 +314,48 @@ export class GatewayWeb extends WebPlugin {
 
     this.ws.send(JSON.stringify(frame));
 
+    // Backstop for a socket that opens but whose `hello` response never arrives.
+    // The connect() timer already covers this window; this keeps the pending
+    // RPC entry from leaking and routes any timeout through the same fail path.
     const timeout = setTimeout(() => {
       this.pending.delete(frame.id);
+      const error = new Error("Connection timeout");
       if (this.connectReject) {
-        this.connectReject(new Error("Connection timeout"));
-        this.connectReject = null;
-        this.connectResolve = null;
+        this.failConnect(error);
+      } else {
+        // A reconnect handshake has no connect() promise to reject. Closing
+        // the owned socket routes it through the established retry policy.
+        this.ws?.close(1011, error.message);
       }
-    }, 30000);
+    }, CONNECT_TIMEOUT_MS);
 
     this.pending.set(frame.id, {
       resolve: (result) => {
         clearTimeout(timeout);
         if (result.ok && result.payload && isJsonObject(result.payload)) {
           this.handleHelloOk(result.payload);
+          this.connectReject = null;
+          this.connectResolve = null;
         } else {
+          // A gateway that answers the handshake with an error is as fatal to
+          // the initial connect as a dropped socket: reject and stop retrying.
+          const error = new Error(
+            result.error?.message || "Connection failed",
+          );
           if (this.connectReject) {
-            this.connectReject(
-              new Error(result.error?.message || "Connection failed"),
-            );
+            this.failConnect(error);
+          } else {
+            this.ws?.close(1011, error.message);
           }
         }
-        this.connectReject = null;
-        this.connectResolve = null;
       },
       reject: (error) => {
         clearTimeout(timeout);
+        // Socket-close handling owns post-connect retry. During the initial
+        // handshake there is still a caller promise that must be rejected.
         if (this.connectReject) {
-          this.connectReject(error);
+          this.failConnect(error);
         }
-        this.connectReject = null;
-        this.connectResolve = null;
       },
       timeout,
     });
@@ -309,6 +374,11 @@ export class GatewayWeb extends WebPlugin {
     this.events = toStringArray(features?.events);
     this.backoffMs = 800;
 
+    this.handshakeComplete = true;
+    if (this.connectTimer) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
     this.notifyStateChange("connected");
 
     if (this.connectResolve) {
@@ -417,6 +487,16 @@ export class GatewayWeb extends WebPlugin {
 
   private handleClose(code: number, reason: string): void {
     this.ws = null;
+
+    // The initial handshake never completed: the socket closed/errored before or
+    // during the connect handshake. Reject connect() with the close reason and
+    // stop retrying so a permanently-unreachable gateway cannot leak an unbounded
+    // reconnect loop. failConnect() rejects the pending connect() promise and
+    // clears any in-flight pending entry, so do not double-reject them here.
+    if (!this.handshakeComplete) {
+      this.failConnect(new Error(`Connection failed: ${reason}`));
+      return;
+    }
     this.rejectPending(new Error(`Connection closed: ${reason}`));
     this.resetSessionState();
 
@@ -492,6 +572,10 @@ export class GatewayWeb extends WebPlugin {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this.connectTimer) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
     }
     const socket = this.ws;
     this.ws = null;
