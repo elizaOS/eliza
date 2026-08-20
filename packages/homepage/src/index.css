@@ -1460,6 +1460,17 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   text-wrap: pretty;
 }
 
+.landing-use-cases {
+  margin: 0.9rem 0 0;
+  max-width: 36rem;
+  color: rgb(17 17 17 / 58%);
+  font-size: 0.82rem;
+  font-weight: 620;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+
 .landing-hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1628,7 +1639,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
 .landing-iphone {
   justify-self: center;
-  width: 19.5rem;
+  width: 22rem;
   border-radius: 3.2rem;
   padding: 0.55rem;
   background: #0b0b0f;
@@ -1677,10 +1688,10 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(
     to bottom,
     #ffffff 0%,
-    #ffffff 62%,
+    #ffffff 68%,
     rgb(255 255 255 / 0%) 100%
   );
-  padding-bottom: 1.6rem;
+  padding-bottom: 2.15rem;
 }
 
 .landing-iphone-statusbar {
@@ -1747,16 +1758,64 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-phone-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0.35rem 0.9rem 0.6rem;
 }
 
+.landing-phone-back,
+.landing-phone-video {
+  position: absolute;
+  top: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  color: #007aff;
+}
+
+.landing-phone-back {
+  left: 0.45rem;
+}
+
+.landing-phone-video {
+  right: 0.45rem;
+}
+
+.landing-phone-back svg,
+.landing-phone-video svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
 .landing-phone-contact {
   display: grid;
   justify-items: center;
   gap: 0.2rem;
+}
+
+.landing-phone-contact--group {
+  gap: 0.3rem;
+}
+
+.landing-group-avatars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 0.75rem;
+}
+
+.landing-group-avatar {
+  width: 2.45rem;
+  height: 2.45rem;
+  margin-left: -0.75rem;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 7px rgb(0 0 0 / 12%);
 }
 
 .landing-phone-avatar {
@@ -1785,6 +1844,36 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   width: 0.8rem;
   height: 0.8rem;
   color: #b0b0b6;
+}
+
+.landing-phone-name--group {
+  gap: 0.28rem;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.landing-phone-name--group > span {
+  display: grid;
+  justify-items: center;
+  gap: 0.04rem;
+}
+
+.landing-phone-name--group strong {
+  font-size: 0.79rem;
+  line-height: 1.1;
+}
+
+.landing-phone-name--group small {
+  max-width: 12.5rem;
+  overflow: hidden;
+  color: #74747a;
+  font-size: 0.58rem;
+  font-weight: 500;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .landing-thread-preamble {
@@ -1829,6 +1918,69 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   animation: landing-bubble-in 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+.landing-message {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.34rem;
+  max-width: 90%;
+}
+
+.landing-message--user {
+  align-self: flex-end;
+  max-width: 82%;
+}
+
+.landing-message--member,
+.landing-message--eliza {
+  align-self: flex-start;
+}
+
+.landing-message .landing-bubble {
+  max-width: 100%;
+}
+
+.landing-message-body {
+  display: grid;
+  justify-items: start;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.landing-message--user .landing-message-body {
+  justify-items: end;
+}
+
+.landing-message-avatar-slot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex: 0 0 1.55rem;
+  width: 1.55rem;
+  min-height: 1.55rem;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.landing-message-avatar {
+  display: block;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.landing-message-avatar--eliza {
+  transform: scale(1.18);
+}
+
+.landing-message-author {
+  margin: 0 0 0.16rem 0.7rem;
+  color: #76767c;
+  font-size: 0.64rem;
+  font-weight: 620;
+  line-height: 1;
+}
+
 .landing-bubble--user {
   align-self: flex-end;
   background: #0a84ff;
@@ -1837,6 +1989,13 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-bubble--eliza {
+  align-self: flex-start;
+  background: #e9e9eb;
+  color: #111;
+  border-bottom-left-radius: 0.3rem;
+}
+
+.landing-bubble--member {
   align-self: flex-start;
   background: #e9e9eb;
   color: #111;
@@ -1996,8 +2155,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-bubble-card {
-  align-self: flex-start;
-  max-width: 88%;
+  max-width: 100%;
   animation: landing-bubble-in 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   opacity: 0;
   transform: translateY(8px);
@@ -2007,10 +2165,10 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   display: grid;
   gap: 0.22rem;
   padding: 0.76rem 0.9rem;
-  border: 0;
+  border: 1px solid rgb(0 0 0 / 7%);
   border-radius: 1rem;
-  background: linear-gradient(150deg, #ffffff 34%, #fff5ef 100%);
-  box-shadow: 0 7px 18px rgb(178 54 0 / 11%);
+  background: #f2f2f7;
+  box-shadow: none;
   font-size: 0.88rem;
   line-height: 1.3;
 }
@@ -2019,7 +2177,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  color: #8a3a1e;
+  color: #6e6e73;
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -2030,7 +2188,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   width: 0.38rem;
   height: 0.38rem;
   border-radius: 999px;
-  background: #ff4f00;
+  background: #8e8e93;
   content: "";
 }
 
@@ -2050,7 +2208,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   align-items: center;
   gap: 0.35rem;
   margin-top: 0.32rem;
-  color: #7c432c;
+  color: #6e6e73;
   font-size: 0.76rem;
   font-weight: 600;
 }
@@ -2059,7 +2217,11 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   width: 0.82rem;
   height: 0.82rem;
   flex: 0 0 auto;
-  color: #ff4f00;
+  color: #007aff;
+}
+
+.landing-demo-card-status[data-status-kind="open"] svg {
+  color: #007aff;
 }
 
 /* The keyboard moves as one opaque iOS surface. Fading it independently from
@@ -2305,7 +2467,8 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   .landing-hero-actions,
   .landing-secondary-channels,
   .landing-phone-number,
-  .landing-hero-lede {
+  .landing-hero-lede,
+  .landing-use-cases {
     display: none;
   }
 
@@ -2372,7 +2535,21 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 
   .landing-phone-header {
-    padding: max(0.5rem, env(safe-area-inset-top)) 0.75rem 0.6rem;
+    padding: max(0.45rem, env(safe-area-inset-top)) 0.75rem 0.5rem;
+  }
+
+  .landing-phone-back,
+  .landing-phone-video {
+    top: max(0.65rem, env(safe-area-inset-top));
+  }
+
+  .landing-group-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .landing-phone-name--group small {
+    max-width: min(15rem, 62vw);
   }
 
   .landing-sheet {
@@ -2411,6 +2588,25 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
     padding: 0.5rem 0.8rem;
     font-size: 0.98rem;
     line-height: 1.32;
+  }
+
+  .landing-message {
+    max-width: 88%;
+  }
+
+  .landing-message--user {
+    max-width: 78%;
+  }
+
+  .landing-message-avatar-slot,
+  .landing-message-avatar {
+    width: 1.7rem;
+    height: 1.7rem;
+  }
+
+  .landing-message-avatar-slot {
+    flex-basis: 1.7rem;
+    min-height: 1.7rem;
   }
 
   .landing-demo-card {

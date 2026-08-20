@@ -14,7 +14,7 @@ const READINESS_TIMEOUT_MS = 30_000;
 export async function waitForLandingIntro(page: Page) {
   await page.evaluate(() => document.fonts.ready);
   await expect(
-    page.getByRole("heading", { name: /Four hours of your time back/ }),
+    page.getByRole("heading", { name: /one member every group chat needs/i }),
   ).toBeAttached({ timeout: READINESS_TIMEOUT_MS });
 
   const demo = page.locator(".landing-iphone");

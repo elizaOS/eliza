@@ -83,3 +83,46 @@ for (const viewport of VIEWPORTS) {
     }
   });
 }
+
+test("the loop keeps a tall mobile thread filled after pruning", async ({
+  page,
+}) => {
+  test.setTimeout(75_000);
+  await page.setViewportSize({ width: 390, height: 1275 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForLandingIntro(page);
+
+  const phone = page.locator(".landing-iphone");
+  await expect(phone).toHaveAttribute("data-demo-phase", "looping", {
+    timeout: 60_000,
+  });
+  await expect
+    .poll(
+      async () =>
+        Number.parseInt(
+          (await phone.getAttribute("data-demo-messages")) ?? "0",
+          10,
+        ),
+      { timeout: 45_000 },
+    )
+    .toBeGreaterThan(20);
+
+  await expect
+    .poll(
+      () =>
+        page.locator(".landing-phone-thread").evaluate((thread) => {
+          const messages =
+            thread.querySelectorAll<HTMLElement>("[data-demo-item]");
+          const lastMessage = messages.item(messages.length - 1);
+          if (!lastMessage) return false;
+          const threadRect = thread.getBoundingClientRect();
+          const messageRect = lastMessage.getBoundingClientRect();
+          return (
+            thread.scrollHeight > thread.clientHeight &&
+            threadRect.bottom - messageRect.bottom <= 18
+          );
+        }),
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+});

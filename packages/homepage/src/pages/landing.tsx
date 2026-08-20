@@ -1,10 +1,11 @@
 /**
- * eliza.app landing page: a single-viewport, personal-feeling lander.
+ * eliza.app landing page: a single-viewport, social-agent lander.
  *
  * The first action opens a native message handler where supported and copies
  * the number elsewhere; account and app setup stay out of the way until someone
- * wants the richer companion experience. The phone demo stays within the
- * immediately available product: bounded conversation memory.
+ * wants the richer companion experience. The phone demo shows Eliza inside a
+ * group conversation while staying within the immediately available product:
+ * bounded context from that conversation, without implied external actions.
  * It is decorative and intentionally English-only. Reduced motion shows its
  * settled intro, which keeps screenshots deterministic.
  */
@@ -69,17 +70,37 @@ type DemoCard = LandingDemoCard;
 type DemoStep = LandingDemoStep;
 
 type DemoItemInput =
-  | { from: "eliza" | "user"; kind: "text"; text: string }
+  | {
+      from: "eliza" | "member" | "user";
+      kind: "text";
+      name?: string;
+      text: string;
+    }
   | { from: "eliza"; kind: "card"; card: DemoCard };
 
 type DemoItem = DemoItemInput & { id: number };
 
+interface DemoSender {
+  avatar: string;
+  name: string;
+}
+
+const DEMO_SENDERS: Record<string, DemoSender> = {
+  Eliza: { avatar: "/elizapfp.webp", name: "Eliza" },
+  Jamie: { avatar: "/brand/people/demo-jamie.webp", name: "Jamie" },
+  Leo: { avatar: "/brand/people/demo-leo.webp", name: "Leo" },
+  Maya: { avatar: "/brand/people/demo-maya.webp", name: "Maya" },
+  Priya: { avatar: "/brand/people/demo-priya.webp", name: "Priya" },
+};
+
 const DEMO_INTRO: readonly DemoStep[] = LANDING_DEMO_INTRO;
 const DEMO_LOOP: readonly DemoStep[] = LANDING_DEMO_LOOP;
 
-// Keep only the most recent messages in the DOM; the thread stays pinned to
-// the bottom so pruning older rows is invisible.
-const MAX_RENDERED_ITEMS = 14;
+// Retain at least the opening conversation, then prune only when the rendered
+// transcript exceeds two real thread viewports. A count cap leaves tall phones
+// visibly under-filled because cards and text rows have very different heights.
+const MIN_RENDERED_ITEMS = 10;
+const MAX_BUFFERED_THREAD_VIEWPORTS = 2;
 // The phone should read as an ongoing relationship on first paint, especially
 // in a tall mobile viewport. Playback continues from this truthful context
 // instead of leaving either end of the thread visibly empty.
@@ -110,7 +131,39 @@ function settledIntroItems(): DemoItem[] {
   return DEMO_INTRO.map((step, index) =>
     step.kind === "card"
       ? { id: index, from: "eliza", kind: "card", card: step.card }
-      : { id: index, from: step.kind, kind: "text", text: step.text },
+      : {
+          id: index,
+          from: step.kind,
+          kind: "text",
+          name: step.kind === "member" ? step.name : undefined,
+          text: step.text,
+        },
+  );
+}
+
+function senderForItem(item: DemoItem | undefined): DemoSender | null {
+  if (!item || item.from === "user") return null;
+  if (item.from === "eliza") {
+    return DEMO_SENDERS.Eliza;
+  }
+  return item.name ? (DEMO_SENDERS[item.name] ?? null) : null;
+}
+
+function sameSender(a: DemoItem | undefined, b: DemoItem | undefined): boolean {
+  const first = senderForItem(a);
+  const second = senderForItem(b);
+  return first !== null && second !== null && first.name === second.name;
+}
+
+function DemoProfilePhoto({ sender }: { sender: DemoSender }) {
+  return (
+    <img
+      className={`landing-message-avatar landing-message-avatar--${sender.name.toLowerCase()}`}
+      src={sender.avatar}
+      alt=""
+      width={192}
+      height={192}
+    />
   );
 }
 
@@ -125,18 +178,36 @@ function DemoCardBubble({ card }: { card: DemoCard }) {
         </span>
       ))}
       {card.status ? (
-        <span className="landing-demo-card-status">
-          <svg
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m3 8.3 3 3L13 4.7" />
-          </svg>
+        <span
+          className="landing-demo-card-status"
+          data-status-kind={card.statusKind ?? "confirmed"}
+        >
+          {card.statusKind === "open" ? (
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="8" cy="8" r="5.3" />
+              <path d="M8 5v3.2l2.1 1.25" />
+            </svg>
+          ) : (
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m3 8.3 3 3L13 4.7" />
+            </svg>
+          )}
           {card.status}
         </span>
       ) : null}
@@ -174,10 +245,7 @@ function PhoneMockup() {
     const append = (item: DemoItemInput) => {
       const id = nextIdRef.current;
       nextIdRef.current += 1;
-      setItems((prev) => [
-        ...prev.slice(-(MAX_RENDERED_ITEMS - 1)),
-        { ...item, id },
-      ]);
+      setItems((prev) => [...prev, { ...item, id }]);
     };
 
     const play = async (steps: readonly DemoStep[]) => {
@@ -194,6 +262,15 @@ function PhoneMockup() {
           if (cancelled) return;
           setComposerText("");
           append({ from: "user", kind: "text", text: step.text });
+        } else if (step.kind === "member") {
+          await sleep(PRE_ELIZA_MS);
+          if (cancelled) return;
+          append({
+            from: "member",
+            kind: "text",
+            name: step.name,
+            text: step.text,
+          });
         } else if (step.kind === "eliza") {
           await sleep(step.continuation ? 360 : PRE_ELIZA_MS);
           if (!step.continuation) {
@@ -231,6 +308,25 @@ function PhoneMockup() {
       cancelled = true;
     };
   }, []);
+
+  // Bound the looping demo by rendered height rather than row count. Keeping
+  // roughly two viewports preserves enough history to fill tall phones while
+  // preventing the endless loop from growing the DOM without limit.
+  useLayoutEffect(() => {
+    const thread = threadRef.current;
+    if (
+      !thread ||
+      phase !== "looping" ||
+      items.length <= MIN_RENDERED_ITEMS ||
+      thread.clientHeight <= 0 ||
+      thread.scrollHeight <= thread.clientHeight * MAX_BUFFERED_THREAD_VIEWPORTS
+    ) {
+      return;
+    }
+    setItems((previous) =>
+      previous.length > MIN_RENDERED_ITEMS ? previous.slice(1) : previous,
+    );
+  }, [items, phase]);
 
   // Keep the thread pinned to the newest message.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll reacts to content growth, not to values read inside.
@@ -282,17 +378,54 @@ function PhoneMockup() {
               </svg>
             </span>
           </div>
-          <div className="landing-phone-header">
-            <span className="landing-phone-contact">
-              <img
-                className="landing-phone-avatar"
-                src="/brand/logos/logo_white_orangebg.svg"
-                alt=""
-                width={423}
-                height={423}
-              />
-              <span className="landing-phone-name">
-                Eliza
+          <div className="landing-phone-header landing-phone-header--group">
+            <span className="sr-only">
+              Illustrative group conversation with Maya, Leo, Priya, Jamie, and
+              Eliza
+            </span>
+            <span className="landing-phone-back" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m15 19-7-7 7-7" />
+              </svg>
+            </span>
+            <span className="landing-phone-contact landing-phone-contact--group">
+              <span className="landing-group-avatars" aria-hidden="true">
+                <img
+                  className="landing-group-avatar"
+                  src={DEMO_SENDERS.Maya.avatar}
+                  alt=""
+                />
+                <img
+                  className="landing-group-avatar"
+                  src={DEMO_SENDERS.Leo.avatar}
+                  alt=""
+                />
+                <img
+                  className="landing-group-avatar"
+                  src={DEMO_SENDERS.Priya.avatar}
+                  alt=""
+                />
+                <img
+                  className="landing-group-avatar"
+                  src={DEMO_SENDERS.Eliza.avatar}
+                  alt=""
+                  width={423}
+                  height={423}
+                />
+              </span>
+              <span className="landing-phone-name landing-phone-name--group">
+                <span>
+                  <strong>Friday people</strong>
+                  <small>5 people</small>
+                </span>
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -306,10 +439,24 @@ function PhoneMockup() {
                 </svg>
               </span>
             </span>
+            <span className="landing-phone-video" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="6" width="12" height="12" rx="3" />
+                <path d="m15 10 5-3v10l-5-3" />
+              </svg>
+            </span>
           </div>
         </div>
         <div
-          className="landing-phone-thread scroll-fade scroll-fade-[1.6rem] [--scroll-fade-reveal:64px]"
+          className="landing-phone-thread scroll-fade scroll-fade-[1.6rem] [--scroll-fade-reveal:96px]"
           ref={threadRef}
         >
           <div className="landing-thread-preamble">
@@ -317,25 +464,57 @@ function PhoneMockup() {
               Today {localClock(clock, true)}
             </span>
           </div>
-          {items.map((item) =>
-            item.kind === "card" ? (
-              <div key={item.id} className="landing-bubble-card">
-                <DemoCardBubble card={item.card} />
-              </div>
-            ) : (
-              <p
+          {items.map((item, index) => {
+            const sender = senderForItem(item);
+            const showAuthor =
+              sender !== null && !sameSender(items[index - 1], item);
+            const showAvatar =
+              sender !== null && !sameSender(item, items[index + 1]);
+            return (
+              <div
                 key={item.id}
-                className={`landing-bubble landing-bubble--${item.from}`}
+                data-demo-item="true"
+                className={`landing-message landing-message--${item.from}${item.kind === "card" ? " landing-message--card" : ""}`}
               >
-                {item.text}
-              </p>
-            ),
-          )}
+                {sender ? (
+                  <span className="landing-message-avatar-slot">
+                    {showAvatar ? <DemoProfilePhoto sender={sender} /> : null}
+                  </span>
+                ) : null}
+                <div className="landing-message-body">
+                  {showAuthor ? (
+                    <span className="landing-message-author">
+                      {sender.name}
+                    </span>
+                  ) : null}
+                  {item.kind === "card" ? (
+                    <div className="landing-bubble-card">
+                      <DemoCardBubble card={item.card} />
+                    </div>
+                  ) : (
+                    <p
+                      className={`landing-bubble landing-bubble--${item.from}`}
+                    >
+                      {item.text}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
           {elizaTyping ? (
-            <div className="landing-bubble landing-bubble--eliza landing-typing">
-              <span />
-              <span />
-              <span />
+            <div className="landing-message landing-message--eliza">
+              <span className="landing-message-avatar-slot">
+                <DemoProfilePhoto sender={DEMO_SENDERS.Eliza} />
+              </span>
+              <div className="landing-message-body">
+                <span className="landing-message-author">Eliza</span>
+                <div className="landing-bubble landing-bubble--eliza landing-typing">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
@@ -759,13 +938,19 @@ export default function LandingPage() {
         <div className="landing-hero-copy">
           <h1 className="landing-hero-heading">
             {t("homepage_eliza.landing.heroTitle", {
-              defaultValue: "Four hours of your time back every week.",
+              defaultValue: "The one member every group chat needs.",
             })}
           </h1>
           <p className="landing-hero-lede">
             {t("homepage_eliza.landing.heroLede", {
               defaultValue:
-                "Text Eliza what you're planning. She keeps the details together in one conversation.",
+                "Eliza follows the conversation, remembers what the group decides, and keeps the plan clear.",
+            })}
+          </p>
+          <p className="landing-use-cases">
+            {t("homepage_eliza.landing.useCases", {
+              defaultValue:
+                "Friends · Co-parenting · Households · Trips · Communities",
             })}
           </p>
           <div className="landing-hero-actions">

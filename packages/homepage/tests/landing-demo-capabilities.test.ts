@@ -17,7 +17,7 @@ const LANDING_DEMO = [...LANDING_DEMO_INTRO, ...LANDING_DEMO_LOOP];
 describe("landing Shared-agent capability contract", () => {
   test("portrays only bounded conversation memory", () => {
     const declaredCapabilities = LANDING_DEMO.flatMap((step) =>
-      step.kind === "user" ? [] : [step.capability],
+      step.kind === "user" || step.kind === "member" ? [] : [step.capability],
     );
 
     expect(LANDING_DEMO_CAPABILITIES).toEqual(["conversation-memory"]);
@@ -59,10 +59,31 @@ describe("landing Shared-agent capability contract", () => {
       step.kind === "card" ? [step.card] : [],
     );
 
-    expect(cardIndexes).toEqual([6, 9, 13]);
+    expect(cardIndexes).toEqual([5, 11, 16]);
     expect(new Set(cards.map((card) => card.label)).size).toBe(cards.length);
     expect(
-      cards.every((card) => card.status === "Kept in this conversation"),
+      cards.every((card) =>
+        [
+          "Kept with this group",
+          "Updated from this group",
+          "Waiting on the group",
+        ].includes(card.status ?? ""),
+      ),
+    ).toBe(true);
+  });
+
+  test("shows a real multi-person room with attributable messages", () => {
+    const members = LANDING_DEMO_INTRO.flatMap((step) =>
+      step.kind === "member" ? [step.name] : [],
+    );
+
+    expect(new Set(members)).toEqual(
+      new Set(["Maya", "Leo", "Priya", "Jamie"]),
+    );
+    expect(
+      LANDING_DEMO_INTRO.some(
+        (step) => step.kind === "eliza" && step.text.includes("Jamie"),
+      ),
     ).toBe(true);
   });
 

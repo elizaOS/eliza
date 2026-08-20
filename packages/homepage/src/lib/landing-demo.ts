@@ -1,8 +1,8 @@
 /**
- * Defines the landing conversation and the bounded capability contract it may
- * portray. After the personal Shared rollback, a fresh immediate agent can
- * only rely on the current conversation; external actions and search are not
- * available to this demo.
+ * Defines the landing group conversation and the bounded capability contract
+ * it may portray. A fresh immediate agent can rely on the current conversation;
+ * external actions, durable cross-room memory, and search are not available to
+ * this demo.
  */
 
 export const LANDING_DEMO_CAPABILITIES = ["conversation-memory"] as const;
@@ -115,6 +115,7 @@ export interface LandingDemoCard {
   title: string;
   rows: string[];
   status?: string;
+  statusKind?: "confirmed" | "open";
 }
 
 export type LandingDemoStep =
@@ -124,6 +125,7 @@ export type LandingDemoStep =
       kind: "eliza";
       text: string;
     }
+  | { kind: "member"; name: string; text: string }
   | { kind: "user"; text: string }
   | {
       capability: LandingDemoCapability;
@@ -132,112 +134,114 @@ export type LandingDemoStep =
     };
 
 export const LANDING_DEMO_INTRO: readonly LandingDemoStep[] = [
+  { kind: "member", name: "Maya", text: "Friday or Saturday?" },
+  { kind: "user", text: "Saturday works after 7" },
+  { kind: "member", name: "Leo", text: "same for me" },
+  { kind: "member", name: "Priya", text: "I can do Friday, maybe Saturday" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Hey, it's Eliza. What's on your plate?",
-  },
-  { kind: "user", text: "dinner for four on Thursday" },
-  {
-    capability: "conversation-memory",
-    kind: "eliza",
-    text: "Got it. Thursday dinner for four.",
-  },
-  {
-    capability: "conversation-memory",
-    continuation: true,
-    kind: "eliza",
-    text: "What matters most?",
-  },
-  { kind: "user", text: "Italian, quiet, around 7:30" },
-  {
-    capability: "conversation-memory",
-    kind: "eliza",
-    text: "Perfect. I'll keep that together while we plan.",
+    text: "Saturday after 7 is the overlap so far. Jamie still needs to answer.",
   },
   {
     capability: "conversation-memory",
     kind: "card",
     card: {
       capability: "conversation-memory",
-      label: "Dinner plan",
-      title: "Thursday at 7:30 PM",
-      rows: ["Italian and quiet", "Party of 4"],
-      status: "Kept in this conversation",
+      label: "Working plan",
+      title: "Saturday evening",
+      rows: ["3 can make it", "Waiting on Jamie", "Open: where?"],
+      status: "Kept with this group",
+      statusKind: "open",
     },
   },
-  { kind: "user", text: "I also fly to San Francisco Friday morning" },
+  { kind: "member", name: "Jamie", text: "Saturday works. 7:30?" },
+  { kind: "user", text: "yes. somewhere quiet" },
+  { kind: "member", name: "Maya", text: "outdoors if it's nice?" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Okay. Dinner Thursday, then San Francisco Friday morning.",
+    text: "Saturday at 7:30 works for everyone.",
+  },
+  {
+    capability: "conversation-memory",
+    continuation: true,
+    kind: "eliza",
+    text: "Quiet, with outdoor seating if the weather's good.",
   },
   {
     capability: "conversation-memory",
     kind: "card",
     card: {
       capability: "conversation-memory",
-      label: "Trip context",
-      title: "San Francisco",
-      rows: ["Friday morning", "After Thursday dinner"],
-      status: "Kept in this conversation",
+      label: "Group plan",
+      title: "Saturday at 7:30 PM",
+      rows: [
+        "Everyone can make it",
+        "Quiet + outdoor option",
+        "Open: neighborhood",
+      ],
+      status: "Updated from this group",
+      statusKind: "open",
     },
   },
-  { kind: "user", text: "and remember I hate early flights" },
+  { kind: "member", name: "Leo", text: "Mission or Noe Valley" },
+  { kind: "user", text: "what's settled?" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Noted.",
+    text: "Saturday at 7:30, somewhere quiet with an outdoor option.",
   },
   {
     capability: "conversation-memory",
     continuation: true,
     kind: "eliza",
-    text: "I'll keep that preference in this conversation.",
+    text: "The neighborhood is still between Mission and Noe Valley.",
   },
   {
     capability: "conversation-memory",
     kind: "card",
     card: {
       capability: "conversation-memory",
-      label: "Travel preference",
-      title: "Flight timing",
-      rows: ["Avoid early departures"],
-      status: "Kept in this conversation",
+      label: "Open decision",
+      title: "Pick the neighborhood",
+      rows: ["Mission", "Noe Valley"],
+      status: "Waiting on the group",
+      statusKind: "open",
     },
-  },
-  { kind: "user", text: "what's the plan again?" },
-  {
-    capability: "conversation-memory",
-    kind: "eliza",
-    text: "Quiet Italian dinner for four Thursday at 7:30.",
-  },
-  {
-    capability: "conversation-memory",
-    continuation: true,
-    kind: "eliza",
-    text: "Then San Francisco Friday morning, but not too early.",
   },
 ];
 
 export const LANDING_DEMO_LOOP: readonly LandingDemoStep[] = [
-  { kind: "user", text: "what do you remember about dinner?" },
+  { kind: "member", name: "Priya", text: "Noe Valley has my vote" },
+  { kind: "user", text: "same" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Thursday at 7:30, somewhere Italian and quiet, for four people.",
+    text: "Noe Valley is ahead so far. Jamie and Maya haven't picked yet.",
   },
-  { kind: "user", text: "and the flight?" },
+  { kind: "member", name: "Jamie", text: "Noe Valley for me too" },
+  { kind: "member", name: "Maya", text: "works for me" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Friday morning to San Francisco. You don't want an early departure.",
+    text: "Noe Valley it is. The restaurant is the last open choice.",
   },
-  { kind: "user", text: "put it all together" },
   {
     capability: "conversation-memory",
-    kind: "eliza",
-    text: "Quiet Italian dinner Thursday, then a not-too-early flight to San Francisco Friday.",
+    kind: "card",
+    card: {
+      capability: "conversation-memory",
+      label: "Current plan",
+      title: "Noe Valley · Saturday 7:30",
+      rows: [
+        "Everyone can make it",
+        "Quiet + outdoor option",
+        "Open: restaurant",
+      ],
+      status: "Updated from this group",
+      statusKind: "open",
+    },
   },
 ];
 

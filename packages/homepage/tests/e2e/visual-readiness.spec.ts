@@ -67,11 +67,30 @@ test("reduced motion renders the settled intro conversation", async ({
   const assistantMessages = await page
     .locator(".landing-bubble--eliza")
     .allTextContents();
-  expect(assistantMessages).toContain("Got it. Thursday dinner for four.");
-  expect(assistantMessages).toContain("Noted.");
   expect(assistantMessages).toContain(
-    "Then San Francisco Friday morning, but not too early.",
+    "Saturday after 7 is the overlap so far. Jamie still needs to answer.",
   );
+  expect(assistantMessages).toContain("Saturday at 7:30 works for everyone.");
+  expect(assistantMessages).toContain(
+    "The neighborhood is still between Mission and Noe Valley.",
+  );
+  const messageAuthors = await page
+    .locator(".landing-message-author")
+    .allTextContents();
+  expect(new Set(messageAuthors)).toEqual(
+    new Set(["Maya", "Leo", "Priya", "Jamie", "Eliza"]),
+  );
+  await expect(page.locator(".landing-group-avatar")).toHaveCount(4);
+  expect(await page.locator(".landing-message-avatar").count()).toBeGreaterThan(
+    5,
+  );
+  await expect(page.locator(".landing-demo-card").first()).toHaveCSS(
+    "background-color",
+    "rgb(242, 242, 247)",
+  );
+  await expect(
+    page.locator(".landing-message-author", { hasText: "Eliza" }).first(),
+  ).toHaveCSS("color", "rgb(118, 118, 124)");
   expect(assistantMessages.join(" ")).not.toContain("—");
 });
 

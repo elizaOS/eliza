@@ -17,6 +17,10 @@ const appPublic = path.join(appRoot, "public");
 export const HOMEPAGE_PUBLIC_ASSETS = [
   ".well-known/apple-app-site-association",
   ".well-known/assetlinks.json",
+  "brand/people/demo-jamie.webp",
+  "brand/people/demo-leo.webp",
+  "brand/people/demo-maya.webp",
+  "brand/people/demo-priya.webp",
   "eliza-logo.webp",
   "eliza-app-profile-image.webp",
   "elizapfp.webp",
