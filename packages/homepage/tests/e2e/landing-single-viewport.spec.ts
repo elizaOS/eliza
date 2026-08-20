@@ -84,18 +84,32 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test("opens an empty room and flows in the first message", async ({ page }) => {
+test("prefills through Eliza's first reply, then resumes the flow", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const phone = page.locator(".landing-iphone");
-  await expect(phone).toHaveAttribute("data-demo-messages", "0");
-  await expect(phone).toHaveAttribute("data-demo-typing", "Maya", {
-    timeout: 2_000,
-  });
+  await expect(phone).toHaveAttribute("data-demo-messages", "5");
   await expect(
     page.getByText("dinner this weekend?", { exact: true }),
-  ).toBeVisible({ timeout: 4_000 });
+  ).toBeVisible();
+  await expect(page.getByText("I'm in", { exact: true })).toBeVisible();
+  await expect(page.getByText("same", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("quiet place, ideally outside", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Saturday after 7 is the only overlap on the calendars you chose to share. Jamie still needs to answer.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator(".landing-demo-card")).toHaveCount(0);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(1, {
+    timeout: 3_000,
+  });
 });
 
 test("human replies show the participant's iOS typing indicator", async ({
@@ -107,7 +121,7 @@ test("human replies show the participant's iOS typing indicator", async ({
 
   const phone = page.locator(".landing-iphone");
   await expect(phone).toHaveAttribute("data-demo-typing", "Jamie", {
-    timeout: 15_000,
+    timeout: 5_000,
   });
 
   const indicator = page.locator('[data-demo-typing-indicator="Jamie"]');
@@ -140,7 +154,7 @@ test("concurrent human replies share one compact typing row", async ({
 
   const phone = page.locator(".landing-iphone");
   await expect(phone).toHaveAttribute("data-demo-typing", "Maya,Leo", {
-    timeout: 20_000,
+    timeout: 12_000,
   });
 
   const indicator = page.locator('[data-demo-typing-indicator="Maya and Leo"]');

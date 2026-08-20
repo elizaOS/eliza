@@ -100,6 +100,7 @@ const DEMO_SENDERS: Record<string, DemoSender> = {
 };
 
 const DEMO_SCENARIOS: readonly LandingDemoScenario[] = LANDING_DEMO_SCENARIOS;
+const PREFILLED_INTRO_ITEMS = 5;
 const USER_KEYSTROKE_MS = 38;
 const HUMAN_REPLY_BASE_MS = 1_100;
 const HUMAN_REPLY_PER_CHARACTER_MS = 18;
@@ -110,7 +111,7 @@ const PRE_USER_MS = 650;
 const PRE_ELIZA_MS = 180;
 const PRE_CARD_MS = 360;
 const SEND_HOLD_MS = 300;
-const SCENARIO_OPENING_PAUSE_MS = 600;
+const SCENARIO_OPENING_PAUSE_MS = 1_500;
 const SCENARIO_READING_HOLD_MS = 7_500;
 const SCENARIO_SWITCH_MS = 500;
 
@@ -281,7 +282,9 @@ function PhoneMockup() {
   const t = useT();
   const [clock, setClock] = useState(() => new Date());
   const [scenarioIndex, setScenarioIndex] = useState(0);
-  const [items, setItems] = useState<DemoItem[]>([]);
+  const [items, setItems] = useState<DemoItem[]>(() =>
+    scenarioItems(DEMO_SCENARIOS[0], 0).slice(0, PREFILLED_INTRO_ITEMS),
+  );
   const [phase, setPhase] = useState<"playing" | "settled" | "switching">(
     "playing",
   );
@@ -316,7 +319,7 @@ function PhoneMockup() {
     ) => {
       for (const [index, step] of steps.entries()) {
         if (cancelled) return;
-        const id = activeScenarioIndex * 100 + index;
+        const id = activeScenarioIndex * 100 + PREFILLED_INTRO_ITEMS + index;
         const nextStep = steps[index + 1];
         if (step.kind === "user") {
           await sleep(PRE_USER_MS);
@@ -398,7 +401,12 @@ function PhoneMockup() {
             await sleep(SCENARIO_SWITCH_MS);
             if (cancelled) return;
             setScenarioIndex(index);
-            setItems([]);
+            setItems(
+              scenarioItems(nextScenario, index).slice(
+                0,
+                PREFILLED_INTRO_ITEMS,
+              ),
+            );
             setVisitedScenarioIds((previous) =>
               previous.includes(nextScenario.id)
                 ? previous
@@ -408,7 +416,7 @@ function PhoneMockup() {
           }
           await sleep(SCENARIO_OPENING_PAUSE_MS);
           if (cancelled) return;
-          await play(nextScenario.steps, index);
+          await play(nextScenario.steps.slice(PREFILLED_INTRO_ITEMS), index);
           if (cancelled) return;
           setPhase("settled");
           await sleep(SCENARIO_READING_HOLD_MS);

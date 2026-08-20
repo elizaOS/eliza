@@ -127,6 +127,18 @@ describe("landing Shared-agent capability contract", () => {
     }
   });
 
+  test("starts every room with four human messages and Eliza's first reply", () => {
+    for (const scenario of LANDING_DEMO_SCENARIOS) {
+      expect(
+        scenario.steps
+          .slice(0, 4)
+          .every((step) => step.kind === "member" || step.kind === "user"),
+      ).toBe(true);
+      expect(scenario.steps[4]?.kind).toBe("eliza");
+      expect(scenario.steps[5]?.kind).toBe("card");
+    }
+  });
+
   test("keeps every attributed speaker inside that room's member list", () => {
     for (const scenario of LANDING_DEMO_SCENARIOS) {
       const speakers = scenario.steps.flatMap((step) =>
