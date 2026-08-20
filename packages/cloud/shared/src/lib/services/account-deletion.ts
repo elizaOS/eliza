@@ -150,7 +150,9 @@ export interface ProcessAccountDeletionResources {
   purgeOrganizationResources?: typeof purgePersonalOrganizationResources;
   deleteStewardUser?: typeof deleteStewardPlatformUser;
   findUserForWrite?: typeof usersRepository.findByIdForWrite;
+  listOrganizationMembers?: typeof usersRepository.listByOrganization;
   deletePersonalAccount?: typeof usersService.deletePersonalAccount;
+  deleteSharedOrganizationUser?: typeof usersService.delete;
 }
 
 /**
@@ -178,10 +180,20 @@ export async function processDueAccountDeletions(
       if (!resources?.blob) {
         throw new Error("Account deletion requires the Cloud object-storage binding");
       }
-      await (resources.purgeOrganizationResources ?? purgePersonalOrganizationResources)({
-        organizationId: request.organization_id,
-        blob: resources.blob,
-      });
+      const members = await (
+        resources.listOrganizationMembers ??
+        ((organizationId) => usersRepository.listByOrganization(organizationId))
+      )(request.organization_id);
+      const isPersonalOrganization = members.length === 1 && members[0]?.id === request.user_id;
+      if (!isPersonalOrganization && !members.some((member) => member.id === request.user_id)) {
+        throw new Error("Cloud user disappeared before database erasure completed");
+      }
+      if (isPersonalOrganization) {
+        await (resources.purgeOrganizationResources ?? purgePersonalOrganizationResources)({
+          organizationId: request.organization_id,
+          blob: resources.blob,
+        });
+      }
       await (resources.deleteStewardUser ?? deleteStewardPlatformUser)(request.steward_user_id);
       const user = await (
         resources.findUserForWrite ?? ((userId) => usersRepository.findByIdForWrite(userId))
@@ -189,10 +201,16 @@ export async function processDueAccountDeletions(
       if (!user) {
         throw new Error("Cloud user disappeared before database erasure completed");
       }
-      await (
-        resources.deletePersonalAccount ??
-        ((userId, organizationId) => usersService.deletePersonalAccount(userId, organizationId))
-      )(request.user_id, request.organization_id);
+      if (isPersonalOrganization) {
+        await (
+          resources.deletePersonalAccount ??
+          ((userId, organizationId) => usersService.deletePersonalAccount(userId, organizationId))
+        )(request.user_id, request.organization_id);
+      } else {
+        await (resources.deleteSharedOrganizationUser ?? ((userId) => usersService.delete(userId)))(
+          request.user_id,
+        );
+      }
       await accountDeletionRequestsRepository.update(request.id, {
         status: "completed",
         completed_at: new Date(),

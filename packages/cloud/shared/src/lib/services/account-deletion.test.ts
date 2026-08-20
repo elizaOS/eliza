@@ -31,6 +31,7 @@ const deactivateSteward = mock(async () => ({ userId: "steward-1" }));
 const deleteSteward = mock(async () => ({ userId: "steward-1" }));
 const updateUser = mock(async () => undefined);
 const deletePersonalAccount = mock(async () => undefined);
+const deleteSharedOrganizationUser = mock(async () => undefined);
 const updateOrg = mock(async () => undefined);
 const purgeOrganizationResources = mock(async () => undefined);
 const recordPurgeFailure = requestRepo.recordPurgeFailure;
@@ -57,7 +58,7 @@ mock.module("./user-sessions", () => ({
   userSessionsService: { endAllUserSessions: mock(async () => undefined) },
 }));
 mock.module("./users", () => ({
-  usersService: { update: updateUser, deletePersonalAccount },
+  usersService: { update: updateUser, deletePersonalAccount, delete: deleteSharedOrganizationUser },
 }));
 mock.module("./organizations", () => ({
   organizationsService: { update: updateOrg },
@@ -74,6 +75,7 @@ beforeEach(() => {
   deleteSteward.mockClear();
   updateUser.mockClear();
   deletePersonalAccount.mockClear();
+  deleteSharedOrganizationUser.mockClear();
   updateOrg.mockClear();
   purgeOrganizationResources.mockClear();
   recordPurgeFailure.mockClear();
@@ -150,5 +152,30 @@ describe("account deletion lifecycle", () => {
     expect(deleteSteward).not.toHaveBeenCalled();
     expect(deletePersonalAccount).not.toHaveBeenCalled();
     expect(recordPurgeFailure).toHaveBeenCalledWith("request-1", "purge_failed");
+  });
+
+  test("deletes only the member identity and never purges a shared organization", async () => {
+    listByOrganization.mockResolvedValueOnce([
+      { id: "user-1", role: "member", is_active: false, is_anonymous: false },
+      { id: "user-2", role: "owner", is_active: true, is_anonymous: false },
+    ]);
+    requestRepo.claimDue.mockResolvedValue([
+      {
+        id: "request-1",
+        user_id: "user-1",
+        organization_id: "org-1",
+        steward_user_id: "steward-1",
+      },
+    ]);
+
+    const result = await processDueAccountDeletions(10, {
+      blob,
+      purgeOrganizationResources,
+    });
+
+    expect(result).toEqual({ recovered: 0, processed: 1, completed: 1, actionRequired: 0 });
+    expect(purgeOrganizationResources).not.toHaveBeenCalled();
+    expect(deletePersonalAccount).not.toHaveBeenCalled();
+    expect(deleteSharedOrganizationUser).toHaveBeenCalledWith("user-1");
   });
 });

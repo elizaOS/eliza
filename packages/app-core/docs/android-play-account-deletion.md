@@ -27,25 +27,28 @@ qualify.
 3. Steward identity access, Cloud sessions, and user API keys are disabled
    immediately. A sole-user organization is also disabled.
 4. The request is due after 30 days. A CRON-secret-protected processor claims
-   rows with a database lock, disables billing and removes the Stripe customer,
-   deletes agent/container, app/GitHub, cloned-voice, and R2 object resources,
-   then deletes the Steward identity.
-5. Database erasure deletes the sole-user personal organization first, in one
+   rows with a database lock and re-checks organization membership. A shared
+   organization member loses only their Steward/user identity; organization-
+   owned billing, chats, agents, apps, voices, and storage remain untouched.
+5. For a sole-user personal organization, the processor disables billing and
+   removes the Stripe customer, deletes agent/container, app/GitHub,
+   cloned-voice, and R2 object resources, then deletes the Steward identity.
+6. Database erasure deletes the sole-user personal organization first, in one
    transaction, so declared cascades remove the user and associated content.
    Any restrictive retention FK rolls the whole transaction back instead of
    leaving a half-deleted account that a retry could falsely complete.
-6. App containers use the existing daemon teardown queue. The account request
+7. App containers use the existing daemon teardown queue. The account request
    remains retryable and the app row remains present until the daemon confirms
    every container is gone; only then can app and organization deletion finish.
-7. Cloudflare-registered domains are an external asset rather than disposable
+8. Cloudflare-registered domains are an external asset rather than disposable
    app data. Their auto-renewal is disabled and deletion pauses for an operator
    to transfer or release the registration. External domains need no transfer.
-8. Interrupted claims are recovered. Failed purges retry hourly up to five
+9. Interrupted claims are recovered. Failed purges retry hourly up to five
    attempts and then become `action_required` for operator resolution. The
    receipt survives user/org deletion; account identifiers are cleared on
    completion so only the request ID, timestamps, state, and bounded result
    metadata remain.
-9. A sole owner of a multi-user organization must transfer ownership first;
+10. A sole owner of a multi-user organization must transfer ownership first;
    shared-organization content remains owned by that organization.
 
 ## Retention disclosure

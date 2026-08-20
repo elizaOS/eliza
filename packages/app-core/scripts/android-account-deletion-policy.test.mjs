@@ -51,6 +51,8 @@ describe("Android Play account-deletion contract", () => {
     expect(lifecycle).toContain("deleteStewardPlatformUser");
     expect(lifecycle).toContain("recoverStaleProcessing");
     expect(lifecycle).toContain("purgePersonalOrganizationResources");
+    expect(lifecycle).toContain("isPersonalOrganization");
+    expect(lifecycle).toContain("deleteSharedOrganizationUser");
     expect(resourcePurge).toContain("deleteBillingCustomer");
     expect(resourcePurge).toContain("prepareManagedDomains");
     expect(resourcePurge).toContain('authorization: "account_deletion"');

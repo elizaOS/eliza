@@ -114,6 +114,8 @@ describe("account deletion end-to-end lifecycle", () => {
       blob,
       purgeOrganizationResources,
       deleteStewardUser,
+      listOrganizationMembers: (organizationId) =>
+        usersRepository.listByOrganization(organizationId),
       findUserForWrite: (userId) => usersRepository.findByIdForWrite(userId),
       deletePersonalAccount: (userId, organizationId) =>
         usersRepository.deletePersonalOrganizationAtomically(userId, organizationId),
