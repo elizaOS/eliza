@@ -51,6 +51,17 @@ export interface SkillPackage {
 	files: Map<string, SkillFile>;
 }
 
+/** A staged replacement whose prior value remains available until finalization. */
+export interface PreparedSkillReplacement {
+	readonly slug: string;
+	/** Make the staged package authoritative without deleting the prior package. */
+	publish(): void;
+	/** Restore the prior package, or discard an unpublished stage. */
+	rollback(): void;
+	/** Delete retained staging/backup state after the service commits all state. */
+	finalize(): void;
+}
+
 /**
  * Storage interface for skill management.
  */
@@ -81,6 +92,15 @@ export interface ISkillStorage {
 
 	/** Save a complete skill package */
 	saveSkill(pkg: SkillPackage): Promise<void>;
+
+	/** Snapshot a complete skill package for validation or transactional rollback. */
+	loadPackage(slug: string): Promise<SkillPackage | null>;
+
+	/** Stage a replacement without exposing it to readers. */
+	prepareReplacement(
+		pkg: SkillPackage,
+		options?: { signal?: AbortSignal },
+	): Promise<PreparedSkillReplacement>;
 
 	/** Delete a skill */
 	deleteSkill(slug: string): Promise<boolean>;
@@ -171,7 +191,47 @@ export class MemorySkillStore implements ISkillStorage {
 	}
 
 	async saveSkill(pkg: SkillPackage): Promise<void> {
-		this.skills.set(pkg.slug, pkg);
+		this.skills.set(pkg.slug, cloneSkillPackage(pkg));
+	}
+
+	async loadPackage(slug: string): Promise<SkillPackage | null> {
+		const pkg = this.skills.get(slug);
+		return pkg ? cloneSkillPackage(pkg) : null;
+	}
+
+	async prepareReplacement(
+		pkg: SkillPackage,
+		options: { signal?: AbortSignal } = {},
+	): Promise<PreparedSkillReplacement> {
+		options.signal?.throwIfAborted();
+		const candidate = cloneSkillPackage(pkg);
+		const previous = this.skills.get(pkg.slug);
+		const previousSnapshot = previous ? cloneSkillPackage(previous) : null;
+		let published = false;
+		let finished = false;
+		return {
+			slug: pkg.slug,
+			publish: () => {
+				if (finished) throw new Error("Skill replacement is already finalized");
+				options.signal?.throwIfAborted();
+				this.skills.set(pkg.slug, cloneSkillPackage(candidate));
+				published = true;
+			},
+			rollback: () => {
+				if (finished) return;
+				if (published) {
+					if (previousSnapshot) {
+						this.skills.set(pkg.slug, cloneSkillPackage(previousSnapshot));
+					} else {
+						this.skills.delete(pkg.slug);
+					}
+				}
+				finished = true;
+			},
+			finalize: () => {
+				finished = true;
+			},
+		};
 	}
 
 	async deleteSkill(slug: string): Promise<boolean> {
@@ -217,27 +277,7 @@ export class MemorySkillStore implements ISkillStorage {
 	 * Load a skill from a zip buffer (for registry downloads).
 	 */
 	async loadFromZip(slug: string, zipBuffer: Uint8Array): Promise<void> {
-		assertZipUncompressedSizeWithinLimit(zipBuffer);
-		const unzipped = unzipSync(zipBuffer);
-
-		const files = new Map<string, SkillFile>();
-
-		for (const [fileName, data] of Object.entries(unzipped)) {
-			if (fileName.endsWith("/")) continue;
-
-			const relativePath = sanitizeZipEntryPath(fileName);
-			if (relativePath === null) continue;
-
-			const isText = isTextFile(relativePath);
-
-			files.set(relativePath, {
-				path: relativePath,
-				content: isText ? new TextDecoder().decode(data) : data,
-				isText,
-			});
-		}
-
-		await this.saveSkill({ slug, files });
+		await this.saveSkill(createSkillPackageFromZip(slug, zipBuffer));
 	}
 
 	/**
@@ -324,6 +364,59 @@ export class FileSystemSkillStore implements ISkillStorage {
 		} catch {
 			throw new Error("FileSystemSkillStore requires Node.js fs module");
 		}
+	}
+
+	async loadPackage(slug: string): Promise<SkillPackage | null> {
+		if (!this.fs || !this.path) await this.initialize();
+		const { fs, path } = this.requireNodeModules();
+		const resolvedBase = path.resolve(this.basePath);
+		const skillDir = resolveSkillDirectory(path, resolvedBase, slug);
+		if (!fs.existsSync(skillDir)) return null;
+		assertExistingRealPathContained(fs, path, resolvedBase, skillDir, slug);
+
+		const files = new Map<string, SkillFile>();
+		const visit = (directory: string): void => {
+			for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+				const fullPath = resolveContainedPath(
+					path,
+					skillDir,
+					path.join(directory, entry.name),
+					entry.name,
+				);
+				const relativePath = path
+					.relative(skillDir, fullPath)
+					.split(path.sep)
+					.join("/");
+				if (entry.isDirectory()) {
+					visit(fullPath);
+					continue;
+				}
+				if (!entry.isFile()) {
+					throw new ElizaError("Stored skill contains a non-file entry", {
+						code: "SKILL_STORAGE_INVALID_ENTRY",
+						context: { slug, path: relativePath },
+					});
+				}
+				assertSkillTargetRealPathContained(
+					fs,
+					path,
+					resolvedBase,
+					skillDir,
+					fullPath,
+					relativePath,
+				);
+				const isText = isTextFile(relativePath);
+				files.set(relativePath, {
+					path: relativePath,
+					content: isText
+						? fs.readFileSync(fullPath, "utf-8")
+						: new Uint8Array(fs.readFileSync(fullPath)),
+					isText,
+				});
+			}
+		};
+		visit(skillDir);
+		return { slug, files };
 	}
 
 	async listSkills(): Promise<string[]> {
@@ -475,38 +568,41 @@ export class FileSystemSkillStore implements ISkillStorage {
 	}
 
 	async saveSkill(pkg: SkillPackage): Promise<void> {
-		if (!this.fs || !this.path) await this.initialize();
-		const { fs, path } = this.requireNodeModules();
+		const replacement = await this.prepareReplacement(pkg);
+		try {
+			replacement.publish();
+			replacement.finalize();
+		} catch (cause) {
+			replacement.rollback();
+			throw cause;
+		}
+	}
 
+	async prepareReplacement(
+		pkg: SkillPackage,
+		options: { signal?: AbortSignal } = {},
+	): Promise<PreparedSkillReplacement> {
+		if (!this.fs || !this.path) await this.initialize();
+		options.signal?.throwIfAborted();
+		const { fs, path } = this.requireNodeModules();
 		const resolvedBase = path.resolve(this.basePath);
 		const skillDir = resolveSkillDirectory(path, resolvedBase, pkg.slug);
-		const resolvedSkillDir = path.resolve(skillDir);
-
-		// Validate the complete package before creating or changing anything. A
-		// malicious later entry must not leave a partially installed skill behind.
 		const validatedFiles = [...pkg.files].map(([relativePath, file]) => ({
 			file,
-			relativePath: validateSkillPackagePath(
-				path,
-				resolvedSkillDir,
-				relativePath,
-			),
+			relativePath: validateSkillPackagePath(path, skillDir, relativePath),
 		}));
-
 		if (fs.existsSync(skillDir)) {
 			assertExistingRealPathContained(fs, path, resolvedBase, skillDir, pkg.slug);
 		}
 
-		// Materialize the entire validated package beside the live skill. The
-		// replacement becomes visible only after every file has been written, and
-		// an unsafe or failed replacement leaves the previous installation intact.
 		const stagingDir = fs.mkdtempSync(path.join(resolvedBase, ".skill-install-"));
 		const backupDir = `${stagingDir}.previous`;
 		let movedExisting = false;
-		let installed = false;
-
+		let published = false;
+		let finished = false;
 		try {
 			for (const { file, relativePath } of validatedFiles) {
+				options.signal?.throwIfAborted();
 				const fullPath = resolveContainedPath(
 					path,
 					stagingDir,
@@ -520,56 +616,69 @@ export class FileSystemSkillStore implements ISkillStorage {
 					fs.writeFileSync(fullPath, file.content as Uint8Array);
 				}
 			}
+			options.signal?.throwIfAborted();
+		} catch (cause) {
+			fs.rmSync(stagingDir, { recursive: true, force: true });
+			throw cause;
+		}
 
-			if (fs.existsSync(skillDir)) {
-				fs.renameSync(skillDir, backupDir);
-				movedExisting = true;
+		const rollback = (): void => {
+			if (finished) return;
+			try {
+				if (published && fs.existsSync(skillDir)) {
+					fs.rmSync(skillDir, { recursive: true, force: true });
+				}
+				if (movedExisting && fs.existsSync(backupDir)) {
+					fs.renameSync(backupDir, skillDir);
+				}
+				if (fs.existsSync(stagingDir)) {
+					fs.rmSync(stagingDir, { recursive: true, force: true });
+				}
+				finished = true;
+			} catch (rollbackCause) {
+				throw new ElizaError("Failed to restore skill replacement", {
+					code: "SKILL_STORAGE_ROLLBACK_FAILED",
+					context: { slug: pkg.slug },
+					severity: "fatal",
+					cause: rollbackCause,
+				});
 			}
-			fs.renameSync(stagingDir, skillDir);
-			installed = true;
-			if (movedExisting) {
+		};
+
+		return {
+			slug: pkg.slug,
+			publish: () => {
+				if (finished) throw new Error("Skill replacement is already finalized");
+				options.signal?.throwIfAborted();
 				try {
-					fs.rmSync(backupDir, { recursive: true, force: true });
+					if (fs.existsSync(skillDir)) {
+						fs.renameSync(skillDir, backupDir);
+						movedExisting = true;
+					}
+					fs.renameSync(stagingDir, skillDir);
+					published = true;
 				} catch (cause) {
-					// error-policy:J6 The validated replacement is already live. Old
-					// backup cleanup is best-effort and must not report installation failure.
+					rollback();
+					throw cause;
+				}
+			},
+			rollback,
+			finalize: () => {
+				if (finished) return;
+				finished = true;
+				try {
+					if (movedExisting) {
+						fs.rmSync(backupDir, { recursive: true, force: true });
+					}
+				} catch (cause) {
+					// error-policy:J6 The committed replacement is authoritative; stale
+					// backup cleanup is best-effort and never fabricates install failure.
 					logger.warn(
 						`[FileSystemSkillStore] Failed to remove replaced skill backup: ${cause instanceof Error ? cause.message : String(cause)}`,
 					);
 				}
-			}
-		} catch (error) {
-			// error-policy:J2 A rollback failure is wrapped with both causes; after a
-			// successful rollback, the authoritative staging/swap failure propagates.
-			if (movedExisting && !installed && !fs.existsSync(skillDir)) {
-				try {
-					fs.renameSync(backupDir, skillDir);
-				} catch (rollbackCause) {
-					throw new ElizaError("Failed to restore skill after replacement failure", {
-						code: "SKILL_STORAGE_ROLLBACK_FAILED",
-						context: { slug: pkg.slug },
-						severity: "fatal",
-						cause: new AggregateError(
-							[error, rollbackCause],
-							"Skill replacement and rollback both failed",
-						),
-					});
-				}
-			}
-			throw error;
-		} finally {
-			if (!installed) {
-				try {
-					fs.rmSync(stagingDir, { recursive: true, force: true });
-				} catch (cause) {
-					// error-policy:J6 A failed install is already being propagated; staging
-					// cleanup is best-effort and must not mask the authoritative failure.
-					logger.warn(
-						`[FileSystemSkillStore] Failed to remove skill staging directory: ${cause instanceof Error ? cause.message : String(cause)}`,
-					);
-				}
-			}
-		}
+			},
+		};
 	}
 
 	async deleteSkill(slug: string): Promise<boolean> {
@@ -596,33 +705,70 @@ export class FileSystemSkillStore implements ISkillStorage {
 	 * Save a skill from a zip buffer.
 	 */
 	async saveFromZip(slug: string, zipBuffer: Uint8Array): Promise<void> {
-		assertZipUncompressedSizeWithinLimit(zipBuffer);
-		const unzipped = unzipSync(zipBuffer);
-
-		const files = new Map<string, SkillFile>();
-
-		for (const [fileName, data] of Object.entries(unzipped)) {
-			if (fileName.endsWith("/")) continue;
-
-			const relativePath = sanitizeZipEntryPath(fileName);
-			if (relativePath === null) continue;
-
-			const isText = isTextFile(relativePath);
-
-			files.set(relativePath, {
-				path: relativePath,
-				content: isText ? new TextDecoder().decode(data) : data,
-				isText,
-			});
-		}
-
-		await this.saveSkill({ slug, files });
+		await this.saveSkill(createSkillPackageFromZip(slug, zipBuffer));
 	}
 }
 
 // ============================================================
 // HELPER FUNCTIONS
 // ============================================================
+
+function cloneSkillPackage(pkg: SkillPackage): SkillPackage {
+	const files = new Map<string, SkillFile>();
+	for (const [relativePath, file] of pkg.files) {
+		files.set(relativePath, {
+			path: file.path,
+			content:
+				typeof file.content === "string"
+					? file.content
+					: new Uint8Array(file.content),
+			isText: file.isText,
+		});
+	}
+	return { slug: pkg.slug, files };
+}
+
+/** Build a detached package from authored files without publishing it. */
+export function createSkillPackage(
+	slug: string,
+	files: Array<{ name: string; content: string | Uint8Array }>,
+): SkillPackage {
+	const packageFiles = new Map<string, SkillFile>();
+	for (const file of files) {
+		const relativePath = sanitizeZipEntryPath(file.name);
+		if (relativePath === null) continue;
+		packageFiles.set(relativePath, {
+			path: relativePath,
+			content:
+				typeof file.content === "string"
+					? file.content
+					: new Uint8Array(file.content),
+			isText: typeof file.content === "string",
+		});
+	}
+	return { slug, files: packageFiles };
+}
+
+/** Decode an untrusted zip into a detached package without publishing it. */
+export function createSkillPackageFromZip(
+	slug: string,
+	zipBuffer: Uint8Array,
+): SkillPackage {
+	assertZipUncompressedSizeWithinLimit(zipBuffer);
+	const files: Array<{ name: string; content: string | Uint8Array }> = [];
+	for (const [fileName, data] of Object.entries(unzipSync(zipBuffer))) {
+		if (fileName.endsWith("/")) continue;
+		const relativePath = sanitizeZipEntryPath(fileName);
+		if (relativePath === null) continue;
+		files.push({
+			name: relativePath,
+			content: isTextFile(relativePath)
+				? new TextDecoder().decode(data)
+				: data,
+		});
+	}
+	return createSkillPackage(slug, files);
+}
 
 /**
  * Sum the uncompressed sizes declared in a zip's central directory and reject
