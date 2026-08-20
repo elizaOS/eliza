@@ -26,6 +26,10 @@ import {
   type RunningHetznerMock,
   startHetznerMock,
 } from "@elizaos/cloud-test-mocks/hetzner";
+import {
+  type RunningStewardMock,
+  startStewardMock,
+} from "@elizaos/cloud-test-mocks/steward";
 import { buildSharedEnv } from "./env";
 import { type RunningMockLlm, startMockLlm } from "./mock-llm";
 
@@ -80,6 +84,7 @@ export interface StackHandle {
   mocks: {
     hetzner: RunningHetznerMock;
     controlPlane: RunningControlPlaneMock;
+    steward: RunningStewardMock;
     mockLlm?: RunningMockLlm;
   };
   dataDir: string;
@@ -298,6 +303,7 @@ export async function startCloudStack(
     hetznerUrl: hetzner.url,
     tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
   });
+  const steward = await startStewardMock();
   const mockLlm =
     opts.mockLlm || opts.mockLlmEchoContext
       ? await startMockLlm({ echoContext: opts.mockLlmEchoContext ?? false })
@@ -324,6 +330,8 @@ export async function startCloudStack(
       DEV_CLOUD_PGLITE_PORT: String(pglitePort),
       API_DEV_PORT: String(apiPort),
       PORT: String(frontendPort),
+      STEWARD_API_URL: steward.url,
+      STEWARD_PLATFORM_KEYS: "steward-e2e-platform-key",
       ...opts.env,
     },
   );
@@ -488,6 +496,7 @@ export async function startCloudStack(
     }
     await controlPlane.stop().catch(() => undefined);
     await hetzner.stop().catch(() => undefined);
+    await steward.stop().catch(() => undefined);
     await mockLlm?.stop().catch(() => undefined);
     await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
     if (dbCloseError) {
@@ -514,7 +523,7 @@ export async function startCloudStack(
     },
     frontendSkipped: frontendSkipReason !== undefined,
     frontendSkipReason,
-    mocks: { hetzner, controlPlane, ...(mockLlm ? { mockLlm } : {}) },
+    mocks: { hetzner, controlPlane, steward, ...(mockLlm ? { mockLlm } : {}) },
     dataDir,
     logDir: LOG_DIR,
   };
