@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { assertAndroidPlayManifestPolicyEvidence } from "./lib/android-cloud-artifact-audit.mjs";
 import {
+  ANDROID_CLOUD_STRIPPED_ASSET_FILES,
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
@@ -15,6 +16,7 @@ import {
   androidPlayManifestEvidenceFromAapt,
   cloudSafeMainActivityJava,
   createAndroidPlayManifestPolicy,
+  findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayTextAssetFindings,
 } from "./run-mobile-build.mjs";
 
@@ -130,6 +132,12 @@ describe("Android Play manifest policy", () => {
       expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(permission);
     }
     expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([]);
+    expect(ANDROID_CLOUD_STRIPPED_ASSET_FILES).toContain("eliza-tasks.js");
+    expect(
+      findAndroidCloudPackagedRuntimeOffenders([
+        "base/assets/runners/eliza-tasks.js",
+      ]),
+    ).toEqual(["base/assets/runners/eliza-tasks.js"]);
     expect(ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES).toEqual([
       "@capacitor/app",
       "@capacitor/browser",

@@ -5701,6 +5701,7 @@ export const ANDROID_CLOUD_REWRITTEN_JAVA_FILES = [
 ];
 
 export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
+  "eliza-tasks.js",
   "llama-cpp-kernels.json",
 ]);
 
@@ -8315,7 +8316,7 @@ export function auditAndroidCloudArtifact(
     }
     const textAssetEntries = entries.filter(
       (entry) =>
-        /(?:^|\/)assets\/public\//.test(entry) &&
+        /(?:^|\/)assets\//.test(entry) &&
         /\.(?:css|html|js|json|svg|txt|webmanifest|xml)$/i.test(entry),
     );
     const textAssetBuffers = readAndroidArtifactEntryBuffers(
