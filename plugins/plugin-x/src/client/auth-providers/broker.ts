@@ -145,6 +145,7 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
           Accept: "application/json",
           Authorization: `Bearer ${this.brokerToken()}`,
         },
+        signal: AbortSignal.timeout(15_000),
       },
     );
     if (response.status === 401 || response.status === 403) {
