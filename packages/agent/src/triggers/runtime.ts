@@ -22,7 +22,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
-  EventType,
   inspectSendHandlerResult,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   registerRuntimeManagedInternalActor,
@@ -50,12 +49,13 @@ export const TRIGGER_TASK_NAME = "TRIGGER_DISPATCH" as const;
 export const TRIGGER_TASK_TAGS = ["queue", "repeat", "trigger"] as const;
 const HEARTBEAT_TASK_TAGS = ["queue", "repeat", "heartbeat"] as const;
 const WORKFLOW_RUN_EVENT = "workflow_run_event" as const;
-const RUNTIME_TRIGGER_EVENT_KINDS = [
-  EventType.MESSAGE_RECEIVED,
-  WORKFLOW_RUN_EVENT,
-] as const;
+const RUNTIME_TRIGGER_EVENT_KINDS = [WORKFLOW_RUN_EVENT] as const;
 
 const eventBridgeRegistrations = new WeakSet<IAgentRuntime>();
+const eventDispatchQueues = new WeakMap<
+  IAgentRuntime,
+  Map<UUID, Promise<void>>
+>();
 
 const DEFAULT_MAX_ACTIVE_TRIGGERS = 100;
 
@@ -291,6 +291,37 @@ function readTaskIdempotencyKey(task: Task): string | undefined {
 }
 
 /**
+ * Smithers assigns every native run event a durable id. Include the saved
+ * trigger identity when deriving the workflow-dispatch key so replaying one
+ * source event cannot launch the same target twice, while two independently
+ * configured triggers may still react to that event.
+ */
+function resolveDispatchIdempotencyKey(
+  task: Task,
+  trigger: WorkflowTriggerConfig,
+  event?: TriggerExecutionOptions["event"],
+): string | undefined {
+  const nestedEvent = event?.payload?.event;
+  if (
+    nestedEvent &&
+    typeof nestedEvent === "object" &&
+    !Array.isArray(nestedEvent)
+  ) {
+    const eventId = (nestedEvent as Record<string, unknown>).id;
+    if (typeof eventId === "string" && eventId.trim().length > 0) {
+      const digest = crypto
+        .createHash("sha256")
+        .update(event?.kind ?? "")
+        .update("\0")
+        .update(eventId.trim())
+        .digest("hex");
+      return `event:${trigger.triggerId}:${digest}`;
+    }
+  }
+  return readTaskIdempotencyKey(task);
+}
+
+/**
  * How long a workflow trigger waits for the WORKFLOW_DISPATCH service before
  * declaring the workflow subsystem unavailable. plugin-workflow loads in the
  * DEFERRED boot phase and registers the dispatcher inside its init, so a
@@ -353,7 +384,7 @@ async function dispatchWorkflow(
         "workflow subsystem unavailable: the workflow plugin is not enabled on this agent",
     };
   }
-  const idempotencyKey = readTaskIdempotencyKey(task);
+  const idempotencyKey = resolveDispatchIdempotencyKey(task, trigger, event);
   const payload = event
     ? {
         eventKind: event.kind,
@@ -891,21 +922,38 @@ export async function dispatchRuntimeEventTriggers(
     );
   });
 
+  const queues =
+    eventDispatchQueues.get(runtime) ?? new Map<UUID, Promise<void>>();
+  eventDispatchQueues.set(runtime, queues);
+
   await Promise.all(
     matchingTasks.map(async (task) => {
-      try {
-        await executeTriggerTask(runtime, task, {
-          source: "event",
-          event: { kind: eventKind, payload },
-        });
-      } catch (error) {
-        // error-policy:J7 one trigger's persistence/dispatch failure must not
-        // reject the source runtime event or prevent sibling triggers.
-        runtime.reportError("TriggerRuntime.eventDispatch", error, {
-          eventKind,
-          taskId: task.id,
-        });
-      }
+      if (!task.id) return;
+      const taskId = task.id;
+      const prior = queues.get(taskId) ?? Promise.resolve();
+      const pending = prior.then(async () => {
+        try {
+          // Re-read after preceding events finish. This preserves runCount,
+          // maxRuns, enabled state, and edited filters under concurrent source
+          // workflow runs instead of executing against a stale task snapshot.
+          const currentTask = await runtime.getTask(taskId);
+          if (!currentTask) return;
+          await executeTriggerTask(runtime, currentTask, {
+            source: "event",
+            event: { kind: eventKind, payload },
+          });
+        } catch (error) {
+          // error-policy:J7 one trigger's persistence/dispatch failure must not
+          // reject the source runtime event or prevent sibling triggers.
+          runtime.reportError("TriggerRuntime.eventDispatch", error, {
+            eventKind,
+            taskId,
+          });
+        }
+      });
+      queues.set(taskId, pending);
+      await pending;
+      if (queues.get(taskId) === pending) queues.delete(taskId);
     }),
   );
 }

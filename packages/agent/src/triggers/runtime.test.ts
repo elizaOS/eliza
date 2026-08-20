@@ -11,7 +11,7 @@
  */
 
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
-import { EventType, ServiceType, stringToUuid } from "@elizaos/core";
+import { ServiceType, stringToUuid } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -165,12 +165,18 @@ function makeRuntime(): MockRuntimeHandle {
       );
     },
     getTasks: vi.fn(async () => tasks),
-    getTask: vi.fn(async (id: UUID) => tasks.find((task) => task.id === id)),
+    getTask: vi.fn(
+      async (id: UUID) => tasks.find((task) => task.id === id) ?? null,
+    ),
     deleteTask: vi.fn(async (id: UUID) => {
       deletedTaskIds.push(id);
+      tasks = tasks.filter((task) => task.id !== id);
     }),
     updateTask: vi.fn(async (id: UUID, patch: Partial<Task>) => {
       updatedTasks.push({ id, patch });
+      tasks = tasks.map((task) =>
+        task.id === id ? ({ ...task, ...patch } as Task) : task,
+      );
     }),
     ensureConnection: vi.fn(async () => {}),
     getRoom: vi.fn(async () => null),
@@ -856,11 +862,12 @@ describe("runtime event trigger bridge", () => {
     registerTriggerTaskWorker(handle.runtime);
     registerTriggerTaskWorker(handle.runtime);
     expect(handle.runtime.getEvent("workflow_run_event")).toHaveLength(1);
-    expect(handle.runtime.getEvent(EventType.MESSAGE_RECEIVED)).toHaveLength(1);
+    expect(handle.runtime.getEvent("MESSAGE_RECEIVED")).toBeUndefined();
 
     await handle.runtime.emitEvent("workflow_run_event", {
       runtime: handle.runtime,
       event: {
+        id: "smithers-non-match",
         type: "NodeFinished",
         workflowId: "source-workflow",
         nodeId: "publish",
@@ -871,6 +878,7 @@ describe("runtime event trigger bridge", () => {
     await handle.runtime.emitEvent("workflow_run_event", {
       runtime: handle.runtime,
       event: {
+        id: "smithers-match",
         type: "NodeFinished",
         workflowId: "source-workflow",
         nodeId: "collect",
@@ -890,6 +898,13 @@ describe("runtime event trigger bridge", () => {
             nodeId: "collect",
           },
         },
+      },
+      options: {
+        idempotencyKey: expect.stringMatching(
+          new RegExp(
+            `^event:${readTriggerConfig(target)?.triggerId}:[a-f0-9]{64}$`,
+          ),
+        ),
       },
     });
     const eventPayload = handle.dispatchCalls[0]?.payload?.eventPayload;
@@ -978,6 +993,69 @@ describe("runtime event trigger bridge", () => {
         taskId: first.id,
       },
     });
+  });
+
+  it("serializes concurrent events per trigger and refreshes persisted state", async () => {
+    const target = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+      maxRuns: 1,
+    });
+    handle.setTasks([target]);
+    let releaseFirst: (() => void) | undefined;
+    const execute = vi.fn(
+      () =>
+        new Promise<{ ok: true; executionId: string }>((resolve) => {
+          releaseFirst = () => resolve({ ok: true, executionId: "first" });
+        }),
+    );
+    const workflowService = handle.runtime.getService(
+      "WORKFLOW_DISPATCH",
+    ) as unknown as { execute: typeof execute };
+    workflowService.execute = execute;
+    registerTriggerTaskWorker(handle.runtime);
+
+    await Promise.all([
+      handle.runtime.emitEvent("workflow_run_event", {
+        runtime: handle.runtime,
+        event: { id: "event-1", type: "NodeFinished" },
+      } as never),
+      handle.runtime.emitEvent("workflow_run_event", {
+        runtime: handle.runtime,
+        event: { id: "event-2", type: "NodeFinished" },
+      } as never),
+    ]);
+
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    releaseFirst?.();
+    await vi.waitFor(() => expect(handle.deletedTaskIds).toEqual([target.id]));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // The queued second event refreshes the task after the first reaches
+    // maxRuns and therefore cannot dispatch a deleted stale snapshot.
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("derives the same durable dispatch key when a Smithers event is replayed", async () => {
+    const target = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+    });
+    handle.setTasks([target]);
+    registerTriggerTaskWorker(handle.runtime);
+    const emitted = {
+      runtime: handle.runtime,
+      event: { id: "smithers-event-42", type: "NodeFinished" },
+    } as never;
+
+    await handle.runtime.emitEvent("workflow_run_event", emitted);
+    await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(1));
+    await handle.runtime.emitEvent("workflow_run_event", emitted);
+    await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(2));
+
+    expect(handle.dispatchCalls[0]?.options?.idempotencyKey).toBe(
+      handle.dispatchCalls[1]?.options?.idempotencyKey,
+    );
   });
 });
 
