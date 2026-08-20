@@ -12,6 +12,10 @@
     "tag:eliza-tunnel": ["tunnel@"],
     // The public reverse proxy is itself a tagged service node.
     "tag:eliza-proxy": ["tunnel@"],
+    // The control-plane router (cp-<env>-router). Split from tag:eliza-proxy
+    // so agent reach can be narrowed to the CP alone — the tunnel proxy has
+    // no code path that dials a tag:agent node (#22945).
+    "tag:eliza-cp": ["tunnel@"],
     // User-owned Mac/iPhone iMessage bridges use a dedicated tag so they can
     // reach only the tunnel proxy, never agent containers directly.
     "tag:imessage-gateway": ["tunnel@"]
@@ -37,12 +41,21 @@
     // widening this rule to match. Otherwise default-deny drops the probe with
     // no symptom but a timeout.
     //
-    // Scope: tag:eliza-proxy is carried by BOTH the control plane router and
-    // the internet-facing tunnel proxy, so this also grants the public proxy
-    // reach to agents on 2138. A dedicated tag:eliza-cp would narrow it.
+    // MIGRATION (#22945 phase 1): tag:eliza-proxy is still carried by both
+    // the CP router and the internet-facing tunnel proxy, so during the
+    // coexistence window the tunnel proxy KEEPS agent reach — unchanged risk
+    // vs #22617 alone. Phase 2 deletes this rule once cp-<env>-router wears
+    // tag:eliza-cp on BOTH environments (evidence gate in the removal PR).
     {
       "action": "accept",
       "src": ["tag:eliza-proxy"],
+      "dst": ["tag:agent:2138"]
+    },
+    // The dst clones the rule above verbatim: this migration narrows the SRC
+    // only. Re-verifying live bridge_url ports is the pre-phase-2 ops check.
+    {
+      "action": "accept",
+      "src": ["tag:eliza-cp"],
       "dst": ["tag:agent:2138"]
     },
     // Agents can reach each other on internal ports (existing behavior).

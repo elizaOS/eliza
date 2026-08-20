@@ -162,6 +162,17 @@ describe("Headscale control-plane self-enrollment", () => {
     );
   });
 
+  test("enrolls the CP router under tag:eliza-cp, not the dual-worn proxy tag (#22945)", () => {
+    const remote = renderRemoteScript();
+
+    expect(remote).toContain("--tags tag:eliza-cp");
+    expect(remote).toContain("--advertise-tags=tag:eliza-cp");
+    // The tunnel proxy keeps tag:eliza-proxy (its deploy workflow mints it);
+    // the arm script must no longer advertise or mint the shared tag.
+    expect(remote).not.toContain("--tags tag:eliza-proxy");
+    expect(remote).not.toContain("--advertise-tags=tag:eliza-proxy");
+  });
+
   test("does not emit forced reauthentication when router enrollment is skipped", () => {
     const remote = renderRemoteScript(["--skip-cp-router"]);
 
@@ -204,6 +215,23 @@ describe("Headscale ACL policy", () => {
 
     expect(proxyToAgent).toHaveLength(1);
     expect(proxyToAgent[0]?.dst).toEqual([`tag:agent:${AGENT_CONTAINER_PORT}`]);
+  });
+
+  test("grants tag:eliza-cp the agent container port, cloning the proxy rule's dst (#22945 phase 1)", () => {
+    const policy = committedPolicy();
+    const cpToAgent = rulesFrom(policy, "tag:eliza-cp", "tag:agent");
+    const proxyToAgent = rulesFrom(policy, "tag:eliza-proxy", "tag:agent");
+
+    expect(cpToAgent).toHaveLength(1);
+    expect(cpToAgent[0]?.dst).toEqual([`tag:agent:${AGENT_CONTAINER_PORT}`]);
+    // Migration invariant: phase 1 narrows the src only — the two rules'
+    // dst must stay identical until phase 2 removes the proxy rule.
+    expect(cpToAgent[0]?.dst).toEqual(proxyToAgent[0]?.dst);
+    // eliza-cp gets agent reach and NOTHING else (no tunnel/proxy rules).
+    const cpRules = policy.acls.filter((rule) =>
+      rule.src.includes("tag:eliza-cp"),
+    );
+    expect(cpRules).toHaveLength(1);
   });
 
   test("keeps customer tunnels and iMessage gateways off the agent fleet", () => {

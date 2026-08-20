@@ -134,9 +134,13 @@ used to be hand-run on every CP (and lost on a rebuild — a DR gap):
   `certbot.timer`; a root-owned deploy hook verifies the renewed leaf still has
   both exact SANs and validates nginx before reloading it. Cert issuance is
   idempotent (`certbot certonly`, skipped when a valid cert already exists).
-- the **`cp-<env>-router` tailscale self-enrollment** (`tag:eliza-proxy`, owned
-  by the `tunnel` user) so the daemon on the CP can reach agent `tag:agent`
-  `100.64.x` IPs. Idempotent (skips if already enrolled).
+- the **`cp-<env>-router` tailscale self-enrollment** (`tag:eliza-cp`, owned
+  by the `tunnel` user; split from the dual-worn `tag:eliza-proxy` in #22945)
+  so the daemon on the CP can reach agent `tag:agent` `100.64.x` IPs.
+  Idempotent (skips if already enrolled) — which means an ALREADY-enrolled
+  router keeps its old tag: retag in place with
+  `headscale nodes tag -i <id> -t tag:eliza-cp` plus
+  `tailscale set --advertise-tags=tag:eliza-cp` on the CP.
 
 The matching canonical **DNS record** (`headscale[-staging].eliza.app` → CP
 ipv4, `proxied=false`) is managed by this Terraform module

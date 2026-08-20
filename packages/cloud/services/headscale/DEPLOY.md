@@ -297,3 +297,5 @@ tailscale ping -c 1 <some agent container's tailnet IP>
 ```
 
 This should fail with "no path". Do not add Tailscale-style `tests` blocks to `acl.hujson`; Headscale v0.28 rejects that field at startup.
+
+After the #22945 phase-2 removal PR lands, additionally verify from the Railway tunnel proxy that no `tag:agent` IP is reachable (the CP router on `tag:eliza-cp` must still reach `tag:agent:2138`). During phase 1 the tunnel proxy retains agent reach by design — do not treat that as a failure.

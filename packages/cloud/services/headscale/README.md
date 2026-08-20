@@ -16,9 +16,11 @@ deploys to `/etc/headscale/acl.hujson`.
 
 | Tag | Used by | Reach |
 |---|---|---|
-| `tag:agent` | Internal agent containers (set in [`headscale-integration.ts`](../../shared/src/lib/services/headscale-integration.ts:57)) | Internal services only — must NOT reach customer tunnels. |
+| `tag:agent` | Internal agent containers (set in [`headscale-integration.ts`](../../shared/src/lib/services/headscale-integration.ts:147)) | Internal services only — must NOT reach customer tunnels. |
 | `tag:eliza-tunnel` | Customer tunnel sessions minted by [`auth-key/route.ts`](../../api/v1/apis/tunnels/tailscale/auth-key/route.ts) | The reverse proxy and the customer's own node. Cross-customer routing is enforced by the proxy lookup layer. |
-| `tag:eliza-proxy` | The public reverse proxy node and the control plane's own `cp-<env>-router` | Customer tunnel HTTPS endpoints, plus the agent fleet on the container port only (`tag:agent:2138`) for bridge and health traffic. |
+| `tag:eliza-proxy` | The public reverse proxy node (Railway tunnel proxy; its deploy workflow mints the key) | Customer tunnel HTTPS endpoints. During the #22945 migration it also keeps `tag:agent:2138` reach until the phase-2 removal PR. |
+| `tag:eliza-cp` | The control plane's own `cp-<env>-router` (arm-script self-enrollment) | The agent fleet on the container port only (`tag:agent:2138`) for bridge and health traffic. Nothing else. |
+| `tag:imessage-gateway` | User-owned Mac/iPhone iMessage bridges (operator-assigned; see `HEADSCALE_IMESSAGE_GATEWAY_TAG` in the messaging-gateway preflight) | The tunnel proxy on 443 only — never agent containers. |
 
 The exact ACL policy lives in `acl.hujson` next to this README. **Edit there, not in the headscale admin UI** — the file is committed and deployed.
 
