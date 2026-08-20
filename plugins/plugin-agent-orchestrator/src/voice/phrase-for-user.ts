@@ -295,6 +295,7 @@ export async function phraseForUser(
                 : "timeout"
               : "validation-reject",
           ...(callError ? { error: callError.slice(0, 200) } : {}),
+          raw: typeof raw === "string" ? raw.slice(0, 200) : String(raw),
           rejected: text.slice(0, 120),
           intent: req.intent,
         },
