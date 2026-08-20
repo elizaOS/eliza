@@ -18,9 +18,14 @@
  *   - Data binding: DynamicValue with path resolution (getByPath/setByPath)
  *   - Prompt generation: catalog.prompt() for AI system prompts
  *
+ * `evaluateLogicExpression` is depth-, visit-, and cycle-bounded so a
+ * hostile plugin-config `visible` tree cannot stack-overflow the form
+ * renderer.
+ *
  * @module config-catalog
  */
 
+import { ElizaError } from "@elizaos/core/errors";
 import type { ReactNode } from "react";
 import z from "zod";
 import type {
@@ -31,6 +36,12 @@ import type {
   ValidationConfig,
   VisibilityCondition,
 } from "../types/index.js";
+
+/** Honest plugin-config visibility trees are a handful of and/or/not nodes. */
+export const MAX_LOGIC_EXPRESSION_DEPTH = 32;
+/** Node ceiling across the whole visibility walk. */
+export const MAX_LOGIC_EXPRESSION_NODES = 2048;
+export const LOGIC_EXPRESSION_UNBOUNDED = "LOGIC_EXPRESSION_UNBOUNDED";
 
 // ── JSON Schema types (subset we consume) ──────────────────────────────
 
@@ -196,69 +207,131 @@ export function interpolateString(
 
 // ── Rich visibility evaluation (≈ json-render evaluateVisibility) ───────
 
+type LogicWalkContext = {
+  visits: number;
+  visiting: WeakSet<object>;
+};
+
+function failLogicUnbounded(
+  axis: "depth" | "visits" | "cycle",
+  context: Record<string, unknown>,
+): never {
+  const message =
+    axis === "depth"
+      ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_DEPTH} nesting depth`
+      : axis === "visits"
+        ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_NODES} nodes`
+        : "logic expression contains a cycle";
+  throw new ElizaError(message, {
+    code: LOGIC_EXPRESSION_UNBOUNDED,
+    context,
+    severity: "fatal",
+  });
+}
+
 /**
  * Evaluate a LogicExpression against a state model.
+ *
+ * Plugin config `visible` trees are attacker-controlled JSON. The walk is
+ * depth-, visit-, and cycle-bounded; on origin a self-referential `and`
+ * graph threw `RangeError: Maximum call stack size exceeded`.
  */
 export function evaluateLogicExpression(
   expr: LogicExpression,
   state: Record<string, unknown>,
 ): boolean {
-  if ("and" in expr)
-    return (expr as { and: LogicExpression[] }).and.every((e) =>
-      evaluateLogicExpression(e, state),
-    );
-  if ("or" in expr)
-    return (expr as { or: LogicExpression[] }).or.some((e) =>
-      evaluateLogicExpression(e, state),
-    );
-  if ("not" in expr)
-    return !evaluateLogicExpression(
-      (expr as { not: LogicExpression }).not,
-      state,
-    );
-  if ("path" in expr)
-    return Boolean(getByPath(state, (expr as { path: string }).path));
-  if ("eq" in expr) {
-    const [l, r] = (expr as { eq: [DynamicValue, DynamicValue] }).eq;
-    return resolveDynamic(l, state) === resolveDynamic(r, state);
+  return evalLogic(expr, state, 0, {
+    visits: 0,
+    visiting: new WeakSet(),
+  });
+}
+
+function evalLogic(
+  expr: LogicExpression,
+  state: Record<string, unknown>,
+  depth: number,
+  ctx: LogicWalkContext,
+): boolean {
+  if (depth > MAX_LOGIC_EXPRESSION_DEPTH) {
+    failLogicUnbounded("depth", { depth, max: MAX_LOGIC_EXPRESSION_DEPTH });
   }
-  if ("neq" in expr) {
-    const [l, r] = (expr as { neq: [DynamicValue, DynamicValue] }).neq;
-    return resolveDynamic(l, state) !== resolveDynamic(r, state);
+  if (expr !== null && typeof expr === "object") {
+    if (ctx.visiting.has(expr)) {
+      failLogicUnbounded("cycle", { depth });
+    }
+    ctx.visits += 1;
+    if (ctx.visits > MAX_LOGIC_EXPRESSION_NODES) {
+      failLogicUnbounded("visits", {
+        visits: ctx.visits,
+        max: MAX_LOGIC_EXPRESSION_NODES,
+      });
+    }
+    ctx.visiting.add(expr);
   }
-  if ("gt" in expr) {
-    const [l, r] = (
-      expr as { gt: [DynamicValue<number>, DynamicValue<number>] }
-    ).gt;
-    const lv = resolveDynamic(l, state),
-      rv = resolveDynamic(r, state);
-    return typeof lv === "number" && typeof rv === "number" && lv > rv;
+  try {
+    if ("and" in expr)
+      return (expr as { and: LogicExpression[] }).and.every((e) =>
+        evalLogic(e, state, depth + 1, ctx),
+      );
+    if ("or" in expr)
+      return (expr as { or: LogicExpression[] }).or.some((e) =>
+        evalLogic(e, state, depth + 1, ctx),
+      );
+    if ("not" in expr)
+      return !evalLogic(
+        (expr as { not: LogicExpression }).not,
+        state,
+        depth + 1,
+        ctx,
+      );
+    if ("path" in expr)
+      return Boolean(getByPath(state, (expr as { path: string }).path));
+    if ("eq" in expr) {
+      const [l, r] = (expr as { eq: [DynamicValue, DynamicValue] }).eq;
+      return resolveDynamic(l, state) === resolveDynamic(r, state);
+    }
+    if ("neq" in expr) {
+      const [l, r] = (expr as { neq: [DynamicValue, DynamicValue] }).neq;
+      return resolveDynamic(l, state) !== resolveDynamic(r, state);
+    }
+    if ("gt" in expr) {
+      const [l, r] = (
+        expr as { gt: [DynamicValue<number>, DynamicValue<number>] }
+      ).gt;
+      const lv = resolveDynamic(l, state),
+        rv = resolveDynamic(r, state);
+      return typeof lv === "number" && typeof rv === "number" && lv > rv;
+    }
+    if ("gte" in expr) {
+      const [l, r] = (
+        expr as { gte: [DynamicValue<number>, DynamicValue<number>] }
+      ).gte;
+      const lv = resolveDynamic(l, state),
+        rv = resolveDynamic(r, state);
+      return typeof lv === "number" && typeof rv === "number" && lv >= rv;
+    }
+    if ("lt" in expr) {
+      const [l, r] = (
+        expr as { lt: [DynamicValue<number>, DynamicValue<number>] }
+      ).lt;
+      const lv = resolveDynamic(l, state),
+        rv = resolveDynamic(r, state);
+      return typeof lv === "number" && typeof rv === "number" && lv < rv;
+    }
+    if ("lte" in expr) {
+      const [l, r] = (
+        expr as { lte: [DynamicValue<number>, DynamicValue<number>] }
+      ).lte;
+      const lv = resolveDynamic(l, state),
+        rv = resolveDynamic(r, state);
+      return typeof lv === "number" && typeof rv === "number" && lv <= rv;
+    }
+    return false;
+  } finally {
+    if (expr !== null && typeof expr === "object") {
+      ctx.visiting.delete(expr);
+    }
   }
-  if ("gte" in expr) {
-    const [l, r] = (
-      expr as { gte: [DynamicValue<number>, DynamicValue<number>] }
-    ).gte;
-    const lv = resolveDynamic(l, state),
-      rv = resolveDynamic(r, state);
-    return typeof lv === "number" && typeof rv === "number" && lv >= rv;
-  }
-  if ("lt" in expr) {
-    const [l, r] = (
-      expr as { lt: [DynamicValue<number>, DynamicValue<number>] }
-    ).lt;
-    const lv = resolveDynamic(l, state),
-      rv = resolveDynamic(r, state);
-    return typeof lv === "number" && typeof rv === "number" && lv < rv;
-  }
-  if ("lte" in expr) {
-    const [l, r] = (
-      expr as { lte: [DynamicValue<number>, DynamicValue<number>] }
-    ).lte;
-    const lv = resolveDynamic(l, state),
-      rv = resolveDynamic(r, state);
-    return typeof lv === "number" && typeof rv === "number" && lv <= rv;
-  }
-  return false;
 }
 
 /**

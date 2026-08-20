@@ -3,12 +3,17 @@
  * validation. The deterministic harness exercises the exported helpers and
  * validation runner directly without UI or network dependencies.
  */
+import { ElizaError } from "@elizaos/core/errors";
 import { describe, expect, it } from "vitest";
 import {
   builtInValidators,
   evaluateFieldVisibility,
+  evaluateLogicExpression,
   getByPath,
   isConfigKeySatisfied,
+  LOGIC_EXPRESSION_UNBOUNDED,
+  MAX_LOGIC_EXPRESSION_DEPTH,
+  MAX_LOGIC_EXPRESSION_NODES,
   runValidation,
   setByPath,
 } from "./config-catalog.js";
@@ -141,5 +146,70 @@ describe("config-catalog built-in validators", () => {
         {},
       ),
     ).toEqual({ valid: false, errors: ["Must be a finite number"] });
+  });
+});
+
+describe("evaluateLogicExpression budget", () => {
+  it("still evaluates an honest and/or/not tree", () => {
+    expect(
+      evaluateLogicExpression(
+        {
+          and: [{ path: "/ready" }, { not: { path: "/hidden" } }],
+        },
+        { ready: true, hidden: false },
+      ),
+    ).toBe(true);
+  });
+
+  it(`throws ${LOGIC_EXPRESSION_UNBOUNDED} one past depth ${MAX_LOGIC_EXPRESSION_DEPTH}`, () => {
+    let expr: Record<string, unknown> = { path: "/x" };
+    for (let i = 0; i < MAX_LOGIC_EXPRESSION_DEPTH + 1; i++) {
+      expr = { not: expr };
+    }
+    expect(() => evaluateLogicExpression(expr as never, {})).toThrowError(
+      ElizaError,
+    );
+    try {
+      evaluateLogicExpression(expr as never, {});
+    } catch (error) {
+      expect((error as ElizaError).code).toBe(LOGIC_EXPRESSION_UNBOUNDED);
+      expect(error).not.toBeInstanceOf(RangeError);
+    }
+  });
+
+  it(`accepts a ${MAX_LOGIC_EXPRESSION_DEPTH}-deep not nest`, () => {
+    let expr: Record<string, unknown> = { path: "/x" };
+    for (let i = 0; i < MAX_LOGIC_EXPRESSION_DEPTH; i++) {
+      expr = { not: expr };
+    }
+    expect(evaluateLogicExpression(expr as never, {})).toBe(
+      MAX_LOGIC_EXPRESSION_DEPTH % 2 === 1,
+    );
+  });
+
+  it(`throws ${LOGIC_EXPRESSION_UNBOUNDED} past ${MAX_LOGIC_EXPRESSION_NODES} nodes`, () => {
+    const expr = {
+      and: Array.from({ length: MAX_LOGIC_EXPRESSION_NODES }, () => ({
+        path: "/x",
+      })),
+    };
+    // Truthy children so `and.every` cannot short-circuit before the cap.
+    expect(() =>
+      evaluateLogicExpression(expr, { x: true }),
+    ).toThrowError(ElizaError);
+  });
+
+  it("throws LOGIC_EXPRESSION_UNBOUNDED on a cyclic and graph, not RangeError", () => {
+    const cyclic: { and: unknown[] } = { and: [] };
+    cyclic.and.push(cyclic);
+    expect(() => evaluateLogicExpression(cyclic as never, {})).toThrowError(
+      ElizaError,
+    );
+    try {
+      evaluateLogicExpression(cyclic as never, {});
+    } catch (error) {
+      expect((error as ElizaError).code).toBe(LOGIC_EXPRESSION_UNBOUNDED);
+      expect(error).not.toBeInstanceOf(RangeError);
+    }
   });
 });
