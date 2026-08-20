@@ -95,6 +95,13 @@ tiers, structural failure classifications, and a deterministic focus list.
 This command only plans and aggregates artifacts; it does not execute scenarios
 or model providers.
 
+Aggregation reads the existing `stability-plan.json` as the run/path authority
+and refuses to replace a conflicting plan. Attempt reports must be regular,
+non-symlink files at the plan's exact paths. Each file is limited to 64 MiB;
+the consumed report subset is also bounded to 10,000 scenarios, 1,000 failed
+assertions per scenario, and bounded identifier/detail strings. Invalid or
+contradictory reports exit as configuration errors without writing an aggregate.
+
 ## Provider-qualified release evidence
 
 The ordinary executor is an in-process diagnostic harness. It can exercise a

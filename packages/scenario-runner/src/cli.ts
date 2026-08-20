@@ -12,7 +12,6 @@
  */
 
 import crypto from "node:crypto";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -34,11 +33,16 @@ import {
 import { canonicalJsonValue } from "./provider-qualified/manifest.ts";
 import { redactForScenarioReport } from "./redaction.ts";
 import { resolveRequiredPluginPackages } from "./required-plugins.ts";
-import type { ScenarioStabilityAttemptReport } from "./stability.ts";
+import type {
+  ScenarioStabilityAttemptReport,
+  ScenarioStabilityPlan,
+} from "./stability.ts";
 import {
   buildScenarioStabilityReport,
   createScenarioStabilityPlan,
   parseScenarioStabilityAttemptReport,
+  readScenarioStabilityJsonArtifact,
+  readScenarioStabilityPlan,
   writeScenarioStabilityPlan,
   writeScenarioStabilityReport,
 } from "./stability.ts";
@@ -582,24 +586,67 @@ export async function runCli(
     if (!parsed.runId) {
       throw new CliUsageError("stability requires --runId", 2);
     }
-    const plan = createScenarioStabilityPlan({
-      runId: parsed.runId,
-      outputRoot: parsed.dir,
-    });
-    writeScenarioStabilityPlan(plan);
+    let requestedPlan: ScenarioStabilityPlan;
+    try {
+      requestedPlan = createScenarioStabilityPlan({
+        runId: parsed.runId,
+        outputRoot: parsed.dir,
+      });
+    } catch (error) {
+      // error-policy:J1 CLI boundary translates invalid plan configuration into a usage error.
+      throw new CliUsageError(
+        error instanceof Error ? error.message : String(error),
+        2,
+      );
+    }
     const attemptReportPaths = parsed.attemptReportPaths ?? [];
     if (attemptReportPaths.length === 0) {
-      process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
+      try {
+        writeScenarioStabilityPlan(requestedPlan);
+      } catch (error) {
+        // error-policy:J1 CLI boundary rejects a conflicting persisted plan as invalid configuration.
+        throw new CliUsageError(
+          error instanceof Error ? error.message : String(error),
+          2,
+        );
+      }
+      process.stdout.write(`${JSON.stringify(requestedPlan, null, 2)}\n`);
       return 0;
     }
+    let plan: ScenarioStabilityPlan;
+    try {
+      plan = readScenarioStabilityPlan({
+        runId: parsed.runId,
+        outputRoot: parsed.dir,
+      });
+    } catch (error) {
+      // error-policy:J1 CLI boundary requires aggregation to consume the persisted plan authority.
+      throw new CliUsageError(
+        error instanceof Error ? error.message : String(error),
+        2,
+      );
+    }
+    const expectedReportPaths = new Set(
+      plan.attempts.map((attempt) => attempt.reportPath),
+    );
     const reports = attemptReportPaths.map((reportPath) => {
+      const resolvedReportPath = path.resolve(reportPath);
+      if (!expectedReportPaths.has(resolvedReportPath)) {
+        throw new CliUsageError(
+          `attempt report '${reportPath}' is not a path declared by the persisted stability plan`,
+          2,
+        );
+      }
       let rawReport: unknown;
       try {
-        rawReport = JSON.parse(readFileSync(reportPath, "utf8"));
+        rawReport = readScenarioStabilityJsonArtifact(
+          resolvedReportPath,
+          `attempt report '${resolvedReportPath}'`,
+        );
       } catch (error) {
-        // error-policy:J1 CLI boundary translates invalid report artifacts into usage errors.
+        // error-policy:J1 CLI boundary translates malformed or unbounded report artifacts into usage errors.
         throw new CliUsageError(
-          `attempt report '${reportPath}' is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+          error instanceof Error ? error.message : String(error),
           2,
         );
       }
@@ -607,7 +654,7 @@ export async function runCli(
       try {
         report = parseScenarioStabilityAttemptReport(
           rawReport,
-          `attempt report '${reportPath}'`,
+          `attempt report '${resolvedReportPath}'`,
         );
       } catch (error) {
         // error-policy:J1 CLI boundary translates invalid report artifacts into usage errors.
@@ -619,7 +666,7 @@ export async function runCli(
       const expectedPath = plan.attempts.find(
         (attempt) => attempt.attemptId === report.runId,
       )?.reportPath;
-      if (!expectedPath || path.resolve(reportPath) !== expectedPath) {
+      if (!expectedPath || resolvedReportPath !== expectedPath) {
         throw new CliUsageError(
           `attempt report '${reportPath}' does not match the isolated path declared for runId '${report.runId}'`,
           2,
