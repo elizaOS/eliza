@@ -98,6 +98,12 @@ export interface ToolOutputEvidence {
 export interface CompletionEvidenceBundle {
   /** The sub-agent's reported result — the fallback/final-reply text. */
   summary: string;
+  /** Pull request the ORCHESTRATOR's auto-submit opened for this task. The
+   *  child cannot push or open PRs by design, so its narration never carries
+   *  the URL — without this field the judge kept failing "no pull request
+   *  was opened" against tasks whose PR its own submit had already opened
+   *  (live 2026-08-20: TESTING.md and STYLE.md, three attempts each). */
+  pullRequestUrl?: string;
   /** Human-readable git diff summary (diffstat + changed files + capped diff)
    *  captured at completion, if any. */
   diffSummary?: string;
@@ -453,6 +459,17 @@ export function buildCompletionEvidenceString(
 ): string {
   const sections: string[] = [];
   let hasRicherSection = false;
+
+  const pr = bundle.pullRequestUrl?.trim();
+  if (pr) {
+    sections.push(
+      [
+        "## PULL REQUEST (opened by the orchestrator's auto-submit; the sub-agent cannot push or open PRs itself)",
+        pr,
+      ].join("\n"),
+    );
+    hasRicherSection = true;
+  }
 
   const diff = bundle.diffSummary?.trim();
   if (diff) {

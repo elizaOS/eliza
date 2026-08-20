@@ -2553,6 +2553,10 @@ export class OrchestratorTaskService extends Service {
     fallbackSummary: string,
   ): Promise<CompletionEvidenceBundle> {
     const summary = fallbackSummary.trim();
+    const taskDocForPr = await this.store.getTask(taskId);
+    const pullRequestUrl =
+      str(taskDocForPr?.task.metadata?.prUrl) ??
+      str(taskDocForPr?.task.metadata?.autoSubmittedPrUrl);
     const empty: CompletionEvidenceBundle = {
       summary,
       verifiedUrls: [],
@@ -2710,6 +2714,7 @@ export class OrchestratorTaskService extends Service {
 
     return {
       summary,
+      ...(pullRequestUrl ? { pullRequestUrl } : {}),
       diffSummary,
       toolOutput,
       verifiedUrls,
