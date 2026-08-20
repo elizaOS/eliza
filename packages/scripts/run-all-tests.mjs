@@ -987,7 +987,7 @@ function buildPlanSummary(tasks) {
 function printableTask(task) {
   return {
     packageName: task.packageName,
-    relativeDir: path.relative(repoRoot, task.cwd) || ".",
+    relativeDir: normalizeRepoPath(path.relative(repoRoot, task.cwd) || "."),
     scriptName: task.scriptName,
     label: task.label,
     parallelSafe: isParallelSafeTask({
@@ -1097,7 +1097,7 @@ function recordTaskResult(task, record) {
   const full = {
     label: task.label,
     packageName: task.packageName,
-    relativeDir: path.relative(repoRoot, task.cwd) || ".",
+    relativeDir: normalizeRepoPath(path.relative(repoRoot, task.cwd) || "."),
     scriptName: task.scriptName,
     ...record,
   };
@@ -1449,10 +1449,8 @@ let laneMatchedTaskCount = 0;
 for (const packageJsonPath of packageJsonPaths) {
   const cwd = path.dirname(packageJsonPath);
   const relativeDir = path.relative(repoRoot, cwd) || ".";
-  // Filters target forward-slash labels (for example, root `test:core`), while
-  // path.relative() uses backslashes on Windows. Normalize only the public
-  // label; keep relativeDir platform-native for internal path lookups and the
-  // existing shard key.
+  // Public task labels and machine-readable output use stable repository paths,
+  // while relativeDir stays platform-native for membership checks and sharding.
   const relativeDirLabel = normalizeRepoPath(relativeDir);
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   const scripts = packageJson.scripts ?? {};
@@ -1468,7 +1466,7 @@ for (const packageJsonPath of packageJsonPaths) {
     skippedPlanEntries.push({
       label,
       packageName: packageJson.name || relativeDirLabel,
-      relativeDir,
+      relativeDir: relativeDirLabel,
       reason: "cloud package skipped by --no-cloud",
     });
     if (!planEnabled) {
@@ -1501,7 +1499,7 @@ for (const packageJsonPath of packageJsonPaths) {
       skippedPlanEntries.push({
         label,
         packageName,
-        relativeDir,
+        relativeDir: relativeDirLabel,
         scriptName,
         reason: "operator-run visual harness excluded from the pr lane",
       });
@@ -1522,7 +1520,7 @@ for (const packageJsonPath of packageJsonPaths) {
         skippedPlanEntries.push({
           label,
           packageName,
-          relativeDir,
+          relativeDir: relativeDirLabel,
           scriptName,
           reason: "no local test files for vitest script",
         });

@@ -410,55 +410,79 @@ describe("run-all-tests plan mode", () => {
   test("matches forward-slash filters when path.relative returns Windows separators", () => {
     const preloadSource = String.raw`
       import path from "node:path";
+      const nativeJoin = path.join;
       const nativeRelative = path.relative;
+      path.join = (...parts) => {
+        const joined = nativeJoin(...parts);
+        const repoPath = parts.join("/");
+        return repoPath === "packages/cloud/e2e" || repoPath === "packages/homepage"
+          ? joined.replaceAll("/", "\\")
+          : joined;
+      };
       path.relative = (from, to) => {
         const relativePath = nativeRelative(from, to);
         const caller = (new Error().stack ?? "").split("\n")[2] ?? "";
-        if (
-          to.endsWith(path.join("packages", "core")) &&
-          caller.includes("run-all-tests.mjs") &&
-          !caller.includes("printableTask")
-        ) {
+        if (caller.includes("run-all-tests.mjs")) {
           return relativePath.replaceAll("/", "\\");
         }
         return relativePath;
       };
     `;
-    const result = spawnSync(
-      "node",
-      [
-        "--import",
-        `data:text/javascript,${encodeURIComponent(preloadSource)}`,
-        runnerPath.pathname,
-        "--plan=json",
-        "--only=test",
-        "--no-cloud",
-        "--filter=^@elizaos/core \\(packages/core\\)#test$",
-      ],
-      {
-        cwd: new URL("../../..", import.meta.url).pathname,
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          TEST_LANE: "pr",
-          TEST_PACKAGE_FILTER: "",
-          TEST_SCRIPT_FILTER: "",
-          TEST_SHARD: "",
-          TEST_START_AT: "",
-          TEST_CONCURRENCY: "",
+    const runWindowsPlan = (...args: string[]) =>
+      spawnSync(
+        "node",
+        [
+          "--import",
+          `data:text/javascript,${encodeURIComponent(preloadSource)}`,
+          runnerPath.pathname,
+          ...args,
+        ],
+        {
+          cwd: new URL("../../..", import.meta.url).pathname,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            TEST_LANE: "pr",
+            TEST_PACKAGE_FILTER: "",
+            TEST_SCRIPT_FILTER: "",
+            TEST_SHARD: "",
+            TEST_START_AT: "",
+            TEST_CONCURRENCY: "",
+          },
         },
-      },
+      );
+    const result = runWindowsPlan(
+      "--plan=json",
+      "--only=test",
+      "--no-cloud",
+      "--filter=^@elizaos/core \\(packages/core\\)#test$",
     );
 
-    expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
-    expect(JSON.parse(result.stdout).tasks).toEqual([
+    expect(result.status).toBe(0);
+    const plan = JSON.parse(result.stdout);
+    expect(plan.tasks).toEqual([
       expect.objectContaining({
         packageName: "@elizaos/core",
         relativeDir: "packages/core",
         label: "@elizaos/core (packages/core)#test",
       }),
     ]);
+    const skippedResult = runWindowsPlan(
+      "--plan=json",
+      "--only=e2e",
+      "--no-cloud",
+    );
+    expect(skippedResult.stderr).toBe("");
+    expect(skippedResult.status).toBe(0);
+    expect(JSON.parse(skippedResult.stdout).skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          relativeDir: "packages/homepage",
+          reason: "operator-run visual harness excluded from the pr lane",
+        }),
+      ]),
+    );
   });
 
   test("warns and preserves the unsharded plan for a partially numeric TEST_SHARD", () => {
