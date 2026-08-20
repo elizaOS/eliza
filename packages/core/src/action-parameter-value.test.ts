@@ -10,8 +10,9 @@ import {
 	MAX_ACTION_PARAMETER_NODES,
 	toActionParameterValue,
 } from "./action-parameter-value";
-import { parseActionParams } from "./actions";
+import { parseActionParams, validateActionParams } from "./actions";
 import { ElizaError } from "./errors";
+import type { Action, ActionParameters } from "./types";
 
 function nestArray(depth: number): unknown {
 	let value: unknown = "x";
@@ -86,6 +87,23 @@ describe("toActionParameterValue", () => {
 		expect(result[0]).toBe(null);
 		expect(result[1]).toBe(null);
 		expect(result[2]).toBe("x");
+	});
+
+	it("translates hostile primitive conversion and preserves its cause", () => {
+		const conversionFailure = new Error("hostile primitive conversion");
+		const hostile = new Proxy(() => undefined, {
+			get() {
+				throw conversionFailure;
+			},
+		});
+		try {
+			toActionParameterValue(hostile);
+			expect.unreachable("primitive conversion should fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
+			expect((error as Error).cause).toBe(conversionFailure);
+		}
 	});
 
 	it("throws on a cyclic record without hanging", () => {
@@ -317,6 +335,26 @@ describe("parseActionParams", () => {
 		expect(result[2]).toBe("x");
 	});
 
+	it("preserves __proto__ keys as inert own model data", () => {
+		const params = parseActionParams(
+			'{"params":{"ACT":{"__proto__":{"polluted":true},"payload":{"__proto__":{"nested":true}}}}}',
+		).get("ACT") as ActionParameters;
+		expect(Object.getPrototypeOf(params)).toBe(Object.prototype);
+		expect(Object.hasOwn(params, "__proto__")).toBe(true);
+		expect(Object.getOwnPropertyDescriptor(params, "__proto__")?.value).toEqual(
+			{ polluted: true },
+		);
+		expect((params as Record<string, unknown>).polluted).toBeUndefined();
+
+		const payload = params.payload as ActionParameters;
+		expect(Object.getPrototypeOf(payload)).toBe(Object.prototype);
+		expect(Object.hasOwn(payload, "__proto__")).toBe(true);
+		expect(
+			Object.getOwnPropertyDescriptor(payload, "__proto__")?.value,
+		).toEqual({ nested: true });
+		expect((payload as Record<string, unknown>).nested).toBeUndefined();
+	});
+
 	it("shares the node budget across the whole params graph", () => {
 		const left: unknown[] = [];
 		const right: unknown[] = [];
@@ -333,5 +371,24 @@ describe("parseActionParams", () => {
 			expect(error).toBeInstanceOf(ElizaError);
 			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
 		}
+	});
+});
+
+describe("validateActionParams", () => {
+	it("does not swallow an over-budget JSON array during string coercion", () => {
+		const action = {
+			name: "ACT",
+			parameters: [
+				{
+					name: "items",
+					required: true,
+					schema: { type: "array", items: { type: "string" } },
+				},
+			],
+		} as Action;
+		const value = `[${Array.from({ length: MAX_ACTION_PARAMETER_NODES + 1 }, () => '"x"').join(",")}]`;
+		expect(() => validateActionParams(action, { items: value })).toThrowError(
+			expect.objectContaining({ code: ACTION_PARAMETER_UNBOUNDED }),
+		);
 	});
 });

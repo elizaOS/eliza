@@ -46,9 +46,22 @@ function inspectRecord<T>(operation: string, inspect: () => T): T {
 	try {
 		return inspect();
 	} catch (cause) {
-		// error-policy:J3 Proxy inspection failures make untrusted model JSON invalid.
+		// error-policy:J2 Preserve the reflective failure as the typed boundary cause.
 		failUnbounded({ inspection: operation }, cause);
 	}
+}
+
+function defineDataProperty(
+	target: ActionParameters,
+	key: string,
+	value: ActionParameters[string],
+): void {
+	Object.defineProperty(target, key, {
+		value,
+		enumerable: true,
+		configurable: true,
+		writable: true,
+	});
 }
 
 function ownDescriptor(
@@ -201,11 +214,10 @@ function collectActionsFromEntries(
 				paramsValue,
 				ctx,
 			)) {
-				params[paramName] = toActionParameterValueInner(
-					paramValue,
-					0,
-					ctx,
-					true,
+				defineDataProperty(
+					params,
+					paramName,
+					toActionParameterValueInner(paramValue, 0, ctx, true),
 				);
 			}
 			if (Object.keys(params).length > 0) {
@@ -239,7 +251,8 @@ function toActionParameterValueInner(
 		return value;
 	}
 	if (!value || typeof value !== "object") {
-		return String(value);
+		if (!visitAlreadyReserved) reserve(ctx, 1);
+		return inspectRecord("primitiveToString", () => String(value));
 	}
 	if (!visitAlreadyReserved) reserve(ctx, 1);
 	if (ctx.visiting.has(value)) {
@@ -277,11 +290,10 @@ function toActionParameterValueInner(
 		const entries = ownEnumerableStringDataEntries(value, ctx);
 		const normalized: ActionParameters = {};
 		for (const [key, entry] of entries) {
-			normalized[key] = toActionParameterValueInner(
-				entry,
-				depth + 1,
-				ctx,
-				true,
+			defineDataProperty(
+				normalized,
+				key,
+				toActionParameterValueInner(entry, depth + 1, ctx, true),
 			);
 		}
 		return normalized;

@@ -479,14 +479,15 @@ function coerceActionParamValue(
 	}
 
 	if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+		let parsed: unknown;
 		try {
-			const parsed = JSON.parse(trimmed);
-			if (Array.isArray(parsed)) {
-				return parsed.map((entry) => toActionParameterValue(entry));
-			}
+			parsed = JSON.parse(trimmed) as unknown;
 		} catch {
 			// error-policy:J3 This field accepts either a JSON array or its documented
 			// delimited-string form; malformed JSON remains untrusted string input.
+		}
+		if (Array.isArray(parsed)) {
+			return toActionParameterValue(parsed);
 		}
 	}
 
