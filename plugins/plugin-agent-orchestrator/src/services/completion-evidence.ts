@@ -98,6 +98,12 @@ export interface ToolOutputEvidence {
 export interface CompletionEvidenceBundle {
   /** The sub-agent's reported result — the fallback/final-reply text. */
   summary: string;
+  /** Tail of the session's captured raw output (tool stdout the transport
+   *  recorded). Script-run criteria are judged by what the run PRINTED; the
+   *  classified tool buckets miss plain interpreter output, and the judge
+   *  rejected a correct prime-numbers run as "no execution logs provided"
+   *  (live 2026-08-20). */
+  runOutput?: string;
   /** Pull request the ORCHESTRATOR's auto-submit opened for this task. The
    *  child cannot push or open PRs by design, so its narration never carries
    *  the URL — without this field the judge kept failing "no pull request
@@ -459,6 +465,17 @@ export function buildCompletionEvidenceString(
 ): string {
   const sections: string[] = [];
   let hasRicherSection = false;
+
+  const runOutput = bundle.runOutput?.trim();
+  if (runOutput) {
+    sections.push(
+      [
+        "## RUN OUTPUT (raw session output captured by the orchestrator)",
+        clamp(runOutput, 4_000),
+      ].join("\n"),
+    );
+    hasRicherSection = true;
+  }
 
   const pr = bundle.pullRequestUrl?.trim();
   if (pr) {

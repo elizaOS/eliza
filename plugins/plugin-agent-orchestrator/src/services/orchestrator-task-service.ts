@@ -2712,8 +2712,19 @@ export class OrchestratorTaskService extends Service {
         ? detectCheckSurfaces(reportingSession.workdir, surfaceFiles)
         : undefined;
 
+    let runOutput: string | undefined;
+    try {
+      const acpForOutput = this.acp();
+      runOutput =
+        (await acpForOutput?.getSessionOutput?.(sessionId, 120))?.trim() ||
+        undefined;
+    } catch {
+      // error-policy:J4 output capture is evidence enrichment; absence just
+      // leaves the section out.
+    }
     return {
       summary,
+      ...(runOutput ? { runOutput } : {}),
       ...(pullRequestUrl ? { pullRequestUrl } : {}),
       diffSummary,
       toolOutput,

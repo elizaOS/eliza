@@ -1359,6 +1359,19 @@ export class AcpService extends Service {
   // fall back to the legacy default-root predicate for backward cleanup.
   private async removeOwnedScratchWorkdir(session: SessionInfo): Promise<void> {
     if (!this.sessionOwnsIsolatedWorkdir(session)) return;
+    // A durable-task session's workspace OUTLIVES the session: verification,
+    // the residuals gate, and the corrective loop all inspect it after the
+    // post-completion stop. Reclaiming here failed the whole chain — the
+    // verifier found "no execution logs", the corrective re-send died on a
+    // missing workspace, and the user was asked whether they still wanted a
+    // result the child had already computed (live 2026-08-20, prime-numbers
+    // run). The orphan GC owns these dirs once the session record ages out.
+    if (session.metadata?.smithersDurableRun !== undefined) {
+      this.log("debug", "scratch reclaim deferred to GC (durable-task session)", {
+        sessionId: session.id,
+      });
+      return;
+    }
     const root = session.metadata?.[ACP_METADATA_WORKDIR_ROOT];
     if (
       typeof root === "string" &&
