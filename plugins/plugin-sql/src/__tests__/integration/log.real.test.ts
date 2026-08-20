@@ -1,8 +1,7 @@
 /**
  * Integration tests for log create/get/delete against a real isolated
  * PGlite/Postgres adapter, covering the `limit`/legacy-`count` param
- * contract, JSON-body escaping (backslashes, NUL stripping), and filtering
- * by type.
+ * contract, JSON-body escaping and output bounds, and filtering by type.
  */
 import {
   type AgentRuntime,
@@ -16,7 +15,11 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { MAX_SQL_JSON_SANITIZE_DEPTH, SQL_JSON_SANITIZE_UNBOUNDED } from "../../sanitize-json";
+import {
+  MAX_SQL_JSON_SANITIZE_DEPTH,
+  MAX_SQL_JSON_SANITIZE_STRING_BYTES,
+  SQL_JSON_SANITIZE_UNBOUNDED,
+} from "../../sanitize-json";
 import { logTable } from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -181,6 +184,26 @@ describe("Log Integration Tests", () => {
       const logs = await adapter.getLogs({
         roomId: testRoomId,
         type: "unbounded_test",
+      });
+      expect(logs).toHaveLength(0);
+    });
+
+    it("rejects an oversized scalar before the real adapter inserts a log", async () => {
+      await expect(
+        adapter.log({
+          body: { text: "x".repeat(MAX_SQL_JSON_SANITIZE_STRING_BYTES + 1) },
+          entityId: testEntityId,
+          roomId: testRoomId,
+          type: "oversized_scalar_test",
+        })
+      ).rejects.toMatchObject({
+        code: "DB_INSERT_FAILED",
+        cause: expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED }),
+      });
+
+      const logs = await adapter.getLogs({
+        roomId: testRoomId,
+        type: "oversized_scalar_test",
       });
       expect(logs).toHaveLength(0);
     });
