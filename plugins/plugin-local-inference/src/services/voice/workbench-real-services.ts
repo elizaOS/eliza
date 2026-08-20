@@ -13,6 +13,7 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { NlmsEchoCanceller } from "@elizaos/shared/voice/aec";
 import {
 	type OwnerObservation,
 	resolveOwnerCandidate,
@@ -29,6 +30,7 @@ import type {
 	CorpusTtsSynthesizer,
 	GeneratedVoiceCorpus,
 } from "./corpus-generator";
+import { computeFarActiveErle } from "./echo-metrics";
 import { createKokoroTtsBackend } from "./engine-bridge";
 import {
 	type ElizaInferenceContextHandle,
@@ -74,6 +76,9 @@ const MAX_AGENT_TTS_SECONDS = 12;
 const STREAMING_ASR_FRAME_SAMPLES = SAMPLE_RATE / 5;
 const SPEAKER_ENROLLMENT_PHRASE =
 	"This is my voice enrollment sample for reliable speaker recognition.";
+const BARGE_IN_PROBE_REPLY =
+	"The week ahead is mostly sunny with occasional clouds and a light breeze in the evening hours across the entire region.";
+const ECHO_FAR_END_CACHE_LIMIT = 64;
 
 const ELEVENLABS_MODEL_ID = "eleven_turbo_v2_5";
 const ELEVENLABS_VOICE_IDS = [
@@ -371,6 +376,78 @@ export async function diarizeVoiceWorkbenchStream(
 	return observations;
 }
 
+/**
+ * Replay an agent-echo turn through the production `NlmsEchoCanceller` and
+ * report the far-active ERLE. `near` is the observed mic-side turn (the echo
+ * plus any environmental degradation the corpus applied); `farReference` is
+ * the clean agent TTS that produced it, aligned at the turn's start. Returns
+ * null when either side carries no energy — an unmeasurable window must stay
+ * unmeasured rather than fabricate a healthy dB figure.
+ */
+export function measureEchoTurnErle(args: {
+	near: Float32Array;
+	farReference: Float32Array;
+}): number | null {
+	if (args.near.length === 0 || args.farReference.length === 0) return null;
+	const far = new Float32Array(args.near.length);
+	far.set(
+		args.farReference.subarray(
+			0,
+			Math.min(args.farReference.length, args.near.length),
+		),
+	);
+	const canceller = new NlmsEchoCanceller();
+	const residual = canceller.process(args.near, far);
+	return computeFarActiveErle(args.near, residual, far).erleDb;
+}
+
+/** The minimal streaming-synthesis surface the playback-stop probe drives. */
+export type BargeInPlaybackStopStream = (args: {
+	cancelSignal: { cancelled: boolean };
+	onChunk: (chunk: { pcm: Float32Array; isFinal: boolean }) => undefined;
+}) => Promise<{ cancelled: boolean }>;
+
+/**
+ * Measure the real playback-stop latency of a cancellable TTS stream: start
+ * the synthesis, flip the shared cancel signal the moment the first audible
+ * chunk arrives (the engine honours it at chunk boundaries), and report the
+ * milliseconds from the cancel request until the stream actually returned.
+ * A stream that never produced audio or ignored the cancel is a harness
+ * failure, not a null sample — fail fast so the lane cannot silently report
+ * zero coverage.
+ */
+export async function measureBargeInPlaybackStopMs(
+	synthesizeReply: BargeInPlaybackStopStream,
+): Promise<number> {
+	const cancelSignal = { cancelled: false };
+	let cancelRequestedAtMs: number | null = null;
+	const result = await synthesizeReply({
+		cancelSignal,
+		onChunk: (chunk) => {
+			if (
+				!chunk.isFinal &&
+				chunk.pcm.length > 0 &&
+				cancelRequestedAtMs === null
+			) {
+				cancelRequestedAtMs = performance.now();
+				cancelSignal.cancelled = true;
+			}
+			return undefined;
+		},
+	});
+	if (cancelRequestedAtMs === null) {
+		throw new Error(
+			"[voice:workbench --real] barge-in probe synthesis produced no audio to cancel",
+		);
+	}
+	if (!result.cancelled) {
+		throw new Error(
+			"[voice:workbench --real] TTS engine ignored the barge-in cancel signal",
+		);
+	}
+	return performance.now() - cancelRequestedAtMs;
+}
+
 function pcm16ToFloat32(bytes: Uint8Array): Float32Array {
 	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 	const samples = Math.floor(bytes.byteLength / 2);
@@ -454,6 +531,13 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	private readonly ownerThreshold: number;
 	private readonly voiceMap: Record<string, string>;
 	private readonly profiles = new Map<string, SpeakerProfile>();
+	/**
+	 * Clean agent-TTS far-end references keyed by normalized turn text. Corpus
+	 * generation runs for the whole matrix before any scenario is scored, so the
+	 * cache is keyed by content (identical text ⇒ identical deterministic Kokoro
+	 * output), bounded, and never cleared per scenario.
+	 */
+	private readonly echoFarEndByText = new Map<string, Float32Array>();
 	private readonly selfVoiceEmbeddings: Float32Array[] = [];
 	private ownerObservations: OwnerObservation[] = [];
 	private scenarioId: string | null = null;
@@ -652,7 +736,11 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			...(this.lastAgentReply
 				? { recentAgentReply: this.lastAgentReply, replyAgeMs: 500 }
 				: {}),
-			agentSpeaking: args.label.isAgentEcho === true,
+			// A barge-in turn happens WHILE the agent's reply is streaming, so the
+			// gate is evaluated with the echo/self-voice guards armed exactly as
+			// the live pipeline arms them mid-reply.
+			agentSpeaking:
+				args.label.isAgentEcho === true || args.label.bargeIn === true,
 			// WeSpeaker-embedding scale: the agent-specific threshold travels with
 			// the measurement (self ~0.37 vs human ~0.15 — never the 0.7 MFCC bar).
 			...(typeof selfVoiceSimilarity === "number"
@@ -694,6 +782,27 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			}
 		}
 
+		// ERLE — replay the observed mic-side echo against the clean agent TTS
+		// through the production canceller (#16972: real far-end capture, not an
+		// absent feed).
+		let erleDb: number | undefined;
+		if (args.label.isAgentEcho) {
+			const farReference = await this.echoFarEndFor(
+				args.label.referenceTranscript,
+			);
+			const measured = measureEchoTurnErle({ near: audio16, farReference });
+			if (measured !== null) erleDb = measured;
+		}
+
+		// Barge-in playback stop — when the live gate says an addressed speaker
+		// interrupted, hard-stop a real in-flight Kokoro stream and time it; when
+		// the gate holds (echo / bystander), report an explicit non-cancel.
+		let bargeInCancelMs: number | null | undefined;
+		if (args.label.bargeIn) {
+			const shouldCancel = hasSpeech && signal.agentShouldSpeak;
+			bargeInCancelMs = shouldCancel ? await this.measureBargeInCancel() : null;
+		}
+
 		return {
 			hypothesisTranscript: transcript,
 			predictedSpeakerLabel: speakerMatch?.profile.label ?? null,
@@ -702,6 +811,8 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			inferredEntities,
 			matchedEntityId,
 			...(firstAudioMs !== undefined ? { firstAudioMs } : {}),
+			...(erleDb !== undefined ? { erleDb } : {}),
+			...(bargeInCancelMs !== undefined ? { bargeInCancelMs } : {}),
 			predictedOwner,
 			...(streamingResult
 				? { partialTranscripts: streamingResult.partials }
@@ -729,11 +840,9 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		sampleRate: number;
 	}): Promise<Float32Array> {
 		if (args.isAgentEcho) {
-			return ensureSampleRate(
-				await this.synthesizeAgent(args.text),
-				SAMPLE_RATE,
-				args.sampleRate,
-			);
+			const pcm = await this.synthesizeAgent(args.text);
+			this.rememberEchoFarEnd(args.text, pcm);
+			return ensureSampleRate(pcm, SAMPLE_RATE, args.sampleRate);
 		}
 		if (this.apiKey) {
 			const voiceId = this.resolveElevenLabsVoiceId(
@@ -835,6 +944,52 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 
 	private async synthesizeAgent(text: string): Promise<Float32Array> {
 		return this.synthesizeKokoro(text, KOKORO_AGENT_VOICE);
+	}
+
+	private rememberEchoFarEnd(text: string, pcm: Float32Array): void {
+		const key = text.trim().toLowerCase();
+		if (!key) return;
+		if (this.echoFarEndByText.size >= ECHO_FAR_END_CACHE_LIMIT) {
+			const oldest = this.echoFarEndByText.keys().next().value;
+			if (oldest !== undefined) this.echoFarEndByText.delete(oldest);
+		}
+		this.echoFarEndByText.set(key, pcm);
+	}
+
+	/**
+	 * The clean far-end reference for an echo turn: the exact PCM this adapter
+	 * synthesized into the corpus when available, otherwise a fresh (Kokoro is
+	 * deterministic per text/voice) agent synthesis of the reference transcript.
+	 */
+	private async echoFarEndFor(
+		referenceTranscript: string,
+	): Promise<Float32Array> {
+		const cached = this.echoFarEndByText.get(
+			referenceTranscript.trim().toLowerCase(),
+		);
+		return cached ?? this.synthesizeAgent(referenceTranscript);
+	}
+
+	private async measureBargeInCancel(): Promise<number> {
+		const replyText = this.lastAgentReply ?? BARGE_IN_PROBE_REPLY;
+		return measureBargeInPlaybackStopMs(({ cancelSignal, onChunk }) =>
+			this.kokoroBackend.synthesizeStream({
+				phrase: {
+					id: 1,
+					text: replyText,
+					fromIndex: 0,
+					toIndex: replyText.length,
+					terminator: "punctuation",
+				},
+				preset: {
+					voiceId: KOKORO_AGENT_VOICE,
+					embedding: new Float32Array(0),
+					bytes: new Uint8Array(0),
+				},
+				cancelSignal,
+				onChunk: (chunk) => onChunk({ pcm: chunk.pcm, isFinal: chunk.isFinal }),
+			}),
+		);
 	}
 
 	private async observeAgentReply(text: string): Promise<number> {
