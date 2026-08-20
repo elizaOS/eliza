@@ -8,8 +8,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { readConfigEnvKey } from "./config-env.js";
 import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
+import { readConfigEnvKey } from "./config-env.js";
 
 export const KNOWN_ADAPTER_TYPES = new Set([
   "elizaos",

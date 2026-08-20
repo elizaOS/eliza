@@ -20,9 +20,15 @@ function makeRouter(roomSource: string | undefined) {
     getRoom,
   };
   const router = new SubAgentRouter(runtime as never);
-  return { router: router as unknown as {
-    resolveDeliverySource(origin: { roomId: string; source?: string }): Promise<string | undefined>;
-  }, getRoom };
+  return {
+    router: router as unknown as {
+      resolveDeliverySource(origin: {
+        roomId: string;
+        source?: string;
+      }): Promise<string | undefined>;
+    },
+    getRoom,
+  };
 }
 
 describe("resolveDeliverySource", () => {
@@ -62,8 +68,14 @@ describe("resolveDeliverySource", () => {
 
   it("memoizes per room after a successful resolution", async () => {
     const { router, getRoom } = makeRouter("discord");
-    await router.resolveDeliverySource({ roomId: "room-1", source: "sub_agent" });
-    await router.resolveDeliverySource({ roomId: "room-1", source: "orchestrator" });
+    await router.resolveDeliverySource({
+      roomId: "room-1",
+      source: "sub_agent",
+    });
+    await router.resolveDeliverySource({
+      roomId: "room-1",
+      source: "orchestrator",
+    });
     expect(getRoom).toHaveBeenCalledTimes(1);
   });
 });

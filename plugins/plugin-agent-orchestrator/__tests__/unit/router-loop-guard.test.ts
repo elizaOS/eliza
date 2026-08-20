@@ -716,10 +716,7 @@ function assertInvariants(
         });
       } else if (r.kind === "terminal_granted_supersede") {
         const parkOverProvisional =
-          holder !== undefined &&
-          holder.provisional &&
-          !holder.finalized &&
-          r.event.kind === "parked";
+          holder?.provisional && !holder.finalized && r.event.kind === "parked";
         const resultOverFailure =
           holder !== undefined &&
           holder.kind === "failure" &&

@@ -43,7 +43,6 @@ import {
   ADMIN_STOP_META_KEY,
   markSessionAdministrativelyStopped,
 } from "../services/admin-stop-marker.js";
-import { isSessionBusyError } from "../services/parent-agent-dispatch.js";
 import {
   augmentTaskWithDeployGuidance,
   isAppBuildTask,
@@ -59,6 +58,7 @@ import {
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
+import { isSessionBusyError } from "../services/parent-agent-dispatch.js";
 import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import { requestVoiceKeyForMeta } from "../services/router-loop-guard.js";
@@ -859,9 +859,7 @@ async function runPromptViaSmithers(
     let adminStopReason: string | undefined;
     try {
       const fresh = await service.getSession?.(session.sessionId);
-      const freshMeta = fresh?.metadata as
-        | Record<string, unknown>
-        | undefined;
+      const freshMeta = fresh?.metadata as Record<string, unknown> | undefined;
       const stamp = freshMeta?.[ADMIN_STOP_META_KEY];
       if (typeof stamp === "string" && stamp) adminStopReason = stamp;
     } catch {
@@ -1198,7 +1196,8 @@ async function runCreateLegacy(
   if (!syntheticRespawnInbound && callback) {
     const ackTitles = tasks.map(
       (part, index) =>
-        baseLabel ?? labelFrom(parseAgentPrefix(part, baseAgentType).task, index),
+        baseLabel ??
+        labelFrom(parseAgentPrefix(part, baseAgentType).task, index),
     );
     const { text } = await phraseForUser(
       runtime,
@@ -1550,8 +1549,7 @@ async function runCreateLegacy(
         // existed, and task_complete ingest silently attached nothing (live
         // 2026-08-20: every chat-built app task carried zero child
         // trajectories).
-        ...(threadId &&
-        typeof taskService?.buildChildTraceEnv === "function"
+        ...(threadId && typeof taskService?.buildChildTraceEnv === "function"
           ? { env: taskService.buildChildTraceEnv(threadId) }
           : {}),
         metadata: {
@@ -2408,7 +2406,6 @@ async function resolveTaskProjectBinding(
   return detail?.projectId ?? undefined;
 }
 
-
 /** Cached login of the configured GITHUB_TOKEN's account (module-lifetime). */
 let cachedTokenOwner: string | null | undefined;
 async function githubTokenOwner(
@@ -2553,7 +2550,9 @@ function appBuildSlugWorkdir(
   ) {
     const appsRepoRoot = nodePathResolve(appsDir, "..", "..");
     if (workdir.startsWith(appsRepoRoot + nodePathSep)) {
-      return declined("workdir is a deliberate repo location inside the apps checkout");
+      return declined(
+        "workdir is a deliberate repo location inside the apps checkout",
+      );
     }
   }
   const baseSlug =
@@ -2611,10 +2610,7 @@ function appBuildSlugWorkdir(
       // error-policy:J6 unreadable apps dir just skips the reuse scan.
     }
     for (const name of entries) {
-      const tokens = name
-        .replace(/-\d+$/, "")
-        .split("-")
-        .filter(Boolean);
+      const tokens = name.replace(/-\d+$/, "").split("-").filter(Boolean);
       if (tokens.length === 0) continue;
       if (!tokens.every((token) => taskTokens.has(token))) continue;
       if (
@@ -2666,7 +2662,7 @@ function registeredWorkspaceForPath(
   service: { listWorkspaces(): Array<{ id: string; path: string }> } | null,
   workdir: string | undefined,
 ): { id: string; path: string } | undefined {
-  if (!service || !workdir || !workdir.trim()) return undefined;
+  if (!service || !workdir?.trim()) return undefined;
   try {
     const resolved = nodePathResolve(workdir);
     return service
@@ -2778,7 +2774,7 @@ async function resolveRequestedRepo(
     if (url) candidate = url[0];
   }
   if (!candidate) {
-    const slug = text.match(/\b([\w.-]+)\/([\w.-]+)\b(?=[^\/]|$)/);
+    const slug = text.match(/\b([\w.-]+)\/([\w.-]+)\b(?=[^/]|$)/);
     if (slug && /\brepo(?:sitory)?\b/i.test(text)) {
       candidate = `${slug[1]}/${slug[2]}`;
     }
@@ -2808,7 +2804,7 @@ async function resolveRequestedRepo(
     candidate && !candidate.includes("/")
       ? candidate
       : (text.match(/\bmy\s+([\w.-]+)\s+repo\b/i)?.[1] ?? undefined);
-  if (bare && (!candidate || !candidate.includes("/"))) {
+  if (bare && !candidate?.includes("/")) {
     const owner = await githubTokenOwner(runtime);
     if (owner) candidate = `${owner}/${bare}`;
     else return undefined;
@@ -3127,7 +3123,8 @@ async function runSpawnAgent(
         isolateWorkdir = false;
         // Same route re-resolution as the create path: the slug dir needs the
         // apps route stamp or the residuals gate misreads the shared checkout.
-        effectiveRoute = resolveRouteForWorkdir(runtime, slugDir) ?? effectiveRoute;
+        effectiveRoute =
+          resolveRouteForWorkdir(runtime, slugDir) ?? effectiveRoute;
         logger(runtime).info(
           `[TASKS:spawn_agent] app build runs in its served slug dir: ${slugDir}`,
         );
@@ -3579,24 +3576,23 @@ async function runSend(
       // interrupt-stopped predecessor with a recorded task exists in this
       // room, convert the send into the successor create carrying BOTH the
       // original task and the follow-up.
-      const followUp = pickString(params, content, "input") ??
+      const followUp =
+        pickString(params, content, "input") ??
         pickString(params, content, "task");
       if (followUp) {
         const roomId = String(_message.roomId ?? "");
         const all = await Promise.resolve(service.listSessions());
-        const predecessor = [...all]
-          .reverse()
-          .find((candidate) => {
-            const meta = candidate.metadata as
-              | Record<string, unknown>
-              | undefined;
-            return (
-              typeof meta?.[ADMIN_STOP_META_KEY] === "string" &&
-              String(meta[ADMIN_STOP_META_KEY]).includes("interrupt") &&
-              typeof meta.initialTask === "string" &&
-              (!roomId || String(meta.roomId ?? "") === roomId)
-            );
-          });
+        const predecessor = [...all].reverse().find((candidate) => {
+          const meta = candidate.metadata as
+            | Record<string, unknown>
+            | undefined;
+          return (
+            typeof meta?.[ADMIN_STOP_META_KEY] === "string" &&
+            String(meta[ADMIN_STOP_META_KEY]).includes("interrupt") &&
+            typeof meta.initialTask === "string" &&
+            (!roomId || String(meta.roomId ?? "") === roomId)
+          );
+        });
         const predecessorMeta = predecessor?.metadata as
           | Record<string, unknown>
           | undefined;
@@ -3655,6 +3651,39 @@ async function runSend(
       ? buildSubAgentCompletionFollowUp(routedCompletion, plannerInput)
       : plannerInput;
     if (textInput) {
+      // A smithers-driven session's conversation is OWNED by the workflow
+      // executor — an interactive send resolves but is never consumed (live
+      // 2026-08-20: "add streak counts" vanished; the page shipped without
+      // it and the user got only an unconfirmed-send hedge). Queue through
+      // the inbox instead; the idle-flush delivers it as a real follow-up
+      // turn the moment the workflow settles.
+      const smithersLink = (
+        target.session.metadata as
+          | { smithersDurableRun?: { state?: string } }
+          | undefined
+      )?.smithersDurableRun;
+      const smithersActive =
+        smithersLink?.state === "running" || smithersLink?.state === "pending";
+      const queueInbox = (
+        runtime as IAgentRuntime & {
+          __orchestratorSubAgentInbox?: {
+            enqueue: (sessionId: string, text: string) => void;
+          };
+        }
+      ).__orchestratorSubAgentInbox;
+      if (smithersActive && queueInbox) {
+        queueInbox.enqueue(target.session.id, textInput);
+        return {
+          success: true,
+          text: "The agent is mid-build; the instruction is queued and will be delivered the moment the current run settles. Do NOT stop or respawn the agent for this.",
+          data: {
+            sessionId: target.session.id,
+            queued: true,
+            ...(task ? { task } : {}),
+          },
+          continueChain: false,
+        };
+      }
       try {
         await service.sendToSession(target.session.id, textInput);
       } catch (error) {
@@ -4091,8 +4120,7 @@ async function runCancel(
     // read as breakage for work that had completed seconds earlier (live
     // 2026-08-19: "Failed to cancel task: ACP native session has no attached
     // client" right after the build's own completion message).
-    const code =
-      error instanceof ElizaError ? error.code : undefined;
+    const code = error instanceof ElizaError ? error.code : undefined;
     if (
       code === "ACP_NATIVE_CLIENT_MISSING" ||
       code === "ACP_CANCEL_NO_ACTIVE_PROMPT"
@@ -4504,7 +4532,8 @@ async function findNearDuplicateInFlightWork(args: {
         // Compare only the GOAL, not the injected workspace/route contract:
         // every routed quick-app carries the same boilerplate sections, which
         // made unrelated builds read as near-duplicates of each other.
-        const initialTask = rawInitialTask.split("--- Resolved Workspace ---")[0] ?? "";
+        const initialTask =
+          rawInitialTask.split("--- Resolved Workspace ---")[0] ?? "";
         const existingText = `${label ?? ""} ${initialTask}`;
         if (
           goalSimilarity(candidateText, existingText) >=
@@ -6476,9 +6505,7 @@ function tasksEffectProof(
     // honest "Stopped N task agents." was replaced by the hedged "may have
     // gone through" line on every sweep (live 2026-08-19).
     const stopped = [
-      ...effectRecords(data.stoppedSessions).map((row) =>
-        effectString(row.id),
-      ),
+      ...effectRecords(data.stoppedSessions).map((row) => effectString(row.id)),
       ...(Array.isArray(data.stoppedSessions)
         ? (data.stoppedSessions as unknown[]).map((row) =>
             typeof row === "string" ? row : undefined,
@@ -6492,9 +6519,7 @@ function tasksEffectProof(
       commitId: unique[0],
       commitKind: "provider_accepted",
       resource: { kind: "acp.session", id: unique[0] },
-      artifacts: unique
-        .slice(1)
-        .map((id) => ({ kind: "acp.session", id })),
+      artifacts: unique.slice(1).map((id) => ({ kind: "acp.session", id })),
     };
   }
   if (operation === "spawn_agent") {
@@ -6736,10 +6761,19 @@ async function settleTasksOperation(args: {
   // text on the create result after the runner deliberately omitted it).
   const canonicalAlreadyDelivered =
     (canonical as { delivered?: boolean } | undefined)?.delivered === true;
+  // An unconfirmed-outcome hedge is planner grounding, not the user's answer:
+  // granting it the do-not-paraphrase license shipped "The send may have gone
+  // through, but I could not confirm it — please check before retrying."
+  // verbatim over the evaluator's in-voice reply for a follow-up that HAD
+  // been absorbed into the running build (live 2026-08-20, habit tracker).
+  const hedgedUnconfirmed =
+    result.success === true && receipt.outcome === "failed";
   const effectResult: ActionResult = {
     ...result,
     effectReceipts: [receipt],
-    ...(canonical?.response.text && !canonicalAlreadyDelivered
+    ...(canonical?.response.text &&
+    !canonicalAlreadyDelivered &&
+    !hedgedUnconfirmed
       ? result.success !== false
         ? {
             userFacingText: canonical.response.text,

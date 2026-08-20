@@ -8,10 +8,7 @@
  * phrasing is unambiguous, so the candidate surface is narrowed structurally
  * instead of hoping the model picks the right tool.
  */
-import type {
-  Memory,
-  ResponseHandlerEvaluator,
-} from "@elizaos/core";
+import type { Memory, ResponseHandlerEvaluator } from "@elizaos/core";
 
 /** Cancel/stop verb followed (within a short window) by a durable-work noun.
  *  Plain media/app phrasing ("stop the music", "stop the timer app") carries

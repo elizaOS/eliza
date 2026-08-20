@@ -8,6 +8,7 @@
  * @module @elizaos/plugin-agent-orchestrator
  */
 
+import { randomUUID } from "node:crypto";
 import type {
   IAgentRuntime,
   Memory,
@@ -225,7 +226,6 @@ export function createAgentOrchestratorPlugin(): Plugin {
   // session next goes idle and they can be flushed without derailing a turn.
   const subAgentInbox = new SubAgentInbox();
 
-
   return {
     name: "@elizaos/plugin-agent-orchestrator",
     description: codeExecutionAllowed
@@ -435,7 +435,85 @@ export function createAgentOrchestratorPlugin(): Plugin {
                     TERMINAL_SESSION_STATUSES.has(session.status)
                   ) {
                     flushPending.delete(sessionId);
-                    subAgentInbox.clear(sessionId);
+                    // A terminal session's queued follow-up is USER INTENT,
+                    // not disposable state: app-build sessions stop the
+                    // moment they complete, so clearing here silently dropped
+                    // every follow-up queued mid-build ("add streak counts"
+                    // vanished, live 2026-08-20). Redirect it to a successor
+                    // create carrying the predecessor task + the follow-up.
+                    const orphaned = subAgentInbox.drain(sessionId);
+                    if (orphaned && session) {
+                      const meta = (session.metadata ?? {}) as Record<
+                        string,
+                        unknown
+                      >;
+                      const rawTask =
+                        typeof meta.initialTask === "string"
+                          ? meta.initialTask
+                          : "";
+                      const marker = "--- User Task ---";
+                      const markerAt = rawTask.indexOf(marker);
+                      const predecessorTask = (
+                        markerAt >= 0
+                          ? rawTask.slice(markerAt + marker.length)
+                          : rawTask
+                      ).trim();
+                      const roomId = meta.roomId;
+                      if (predecessorTask && typeof roomId === "string") {
+                        runtime.logger?.info?.(
+                          {
+                            src: "@elizaos/plugin-agent-orchestrator",
+                            sessionId,
+                          },
+                          "redirecting orphaned queued follow-up to a successor create",
+                        );
+                        const syntheticMemory = {
+                          id: randomUUID(),
+                          entityId:
+                            typeof meta.userId === "string"
+                              ? meta.userId
+                              : runtime.agentId,
+                          agentId: runtime.agentId,
+                          roomId,
+                          ...(typeof meta.worldId === "string"
+                            ? { worldId: meta.worldId }
+                            : {}),
+                          content: {
+                            text: orphaned,
+                            ...(typeof meta.source === "string"
+                              ? { source: meta.source }
+                              : {}),
+                          },
+                          createdAt: Date.now(),
+                        } as unknown as Memory;
+                        void tasksAction
+                          .handler(
+                            runtime,
+                            syntheticMemory,
+                            undefined,
+                            {
+                              parameters: {
+                                action: "create",
+                                task: `${predecessorTask}\n\nFollow-up from the user (fold into the SAME deliverable): ${orphaned}`,
+                              },
+                            },
+                            undefined,
+                          )
+                          .catch((err) => {
+                            runtime.logger?.warn?.(
+                              {
+                                src: "@elizaos/plugin-agent-orchestrator",
+                                sessionId,
+                                err:
+                                  err instanceof Error
+                                    ? err.message
+                                    : String(err),
+                              },
+                              "orphaned follow-up successor create failed",
+                            );
+                          });
+                      }
+                    }
                     return;
                   }
                   // Still mid-turn (busy / tool_running / running / blocked /
@@ -1658,8 +1736,11 @@ export function registerProgressHook(runtime: IAgentRuntime): () => void {
         try {
           const liveSession = await acp.getSession(sessionId);
           if (
-            (liveSession?.metadata as { requestAckPosted?: boolean } | undefined)
-              ?.requestAckPosted === true
+            (
+              liveSession?.metadata as
+                | { requestAckPosted?: boolean }
+                | undefined
+            )?.requestAckPosted === true
           ) {
             ackedSessions.add(sessionId);
             if (ackedSessions.size > 512) {

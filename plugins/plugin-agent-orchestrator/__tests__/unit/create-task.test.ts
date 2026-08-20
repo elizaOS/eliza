@@ -4,7 +4,7 @@
  */
 import * as os from "node:os";
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { describe, expect, it, vi, beforeEach, afterEach} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // CREATE_AGENT_TASK is `TASKS { action: "create" }` (the default action).
 import { createTaskAction } from "../../src/actions/tasks.js";
 import { codingAgentExamplesProvider } from "../../src/providers/action-examples.js";

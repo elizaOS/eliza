@@ -669,7 +669,7 @@ function orchestratorObservedBody(completionText: string): string | undefined {
   const headerEnd = trimmed.indexOf("]");
   if (headerEnd < 0) return undefined;
   const body = trimmed.slice(headerEnd + 1).trim();
-  if (!body || !body.includes("Files written (verified on disk)")) {
+  if (!body?.includes("Files written (verified on disk)")) {
     return undefined;
   }
   return body.length > 800 ? `${body.slice(0, 799)}…` : body;

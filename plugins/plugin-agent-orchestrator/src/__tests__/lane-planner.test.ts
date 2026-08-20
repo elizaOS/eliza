@@ -835,13 +835,15 @@ describe("TASKS create lane planner integration", () => {
     // not reject, and not replay lane 1.
     const realSpawn = acp.spawnSession.getMockImplementation();
     let spawnCalls = 0;
-    acp.spawnSession.mockImplementation(async (opts: Record<string, unknown>) => {
-      spawnCalls += 1;
-      if (spawnCalls === 2) {
-        throw new Error("lane 2 spawn exploded");
-      }
-      return realSpawn?.(opts);
-    });
+    acp.spawnSession.mockImplementation(
+      async (opts: Record<string, unknown>) => {
+        spawnCalls += 1;
+        if (spawnCalls === 2) {
+          throw new Error("lane 2 spawn exploded");
+        }
+        return realSpawn?.(opts);
+      },
+    );
     const taskService = makeTaskService();
     const runtime = makeRuntime(
       { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },

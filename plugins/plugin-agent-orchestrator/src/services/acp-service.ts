@@ -1899,9 +1899,7 @@ export class AcpService extends Service {
       const assignedAppDir =
         appsDirResolved &&
         workdirResolved.startsWith(appsDirResolved + sep) &&
-        !workdirResolved
-          .slice(appsDirResolved.length + 1)
-          .includes(sep)
+        !workdirResolved.slice(appsDirResolved.length + 1).includes(sep)
           ? workdirResolved
           : undefined;
       const initialTask =

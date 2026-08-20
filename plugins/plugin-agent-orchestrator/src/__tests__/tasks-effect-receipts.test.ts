@@ -84,10 +84,11 @@ describe("TASKS effect receipts", () => {
     );
 
     expect(sendToSession).toHaveBeenCalledOnce();
-    expect(result).toMatchObject({
-      success: true,
-      verifiedUserFacing: true,
-    });
+    // The unconfirmed-outcome hedge is planner grounding, deliberately NOT
+    // granted the do-not-paraphrase license: shipping it verbatim buried the
+    // evaluator's in-voice reply under mechanism prose (live 2026-08-20).
+    expect(result).toMatchObject({ success: true });
+    expect(result?.verifiedUserFacing).toBeUndefined();
     expect(result?.effectReceipts).toEqual([
       expect.objectContaining({
         outcome: "failed",

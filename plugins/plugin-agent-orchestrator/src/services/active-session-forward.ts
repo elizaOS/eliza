@@ -14,7 +14,10 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
-import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
+import {
+  ADMIN_STOP_META_KEY,
+  markSessionAdministrativelyStopped,
+} from "./admin-stop-marker.js";
 import { decideInterruptionWithModel } from "./interruption-decider.js";
 import type {
   OrchestratorTaskRecord,
@@ -24,7 +27,6 @@ import { sessionBoundRoomIds } from "./session-room-binding.js";
 import type { SubAgentInbox } from "./sub-agent-inbox.js";
 import { requireTaskAgentAccess } from "./task-policy.js";
 import { type SessionInfo, TERMINAL_SESSION_STATUSES } from "./types.js";
-import { markSessionAdministrativelyStopped } from "./admin-stop-marker.js";
 
 // Skip forwarding our own posts back into `acp.sendPrompt` — would echo-loop.
 // `entityId === runtime.agentId` is not enough: the router uses a synthetic

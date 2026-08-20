@@ -36,12 +36,6 @@ import { AGENT_VOICED_METADATA } from "../voice/phrase-for-user.js";
 import type { AcpService } from "./acp-service.js";
 import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
 import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
-import { shouldAutoVerifyGoal } from "./goal-llm-verifier.js";
-import {
-  collectFsObservedFiles,
-  deriveRouteMappedUrls,
-  enumerateWorkdirCandidates,
-} from "./quick-app-evidence.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";
 import {
   accountMetaFromSessionMetadata,
@@ -50,6 +44,7 @@ import {
   hasHealthyPooledAccount,
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
+import { shouldAutoVerifyGoal } from "./goal-llm-verifier.js";
 import {
   beginPendingHandoff,
   settlePendingHandoff,
@@ -64,6 +59,11 @@ import {
   extractParentAgentDirective,
   parentAgentMarkerIndex,
 } from "./parent-agent-dispatch.js";
+import {
+  collectFsObservedFiles,
+  deriveRouteMappedUrls,
+  enumerateWorkdirCandidates,
+} from "./quick-app-evidence.js";
 import {
   applyResumePreamble,
   buildResumeContext,
@@ -1134,8 +1134,7 @@ export class SubAgentRouter extends Service {
       event === "task_complete" &&
       !this.releasingDeferredRelaySessions.has(sessionId)
     ) {
-      const deferTaskId =
-        await this.completionRelayDeferralTaskId(sessionId);
+      const deferTaskId = await this.completionRelayDeferralTaskId(sessionId);
       if (deferTaskId) {
         const existing = this.deferredCompletionRelays.get(deferTaskId);
         if (existing) clearTimeout(existing.timer);
@@ -1180,11 +1179,15 @@ export class SubAgentRouter extends Service {
           | Record<string, unknown>
           | undefined;
         if (typeof stampMeta?.[ADMIN_STOP_META_KEY] === "string") {
-          this.log("info", "suppressing terminal relay for user-stopped session", {
-            sessionId,
-            event,
-            reason: stampMeta[ADMIN_STOP_META_KEY],
-          });
+          this.log(
+            "info",
+            "suppressing terminal relay for user-stopped session",
+            {
+              sessionId,
+              event,
+              reason: stampMeta[ADMIN_STOP_META_KEY],
+            },
+          );
           return;
         }
       } catch {
@@ -2906,10 +2909,14 @@ export class SubAgentRouter extends Service {
       // gates when the live read fails.
     }
     if (typeof freshMeta[ADMIN_STOP_META_KEY] === "string") {
-      this.log("info", "verify-retry skipped: session was stopped by the user", {
-        sessionId: session.id,
-        reason: freshMeta[ADMIN_STOP_META_KEY],
-      });
+      this.log(
+        "info",
+        "verify-retry skipped: session was stopped by the user",
+        {
+          sessionId: session.id,
+          reason: freshMeta[ADMIN_STOP_META_KEY],
+        },
+      );
       return false;
     }
     // One typed read of the canonical retry counter (the router's respawn
@@ -4139,7 +4146,11 @@ function composeNarration(
   // self-imposed eslint/tsc on a static page). Direct observation outranks
   // the child's verdict — append what actually exists so the relay reads as
   // "reported a failure, but these files are on disk", not a bare failure.
-  if (/\b(?:fail(?:ed|ure)?|crash(?:ed)?|could\s*n[o']t|unable\s+to)\b/i.test(cleaned)) {
+  if (
+    /\b(?:fail(?:ed|ure)?|crash(?:ed)?|could\s*n[o']t|unable\s+to)\b/i.test(
+      cleaned,
+    )
+  ) {
     const observedLines = observeWorkdirDeliverable(session);
     if (observedLines.length > 0) {
       return `${header}\n${stripRoutingKindBanner(cleaned)}\n${observedLines.join("\n")}`;
@@ -4253,7 +4264,7 @@ async function githubAuthenticatedRecheck(
 ): Promise<boolean> {
   if (!runtime) return false;
   const m = url.match(
-    /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(pull|issues|commit|tree|blob)\/([^\/?#]+))?(?:[\/?#]|$)/,
+    /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(pull|issues|commit|tree|blob)\/([^/?#]+))?(?:[/?#]|$)/,
   );
   if (!m) return false;
   const token = runtime.getSetting?.("GITHUB_TOKEN");

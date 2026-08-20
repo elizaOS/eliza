@@ -1739,7 +1739,7 @@ describe("OrchestratorTaskService — event bridge session status", () => {
       } else {
         process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE = prevResidualsGate;
       }
-      
+
       fs.rmSync(repo, { recursive: true, force: true });
     }
   });

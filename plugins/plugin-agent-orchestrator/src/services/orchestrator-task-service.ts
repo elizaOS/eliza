@@ -27,27 +27,22 @@ import {
   stat,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import {
-  basename,
-  dirname,
-  join,
-  resolve as resolvePath,
-} from "node:path";
+import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import {
   ElizaError,
   getTrajectoryContext,
-  runWithTrajectoryContext,
-  withStandaloneTrajectory,
   type IAgentRuntime,
   projectWorldId,
   type RecordedTrajectory,
   resolveStateDir,
   resolveTrajectoryGate,
   rollUpTrajectoryUsage,
+  runWithTrajectoryContext,
   Service,
   TRACE_ENV,
   type TrajectoryUsageRollup,
   type UUID,
+  withStandaloneTrajectory,
 } from "@elizaos/core";
 import {
   AGENT_VOICED_METADATA,
@@ -69,6 +64,7 @@ import {
   type SerializableSpawnOpts,
 } from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
+import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import {
   extractWriteLedger,
   verifyClaimedFiles,
@@ -210,8 +206,6 @@ import {
   resolveTaskSpawnWorkdir,
 } from "./project-binding.js";
 import { extractPullRequestLink } from "./pull-request-link.js";
-import { requestVoiceKeyForMeta } from "./router-loop-guard.js";
-import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
@@ -221,6 +215,7 @@ import {
   probeMappedUrls,
   readFsVerifiedContents,
 } from "./quick-app-evidence.js";
+import { requestVoiceKeyForMeta } from "./router-loop-guard.js";
 import {
   readSmithersDurableRunLink,
   runDurableTask,
@@ -3550,15 +3545,22 @@ export class OrchestratorTaskService extends Service {
       // "and open a PR"-style instruction.
       const scrubChatEnvelope = (value: string): string =>
         value
-          .replace(/^\[[^\]\n]{0,120}\]\s*@?[\w.-]*\s*\([^)\n]{0,60}\)\s*:\s*/u, "")
+          .replace(
+            /^\[[^\]\n]{0,120}\]\s*@?[\w.-]*\s*\([^)\n]{0,60}\)\s*:\s*/u,
+            "",
+          )
           .replace(/<@!?\d+>/g, "")
           .replace(/\s+/g, " ")
           .trim();
       const rawTitle = doc.task.title || doc.task.goal || workspace.branch;
-      const title = scrubChatEnvelope(rawTitle)
-        .replace(/[\s,.]*(?:and\s+)?(?:then\s+)?(?:open|put\s+up|submit|raise|file)\s+(?:a\s+|the\s+)?(?:pr|pull[- ]?request)\b.*$/iu, "")
-        .trim()
-        .slice(0, 120) || workspace.branch;
+      const title =
+        scrubChatEnvelope(rawTitle)
+          .replace(
+            /[\s,.]*(?:and\s+)?(?:then\s+)?(?:open|put\s+up|submit|raise|file)\s+(?:a\s+|the\s+)?(?:pr|pull[- ]?request)\b.*$/iu,
+            "",
+          )
+          .trim()
+          .slice(0, 120) || workspace.branch;
       const bodySummary = scrubChatEnvelope(
         doc.task.goal?.slice(0, 800) ?? rawTitle,
       );
@@ -3628,8 +3630,8 @@ export class OrchestratorTaskService extends Service {
       try {
         const latest = await this.store.getTask(taskId);
         if (latest?.task.metadata?.autoSubmittedAt) {
-          const { autoSubmittedAt: _dropped, ...rest } =
-            latest.task.metadata as Record<string, unknown>;
+          const { autoSubmittedAt: _dropped, ...rest } = latest.task
+            .metadata as Record<string, unknown>;
           await this.store.updateTask(taskId, { metadata: rest });
         }
       } catch {
@@ -4267,9 +4269,7 @@ export class OrchestratorTaskService extends Service {
     // verdict is durable: passed → the held "it's ready" posts, failed → the
     // retry loop / park notice owns all further messaging (the whiplash this
     // kills: "all set" followed two minutes later by a park, live 2026-08-20).
-    const relayRouter = this.runtime.getService(
-      "ACPX_SUB_AGENT_ROUTER",
-    ) as {
+    const relayRouter = this.runtime.getService("ACPX_SUB_AGENT_ROUTER") as {
       releaseDeferredCompletionRelay?: (
         taskId: string,
         verdict: "passed" | "failed",
