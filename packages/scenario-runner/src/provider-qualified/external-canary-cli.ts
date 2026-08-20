@@ -139,6 +139,67 @@ function record(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function exactDataFunctionObject(
+  value: unknown,
+  label: string,
+  functionName: string,
+): void {
+  const object = record(value, label);
+  const descriptors = Object.getOwnPropertyDescriptors(object);
+  if (
+    Object.keys(descriptors).length !== 1 ||
+    !Object.hasOwn(descriptors, functionName)
+  ) {
+    fail(`${label} must contain only ${functionName}`);
+  }
+  const descriptor = descriptors[functionName];
+  if (
+    !("value" in descriptor) ||
+    typeof descriptor.value !== "function" ||
+    descriptor.enumerable !== true
+  ) {
+    fail(`${label}.${functionName} must be an enumerable data function`);
+  }
+}
+
+/** Reject accessors and unexpected capability surfaces without invoking them. */
+export function validateOperatorOwnedProviderCapabilities(
+  value: unknown,
+): OperatorOwnedProviderCapabilities {
+  const capabilities = record(value, "operator capabilities");
+  const expected = {
+    observer: "begin",
+    ingress: "execute",
+    trajectories: "verify",
+    semanticJudge: "judge",
+    cleanup: "cleanup",
+  } as const;
+  const descriptors = Object.getOwnPropertyDescriptors(capabilities);
+  const missing = Object.keys(expected).filter(
+    (key) => !Object.hasOwn(descriptors, key),
+  );
+  const unknown = Object.keys(descriptors).filter(
+    (key) => !Object.hasOwn(expected, key),
+  );
+  if (missing.length > 0 || unknown.length > 0) {
+    fail(
+      `operator capabilities violate the closed shape (missing=${missing.join(",") || "none"}; unknown=${unknown.join(",") || "none"})`,
+    );
+  }
+  for (const [key, functionName] of Object.entries(expected)) {
+    const descriptor = descriptors[key];
+    if (!("value" in descriptor) || descriptor.enumerable !== true) {
+      fail(`operator capabilities.${key} must be an enumerable data property`);
+    }
+    exactDataFunctionObject(
+      descriptor.value,
+      `operator capabilities.${key}`,
+      functionName,
+    );
+  }
+  return capabilities as unknown as OperatorOwnedProviderCapabilities;
+}
+
 function string(value: unknown, label: string): string {
   if (typeof value !== "string" || value.trim() === "") {
     fail(`${label} must be a non-empty string`);
@@ -639,12 +700,14 @@ export async function executeExternalProviderCanaryFromConfig(
       dependencies.loadOperatorModule ??
       loadPinnedExternalProviderCapabilityModule
     )(resolve(baseDir, config.operatorModuleFile), config.operatorModuleSha256);
-    const capabilities = await module.createExternalProviderCanaryCapabilities({
-      scenarioId: scenario.id,
-      operationKind: config.operationKind,
-      runId: preflight.authorization.manifest.run.runId,
-      manifestSha256: preflight.authorization.manifest.manifestSha256,
-    });
+    const capabilities = validateOperatorOwnedProviderCapabilities(
+      await module.createExternalProviderCanaryCapabilities({
+        scenarioId: scenario.id,
+        operationKind: config.operationKind,
+        runId: preflight.authorization.manifest.run.runId,
+        manifestSha256: preflight.authorization.manifest.manifestSha256,
+      }),
+    );
     const result = await executeExternalProviderCanary({
       scenario,
       authorization,

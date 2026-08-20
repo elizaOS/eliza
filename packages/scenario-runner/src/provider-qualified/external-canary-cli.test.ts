@@ -35,6 +35,7 @@ import {
   runExternalProviderCanaryCli,
   stageExternalCanaryDirectory,
   transitionExternalCanaryRun,
+  validateOperatorOwnedProviderCapabilities,
   validateProtectedOperatorStateDirectory,
 } from "./external-canary-cli.ts";
 
@@ -289,6 +290,40 @@ describe("external provider-canary CLI", () => {
     await expect(
       loadPinnedExternalProviderCapabilityModule(moduleFile, "0".repeat(64)),
     ).rejects.toThrow(/digest mismatch/);
+  });
+
+  it("accepts only closed data-function capability objects without invoking accessors", () => {
+    const capabilities = {
+      observer: { begin() {} },
+      ingress: { execute() {} },
+      trajectories: { verify() {} },
+      semanticJudge: { judge() {} },
+      cleanup: { cleanup() {} },
+    };
+    expect(validateOperatorOwnedProviderCapabilities(capabilities)).toBe(
+      capabilities,
+    );
+
+    const accessor = vi.fn(() => ({ begin() {} }));
+    const forged = {
+      get observer() {
+        return accessor();
+      },
+      ingress: { execute() {} },
+      trajectories: { verify() {} },
+      semanticJudge: { judge() {} },
+      cleanup: { cleanup() {} },
+    };
+    expect(() => validateOperatorOwnedProviderCapabilities(forged)).toThrow(
+      /observer must be an enumerable data property/,
+    );
+    expect(accessor).not.toHaveBeenCalled();
+    expect(() =>
+      validateOperatorOwnedProviderCapabilities({
+        ...capabilities,
+        publisher: { publish() {} },
+      }),
+    ).toThrow(/unknown=publisher/);
   });
 
   it("never reflects operator secrets in fatal output", () => {
