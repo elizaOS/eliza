@@ -3,6 +3,7 @@ import { ModelType } from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { describe, expect, it } from "vitest";
 import {
+  buildScenarioRuntimeSettings,
   clearLlmWireMockEnvForLiveProvider,
   deterministicScheduledDispatchRenderText,
   isScheduledDispatchRenderPrompt,
@@ -37,6 +38,33 @@ describe("scenario runtime deterministic model mode", () => {
       env: {},
       pluginPackage: null,
     });
+  });
+
+  it("reserves model slots for the deterministic provider before required plugins initialize", () => {
+    expect(
+      buildScenarioRuntimeSettings(
+        "simulated",
+        "deterministic-model-provider",
+        { SKILLS_DIR: "/tmp/scenario-skills" },
+      ),
+    ).toMatchObject({
+      SKILLS_DIR: "/tmp/scenario-skills",
+      ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+      ELIZAOS_CLOUD_USE_INFERENCE: "false",
+    });
+  });
+
+  it("preserves live and provider-qualified Cloud routing defaults", () => {
+    expect(
+      buildScenarioRuntimeSettings("simulated", "openai", {}),
+    ).not.toHaveProperty("ELIZAOS_CLOUD_USE_INFERENCE");
+    expect(
+      buildScenarioRuntimeSettings(
+        "provider-qualified",
+        "deterministic-model-provider",
+        {},
+      ),
+    ).toEqual({});
   });
 
   it("loads scenario test helpers while the model provider comes from core testing", async () => {

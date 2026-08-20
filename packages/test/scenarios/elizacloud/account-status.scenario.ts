@@ -33,6 +33,24 @@ type R = AgentRuntime & {
   };
 };
 
+type CloudAuthHarness = {
+  authenticateWithApiKey: (input: {
+    apiKey: string;
+    userId?: string;
+    organizationId?: string;
+  }) => unknown;
+  clearAuth: () => void;
+  getCredentials: () => {
+    apiKey: string;
+    userId: string;
+    organizationId: string;
+  } | null;
+  getClient: () => {
+    getBaseUrl: () => string;
+    setBaseUrl: (baseUrl: string) => void;
+  };
+};
+
 let restoreFetch: (() => void) | undefined;
 let restoreCloudConfig: (() => void) | undefined;
 /** True once the balance endpoint was actually served by the mock. */
@@ -71,7 +89,28 @@ export default scenario({
         const priorEnvironment = new Map(
           cloudKeys.map((key) => [key, process.env[key]]),
         );
+        const cloudAuth = runtime.getService(
+          "CLOUD_AUTH",
+        ) as CloudAuthHarness | null;
+        if (
+          !cloudAuth ||
+          typeof cloudAuth.authenticateWithApiKey !== "function" ||
+          typeof cloudAuth.clearAuth !== "function" ||
+          typeof cloudAuth.getCredentials !== "function" ||
+          typeof cloudAuth.getClient !== "function"
+        ) {
+          throw new Error(
+            "CLOUD_AUTH service is unavailable or does not expose the production API-key authentication contract",
+          );
+        }
+        const priorCredentials = cloudAuth.getCredentials();
+        const priorCloudBaseUrl = cloudAuth.getClient().getBaseUrl();
         restoreCloudConfig = () => {
+          cloudAuth.clearAuth();
+          cloudAuth.getClient().setBaseUrl(priorCloudBaseUrl);
+          if (priorCredentials) {
+            cloudAuth.authenticateWithApiKey(priorCredentials);
+          }
           for (const key of cloudKeys) {
             runtime.setSetting(
               key,
@@ -143,6 +182,14 @@ export default scenario({
         process.env.ELIZAOS_CLOUD_BASE_URL = CLOUD_BASE_URL;
         process.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
         process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+
+        // Required plugins are initialized once before the shared corpus run,
+        // while scenario seeds run immediately before their own turns. Apply
+        // the same public authentication transition used by the application
+        // so this scenario neither relies on boot order nor fabricates the
+        // service's signed-in state.
+        cloudAuth.getClient().setBaseUrl(CLOUD_BASE_URL);
+        cloudAuth.authenticateWithApiKey({ apiKey: "cloud_scenario_key" });
 
         runtime.scenarioModelFixtures?.register(
           {

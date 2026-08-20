@@ -591,6 +591,25 @@ export function scenarioPgliteDirOverride(
   return null;
 }
 
+export function buildScenarioRuntimeSettings(
+  executionProfile: ScenarioExecutionProfile,
+  providerName: RuntimeFactoryResult["providerConfig"]["name"],
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  if (executionProfile !== "simulated") return {};
+  return {
+    ...(env.SKILLS_DIR ? { SKILLS_DIR: env.SKILLS_DIR } : {}),
+    ACTION_CALLBACK_VOICE_REWRITE: "false",
+    LIFEOPS_INBOX_PRIORITY_SCORING: "false",
+    ...(providerName === DETERMINISTIC_MODEL_PROVIDER_NAME
+      ? {
+          ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+          ELIZAOS_CLOUD_USE_INFERENCE: "false",
+        }
+      : {}),
+  };
+}
+
 export async function createScenarioRuntime(
   options?: CreateScenarioRuntimeOptions,
 ): Promise<RuntimeFactoryResult> {
@@ -696,16 +715,10 @@ export async function createScenarioRuntime(
   const character = createCharacter({
     name: options?.characterName ?? "ScenarioAgent",
   });
-  const scenarioRuntimeSettings =
-    executionProfile === "simulated"
-      ? {
-          ...(process.env.SKILLS_DIR
-            ? { SKILLS_DIR: process.env.SKILLS_DIR }
-            : {}),
-          ACTION_CALLBACK_VOICE_REWRITE: "false",
-          LIFEOPS_INBOX_PRIORITY_SCORING: "false",
-        }
-      : {};
+  const scenarioRuntimeSettings = buildScenarioRuntimeSettings(
+    executionProfile,
+    providerConfig.name,
+  );
   const runtime = new AgentRuntimeCtor({
     character,
     plugins: [],
@@ -715,7 +728,9 @@ export async function createScenarioRuntime(
     // does not consult process.env. Mirror the scenario env into runtime
     // settings so skills storage lands in the throwaway temp directory.
     // These settings exist only to keep the legacy simulated harness
-    // deterministic. Provider-qualified runs inherit the production defaults.
+    // deterministic. In particular, the deterministic provider owns its text
+    // and embedding slots before scenario-required plugins initialize.
+    // Provider-qualified runs inherit the production defaults.
     settings: scenarioRuntimeSettings,
   });
   const registeredPluginPackages = new Set<string>();
