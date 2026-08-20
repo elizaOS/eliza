@@ -39,6 +39,7 @@ import {
   detectTaskType,
   type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
+import { userTaskFromInitialTask } from "../services/user-task-text.js";
 import {
   ADMIN_STOP_META_KEY,
   markSessionAdministrativelyStopped,
@@ -3659,17 +3660,11 @@ async function runSend(
         const predecessorMeta = predecessor?.metadata as
           | Record<string, unknown>
           | undefined;
-        const rawPredecessorTask =
+        const predecessorTask = userTaskFromInitialTask(
           typeof predecessorMeta?.initialTask === "string"
             ? predecessorMeta.initialTask
-            : "";
-        const marker = "--- User Task ---";
-        const markerAt = rawPredecessorTask.indexOf(marker);
-        const predecessorTask = (
-          markerAt >= 0
-            ? rawPredecessorTask.slice(markerAt + marker.length)
-            : rawPredecessorTask
-        ).trim();
+            : "",
+        );
         if (predecessor && predecessorTask) {
           logger(runtime).info(
             `[TASKS:send] target session gone after interrupt; redirecting follow-up to a successor create (predecessor=${predecessor.id})`,
@@ -3733,13 +3728,9 @@ async function runSend(
       const meta = target.session.metadata as
         | Record<string, unknown>
         | undefined;
-      const rawPrior =
-        typeof meta?.initialTask === "string" ? meta.initialTask : "";
-      const marker = "--- User Task ---";
-      const markerAt = rawPrior.indexOf(marker);
-      const priorTask = (
-        markerAt >= 0 ? rawPrior.slice(markerAt + marker.length) : rawPrior
-      ).trim();
+      const priorTask = userTaskFromInitialTask(
+        typeof meta?.initialTask === "string" ? meta.initialTask : "",
+      );
       logger(runtime).info(
         `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting follow-up to a successor create`,
       );

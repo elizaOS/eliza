@@ -294,14 +294,10 @@ function extractVerifiableUrls(
 // We slice the user portion out so intent/URL detection never keys on the
 // injected route hint text (which literally contains the word "URL" and a
 // route-prefix URL).
-const USER_TASK_MARKER = "--- User Task ---";
+import { userTaskFromInitialTask } from "./user-task-text.js";
 
 function userTaskSlice(referenceText: string | undefined): string {
-  if (!referenceText) return "";
-  const idx = referenceText.lastIndexOf(USER_TASK_MARKER);
-  return idx >= 0
-    ? referenceText.slice(idx + USER_TASK_MARKER.length)
-    : referenceText;
+  return userTaskFromInitialTask(referenceText);
 }
 
 function shouldVerifyCompletionUrls(

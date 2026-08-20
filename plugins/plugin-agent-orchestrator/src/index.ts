@@ -77,6 +77,7 @@ import { activeWorkspaceContextProvider } from "./providers/active-workspace-con
 import { availableAgentsProvider } from "./providers/available-agents.js";
 import { codingSessionChangesProvider } from "./providers/coding-session-changes.js";
 import { AcpService } from "./services/acp-service.js";
+import { userTaskFromInitialTask } from "./services/user-task-text.js";
 import {
   createActiveSessionForwardHandler,
   isSessionBusy,
@@ -447,17 +448,11 @@ export function createAgentOrchestratorPlugin(): Plugin {
                         string,
                         unknown
                       >;
-                      const rawTask =
+                      const predecessorTask = userTaskFromInitialTask(
                         typeof meta.initialTask === "string"
                           ? meta.initialTask
-                          : "";
-                      const marker = "--- User Task ---";
-                      const markerAt = rawTask.indexOf(marker);
-                      const predecessorTask = (
-                        markerAt >= 0
-                          ? rawTask.slice(markerAt + marker.length)
-                          : rawTask
-                      ).trim();
+                          : "",
+                      );
                       const roomId = meta.roomId;
                       if (predecessorTask && typeof roomId === "string") {
                         runtime.logger?.info?.(
