@@ -252,8 +252,7 @@ export async function preflightCodingDispatch(
 	const configured = CONFIGURED_BACKEND_ENV_KEYS.some((key) =>
 		readSetting(runtime, key),
 	);
-	const backendAvailable =
-		configured || Boolean(await findCodingCliOnPath());
+	const backendAvailable = configured || Boolean(await findCodingCliOnPath());
 	if (!backendAvailable) {
 		guidance.push(
 			`No coding-agent backend was found on PATH (looked for ${CODING_CLI_BINARIES.join(", ")}). ` +
