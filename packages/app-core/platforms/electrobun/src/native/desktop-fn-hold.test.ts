@@ -94,6 +94,7 @@ function createManager() {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.clearAllMocks();
   fnMock.startResult = "started";
   fnMock.queue = [];
   fnMock.healthy = true;
@@ -183,22 +184,34 @@ darwinOnly("DesktopManager fn-hold push-to-talk bridge", () => {
     await manager.stopFnHoldMonitor();
   });
 
-  it("forwards the simultaneous Option-key chord as the Eliza summon shortcut", async () => {
+  it("toggles the existing window natively for each drained Option chord", async () => {
     const { manager, fnPushes, shortcutPushes } = createManager();
+    const window = {
+      ptr: 1,
+      on: vi.fn(),
+      off: vi.fn(),
+      isMinimized: vi.fn(() => false),
+      isMaximized: vi.fn(() => false),
+      focus: vi.fn(),
+    };
+    manager.setMainWindow(
+      window as unknown as Parameters<typeof manager.setMainWindow>[0],
+    );
     await manager.startFnHoldMonitor();
 
     fnMock.queue = ["both-options"];
-    vi.advanceTimersByTime(20);
+    await vi.advanceTimersByTimeAsync(20);
 
-    expect(shortcutPushes()).toEqual([
-      {
-        message: "desktopShortcutPressed",
-        payload: {
-          id: "chat-overlay",
-          accelerator: "LeftOption+RightOption",
-        },
-      },
-    ]);
+    const { orderOut, makeKeyAndOrderFront } = await import(
+      "./mac-window-effects"
+    );
+    expect(orderOut).toHaveBeenCalledTimes(1);
+
+    fnMock.queue = ["both-options"];
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(makeKeyAndOrderFront).toHaveBeenCalledTimes(1);
+    expect(shortcutPushes()).toHaveLength(0);
     expect(fnPushes()).toHaveLength(0);
     await manager.stopFnHoldMonitor();
   });

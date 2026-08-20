@@ -12,6 +12,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreLocation/CoreLocation.h>
 #import <EventKit/EventKit.h>
+#import <IOKit/hidsystem/IOLLEvent.h>
 #import <objc/runtime.h>
 #import <UserNotifications/UserNotifications.h>
 #include <atomic>
@@ -3133,6 +3134,12 @@ static CGEventRef elizaFnTapCallback(CGEventTapProxy proxy, CGEventType type,
 
 	if (type == kCGEventTapDisabledByTimeout ||
 		type == kCGEventTapDisabledByUserInput) {
+		// A disabled tap may miss one or both Option releases. Clear every
+		// latched side before re-enabling so a later chord always requires a
+		// fresh physical press instead of inheriting stale modifier state.
+		elizaLeftOptionIsDown.store(false);
+		elizaRightOptionIsDown.store(false);
+		elizaBothOptionsLatched.store(false);
 		if (elizaFnEventTap != nullptr) {
 			CGEventTapEnable(elizaFnEventTap, true);
 		}
@@ -3142,15 +3149,15 @@ static CGEventRef elizaFnTapCallback(CGEventTapProxy proxy, CGEventType type,
 	if (type == kCGEventFlagsChanged) {
 		int64_t keycode =
 			CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
-		// Physical Option keycodes are distinct (left 58, right 61), while the
-		// aggregate Alternate flag is not. Query combined-session key state on
-		// either transition so the chord fires exactly once when the second key
-		// goes down, then rearms only after either key is released.
+		// Physical Option keycodes are distinct (left 58, right 61), and the
+		// flagsChanged event carries the post-transition device-side masks. Read
+		// those masks directly: querying CGEventSourceKeyState from a head-insert
+		// tap can still return the state from before this event, causing a chord
+		// to fire late on release or not at all.
 		if (keycode == 58 || keycode == 61) {
-			bool leftDown = CGEventSourceKeyState(
-				kCGEventSourceStateCombinedSessionState, (CGKeyCode)58);
-			bool rightDown = CGEventSourceKeyState(
-				kCGEventSourceStateCombinedSessionState, (CGKeyCode)61);
+			CGEventFlags flags = CGEventGetFlags(event);
+			bool leftDown = (flags & NX_DEVICELALTKEYMASK) != 0;
+			bool rightDown = (flags & NX_DEVICERALTKEYMASK) != 0;
 			elizaLeftOptionIsDown.store(leftDown);
 			elizaRightOptionIsDown.store(rightDown);
 			bool bothDown = leftDown && rightDown;
@@ -3207,7 +3214,8 @@ extern "C" int elizaFnMonitorStart(void) {
 
 	NSThread *thread = [[NSThread alloc] initWithBlock:^{
 		CGEventMask mask = CGEventMaskBit(kCGEventFlagsChanged) |
-						   CGEventMaskBit(kCGEventKeyDown);
+						   CGEventMaskBit(kCGEventKeyDown) |
+						   CGEventMaskBit(kCGEventKeyUp);
 		CFMachPortRef tap = CGEventTapCreate(
 			kCGSessionEventTap, kCGHeadInsertEventTap,
 			kCGEventTapOptionListenOnly, mask, elizaFnTapCallback, nullptr);

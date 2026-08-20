@@ -366,6 +366,7 @@ export class DesktopManager {
   private fnHoldPoller: ReturnType<typeof setInterval> | null = null;
   private fnHoldWatchdog: ReturnType<typeof setInterval> | null = null;
   private fnHoldDownReported = false;
+  private optionChordToggleQueue: Promise<void> = Promise.resolve();
   private notificationCounter = 0;
   private notificationDiagnostics: NotificationDiagnosticsEntry[] = [];
   private sendToWebview: SendToWebview | null = null;
@@ -1088,10 +1089,7 @@ export class DesktopManager {
       const event = pollFnMonitor();
       if (event === null) break;
       if (event === "both-options") {
-        this.send("desktopShortcutPressed", {
-          id: "chat-overlay",
-          accelerator: "LeftOption+RightOption",
-        });
+        this.queueOptionChordToggle();
       } else if (event === "down" && !this.fnHoldDownReported) {
         this.fnHoldDownReported = true;
         this.send("desktopFnHoldChanged", { held: true, cancelled: false });
@@ -1112,6 +1110,38 @@ export class DesktopManager {
       this.fnHoldDownReported = false;
       this.send("desktopFnHoldChanged", { held: false, cancelled: true });
     }
+  }
+
+  /**
+   * Toggle the existing main pill directly from the native modifier monitor.
+   * Keeping this in the host makes the global chord work while the renderer is
+   * loading, backgrounded, or hidden. It deliberately refuses to restore a
+   * missing window: the tray's "Open Eliza" action remains the recovery path,
+   * and one chord can never create a duplicate window or runtime.
+   */
+  private queueOptionChordToggle(): void {
+    this.optionChordToggleQueue = this.optionChordToggleQueue
+      .then(async () => {
+        if (!this.mainWindow) {
+          logger.warn(
+            "[Desktop] Ignoring Option chord because the main window is absent; use the tray Open Eliza action",
+          );
+          return;
+        }
+        const visible = (await this.isWindowVisible()).visible;
+        const focused = (await this.isWindowFocused()).focused;
+        if (focused && visible) {
+          await this.hideWindow();
+          return;
+        }
+        await this.showWindow();
+        await this.focusWindow();
+      })
+      .catch((err: unknown) => {
+        logger.warn(
+          `[Desktop] Failed to toggle the main window from the Option chord: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
   }
 
   // MARK: - Auto Launch

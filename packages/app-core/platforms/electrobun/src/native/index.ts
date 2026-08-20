@@ -1,5 +1,6 @@
 /** Implements Electrobun desktop index ts behavior for app-core shell integration. */
 import type { BrowserWindow } from "electrobun/bun";
+import { getBrandConfig } from "../brand-config";
 import { logger } from "../logger";
 import type { SendToWebview } from "../types.js";
 import { getAgentManager } from "./agent";
@@ -11,6 +12,7 @@ import { getFusedWakeManager } from "./fused-wake";
 import { getGatewayDiscovery } from "./gateway";
 import { getGpuWindowManager } from "./gpu-window";
 import { getLocationManager } from "./location";
+import { isFnMonitorHealthy } from "./mac-window-effects";
 import { getMusicPlayerManager } from "./music-player";
 import { getPermissionManager } from "./permissions";
 import { getScreenCaptureManager } from "./screencapture";
@@ -28,6 +30,22 @@ export function initializeNativeModules(
   const desktop = getDesktopManager();
   desktop.setMainWindow(mainWindow);
   desktop.setSendToWebview(sendToWebview);
+  // The two-Option show/hide chord is native shell behavior, so start its
+  // modifier tap with the local macOS host rather than waiting for renderer
+  // boot. Cloud-only builds retain their existing no-global-key-monitor policy.
+  if (process.platform === "darwin" && !getBrandConfig().cloudOnly) {
+    void desktop.startFnHoldMonitor().then(({ status }) => {
+      if (status === "started") {
+        logger.info(
+          `[Native] macOS modifier monitor started; healthy=${isFnMonitorHealthy()}`,
+        );
+        return;
+      }
+      logger.warn(
+        `[Native] macOS modifier monitor did not start (${status}); the tray Open Eliza action remains available`,
+      );
+    });
+  }
 
   getAgentManager().setSendToWebview(sendToWebview);
   getBrowserWorkspaceManager().setSendToWebview(sendToWebview);
