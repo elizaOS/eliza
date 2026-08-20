@@ -20,6 +20,15 @@ function flowMap(depth: number): string {
 	return `${"{a:".repeat(depth)}1${"}".repeat(depth)}`;
 }
 
+function blockMap(depth: number): string {
+	const lines = Array.from(
+		{ length: depth },
+		(_, index) => `${"  ".repeat(index)}level${index}:`,
+	);
+	lines.push(`${"  ".repeat(depth)}leaf: value`);
+	return lines.join("\n");
+}
+
 describe("skill-items SKILL.md frontmatter nest bound", () => {
 	it("parses shallow installer frontmatter", () => {
 		const parsed = _splitFrontmatter(
@@ -47,6 +56,29 @@ describe("skill-items SKILL.md frontmatter nest bound", () => {
 				),
 			),
 		).toBeNull();
+	});
+
+	it("accepts a block map at the nest bound", () => {
+		const parsed = _splitFrontmatter(
+			wrapFrontmatter(blockMap(MAX_SKILL_FRONTMATTER_YAML_DEPTH)),
+		);
+		expect(parsed).not.toBeNull();
+		expect(parsed?.frontmatter).toHaveProperty("level0");
+	});
+
+	it("returns null for a block map one level over the nest bound", () => {
+		expect(
+			_splitFrontmatter(
+				wrapFrontmatter(blockMap(MAX_SKILL_FRONTMATTER_YAML_DEPTH + 1)),
+			),
+		).toBeNull();
+	});
+
+	it("does not count deeply indented literal-block content as YAML nesting", () => {
+		const content = `description: |\n${" ".repeat(66)}deep prose is scalar content`;
+		const parsed = _splitFrontmatter(wrapFrontmatter(content));
+		expect(parsed).not.toBeNull();
+		expect(parsed?.frontmatter.description).toContain("deep prose");
 	});
 
 	it("fail-closes on the 8000-deep flow payload that overflowed yaml.parse", () => {
