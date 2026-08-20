@@ -1,18 +1,78 @@
-# e2e coverage gates
+# e2e and synthetic-world coverage gates
 
-Two complementary coverage gates live in this directory. Both read real source
-statically (no runtime boot) and share `inventory.ts`.
+Three complementary coverage gates live in this directory. They read real
+production registration source and configuration statically, without booting a
+provider or importing plugin side effects.
 
-1. **Surface coverage ship-gate (issue #8802)** — every slash command, pre-LLM
+1. **Canonical runtime-surface inventory (issue #22897)** — every maintained
+   plugin and host registration is inventoried across actions, promoted
+   subactions, providers, services, evaluators, events, routes, views, models,
+   connector ingress/egress, scheduled workers, queues, native bridges, and
+   Cloud services. Every row is covered by an executable artifact with an exact
+   boundary signal or has one explicit shrinking-baseline disposition.
+2. **Surface coverage ship-gate (issue #8802)** — every slash command, pre-LLM
    shortcut (#8791), plugin-declared HTTP route, and view must have a real
    recorded e2e or a written exemption.
-2. **Per-plugin keyless-e2e coverage gate (issue #8801)** — every plugin that
-   exposes an agent surface (actions and/or a message connector) must ship at
-   least one keyless e2e scenario, or be ratcheted in the baseline.
+3. **Per-plugin keyless-e2e compatibility gate (issue #8801)** — the historical
+   action/connector package ratchet remains available while consumers migrate
+   to the row-level canonical inventory.
+
+## 1. Canonical runtime-surface inventory (issue #22897)
+
+`runtime-surface-inventory.ts` follows typed `Plugin` registrations, imported
+spreads and arrays, factories, promoted subactions, platform exports, host
+registration calls, Cloud route modules and service entry points, Worker queue
+and cron bindings, and Capacitor bridge registrations. It does not infer a
+surface from a directory name such as `actions/` or import application code.
+
+Each generated row records:
+
+- owner, package, production source and registration field;
+- runtime/platform requirements and external dependency set;
+- mock availability/fidelity and reset support;
+- deterministic and live-model scenario ids and Cloud E2E cells;
+- evidence class, exact boundary artifacts/signals and owning #22896 workstream;
+- one of `covered`, `exempt`, `platform-deferred`,
+  `provider-qualified-only`, or `unsupported-product`, with a written reason.
+
+The same artifact includes a census of every maintained plugin plus the core,
+agent, and app-core hosts. A package with no production runtime registration is
+retained as `no-runtime-registration` with a written reason instead of silently
+disappearing from the inventory.
+
+`covered` is derived, never baselined: an executable keyless scenario or Cloud
+E2E cell must both own the package and contain the exact registered boundary
+signal. Shape-only tests do not count. All other current rows live in
+`runtime-surface-baseline.json`; a new row, a removed row, a now-covered row
+left in the baseline, a placeholder reason, or an artifact-free covered claim
+fails the ratchet. The baseline may only shrink.
+
+Run the canonical gate and generate its machine-readable and reviewer-readable
+artifacts with:
+
+```bash
+bun run audit:runtime-surface-coverage
+bun test packages/scripts/e2e-coverage/runtime-surface-inventory.test.ts
+bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
+```
+
+The report command writes `runtime-surfaces.json`, `runtime-surfaces.md`, and
+`runtime-surfaces.html` beside the #8802 matrix. The unchanged scenario PR
+workflow uploads that directory, making the same generated inventory available
+to the Cloud test matrix and the parent #22896 workstreams.
+
+### #8801/#8802 compatibility
+
+`bun run audit:e2e-coverage` runs the canonical #22897 row gate and then the
+historical #8801 package gate, so existing CI callers gain the stronger check
+without losing the former regression contract. `bun run audit:e2e-coverage:legacy`
+preserves the exact former #8801-only output for scripts that consume its
+package-level result. The #8802 matrix files and viewer names are unchanged;
+the new runtime artifacts are additive.
 
 ---
 
-## 1. Surface coverage ship-gate (issue #8802)
+## 2. Surface coverage ship-gate (issue #8802)
 
 The umbrella coverage gate: every slash command, pre-LLM shortcut (#8791),
 plugin-declared HTTP route, and view that ships a real user-triggerable effect
@@ -90,7 +150,7 @@ bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir r
 
 ---
 
-## 2. Per-plugin keyless-e2e coverage gate (issue #8801)
+## 3. Per-plugin keyless-e2e compatibility gate (issue #8801)
 
 A plugin that exposes an agent surface — actions and/or a message connector —
 but ships **zero keyless e2e coverage** is a broken pipeline: a capability users
