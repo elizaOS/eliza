@@ -154,14 +154,14 @@ test("concurrent human replies share one compact typing row", async ({
 test("all five longer rooms keep rotating without hiding usable thread space", async ({
   page,
 }) => {
-  test.setTimeout(170_000);
+  test.setTimeout(230_000);
   await page.setViewportSize({ width: 390, height: 1275 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
   const phone = page.locator(".landing-iphone");
   await expect(phone).toHaveAttribute("data-demo-cycle", "1", {
-    timeout: 150_000,
+    timeout: 210_000,
   });
   await expect(phone).toHaveAttribute("data-demo-scenario", "friends", {
     timeout: 5_000,

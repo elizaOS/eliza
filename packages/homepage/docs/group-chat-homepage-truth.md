@@ -14,8 +14,9 @@ what still needs connector-by-connector runtime proof.
 - A continuous rotation through friends, co-parenting, household, trip, and
   community rooms, provided each room resets cleanly and uses only its own
   visible conversation context.
-- An intermediate and final recap in each room so the demo shows how Eliza
-  tracks a plan as the conversation changes, not only the terminal answer.
+- Four evolving recaps in each room, including a late constraint after the
+  apparent decision, so the demo shows how Eliza keeps a plan coherent as the
+  conversation changes instead of jumping straight to a terminal answer.
 
 The demo must remain illustrative, use fictional names, and keep every Eliza
 statement inside the bounded current-conversation capability contract enforced

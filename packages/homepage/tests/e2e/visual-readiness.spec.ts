@@ -66,9 +66,9 @@ test("reduced motion renders the settled friends room without category labels", 
     "data-demo-visited",
     "friends,co-parenting,household,trip,community",
   );
-  await expect(demo).toHaveAttribute("data-demo-messages", "16");
+  await expect(demo).toHaveAttribute("data-demo-messages", "24");
   await expect(page.locator(".landing-scenario-strip")).toHaveCount(0);
-  await expect(page.locator(".landing-demo-card")).toHaveCount(3);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(4);
   await expect(page.getByText(/of 5$/, { exact: false })).toHaveCount(0);
 
   const assistantMessages = await page
