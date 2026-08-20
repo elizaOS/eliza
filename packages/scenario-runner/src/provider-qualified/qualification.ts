@@ -36,7 +36,7 @@ import {
 } from "./trajectory-verifier.ts";
 
 export const PROVIDER_OBSERVER_EVIDENCE_SCHEMA =
-  "eliza.provider-qualified-observer-evidence.v3" as const;
+  "eliza.provider-qualified-observer-evidence.v4" as const;
 export const SEMANTIC_JUDGE_EVIDENCE_SCHEMA =
   "eliza.provider-qualified-semantic-evidence.v1" as const;
 
@@ -1354,7 +1354,8 @@ function verifyConnectorBindings(
   for (const { observation, contract } of assignment) {
     const binding = byObservationId.get(observation.observationId);
     const contractCapabilities =
-      contract.kind === "provider-effect"
+      contract.kind === "provider-effect" ||
+      contract.kind === "durable-approval"
         ? [contract.operation]
         : contract.kind === "provider-no-effect"
           ? contract.effectKinds
@@ -1583,6 +1584,7 @@ function verifyTrajectoryReferences(
 function verifyObservationFreshness(
   assignment: readonly ObservationAssignment[],
   payload: ProviderObserverEvidencePayload,
+  trajectories: VerifiedScenarioTrajectorySet,
   nowMs: number,
   clockSkewMs: number,
   reasons: string[],
@@ -1600,8 +1602,13 @@ function verifyObservationFreshness(
       observation.observedAtIso,
       `observation:${observation.observationId}.observedAtIso`,
     );
+    const earliestObservationAt =
+      contract.kind === "durable-approval" &&
+      contract.transitionGroupId !== undefined
+        ? scenarioStartedAt
+        : scenarioEndedAt;
     if (
-      observedAt < scenarioEndedAt - clockSkewMs ||
+      observedAt < earliestObservationAt - clockSkewMs ||
       observedAt > nowMs + clockSkewMs ||
       nowMs - observedAt > contract.maxObservationAgeMs + clockSkewMs
     ) {
@@ -1618,9 +1625,37 @@ function verifyObservationFreshness(
         observation.observationEndedAtIso,
         `observation:${observation.observationId}.observationEndedAtIso`,
       );
+      const referencedStages = observation.trajectoryRefs.flatMap(
+        (reference) => {
+          const trajectory = trajectories.trajectories.find(
+            (candidate) =>
+              candidate.artifact.trajectoryId === reference.trajectoryId,
+          );
+          const stage = trajectory?.stages.find(
+            (candidate) => candidate.stageId === reference.stageId,
+          );
+          return stage ? [stage] : [];
+        },
+      );
+      const coverageInvalid =
+        contract.kind !== "provider-no-effect"
+          ? true
+          : contract.intervalCoverage === "full-scenario"
+            ? intervalEnd < scenarioEndedAt - clockSkewMs
+            : (() => {
+                if (referencedStages.length !== 1) return true;
+                const stageStartedAt = timestamp(
+                  referencedStages[0]?.startedAtIso ?? "",
+                  `observation:${observation.observationId}.referencedStage.startedAtIso`,
+                );
+                return (
+                  intervalEnd > stageStartedAt ||
+                  stageStartedAt - intervalEnd > clockSkewMs
+                );
+              })();
       if (
         intervalStart > scenarioStartedAt ||
-        intervalEnd < scenarioEndedAt - clockSkewMs ||
+        coverageInvalid ||
         intervalEnd < intervalStart
       ) {
         reasons.push(`observation:${observation.observationId}:interval-gap`);
@@ -1635,6 +1670,84 @@ function verifyObservationFreshness(
       ) {
         reasons.push(`observation:${observation.observationId}:state-changed`);
       }
+    }
+  }
+}
+
+function verifyDurableApprovalTransitions(
+  assignment: readonly ObservationAssignment[],
+  trajectories: VerifiedScenarioTrajectorySet,
+  reasons: string[],
+): void {
+  const groups = new Map<string, ObservationAssignment[]>();
+  for (const row of assignment) {
+    if (
+      row.contract.kind !== "durable-approval" ||
+      row.contract.transitionGroupId === undefined
+    ) {
+      continue;
+    }
+    const group = groups.get(row.contract.transitionGroupId) ?? [];
+    group.push(row);
+    groups.set(row.contract.transitionGroupId, group);
+  }
+  const stageFor = (row: ObservationAssignment) => {
+    if (row.observation.trajectoryRefs.length !== 1) return undefined;
+    const reference = row.observation.trajectoryRefs[0];
+    const trajectory = trajectories.trajectories.find(
+      (candidate) => candidate.artifact.trajectoryId === reference.trajectoryId,
+    );
+    return trajectory?.stages.find(
+      (candidate) => candidate.stageId === reference.stageId,
+    );
+  };
+  for (const [groupId, rows] of groups) {
+    const ordered = [...rows].sort((left, right) => {
+      const leftIndex =
+        left.contract.kind === "durable-approval"
+          ? (left.contract.transitionIndex ?? -1)
+          : -1;
+      const rightIndex =
+        right.contract.kind === "durable-approval"
+          ? (right.contract.transitionIndex ?? -1)
+          : -1;
+      return leftIndex - rightIndex;
+    });
+    const approvals = ordered.map((row) =>
+      row.observation.kind === "durable-approval" ? row.observation : undefined,
+    );
+    const stages = ordered.map(stageFor);
+    const [pending, approved, done] = approvals;
+    const [proposalStage, approvalStage, completionStage] = stages;
+    const hashesCorrelate =
+      pending &&
+      approved &&
+      done &&
+      pending.approvalIdSha256 === approved.approvalIdSha256 &&
+      approved.approvalIdSha256 === done.approvalIdSha256 &&
+      pending.requestPayloadSha256 === approved.requestPayloadSha256 &&
+      approved.requestPayloadSha256 === done.requestPayloadSha256;
+    if (!hashesCorrelate) {
+      reasons.push(`approval-transition:${groupId}:correlation-mismatch`);
+    }
+    if (
+      !pending ||
+      !approved ||
+      !done ||
+      !proposalStage ||
+      !approvalStage ||
+      !completionStage ||
+      proposalStage.stageId === approvalStage.stageId ||
+      timestamp(pending.observedAtIso, "pending.observedAtIso") >=
+        timestamp(approvalStage.startedAtIso, "approvalStage.startedAtIso") ||
+      timestamp(approved.observedAtIso, "approved.observedAtIso") >
+        timestamp(done.observedAtIso, "done.observedAtIso") ||
+      timestamp(proposalStage.endedAtIso, "proposalStage.endedAtIso") >
+        timestamp(approvalStage.startedAtIso, "approvalStage.startedAtIso") ||
+      timestamp(approvalStage.startedAtIso, "approvalStage.startedAtIso") >
+        timestamp(completionStage.startedAtIso, "completionStage.startedAtIso")
+    ) {
+      reasons.push(`approval-transition:${groupId}:phase-order-invalid`);
     }
   }
 }
@@ -2193,8 +2306,14 @@ export function deriveProviderQualification(
   verifyObservationFreshness(
     effectiveAssignment,
     payload,
+    input.trajectories,
     nowMs,
     clockSkewMs,
+    reasons,
+  );
+  verifyDurableApprovalTransitions(
+    effectiveAssignment,
+    input.trajectories,
     reasons,
   );
   const guarantees = verifyProviderAssurances(

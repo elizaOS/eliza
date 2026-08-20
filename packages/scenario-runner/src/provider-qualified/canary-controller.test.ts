@@ -74,6 +74,19 @@ function bindings(testCase: CanaryCase): ProviderRunBindings {
   const connectionRefSha256 = hash(
     `${testCase.connectorProvider}-canary-connection`,
   );
+  const durableApprovals = (testCase.scenario.finalChecks ?? []).filter(
+    (check) => check.type === "durableApprovalObserved",
+  );
+  const providerNoEffects = (testCase.scenario.finalChecks ?? []).filter(
+    (check) => check.type === "providerNoEffectObserved",
+  );
+  const durableObserverIds = [
+    ...new Set(durableApprovals.map((check) => String(check.observerId))),
+  ].filter((observerId) => observerId !== testCase.observerId);
+  const approvalConnectionRefSha256 = hash(
+    `${testCase.provider}-approval-ledger-connection`,
+  );
+  const approvalAccountRefSha256 = hash(testCase.accountId);
   return {
     runId: `run-${testCase.provider}-canary`,
     runNonce: "a".repeat(64),
@@ -86,6 +99,10 @@ function bindings(testCase: CanaryCase): ProviderRunBindings {
           observerId: testCase.observerId,
           keyId: hash(`${testCase.provider}-observer-key`),
         },
+        ...durableObserverIds.map((observerId) => ({
+          observerId,
+          keyId: hash(`${observerId}-key`),
+        })),
       ],
     },
     target: {
@@ -113,6 +130,16 @@ function bindings(testCase: CanaryCase): ProviderRunBindings {
         connectionRefSha256,
         environment: "operator-canary",
       },
+      ...(durableApprovals.length === 0
+        ? []
+        : [
+            {
+              provider: "approval-ledger",
+              accountRefSha256: approvalAccountRefSha256,
+              connectionRefSha256: approvalConnectionRefSha256,
+              environment: "operator-canary",
+            },
+          ]),
     ],
     ingress: {
       kind: "provider-api",
@@ -132,6 +159,30 @@ function bindings(testCase: CanaryCase): ProviderRunBindings {
         capability: testCase.operation,
         authorizationGrantSha256: hash(`${testCase.provider}-canary-grant`),
       },
+      ...providerNoEffects.flatMap(() =>
+        ["booking-order-create", "payment-create"].map((capability) => ({
+          provider: testCase.connectorProvider,
+          accountRefSha256,
+          connectionRefSha256,
+          capability,
+          authorizationGrantSha256: hash(
+            `${testCase.provider}-${capability}-read-grant`,
+          ),
+        })),
+      ),
+      ...(durableApprovals.length === 0
+        ? []
+        : [
+            {
+              provider: "approval-ledger",
+              accountRefSha256: approvalAccountRefSha256,
+              connectionRefSha256: approvalConnectionRefSha256,
+              capability: "book_travel",
+              authorizationGrantSha256: hash(
+                `${testCase.provider}-approval-ledger-read-grant`,
+              ),
+            },
+          ]),
     ],
     observationContracts: [
       {
@@ -152,6 +203,42 @@ function bindings(testCase: CanaryCase): ProviderRunBindings {
         readbackRequired: true,
         idempotencyRequired: true,
       },
+      ...durableApprovals.map((check) => ({
+        contractId: String(check.name),
+        kind: "durable-approval" as const,
+        observerId: String(check.observerId),
+        sourceKind: "durable-database" as const,
+        system: String(check.provider),
+        environment: "operator-canary",
+        connectorProvider: "approval-ledger",
+        accountRefSha256: approvalAccountRefSha256,
+        connectionRefSha256: approvalConnectionRefSha256,
+        requiredCount: check.minCount ?? 1,
+        maxObservationAgeMs: 60_000,
+        operation: String(check.operation),
+        state: String(check.state),
+        transitionGroupId: check.transitionGroupId,
+        transitionIndex: check.transitionIndex,
+        trajectoryPhase: check.trajectoryPhase,
+      })),
+      ...providerNoEffects.map((check) => ({
+        contractId: String(check.name),
+        kind: "provider-no-effect" as const,
+        observerId: String(check.observerId),
+        sourceKind: "provider-api" as const,
+        system: String(check.provider),
+        environment: "operator-canary",
+        connectorProvider: String(check.connectorProvider),
+        accountRefSha256,
+        connectionRefSha256,
+        requiredCount: check.minCount ?? 1,
+        maxObservationAgeMs: 60_000,
+        provider: String(check.provider),
+        effectKinds: ["booking-order-create", "payment-create"] as const,
+        scopeSha256: hash(`${testCase.provider}-preapproval-effects`),
+        intervalCoverage: "before-referenced-stage" as const,
+        trajectoryPhase: "approval" as const,
+      })),
     ],
     failureProbes: [
       {

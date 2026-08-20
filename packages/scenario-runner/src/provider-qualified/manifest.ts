@@ -18,7 +18,7 @@ import {
 } from "./operation-binding.ts";
 
 export const PROVIDER_QUALIFICATION_MANIFEST_SCHEMA =
-  "eliza.provider-qualified-manifest.v2" as const;
+  "eliza.provider-qualified-manifest.v3" as const;
 
 type JsonPrimitive = string | number | boolean | null;
 export type CanonicalJsonValue =
@@ -63,6 +63,9 @@ export type DurableApprovalObservationContract = ObservationContractBase<
 > & {
   operation: string;
   state: string;
+  transitionGroupId?: string;
+  transitionIndex?: number;
+  trajectoryPhase?: "proposal" | "approval" | "completion";
 };
 
 export type DurableDraftObservationContract = ObservationContractBase<
@@ -90,7 +93,8 @@ export type ProviderNoEffectObservationContract = ObservationContractBase<
   provider: string;
   effectKinds: readonly [string, ...string[]];
   scopeSha256: string;
-  intervalCoverage: "full-scenario";
+  intervalCoverage: "full-scenario" | "before-referenced-stage";
+  trajectoryPhase?: "approval";
 };
 
 export type ScheduledTaskObservationContract = ObservationContractBase<
@@ -795,13 +799,43 @@ function validateContractFields(
       contract,
       path,
       [...baseRequired, "operation", "state"],
-      optional,
+      [...optional, "transitionGroupId", "transitionIndex", "trajectoryPhase"],
     );
     if (contract.sourceKind !== "durable-database") {
       fail(`${path}.sourceKind`, 'must be "durable-database"');
     }
     requireNonEmptyString(contract.operation, `${path}.operation`);
     requireNonEmptyString(contract.state, `${path}.state`);
+    const transitionFields = [
+      contract.transitionGroupId,
+      contract.transitionIndex,
+      contract.trajectoryPhase,
+    ];
+    if (transitionFields.some((value) => value !== undefined)) {
+      if (transitionFields.some((value) => value === undefined)) {
+        fail(
+          path,
+          "must provide all durable transition binding fields together",
+        );
+      }
+      requireNonEmptyString(
+        contract.transitionGroupId,
+        `${path}.transitionGroupId`,
+      );
+      if (
+        !Number.isSafeInteger(contract.transitionIndex) ||
+        (contract.transitionIndex as number) < 0
+      ) {
+        fail(`${path}.transitionIndex`, "must be a non-negative integer");
+      }
+      if (
+        contract.trajectoryPhase !== "proposal" &&
+        contract.trajectoryPhase !== "approval" &&
+        contract.trajectoryPhase !== "completion"
+      ) {
+        fail(`${path}.trajectoryPhase`, "is unsupported");
+      }
+    }
   } else if (contract.kind === "durable-draft") {
     requireExactKeys(contract, path, [...baseRequired, "state"], optional);
     if (contract.sourceKind !== "durable-database") {
@@ -850,7 +884,7 @@ function validateContractFields(
         "scopeSha256",
         "intervalCoverage",
       ],
-      optional,
+      [...optional, "trajectoryPhase"],
     );
     if (contract.sourceKind !== "provider-api") {
       fail(`${path}.sourceKind`, 'must be "provider-api"');
@@ -869,8 +903,26 @@ function validateContractFields(
     if (new Set(contract.effectKinds).size !== contract.effectKinds.length) {
       fail(`${path}.effectKinds`, "cannot contain duplicates");
     }
-    if (contract.intervalCoverage !== "full-scenario") {
-      fail(`${path}.intervalCoverage`, 'must be "full-scenario"');
+    if (
+      contract.intervalCoverage !== "full-scenario" &&
+      contract.intervalCoverage !== "before-referenced-stage"
+    ) {
+      fail(`${path}.intervalCoverage`, "is unsupported");
+    }
+    if (
+      contract.intervalCoverage === "before-referenced-stage" &&
+      contract.trajectoryPhase !== "approval"
+    ) {
+      fail(`${path}.trajectoryPhase`, 'must be "approval"');
+    }
+    if (
+      contract.intervalCoverage === "full-scenario" &&
+      contract.trajectoryPhase !== undefined
+    ) {
+      fail(
+        `${path}.trajectoryPhase`,
+        "is only valid for a stage-bounded interval",
+      );
     }
   } else if (contract.kind === "scheduled-task") {
     requireExactKeys(contract, path, [...baseRequired, "state"], optional);
@@ -904,6 +956,18 @@ function contractMatchesCheck(
     scalarString(check.observerId, `${path}.observerId`) !== contract.observerId
   ) {
     fail(path, "observer binding differs from the authored final check");
+  }
+  if (contract.kind === "durable-approval") {
+    if (
+      check.transitionGroupId !== contract.transitionGroupId ||
+      check.transitionIndex !== contract.transitionIndex ||
+      check.trajectoryPhase !== contract.trajectoryPhase
+    ) {
+      fail(
+        path,
+        "durable transition binding differs from the authored final check",
+      );
+    }
   }
   if (scalarString(check.provider, `${path}.provider`) !== contract.system) {
     fail(path, "system binding differs from the authored final check");
@@ -966,10 +1030,42 @@ function contractMatchesCheck(
   }
   if (
     contract.kind === "provider-no-effect" &&
-    check.type === "providerNoEffectObserved" &&
-    check.intervalCoversScenario === false
+    check.type === "providerNoEffectObserved"
   ) {
-    fail(path, "must require an observation interval covering the scenario");
+    const stageBounded = check.intervalEndsBeforeReferencedStage === true;
+    if (
+      stageBounded !==
+        (contract.intervalCoverage === "before-referenced-stage") ||
+      check.trajectoryPhase !== contract.trajectoryPhase
+    ) {
+      fail(
+        path,
+        "no-effect phase binding differs from the authored final check",
+      );
+    }
+    if (
+      (contract.intervalCoverage === "full-scenario" &&
+        check.intervalCoversScenario === false) ||
+      (contract.intervalCoverage === "before-referenced-stage" &&
+        check.intervalCoversScenario !== false)
+    ) {
+      fail(
+        path,
+        "no-effect interval coverage differs from the authored final check",
+      );
+    }
+  }
+  if (
+    contract.kind !== "durable-approval" &&
+    (check.transitionGroupId !== undefined ||
+      check.transitionIndex !== undefined ||
+      (check.trajectoryPhase !== undefined &&
+        contract.kind !== "provider-no-effect"))
+  ) {
+    fail(
+      path,
+      "durable transition fields are unsupported for this observation kind",
+    );
   }
 }
 
@@ -1334,6 +1430,60 @@ function validateBindings(
         }
       }
       hasProviderBoundary = true;
+    }
+  }
+  const approvalTransitionGroups = new Map<
+    string,
+    DurableApprovalObservationContract[]
+  >();
+  for (const contract of bindings.observationContracts) {
+    if (
+      contract.kind !== "durable-approval" ||
+      contract.transitionGroupId === undefined
+    ) {
+      continue;
+    }
+    const group =
+      approvalTransitionGroups.get(contract.transitionGroupId) ?? [];
+    group.push(contract);
+    approvalTransitionGroups.set(contract.transitionGroupId, group);
+  }
+  const expectedTransition = [
+    { state: "pending", phase: "proposal" },
+    { state: "approved", phase: "approval" },
+    { state: "done", phase: "approval" },
+  ] as const;
+  for (const [groupId, group] of approvalTransitionGroups) {
+    const ordered = [...group].sort(
+      (left, right) =>
+        (left.transitionIndex as number) - (right.transitionIndex as number),
+    );
+    const anchor = ordered[0];
+    if (
+      ordered.length !== expectedTransition.length ||
+      !anchor ||
+      ordered.some((contract, index) => {
+        const expected = expectedTransition[index];
+        return (
+          !expected ||
+          contract.transitionIndex !== index ||
+          contract.state !== expected.state ||
+          contract.trajectoryPhase !== expected.phase ||
+          contract.requiredCount !== 1 ||
+          contract.observerId !== anchor.observerId ||
+          contract.system !== anchor.system ||
+          contract.environment !== anchor.environment ||
+          contract.connectorProvider !== anchor.connectorProvider ||
+          contract.accountRefSha256 !== anchor.accountRefSha256 ||
+          contract.connectionRefSha256 !== anchor.connectionRefSha256 ||
+          contract.operation !== anchor.operation
+        );
+      })
+    ) {
+      fail(
+        "bindings.observationContracts",
+        `transition group "${groupId}" must bind one correlated pending/proposal, approved/approval, and done/approval observation`,
+      );
     }
   }
   if (!hasProviderBoundary) {

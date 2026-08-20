@@ -277,6 +277,12 @@ type TrustedObservationFilters = {
   resourceId?: StringMatcher;
   state?: StringMatcher;
   minCount?: number;
+  /** Correlates ordered durable approval states in provider-qualified evidence. */
+  transitionGroupId?: string;
+  /** Zero-based state position within the correlated transition. */
+  transitionIndex?: number;
+  /** Scenario phase whose signed trajectory stage caused the observation. */
+  trajectoryPhase?: "proposal" | "approval" | "completion";
 };
 type DefinitionCountRequiredSlot = {
   label?: string;
@@ -457,6 +463,8 @@ export type ScenarioFinalCheck =
       TrustedObservationFilters & {
         /** Require the observation window to cover the full scenario. Defaults to true. */
         intervalCoversScenario?: boolean;
+        /** End the unchanged-state interval at the referenced approval stage. */
+        intervalEndsBeforeReferencedStage?: boolean;
       })
   | (CheckBase<"scheduledTaskObserved"> & TrustedObservationFilters)
   | (CheckBase<"memoryWriteOccurred"> & {

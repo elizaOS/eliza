@@ -135,6 +135,9 @@ describe("trusted-observation final-check schema", () => {
             operation: "calendar.create",
             state: ["pending", "approved"],
             minCount: 1,
+            transitionGroupId: "calendar-approval",
+            transitionIndex: 0,
+            trajectoryPhase: "proposal",
           },
           {
             type: "durableDraftObserved",
@@ -150,7 +153,9 @@ describe("trusted-observation final-check schema", () => {
           {
             type: "providerNoEffectObserved",
             provider: "imessage",
-            intervalCoversScenario: true,
+            intervalCoversScenario: false,
+            intervalEndsBeforeReferencedStage: true,
+            trajectoryPhase: "approval",
           },
           {
             type: "scheduledTaskObserved",

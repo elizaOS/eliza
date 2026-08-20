@@ -1307,6 +1307,10 @@ type TrustedObservationCheck = {
   state?: string | string[];
   minCount?: number;
   intervalCoversScenario?: boolean;
+  intervalEndsBeforeReferencedStage?: boolean;
+  transitionGroupId?: string;
+  transitionIndex?: number;
+  trajectoryPhase?: "proposal" | "approval" | "completion";
 };
 
 const TRUSTED_OBSERVATION_KIND_BY_CHECK: Record<
@@ -1470,6 +1474,7 @@ function runTrustedObservationCheck(
     }
     return (
       check.type !== "providerNoEffectObserved" ||
+      check.intervalEndsBeforeReferencedStage === true ||
       check.intervalCoversScenario === false ||
       observationCoversScenario(
         observation,

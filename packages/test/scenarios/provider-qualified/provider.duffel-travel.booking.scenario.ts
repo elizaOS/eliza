@@ -1,9 +1,9 @@
 /**
  * Defines a two-turn Duffel hold canary over the production approval boundary.
  * The signed manifest binds the raw offer, itinerary, passenger, and hold-only
- * input separately; this data-only schema has no turn-level operation-binding
- * reference and `providerNoEffectObserved` has no turn/stage window, so the
- * external controller must prove the pre-approval no-write checkpoint.
+ * input separately. Correlated approval-transition evidence binds the same
+ * durable request to proposal and approval stages, while a stage-bounded
+ * provider snapshot proves the pre-approval no-write checkpoint.
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -49,6 +49,57 @@ export default scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "durableApprovalObserved",
+      name: "duffel-canary-approval-pending",
+      observerId: "duffel-provider-observer",
+      provider: "eliza-approval-ledger",
+      accountId: "operator-duffel-canary-account",
+      operation: "book_travel",
+      state: "pending",
+      minCount: 1,
+      transitionGroupId: "duffel-hold-approval",
+      transitionIndex: 0,
+      trajectoryPhase: "proposal",
+    },
+    {
+      type: "durableApprovalObserved",
+      name: "duffel-canary-approval-approved",
+      observerId: "duffel-provider-observer",
+      provider: "eliza-approval-ledger",
+      accountId: "operator-duffel-canary-account",
+      operation: "book_travel",
+      state: "approved",
+      minCount: 1,
+      transitionGroupId: "duffel-hold-approval",
+      transitionIndex: 1,
+      trajectoryPhase: "approval",
+    },
+    {
+      type: "durableApprovalObserved",
+      name: "duffel-canary-approval-done",
+      observerId: "duffel-provider-observer",
+      provider: "eliza-approval-ledger",
+      accountId: "operator-duffel-canary-account",
+      operation: "book_travel",
+      state: "done",
+      minCount: 1,
+      transitionGroupId: "duffel-hold-approval",
+      transitionIndex: 2,
+      trajectoryPhase: "approval",
+    },
+    {
+      type: "providerNoEffectObserved",
+      name: "duffel-canary-no-order-or-payment-before-approval",
+      observerId: "duffel-provider-observer",
+      provider: "duffel",
+      connectorProvider: "duffel",
+      accountId: "operator-duffel-canary-account",
+      minCount: 1,
+      intervalCoversScenario: false,
+      intervalEndsBeforeReferencedStage: true,
+      trajectoryPhase: "approval",
+    },
     {
       type: "providerEffectObserved",
       name: "duffel-canary-booking-hold-create",

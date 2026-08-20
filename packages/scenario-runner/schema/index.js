@@ -70,6 +70,9 @@ export const FINAL_CHECK_KEYS = new Map(
       "resourceId",
       "state",
       "minCount",
+      "transitionGroupId",
+      "transitionIndex",
+      "trajectoryPhase",
     ],
     durableDraftObserved: [
       "type",
@@ -106,6 +109,8 @@ export const FINAL_CHECK_KEYS = new Map(
       "state",
       "minCount",
       "intervalCoversScenario",
+      "intervalEndsBeforeReferencedStage",
+      "trajectoryPhase",
     ],
     scheduledTaskObserved: [
       "type",
