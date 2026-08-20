@@ -8,7 +8,7 @@
  */
 
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleDirectCoreRoute, type IosBridgeBackend } from "./bridge.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
@@ -28,29 +28,58 @@ function createFakeRuntime(): IAgentRuntime {
 			const cap = params.count ?? params.limit;
 			return typeof cap === "number" ? rows.slice(0, cap) : rows;
 		},
-		async getMemoryById(id: UUID): Promise<Memory | null> {
+		getMemoryById: vi.fn(async (id: UUID): Promise<Memory | null> => {
 			for (const rows of tables.values()) {
 				const found = rows.find((m) => m.id === id);
 				if (found) return found;
 			}
 			return null;
-		},
+		}),
 		async createMemory(memory: Memory, tableName: string): Promise<UUID> {
 			const rows = tables.get(tableName) ?? [];
 			rows.push(memory);
 			tables.set(tableName, rows);
 			return memory.id as UUID;
 		},
-		async deleteMemory(id: UUID): Promise<void> {
+		deleteMemory: vi.fn(async (id: UUID): Promise<void> => {
 			for (const rows of tables.values()) {
 				const idx = rows.findIndex((m) => m.id === id);
 				if (idx >= 0) rows.splice(idx, 1);
 			}
-		},
-		async updateMemory(): Promise<boolean> {
-			return true;
-		},
+		}),
+		updateMemory: vi.fn(async (): Promise<boolean> => true),
 	} as unknown as IAgentRuntime;
+}
+
+function transcriptMemory(
+	id: UUID,
+	agentId: UUID = AGENT_ID,
+	transcriptId: string = id,
+): Memory {
+	const transcript = {
+		id: transcriptId,
+		title: "Scoped transcript",
+		createdAt: 1_000,
+		durationMs: 10,
+		segments: [],
+		source: "voice-session",
+		scope: "owner-private",
+		status: "ready",
+		speakerCount: 0,
+	};
+	return {
+		id,
+		entityId: agentId,
+		roomId: agentId,
+		agentId,
+		createdAt: transcript.createdAt,
+		content: { text: transcript.title, transcript: JSON.stringify(transcript) },
+		metadata: {
+			type: "custom",
+			source: "transcript",
+			transcriptId: id,
+		},
+	};
 }
 
 function makeBackend(runtime: IAgentRuntime): IosBridgeBackend {
@@ -112,6 +141,139 @@ describe("iOS bridge — transcripts route object scope", () => {
 		expect(status).toBe(404);
 		// The unrelated memory must survive.
 		expect(await runtime.getMemoryById(MESSAGE_ID)).not.toBeNull();
+	});
+
+	it("rejects an invalid UUID before the storage adapter", async () => {
+		const { status, json } = await call(
+			backend,
+			"DELETE",
+			"/api/transcripts/not-a-uuid",
+		);
+		expect(status).toBe(400);
+		expect(json).toEqual({ error: "invalid transcript id: expected UUID" });
+		expect(runtime.getMemoryById).not.toHaveBeenCalled();
+		expect(runtime.deleteMemory).not.toHaveBeenCalled();
+	});
+
+	it("does not delete another agent's transcript from the global memory id space", async () => {
+		const otherAgent = "00000000-0000-0000-0000-0000000000bb" as UUID;
+		const otherId = "00000000-0000-0000-0000-0000000000b2" as UUID;
+		await runtime.createMemory(
+			transcriptMemory(otherId, otherAgent),
+			"transcripts",
+		);
+
+		const { status } = await call(
+			backend,
+			"DELETE",
+			`/api/transcripts/${otherId}`,
+		);
+		expect(status).toBe(404);
+		expect(await runtime.getMemoryById(otherId)).not.toBeNull();
+		expect(runtime.deleteMemory).not.toHaveBeenCalled();
+	});
+
+	it("does not treat transcript-shaped content in another memory table as a transcript", async () => {
+		const spoofId = "00000000-0000-0000-0000-0000000000b3" as UUID;
+		const spoof = transcriptMemory(spoofId);
+		delete spoof.metadata;
+		await runtime.createMemory(spoof, "messages");
+
+		const { status } = await call(
+			backend,
+			"DELETE",
+			`/api/transcripts/${spoofId}`,
+		);
+		expect(status).toBe(404);
+		expect(await runtime.getMemoryById(spoofId)).not.toBeNull();
+		expect(runtime.deleteMemory).not.toHaveBeenCalled();
+	});
+
+	it("rejects transcript metadata whose embedded transcript id does not match", async () => {
+		const rowId = "00000000-0000-0000-0000-0000000000b4" as UUID;
+		await runtime.createMemory(
+			transcriptMemory(rowId, AGENT_ID, "00000000-0000-0000-0000-0000000000ff"),
+			"transcripts",
+		);
+
+		const { status } = await call(
+			backend,
+			"DELETE",
+			`/api/transcripts/${rowId}`,
+		);
+		expect(status).toBe(404);
+		expect(await runtime.getMemoryById(rowId)).not.toBeNull();
+		expect(runtime.deleteMemory).not.toHaveBeenCalled();
+	});
+
+	it("rejects transcript metadata whose persisted id does not match the row", async () => {
+		const rowId = "00000000-0000-0000-0000-0000000000b6" as UUID;
+		const row = transcriptMemory(rowId);
+		if (!row.metadata) throw new Error("test transcript metadata missing");
+		row.metadata.transcriptId = "00000000-0000-0000-0000-0000000000ff";
+		await runtime.createMemory(row, "transcripts");
+
+		const { status } = await call(
+			backend,
+			"DELETE",
+			`/api/transcripts/${rowId}`,
+		);
+		expect(status).toBe(404);
+		expect(await runtime.getMemoryById(rowId)).not.toBeNull();
+		expect(runtime.deleteMemory).not.toHaveBeenCalled();
+	});
+
+	it("revalidates scope immediately before the generic id-only delete", async () => {
+		const replacementId = "00000000-0000-0000-0000-0000000000b5" as UUID;
+		await runtime.createMemory(transcriptMemory(replacementId), "transcripts");
+		const getMemoryById = runtime.getMemoryById.bind(runtime);
+		let reads = 0;
+		runtime.getMemoryById = vi.fn(async (id: UUID) => {
+			reads += 1;
+			if (reads === 2) {
+				await runtime.deleteMemory(id);
+				const replacement = transcriptMemory(id);
+				delete replacement.metadata;
+				await runtime.createMemory(replacement, "messages");
+			}
+			return getMemoryById(id);
+		});
+
+		const { status } = await call(
+			backend,
+			"DELETE",
+			`/api/transcripts/${replacementId}`,
+		);
+		expect(status).toBe(404);
+		expect(await getMemoryById(replacementId)).not.toBeNull();
+	});
+
+	it("revalidates scope immediately before the generic id-only update", async () => {
+		const replacementId = "00000000-0000-0000-0000-0000000000b7" as UUID;
+		await runtime.createMemory(transcriptMemory(replacementId), "transcripts");
+		const getMemoryById = runtime.getMemoryById.bind(runtime);
+		let reads = 0;
+		runtime.getMemoryById = vi.fn(async (id: UUID) => {
+			reads += 1;
+			if (reads === 2) {
+				await runtime.deleteMemory(id);
+				const replacement = transcriptMemory(id);
+				delete replacement.metadata;
+				await runtime.createMemory(replacement, "messages");
+			}
+			return getMemoryById(id);
+		});
+
+		const result = await handleDirectCoreRoute(
+			backend,
+			"PUT",
+			`/api/transcripts/${replacementId}`,
+			{ body: JSON.stringify({ title: "must not overwrite replacement" }) },
+		);
+		if (!result) throw new Error("update returned null");
+		expect(result.status).toBe(404);
+		expect(await getMemoryById(replacementId)).not.toBeNull();
+		expect(runtime.updateMemory).not.toHaveBeenCalled();
 	});
 
 	it("DELETE still removes a real transcript", async () => {

@@ -110,12 +110,13 @@ describe("iOS /api/transcripts/:id encoding", () => {
 			return null;
 		};
 		const backend = makeBackend(runtime);
+		const id = "00000000-0000-0000-0000-0000000000c1";
 		const { status, json } = await call(
 			backend,
 			"GET",
-			"/api/transcripts/t%2D1",
+			`/api/transcripts/${id.replaceAll("-", "%2D")}`,
 		);
-		expect(seen).toEqual(["t-1"]);
+		expect(seen).toEqual([id]);
 		expect(status).toBe(404);
 		expect(json).toEqual({ error: "not found" });
 	});
