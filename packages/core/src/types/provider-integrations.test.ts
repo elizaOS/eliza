@@ -352,6 +352,47 @@ describe("provider integration contracts", () => {
 		expect(serializedErrors.join("\n")).not.toContain(sentinel);
 	});
 
+	it("rejects provider-controlled policy and execution codes without leaking them", () => {
+		const sentinel = "secret-token-sentinel";
+		const selected = bound();
+		const deniedPolicy = decision(selected, {
+			outcome: "denied",
+			reasonCode: "risk_policy_denied",
+		});
+		delete deniedPolicy.confirmation;
+		expect(normalizeCapabilityPolicyDecision(deniedPolicy)).toMatchObject({
+			outcome: "denied",
+			reasonCode: "risk_policy_denied",
+		});
+		const serializedErrors: string[] = [];
+		for (const normalize of [
+			() =>
+				normalizeCapabilityPolicyDecision({
+					...deniedPolicy,
+					reasonCode: sentinel,
+				}),
+			() =>
+				normalizeCapabilityExecutionOutcome(
+					{
+						contractVersion: VERSION,
+						status: "error",
+						code: sentinel,
+						retryable: false,
+					},
+					(value) => value,
+				),
+		]) {
+			try {
+				normalize();
+			} catch (error) {
+				serializedErrors.push(JSON.stringify(error));
+			}
+		}
+
+		expect(serializedErrors).toHaveLength(2);
+		expect(serializedErrors.join("\n")).not.toContain(sentinel);
+	});
+
 	it("sanitizes malformed nested effect proof errors", async () => {
 		const authorization = await allowedAuthorization();
 		const sentinel = "secret-token-sentinel";
@@ -782,11 +823,11 @@ describe("provider integration contracts", () => {
 				{
 					contractVersion: VERSION,
 					status: "error",
-					code: "UPSTREAM_SCHEMA_DRIFT",
+					code: "schema_drift",
 					retryable: false,
 				},
 				normalizeString,
 			),
-		).toMatchObject({ status: "error", code: "UPSTREAM_SCHEMA_DRIFT" });
+		).toMatchObject({ status: "error", code: "schema_drift" });
 	});
 });
