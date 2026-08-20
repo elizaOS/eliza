@@ -1,9 +1,18 @@
 /**
- * GET /api/mcp/list — Lists all available MCP server definitions.
+ * GET /api/mcp/list — Lists the MCP server definitions the deployment can
+ * actually serve, annotated with trust, health, and availability from the
+ * integration catalog policy. Kill-switched entries are listed as disabled
+ * with tools withheld; unconfigured entries are not advertised.
  */
 
 import { Hono } from "hono";
 
+import {
+  INTEGRATION_TRUST,
+  integrationHealth,
+  plannerVisibleFeatures,
+  resolveIntegrationAvailability,
+} from "@/api-app/lib/mcp/integration-catalog";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 // MCP definitions with their tools and schemas
@@ -470,12 +479,44 @@ const mcpDefinitions = [
 
 const app = new Hono<AppEnv>();
 
-app.get("/", (c) =>
-  c.json({
-    mcps: mcpDefinitions,
-    total: mcpDefinitions.length,
+app.get("/", (c) => {
+  // Availability gates advertising: unconfigured definitions are withheld and
+  // kill-switched definitions are listed as disabled with tools hidden. Tool
+  // lists are additionally filtered to planner-visible (risk-reviewed)
+  // capability names.
+  const mcps = [];
+  for (const definition of mcpDefinitions) {
+    const trust = INTEGRATION_TRUST[definition.id];
+    if (trust === undefined) continue;
+    const availability = resolveIntegrationAvailability(
+      c.env,
+      definition.id,
+      definition.endpoint,
+    );
+    if (availability === "unconfigured") continue;
+    const disabled = availability === "disabled";
+    const visibleNames = new Set(
+      plannerVisibleFeatures(
+        trust,
+        definition.tools.map((tool) => tool.name),
+      ),
+    );
+    mcps.push({
+      ...definition,
+      availability,
+      health: integrationHealth(availability, trust.provenance),
+      trust,
+      status: disabled ? "disabled" : definition.status,
+      tools: disabled
+        ? []
+        : definition.tools.filter((tool) => visibleNames.has(tool.name)),
+    });
+  }
+  return c.json({
+    mcps,
+    total: mcps.length,
     categories: ["platform", "utilities", "data", "finance"],
-  }),
-);
+  });
+});
 
 export default app;

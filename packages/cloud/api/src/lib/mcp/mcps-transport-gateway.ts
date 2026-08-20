@@ -11,6 +11,7 @@
 
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { isKillSwitched } from "@/api-app/lib/mcp/integration-catalog";
 import { forwardMcpUpstreamRequest } from "@/lib/mcp/mcp-upstream-forward";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -510,6 +511,17 @@ export function createMcpsTransportApp(provider: string): Hono<AppEnv> {
           allowed: ["mcp", "streamable-http"],
         },
         404,
+      );
+    }
+
+    if (isKillSwitched(c.env, provider, provider)) {
+      return c.json(
+        {
+          success: false,
+          error: "integration_disabled",
+          reason: `The ${provider} integration is disabled by the operator kill switch.`,
+        },
+        503,
       );
     }
 
