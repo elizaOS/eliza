@@ -4,6 +4,7 @@ export * from "./bluebubbles-operator-controller.ts";
 export * from "./canary-catalog.ts";
 export * from "./canary-controller.ts";
 export * from "./discord-operator-controller.ts";
+export * from "./duffel-operator-controller.ts";
 export * from "./external-canary-cli.ts";
 export * from "./external-canary-orchestrator.ts";
 export * from "./google-workspace-operator-controller.ts";

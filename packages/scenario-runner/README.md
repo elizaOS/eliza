@@ -191,6 +191,27 @@ The returned receipts remain unsigned and carry `qualificationClaimed: false`;
 execution still refuses until deployed trajectory export, authenticated event
 replay, and independent failure-probe capabilities exist.
 
+Provider-specific operator boundaries now cover the complete 13-canary
+catalog: BlueBubbles/iMessage; Discord; Duffel; Gmail, Calendar, and
+Drive/Sheets through Google Workspace; Signal, Telegram, WhatsApp, and X DM
+through the messaging boundary; Slack; and Twilio SMS and voice. Each boundary
+revalidates its exact signed operation and account binding before credentials or
+ingress, requires authenticated readback/replay/failure-probe/trajectory seams,
+and emits only unsigned source receipts with `qualificationClaimed: false`.
+Concrete read-only adapters exist where the provider exposes a safe inspection
+surface; protected operator capabilities supply the remaining deployed seams.
+The detailed prerequisites and non-claims live beside each controller in its
+`*-operator-readiness.md` document.
+
+Duffel qualification is hold-only. The signed operation fixes the offer,
+passengers, order type, total minor units, and currency; the durable approval
+must retain the same payload through pending, approved, and done observations.
+Execution refuses offer capability, order-type, or price drift before order
+creation, never captures payment for the canary, and treats any ambiguous
+post-dispatch failure as reconciliation-required rather than retryable. Duffel's
+`x-client-correlation-id` is retained for tracing only and is never represented
+as provider idempotency.
+
 ### Operator manifest authorization
 
 Before provisioning a target or sending authenticated ingress, authorize the
