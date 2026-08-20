@@ -1,14 +1,14 @@
 /**
  * Twilio transport helpers for outbound SMS and voice calls: reads credentials
- * from the environment, sends via the Twilio REST API with bounded retry, and
- * computes the segment-based SMS billing breakdown (raw cost + markup).
+ * from the environment, sends via the Twilio REST API with retry only for
+ * explicitly known-not-processed responses, and computes the segment-based SMS
+ * billing breakdown (raw cost + markup).
  *
  * These are standalone helpers held here for the future VOICE_CALL provider
  * migration; no action in this package wires them today — outbound dispatch is
  * owned by the PA-hosted VOICE_CALL action.
  */
 
-import { randomUUID } from "node:crypto";
 import { logger } from "@elizaos/core";
 
 export interface TwilioCredentials {
@@ -115,11 +115,11 @@ function getTwilioBaseUrl(): string {
   return process.env.ELIZA_MOCK_TWILIO_BASE ?? "https://api.twilio.com";
 }
 
-function isTransientFailure(result: TwilioDeliveryResult): boolean {
-  if (result.status !== null && result.status >= 400 && result.status < 500) {
-    return false;
-  }
-  return true;
+function isSafeToRetry(result: TwilioDeliveryResult): boolean {
+  // Twilio documents 429 as not processed and therefore safe to retry. Network
+  // errors, malformed success receipts, and 5xx outcomes are ambiguous for the
+  // non-idempotent Messages/Calls create endpoints and must not be replayed.
+  return result.status === 429;
 }
 
 function validationFailure(error: string): TwilioDeliveryResult {
@@ -161,9 +161,8 @@ async function sendTwilioRequest(args: {
   credentials: TwilioCredentials;
   path: string;
   payload: URLSearchParams;
-  idempotencyKey?: string;
 }): Promise<TwilioDeliveryResult> {
-  const { credentials, path, payload, idempotencyKey } = args;
+  const { credentials, path, payload } = args;
   const url = `${getTwilioBaseUrl()}/2010-04-01/Accounts/${encodeURIComponent(
     credentials.accountSid,
   )}${path}`;
@@ -197,9 +196,6 @@ async function sendTwilioRequest(args: {
             credentials.authToken,
           )}`,
           "Content-Type": "application/x-www-form-urlencoded",
-          ...(idempotencyKey
-            ? { "I-Twilio-Idempotency-Token": idempotencyKey }
-            : {}),
         },
         body: payload.toString(),
         signal: AbortSignal.timeout(12_000),
@@ -247,7 +243,7 @@ async function sendTwilioRequest(args: {
           error: errorMsg,
           retryCount: attempt,
         };
-        if (!isTransientFailure(lastResult)) {
+        if (!isSafeToRetry(lastResult)) {
           return lastResult;
         }
         continue;
@@ -280,6 +276,10 @@ async function sendTwilioRequest(args: {
         error: errorMsg,
         retryCount: attempt,
       };
+      // A transport failure can happen after Twilio accepted the create. The
+      // provider exposes no documented client idempotency key for these
+      // endpoints, so replaying here could duplicate delivery and billing.
+      break;
     }
   }
 
@@ -290,6 +290,7 @@ export async function sendTwilioSms(args: {
   credentials: TwilioCredentials;
   to: string;
   body: string;
+  /** @deprecated Twilio Messages does not document a client idempotency key. */
   idempotencyKey?: string;
 }): Promise<TwilioDeliveryResult> {
   const { credentials, to, body } = args;
@@ -301,14 +302,6 @@ export async function sendTwilioSms(args: {
   });
   if (validationError) return validationFailure(validationError);
 
-  // Twilio's /Messages.json is a non-idempotent create endpoint, but
-  // sendTwilioRequest retries transient failures (network throw/timeout, 5xx).
-  // Without a stable idempotency token a post-send timeout or retryable 5xx
-  // after acceptance would re-POST and deliver a duplicate, doubly-billed SMS.
-  // Default one token per logical send so every retry attempt deduplicates,
-  // while distinct logical sends still get distinct tokens.
-  const idempotencyKey = args.idempotencyKey ?? randomUUID();
-
   const result = await sendTwilioRequest({
     credentials,
     path: "/Messages.json",
@@ -317,7 +310,6 @@ export async function sendTwilioSms(args: {
       From: credentials.fromPhoneNumber,
       Body: body,
     }),
-    idempotencyKey,
   });
 
   if (!result.ok) {
@@ -343,6 +335,7 @@ export async function sendTwilioVoiceCall(args: {
   credentials: TwilioCredentials;
   to: string;
   message: string;
+  /** @deprecated Twilio Calls does not document a client idempotency key. */
   idempotencyKey?: string;
 }): Promise<TwilioDeliveryResult> {
   const { credentials, to, message } = args;
@@ -354,11 +347,6 @@ export async function sendTwilioVoiceCall(args: {
   });
   if (validationError) return validationFailure(validationError);
 
-  // /Calls.json is a non-idempotent create endpoint under the same retrying
-  // transport, so default an idempotency token to keep retries from placing a
-  // duplicate, doubly-billed voice call. See sendTwilioSms for the rationale.
-  const idempotencyKey = args.idempotencyKey ?? randomUUID();
-
   return sendTwilioRequest({
     credentials,
     path: "/Calls.json",
@@ -367,6 +355,5 @@ export async function sendTwilioVoiceCall(args: {
       From: credentials.fromPhoneNumber,
       Twiml: `<Response><Say>${escapeXml(message)}</Say></Response>`,
     }),
-    idempotencyKey,
   });
 }

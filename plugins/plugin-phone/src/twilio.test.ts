@@ -71,8 +71,10 @@ describe("Twilio transport", () => {
       expect.objectContaining({
         method: "POST",
         body: "To=%2B15551112222&From=%2B15550000000&Body=hello",
-        headers: expect.objectContaining({
-          "I-Twilio-Idempotency-Token": "approval:req-123:twilio",
+        headers: expect.not.objectContaining({
+          // This is an inbound Twilio webhook retry identifier, not a
+          // documented outbound Messages/Calls idempotency request header.
+          "I-Twilio-Idempotency-Token": expect.anything(),
         }),
       }),
     );
@@ -146,22 +148,19 @@ describe("Twilio transport", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    vi.useFakeTimers();
-    const promise = sendTwilioSms({
-      credentials,
-      to: "+15551112222",
-      body: "hello",
-    });
-    await vi.advanceTimersByTimeAsync(3_000);
-
-    await expect(promise).resolves.toMatchObject({
+    await expect(
+      sendTwilioSms({
+        credentials,
+        to: "+15551112222",
+        body: "hello",
+      }),
+    ).resolves.toMatchObject({
       ok: false,
       status: 503,
       error: "HTTP 503",
-      retryCount: 2,
+      retryCount: 0,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    vi.useRealTimers();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("keeps hostile SMS body bytes inside the form-encoded Body field", async () => {
@@ -244,101 +243,79 @@ describe("Twilio transport", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  function idempotencyTokensFromCalls(
-    fetchMock: ReturnType<typeof vi.fn>,
-  ): Array<string | undefined> {
-    const calls = fetchMock.mock.calls as unknown as Array<
-      [string, RequestInit]
-    >;
-    return calls.map(([, init]) => {
-      const headers = (init?.headers ?? {}) as Record<string, string>;
-      return headers["I-Twilio-Idempotency-Token"];
-    });
-  }
-
-  it("reuses one generated idempotency token across an SMS network-retry", async () => {
-    // Regression for #22382: a post-send network drop then a 201 must not
-    // deliver a duplicate, doubly-billed SMS. Both /Messages.json POSTs have
-    // to carry the SAME generated I-Twilio-Idempotency-Token so Twilio
-    // deduplicates the retry, even though the caller supplied no key.
+  it("does not replay an SMS create after an ambiguous network failure", async () => {
     process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
-    let attempt = 0;
     const fetchMock = vi.fn(async () => {
-      attempt += 1;
-      if (attempt === 1) {
-        throw new Error("network timeout after send");
-      }
-      return Response.json({ sid: "SM123" }, { status: 201 });
+      throw new Error("network timeout after send");
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    vi.useFakeTimers();
-    const promise = sendTwilioSms({
-      credentials,
-      to: "+15551112222",
-      body: "hello",
+    await expect(
+      sendTwilioSms({
+        credentials,
+        to: "+15551112222",
+        body: "hello",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: null,
+      error: "network timeout after send",
+      retryCount: 0,
     });
-    await vi.advanceTimersByTimeAsync(3_000);
-    const result = await promise;
-    vi.useRealTimers();
-
-    expect(result).toMatchObject({ ok: true, status: 201, retryCount: 1 });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const paths = (
-      fetchMock.mock.calls as unknown as Array<[string, RequestInit]>
-    ).map(([url]) => url);
-    expect(paths).toEqual([
-      "https://twilio.test/2010-04-01/Accounts/AC123/Messages.json",
-      "https://twilio.test/2010-04-01/Accounts/AC123/Messages.json",
-    ]);
-    const tokens = idempotencyTokensFromCalls(fetchMock);
-    expect(tokens[0]).toBeTruthy();
-    expect(tokens[0]).toBe(tokens[1]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("reuses one generated idempotency token across a voice network-retry", async () => {
+  it("does not replay a voice create after an ambiguous network failure", async () => {
     process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
-    let attempt = 0;
     const fetchMock = vi.fn(async () => {
-      attempt += 1;
-      if (attempt === 1) {
-        throw new Error("network timeout after send");
-      }
-      return Response.json({ sid: "CA123" }, { status: 201 });
+      throw new Error("network timeout after send");
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    vi.useFakeTimers();
-    const promise = sendTwilioVoiceCall({
-      credentials,
-      to: "+15551112222",
-      message: "reminder",
+    await expect(
+      sendTwilioVoiceCall({
+        credentials,
+        to: "+15551112222",
+        message: "reminder",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: null,
+      error: "network timeout after send",
+      retryCount: 0,
     });
-    await vi.advanceTimersByTimeAsync(3_000);
-    const result = await promise;
-    vi.useRealTimers();
-
-    expect(result).toMatchObject({ ok: true, status: 201, retryCount: 1 });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const paths = (
-      fetchMock.mock.calls as unknown as Array<[string, RequestInit]>
-    ).map(([url]) => url);
-    expect(paths).toEqual([
-      "https://twilio.test/2010-04-01/Accounts/AC123/Calls.json",
-      "https://twilio.test/2010-04-01/Accounts/AC123/Calls.json",
-    ]);
-    const tokens = idempotencyTokensFromCalls(fetchMock);
-    expect(tokens[0]).toBeTruthy();
-    expect(tokens[0]).toBe(tokens[1]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps a stable idempotency token across all 5xx retry attempts", async () => {
+  it("does not replay a create when a successful response has no receipt", async () => {
+    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
+    const fetchMock = vi.fn(
+      async () => new Response("accepted", { status: 201 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      sendTwilioSms({
+        credentials,
+        to: "+15551112222",
+        body: "hello",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: null,
+      error: "Twilio accepted the request without a valid receipt",
+      retryCount: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries only an explicit known-not-processed 429 response", async () => {
     process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
     let attempt = 0;
     const fetchMock = vi.fn(async () => {
       attempt += 1;
       if (attempt < 3) {
-        return Response.json({ message: "overloaded" }, { status: 503 });
+        return Response.json({ message: "rate limited" }, { status: 429 });
       }
       return Response.json({ sid: "SM999" }, { status: 201 });
     });
@@ -356,44 +333,5 @@ describe("Twilio transport", () => {
 
     expect(result).toMatchObject({ ok: true, status: 201, retryCount: 2 });
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    const tokens = idempotencyTokensFromCalls(fetchMock);
-    expect(tokens[0]).toBeTruthy();
-    expect(new Set(tokens).size).toBe(1);
-  });
-
-  it("honors a caller-supplied idempotency token verbatim", async () => {
-    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
-    const fetchMock = vi.fn(async () =>
-      Response.json({ sid: "SM123" }, { status: 201 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await sendTwilioSms({
-      credentials,
-      to: "+15551112222",
-      body: "hello",
-      idempotencyKey: "approval:req-123:twilio",
-    });
-
-    expect(idempotencyTokensFromCalls(fetchMock)).toEqual([
-      "approval:req-123:twilio",
-    ]);
-  });
-
-  it("assigns distinct tokens to two independent SMS sends", async () => {
-    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
-    const fetchMock = vi.fn(async () =>
-      Response.json({ sid: "SM123" }, { status: 201 }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await sendTwilioSms({ credentials, to: "+15551112222", body: "one" });
-    await sendTwilioSms({ credentials, to: "+15551112222", body: "two" });
-
-    const tokens = idempotencyTokensFromCalls(fetchMock);
-    expect(tokens).toHaveLength(2);
-    expect(tokens[0]).toBeTruthy();
-    expect(tokens[1]).toBeTruthy();
-    expect(tokens[0]).not.toBe(tokens[1]);
   });
 });
