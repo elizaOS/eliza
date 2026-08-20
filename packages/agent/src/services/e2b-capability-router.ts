@@ -172,7 +172,7 @@ class RemoteRunnerHttpFactory implements E2BSandboxFactory {
     }
     const apiBase = config.remoteHttpBaseUrl.replace(/\/+$/, "");
     const headers = authHeaders(config.remoteHttpToken);
-    const timeout = timeoutSignal(DEFAULT_REQUEST_TIMEOUT_MS);
+    const timeout = timeoutSignal(config.requestTimeoutMs);
     try {
       const response = await fetch(`${apiBase}/v1/health`, {
         headers,
@@ -189,12 +189,16 @@ class RemoteRunnerHttpFactory implements E2BSandboxFactory {
 class RemoteRunnerHttpClient implements E2BSandboxClient {
   readonly workspacePrepared = true;
   readonly files = {
-    list: (path: string) => this.list(path),
+    list: (
+      path: string,
+      opts?: { depth?: number; requestTimeoutMs?: number },
+    ) => this.list(path, opts),
     read: (
       path: string,
       opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
     ) => this.read(path, opts),
-    write: (path: string, data: string) => this.write(path, data),
+    write: (path: string, data: string, opts?: { requestTimeoutMs?: number }) =>
+      this.write(path, data, opts),
   };
   readonly commands = {
     run: (cmd: string, opts?: SandboxCommandRunOptions) =>
@@ -209,10 +213,13 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
 
   async kill(): Promise<void> {}
 
-  private async list(path: string): Promise<SandboxEntryInfo[]> {
+  private async list(
+    path: string,
+    opts?: { depth?: number; requestTimeoutMs?: number },
+  ): Promise<SandboxEntryInfo[]> {
     const url = new URL(`${this.apiBase}/v1/fs/entries`);
     url.searchParams.set("path", path);
-    const timeout = timeoutSignal(DEFAULT_REQUEST_TIMEOUT_MS);
+    const timeout = timeoutSignal(opts?.requestTimeoutMs);
     try {
       const response = await fetch(url, {
         headers: this.headers,
@@ -285,10 +292,11 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
   private async write(
     path: string,
     data: string,
+    opts?: { requestTimeoutMs?: number },
   ): Promise<{ path: string; name: string }> {
     const url = new URL(`${this.apiBase}/v1/fs/file`);
     url.searchParams.set("path", path);
-    const timeout = timeoutSignal(DEFAULT_REQUEST_TIMEOUT_MS);
+    const timeout = timeoutSignal(opts?.requestTimeoutMs);
     try {
       const response = await fetch(url, {
         method: "PUT",
@@ -395,7 +403,7 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
     config: E2BRemoteRunnerConfig,
     remoteToken: string,
   ): Promise<CloudCodingContainerSession> {
-    const timeout = timeoutSignal(DEFAULT_REQUEST_TIMEOUT_MS);
+    const timeout = timeoutSignal(config.requestTimeoutMs);
     try {
       const response = await fetch(
         `${config.cloudApiBaseUrl}/coding-containers`,
@@ -447,7 +455,7 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
     let current = session;
     while (!current.url && Date.now() < deadline) {
       await sleep(5000);
-      const timeout = timeoutSignal(DEFAULT_REQUEST_TIMEOUT_MS);
+      const timeout = timeoutSignal(config.requestTimeoutMs);
       try {
         const response = await fetch(
           `${config.cloudApiBaseUrl}/containers/${encodeURIComponent(current.containerId)}`,
