@@ -717,6 +717,18 @@ export function createMobileSignalsPermissionsRegistry(
         return commit(defaultMobileState(id, "not-applicable"));
       }
 
+      const currentState = await checkMobilePermission(id);
+      if (currentState.status === "granted") {
+        return commit({
+          ...currentState,
+          lastRequested,
+          lastBlockedFeature: currentState.lastBlockedFeature ?? {
+            ...opts.feature,
+            at: lastRequested,
+          },
+        });
+      }
+
       let requestedState: PermissionState | null = null;
       if (id === "calendar") {
         const current = await checkMobilePermission(id);

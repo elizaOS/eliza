@@ -14,6 +14,7 @@ import type {
   PushNotificationPermissionStatus,
   PushNotificationsPluginLike,
   SystemPluginLike,
+  TalkModePluginLike,
 } from "../bridge/native-plugins";
 import {
   createMobileSignalsPermissionsRegistry,
@@ -134,6 +135,39 @@ function pushNotificationsPlugin(
 }
 
 describe("createMobileSignalsPermissionsRegistry", () => {
+  it("returns an already-granted speech permission without opening Settings", async () => {
+    const talkMode = {
+      checkPermissions: vi.fn(async () => ({
+        microphone: "granted" as const,
+        speechRecognition: "granted" as const,
+      })),
+      requestPermissions: vi.fn(),
+    } as unknown as TalkModePluginLike;
+    const system = {
+      openAppSettings: vi.fn(),
+    } as unknown as SystemPluginLike;
+    const registry = createMobileSignalsPermissionsRegistry(
+      plugin(),
+      undefined,
+      appleCalendarPlugin(),
+      pushNotificationsPlugin(),
+      { talkMode, system },
+    );
+
+    const next = await registry.request("speech-recognition", {
+      reason: "Transcribe voice.",
+      feature: { app: "onboarding", action: "permission-priming" },
+    });
+
+    expect(next).toMatchObject({
+      id: "speech-recognition",
+      status: "granted",
+      canRequest: false,
+    });
+    expect(talkMode.requestPermissions).not.toHaveBeenCalled();
+    expect(system.openAppSettings).not.toHaveBeenCalled();
+  });
+
   it("maps HealthKit/Health Connect status into canonical health permission", async () => {
     const native = plugin(
       permissions({

@@ -122,6 +122,46 @@ describe("usePermissionPriming", () => {
     expect(result.current.currentStep).toBe(2);
   });
 
+  it("skips a sibling permission granted by the same native prompt", async () => {
+    let speechStatus: PermissionStatus = "not-determined";
+    mocks.getPermission.mockImplementation(async (id: PermissionId) =>
+      state(
+        id,
+        id === "speech-recognition" ? speechStatus : "not-determined",
+        id === "speech-recognition" ? speechStatus === "not-determined" : true,
+      ),
+    );
+    mocks.requestPermission.mockImplementation(async (id: PermissionId) => {
+      speechStatus = "granted";
+      return state(id, "granted", false);
+    });
+
+    const { result } = renderHook(() =>
+      usePermissionPriming([
+        "microphone",
+        "speech-recognition",
+        "notifications",
+      ]),
+    );
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.active?.id).toBe("microphone");
+
+    await act(async () => {
+      await result.current.request("microphone");
+    });
+
+    expect(result.current.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "speech-recognition",
+          status: "granted",
+          resolved: true,
+        }),
+      ]),
+    );
+    expect(result.current.active?.id).toBe("notifications");
+  });
+
   it("keeps a denied card active with a recovery path, then skip advances", async () => {
     seedStatuses({ microphone: "not-determined" });
     mocks.getPermission.mockImplementation(async (id: PermissionId) =>

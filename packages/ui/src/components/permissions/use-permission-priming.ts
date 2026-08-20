@@ -73,7 +73,7 @@ export interface PermissionPrimingController {
   ready: boolean;
   /** True when every item is resolved (or there were none). */
   done: boolean;
-  /** Fire the OS request for `id` (the "Enable" tap). */
+  /** Fire the OS request for `id` (the "Continue" tap). */
   request: (id: PermissionId) => Promise<void>;
   /** Skip `id` without touching the OS (soft-deny; capability preserved). */
   skip: (id: PermissionId) => void;
@@ -193,15 +193,51 @@ export function usePermissionPriming(
           reason: PRIMING_REASON,
           feature: PRIMING_FEATURE,
         });
-        patch(id, {
-          status: state.status,
-          canRequest: state.canRequest,
-          requesting: false,
-          requestError: false,
-          recheckError: false,
-          // Granting resolves the card; a denial keeps it active for recovery.
-          resolved: state.status === "granted",
-        });
+        const siblingStates =
+          state.status === "granted"
+            ? await Promise.all(
+                (idsKey ? (idsKey.split(",") as PermissionId[]) : [])
+                  .filter((candidate) => candidate !== id)
+                  .map(async (candidate) => {
+                    try {
+                      return await registry.check(candidate);
+                    } catch {
+                      // error-policy:J4 a sibling refresh is advisory; its own
+                      // card stays available instead of inheriting fake state.
+                      return null;
+                    }
+                  }),
+              )
+            : [];
+        const siblingById = new Map(
+          siblingStates
+            .filter((candidate) => candidate !== null)
+            .map((candidate) => [candidate.id, candidate]),
+        );
+        setItems((current) =>
+          current.map((item) => {
+            if (item.id === id) {
+              return {
+                ...item,
+                status: state.status,
+                canRequest: state.canRequest,
+                requesting: false,
+                requestError: false,
+                recheckError: false,
+                // Granting resolves the card; a denial keeps it active for recovery.
+                resolved: state.status === "granted",
+              };
+            }
+            const sibling = siblingById.get(item.id);
+            if (!sibling) return item;
+            return {
+              ...item,
+              status: sibling.status,
+              canRequest: sibling.canRequest,
+              resolved: item.resolved || isSatisfied(sibling.status),
+            };
+          }),
+        );
       } catch {
         // error-policy:J4 native/transport failures remain visibly different from
         // a real OS denial and keep an explicit retry path.
@@ -216,7 +252,7 @@ export function usePermissionPriming(
         requestingRef.current.delete(id);
       }
     },
-    [patch, registry],
+    [idsKey, patch, registry],
   );
 
   const skip = React.useCallback(
