@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmdirSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { loadScenarioFile } from "../loader.ts";
 import {
   type ExternalProviderCanaryCapabilities,
@@ -298,24 +298,25 @@ export async function loadPinnedExternalProviderCapabilityModule(
   absoluteModuleFile: string,
   expectedSha256: string,
 ): Promise<ExternalProviderCapabilityModule> {
-  const before = readFileSync(absoluteModuleFile);
-  const actualSha256 = createHash("sha256").update(before).digest("hex");
+  const moduleBytes = readFileSync(absoluteModuleFile);
+  const actualSha256 = createHash("sha256").update(moduleBytes).digest("hex");
   if (actualSha256 !== expectedSha256) {
     throw new Error(
       "external provider-canary operator module digest does not match its config pin",
     );
   }
-  const imported = (await import(
-    `${pathToFileURL(absoluteModuleFile).href}?sha256=${actualSha256}`
-  )) as Partial<ExternalProviderCapabilityModule>;
-  const afterSha256 = createHash("sha256")
-    .update(readFileSync(absoluteModuleFile))
-    .digest("hex");
-  if (afterSha256 !== actualSha256) {
+  const source = moduleBytes.toString("utf8");
+  if (!Buffer.from(source, "utf8").equals(moduleBytes)) {
     throw new Error(
-      "external provider-canary operator module changed while it was imported",
+      "external provider-canary operator module must be canonical UTF-8 JavaScript",
     );
   }
+  // A data URL executes the exact bytes that were hashed and deliberately has
+  // no relative module-resolution base. Operators must provide a self-contained
+  // bundle; provider SDK dependencies cannot drift behind a pinned entry file.
+  const imported = (await import(
+    `data:text/javascript;base64,${moduleBytes.toString("base64")}`
+  )) as Partial<ExternalProviderCapabilityModule>;
   if (typeof imported.createExternalProviderCanaryCapabilities !== "function") {
     throw new Error(
       "external provider-canary operator module must export createExternalProviderCanaryCapabilities",
