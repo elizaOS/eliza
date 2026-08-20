@@ -1,12 +1,19 @@
 /**
  * Defines the fail-closed operator boundary for the Discord provider canary.
  * It validates every private execution input before network access and can
- * collect read-only Discord receipts, but refuses an evidence run until the
- * deployment exposes trustworthy trajectory, replay, and failure-probe paths.
+ * collect read-only Discord receipts. Execution becomes available only when a
+ * manifest-bound deployment descriptor and every production capability seam
+ * pass the shared fail-closed contract.
  */
 
 import { createHash } from "node:crypto";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+import {
+  assertDeployedCanaryCapabilities,
+  type DeployedCanaryCapabilities,
+  type DeployedCanaryContractDescriptor,
+  validateDeployedCanaryContractDescriptor,
+} from "./deployed-capability-contract.ts";
 import {
   type AuthorizedProviderCanaryExecutionPreflight,
   type ProviderCanaryAuthorization,
@@ -24,11 +31,6 @@ const MAX_MESSAGE_LENGTH = 2_000;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const validatedPreflights = new WeakSet<object>();
 
-export type DiscordOperatorBlockerCode =
-  | "deployed-trajectory-retrieval-unavailable"
-  | "authenticated-event-replay-unavailable"
-  | "independent-failure-probe-executor-unavailable";
-
 export interface DiscordOperatorPlan {
   schema: typeof DISCORD_OPERATOR_PLAN_SCHEMA;
   discordApiOrigin: typeof DISCORD_API_ORIGIN;
@@ -43,11 +45,7 @@ export interface DiscordOperatorPlan {
     intervalMs: number;
     timeoutMs: number;
   };
-  deploymentEvidence: {
-    trajectoryRetrieval: null;
-    authenticatedEventReplay: null;
-    independentFailureProbeExecutor: null;
-  };
+  deploymentEvidence: DeployedCanaryContractDescriptor;
 }
 
 export interface DiscordOperatorPreflight {
@@ -56,12 +54,7 @@ export interface DiscordOperatorPreflight {
   authorization: ProviderCanaryAuthorization;
   execution: AuthorizedProviderCanaryExecutionPreflight;
   plan: DiscordOperatorPlan;
-  blockers: readonly DiscordOperatorBlocker[];
-}
-
-export interface DiscordOperatorBlocker {
-  code: DiscordOperatorBlockerCode;
-  detail: string;
+  blockers: readonly [];
 }
 
 export interface DiscordRawMessageReceipt {
@@ -196,22 +189,6 @@ function parsePlan(value: unknown): DiscordOperatorPlan {
     plan.deploymentEvidence,
     "plan.deploymentEvidence",
   );
-  exactKeys(deploymentEvidence, "plan.deploymentEvidence", [
-    "trajectoryRetrieval",
-    "authenticatedEventReplay",
-    "independentFailureProbeExecutor",
-  ]);
-  for (const key of [
-    "trajectoryRetrieval",
-    "authenticatedEventReplay",
-    "independentFailureProbeExecutor",
-  ] as const) {
-    if (deploymentEvidence[key] !== null) {
-      fail(
-        `plan.deploymentEvidence.${key} must remain null until a repository-supported contract exists`,
-      );
-    }
-  }
   const runNonce = string(plan.runNonce, "plan.runNonce");
   if (!NONCE_PATTERN.test(runNonce)) {
     fail("plan.runNonce must be 32-128 unpadded base64url characters");
@@ -254,31 +231,10 @@ function parsePlan(value: unknown): DiscordOperatorPlan {
         15 * 60_000,
       ),
     }),
-    deploymentEvidence: Object.freeze({
-      trajectoryRetrieval: null,
-      authenticatedEventReplay: null,
-      independentFailureProbeExecutor: null,
-    }),
+    deploymentEvidence:
+      deploymentEvidence as unknown as DeployedCanaryContractDescriptor,
   });
 }
-
-const BLOCKERS = Object.freeze([
-  Object.freeze({
-    code: "deployed-trajectory-retrieval-unavailable",
-    detail:
-      "No authenticated deployed-agent API exports the canonical isolated trajectory set for this Discord ingress.",
-  }),
-  Object.freeze({
-    code: "authenticated-event-replay-unavailable",
-    detail:
-      "No supported operator API can replay the exact authenticated Discord gateway event to prove idempotency; bot or self-bot injection is forbidden.",
-  }),
-  Object.freeze({
-    code: "independent-failure-probe-executor-unavailable",
-    detail:
-      "No independent executor collects the manifest-bound authorization-denial and provider-rejection requests plus before/after provider snapshots.",
-  }),
-] as const satisfies readonly DiscordOperatorBlocker[]);
 
 /**
  * Validate authorization and all raw target, operation, and negative-probe
@@ -327,24 +283,31 @@ export function preflightDiscordOperatorCanary(input: {
   if (execution.authorization.manifest.run.nonce !== plan.runNonce) {
     fail("plan run nonce does not match the signed manifest");
   }
+  const deploymentEvidence = validateDeployedCanaryContractDescriptor({
+    descriptor: plan.deploymentEvidence,
+    execution,
+  });
   const result = Object.freeze({
     status: "discord-operator-inputs-validated",
     scenarioId: "provider.discord.confirmed-send",
     authorization: execution.authorization,
     execution,
-    plan,
-    blockers: BLOCKERS,
+    plan: Object.freeze({ ...plan, deploymentEvidence }),
+    blockers: Object.freeze([] as const),
   });
   validatedPreflights.add(result);
   return result;
 }
 
-/** Refuse execution while any evidence boundary lacks a supported contract. */
+/** Return the complete executable seam only for the exact validated preflight. */
 export function assertDiscordOperatorCanaryExecutable(
   preflight: DiscordOperatorPreflight,
-): never {
-  const codes = preflight.blockers.map((blocker) => blocker.code).join(", ");
-  fail(`execution refused; unresolved blockers: ${codes}`);
+  capabilities: unknown,
+): DeployedCanaryCapabilities {
+  if (!validatedPreflights.has(preflight)) {
+    fail("execution requires the exact validated Discord preflight result");
+  }
+  return assertDeployedCanaryCapabilities(capabilities);
 }
 
 function receipt(value: unknown, path: string): DiscordRawMessageReceipt {

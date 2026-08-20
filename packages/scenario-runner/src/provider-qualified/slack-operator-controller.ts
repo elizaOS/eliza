@@ -8,6 +8,12 @@
 import { createHash } from "node:crypto";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import {
+  assertDeployedCanaryCapabilities,
+  type DeployedCanaryCapabilities,
+  type DeployedCanaryContractDescriptor,
+  validateDeployedCanaryContractDescriptor,
+} from "./deployed-capability-contract.ts";
+import {
   type AuthorizedProviderCanaryExecutionPreflight,
   type ProviderCanaryAuthorization,
   type ProviderFailureProbeMaterial,
@@ -28,11 +34,6 @@ const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const validatedPreflights = new WeakSet<object>();
 
-export type SlackOperatorBlockerCode =
-  | "deployed-trajectory-retrieval-unavailable"
-  | "authenticated-event-replay-unavailable"
-  | "independent-failure-probe-executor-unavailable";
-
 export interface SlackOperatorPlan {
   schema: typeof SLACK_OPERATOR_PLAN_SCHEMA;
   slackApiOrigin: typeof SLACK_API_ORIGIN;
@@ -45,16 +46,7 @@ export interface SlackOperatorPlan {
   expectedHumanIngressContent: string;
   expectedProviderEffectContent: string;
   poll: { intervalMs: number; timeoutMs: number };
-  deploymentEvidence: {
-    trajectoryRetrieval: null;
-    authenticatedEventReplay: null;
-    independentFailureProbeExecutor: null;
-  };
-}
-
-export interface SlackOperatorBlocker {
-  code: SlackOperatorBlockerCode;
-  detail: string;
+  deploymentEvidence: DeployedCanaryContractDescriptor;
 }
 
 export interface SlackOperatorPreflight {
@@ -63,7 +55,7 @@ export interface SlackOperatorPreflight {
   authorization: ProviderCanaryAuthorization;
   execution: AuthorizedProviderCanaryExecutionPreflight;
   plan: SlackOperatorPlan;
-  blockers: readonly SlackOperatorBlocker[];
+  blockers: readonly [];
 }
 
 export interface SlackObserverIdentityReceipt {
@@ -192,22 +184,6 @@ function parsePlan(value: unknown): SlackOperatorPlan {
     plan.deploymentEvidence,
     "plan.deploymentEvidence",
   );
-  exactKeys(deploymentEvidence, "plan.deploymentEvidence", [
-    "trajectoryRetrieval",
-    "authenticatedEventReplay",
-    "independentFailureProbeExecutor",
-  ]);
-  for (const key of [
-    "trajectoryRetrieval",
-    "authenticatedEventReplay",
-    "independentFailureProbeExecutor",
-  ] as const) {
-    if (deploymentEvidence[key] !== null) {
-      fail(
-        `plan.deploymentEvidence.${key} must remain null until a supported contract exists`,
-      );
-    }
-  }
   const runNonce = string(plan.runNonce, "plan.runNonce");
   if (!NONCE_PATTERN.test(runNonce))
     fail("plan.runNonce must be canonical base64url");
@@ -266,31 +242,10 @@ function parsePlan(value: unknown): SlackOperatorPlan {
         30 * 60_000,
       ),
     }),
-    deploymentEvidence: Object.freeze({
-      trajectoryRetrieval: null,
-      authenticatedEventReplay: null,
-      independentFailureProbeExecutor: null,
-    }),
+    deploymentEvidence:
+      deploymentEvidence as unknown as DeployedCanaryContractDescriptor,
   });
 }
-
-const BLOCKERS = Object.freeze([
-  Object.freeze({
-    code: "deployed-trajectory-retrieval-unavailable",
-    detail:
-      "No authenticated deployed-agent API exports the canonical isolated trajectory for this Slack ingress.",
-  }),
-  Object.freeze({
-    code: "authenticated-event-replay-unavailable",
-    detail:
-      "No operator contract replays the exact signed Slack event through production ingress without posting a second message.",
-  }),
-  Object.freeze({
-    code: "independent-failure-probe-executor-unavailable",
-    detail:
-      "No independent executor captures the signed authorization-denial and provider-rejection snapshots.",
-  }),
-] as const satisfies readonly SlackOperatorBlocker[]);
 
 /** Validate signed authorization and all private operation material before network access. */
 export function preflightSlackOperatorCanary(input: {
@@ -338,25 +293,31 @@ export function preflightSlackOperatorCanary(input: {
   if (execution.authorization.manifest.run.nonce !== plan.runNonce) {
     fail("plan run nonce does not match the signed manifest");
   }
+  const deploymentEvidence = validateDeployedCanaryContractDescriptor({
+    descriptor: plan.deploymentEvidence,
+    execution,
+  });
   const result = Object.freeze({
     status: "slack-operator-inputs-validated",
     scenarioId: "provider.slack.confirmed-send",
     authorization: execution.authorization,
     execution,
-    plan,
-    blockers: BLOCKERS,
+    plan: Object.freeze({ ...plan, deploymentEvidence }),
+    blockers: Object.freeze([] as const),
   });
   validatedPreflights.add(result);
   return result;
 }
 
-/** Refuse qualification execution until all deployment-owned collaborators exist. */
+/** Return the complete executable seam only for the exact validated preflight. */
 export function assertSlackOperatorCanaryExecutable(
   preflight: SlackOperatorPreflight,
-): never {
-  fail(
-    `execution refused; unresolved blockers: ${preflight.blockers.map((item) => item.code).join(", ")}`,
-  );
+  capabilities: unknown,
+): DeployedCanaryCapabilities {
+  if (!validatedPreflights.has(preflight)) {
+    fail("execution requires the exact validated Slack preflight result");
+  }
+  return assertDeployedCanaryCapabilities(capabilities);
 }
 
 async function slackJsonRequest(input: {

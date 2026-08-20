@@ -7,6 +7,12 @@
 
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+import {
+  assertDeployedCanaryCapabilities,
+  type DeployedCanaryCapabilities,
+  type DeployedCanaryContractDescriptor,
+  validateDeployedCanaryContractDescriptor,
+} from "./deployed-capability-contract.ts";
 import type { ProviderOperationKind } from "./operation-binding.ts";
 import {
   type AuthorizedProviderCanaryExecutionPreflight,
@@ -56,17 +62,6 @@ const validatedPreflights = new WeakSet<object>();
 
 export type TwilioCanaryChannel = "sms" | "voice";
 
-export type TwilioOperatorBlockerCode =
-  | "authenticated-deployed-ingress-unavailable"
-  | "deployed-trajectory-export-unavailable"
-  | "authenticated-event-replay-unavailable"
-  | "independent-failure-probe-executor-unavailable";
-
-export interface TwilioOperatorBlocker {
-  code: TwilioOperatorBlockerCode;
-  detail: string;
-}
-
 export interface TwilioOperatorPlan {
   schema: typeof TWILIO_OPERATOR_PLAN_SCHEMA;
   twilioApiOrigin: typeof TWILIO_API_ORIGIN;
@@ -85,11 +80,7 @@ export interface TwilioOperatorPlan {
     consentEvidenceRefSha256: string;
     voiceRecordingEnabled: false;
   };
-  deploymentEvidence: {
-    authenticatedIngressEndpoint: null;
-    trajectoryExportEndpoint: null;
-    authenticatedReplayExecutor: null;
-    independentFailureProbeExecutor: null;
+  deploymentEvidence: DeployedCanaryContractDescriptor & {
     providerStatusReadback: "twilio-rest-v2010";
   };
 }
@@ -102,7 +93,7 @@ export interface TwilioOperatorPreflight {
   authorization: ProviderCanaryAuthorization;
   execution: AuthorizedProviderCanaryExecutionPreflight;
   plan: TwilioOperatorPlan;
-  blockers: readonly TwilioOperatorBlocker[];
+  blockers: readonly [];
 }
 
 export interface TwilioAuthenticatedIngressReceipt {
@@ -284,25 +275,6 @@ function parsePlan(value: unknown): TwilioOperatorPlan {
     plan.deploymentEvidence,
     "plan.deploymentEvidence",
   );
-  exactKeys(deploymentEvidence, "plan.deploymentEvidence", [
-    "authenticatedIngressEndpoint",
-    "trajectoryExportEndpoint",
-    "authenticatedReplayExecutor",
-    "independentFailureProbeExecutor",
-    "providerStatusReadback",
-  ]);
-  for (const key of [
-    "authenticatedIngressEndpoint",
-    "trajectoryExportEndpoint",
-    "authenticatedReplayExecutor",
-    "independentFailureProbeExecutor",
-  ] as const) {
-    if (deploymentEvidence[key] !== null) {
-      fail(
-        `plan.deploymentEvidence.${key} must remain null until a repository-supported authenticated contract exists`,
-      );
-    }
-  }
   if (deploymentEvidence.providerStatusReadback !== "twilio-rest-v2010") {
     fail(
       'plan.deploymentEvidence.providerStatusReadback must equal "twilio-rest-v2010"',
@@ -379,38 +351,12 @@ function parsePlan(value: unknown): TwilioOperatorPlan {
       ),
       voiceRecordingEnabled: false,
     }),
-    deploymentEvidence: Object.freeze({
-      authenticatedIngressEndpoint: null,
-      trajectoryExportEndpoint: null,
-      authenticatedReplayExecutor: null,
-      independentFailureProbeExecutor: null,
-      providerStatusReadback: "twilio-rest-v2010",
-    }),
+    deploymentEvidence:
+      deploymentEvidence as unknown as DeployedCanaryContractDescriptor & {
+        providerStatusReadback: "twilio-rest-v2010";
+      },
   });
 }
-
-const BLOCKERS = Object.freeze([
-  Object.freeze({
-    code: "authenticated-deployed-ingress-unavailable",
-    detail:
-      "No repository-supported deployed endpoint accepts the exact Twilio-signed confirmation while returning a correlation handle for this isolated run.",
-  }),
-  Object.freeze({
-    code: "deployed-trajectory-export-unavailable",
-    detail:
-      "No authenticated deployed-agent API exports the canonical isolated trajectory set for this Twilio ingress.",
-  }),
-  Object.freeze({
-    code: "authenticated-event-replay-unavailable",
-    detail:
-      "No supported operator API replays the exact authenticated Twilio event and proves that the second delivery creates no second billable effect.",
-  }),
-  Object.freeze({
-    code: "independent-failure-probe-executor-unavailable",
-    detail:
-      "No independent executor collects both manifest-bound denial/rejection probes and before/after Twilio snapshots.",
-  }),
-] as const satisfies readonly TwilioOperatorBlocker[]);
 
 function scenarioContract(scenarioId: string): {
   scenarioId: TwilioOperatorPreflight["scenarioId"];
@@ -494,30 +440,39 @@ export function preflightTwilioOperatorCanary(input: {
   ) {
     fail("plan consent evidence is not bound to the signed Twilio capability");
   }
+  const { providerStatusReadback: _providerStatusReadback, ...descriptor } =
+    plan.deploymentEvidence;
+  const deploymentDescriptor = validateDeployedCanaryContractDescriptor({
+    descriptor,
+    execution,
+  });
   const result = Object.freeze({
     status: "twilio-operator-inputs-validated",
     scenarioId: contract.scenarioId,
     authorization: execution.authorization,
     execution,
-    plan,
-    blockers: BLOCKERS,
+    plan: Object.freeze({
+      ...plan,
+      deploymentEvidence: Object.freeze({
+        ...deploymentDescriptor,
+        providerStatusReadback: "twilio-rest-v2010" as const,
+      }),
+    }),
+    blockers: Object.freeze([] as const),
   });
   validatedPreflights.add(result);
   return result;
 }
 
-/** Refuse effect execution until every deployed evidence capability exists. */
+/** Return the complete executable seam only for the exact validated preflight. */
 export function assertTwilioOperatorCanaryExecutable(
   preflight: TwilioOperatorPreflight,
-): never {
+  capabilities: unknown,
+): DeployedCanaryCapabilities {
   if (!validatedPreflights.has(preflight)) {
     fail("execution requires the exact validated Twilio preflight result");
   }
-  fail(
-    `execution refused; unresolved blockers: ${preflight.blockers
-      .map((blocker) => blocker.code)
-      .join(", ")}`,
-  );
+  return assertDeployedCanaryCapabilities(capabilities);
 }
 
 function requireValidatedPreflight(preflight: TwilioOperatorPreflight): void {

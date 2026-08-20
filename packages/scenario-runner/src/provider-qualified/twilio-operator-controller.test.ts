@@ -9,7 +9,11 @@ import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it, vi } from "vitest";
 import smsScenario from "../../../test/scenarios/provider-qualified/provider.twilio-sms.confirmed-send.scenario.ts";
 import voiceScenario from "../../../test/scenarios/provider-qualified/provider.twilio-voice.confirmed-call.scenario.ts";
-import type { ProviderRunBindings } from "./manifest.ts";
+import {
+  createDeployedCanaryContractDescriptor,
+  type DeployedCanaryCapabilities,
+} from "./deployed-capability-contract.ts";
+import { canonicalSha256, type ProviderRunBindings } from "./manifest.ts";
 import {
   authorizeProviderCanary,
   createProviderCanaryTargetBinding,
@@ -97,7 +101,13 @@ function canonicalConfirmation(input: {
   return `Confirm Twilio ${input.channel} canary ${runNonce}: from ${fromE164} to ${toE164}; payload-sha256 ${hash(input.payload)}; idempotency-key ${input.idempotencyKey}`;
 }
 
-function plan(channel: FixtureChannel): TwilioOperatorPlan {
+function plan(
+  channel: FixtureChannel,
+  descriptor: Omit<
+    TwilioOperatorPlan["deploymentEvidence"],
+    "providerStatusReadback"
+  >,
+): TwilioOperatorPlan {
   const contract = channelContract(channel);
   const idempotencyKey = contract.operationInput.idempotencyKey;
   return {
@@ -124,10 +134,7 @@ function plan(channel: FixtureChannel): TwilioOperatorPlan {
       voiceRecordingEnabled: false,
     },
     deploymentEvidence: {
-      authenticatedIngressEndpoint: null,
-      trajectoryExportEndpoint: null,
-      authenticatedReplayExecutor: null,
-      independentFailureProbeExecutor: null,
+      ...descriptor,
       providerStatusReadback: "twilio-rest-v2010",
     },
   };
@@ -266,19 +273,50 @@ function fixture(channel: FixtureChannel) {
       },
     ],
   };
+  const authorization = authorizeProviderCanary({
+    scenario: contract.scenario,
+    bindings,
+    manifestAuthorityPrivateKey: authority.privateKey,
+  });
+  const deploymentDescriptor = createDeployedCanaryContractDescriptor({
+    scenarioId: contract.scenario.id,
+    runId: bindings.runId,
+    deploymentSha256: bindings.deploymentSha,
+    ingressEndpoint:
+      "https://agent.example.test/provider-canary/v1/ingress",
+    ingressEndpointOriginSha256: bindings.ingress.endpointOriginSha256,
+    operationBindingSha256: canonicalSha256(
+      bindings.target.operation,
+      "operationBinding",
+    ),
+    failureProbeBindingsSha256: canonicalSha256(
+      [authorizationDenied, providerRejected],
+      "failureProbeBindings",
+    ),
+    trajectoryEnvironment: "operator-canary",
+    reconciliationOwnerRefSha256: hash(
+      `twilio-${channel}-reconciliation-owner`,
+    ),
+  });
   return {
     scenario: contract.scenario as ScenarioDefinition,
-    authorization: authorizeProviderCanary({
-      scenario: contract.scenario,
-      bindings,
-      manifestAuthorityPrivateKey: authority.privateKey,
-    }),
+    authorization,
     pinnedManifestAuthorityPublicKeysPem: [publicKeyPem] as const,
     providerTarget: { fromE164, toE164 },
     operationInput: contract.operationInput,
     failureProbes: failureProbeMaterials(channel),
-    plan: plan(channel),
+    plan: plan(channel, deploymentDescriptor),
   };
+}
+
+function capabilities(): DeployedCanaryCapabilities {
+  return {
+    authenticateIngress: vi.fn(),
+    retrieveTrajectoryMaterial: vi.fn(),
+    replayAuthenticatedIngress: vi.fn(),
+    executeFailureProbe: vi.fn(),
+    cleanupOrReconcile: vi.fn(),
+  } as unknown as DeployedCanaryCapabilities;
 }
 
 function signForm(requestUrl: string, rawFormBody: string): string {
@@ -291,19 +329,19 @@ function signForm(requestUrl: string, rawFormBody: string): string {
 
 describe("Twilio provider-canary operator", () => {
   it.each(["sms", "voice"] as const)(
-    "binds the %s plan to signed inputs and reports every execution blocker",
+    "binds the %s plan to signed inputs and requires every executable seam",
     (channel) => {
       const preflight = preflightTwilioOperatorCanary(fixture(channel));
       expect(preflight.status).toBe("twilio-operator-inputs-validated");
-      expect(preflight.blockers.map(({ code }) => code)).toEqual([
-        "authenticated-deployed-ingress-unavailable",
-        "deployed-trajectory-export-unavailable",
-        "authenticated-event-replay-unavailable",
-        "independent-failure-probe-executor-unavailable",
-      ]);
-      expect(() => assertTwilioOperatorCanaryExecutable(preflight)).toThrow(
-        /execution refused.*authenticated-deployed-ingress-unavailable/,
+      expect(preflight.blockers).toEqual([]);
+      expect(() => assertTwilioOperatorCanaryExecutable(preflight, {})).toThrow(
+        /closed executable shape/,
       );
+      const deployed = capabilities();
+      expect(
+        assertTwilioOperatorCanaryExecutable(preflight, deployed)
+          .authenticateIngress,
+      ).toBe(deployed.authenticateIngress);
     },
   );
 

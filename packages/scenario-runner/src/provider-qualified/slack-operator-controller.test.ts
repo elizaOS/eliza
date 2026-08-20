@@ -6,7 +6,11 @@
 import { createHash, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import slackScenario from "../../../test/scenarios/provider-qualified/provider.slack.confirmed-send.scenario.ts";
-import type { ProviderRunBindings } from "./manifest.ts";
+import {
+  createDeployedCanaryContractDescriptor,
+  type DeployedCanaryCapabilities,
+} from "./deployed-capability-contract.ts";
+import { canonicalSha256, type ProviderRunBindings } from "./manifest.ts";
 import {
   authorizeProviderCanary,
   createProviderCanaryTargetBinding,
@@ -53,7 +57,9 @@ function failureProbeMaterials() {
   ] as const;
 }
 
-function plan(): SlackOperatorPlan {
+function plan(
+  deploymentEvidence: SlackOperatorPlan["deploymentEvidence"],
+): SlackOperatorPlan {
   return {
     schema: "eliza.slack-provider-canary-operator-plan.v1",
     slackApiOrigin: "https://slack.com",
@@ -66,11 +72,7 @@ function plan(): SlackOperatorPlan {
     expectedHumanIngressContent: ingressContent,
     expectedProviderEffectContent: effectContent,
     poll: { intervalMs: 60_000, timeoutMs: 60_000 },
-    deploymentEvidence: {
-      trajectoryRetrieval: null,
-      authenticatedEventReplay: null,
-      independentFailureProbeExecutor: null,
-    },
+    deploymentEvidence,
   };
 }
 
@@ -206,19 +208,48 @@ function fixture() {
       },
     ],
   };
+  const authorization = authorizeProviderCanary({
+    scenario: slackScenario,
+    bindings,
+    manifestAuthorityPrivateKey: authority.privateKey,
+  });
+  const deploymentEvidence = createDeployedCanaryContractDescriptor({
+    scenarioId: slackScenario.id,
+    runId: bindings.runId,
+    deploymentSha256: bindings.deploymentSha,
+    ingressEndpoint:
+      "https://deployed-agent.example.test/provider-canary/v1/ingress",
+    ingressEndpointOriginSha256: bindings.ingress.endpointOriginSha256,
+    operationBindingSha256: canonicalSha256(
+      bindings.target.operation,
+      "operationBinding",
+    ),
+    failureProbeBindingsSha256: canonicalSha256(
+      [authorizationDenied, providerRejected],
+      "failureProbeBindings",
+    ),
+    trajectoryEnvironment: "operator-canary",
+    reconciliationOwnerRefSha256: hash("slack-reconciliation-owner"),
+  });
   return {
     scenario: slackScenario,
-    authorization: authorizeProviderCanary({
-      scenario: slackScenario,
-      bindings,
-      manifestAuthorityPrivateKey: authority.privateKey,
-    }),
+    authorization,
     pinnedManifestAuthorityPublicKeysPem: [publicKeyPem] as const,
     providerTarget,
     operationInput,
     failureProbes: failureProbeMaterials(),
-    plan: plan(),
+    plan: plan(deploymentEvidence),
   };
+}
+
+function capabilities(): DeployedCanaryCapabilities {
+  return {
+    authenticateIngress: vi.fn(),
+    retrieveTrajectoryMaterial: vi.fn(),
+    replayAuthenticatedIngress: vi.fn(),
+    executeFailureProbe: vi.fn(),
+    cleanupOrReconcile: vi.fn(),
+  } as unknown as DeployedCanaryCapabilities;
 }
 
 function slackMessage(input: {
@@ -237,17 +268,18 @@ function slackMessage(input: {
 }
 
 describe("Slack provider-canary operator", () => {
-  it("validates signed private material and exposes unresolved capabilities", () => {
+  it("validates signed private material and requires every executable seam", () => {
     const preflight = preflightSlackOperatorCanary(fixture());
     expect(preflight.status).toBe("slack-operator-inputs-validated");
-    expect(preflight.blockers.map(({ code }) => code)).toEqual([
-      "deployed-trajectory-retrieval-unavailable",
-      "authenticated-event-replay-unavailable",
-      "independent-failure-probe-executor-unavailable",
-    ]);
-    expect(() => assertSlackOperatorCanaryExecutable(preflight)).toThrow(
-      /execution refused.*deployed-trajectory-retrieval-unavailable/,
+    expect(preflight.blockers).toEqual([]);
+    expect(() => assertSlackOperatorCanaryExecutable(preflight, {})).toThrow(
+      /closed executable shape/,
     );
+    const deployed = capabilities();
+    expect(
+      assertSlackOperatorCanaryExecutable(preflight, deployed)
+        .authenticateIngress,
+    ).toBe(deployed.authenticateIngress);
   });
 
   it("rejects target drift, shared observer identity, and unknown plan fields", () => {

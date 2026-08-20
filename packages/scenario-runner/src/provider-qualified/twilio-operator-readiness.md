@@ -20,8 +20,8 @@ direction, and status. The Call resource does not expose the submitted TwiML,
 so its receipt deliberately leaves `payloadSha256` null; the signed operation
 input and deployed trajectory must prove the spoken payload independently.
 
-Execution remains refused while these repository-supported capabilities are
-missing:
+The repository's deployed-capability contract requires all of these production
+seams before execution:
 
 1. an authenticated deployed ingress endpoint that returns an isolated run
    correlation handle;
@@ -29,7 +29,18 @@ missing:
 3. replay of the identical authenticated ingress with proof that it creates no
    second billable provider effect; and
 4. an independent executor for the manifest-bound authorization-denial and
-   provider-rejection probes with before/after Twilio snapshots.
+   provider-rejection probes with before/after Twilio snapshots; and
+5. explicit cleanup or a durable reconciliation-required handoff.
+
+The plan replaces placeholder URLs and booleans with a self-hashed descriptor
+bound to the signed run, deployment, HTTPS ingress origin, operation hash, and
+complete failure-probe hash set. SMS and voice controllers return an executable
+seam only when every capability is a plain function property. Receipts must
+echo the exact hashes, correlations, and chronology. Trajectory claims are
+recomputed from the isolated run directory with `verifyScenarioTrajectories`.
+This is a contract, not external availability: real Twilio/deployment adapters,
+accounts, observer custody, and reconciliation infrastructure remain operator
+provisioning requirements.
 
 The plan requires the target owner to send the canonical confirmation from the
 destination canary number back to the operator-owned Twilio number. The
