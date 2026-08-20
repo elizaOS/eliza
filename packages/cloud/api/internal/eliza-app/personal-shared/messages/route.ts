@@ -19,7 +19,6 @@ import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversat
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { prewarmPersonalSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
-import { resolveSharedCapabilityIntent } from "@/lib/services/shared-runtime/shared-capability-wall";
 import { sharedRestMessageSend } from "@/lib/services/shared-runtime/shared-rest-adapter";
 import { SharedRuntimeCacheWarmingError } from "@/lib/services/shared-runtime/shared-runtime-errors";
 import { logger } from "@/lib/utils/logger";
@@ -65,16 +64,6 @@ const SAFE_ERROR_NAMES = new Set([
 function safeErrorName(error: unknown): string {
   const name = error instanceof Error ? error.name : "";
   return SAFE_ERROR_NAMES.has(name) ? name : "OtherError";
-}
-
-function isGatewayNativeReminderTurn(message: string): boolean {
-  const resolution = resolveSharedCapabilityIntent(message, {
-    reminders: true,
-  });
-  return (
-    resolution?.kind === "enabled-primary" &&
-    resolution.primary.capability === "reminders"
-  );
 }
 
 const telegramVoiceNoteSchema = z.object({
@@ -344,24 +333,31 @@ app.post("/", async (c) => {
       dedicated = delivery.dedicatedTarget;
       isNewPersonalAccount = delivery.isNew;
     }
-    const accountMs = performance.now() - accountStartedAt;
-    const accountTiming = `account;dur=${accountMs.toFixed(1)};desc="${accountResolution}"`;
-    c.header("Server-Timing", accountTiming);
     const agent = personalSharedAgent({
       userId: account.userId,
       organizationId: account.organizationId,
     });
-    const startPersonalPrewarm = () => {
-      const startedAt = performance.now();
-      const timing = prewarmPersonalSharedAgentTurnCaches(
-        agent,
-        worker.namespace,
-        { warmConversation: isNewPersonalAccount },
-      ).then(() => performance.now() - startedAt);
-      worker.executionCtx.waitUntil(timing);
-      return timing;
-    };
-    let personalPrewarm = dedicated ? null : startPersonalPrewarm();
+    if (dedicated === undefined) {
+      dedicated = await findActivePersonalDedicatedTarget(
+        account.organizationId,
+        agent.id,
+      );
+    }
+    const accountMs = performance.now() - accountStartedAt;
+    const accountTiming = `account;dur=${accountMs.toFixed(1)};desc="${accountResolution}"`;
+    c.header("Server-Timing", accountTiming);
+    const personalPrewarm = dedicated
+      ? null
+      : (() => {
+          const startedAt = performance.now();
+          const timing = prewarmPersonalSharedAgentTurnCaches(
+            agent,
+            worker.namespace,
+            { warmConversation: isNewPersonalAccount },
+          ).then(() => performance.now() - startedAt);
+          worker.executionCtx.waitUntil(timing);
+          return timing;
+        })();
     let deliveryMessage = parsed.data.message;
     if (
       parsed.data.platform === "telegram" &&
@@ -439,23 +435,7 @@ app.post("/", async (c) => {
         },
       });
     }
-    if (dedicated === undefined) {
-      dedicated = await findActivePersonalDedicatedTarget(
-        account.organizationId,
-        agent.id,
-      );
-    }
-    // Connector-native reminders stay on the server-owned Personal Shared
-    // scheduler even after a Dedicated cutover. Dedicated containers receive
-    // the conversational turn through the bridge, but do not own the trusted
-    // Telegram/Discord/Blooio delivery credential needed to persist and fire a
-    // reminder back into this verified DM.
-    const gatewayNativeReminderTurn =
-      isGatewayNativeReminderTurn(deliveryMessage);
-    if (dedicated && gatewayNativeReminderTurn && !personalPrewarm) {
-      personalPrewarm = startPersonalPrewarm();
-    }
-    if (dedicated && !gatewayNativeReminderTurn) {
+    if (dedicated) {
       stage = "dedicated_runtime";
       const dedicatedStartedAt = performance.now();
       const preparation = await preparePersonalDedicatedDelivery(
