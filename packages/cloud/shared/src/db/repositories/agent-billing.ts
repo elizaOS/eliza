@@ -110,6 +110,22 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.status, "running"),
             sql`${agentSandboxes.execution_tier} <> 'shared'`,
+            // Defence in depth, aligned with the six sibling predicates here.
+            // The charge itself is already safe: recordHourlyBillingWithOptions
+            // claims the row with this same guard on its SELECT ... FOR UPDATE,
+            // so a deleting sandbox is never debited — and everything gated on
+            // that claim (shutdown-warning mail, the credits.low webhook) is
+            // equally unreachable for it. What IS unguarded is the cron's
+            // shutdown_pending branch, which reads the selected row directly:
+            // it fires the credits.depleted webhook and enqueueAgentSuspendOnce
+            // without consulting the deletion state.
+            //
+            // The window is narrow because both deletion writers set
+            // status='deletion_pending' in the same UPDATE that sets
+            // deletion_attempt_id, which this predicate already excludes. It is
+            // reachable when something writes 'running' back over a row whose
+            // deletion attempt is still set — the pair-check permits that shape.
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
             billingDueCondition,
           ),
@@ -121,6 +137,7 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.status, "stopped"),
             sql`${agentSandboxes.execution_tier} <> 'shared'`,
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
             isNotNull(agentSandboxes.last_backup_at),
             billingDueCondition,
