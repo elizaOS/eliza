@@ -2419,6 +2419,7 @@ export {
   type CompletionEnvelope,
   envelopeCorrection,
   parseCompletionEnvelope,
+  stripCompletionEnvelope,
   summarizeEnvelope,
 } from "./services/completion-envelope.js";
 export {

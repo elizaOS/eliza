@@ -41,6 +41,7 @@ import {
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { publishParsedReply } from "./acp-response.js";
 import { AcpWarmSessionClaim } from "./acp-session-claim.js";
+import { readWorkspaceManualForPrompt } from "./acp-workspace-manual.js";
 import { initializeAgent } from "./lib/agent.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import {
@@ -166,37 +167,6 @@ interface AcpSession {
 }
 const sessions = new Map<string, AcpSession>();
 
-/**
- * Read the operating manual the orchestrator scaffolds into a spawned sub-agent's
- * workspace (`AGENTS.md` / `CLAUDE.md` — "what Eliza is, you are a non-interactive
- * coding sub-agent, the relay contract"). claude/codex/opencode auto-read these
- * from their cwd; eliza-code runs from the monorepo for dep resolution, so it must
- * read them explicitly from the build workspace and inject them so the sub-agent
- * gets the same orientation as the other backends.
- */
-async function readWorkspaceManual(cwd?: string): Promise<string> {
-  if (!cwd) return "";
-  const { readFile } = await import("node:fs/promises");
-  const { join } = await import("node:path");
-  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
-    try {
-      const text = await readFile(join(cwd, name), "utf8");
-      if (text.trim()) return text.trim();
-    } catch (error) {
-      // error-policy:J4 A missing optional manual is an expected unavailable
-      // state; read and permission failures must still stop session setup.
-      if (
-        !(error instanceof Error) ||
-        !("code" in error) ||
-        error.code !== "ENOENT"
-      ) {
-        throw error;
-      }
-    }
-  }
-  return "";
-}
-
 // stdout = the ACP JSON-RPC output; stdin = the input. (ndJsonStream(output, input).)
 const output = new WritableStream<Uint8Array>({
   write(chunk) {
@@ -289,7 +259,7 @@ const _connection = new AgentSideConnection(
       if (!session.manualInjected) {
         session.manualInjected = true;
         const preamble: string[] = [];
-        const manual = await readWorkspaceManual(session.cwd);
+        const manual = await readWorkspaceManualForPrompt(session.cwd);
         if (manual) preamble.push(manual);
         // Execution contract: weaker coding models (e.g. Cerebras glm-4.7) tend
         // to NARRATE a plan ("I'll create the app...") and end the turn instead

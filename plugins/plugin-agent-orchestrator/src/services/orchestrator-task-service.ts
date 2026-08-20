@@ -250,6 +250,7 @@ import {
 import {
   captureChangeSet,
   subtractChangeSetBaseline,
+  verifyChangedFilesOnDisk,
   type WorkspaceChangeSet,
 } from "./workspace-diff.js";
 import { getCodingWorkspaceService } from "./workspace-service.js";
@@ -761,10 +762,18 @@ export function residualsSpawnBaseline(
   session: Pick<OrchestratorTaskSession, "metadata"> | undefined,
 ): Pick<
   CompletionResidualsInput,
-  "baselineDirtyPaths" | "baselineUntrackedPaths" | "sharedRouteWorkdir"
+  | "baselineHeadSha"
+  | "baselineDirtyPaths"
+  | "baselineUntrackedPaths"
+  | "sharedRouteWorkdir"
 > {
   const meta = session?.metadata;
   if (!isRecord(meta)) return {};
+  const baselineHeadSha =
+    typeof meta.codingBaselineSha === "string" &&
+    meta.codingBaselineSha.trim().length > 0
+      ? meta.codingBaselineSha.trim()
+      : undefined;
   const baselineDirtyPaths = Array.isArray(meta.codingBaselineDirty)
     ? meta.codingBaselineDirty.filter(
         (path): path is string => typeof path === "string" && path.length > 0,
@@ -780,6 +789,7 @@ export function residualsSpawnBaseline(
     meta.workdirRouteId.trim().length > 0 &&
     meta[ACP_METADATA_ISOLATED_WORKDIR] !== true;
   return {
+    ...(baselineHeadSha ? { baselineHeadSha } : {}),
     ...(baselineDirtyPaths.length > 0 ? { baselineDirtyPaths } : {}),
     ...(baselineUntrackedPaths.length > 0 ? { baselineUntrackedPaths } : {}),
     ...(sharedRouteWorkdir ? { sharedRouteWorkdir: true } : {}),
@@ -1919,7 +1929,8 @@ export class OrchestratorTaskService extends Service {
    * Mirror the real git change set a sub-agent produced into the durable task
    * store session record's metadata, so the existing `/api/orchestrator/tasks/:id`
    * detail route serves it (`TaskSessionDto.metadata.lastChangeSet`) and the
-   * task view can render a read-only diff without a new endpoint.
+   * matching disk verification (`lastArtifactVerification`) so the task view
+   * can render a read-only diff without a new endpoint.
    *
    * Source of truth is the change set the router captured onto the LIVE ACP
    * session metadata at `task_complete`. Because the router's capture and this
@@ -1947,14 +1958,22 @@ export class OrchestratorTaskService extends Service {
         const baselineDirty = Array.isArray(meta?.codingBaselineDirty)
           ? (meta.codingBaselineDirty as unknown[]).map(String)
           : [];
+        const baselineUntracked = Array.isArray(meta?.codingBaselineUntracked)
+          ? (meta.codingBaselineUntracked as unknown[]).map(String)
+          : [];
         changeSet = await captureChangeSet(
           session.workdir,
           baseline,
           acp.getChangedPaths(sessionId),
           baselineDirty,
+          baselineUntracked,
         );
       }
       if (!changeSet) return;
+      const artifactVerification = verifyChangedFilesOnDisk(
+        session.workdir,
+        changeSet.changedFiles,
+      );
 
       const found = await this.store.findSession(sessionId, taskId);
       if (!found) return;
@@ -1964,6 +1983,7 @@ export class OrchestratorTaskService extends Service {
           metadata: {
             ...(found.session.metadata ?? {}),
             lastChangeSet: changeSet,
+            lastArtifactVerification: artifactVerification,
           },
         },
         taskId,

@@ -10,6 +10,8 @@
  * implementation instead of a router-private copy the synthesis path lacked.
  */
 
+import { stripCompletionEnvelope } from "./completion-envelope.js";
+
 /** The closing marker captureTerminalToolOutput appends to every block. */
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 
@@ -142,7 +144,9 @@ export function sanitizeCompletionRelay(
 ): string {
   if (!text) return "";
   const stripped = stripStructuredProofLines(
-    stripEnvelopeSummaryLines(stripToolTranscript(text)),
+    stripEnvelopeSummaryLines(
+      stripCompletionEnvelope(stripToolTranscript(text)),
+    ),
   );
   let out = elideLongBlocks(stripped, maxChars);
   // The liveUrl rescue appends at the tail, which is exactly what elision

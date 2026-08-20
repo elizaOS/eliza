@@ -962,6 +962,54 @@ describe("SwarmCoordinatorService", () => {
     await coordinator.stop();
   });
 
+  it("keeps CompletionEnvelope proof internal to the verifier", async () => {
+    const acp = makeAcpStub({
+      agentType: "elizaos",
+      workdir: "/tmp/wd",
+      metadata: { label: "prime-task", originRoomId: "origin-room-prime" },
+    });
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+    const response = [
+      "prime_checker.py now prints the requested primes.",
+      "",
+      "```json",
+      JSON.stringify({
+        diffSummary: "created prime checker",
+        filesChanged: ["prime_checker.py"],
+        realWorkdir: "/private/workspaces/task-123",
+        verifiedChangedFiles: [
+          {
+            path: "prime_checker.py",
+            exists: true,
+            absolutePath: "/private/workspaces/task-123/prime_checker.py",
+          },
+        ],
+        testResults: [
+          { command: "python3 prime_checker.py", exitCode: 0, summary: "ok" },
+        ],
+        screenshotPaths: [],
+        acceptanceCriteriaStatus: [
+          { criterion: "prints primes", met: true, evidence: "exact output" },
+        ],
+        residualRisks: [],
+      }),
+      "```",
+    ].join("\n");
+
+    acp.emit("sess-envelope", "task_complete", { response });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).toHaveBeenCalledTimes(1);
+    const summary = fired.mock.calls[0][0].tasks[0].completionSummary;
+    expect(summary).toBe("prime_checker.py now prints the requested primes.");
+    expect(summary).not.toContain("realWorkdir");
+    expect(summary).not.toContain("/private/workspaces");
+    await coordinator.stop();
+  });
+
   it("relays the head of a long pure-prose deliverable instead of destroying it (#11605)", async () => {
     const acp = makeAcpStub({
       agentType: "codex",
@@ -1839,6 +1887,29 @@ describe("SwarmCoordinatorService", () => {
       completed: 1,
       tasks: [{ sessionId: "sess-dashboard", status: "completed" }],
     });
+    await coordinator.stop();
+  });
+
+  it("does not relay a roomless direct-API completion into the ambient chat", async () => {
+    const acp = makeAcpStub({
+      agentType: "opencode",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "api-benchmark",
+        initialTask: "run benchmark",
+        suppressChatRelay: true,
+      },
+    });
+    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-api-only", "task_complete", { response: "benchmark done" });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(fired).not.toHaveBeenCalled();
     await coordinator.stop();
   });
 

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   captureBaselineDirty,
   captureBaselineSha,
+  captureBaselineUntracked,
   captureChangeSet,
   getWorkspaceBranch,
   parseLsFiles,
@@ -138,6 +139,19 @@ describe("workspace-diff — real git capture", () => {
     expect(cs?.changedFiles).toContain("index.html");
     expect(cs?.changedFiles).not.toContain("leftover.pdf");
     expect(cs?.changedFiles).not.toContain("scratch.py");
+  });
+
+  it("captures a new untracked file by subtracting the spawn-time baseline", async () => {
+    const base = await captureBaselineSha(dir);
+    writeFileSync(join(dir, "old-scratch.py"), "print('old')\n");
+    const baselineUntracked = await captureBaselineUntracked(dir);
+    writeFileSync(join(dir, "nested-runtime.py"), "print('new')\n");
+
+    const cs = await captureChangeSet(dir, base, [], [], baselineUntracked);
+
+    expect(cs?.changedFiles).toContain("nested-runtime.py");
+    expect(cs?.changedFiles).not.toContain("old-scratch.py");
+    expect(cs?.diff).toContain("print('new')");
   });
 
   it("honors .gitignore: ignored install output is excluded; an agent-written ignored deploy file is included via tool paths", async () => {

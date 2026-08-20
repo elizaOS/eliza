@@ -280,6 +280,36 @@ export function parseCompletionEnvelope(text: string): CompletionEnvelopeParse {
   };
 }
 
+/**
+ * Remove a VALID CompletionEnvelope from user-facing completion prose while
+ * leaving the original text available to the verifier/logging path. Ordinary
+ * JSON examples are preserved: the last JSON candidate must satisfy the full
+ * envelope schema before this helper removes anything.
+ */
+export function stripCompletionEnvelope(text: string): string {
+  if (!text) return "";
+  const parsed = parseCompletionEnvelope(text);
+  if (!parsed.present || !parsed.ok) return text.trim();
+
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) return "";
+
+  let match: RegExpExecArray | null;
+  let lastMatch: RegExpExecArray | null = null;
+  FENCED_JSON_RE.lastIndex = 0;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
+  while ((match = FENCED_JSON_RE.exec(text)) !== null) lastMatch = match;
+  if (!lastMatch || lastMatch.index === undefined) return text.trim();
+
+  const before = text.slice(0, lastMatch.index).trimEnd();
+  const after = text.slice(lastMatch.index + lastMatch[0].length).trimStart();
+  return [before, after]
+    .filter(Boolean)
+    .join("\n\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** Compact human summary of a validated envelope, for the verifier/log. */
 export function summarizeEnvelope(env: CompletionEnvelope): string {
   const tests = env.testResults

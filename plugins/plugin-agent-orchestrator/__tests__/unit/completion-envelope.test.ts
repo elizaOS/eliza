@@ -8,6 +8,7 @@ import {
   type CompletionEnvelope,
   envelopeCorrection,
   parseCompletionEnvelope,
+  stripCompletionEnvelope,
   summarizeEnvelope,
 } from "../../src/services/completion-envelope.js";
 
@@ -135,6 +136,23 @@ describe("parseCompletionEnvelope (#8895)", () => {
   it("accepts a bare JSON object with no fence", () => {
     const res = parseCompletionEnvelope(JSON.stringify(validEnvelope()));
     expect(res.ok).toBe(true);
+  });
+
+  it("strips a valid envelope from prose without touching ordinary JSON", () => {
+    const absolutePath = "/private/workspaces/task-123/src/a.ts";
+    const withProof = fenced({
+      ...validEnvelope(),
+      realWorkdir: "/private/workspaces/task-123",
+      verifiedChangedFiles: [{ path: "src/a.ts", exists: true, absolutePath }],
+    });
+
+    expect(stripCompletionEnvelope(withProof)).toBe("Done!");
+    expect(stripCompletionEnvelope(withProof)).not.toContain(absolutePath);
+    expect(stripCompletionEnvelope('{"answer":42}')).toBe('{"answer":42}');
+  });
+
+  it("removes a valid bare envelope entirely", () => {
+    expect(stripCompletionEnvelope(JSON.stringify(validEnvelope()))).toBe("");
   });
 });
 

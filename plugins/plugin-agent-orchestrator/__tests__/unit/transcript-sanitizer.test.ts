@@ -121,6 +121,45 @@ describe("elideLongBlocks", () => {
 });
 
 describe("sanitizeCompletionRelay", () => {
+  it("keeps human prose but strips the machine CompletionEnvelope and paths", () => {
+    const input = [
+      "The script now prints the prime numbers through 31.",
+      "",
+      "```json",
+      JSON.stringify({
+        diffSummary: "updated prime checker",
+        filesChanged: ["prime_checker.py"],
+        realWorkdir: "/private/workspaces/task-123",
+        verifiedChangedFiles: [
+          {
+            path: "prime_checker.py",
+            exists: true,
+            absolutePath: "/private/workspaces/task-123/prime_checker.py",
+          },
+        ],
+        testResults: [
+          { command: "python3 prime_checker.py", exitCode: 0, summary: "ok" },
+        ],
+        screenshotPaths: [],
+        acceptanceCriteriaStatus: [
+          { criterion: "prints primes", met: true, evidence: "exact output" },
+        ],
+        residualRisks: [],
+      }),
+      "```",
+    ].join("\n");
+
+    const out = sanitizeCompletionRelay(input);
+    expect(out).toBe("The script now prints the prime numbers through 31.");
+    expect(out).not.toContain("realWorkdir");
+    expect(out).not.toContain("/private/workspaces");
+  });
+
+  it("preserves ordinary fenced JSON that is not a CompletionEnvelope", () => {
+    const input = 'Here is the requested data:\n```json\n{"answer":42}\n```';
+    expect(sanitizeCompletionRelay(input)).toBe(input);
+  });
+
   it("strips envelopes then truncates the oversized remnant, keeping the head", () => {
     const remnant = "z".repeat(DEFAULT_MAX_RELAY_CHARS + 100);
     const input = `${remnant}\n[tool output: t]\nbody\n[/tool output]`;

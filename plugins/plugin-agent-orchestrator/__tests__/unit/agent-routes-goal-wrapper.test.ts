@@ -164,6 +164,57 @@ describe("agent-routes goal wrapper", () => {
     expect(call.initialTask).toContain("--- Working Agreement ---");
     // The bare goal is persisted so follow-up sends can re-anchor cleanly.
     expect(call.metadata?.goal).toBe("Refactor the parser");
+    // Roomless direct-API jobs must stay out of the ambient active chat.
+    expect(call.metadata?.suppressChatRelay).toBe(true);
+  });
+
+  it("POST /spawn permits chat relay only when metadata names a valid origin room", async () => {
+    const workspaceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "goal-wrapper-routed-ws-"),
+    );
+    const workdir = path.join(workspaceRoot, "task");
+    await mkdir(workdir, { recursive: true });
+    const prevWorkspaceDir = process.env.ELIZA_WORKSPACE_DIR;
+    process.env.ELIZA_WORKSPACE_DIR = workspaceRoot;
+    onTestFinished(async () => {
+      if (prevWorkspaceDir === undefined)
+        delete process.env.ELIZA_WORKSPACE_DIR;
+      else process.env.ELIZA_WORKSPACE_DIR = prevWorkspaceDir;
+      await rm(workspaceRoot, { recursive: true, force: true });
+    });
+    const spawnSession = vi.fn().mockResolvedValue({
+      id: "sess-routed",
+      agentType: "opencode",
+      workdir,
+      status: "ready",
+    });
+    const ctx = makeCtx({
+      listSessions: vi.fn().mockResolvedValue([]),
+      spawnSession,
+    });
+    const req = fakeRequest({
+      method: "POST",
+      url: "/api/coding-agents/spawn",
+      body: {
+        agentType: "opencode",
+        task: "Run the check",
+        workdir,
+        metadata: {
+          roomId: "5efb5f81-0642-00bb-b134-06670adde48d",
+          source: "client_chat",
+        },
+      },
+    });
+    const { res, status } = fakeResponse();
+
+    await handleAgentRoutes(req, res, "/api/coding-agents/spawn", ctx);
+
+    expect(status()).toBe(201);
+    const call = spawnSession.mock.calls[0]?.[0] as {
+      metadata?: Record<string, unknown>;
+    };
+    expect(call.metadata?.roomId).toBe("5efb5f81-0642-00bb-b134-06670adde48d");
+    expect(call.metadata?.suppressChatRelay).toBeUndefined();
   });
 
   it("POST /:id/send re-anchors the message to the session goal via buildGoalFollowUp", async () => {

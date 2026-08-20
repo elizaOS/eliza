@@ -1754,6 +1754,18 @@ describe("OrchestratorTaskService — event bridge session status", () => {
       expect(changeSet?.changedFiles).toEqual(["src/foo.ts"]);
       expect(typeof changeSet?.capturedAt).toBe("number");
       expect(changeSet?.diff).toContain("export const n = 2");
+      expect(metadata.lastArtifactVerification).toMatchObject({
+        workdir: repo,
+        verified: true,
+        files: [
+          {
+            path: "src/foo.ts",
+            exists: true,
+            kind: "file",
+          },
+        ],
+        missingFiles: [],
+      });
     } finally {
       fs.rmSync(repo, { recursive: true, force: true });
     }
@@ -3073,6 +3085,14 @@ describe("residualsSpawnBaseline — spawn-time metadata classification", () => 
         metadata: { codingBaselineDirty: ["a.ts", 42, "b.ts", ""] },
       }),
     ).toEqual({ baselineDirtyPaths: ["a.ts", "b.ts"] });
+  });
+
+  it("parses the HEAD-at-spawn baseline used by the unpushed-commit leg", () => {
+    expect(
+      residualsSpawnBaseline({
+        metadata: { codingBaselineSha: "  abc123  " },
+      }),
+    ).toEqual({ baselineHeadSha: "abc123" });
   });
 
   it("parses the untracked-at-spawn baseline, dropping non-string entries", () => {

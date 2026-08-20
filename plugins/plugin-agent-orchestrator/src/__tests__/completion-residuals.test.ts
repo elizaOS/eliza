@@ -155,6 +155,55 @@ describe("collectCompletionResiduals — real git legs", () => {
     expect(residual?.items?.[0]).toBe(head);
   });
 
+  it("does not attribute commits already unpushed at spawn to the child task", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(
+      join(workdir, "parent-local.ts"),
+      "export const local = 1;\n",
+    );
+    git(workdir, "add", ".");
+    git(workdir, "commit", "-q", "-m", "parent local checkpoint");
+    const baselineHeadSha = git(workdir, "rev-parse", "HEAD").trim();
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+      baselineHeadSha,
+    });
+
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+  });
+
+  it("still flags a new unpushed commit created after the spawn baseline", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(
+      join(workdir, "parent-local.ts"),
+      "export const local = 1;\n",
+    );
+    git(workdir, "add", ".");
+    git(workdir, "commit", "-q", "-m", "parent local checkpoint");
+    const baselineHeadSha = git(workdir, "rev-parse", "HEAD").trim();
+    writeFileSync(
+      join(workdir, "child-change.ts"),
+      "export const child = 1;\n",
+    );
+    git(workdir, "add", ".");
+    git(workdir, "commit", "-q", "-m", "child checkpoint");
+    const childHead = git(workdir, "rev-parse", "HEAD").trim();
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+      baselineHeadSha,
+    });
+
+    const residual = result.residuals.find(
+      (row) => row.kind === "unpushed_commits",
+    );
+    expect(residual?.items).toEqual([childHead]);
+  });
+
   it("clears after the unpushed commit is pushed", async () => {
     const { workdir } = makeRepo();
     writeFileSync(join(workdir, "feature.ts"), "export const x = 1;\n");

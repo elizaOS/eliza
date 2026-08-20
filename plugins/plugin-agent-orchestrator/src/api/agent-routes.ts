@@ -19,6 +19,7 @@ import { logger } from "@elizaos/core";
 import { assignAgentName } from "../services/agent-name-assignment.js";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { isParentAgentBrokerWired } from "../services/parent-agent-broker.js";
+import { resolveOriginRoomId } from "../services/session-room-binding.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
 import {
   type AgentType,
@@ -634,6 +635,14 @@ export async function handleAgentRoutes(
         : String((await ctx.acpService.resolveAgentType?.({})) ?? "codex");
 
       const callerMetadata = (metadata as Record<string, unknown>) ?? {};
+      // A raw API spawn is a dashboard/automation operation, not a chat turn.
+      // Without an explicit, valid origin room the legacy swarm-completion
+      // fallback targets whichever conversation is currently active, leaking
+      // benchmark output into an unrelated user's transcript. Keep the result
+      // on the session/output API unless the caller deliberately binds it to a
+      // real room. This marker is stamped after caller metadata so a roomless
+      // caller cannot opt itself back into the ambient-conversation fallback.
+      const suppressChatRelay = !resolveOriginRoomId(callerMetadata);
       const taskRoomId =
         typeof callerMetadata.taskRoomId === "string"
           ? callerMetadata.taskRoomId
@@ -687,6 +696,7 @@ export async function handleAgentRoutes(
           requestedType: agentStr,
           ...callerMetadata,
           label: agentName,
+          ...(suppressChatRelay ? { suppressChatRelay: true } : {}),
           // Persist the bare goal so follow-up sends can re-anchor through
           // buildGoalFollowUp instead of parsing it out of the wrapped prompt.
           ...(taskText ? { goal: taskText } : {}),

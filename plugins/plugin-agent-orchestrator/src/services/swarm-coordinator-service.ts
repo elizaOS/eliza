@@ -940,6 +940,19 @@ export class SwarmCoordinatorService
     }
     const meta = sessionMeta.metadata;
 
+    // Direct /api/coding-agents/spawn sessions without an explicit origin room
+    // are API/dashboard jobs. Their result remains available through session
+    // output, task state, WS activity, and trajectories; relaying it through
+    // swarm synthesis would fall back to the currently active conversation
+    // and pollute an unrelated user's chat. The API route stamps this trusted
+    // persisted marker for exactly that roomless case.
+    if (meta.suppressChatRelay === true) {
+      logger.debug(
+        `[SwarmCoordinatorService] suppressing roomless API completion relay (sessionId=${sessionId}, event=${event})`,
+      );
+      return;
+    }
+
     // Handoff teardown (#11711): a session the router handed off to a successor
     // (verify-retry, state-lost respawn, or account failover) is torn down with
     // a `stopped` terminal that is plumbing, not a user-facing end state — the

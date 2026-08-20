@@ -78,7 +78,7 @@ import {
   SsrfBlockedError,
   safeFetch,
 } from "./ssrf-guard.js";
-import { stripToolTranscript } from "./transcript-sanitizer.js";
+import { sanitizeCompletionRelay } from "./transcript-sanitizer.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 import {
   captureChangeSet,
@@ -1440,11 +1440,15 @@ export class SubAgentRouter extends Service {
         const baselineDirty = Array.isArray(meta?.codingBaselineDirty)
           ? (meta.codingBaselineDirty as unknown[]).map(String)
           : [];
+        const baselineUntracked = Array.isArray(meta?.codingBaselineUntracked)
+          ? (meta.codingBaselineUntracked as unknown[]).map(String)
+          : [];
         changeSet = await captureChangeSet(
           session.workdir,
           baseline,
           this.acp.getChangedPaths(sessionId),
           baselineDirty,
+          baselineUntracked,
         );
         // Persist only a real change set. An unchanged completion stores nothing,
         // so the provider — which selects the most-recently-completed session
@@ -1527,7 +1531,9 @@ export class SubAgentRouter extends Service {
     // output" task that also writes a file must still surface the output, not
     // only the diff summary. The verifiedUrls path keeps its dedicated handling.
     if (event === "task_complete" && verifiedUrls.length === 0) {
-      deliverable = extractShortToolDeliverable(data);
+      deliverable =
+        extractShortToolDeliverable(data) ??
+        extractExactOutputDeliverable(session, data);
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
     // are unreachable — the build is incomplete (missing or empty files).
@@ -2318,6 +2324,9 @@ export class SubAgentRouter extends Service {
           service.getChangedPaths(session.id),
           Array.isArray(meta?.codingBaselineDirty)
             ? (meta.codingBaselineDirty as unknown[]).map(String)
+            : [],
+          Array.isArray(meta?.codingBaselineUntracked)
+            ? (meta.codingBaselineUntracked as unknown[]).map(String)
             : [],
         ),
       ]);
@@ -3421,16 +3430,19 @@ function normalizeFinishReason(
 
 // The envelope-stripping logic moved to the shared transcript-sanitizer so the
 // swarm-synthesis relay path (issue elizaOS/eliza#11578) sanitizes with the
-// SAME implementation instead of its own missing copy. stripToolTranscript is
-// re-imported (see the top-of-file import) and behaves identically here for the
-// well-formed case the router already handled; it additionally hardens against
-// empty-title and unterminated blocks, which the router never emitted but which
-// leaked on the synthesis path.
+// SAME implementation instead of its own missing copy. The shared sanitizer
+// includes the historical tool-transcript behavior and now also strips the
+// machine-only CompletionEnvelope before the parent planner sees the result.
 
 // Maximum size of a captured tool-output block we will relay verbatim. Above
 // this, the deliverable is a multi-KB transcript and stays on the
 // model-rendered (summarized) path rather than being dumped to the user.
 const MAX_VERBATIM_DELIVERABLE_BYTES = 2048;
+
+const EXACT_OUTPUT_REQUEST_RE =
+  /(?:\b(?:exact|exactly|verbatim)\b[\s\S]{0,80}\boutput\b|\boutput\b[\s\S]{0,80}\b(?:exact|exactly|verbatim)\b)/iu;
+const INTERNAL_ABSOLUTE_PATH_RE =
+  /(?:^|\s)\/(?:Users|home|root|var|tmp|opt|etc|usr|private|mnt|srv)\//mu;
 
 // Recover the deliverable when it is the sub-agent's printed/tool output and
 // composeNarration→stripToolTranscript has deleted it. Extracts the inner body
@@ -3464,6 +3476,35 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
       : inner;
   }
   return undefined;
+}
+
+/**
+ * Preserve a short worker answer verbatim when the task explicitly requests
+ * exact/verbatim output. Some ACP adapters expose only the worker's final prose
+ * (not a captured `[tool output: ...]` block); without this fallback the parent
+ * model can paraphrase `Clean coding result` into `it's clean.`. The ordinary
+ * completion sanitizer still removes machine envelopes, and path-bearing/raw
+ * payloads stay on the model-summarized route.
+ */
+export function extractExactOutputDeliverable(
+  session: SessionInfo,
+  data: unknown,
+): string | undefined {
+  const meta = session.metadata as Record<string, unknown> | undefined;
+  const initialTask = pickPlainString(meta?.initialTask) ?? "";
+  if (!EXACT_OUTPUT_REQUEST_RE.test(initialTask)) return undefined;
+  const response =
+    pickPayloadString(data, "response") ?? pickPayloadString(data, "finalText");
+  if (!response) return undefined;
+  const cleaned = sanitizeCompletionRelay(response).trim();
+  if (
+    !cleaned ||
+    Buffer.byteLength(cleaned, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES ||
+    INTERNAL_ABSOLUTE_PATH_RE.test(cleaned)
+  ) {
+    return undefined;
+  }
+  return cleaned;
 }
 
 function composeNarration(
@@ -3593,7 +3634,7 @@ function composeNarration(
   }
   // Non-retry completion: keep the (transcript-stripped, banner-stripped) prose
   // so legitimate results ("PR opened: …", a question) still reach the user.
-  const cleaned = stripToolTranscript(response);
+  const cleaned = sanitizeCompletionRelay(response);
   if (!cleaned) return header;
   return `${header}\n${stripRoutingKindBanner(cleaned)}`;
 }

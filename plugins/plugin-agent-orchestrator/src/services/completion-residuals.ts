@@ -125,6 +125,11 @@ export interface CompletionResidualsInput {
    * skips them (envelope legs still apply) instead of blocking promotion.
    */
   repoExpected: boolean;
+  /** HEAD captured when the session spawned (`codingBaselineSha`). The
+   * unpushed-commit leg considers only commits created after this point, so a
+   * parent checkout that was already ahead of upstream cannot make every
+   * child completion fail forever. */
+  baselineHeadSha?: string;
   /** Paths already dirty when the reporting session spawned (session metadata
    * `codingBaselineDirty`, captured by `AcpService.spawnSession` as
    * `git diff --name-only HEAD`). The uncommitted-changes leg subtracts them:
@@ -472,10 +477,30 @@ export async function collectCompletionResiduals(
           `git rev-list @{u}..HEAD failed in ${workdir}: ${unpushed.stderr.trim() || "unknown error"}`,
         );
       }
-      const shas = unpushed.stdout
+      let shas = unpushed.stdout
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
+      const baselineHeadSha = input.baselineHeadSha?.trim();
+      if (baselineHeadSha && shas.length > 0) {
+        const sinceSpawn = runGit(workdir, [
+          "rev-list",
+          `${baselineHeadSha}..HEAD`,
+        ]);
+        if (!sinceSpawn.ok) {
+          return unverifiable(
+            "git_failed",
+            `git rev-list ${baselineHeadSha}..HEAD failed in ${workdir}: ${sinceSpawn.stderr.trim() || "unknown error"}`,
+          );
+        }
+        const createdDuringSession = new Set(
+          sinceSpawn.stdout
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0),
+        );
+        shas = shas.filter((sha) => createdDuringSession.has(sha));
+      }
       if (shas.length > 0) {
         residuals.push({
           kind: "unpushed_commits",

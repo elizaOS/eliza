@@ -292,7 +292,7 @@ async function fileDiff(
 
 /**
  * What this sub-agent changed in `workdir` since spawn, from the union of two
- * SESSION-SCOPED signals — no filesystem walk, no path denylist, no mtime
+ * SESSION-SCOPED signals — no filesystem walk, no mtime
  * heuristics, so it works for any workdir/language/deployment:
  *  - `git diff --name-status <base>`: tracked edits, deletions, renames since
  *    the spawn baseline (covers shell-driven writes to tracked files);
@@ -300,11 +300,11 @@ async function fileDiff(
  *    this session — including gitignored DEPLOY targets (`data/apps/<name>/`)
  *    that git won't surface.
  *
- * Deliberately NOT using `git ls-files --others`: it lists EVERY untracked file
- * in the work tree regardless of when it appeared, so in a shared/long-lived
- * workspace it scoops up accumulated clutter from prior sessions (stray .venv,
- * old build output, scratch PDFs) that this task never touched. Both signals
- * above are scoped to this session, so the change set stays accurate.
+ * When the caller supplies the spawn-time untracked baseline, a third signal
+ * safely covers nested runtimes whose FILE actions are not surfaced as ACP tool
+ * updates: `git ls-files --others` minus that baseline. Callers without a
+ * baseline retain the historical no-scoop behavior, so shared-workspace clutter
+ * is never attributed to a session merely because it exists.
  *
  * Returns undefined when nothing changed or the workspace isn't a git repo.
  */
@@ -313,6 +313,7 @@ export async function captureChangeSet(
   baselineSha?: string,
   toolPaths: string[] = [],
   baselineDirty: string[] = [],
+  baselineUntracked?: string[],
 ): Promise<WorkspaceChangeSet | undefined> {
   if (!(await isWorkTree(workdir))) {
     return captureToolPathOnlyChangeSet(workdir, toolPaths);
@@ -324,12 +325,9 @@ export async function captureChangeSet(
   // its whole working tree as a change set.
   const base = await resolveDiffBase(workdir, baselineSha);
   // `base === EMPTY_TREE_HASH` iff HEAD was unborn (a FRESH repo, no baseline).
-  // That is the only case where we merge `git ls-files --others`: a fresh repo
-  // has no accumulated prior-session clutter, so surfacing every untracked file
-  // is correct. In the normal born-HEAD case we deliberately DO NOT scoop up
-  // untracked files (that would regress the shared-workspace clutter invariant
-  // pinned by the workspace-diff tests) — tracked diff + tool paths stay scoped
-  // to this session.
+  // A fresh repo safely contributes all non-vendor untracked files. A born repo
+  // contributes them only when the caller supplies the spawn-time untracked
+  // baseline, allowing a precise set subtraction instead of scooping clutter.
   const unbornHead = base === EMPTY_TREE_HASH;
 
   // Exclude files already dirty at spawn (pre-existing churn the agent didn't
@@ -347,16 +345,25 @@ export async function captureChangeSet(
   ).filter((file) => !dirtyAtSpawn.has(file));
   const agentWritten = [...agentWrittenSet];
 
-  // On an unborn HEAD only: include untracked files so shell-driven creates
-  // (mkdir/cp/redirect) that never went through the edit/write tool path still
-  // surface. `git diff <empty-tree>` sees only files git already knows about,
-  // so a freshly scaffolded, never-added file would otherwise be invisible
-  // (issue #11578 FIX C). Scoped to unborn HEAD to preserve the born-HEAD
-  // clutter invariant above.
-  const untracked = unbornHead
+  // Include untracked files on an unborn HEAD or when a spawn-time baseline is
+  // available. This captures shell/nested-runtime writes that never surfaced as
+  // ACP tool paths without attributing pre-existing shared-checkout clutter.
+  const baselineUntrackedPaths = baselineUntracked ?? [];
+  const wasUntrackedAtSpawn = (file: string): boolean =>
+    baselineUntrackedPaths.some(
+      (entry) =>
+        file === entry || (entry.endsWith("/") && file.startsWith(entry)),
+    );
+  const shouldInspectUntracked = unbornHead || baselineUntracked !== undefined;
+  const untracked = shouldInspectUntracked
     ? parseLsFiles(
         await git(workdir, ["ls-files", "--others", "--exclude-standard"]),
-      ).filter((file) => !dirtyAtSpawn.has(file) && !isVendorScoopPath(file))
+      ).filter(
+        (file) =>
+          !dirtyAtSpawn.has(file) &&
+          !wasUntrackedAtSpawn(file) &&
+          !isVendorScoopPath(file),
+      )
     : [];
 
   // Agent-written paths FIRST: explicit edit/write tool calls are the

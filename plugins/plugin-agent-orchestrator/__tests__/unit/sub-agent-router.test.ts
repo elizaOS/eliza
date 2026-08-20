@@ -317,6 +317,78 @@ describe("SubAgentRouter", () => {
     await router.stop();
   });
 
+  it("routes human completion prose without the internal CompletionEnvelope", async () => {
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    const router = await SubAgentRouter.start(runtime);
+    const response = [
+      "prime_checker.py now prints the requested primes.",
+      "",
+      "```json",
+      JSON.stringify({
+        diffSummary: "created prime checker",
+        filesChanged: ["prime_checker.py"],
+        realWorkdir: "/private/workspaces/task-123",
+        verifiedChangedFiles: [
+          {
+            path: "prime_checker.py",
+            exists: true,
+            absolutePath: "/private/workspaces/task-123/prime_checker.py",
+          },
+        ],
+        testResults: [
+          { command: "python3 prime_checker.py", exitCode: 0, summary: "ok" },
+        ],
+        screenshotPaths: [],
+        acceptanceCriteriaStatus: [
+          { criterion: "prints primes", met: true, evidence: "exact output" },
+        ],
+        residualRisks: [],
+      }),
+      "```",
+    ].join("\n");
+
+    acp.emit(SESSION_ID, "task_complete", { response });
+    await new Promise((r) => setImmediate(r));
+
+    const posted = handleMessage.mock.calls[0]?.[1];
+    if (!posted) throw new Error("expected routed completion memory");
+    expect(posted.content?.text).toContain(
+      "prime_checker.py now prints the requested primes.",
+    );
+    expect(posted.content?.text).not.toContain("realWorkdir");
+    expect(posted.content?.text).not.toContain("/private/workspaces");
+
+    await router.stop();
+  });
+
+  it("marks a short exact-output response as a verbatim deliverable", async () => {
+    session = makeSession({
+      metadata: {
+        label: "exact-output",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "client_chat",
+        initialTask:
+          "Create a script, run it, and tell me the exact output in one sentence.",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    const router = await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", { response: "Clean coding result" });
+    await new Promise((r) => setImmediate(r));
+
+    const posted = handleMessage.mock.calls[0]?.[1];
+    if (!posted) throw new Error("expected routed completion memory");
+    expect(posted.content?.metadata?.subAgentDeliverable).toBe(
+      "Clean coding result",
+    );
+    await router.stop();
+  });
+
   it("carries workdir route metadata into routed terminal messages", async () => {
     session = makeSession({
       metadata: {

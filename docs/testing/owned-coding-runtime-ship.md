@@ -2,19 +2,24 @@
 
 Date: 2026-08-20
 
-## Ship decision
+## Current local decision
 
 Eliza's first-party coding path is the implementation being shipped. OpenCode
 and pi-agent were not copied into the runtime. They remain useful references or
 explicit optional ACP backends, but neither is required for the owned path.
 
-Correctness is release-ready only after both the normal-person browser
-regression and the exact-head parent/orchestrator matrix below. The pushed
-handoff identifies the final exact commit and its retained clean-start/clean-end
-report. The earlier OpenRouter/Qwen diagnostic remains historical evidence
-only; it is not the ship configuration. Current acceptance uses direct Cerebras
-with `gemma-4-31b`, through Eliza's protected provider-account store rather than
-a long-lived plaintext environment variable.
+This is a local candidate, not a flawless or published release. Nothing from
+this coding-agent work is to be pushed while the remaining UX issues below are
+open. The latest checked-in local checkpoint is
+`7eade67fbe4864fee6e5f84975f33d2fc655a93b`; the API-only chat-relay fix and
+the completion/evidence fixes and this updated evidence are newer local
+working-tree changes. The final handoff must name the newer local checkpoint
+after the clean exact-head gate; it must not name a remote branch.
+
+The earlier OpenRouter/Qwen diagnostic remains historical evidence only; it is
+not the current configuration. Current acceptance uses direct Cerebras with
+`gemma-4-31b`, through Eliza's protected provider-account store rather than a
+long-lived plaintext environment variable.
 
 The tested production chain is:
 
@@ -127,6 +132,53 @@ The result is evidence such as `FILE read <absolute path>` followed by
 output. The LLM goal verifier no longer has to infer success from a thin final
 sentence.
 
+Completion-time evidence now follows the same race-safe rule in both owners of
+the ACP `task_complete` event. If the durable task bridge wins the event race
+before the router's live metadata write, it independently captures the same
+baseline-scoped change set, verifies every changed path against the real
+workdir, and stores both `lastChangeSet` and `lastArtifactVerification`. This
+prevents a truthful new file from having a visible diff but a missing disk
+verification record.
+
+New untracked files produced by the nested Eliza FILE action are also captured
+without scooping up unrelated pre-existing files. The spawn records the exact
+untracked baseline; completion subtracts it and includes only newly introduced
+paths. Legacy callers that do not have a baseline retain the conservative
+no-scoop behavior.
+
+### Clean completion projection and exact outputs
+
+The child still emits a structured `CompletionEnvelope` for machine validation,
+trajectory retention, and diagnostics. The user-facing relay now parses and
+removes only a valid envelope, bounded tool transcript, proof footer, and
+internal summary lines. Ordinary JSON that is not a valid envelope is preserved.
+The coordinator therefore keeps verifier-grade evidence without dumping JSON,
+absolute paths, or raw tool receipts into chat.
+
+When the user explicitly asks for exact or verbatim output, the router records a
+short, path-free child deliverable and relays that value unchanged after
+verification. This is a generic output-fidelity contract, not a special case for
+greetings or any tested phrase. Normal requests still use the parent's ordinary
+natural-language completion path.
+
+The residual gate now scopes unpushed commits to commits created after the
+session's spawn baseline. A local branch that was already ahead when the child
+started no longer makes every later child look unfinished, while a commit the
+child creates after spawn is still reported as an `unpushed_commits` residual.
+
+### Child prompt compaction
+
+The packaged Eliza Code child previously injected the repository's roughly
+10 KB root orchestration scaffold plus a second redundant system paragraph into
+every model call. The exact scaffold is now represented by a compact coding
+workspace manual while project-authored instructions remain verbatim. The
+duplicate paragraph was removed.
+
+The live prime-script retry kept the same two FILE/SHELL operations and exact
+output while reducing prompt tokens from 32,634 to 24,987, a 23.4% reduction.
+This is still larger than ideal, but it removes the avoidable child-side
+duplication without weakening workdir, test, secret, or completion rules.
+
 ### Workspace/device FILE routing
 
 A normal browser prompt naming an absolute host file initially exposed a real
@@ -148,11 +200,11 @@ read/edit calls only and produced a clean final response.
 
 ### Deterministic suites
 
-- `plugin-agent-orchestrator`: 252 test files passed, 7 skipped; 2,954 tests
+- `plugin-agent-orchestrator`: 252 test files passed, 7 skipped; 2,956 tests
   passed, 11 skipped. Package typecheck, build, and Biome checks passed.
 - `plugin-coding-tools`: 39 test files and 644 tests passed; package typecheck,
   build, and Biome checks passed.
-- `packages/examples/code`: 95 tests passed across 29 files; typecheck and
+- `packages/examples/code`: 99 tests passed; typecheck and
   packaged `index.js`/`acp.js` build passed.
 - `packages/core`: the 140 focused message-routing and planner-loop regressions
   passed; package typecheck and Node build passed. The package Biome gate passed
@@ -160,7 +212,11 @@ read/edit calls only and produced a clean final response.
 - Focused regression coverage proves planner-visible exact-workdir locking,
   top-level pre-task trace reservation, trace/session correlation, detached
   trajectory ingestion, immediate deterministic durable ownership, secret
-  redaction, source-content exclusion, and exact FILE/SHELL completion evidence.
+  redaction, source-content exclusion, exact FILE/SHELL completion evidence,
+  envelope-free chat projection, exact-output delivery, spawn-baseline residual
+  attribution, new-untracked capture, and race-safe disk verification. The
+  latest narrow orchestrator gate passed 383 tests across the eight directly
+  affected files, plus package typecheck, build, Biome, and `git diff --check`.
 
 ### Real parent and concurrent child acceptance
 
@@ -194,16 +250,25 @@ read-only workspace was unchanged, and all three lifecycle sequences reached
 `done`, `archived`, then `active` after reopen. Its sanitized local report is
 `work/qa-artifacts/owned-parent-final-20260820-cbb6da2/owned-parent-2026-08-20T19-23-40-914Z-51341/report.json`.
 
-The final post-fix exact-head rerun for this handoff is retained under
-`work/qa-artifacts/owned-parent-cerebras-final-20260820/`. Its `report.json`
-records the exact source head, clean-start/clean-end checks, parent-selected
-delegation, concurrent child overlap, lifecycle transitions, independent test
-results, and sanitized provider/model/tool evidence.
+The latest clean exact-head rerun is retained at
+`work/qa-artifacts/owned-parent-cerebras-final-20260820/owned-parent-2026-08-20T22-55-52-416Z-72133/report.json`.
+It passed at local checkpoint
+`7eade67fbe4864fee6e5f84975f33d2fc655a93b`: the natural parent selected
+delegation, both concurrent children overlapped while running, all three
+workspaces remained unchanged, every task completed and traversed
+`done -> archived -> active`, and all recorded parent/child model stages used
+Cerebras `gemma-4-31b`.
 
-An exact-head repetition then caught the `taskRoomId` ownership bug above and is
-recorded as a failed acceptance, despite the child itself completing the fixture
-work. The pushed handoff names the later post-fix report that counts as the
-release gate; a one-off green run is deliberately not treated as flawless proof.
+That report predates the newer API-only chat-relay fix. The relay fix has full
+package tests and a live browser/runtime regression below, but it does not yet
+have another clean exact-head parent matrix. The clean report is therefore
+strong evidence for the checked-in checkpoint, not proof that the current dirty
+working tree is ready to publish.
+
+An exact-head repetition previously caught the `taskRoomId` ownership bug above
+and is recorded as a failed acceptance, despite the child itself completing the
+fixture work. The later clean report is the checked-in checkpoint's lifecycle
+evidence; a one-off green run is deliberately not treated as flawless proof.
 
 ### Browser-only Eliza UI acceptance
 
@@ -220,7 +285,9 @@ bun test src/lib/text-width.test.ts
 The tool trajectory recorded three successful stages, the command reported
 three passing tests and zero failures, the durable task moved through validation
 to `done` on the first attempt, and the asynchronous result appeared in the UI.
-No native desktop bundle was launched or tested by this coding-runtime lane.
+Native desktop behavior is not part of this coding-runtime acceptance. A later
+accidental duplicate native launch from this worktree was terminated after it
+collided with the intended integration host; none of its behavior counts as QA.
 
 The final isolated browser acceptance used UI `2638`, API `32637`, the real
 Eliza parent runtime, native ACP transport, the packaged `dist/acp.js` child,
@@ -244,6 +311,21 @@ script-specific acceptance criteria passed; and the child trajectory records
 `provider=cerebras`, `modelName=gemma-4-31b` for every model stage. The visible
 notification included the exact output, and the chat contained no provisional
 failure note.
+
+Four later browser/runtime probes exercise the repaired presentation and
+evidence path against the same protected Cerebras account:
+
+| Request | Nonsecret evidence | Verdict |
+| --- | --- | --- |
+| `What is 2 + 2? Answer in one short sentence.` | Visible response `It's 4.` in 1.192 s end to end; trajectory `tj-91d2c66fe42664` records `provider=cerebras`, `modelName=gemma-4-31b`, one simple response stage, no tools | Pass |
+| Create and run a shopping-total script | Session `ca33a989-c4ed-4861-a391-52cdfa47bfa7`; trajectory `tj-80fddf59d5c682`; exact independent output `Total: $10.00`; two tools, zero failures | Pass |
+| Create and run `visible_exact_result_v2.py`, return exact output | Task `aaec7dea-dfb1-4f7e-8a27-660586749449`; session `ef11f1a3-07b1-4404-bd44-13c706f7ebdd`; visible response exactly `Exact relay works`; clean residuals and passed validation | Pass |
+| Create and run `visible_change_evidence_v3.py`, return exact output | Task `564a90b2-eac5-49e0-9628-15ddde828c7b`; session `036daa7a-6013-4c5c-8121-5e104947e440`; visible response exactly `Evidence path works`; one-file new-file diff and independent SHA-256 `72ea0ee3bb114958a51f6098481ea7011b03f19399251296b10ab4d3d63b7e87` | Pass |
+
+The two `visible_*` scripts were QA artifacts and were removed after their
+content, execution result, hash, task, session, change set, and browser result
+were recorded. The retained chat history still shows older failed probes above
+these clean results; it was deliberately not rewritten.
 
 Two failed runs are intentionally retained as regression evidence. The first
 used a stale source-checkout cwd. The second produced a correct child result in
@@ -322,6 +404,56 @@ configuration, status, evaluator, and trajectory tests described above. The
 fresh browser proof confirms that the protected account resolves at runtime and
 that both parent and child model stages are Cerebras Gemma, not Qwen/OpenRouter.
 
+### Eliza Code versus OpenCode normal-person comparison
+
+Two agents were spawned concurrently through the same isolated Eliza runtime
+and asked to do the same ordinary work. Eliza Code used its owned native ACP
+child and first-party trajectory. OpenCode `1.18.18` used the same protected
+Cerebras account selected through Eliza's account policy. No provider secret
+was printed, persisted in a tracked file, or added to the runtime process
+environment.
+
+| Task | Eliza Code | OpenCode | Independent result |
+| --- | --- | --- | --- |
+| Create `prime_checker.py` and print primes from 2 through 30 | session `d34f0e5b-7d90-47de-8f78-ac1f1801bd5f`; stopped in about 6 s | session `70cbad2e-59ec-4f52-ba5e-8d43fd8fd63f`; stopped in about 6 s | Both printed exactly `2 3 5 7 11 13 17 19 23 29` |
+| Edit the existing script to include 31, then run it | session `bb4b28b1-0fa5-4f86-bde8-67ad4ba24448`; stopped in about 7.6 s | session `3a963171-82e2-4746-a3ac-07a843832629`; stopped in about 13.6 s | Both printed exactly `2 3 5 7 11 13 17 19 23 29 31` |
+
+The Eliza Code creation trace is `tj-673ce59a412ac4`: Cerebras
+`gemma-4-31b`, two planner iterations, two successful tool calls, no failures,
+and 2.929 s of model latency. It exposed the former 32,634-token prompt; the
+post-compaction equivalent used 24,987 tokens and retained the exact result.
+OpenCode was not more correct and was slower on the edit. Its raw ACP completion
+was noisier, including tool-output payloads, JSON, and absolute paths. The
+evidence supports keeping Eliza Code as the default and treating OpenCode as an
+optional fallback/reference, not as a replacement that fixes the owned runtime.
+
+Pi Agent was not tested because no Pi CLI is installed in the isolated runtime;
+preflight reports `installed: false`, `authReady: false`, and `CLI not detected`.
+Adding external software is intentionally deferred rather than changing the
+candidate just to manufacture a comparison.
+
+### API-only agent chat-relay regression
+
+The first comparison exposed a serious UI bug: roomless direct API sessions
+could synthesize completion messages into whichever chat happened to be active.
+This made raw OpenCode/Eliza Code payloads and absolute paths appear in the
+browser even though the user had not sent those requests in that conversation.
+The messages were ephemeral and disappeared after reload, but the visible
+behavior was still incorrect.
+
+Roomless direct `/api/coding-agents/spawn` sessions now receive trusted
+`suppressChatRelay: true` metadata, and the swarm coordinator does not synthesize
+a chat completion for those sessions. A direct session with a validated origin
+room remains relay-capable, so normal parent/delegated results are not muted.
+
+The focused route/coordinator regressions passed 71 of 71 tests. The complete
+orchestrator package then passed 2,956 tests with 11 skipped, plus typecheck,
+build, Biome, and `git diff --check`. Live proof used roomless OpenCode session
+`ac184024-e30b-44fd-864f-140489369025` to create and run `relay_guard.py` with
+exact output `relay guard ok`. It stopped normally while the active
+conversation remained at 23 messages before and after; browser DOM contained
+neither the relay-guard text nor the earlier prime comparison payload.
+
 ## Reproduce
 
 Install and run the deterministic gates from the repository root:
@@ -365,7 +497,17 @@ for a normal handoff, and it should still be reviewed before publication.
   recovery, supervision, routing, and fail-closed gates. The live matrix drives
   the lifecycle explicitly after independent verification to avoid spending a
   second model judgment on known read-only fixtures.
-- OpenCode and pi-agent are not runtime dependencies of this ship candidate.
+- OpenCode and Pi Agent are not runtime dependencies of this ship candidate.
+- The current chat still contains persisted history from earlier failed and
+  misleading attempts. Those old messages were not deleted or rewritten, so
+  the transcript does not look flawless even though the latest paths pass.
+- The runtime's local fused embedding library is unavailable in this isolated
+  environment. Memory rows persist, but vector embeddings are degraded. This is
+  separate from the verified Cerebras chat/coding path and remains an open
+  release concern.
+- Eliza Code's compacted 24,987-token prime-script prompt is materially better
+  than 32,634, but is still large enough to warrant later profiling before
+  calling the coding UX polished.
 - The QA model/provider dominated latency: filesystem and shell actions usually
   completed in under one second, while individual model planning stages took
   roughly 5-40 seconds. A faster configured model/provider should improve the
@@ -385,6 +527,10 @@ for a normal handoff, and it should still be reviewed before publication.
   successful UI-delivery claim; the separate browser captures are that proof.
 - The root macOS SourceKitten/native-gateway verifier remains a host toolchain
   concern and is not evidence against this JavaScript/ACP coding path.
+- This lane is browser/headless only. It must never launch Electrobun or a native
+  Eliza bundle and must never bind RPC 50000, 50001, or 50002. The accidental
+  duplicate native launch described above is a process-isolation failure, not
+  acceptance evidence.
 
 ## AgentNet rendering review and deferred plan
 
@@ -411,13 +557,27 @@ This should be implemented and browser-tested as a separate UI change after the
 runtime checkpoint, rather than mixing borrowed presentation code into the
 runtime correctness patch.
 
-## VPS handoff
+## Test it yourself now
 
-Fetch the dedicated `codex/coding-runtime-ship-20260820` branch, inspect the
-reported delivery commit, install dependencies, and run the deterministic
-commands above. Use a private environment-secret mechanism for a live Cerebras
-rerun. Do not copy a credential, local state directory, PGlite database, or
-unsanitized trajectory directory from the QA host.
+The isolated browser instance is available at `http://127.0.0.1:2638/chat` with
+API `32637`. Suggested normal-person prompts are:
 
-The exact pushed delivery commit is reported by the handoff message and can be
-confirmed after checkout with `git rev-parse HEAD`.
+1. `Create a Python script named odds.py that prints the odd numbers from 1 through 15, then run it and tell me the exact output.`
+2. `Use a coding sub-agent to edit odds.py so it prints through 21, run it, and tell me the exact output.`
+
+An explicit OpenCode comparison can use: `Use OpenCode to create a Python script
+named countdown.py that prints 5 through 1, run it, and tell me the exact
+output.` Expect OpenCode to remain an optional backend rather than the default.
+
+When testing, require a concise final answer, the exact command output, the file
+persisting in the requested workspace, a stopped child session, and no raw JSON
+or unrelated API-agent result appearing in the chat.
+
+## Deferred VPS handoff
+
+Do not fetch or deploy this branch yet: the latest changes are deliberately
+local and have not been pushed. After the remaining UX issues are accepted and
+a final clean exact-head matrix passes, the handoff should name one reviewed
+commit. A VPS must use a private environment-secret mechanism for a live
+Cerebras rerun and must not copy a credential, local state directory, PGlite
+database, or unsanitized trajectory directory from the QA host.
