@@ -202,10 +202,29 @@ export async function acquireAgentBackupRestoreLease(params: {
         and(
           eq(agentBackupRestoreLeases.organization_id, params.organizationId),
           eq(agentBackupRestoreLeases.restore_attempt_id, params.restoreAttemptId),
+          eq(agentBackupRestoreLeases.backup_id, params.backupId),
         ),
       )
       .for("update")
       .limit(1);
+    if (!existingAttempt) {
+      // A replay bound to another backup is only an authority conflict. Do not
+      // wait on its lease after taking this agent's catalogue lock: exact
+      // restore consumers take that lease before the catalogue lock.
+      const [divergentAttempt] = await tx
+        .select({ id: agentBackupRestoreLeases.id })
+        .from(agentBackupRestoreLeases)
+        .where(
+          and(
+            eq(agentBackupRestoreLeases.organization_id, params.organizationId),
+            eq(agentBackupRestoreLeases.restore_attempt_id, params.restoreAttemptId),
+          ),
+        )
+        .limit(1);
+      if (divergentAttempt) {
+        throw new AgentBackupCatalogConflictError("Restore attempt replay authority mismatch");
+      }
+    }
     const [unreleased] = await tx
       .select()
       .from(agentBackupRestoreLeases)

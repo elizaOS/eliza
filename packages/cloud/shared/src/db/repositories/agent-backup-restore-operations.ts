@@ -29,6 +29,7 @@ import {
 } from "./agent-backup-catalog";
 import { parseAgentBackupManifestV3Authority } from "./agent-backup-restore";
 import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority";
+import { proveUnambiguousAgentNodeIncarnationForLockedNode } from "./agent-backup-restore-history";
 import type { AgentBackupRestoreLeaseAuthorityReceipt } from "./agent-backup-restore-lease";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
@@ -98,6 +99,17 @@ function requireUuid(value: string, field: string): string {
   return value;
 }
 
+function requireCanonicalUint64(value: string, field: string): bigint {
+  if (!/^(?:0|[1-9][0-9]*)$/.test(value)) {
+    throw new AgentBackupCatalogConflictError(`${field} must be a canonical uint64`);
+  }
+  const parsed = BigInt(value);
+  if (parsed > 18_446_744_073_709_551_615n) {
+    throw new AgentBackupCatalogConflictError(`${field} must fit uint64`);
+  }
+  return parsed;
+}
+
 /**
  * Record the attempt so later phases have somewhere durable to land. Replaying
  * the same attempt returns the existing row; replaying it with different
@@ -110,16 +122,63 @@ export async function openAgentBackupRestoreOperation(
   const organizationId = requireUuid(authority.organizationId, "organizationId");
   const agentId = requireUuid(authority.agentId, "agentId");
   const backupId = requireUuid(authority.backupId, "backupId");
+  const expectedOperationId = requireUuid(authority.operationId, "operationId");
+  const expectedActivationGeneration = requireUuid(
+    authority.sourceActivationGeneration,
+    "sourceActivationGeneration",
+  );
+  const expectedLifecycleRevision = requireCanonicalUint64(
+    authority.sourceLifecycleRevision,
+    "sourceLifecycleRevision",
+  );
+  const expectedManifestSha256 = requireSha256(
+    authority.expectedManifestSha256,
+    "expectedManifestSha256",
+  );
   const restoreAttemptId = requireUuid(authority.restoreAttemptId, "restoreAttemptId");
   const leaseId = requireUuid(input.leaseId, "leaseId");
   const fencingToken = requireUuid(authority.fencingToken, "fencingToken");
+  const catalogEpoch = requireCanonicalUint64(authority.catalogEpoch, "catalogEpoch");
   requireOwnerId(authority.ownerId);
 
   return await dbWrite.transaction(async (tx) => {
-    // Catalogue authority before lease: acquire/renew/release all take the
-    // authority first, and taking them the other way round here would deadlock
-    // a replay against a concurrent renewal.
-    const catalogAuthority = await lockAgentBackupCatalogAuthority(tx, organizationId, agentId);
+    // The exact backup is the creation mutex for this durable attempt. Taking
+    // it first lets concurrent response-loss replays observe the row inserted
+    // by the winner before either transaction reaches lease/catalogue locks.
+    const [backup] = await tx
+      .select({ id: agentSandboxBackups.id })
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.id, backupId),
+          eq(agentSandboxBackups.catalog_organization_id, organizationId),
+          eq(agentSandboxBackups.catalog_agent_id, agentId),
+          eq(agentSandboxBackups.backup_operation_id, expectedOperationId),
+          eq(agentSandboxBackups.lifecycle_generation, expectedActivationGeneration),
+          eq(agentSandboxBackups.lifecycle_revision, expectedLifecycleRevision),
+          eq(agentSandboxBackups.manifest_digest, expectedManifestSha256),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!backup) {
+      throw new AgentBackupCatalogConflictError("Restore backup authority does not match");
+    }
+
+    // An existing operation is locked before its lease. If it is absent, the
+    // backup lock above serializes creation and makes the later insert unique.
+    const [existing] = await tx
+      .select()
+      .from(agentBackupRestoreOperations)
+      .where(
+        and(
+          eq(agentBackupRestoreOperations.organization_id, organizationId),
+          eq(agentBackupRestoreOperations.restore_attempt_id, restoreAttemptId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+
     const [lease] = await tx
       .select()
       .from(agentBackupRestoreLeases)
@@ -129,9 +188,15 @@ export async function openAgentBackupRestoreOperation(
           eq(agentBackupRestoreLeases.organization_id, organizationId),
           eq(agentBackupRestoreLeases.agent_id, agentId),
           eq(agentBackupRestoreLeases.backup_id, backupId),
+          eq(agentBackupRestoreLeases.operation_id, expectedOperationId),
+          eq(agentBackupRestoreLeases.activation_generation, expectedActivationGeneration),
+          eq(agentBackupRestoreLeases.lifecycle_revision, expectedLifecycleRevision),
+          eq(agentBackupRestoreLeases.expected_manifest_sha256, expectedManifestSha256),
+          eq(agentBackupRestoreLeases.copy_role, authority.copyRole),
           eq(agentBackupRestoreLeases.restore_attempt_id, restoreAttemptId),
           eq(agentBackupRestoreLeases.generation, fencingToken),
           eq(agentBackupRestoreLeases.owner_id, authority.ownerId),
+          eq(agentBackupRestoreLeases.catalog_epoch, catalogEpoch),
         ),
       )
       .for("update")
@@ -139,6 +204,8 @@ export async function openAgentBackupRestoreOperation(
     if (!lease) {
       throw new AgentBackupCatalogConflictError("Restore lease authority does not match");
     }
+
+    const catalogAuthority = await lockAgentBackupCatalogAuthority(tx, organizationId, agentId);
 
     // The catalogue epoch is re-proved here, not inherited from the receipt: a
     // revision advanced between acquire and open invalidates the attempt, and an
@@ -154,17 +221,6 @@ export async function openAgentBackupRestoreOperation(
       throw new AgentBackupCatalogConflictError("Restore lease is expired or released");
     }
 
-    const [existing] = await tx
-      .select()
-      .from(agentBackupRestoreOperations)
-      .where(
-        and(
-          eq(agentBackupRestoreOperations.organization_id, organizationId),
-          eq(agentBackupRestoreOperations.restore_attempt_id, restoreAttemptId),
-        ),
-      )
-      .for("update")
-      .limit(1);
     if (existing) {
       if (
         existing.agent_id !== agentId ||
@@ -340,9 +396,9 @@ export async function reserveAgentBackupRestoreTarget(params: {
   }
 
   return await dbWrite.transaction(async (tx) => {
-    // Global backup writers lock backup -> catalogue authority before lease.
-    // The operation lock comes before the lease here so an ordinary claimant
-    // (operation -> lease) can finish instead of forming an AB-BA cycle.
+    // Multi-authority restore work uses backup -> operation -> lease -> node ->
+    // catalogue. The operation lock comes before the lease so an ordinary
+    // claimant (operation -> lease) can finish without an AB-BA cycle.
     const [backup] = await tx
       .select({
         catalogState: agentSandboxBackups.catalog_state,
@@ -401,11 +457,6 @@ export async function reserveAgentBackupRestoreTarget(params: {
       );
     }
 
-    const catalogAuthority = await lockAgentBackupCatalogAuthority(
-      tx,
-      operationAuthority.organization_id,
-      operationAuthority.agent_id,
-    );
     const [operation] = await tx
       .select()
       .from(agentBackupRestoreOperations)
@@ -432,11 +483,6 @@ export async function reserveAgentBackupRestoreTarget(params: {
       operation.expected_lifecycle_revision !== operationAuthority.expected_lifecycle_revision
     ) {
       throw new AgentBackupCatalogConflictError("Restore operation authority changed before lock");
-    }
-    if (catalogAuthority.catalog_revision !== operation.catalog_epoch) {
-      throw new AgentBackupCatalogConflictError(
-        "Restore target authority was invalidated by a catalogue revision",
-      );
     }
     if (
       operation.phase !== "reserved" &&
@@ -488,9 +534,22 @@ export async function reserveAgentBackupRestoreTarget(params: {
     if (node.node_incarnation !== targetNodeIncarnation) {
       throw new AgentBackupCatalogConflictError("Restore target node incarnation changed");
     }
+    await proveUnambiguousAgentNodeIncarnationForLockedNode(tx, node, targetNodeIncarnation);
 
-    // The node lock can wait behind another allocator. Re-read the primary DB
-    // clock only after every authority lock so no expired claim/lease commits.
+    const catalogAuthority = await lockAgentBackupCatalogAuthority(
+      tx,
+      operation.organization_id,
+      operation.agent_id,
+    );
+    if (catalogAuthority.catalog_revision !== operation.catalog_epoch) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore target authority was invalidated by a catalogue revision",
+      );
+    }
+
+    // The node or catalogue lock can wait behind another authority writer.
+    // Re-read the primary DB clock only after every authority lock so no
+    // expired claim/lease commits.
     const databaseNow = await readPostLockDatabaseNow(tx);
     if (lease.released_at !== null || lease.expires_at <= databaseNow) {
       throw new AgentBackupCatalogConflictError("Restore lease is expired or released");

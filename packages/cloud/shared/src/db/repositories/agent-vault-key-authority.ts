@@ -33,6 +33,8 @@ import {
   type AgentBackupRestoreSourceV3Input,
   loadAgentBackupRestoreSourceV3,
 } from "./agent-backup-restore";
+import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority";
+import { proveUnambiguousAgentNodeIncarnationForLockedNode } from "./agent-backup-restore-history";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const RAW_KEY_BYTES = 32;
@@ -40,6 +42,9 @@ const PASSPHRASE_BYTES = RAW_KEY_BYTES * 2;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const UINT64_MAX = 18_446_744_073_709_551_615n;
 const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+const DEFAULT_RESTORE_VAULT_HANDOFF_TIMEOUT_MS = 30_000;
+const MAX_RESTORE_VAULT_HANDOFF_TIMEOUT_MS = 60_000;
+const RESTORE_VAULT_HANDOFF_AUTHORITY_MARGIN_MS = 1_000;
 
 export class AgentVaultKeyAuthorityError extends Error {
   override readonly name = "AgentVaultKeyAuthorityError";
@@ -253,15 +258,22 @@ export class AgentVaultKeySecretHandle {
     return this.rawKey === null;
   }
 
-  async withPassphrase<T>(use: (passphrase: Uint8Array) => Promise<T> | T): Promise<T> {
+  async withPassphrase<T>(
+    use: (passphrase: Uint8Array) => Promise<T> | T,
+    signal?: AbortSignal,
+  ): Promise<T> {
     if (!this.rawKey) {
       authorityError("AGENT_VAULT_KEY_HANDLE_RELEASED", "Vault-key handle was already released");
     }
     const passphrase = rawKeyToPassphrase(this.rawKey);
+    const zeroize = () => passphrase.fill(0);
+    signal?.addEventListener("abort", zeroize, { once: true });
     try {
+      signal?.throwIfAborted();
       return await use(passphrase);
     } finally {
-      passphrase.fill(0);
+      signal?.removeEventListener("abort", zeroize);
+      zeroize();
     }
   }
 
@@ -863,6 +875,53 @@ export interface AgentBackupRestoreVaultPassphraseInput extends AgentBackupResto
 
 export interface AgentBackupRestoreVaultPassphraseOptions {
   kmsClient?: KmsClient;
+  /** Hard deadline for the one remote vault handoff; defaults to 30 seconds. */
+  handoffTimeoutMs?: number;
+}
+
+function requireRestoreVaultHandoffTimeoutMs(value: number | undefined): number {
+  const timeoutMs = value ?? DEFAULT_RESTORE_VAULT_HANDOFF_TIMEOUT_MS;
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > MAX_RESTORE_VAULT_HANDOFF_TIMEOUT_MS
+  ) {
+    authorityError(
+      "AGENT_VAULT_KEY_INPUT_INVALID",
+      `handoffTimeoutMs must be an integer between 1 and ${MAX_RESTORE_VAULT_HANDOFF_TIMEOUT_MS}`,
+    );
+  }
+  return timeoutMs;
+}
+
+interface AgentBackupRestoreVaultTargetHandoff<T> {
+  run: (signal: AbortSignal) => Promise<T> | T;
+}
+
+async function runBoundedAgentBackupRestoreVaultTargetHandoff<T>(
+  handoff: Readonly<AgentBackupRestoreVaultTargetHandoff<T>>,
+  timeoutMs: number,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutError = new AgentVaultKeyAuthorityError(
+    "AGENT_VAULT_KEY_HANDOFF_TIMEOUT",
+    `Restore vault handoff exceeded ${timeoutMs}ms`,
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort(timeoutError);
+      reject(timeoutError);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => handoff.run(controller.signal)),
+      deadline,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function loadAgentBackupRestoreVaultGeneration(
@@ -911,13 +970,29 @@ async function loadAgentBackupRestoreVaultGeneration(
 
 /**
  * Prove that this callback still belongs to one live, claimed, target-pinned
- * restore. Locks follow catalogue -> operation -> lease -> node, and the KMS
- * call happens only after this transaction has released every lock.
+ * restore. Locks follow backup -> operation -> lease -> node -> catalogue.
+ *
+ * The optional handoff runs only after the final proof and while every authority
+ * lock is still held. It is reserved for one bounded, timeout-protected remote
+ * vault operation and must never issue or re-enter primary-DB work.
  */
 async function proveAgentBackupRestoreVaultTargetAuthority(
   input: Readonly<AgentBackupRestoreVaultPassphraseInput>,
   manifestImageDigest: string,
-): Promise<void> {
+  handoffTimeoutMs: number,
+): Promise<void>;
+async function proveAgentBackupRestoreVaultTargetAuthority<T>(
+  input: Readonly<AgentBackupRestoreVaultPassphraseInput>,
+  manifestImageDigest: string,
+  handoffTimeoutMs: number,
+  handoff: Readonly<AgentBackupRestoreVaultTargetHandoff<T>>,
+): Promise<T>;
+async function proveAgentBackupRestoreVaultTargetAuthority(
+  input: Readonly<AgentBackupRestoreVaultPassphraseInput>,
+  manifestImageDigest: string,
+  handoffTimeoutMs: number,
+  handoff?: Readonly<AgentBackupRestoreVaultTargetHandoff<unknown>>,
+): Promise<unknown> {
   const restoreOperationId = requireCanonicalUuid(input.restoreOperationId, "restoreOperationId");
   const restoreClaimGeneration = requireCanonicalUuid(
     input.restoreClaimGeneration,
@@ -934,15 +1009,39 @@ async function proveAgentBackupRestoreVaultTargetAuthority(
   );
   const catalogEpoch = requireCanonicalUint64(input.catalogEpoch, "catalogEpoch");
 
-  await dbWrite.transaction(async (tx) => {
-    const catalogAuthority = await lockAgentBackupCatalogAuthority(
-      tx,
-      input.organizationId,
-      input.agentId,
-    );
-    if (catalogAuthority.catalog_revision !== catalogEpoch) {
+  return await dbWrite.transaction(async (tx) => {
+    const [backup] = await tx
+      .select({
+        catalogState: agentSandboxBackups.catalog_state,
+        manifestVersion: agentSandboxBackups.manifest_version,
+      })
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.id, input.backupId),
+          eq(agentSandboxBackups.catalog_organization_id, input.organizationId),
+          eq(agentSandboxBackups.catalog_agent_id, input.agentId),
+          eq(agentSandboxBackups.backup_operation_id, input.operationId),
+          eq(agentSandboxBackups.lifecycle_generation, input.sourceActivationGeneration),
+          eq(agentSandboxBackups.lifecycle_revision, sourceLifecycleRevision),
+          eq(agentSandboxBackups.manifest_digest, input.expectedManifestSha256),
+          eq(agentSandboxBackups.image_digest, manifestImageDigest),
+          eq(agentSandboxBackups.vault_key_generation_id, input.vaultKeyGenerationId),
+          eq(
+            agentSandboxBackups.vault_key_authority_receipt_digest,
+            input.vaultKeyAuthorityReceiptDigest,
+          ),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !backup ||
+      !hasAgentBackupRestoreAuthority(backup.catalogState) ||
+      backup.manifestVersion !== 3
+    ) {
       throw new AgentBackupCatalogConflictError(
-        "Restore vault target was invalidated by a catalogue revision",
+        "Restore vault backup authority is absent, non-restorable, or no longer exact",
       );
     }
 
@@ -1029,9 +1128,21 @@ async function proveAgentBackupRestoreVaultTargetAuthority(
         "Restore vault target node record or incarnation was lost",
       );
     }
+    await proveUnambiguousAgentNodeIncarnationForLockedNode(tx, node, targetNodeIncarnation);
+
+    const catalogAuthority = await lockAgentBackupCatalogAuthority(
+      tx,
+      input.organizationId,
+      input.agentId,
+    );
+    if (catalogAuthority.catalog_revision !== catalogEpoch) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore vault target was invalidated by a catalogue revision",
+      );
+    }
 
     // Read the primary clock only after all authority locks: a wait on the node
-    // must not let an expired claim or lease authorize secret material.
+    // or catalogue must not let an expired claim or lease authorize material.
     const databaseNow = await readPostLockDatabaseNow(tx);
     if (lease.released_at !== null || lease.expires_at <= databaseNow) {
       throw new AgentBackupCatalogConflictError("Restore vault lease is expired or released");
@@ -1054,26 +1165,71 @@ async function proveAgentBackupRestoreVaultTargetAuthority(
         "Restore vault target is not an enabled, healthy, open existing node",
       );
     }
+
+    const requiredUntil =
+      databaseNow.getTime() + handoffTimeoutMs + RESTORE_VAULT_HANDOFF_AUTHORITY_MARGIN_MS;
+    if (
+      lease.expires_at.getTime() < requiredUntil ||
+      operation.claim_expires_at.getTime() < requiredUntil
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore vault lease and claim do not cover the bounded remote handoff plus authority margin",
+      );
+    }
+
+    if (handoff) {
+      const result = await runBoundedAgentBackupRestoreVaultTargetHandoff(
+        handoff,
+        handoffTimeoutMs,
+      );
+      const afterHandoffDatabaseNow = await readPostLockDatabaseNow(tx);
+      if (
+        lease.expires_at <= afterHandoffDatabaseNow ||
+        operation.claim_expires_at <= afterHandoffDatabaseNow
+      ) {
+        throw new AgentBackupCatalogConflictError(
+          "Restore vault lease or claim expired during the remote handoff",
+        );
+      }
+      return result;
+    }
   });
 }
 
 /**
  * Expose only a callback-scoped byte passphrase after two identical restore
- * authority proofs around the lock-free KMS unwrap.
+ * authority proofs around the lock-free KMS unwrap. `use` is one idempotent,
+ * fully-awaited remote vault operation. It must honor the AbortSignal, enforce
+ * the pinned host key and Linux boot UUID again on the remote transport, and
+ * never issue or re-enter primary-DB code because the second proof keeps every
+ * authority lock through the handoff. A remote effect may already exist when a
+ * timeout, post-handoff expiry, or transaction commit fails, so replay must be
+ * safe and exact.
  */
 export async function withAgentBackupRestoreVaultPassphrase<T>(
   input: Readonly<AgentBackupRestoreVaultPassphraseInput>,
-  use: (passphrase: Uint8Array) => Promise<T> | T,
+  use: (passphrase: Uint8Array, signal: AbortSignal) => Promise<T> | T,
   options: Readonly<AgentBackupRestoreVaultPassphraseOptions> = {},
 ): Promise<T> {
+  const handoffTimeoutMs = requireRestoreVaultHandoffTimeoutMs(options.handoffTimeoutMs);
   const beforeKms = await loadAgentBackupRestoreVaultGeneration(input);
-  await proveAgentBackupRestoreVaultTargetAuthority(input, beforeKms.manifestImageDigest);
+  await proveAgentBackupRestoreVaultTargetAuthority(
+    input,
+    beforeKms.manifestImageDigest,
+    handoffTimeoutMs,
+  );
   const rawKey = await decryptGeneration(beforeKms.generation, options.kmsClient ?? getKmsClient());
   const secret = new AgentVaultKeySecretHandle(rawKey);
   try {
     const afterKms = await loadAgentBackupRestoreVaultGeneration(input);
-    await proveAgentBackupRestoreVaultTargetAuthority(input, afterKms.manifestImageDigest);
-    return await secret.withPassphrase(use);
+    return await proveAgentBackupRestoreVaultTargetAuthority(
+      input,
+      afterKms.manifestImageDigest,
+      handoffTimeoutMs,
+      {
+        run: (signal) => secret.withPassphrase((passphrase) => use(passphrase, signal), signal),
+      },
+    );
   } finally {
     secret.release();
   }
