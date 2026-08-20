@@ -16,6 +16,7 @@ import type { StartupPhaseValue } from "./startup-coordinator";
 
 export interface FirstRunChatReleaseController {
   releasePending: boolean;
+  mountedOnboarding: boolean;
   recordMountedOverlay: () => void;
   recordMountedTranscript: () => void;
   acknowledgeRelease: () => void;
@@ -29,6 +30,16 @@ export function useFirstRunChatRelease(
     createFirstRunChatReleaseState(firstRunComplete, startupPhase),
   );
   const [releasePending, setReleasePending] = useState(false);
+  const [mountedOnboarding, setMountedOnboarding] = useState(false);
+
+  const syncMountedOnboarding = useCallback(() => {
+    const lifecycle = lifecycleRef.current;
+    setMountedOnboarding(
+      lifecycle.observedIncomplete &&
+        lifecycle.overlayMountedWhileIncomplete &&
+        lifecycle.transcriptMountedWhileIncomplete,
+    );
+  }, []);
 
   useLayoutEffect(() => {
     lifecycleRef.current = observeFirstRunCompletion(
@@ -37,7 +48,8 @@ export function useFirstRunChatRelease(
       startupPhase,
     );
     setReleasePending(lifecycleRef.current.releasePending);
-  }, [firstRunComplete, startupPhase]);
+    syncMountedOnboarding();
+  }, [firstRunComplete, startupPhase, syncMountedOnboarding]);
 
   const recordMountedOverlay = useCallback(() => {
     lifecycleRef.current = observeFirstRunCompletion(
@@ -46,7 +58,8 @@ export function useFirstRunChatRelease(
       startupPhase,
     );
     lifecycleRef.current = recordMountedFirstRunOverlay(lifecycleRef.current);
-  }, [firstRunComplete, startupPhase]);
+    syncMountedOnboarding();
+  }, [firstRunComplete, startupPhase, syncMountedOnboarding]);
 
   const recordMountedTranscript = useCallback(() => {
     lifecycleRef.current = observeFirstRunCompletion(
@@ -57,7 +70,8 @@ export function useFirstRunChatRelease(
     lifecycleRef.current = recordMountedFirstRunTranscript(
       lifecycleRef.current,
     );
-  }, [firstRunComplete, startupPhase]);
+    syncMountedOnboarding();
+  }, [firstRunComplete, startupPhase, syncMountedOnboarding]);
 
   const acknowledgeRelease = useCallback(() => {
     lifecycleRef.current = acknowledgeFirstRunChatRelease(lifecycleRef.current);
@@ -66,6 +80,7 @@ export function useFirstRunChatRelease(
 
   return {
     releasePending,
+    mountedOnboarding,
     recordMountedOverlay,
     recordMountedTranscript,
     acknowledgeRelease,

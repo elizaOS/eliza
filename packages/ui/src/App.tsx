@@ -318,7 +318,15 @@ function useShellMode(): AppShellMode {
  * window. Renders ONLY the waveform + pill + chat/voice overlay — no app
  * chrome — over a transparent background.
  */
-function ChatOverlayShell() {
+function ChatOverlayShell({
+  releaseFirstRunToFull,
+  onFirstRunReleaseHandled,
+  onFirstRunChatMounted,
+}: {
+  releaseFirstRunToFull: boolean;
+  onFirstRunReleaseHandled: () => void;
+  onFirstRunChatMounted: () => void;
+}) {
   // The bar has no inline tab system, so "show a view" / "show the launcher"
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
   useBarSurfaceWindows();
@@ -349,7 +357,12 @@ function ChatOverlayShell() {
         data-testid="chat-overlay-shell"
         className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
       >
-        <ShellFoundationMount useWebChatPanel />
+        <ShellFoundationMount
+          useWebChatPanel
+          releaseFirstRunToFull={releaseFirstRunToFull}
+          onFirstRunReleaseHandled={onFirstRunReleaseHandled}
+          onFirstRunChatMounted={onFirstRunChatMounted}
+        />
       </div>
     </>
   );
@@ -1840,9 +1853,15 @@ function SecretsManagerModalMount(): ReactNode {
 
 function ShellFoundationMount({
   useWebChatPanel = false,
+  releaseFirstRunToFull = false,
+  onFirstRunReleaseHandled = () => {},
+  onFirstRunChatMounted,
 }: {
   /** Desktop opens the same draggable chat surface as web, not a separate drawer. */
   useWebChatPanel?: boolean;
+  releaseFirstRunToFull?: boolean;
+  onFirstRunReleaseHandled?: () => void;
+  onFirstRunChatMounted?: () => void;
 } = {}) {
   const controller = useShellControllerContext();
   const hasController = controller !== null;
@@ -2063,8 +2082,9 @@ function ShellFoundationMount({
       <ChatOverlayMount
         initialMode="input"
         fillHostAtHalf
-        releaseFirstRunToFull={false}
-        onFirstRunReleaseHandled={() => {}}
+        releaseFirstRunToFull={releaseFirstRunToFull}
+        onFirstRunReleaseHandled={onFirstRunReleaseHandled}
+        onFirstRunChatMounted={onFirstRunChatMounted}
         onPilledChange={closeWebChatWhenPilled}
         onDetentChange={setShellHostDetent}
         onStateChange={syncNativeSurfaceState}
@@ -2443,15 +2463,18 @@ function AppContent() {
     startupCoordinator.phase,
     firstRunComplete,
   );
-  // Record during render as well as in the settle effect below: stored-session
-  // adoption can complete onboarding in the same commit that first paints the
-  // shell, and the completion-edge probe must already see the shell as mounted
-  // on that render — the effect alone would run one commit too late.
-  if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
-    onboardingShellMountedRef.current = true;
-  }
-  useEffect(() => {
-    if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
+  // Only a committed shell may authorize this exception. A render-time ref
+  // write survives an interrupted render and could otherwise let a later auth
+  // probe expose shell providers even though onboarding never painted. Layout
+  // effects run before a user can complete the mounted onboarding UI, so the
+  // prior committed first-run frame is recorded before its completion edge.
+  useLayoutEffect(() => {
+    if (
+      isShellPaintableNow &&
+      !bootstrapGateHolds &&
+      firstRunOwnsAuthSurface &&
+      firstRunChatRelease.mountedOnboarding
+    ) {
       onboardingShellMountedRef.current = true;
     } else if (authState.phase !== "loading") {
       onboardingShellMountedRef.current = false;
@@ -2460,6 +2483,7 @@ function AppContent() {
     authState.phase,
     bootstrapGateHolds,
     firstRunOwnsAuthSurface,
+    firstRunChatRelease.mountedOnboarding,
     isShellPaintableNow,
   ]);
   const preserveMountedOnboardingShell =
@@ -3021,8 +3045,16 @@ function AppContent() {
     return (
       <BugReportProvider value={bugReport}>
         <ShellControllerProvider>
-          <ChatOverlayShell />
-          <FirstRunConductorMount />
+          <ChatOverlayShell
+            releaseFirstRunToFull={firstRunChatRelease.releasePending}
+            onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
+            onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+          />
+          <FirstRunConductorMount
+            onFirstRunTranscriptMounted={
+              firstRunChatRelease.recordMountedTranscript
+            }
+          />
           <ModelStatusConductorMount />
           <BootRecoveryConductorMount />
           <ShellOverlays actionNotice={actionNotice} />
