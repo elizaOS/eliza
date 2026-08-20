@@ -693,6 +693,34 @@ describe("Shared Eliza Workerd runtime", () => {
         providerTotalDurationMs: expect.any(Number),
       },
     });
+
+    let voiceTimingReceipt: SharedRuntimeTimingReceipt | null = null;
+    const voiceResult = await runSharedAgentTurn({
+      character: { name: "Shared Eliza", system: "You are Eliza.", model: "gemma-4-31b" },
+      history: [],
+      message: "Background speech that is not addressed to Eliza.",
+      messageIds: {
+        user: "fa34caa3-ec88-43de-b8a8-c34d28ed42c8",
+        assistant: "cff67cbf-6711-42cc-b998-da4ee10b36ac",
+      },
+      traceId: "trace-shared-voice-ignore",
+      onRuntimeTiming: (receipt) => {
+        voiceTimingReceipt = receipt;
+      },
+      execution: {
+        channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
+        agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+      },
+    });
+
+    expect(voiceResult).toMatchObject({ reply: "", responded: false, degraded: false });
+    expect(voiceTimingReceipt).toMatchObject({
+      traceId: "trace-shared-voice-ignore",
+      routing: { decision: "silent", contextIds: ["general"] },
+      inference: {
+        shouldRespondAndContextDurationMs: expect.any(Number),
+      },
+    });
   });
 
   test("awaits notification hydration before inference and dispatches through the genuine runtime", async () => {

@@ -720,6 +720,18 @@ describe("voice-session WS lifecycle", () => {
     ink.emitTurn("turn.eager_end", "hello agent");
     ink.emitTurn("turn.end", "hello agent");
     await flush();
+
+    const endOfTurnLog = fakeLogger.logger.info.mock.calls.findLast(
+      ([message]) => message === "[voice-session] end-of-turn latency",
+    );
+    expect(endOfTurnLog?.[1]).toMatchObject({
+      transcriptChars: "hello agent".length,
+      configuredEndTimeoutMs: 1_200,
+      turnActiveMs: expect.any(Number),
+      firstTranscriptOffsetMs: expect.any(Number),
+      lastTranscriptToFinalMs: expect.any(Number),
+      eagerEndToFinalMs: expect.any(Number),
+    });
     await flush();
 
     expect(client.controlFrames).toContainEqual(
