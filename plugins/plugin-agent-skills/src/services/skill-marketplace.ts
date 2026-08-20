@@ -8,10 +8,12 @@
  */
 
 import { execFile } from "node:child_process";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { logger, resolveStateDir } from "@elizaos/core";
+import { skillDownloadAbortError } from "./skill-package-bytes";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +24,90 @@ const VALID_GIT_REF = /^[a-zA-Z0-9][\w./-]*$/;
 const GIT_TIMEOUT_MS = 15_000;
 /** Timeout for marketplace API fetch calls. */
 const FETCH_TIMEOUT_MS = 30_000;
+
+function throwIfMarketplaceAborted(
+  signal: AbortSignal | undefined,
+  cause?: unknown,
+): void {
+  if (signal?.aborted) throw skillDownloadAbortError(signal, cause);
+}
+
+class MarketplaceMutex {
+  private tail: Promise<void> = Promise.resolve();
+  private users = 0;
+
+  get idle(): boolean {
+    return this.users === 0;
+  }
+
+  async run<T>(signal: AbortSignal | undefined, task: () => Promise<T>): Promise<T> {
+    const uncontended = this.users === 0;
+    this.users += 1;
+    const prior = this.tail.catch(() => {
+      // error-policy:J5 The queued caller observes the task rejection; the
+      // mutex tail only converts it into release progress for later callers.
+    });
+    let release = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.tail = prior.then(() => gate);
+    try {
+      if (!uncontended) {
+        await new Promise<void>((resolve, reject) => {
+          const onAbort = (): void => reject(signal?.reason);
+          signal?.addEventListener("abort", onAbort, { once: true });
+          prior.then(resolve, reject).finally(() => {
+            signal?.removeEventListener("abort", onAbort);
+          });
+        });
+      }
+      throwIfMarketplaceAborted(signal);
+      return await task();
+    } catch (cause) {
+      // error-policy:J2 Preserve ordinary task failures while translating an
+      // authoritative caller abort into the typed download boundary error.
+      throwIfMarketplaceAborted(signal, cause);
+      throw cause;
+    } finally {
+      release();
+      this.users -= 1;
+    }
+  }
+}
+
+const marketplaceInstallMutexes = new Map<string, MarketplaceMutex>();
+const marketplaceRecordsMutexes = new Map<string, MarketplaceMutex>();
+
+async function removeMarketplaceStagingBestEffort(stagingPath: string): Promise<void> {
+  try {
+    await fs.rm(stagingPath, { recursive: true, force: true });
+  } catch (cause) {
+    // error-policy:J6 Staging cleanup follows the authoritative publication
+    // decision and must not turn a committed install into a reported failure.
+    logger.warn(
+      `[skills-marketplace] Failed to remove staging directory ${stagingPath}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
+}
+
+async function withMarketplaceMutex<T>(
+  mutexes: Map<string, MarketplaceMutex>,
+  key: string,
+  signal: AbortSignal | undefined,
+  task: () => Promise<T>,
+): Promise<T> {
+  let mutex = mutexes.get(key);
+  if (!mutex) {
+    mutex = new MarketplaceMutex();
+    mutexes.set(key, mutex);
+  }
+  try {
+    return await mutex.run(signal, task);
+  } finally {
+    if (mutex.idle && mutexes.get(key) === mutex) mutexes.delete(key);
+  }
+}
 
 function createIntegrationTelemetrySpan(_meta: {
   boundary: string;
@@ -77,9 +163,12 @@ interface MarketplaceScanReport {
  */
 async function runSkillSecurityScan(
   skillDir: string,
+  signal?: AbortSignal,
 ): Promise<MarketplaceScanReport> {
+  throwIfMarketplaceAborted(signal);
   const fsPromises = await import("node:fs/promises");
   const pathMod = await import("node:path");
+  throwIfMarketplaceAborted(signal);
 
   const findings: MarketplaceScanReport["findings"] = [];
   const manifestFindings: MarketplaceScanReport["manifestFindings"] = [];
@@ -99,12 +188,15 @@ async function runSkillSecurityScan(
 
   // Walk and check
   async function walk(dir: string): Promise<void> {
+    throwIfMarketplaceAborted(signal);
     const entries = await fsPromises.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
+      throwIfMarketplaceAborted(signal);
       if (entry.name === "node_modules") continue;
       const fullPath = pathMod.join(dir, entry.name);
       const relPath = pathMod.relative(skillDir, fullPath);
       const stats = await fsPromises.lstat(fullPath);
+      throwIfMarketplaceAborted(signal);
 
       if (stats.isDirectory()) {
         await walk(fullPath);
@@ -120,7 +212,10 @@ async function runSkillSecurityScan(
           });
         }
       } else if (stats.isSymbolicLink()) {
-        const resolved = await fsPromises.realpath(fullPath).catch(() => null);
+        const resolved = await fsPromises.realpath(fullPath).catch(() => {
+          // error-policy:J3 An unresolvable untrusted symlink is explicitly unsafe.
+          return null;
+        });
         if (!resolved?.startsWith(skillDir + pathMod.sep)) {
           manifestFindings.push({
             ruleId: "symlink-escape",
@@ -136,13 +231,18 @@ async function runSkillSecurityScan(
   }
 
   await walk(skillDir);
+  throwIfMarketplaceAborted(signal);
 
   // Check SKILL.md exists
   const skillMdPath = pathMod.join(skillDir, "SKILL.md");
   const hasSkillMd = await fsPromises
     .stat(skillMdPath)
     .then((s) => s.isFile())
-    .catch(() => false);
+    .catch(() => {
+      // error-policy:J3 Missing or unreadable required input is explicitly invalid.
+      return false;
+    });
+  throwIfMarketplaceAborted(signal);
   if (!hasSkillMd) {
     manifestFindings.push({
       ruleId: "missing-skill-md",
@@ -183,6 +283,7 @@ async function runSkillSecurityScan(
     JSON.stringify(report, null, 2),
     "utf-8",
   );
+  throwIfMarketplaceAborted(signal);
 
   return report;
 }
@@ -364,23 +465,22 @@ async function readInstallRecords(
 ): Promise<Record<string, InstalledMarketplaceSkill>> {
   try {
     const raw = await fs.readFile(installsRecordPath(workspaceDir), "utf-8");
-    const parsed = JSON.parse(raw) as Record<string, InstalledMarketplaceSkill>;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-      return {};
-    return parsed;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Marketplace install records must be an object");
+    }
+    return parsed as Record<string, InstalledMarketplaceSkill>;
   } catch (err) {
     const isMissingFile =
       err instanceof Error &&
       "code" in err &&
       (err as NodeJS.ErrnoException).code === "ENOENT";
-    if (!isMissingFile) {
-      logger.warn(
-        `[skill-marketplace] Failed to read install records: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-    return {};
+    if (isMissingFile) return {};
+    // error-policy:J2 Install records participate in directory publication;
+    // malformed state must fail closed rather than being overwritten as empty.
+    throw new Error("Failed to read marketplace install records", {
+      cause: err,
+    });
   }
 }
 
@@ -389,11 +489,17 @@ async function writeInstallRecords(
   records: Record<string, InstalledMarketplaceSkill>,
 ): Promise<void> {
   await ensureInstallDirs(workspaceDir);
-  await fs.writeFile(
-    installsRecordPath(workspaceDir),
-    JSON.stringify(records, null, 2),
-    "utf-8",
+  const recordPath = installsRecordPath(workspaceDir);
+  const stagingDir = await fs.mkdtemp(
+    path.join(path.dirname(recordPath), ".records-update-"),
   );
+  const candidatePath = path.join(stagingDir, "next.json");
+  try {
+    await fs.writeFile(candidatePath, JSON.stringify(records, null, 2), "utf-8");
+    await fs.rename(candidatePath, recordPath);
+  } finally {
+    await removeMarketplaceStagingBestEffort(stagingDir);
+  }
 }
 
 function normalizeTags(raw: unknown): string[] {
@@ -647,7 +753,9 @@ async function runGitCloneSubset(
   ref: string | null,
   skillPath: string,
   targetDir: string,
+  signal?: AbortSignal,
 ): Promise<void> {
+  throwIfMarketplaceAborted(signal);
   if (ref) validateGitRef(ref);
   if (skillPath !== ".") {
     sanitizeSkillPath(skillPath);
@@ -658,28 +766,54 @@ async function runGitCloneSubset(
     ref,
     skillPath,
     async (cloneDir) => {
+      throwIfMarketplaceAborted(signal);
       const sourceDir = path.join(cloneDir, skillPath);
       assertPathWithinRoot(cloneDir, sourceDir);
-      const stat = await fs.stat(sourceDir).catch(() => null);
+      const stat = await fs.stat(sourceDir).catch(() => {
+        // error-policy:J3 A missing selected repository path is explicit invalid input.
+        return null;
+      });
       if (!stat?.isDirectory()) {
         throw new Error(`Skill path not found in repository: ${skillPath}`);
       }
 
-      await fs.mkdir(path.dirname(targetDir), { recursive: true });
-      await fs.cp(sourceDir, targetDir, {
-        recursive: true,
-        errorOnExist: true,
-        force: false,
-      });
+      await copyDirectoryWithSignal(sourceDir, targetDir, signal);
     },
+    signal,
   );
+}
+
+async function copyDirectoryWithSignal(
+  sourceDir: string,
+  targetDir: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  throwIfMarketplaceAborted(signal);
+  await fs.mkdir(targetDir, { recursive: false });
+  for (const entry of await fs.readdir(sourceDir, { withFileTypes: true })) {
+    throwIfMarketplaceAborted(signal);
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      await copyDirectoryWithSignal(sourcePath, targetPath, signal);
+    } else if (entry.isSymbolicLink()) {
+      await fs.symlink(await fs.readlink(sourcePath), targetPath);
+    } else if (entry.isFile()) {
+      await fs.copyFile(sourcePath, targetPath, fsSync.constants.COPYFILE_EXCL);
+    } else {
+      throw new Error(`Unsupported repository entry: ${entry.name}`);
+    }
+    throwIfMarketplaceAborted(signal);
+  }
 }
 
 async function resolveSkillPathInRepo(
   repository: string,
   ref: string | null,
   requestedPath: string | null,
+  signal?: AbortSignal,
 ): Promise<string> {
+  throwIfMarketplaceAborted(signal);
   if (ref) validateGitRef(ref);
   if (requestedPath) return sanitizeSkillPath(requestedPath);
 
@@ -700,13 +834,15 @@ async function resolveSkillPathInRepo(
       repoUrl,
       cloneDir,
     ];
-    await execFileAsync("git", cloneArgs, { timeout: GIT_TIMEOUT_MS });
+    await execFileAsync("git", cloneArgs, { timeout: GIT_TIMEOUT_MS, signal });
+    throwIfMarketplaceAborted(signal);
 
     const { stdout } = await execFileAsync(
       "git",
       ["-C", cloneDir, "ls-tree", "-r", "--name-only", "HEAD"],
-      { timeout: GIT_TIMEOUT_MS },
+      { timeout: GIT_TIMEOUT_MS, signal },
     );
+    throwIfMarketplaceAborted(signal);
     const allPaths = stdout
       .split("\n")
       .map((p) => p.trim())
@@ -729,9 +865,7 @@ async function resolveSkillPathInRepo(
       "Could not determine skill path automatically. Provide an explicit GitHub tree URL or path.",
     );
   } finally {
-    await fs
-      .rm(tmpBase, { recursive: true, force: true })
-      .catch(() => undefined);
+    await removeMarketplaceStagingBestEffort(tmpBase);
   }
 }
 
@@ -740,7 +874,9 @@ async function withTemporarySparseCheckout<T>(
   ref: string | null,
   checkoutPath: string,
   task: (cloneDir: string) => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
+  throwIfMarketplaceAborted(signal);
   const repoUrl = `https://github.com/${repository}.git`;
   const tmpBase = await fs.mkdtemp(path.join(stateDirBase(), "skill-probe-"));
   const cloneDir = path.join(tmpBase, "repo");
@@ -756,26 +892,30 @@ async function withTemporarySparseCheckout<T>(
       repoUrl,
       cloneDir,
     ];
-    await execFileAsync("git", cloneArgs, { timeout: GIT_TIMEOUT_MS });
+    await execFileAsync("git", cloneArgs, { timeout: GIT_TIMEOUT_MS, signal });
+    throwIfMarketplaceAborted(signal);
     await execFileAsync(
       "git",
       ["-C", cloneDir, "sparse-checkout", "set", checkoutPath],
-      { timeout: GIT_TIMEOUT_MS },
+      { timeout: GIT_TIMEOUT_MS, signal },
     );
+    throwIfMarketplaceAborted(signal);
 
     return await task(cloneDir);
   } finally {
-    await fs
-      .rm(tmpBase, { recursive: true, force: true })
-      .catch(() => undefined);
+    await removeMarketplaceStagingBestEffort(tmpBase);
   }
 }
 
 export async function installMarketplaceSkill(
   workspaceDir: string,
   input: InstallSkillInput,
+  options: { signal?: AbortSignal } = {},
 ): Promise<InstalledMarketplaceSkill> {
+  const signal = options.signal;
+  throwIfMarketplaceAborted(signal);
   await ensureInstallDirs(workspaceDir);
+  throwIfMarketplaceAborted(signal);
 
   let repository = input.repository?.trim()
     ? normalizeRepo(input.repository)
@@ -798,6 +938,7 @@ export async function installMarketplaceSkill(
     repository,
     gitRef,
     requestedPath,
+    signal,
   );
   const baseName =
     input.name?.trim() ||
@@ -806,76 +947,160 @@ export async function installMarketplaceSkill(
     );
   const id = safeName(baseName);
   const targetDir = path.join(installationRoot(workspaceDir), id);
+  return withMarketplaceMutex(
+    marketplaceInstallMutexes,
+    `${path.resolve(workspaceDir)}:${id}`,
+    signal,
+    async () => {
+      const exists = fsSync.existsSync(targetDir);
+      throwIfMarketplaceAborted(signal);
+      if (exists) throw new Error(`Skill "${id}" is already installed`);
 
-  const exists = await fs
-    .stat(targetDir)
-    .then(() => true)
-    .catch(() => false);
-  if (exists) {
-    throw new Error(`Skill "${id}" is already installed`);
-  }
+      const stagingRoot = await fs.mkdtemp(
+        path.join(installationRoot(workspaceDir), ".install-"),
+      );
+      const stagedSkillDir = path.join(stagingRoot, "candidate");
+      try {
+        await runGitCloneSubset(
+          repository,
+          gitRef,
+          skillPath,
+          stagedSkillDir,
+          signal,
+        );
+        throwIfMarketplaceAborted(signal);
+        const skillDocumentPath = path.join(stagedSkillDir, "SKILL.md");
+        const validSkill =
+          fsSync.existsSync(skillDocumentPath) && fsSync.statSync(skillDocumentPath).isFile();
+        throwIfMarketplaceAborted(signal);
+        if (!validSkill) throw new Error("Installed path does not contain SKILL.md");
 
-  await runGitCloneSubset(repository, gitRef, skillPath, targetDir);
+        const scanReport = await runSkillSecurityScan(stagedSkillDir, signal);
+        if (scanReport.status === "blocked") {
+          const reasons = [
+            ...scanReport.findings.map((finding) => finding.message),
+            ...scanReport.manifestFindings.map((finding) => finding.message),
+          ];
+          throw new Error(
+            `Skill "${id}" blocked by security scan: ${reasons.join("; ")}`,
+          );
+        }
+        scanReport.skillPath = targetDir;
+        await fs.writeFile(
+          path.join(stagedSkillDir, ".scan-results.json"),
+          JSON.stringify(scanReport, null, 2),
+          "utf-8",
+        );
+        throwIfMarketplaceAborted(signal);
 
-  const skillDoc = path.join(targetDir, "SKILL.md");
-  const validSkill = await fs
-    .stat(skillDoc)
-    .then((s) => s.isFile())
-    .catch(() => false);
-  if (!validSkill) {
-    await fs
-      .rm(targetDir, { recursive: true, force: true })
-      .catch(() => undefined);
-    throw new Error("Installed path does not contain SKILL.md");
-  }
+        const record: InstalledMarketplaceSkill = {
+          id,
+          name: input.name?.trim() || id,
+          description: input.description?.trim() || "",
+          repository,
+          githubUrl: `https://github.com/${repository}`,
+          path: skillPath,
+          installPath: targetDir,
+          installedAt: new Date().toISOString(),
+          source: input.source ?? "manual",
+          scanStatus: scanReport.status,
+        };
 
-  // ── Security scan ─────────────────────────────────────────
-  // Scan the skill directory for dangerous patterns before making it available.
-  // Blocked skills are removed and an error is thrown.
-  const scanReport = await runSkillSecurityScan(targetDir);
-  const scanStatus = scanReport.status;
+        await withMarketplaceMutex(
+          marketplaceRecordsMutexes,
+          path.resolve(workspaceDir),
+          signal,
+          async () => {
+            const records = await readInstallRecords(workspaceDir);
+            throwIfMarketplaceAborted(signal);
+            if (records[id]) {
+              throw new Error(`Skill "${id}" is already recorded as installed`);
+            }
+            if (fsSync.existsSync(targetDir)) {
+              throw new Error(`Skill "${id}" is already installed`);
+            }
+            records[id] = record;
 
-  if (scanReport.status === "blocked") {
-    await fs
-      .rm(targetDir, { recursive: true, force: true })
-      .catch(() => undefined);
-    const reasons = [
-      ...scanReport.findings.map((f: { message: string }) => f.message),
-      ...scanReport.manifestFindings.map((f: { message: string }) => f.message),
-    ];
-    throw new Error(
-      `Skill "${id}" blocked by security scan: ${reasons.join("; ")}`,
-    );
-  }
+            const recordPath = installsRecordPath(workspaceDir);
+            const recordStage = await fs.mkdtemp(
+              path.join(path.dirname(recordPath), ".records-commit-"),
+            );
+            const nextRecordPath = path.join(recordStage, "next.json");
+            const previousRecordPath = path.join(recordStage, "previous.json");
+            await fs.writeFile(
+              nextRecordPath,
+              JSON.stringify(records, null, 2),
+              "utf-8",
+            );
+            throwIfMarketplaceAborted(signal);
+            let targetPublished = false;
+            let recordPublished = false;
+            let movedPreviousRecord = false;
+            try {
+              fsSync.renameSync(stagedSkillDir, targetDir);
+              targetPublished = true;
+              throwIfMarketplaceAborted(signal);
+              if (fsSync.existsSync(recordPath)) {
+                fsSync.renameSync(recordPath, previousRecordPath);
+                movedPreviousRecord = true;
+              }
+              fsSync.renameSync(nextRecordPath, recordPath);
+              recordPublished = true;
+              throwIfMarketplaceAborted(signal);
+            } catch (cause) {
+              // error-policy:J2 Roll back both publication boundaries and
+              // retain the primary commit failure, aggregating rollback loss.
+              const rollbackFailures: unknown[] = [];
+              try {
+                if (recordPublished && fsSync.existsSync(recordPath)) {
+                  fsSync.rmSync(recordPath, { force: true });
+                }
+                if (
+                  movedPreviousRecord &&
+                  fsSync.existsSync(previousRecordPath)
+                ) {
+                  fsSync.renameSync(previousRecordPath, recordPath);
+                }
+              } catch (rollbackCause) {
+                // error-policy:J2 Record rollback failure is retained below.
+                rollbackFailures.push(rollbackCause);
+              }
+              try {
+                if (targetPublished && fsSync.existsSync(targetDir)) {
+                  fsSync.rmSync(targetDir, { recursive: true, force: true });
+                }
+              } catch (rollbackCause) {
+                // error-policy:J2 Directory rollback failure is retained below.
+                rollbackFailures.push(rollbackCause);
+              }
+              if (rollbackFailures.length > 0) {
+                throw new AggregateError(
+                  [cause, ...rollbackFailures],
+                  "Marketplace install and rollback both failed",
+                );
+              }
+              throw cause;
+            } finally {
+              await removeMarketplaceStagingBestEffort(recordStage);
+            }
+          },
+        );
 
-  if (scanReport.status === "critical" || scanReport.status === "warning") {
-    logger.warn(
-      `[skills-marketplace] Security scan for "${id}": ${scanReport.status} ` +
-        `(${scanReport.summary.critical} critical, ${scanReport.summary.warn} warnings)`,
-    );
-  }
-
-  const record: InstalledMarketplaceSkill = {
-    id,
-    name: input.name?.trim() || id,
-    description: input.description?.trim() || "",
-    repository,
-    githubUrl: `https://github.com/${repository}`,
-    path: skillPath,
-    installPath: targetDir,
-    installedAt: new Date().toISOString(),
-    source: input.source ?? "manual",
-    scanStatus,
-  };
-
-  const records = await readInstallRecords(workspaceDir);
-  records[id] = record;
-  await writeInstallRecords(workspaceDir, records);
-
-  logger.info(
-    `[skills-marketplace] Installed ${record.id} from ${record.repository}:${record.path} (scan: ${scanStatus})`,
+        if (scanReport.status === "critical" || scanReport.status === "warning") {
+          logger.warn(
+            `[skills-marketplace] Security scan for "${id}": ${scanReport.status} ` +
+              `(${scanReport.summary.critical} critical, ${scanReport.summary.warn} warnings)`,
+          );
+        }
+        logger.info(
+          `[skills-marketplace] Installed ${record.id} from ${record.repository}:${record.path} (scan: ${scanReport.status})`,
+        );
+        return record;
+      } finally {
+        await removeMarketplaceStagingBestEffort(stagingRoot);
+      }
+    },
   );
-  return record;
 }
 
 export async function listInstalledMarketplaceSkills(

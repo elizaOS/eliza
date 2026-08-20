@@ -34,6 +34,7 @@ import {
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace";
+import { isSkillDownloadError } from "../services/skill-package-bytes";
 import {
   SKILL_DESCRIPTION_MAX_LENGTH,
   SKILL_NAME_MAX_LENGTH,
@@ -184,6 +185,30 @@ interface InstallRequestLifecycle {
   readonly signal: AbortSignal;
   markCompleted(): void;
   dispose(): void;
+}
+
+function skillInstallHttpStatus(cause: unknown): number {
+  if (!isSkillDownloadError(cause)) return 500;
+  if (cause.code === "SKILL_DOWNLOAD_TIMEOUT") return 504;
+  if (cause.code === "SKILL_DOWNLOAD_ABORTED") return 499;
+  if (cause.code === "SKILL_PACKAGE_TOO_LARGE") return 413;
+  return 422;
+}
+
+function respondToSkillInstallError(
+  ctx: Pick<SkillsRouteContext, "json" | "error" | "res">,
+  prefix: string,
+  cause: unknown,
+): void {
+  if (isSkillDownloadError(cause)) {
+    ctx.json(
+      ctx.res,
+      { error: `${prefix}: ${cause.message}`, code: cause.code },
+      skillInstallHttpStatus(cause),
+    );
+    return;
+  }
+  ctx.error(ctx.res, prefix, 500);
 }
 
 type AbortEventSource = {
@@ -799,11 +824,7 @@ export async function handleSkillsRoutes(
     } catch (err) {
       // error-policy:J1 the HTTP boundary translates typed install failures to
       // the established structured error response.
-      error(
-        res,
-        `Skill install failed: ${err instanceof Error ? err.message : String(err)}`,
-        500,
-      );
+      respondToSkillInstallError(ctx, "Skill install failed", err);
     }
     return true;
   }
@@ -1703,29 +1724,40 @@ export async function handleSkillsRoutes(
           requestLifecycle.dispose();
         }
       } else {
-        const result = await installMarketplaceSkill(workspaceDir, {
-          githubUrl: body.githubUrl,
-          repository: body.repository,
-          path: body.path,
-          name: body.name,
-          description: body.description,
-          source: body.source === "manual" ? "manual" : "clawhub",
-        });
-
-        state.skills = await discoverSkills(
-          workspaceDir,
-          state.config,
-          state.runtime,
-        );
-
-        json(res, { ok: true, skill: result });
+        const requestLifecycle = createInstallRequestLifecycle(req, res);
+        try {
+          const result = await installMarketplaceSkill(
+            workspaceDir,
+            {
+              githubUrl: body.githubUrl,
+              repository: body.repository,
+              path: body.path,
+              name: body.name,
+              description: body.description,
+              source: body.source === "manual" ? "manual" : "clawhub",
+            },
+            { signal: requestLifecycle.signal },
+          );
+          requestLifecycle.signal.throwIfAborted();
+          state.skills = await discoverSkills(
+            workspaceDir,
+            state.config,
+            state.runtime,
+          );
+          requestLifecycle.signal.throwIfAborted();
+          json(res, { ok: true, skill: result });
+          requestLifecycle.markCompleted();
+        } catch (cause) {
+          // error-policy:J1 A disconnected repository install owns its git,
+          // copy, scan, and publication cancellation and receives no late write.
+          if (requestLifecycle.signal.aborted) return true;
+          throw cause;
+        } finally {
+          requestLifecycle.dispose();
+        }
       }
     } catch (err) {
-      error(
-        res,
-        `Install failed: ${err instanceof Error ? err.message : err}`,
-        500,
-      );
+      respondToSkillInstallError(ctx, "Install failed", err);
     }
     return true;
   }
