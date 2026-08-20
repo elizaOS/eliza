@@ -251,6 +251,50 @@ This preflight proves operator authorization of the exact scenario and binding
 contract only. It does not contact a provider, create observations, run the
 independent semantic judge, or make evidence publishable.
 
+### External canary execution
+
+The executable controller boundary accepts one closed operator config after the
+manifest has been authorized. It validates the signed scenario, target, input,
+and failure-probe preimages before importing any credential-capable code. The
+operator capability module is a prebuilt ESM bundle whose exact bytes are
+pinned by SHA-256; its factory supplies authenticated ingress, an independent
+observer, isolated trajectory verification, an independent semantic judge, and
+cleanup. The CLI supplies the publisher so no qualification output is written
+until the orchestrator has fully reverified the artifact and cleanup succeeds:
+
+```bash
+bun run --cwd packages/scenario-runner provider-canary -- \
+  /absolute/path/to/external-canary-config.json
+```
+
+```json
+{
+  "schema": "eliza.external-provider-canary-config.v1",
+  "scenarioFile": "provider.gmail.confirmed-send.scenario.ts",
+  "authorizationFile": "authorization.json",
+  "operationKind": "gmail.email-send",
+  "providerTargetFile": "provider-target.json",
+  "operationInputFile": "operation-input.json",
+  "failureProbesFile": "failure-probes.json",
+  "manifestAuthorityPublicKeyFiles": ["keys/manifest-authority.pub.pem"],
+  "observerPublicKeyFiles": ["keys/provider-observer.pub.pem"],
+  "semanticJudgePublicKeyFiles": ["keys/semantic-judge.pub.pem"],
+  "operatorModuleFile": "operator/provider-capabilities.mjs",
+  "operatorModuleSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "outputDir": "qualification-output"
+}
+```
+
+The capability bundle is trusted operator code, not a plugin loaded from the
+pull request under test. Build and review it outside the tested checkout, pin
+the resulting single entry module, and obtain credentials from the operator's
+secret manager rather than JSON or process arguments. Importing the module is
+allowed only after authorization preflight, but JavaScript modules are not a
+sandbox; a digest proves exact bytes, not that those bytes are safe. Every
+capability must still produce the independently signed evidence required by the
+qualifier. Missing capabilities, an invalid signature, module drift, failed
+cleanup, or an unpublishable decision exits nonzero and writes no output.
+
 ### Offline qualification verification
 
 After an external controller completes one isolated provider run, verify the

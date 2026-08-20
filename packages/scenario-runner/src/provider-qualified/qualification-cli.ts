@@ -342,7 +342,7 @@ export function renderProviderQualificationMarkdown(
   ].join("\n");
 }
 
-function writeExclusiveOutput(
+export function writeProviderQualificationOutputExclusive(
   outputDir: string,
   artifact: ProviderQualificationArtifact,
 ): void {
@@ -494,7 +494,10 @@ export async function verifyProviderQualificationFromConfig(
       : { maxClockSkewMs: config.maxClockSkewMs }),
   });
   reverifyProviderQualificationArtifact(artifact);
-  writeExclusiveOutput(resolveFrom(baseDir, config.outputDir), artifact);
+  writeProviderQualificationOutputExclusive(
+    resolveFrom(baseDir, config.outputDir),
+    artifact,
+  );
   return artifact;
 }
 
