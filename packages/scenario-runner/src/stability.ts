@@ -4,13 +4,27 @@
  * module only plans isolated artifact paths and combines completed run reports.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import type { ScenarioReport } from "./types.ts";
 import { toRecord } from "./utils.ts";
 
 export const SCENARIO_STABILITY_ATTEMPT_COUNT = 3 as const;
 export const SCENARIO_STABILITY_REQUIRED_TIER = "3/3" as const;
+export const SCENARIO_STABILITY_MAX_REPORT_BYTES = 64 * 1024 * 1024;
+export const SCENARIO_STABILITY_MAX_SCENARIOS = 10_000;
+export const SCENARIO_STABILITY_MAX_FAILED_ASSERTIONS = 1_000;
+export const SCENARIO_STABILITY_MAX_SCENARIO_ID_LENGTH = 512;
+export const SCENARIO_STABILITY_MAX_DETAIL_LENGTH = 64 * 1024;
 
 export type ScenarioStabilityAttemptNumber = 1 | 2 | 3;
 export type ScenarioStabilityTier = "3/3" | "2/3" | "1/3" | "0/3";
@@ -142,11 +156,20 @@ export function createScenarioStabilityPlan(params: {
 function readOptionalString(
   record: Readonly<Record<string, unknown>>,
   key: string,
+  source: string,
 ): string | undefined {
   const value = record[key];
   if (value === undefined) return undefined;
   if (typeof value !== "string") {
-    throw new Error(`scenario stability field '${key}' must be a string`);
+    throw new Error(`${source} field '${key}' must be a string`);
+  }
+  if (
+    value.trim().length === 0 ||
+    value.length > SCENARIO_STABILITY_MAX_DETAIL_LENGTH
+  ) {
+    throw new Error(
+      `${source} field '${key}' must be 1-${SCENARIO_STABILITY_MAX_DETAIL_LENGTH} characters`,
+    );
   }
   return value;
 }
@@ -160,6 +183,107 @@ function requireRecord(
   return record;
 }
 
+/** Reads one regular JSON artifact without permitting symlinks or unbounded allocation. */
+export function readScenarioStabilityJsonArtifact(
+  filePath: string,
+  source: string,
+): unknown {
+  const linkStat = lstatSync(filePath);
+  if (linkStat.isSymbolicLink() || !linkStat.isFile()) {
+    throw new Error(`${source} must be a regular file, not a symlink`);
+  }
+
+  const descriptor = openSync(filePath, "r");
+  try {
+    const fileStat = fstatSync(descriptor);
+    if (!fileStat.isFile()) {
+      throw new Error(`${source} must be a regular file`);
+    }
+    if (fileStat.size > SCENARIO_STABILITY_MAX_REPORT_BYTES) {
+      throw new Error(
+        `${source} exceeds the ${SCENARIO_STABILITY_MAX_REPORT_BYTES}-byte limit`,
+      );
+    }
+
+    // The extra byte detects growth after fstat without allocating beyond the
+    // declared bound. Shrinkage or replacement becomes invalid JSON or a
+    // changed-during-read error rather than a truncated valid artifact.
+    const bytes = Buffer.alloc(fileStat.size + 1);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const read = readSync(
+        descriptor,
+        bytes,
+        offset,
+        bytes.length - offset,
+        null,
+      );
+      if (read === 0) break;
+      offset += read;
+    }
+    if (offset !== fileStat.size) {
+      throw new Error(`${source} changed while it was being read`);
+    }
+    return JSON.parse(bytes.subarray(0, offset).toString("utf8"));
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+/** Reconstructs and verifies a persisted plan against CLI-owned identity and paths. */
+export function parseScenarioStabilityPlan(
+  value: unknown,
+  expected: { runId: string; outputRoot: string },
+  source = "scenario stability plan",
+): ScenarioStabilityPlan {
+  const record = requireRecord(value, source);
+  const canonical = createScenarioStabilityPlan(expected);
+  if (
+    record.schemaVersion !== canonical.schemaVersion ||
+    record.runId !== canonical.runId ||
+    record.attemptCount !== canonical.attemptCount ||
+    record.requiredTier !== canonical.requiredTier ||
+    record.outputRoot !== canonical.outputRoot ||
+    record.planPath !== canonical.planPath ||
+    record.reportPath !== canonical.reportPath ||
+    !Array.isArray(record.attempts) ||
+    record.attempts.length !== canonical.attempts.length
+  ) {
+    throw new Error(`${source} does not match the requested run identity`);
+  }
+  for (const [index, expectedAttempt] of canonical.attempts.entries()) {
+    const attempt = requireRecord(
+      record.attempts[index],
+      `${source} attempt ${index + 1}`,
+    );
+    if (
+      attempt.attemptNumber !== expectedAttempt.attemptNumber ||
+      attempt.attemptId !== expectedAttempt.attemptId ||
+      attempt.outputDir !== expectedAttempt.outputDir ||
+      attempt.reportPath !== expectedAttempt.reportPath
+    ) {
+      throw new Error(
+        `${source} attempt ${index + 1} does not match the requested run identity and isolated paths`,
+      );
+    }
+  }
+  return canonical;
+}
+
+/** Loads the pre-existing plan that owns attempt identities and artifact paths. */
+export function readScenarioStabilityPlan(params: {
+  runId: string;
+  outputRoot: string;
+}): ScenarioStabilityPlan {
+  const expected = createScenarioStabilityPlan(params);
+  const source = `scenario stability plan '${expected.planPath}'`;
+  return parseScenarioStabilityPlan(
+    readScenarioStabilityJsonArtifact(expected.planPath, source),
+    params,
+    source,
+  );
+}
+
 /** Validates the report subset consumed by stability aggregation. */
 export function parseScenarioStabilityAttemptReport(
   value: unknown,
@@ -167,17 +291,29 @@ export function parseScenarioStabilityAttemptReport(
 ): ScenarioStabilityAttemptReport {
   const report = requireRecord(value, source);
   const runId = report.runId;
-  if (typeof runId !== "string" || runId.length === 0) {
-    throw new Error(`${source} must contain a non-empty string runId`);
+  if (typeof runId !== "string" || !RUN_ID_PATTERN.test(runId)) {
+    throw new Error(
+      `${source} must contain a 1-128 character filename-safe runId`,
+    );
   }
   if (!Array.isArray(report.scenarios)) {
     throw new Error(`${source} must contain a scenarios array`);
   }
+  if (report.scenarios.length > SCENARIO_STABILITY_MAX_SCENARIOS) {
+    throw new Error(
+      `${source} exceeds the ${SCENARIO_STABILITY_MAX_SCENARIOS}-scenario limit`,
+    );
+  }
   const scenarios = report.scenarios.map((value, index) => {
-    const scenario = requireRecord(value, `${source} scenario ${index + 1}`);
-    if (typeof scenario.id !== "string" || scenario.id.length === 0) {
+    const scenarioSource = `${source} scenario ${index + 1}`;
+    const scenario = requireRecord(value, scenarioSource);
+    if (
+      typeof scenario.id !== "string" ||
+      scenario.id.trim().length === 0 ||
+      scenario.id.length > SCENARIO_STABILITY_MAX_SCENARIO_ID_LENGTH
+    ) {
       throw new Error(
-        `${source} scenario ${index + 1} must contain a non-empty id`,
+        `${scenarioSource} must contain an id of 1-${SCENARIO_STABILITY_MAX_SCENARIO_ID_LENGTH} characters`,
       );
     }
     if (
@@ -194,20 +330,67 @@ export function parseScenarioStabilityAttemptReport(
         `${source} scenario '${scenario.id}' must contain a failedAssertions array`,
       );
     }
+    if (
+      scenario.failedAssertions.length >
+      SCENARIO_STABILITY_MAX_FAILED_ASSERTIONS
+    ) {
+      throw new Error(
+        `${source} scenario '${scenario.id}' exceeds the ${SCENARIO_STABILITY_MAX_FAILED_ASSERTIONS}-assertion limit`,
+      );
+    }
     const failedAssertions = scenario.failedAssertions.map(
       (assertionValue, assertionIndex) => {
         const assertion = requireRecord(
           assertionValue,
           `${source} scenario '${scenario.id}' assertion ${assertionIndex + 1}`,
         );
-        return { detail: readOptionalString(assertion, "detail") };
+        const detail = readOptionalString(
+          assertion,
+          "detail",
+          `${source} scenario '${scenario.id}' assertion ${assertionIndex + 1}`,
+        );
+        if (!detail) {
+          throw new Error(
+            `${source} scenario '${scenario.id}' assertion ${assertionIndex + 1} must contain detail`,
+          );
+        }
+        return { detail };
       },
     );
+    const skipReason = readOptionalString(
+      scenario,
+      "skipReason",
+      scenarioSource,
+    );
+    const error = readOptionalString(scenario, "error", scenarioSource);
+    if (
+      scenario.status === "passed" &&
+      (skipReason !== undefined ||
+        error !== undefined ||
+        failedAssertions.length > 0)
+    ) {
+      throw new Error(
+        `${source} scenario '${scenario.id}' cannot report passed with failure or skip details`,
+      );
+    }
+    if (
+      scenario.status === "skipped" &&
+      (!skipReason || error !== undefined || failedAssertions.length > 0)
+    ) {
+      throw new Error(
+        `${source} scenario '${scenario.id}' has inconsistent skipped status`,
+      );
+    }
+    if (scenario.status === "failed" && skipReason !== undefined) {
+      throw new Error(
+        `${source} scenario '${scenario.id}' cannot report failed with a skip reason`,
+      );
+    }
     return {
       id: scenario.id,
       status: scenario.status,
-      skipReason: readOptionalString(scenario, "skipReason"),
-      error: readOptionalString(scenario, "error"),
+      skipReason,
+      error,
       failedAssertions,
     } satisfies ScenarioStabilityAttemptScenarioReport;
   });
@@ -331,7 +514,13 @@ export function buildScenarioStabilityReport(
   plan: ScenarioStabilityPlan,
   reports: readonly ScenarioStabilityAttemptReport[],
 ): ScenarioStabilityReport {
-  const orderedReports = validateAttemptReports(plan, reports);
+  const validatedReports = reports.map((report, index) =>
+    parseScenarioStabilityAttemptReport(
+      report,
+      `scenario stability attempt report ${index + 1}`,
+    ),
+  );
+  const orderedReports = validateAttemptReports(plan, validatedReports);
   const attemptsByScenario = orderedReports.map(scenariosById);
   const scenarioIds = [
     ...new Set(
@@ -392,11 +581,34 @@ export function buildScenarioStabilityReport(
 
 /** Writes the plan so external execution can consume exact attempt IDs and paths. */
 export function writeScenarioStabilityPlan(plan: ScenarioStabilityPlan): void {
-  mkdirSync(plan.outputRoot, { recursive: true });
-  for (const attempt of plan.attempts) {
+  const canonical = parseScenarioStabilityPlan(
+    plan,
+    { runId: plan.runId, outputRoot: plan.outputRoot },
+    "scenario stability plan",
+  );
+  if (existsSync(canonical.planPath)) {
+    parseScenarioStabilityPlan(
+      readScenarioStabilityJsonArtifact(
+        canonical.planPath,
+        `scenario stability plan '${canonical.planPath}'`,
+      ),
+      { runId: canonical.runId, outputRoot: canonical.outputRoot },
+      `scenario stability plan '${canonical.planPath}'`,
+    );
+    mkdirSync(canonical.outputRoot, { recursive: true });
+    for (const attempt of canonical.attempts) {
+      mkdirSync(attempt.outputDir, { recursive: true });
+    }
+    return;
+  }
+  mkdirSync(canonical.outputRoot, { recursive: true });
+  for (const attempt of canonical.attempts) {
     mkdirSync(attempt.outputDir, { recursive: true });
   }
-  writeFileSync(plan.planPath, `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+  writeFileSync(canonical.planPath, `${JSON.stringify(canonical, null, 2)}\n`, {
+    encoding: "utf8",
+    flag: "wx",
+  });
 }
 
 /** Writes the deterministic aggregate at the path declared by its plan. */

@@ -3,15 +3,27 @@
  * aggregation, strict tiers, structural failure classes, and focus lists.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CliUsageError, parseArgs, runCli } from "./cli.ts";
+import type { ScenarioStabilityAttemptReport } from "./stability.ts";
 import {
   buildScenarioStabilityReport,
   createScenarioStabilityPlan,
   parseScenarioStabilityAttemptReport,
+  SCENARIO_STABILITY_MAX_FAILED_ASSERTIONS,
+  SCENARIO_STABILITY_MAX_REPORT_BYTES,
+  SCENARIO_STABILITY_MAX_SCENARIO_ID_LENGTH,
+  SCENARIO_STABILITY_MAX_SCENARIOS,
   writeScenarioStabilityPlan,
 } from "./stability.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
@@ -284,6 +296,94 @@ describe("scenario stability report plumbing", () => {
     ).toThrow(/failedAssertions array/);
   });
 
+  it("rejects status contradictions instead of manufacturing strict passes", () => {
+    expect(() =>
+      parseScenarioStabilityAttemptReport({
+        runId: "attempt-id",
+        scenarios: [
+          {
+            id: "alpha",
+            status: "passed",
+            error: "fatal",
+            failedAssertions: [{ detail: "failed assertion" }],
+          },
+        ],
+      }),
+    ).toThrow(/cannot report passed/);
+    expect(() =>
+      parseScenarioStabilityAttemptReport({
+        runId: "attempt-id",
+        scenarios: [
+          {
+            id: "alpha",
+            status: "skipped",
+            skipReason: "fixture unavailable",
+            failedAssertions: [{ detail: "failed assertion" }],
+          },
+        ],
+      }),
+    ).toThrow(/inconsistent skipped status/);
+
+    const plan = createScenarioStabilityPlan({
+      runId: "programmatic",
+      outputRoot: tempRoot(),
+    });
+    const contradictoryReports: ScenarioStabilityAttemptReport[] =
+      plan.attempts.map((attempt) => ({
+        runId: attempt.attemptId,
+        scenarios: [
+          {
+            id: "alpha",
+            status: "passed",
+            error: "fatal",
+            failedAssertions: [{ detail: "failed assertion" }],
+          },
+        ],
+      }));
+    expect(() =>
+      buildScenarioStabilityReport(plan, contradictoryReports),
+    ).toThrow(/cannot report passed/);
+  });
+
+  it("bounds scenario, assertion, and identifier allocation", () => {
+    expect(() =>
+      parseScenarioStabilityAttemptReport({
+        runId: "attempt-id",
+        scenarios: Array.from(
+          { length: SCENARIO_STABILITY_MAX_SCENARIOS + 1 },
+          () => ({ id: "alpha", status: "passed", failedAssertions: [] }),
+        ),
+      }),
+    ).toThrow(/scenario limit/);
+    expect(() =>
+      parseScenarioStabilityAttemptReport({
+        runId: "attempt-id",
+        scenarios: [
+          {
+            id: "a".repeat(SCENARIO_STABILITY_MAX_SCENARIO_ID_LENGTH + 1),
+            status: "passed",
+            failedAssertions: [],
+          },
+        ],
+      }),
+    ).toThrow(/must contain an id/);
+    expect(() =>
+      parseScenarioStabilityAttemptReport({
+        runId: "attempt-id",
+        scenarios: [
+          {
+            id: "alpha",
+            status: "failed",
+            failedAssertions: Array.from(
+              { length: SCENARIO_STABILITY_MAX_FAILED_ASSERTIONS + 1 },
+              () => ({ detail: "no" }),
+            ),
+          },
+        ],
+      }),
+    ).toThrow(/assertion limit/);
+  });
+
   it("exposes plan and aggregate generation through the CLI without executing scenarios", async () => {
     const root = tempRoot();
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -395,6 +495,104 @@ describe("scenario stability report plumbing", () => {
           attempt.reportPath,
         ]),
       ]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+  });
+
+  it("requires and preserves the persisted plan authority", async () => {
+    const root = tempRoot();
+    const original = createScenarioStabilityPlan({
+      runId: "original",
+      outputRoot: root,
+    });
+    const replacement = createScenarioStabilityPlan({
+      runId: "replacement",
+      outputRoot: root,
+    });
+    writeScenarioStabilityPlan(original);
+
+    expect(() => writeScenarioStabilityPlan(replacement)).toThrow(
+      /does not match the requested run identity/,
+    );
+    expect(JSON.parse(readFileSync(original.planPath, "utf8"))).toMatchObject({
+      runId: "original",
+    });
+
+    await expect(
+      runCli([
+        "stability",
+        root,
+        "--runId",
+        "replacement",
+        ...replacement.attempts.flatMap((attempt) => [
+          "--attempt-report",
+          attempt.reportPath,
+        ]),
+      ]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+    expect(JSON.parse(readFileSync(original.planPath, "utf8"))).toMatchObject({
+      runId: "original",
+    });
+  });
+
+  it("rejects oversized and symlinked attempt artifacts before aggregation", async () => {
+    const root = tempRoot();
+    const plan = createScenarioStabilityPlan({
+      runId: "bounded",
+      outputRoot: root,
+    });
+    writeScenarioStabilityPlan(plan);
+    writeFileSync(plan.attempts[0].reportPath, "");
+    truncateSync(
+      plan.attempts[0].reportPath,
+      SCENARIO_STABILITY_MAX_REPORT_BYTES + 1,
+    );
+    for (const attempt of plan.attempts.slice(1)) {
+      writeFileSync(
+        attempt.reportPath,
+        `${JSON.stringify(
+          aggregate(attempt.attemptId, [scenario("alpha", "passed")]),
+        )}\n`,
+      );
+    }
+    await expect(
+      runCli([
+        "stability",
+        root,
+        "--runId",
+        plan.runId,
+        ...plan.attempts.flatMap((attempt) => [
+          "--attempt-report",
+          attempt.reportPath,
+        ]),
+      ]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+
+    rmSync(plan.attempts[0].reportPath);
+    const externalReport = path.join(root, "external.json");
+    writeFileSync(
+      externalReport,
+      `${JSON.stringify(
+        aggregate(plan.attempts[0].attemptId, [scenario("alpha", "passed")]),
+      )}\n`,
+    );
+    symlinkSync(externalReport, plan.attempts[0].reportPath);
+    await expect(
+      runCli([
+        "stability",
+        root,
+        "--runId",
+        plan.runId,
+        ...plan.attempts.flatMap((attempt) => [
+          "--attempt-report",
+          attempt.reportPath,
+        ]),
+      ]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+  });
+
+  it("translates invalid stability run IDs into usage exit code 2", async () => {
+    await expect(
+      runCli(["stability", tempRoot(), "--runId", "../unsafe"]),
     ).rejects.toMatchObject({ exitCode: 2 });
   });
 });
