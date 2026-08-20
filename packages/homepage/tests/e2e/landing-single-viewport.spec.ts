@@ -93,23 +93,105 @@ test("prefills through Eliza's first embed, then resumes the flow", async ({
   const phone = page.locator(".landing-iphone");
   await expect(phone).toHaveAttribute("data-demo-messages", "6");
   await expect(
-    page.getByText("dinner this weekend?", { exact: true }),
+    page.getByText("we're low on coffee", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("I'm in", { exact: true })).toBeVisible();
-  await expect(page.getByText("same", { exact: true })).toBeVisible();
+  await expect(page.getByText("and oat milk", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("somewhere quiet pls", { exact: true }),
+    page.getByText("I took recycling out", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("laundry got left in the washer again lol", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Saturday after 7 is the only overlap on the calendars you chose to share. Jamie still needs to answer.",
+      "I balanced this against the house rotation: coffee and laundry are yours, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants.",
       { exact: true },
     ),
   ).toBeVisible();
   await expect(page.locator(".landing-demo-card")).toHaveCount(1);
-  await expect(phone).toHaveAttribute("data-demo-typing", "Jamie", {
+  await expect(page.getByText("ugh ok lol", { exact: true })).toBeVisible({
     timeout: 4_000,
   });
+});
+
+test("plays one original welcome aura per page load", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    let contextCount = 0;
+    class FakeAudioParam {
+      setValueAtTime(_value: number, _time: number) {}
+      exponentialRampToValueAtTime(_value: number, _time: number) {}
+    }
+    class FakeAudioNode {
+      connect(destination: unknown) {
+        return destination;
+      }
+    }
+    class FakeGainNode extends FakeAudioNode {
+      gain = new FakeAudioParam();
+    }
+    class FakeOscillatorNode extends FakeAudioNode {
+      frequency = new FakeAudioParam();
+      type: OscillatorType = "sine";
+      start(_time: number) {}
+      stop(_time: number) {}
+    }
+    class FakeAudioContext {
+      currentTime = 0;
+      destination = new FakeAudioNode();
+      constructor() {
+        contextCount += 1;
+      }
+      createGain() {
+        return new FakeGainNode();
+      }
+      createOscillator() {
+        return new FakeOscillatorNode();
+      }
+      resume() {
+        return Promise.resolve();
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+    Object.defineProperty(window, "AudioContext", {
+      configurable: true,
+      value: FakeAudioContext,
+    });
+    Object.defineProperty(window, "__landingAuraContextCount", {
+      configurable: true,
+      get: () => contextCount,
+    });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const tapTarget = page.locator(".landing-tap-target");
+  await tapTarget.click();
+  await expect(page.locator(".landing-sheet")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window as typeof window & {
+            __landingAuraContextCount: number;
+          }
+        ).__landingAuraContextCount,
+    ),
+  ).toBe(1);
+
+  await page.locator(".landing-sheet-close").click();
+  await tapTarget.click();
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window as typeof window & {
+            __landingAuraContextCount: number;
+          }
+        ).__landingAuraContextCount,
+    ),
+  ).toBe(1);
 });
 
 test("human replies show the participant's iOS typing indicator", async ({
@@ -120,29 +202,29 @@ test("human replies show the participant's iOS typing indicator", async ({
   await waitForLandingIntro(page);
 
   const phone = page.locator(".landing-iphone");
-  await expect(phone).toHaveAttribute("data-demo-typing", "Jamie", {
-    timeout: 5_000,
+  await expect(phone).toHaveAttribute("data-demo-typing", "Jules", {
+    timeout: 8_000,
   });
 
-  const indicator = page.locator('[data-demo-typing-indicator="Jamie"]');
+  const indicator = page.locator('[data-demo-typing-indicator="Jules"]');
   await expect(indicator).toBeVisible();
   await expect(indicator.locator(".landing-message-author")).toHaveText(
-    "Jamie",
+    "Jules",
   );
   await expect(indicator.locator(".landing-message-avatar")).toHaveAttribute(
     "src",
-    "/brand/people/demo-jamie.webp",
+    "/brand/people/demo-jules.webp",
   );
   await expect(indicator.locator(".landing-typing span")).toHaveCount(3);
   await expect(indicator.locator(".landing-typing")).toHaveAttribute(
     "aria-label",
-    "Jamie is typing",
+    "Jules is typing",
   );
 
   await expect(phone).toHaveAttribute("data-demo-typing", "", {
     timeout: 4_000,
   });
-  await expect(page.getByText("7:30 works", { exact: true })).toBeVisible();
+  await expect(page.getByText("I'm home late", { exact: true })).toBeVisible();
 });
 
 test("concurrent human replies share one compact typing row", async ({
@@ -153,28 +235,47 @@ test("concurrent human replies share one compact typing row", async ({
   await waitForLandingIntro(page);
 
   const phone = page.locator(".landing-iphone");
-  await expect(phone).toHaveAttribute("data-demo-typing", "Maya,Leo", {
+  await expect(phone).toHaveAttribute("data-demo-typing", "Eli,Jules", {
     timeout: 12_000,
   });
 
-  const indicator = page.locator('[data-demo-typing-indicator="Maya and Leo"]');
+  const indicator = page.locator(
+    '[data-demo-typing-indicator="Eli and Jules"]',
+  );
   await expect(indicator).toBeVisible();
   await expect(indicator.locator(".landing-message-author")).toHaveText(
-    "Maya and Leo",
+    "Eli and Jules",
   );
   await expect(indicator.locator(".landing-message-avatar")).toHaveCount(2);
   await expect(indicator.locator(".landing-typing")).toHaveAttribute(
     "aria-label",
-    "Maya and Leo are typing",
+    "Eli and Jules are typing",
   );
+  const multipleAuthorBox = await indicator
+    .locator(".landing-message-author")
+    .boundingBox();
+  const multipleBubbleBox = await indicator
+    .locator(".landing-typing")
+    .boundingBox();
 
-  await expect(phone).toHaveAttribute("data-demo-typing", "Leo", {
+  await expect(phone).toHaveAttribute("data-demo-typing", "Jules", {
     timeout: 3_000,
   });
-  await expect(
-    page.getByText("outside if it's nice?", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("mission or noe?", { exact: true })).toBeVisible({
+  const singleIndicator = page.locator('[data-demo-typing-indicator="Jules"]');
+  const singleAuthorBox = await singleIndicator
+    .locator(".landing-message-author")
+    .boundingBox();
+  const singleBubbleBox = await singleIndicator
+    .locator(".landing-typing")
+    .boundingBox();
+  expect(
+    Math.abs((multipleAuthorBox?.x ?? 0) - (singleAuthorBox?.x ?? 0)),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs((multipleBubbleBox?.x ?? 0) - (singleBubbleBox?.x ?? 0)),
+  ).toBeLessThanOrEqual(1);
+  await expect(page.getByText("I'm home late", { exact: true })).toBeVisible();
+  await expect(page.getByText("plants are done", { exact: true })).toBeVisible({
     timeout: 3_000,
   });
 });
@@ -191,7 +292,7 @@ test("all five longer rooms keep rotating without hiding usable thread space", a
   await expect(phone).toHaveAttribute("data-demo-cycle", "1", {
     timeout: 280_000,
   });
-  await expect(phone).toHaveAttribute("data-demo-scenario", "friends", {
+  await expect(phone).toHaveAttribute("data-demo-scenario", "household", {
     timeout: 5_000,
   });
   await expect(phone).toHaveAttribute("data-demo-phase", "playing");
@@ -199,7 +300,7 @@ test("all five longer rooms keep rotating without hiding usable thread space", a
   await expect(phone).toHaveAttribute("data-demo-scenarios", "5");
   await expect(phone).toHaveAttribute(
     "data-demo-visited",
-    "friends,co-parenting,household,trip,community",
+    "household,co-parenting,friends,trip,community",
   );
   await expect
     .poll(async () => Number(await phone.getAttribute("data-demo-messages")))

@@ -216,7 +216,7 @@ export interface LandingDemoScenario {
  * recognize. Each recap is derived only from messages already visible in that
  * room; changing rooms never implies memory leaking between conversations.
  */
-export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
+const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
   {
     id: "friends",
     label: "Friends",
@@ -891,6 +891,23 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
     ],
   },
 ];
+
+const LANDING_DEMO_SCENARIO_ORDER: readonly LandingDemoScenarioId[] = [
+  "household",
+  "co-parenting",
+  "friends",
+  "trip",
+  "community",
+];
+
+export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] =
+  LANDING_DEMO_SCENARIO_ORDER.map((id) => {
+    const scenario = LANDING_DEMO_SCENARIO_DEFINITIONS.find(
+      (candidate) => candidate.id === id,
+    );
+    if (!scenario) throw new Error(`Missing landing demo scenario: ${id}`);
+    return scenario;
+  });
 
 export function landingDemoStepText(step: LandingDemoStep): string {
   if (step.kind !== "card") return step.text;

@@ -103,9 +103,9 @@ describe("landing Shared-agent capability contract", () => {
 
   test("defines all five finite rooms in the promised order", () => {
     expect(LANDING_DEMO_SCENARIOS.map(({ id }) => id)).toEqual([
-      "friends",
-      "co-parenting",
       "household",
+      "co-parenting",
+      "friends",
       "trip",
       "community",
     ]);

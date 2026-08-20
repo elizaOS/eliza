@@ -7,7 +7,7 @@
  * group conversation. Advanced examples name the connected source, room scope,
  * or permission behind them instead of implying silent external access. It is
  * decorative and intentionally English-only. Reduced motion shows its settled
- * friends room while keeping the five-room contract in the DOM.
+ * first room while keeping the five-room contract in the DOM.
  */
 
 import {
@@ -101,19 +101,69 @@ const DEMO_SENDERS: Record<string, DemoSender> = {
 
 const DEMO_SCENARIOS: readonly LandingDemoScenario[] = LANDING_DEMO_SCENARIOS;
 const PREFILLED_INTRO_ITEMS = 6;
-const USER_KEYSTROKE_MS = 38;
-const HUMAN_REPLY_BASE_MS = 1_100;
-const HUMAN_REPLY_PER_CHARACTER_MS = 18;
-const HUMAN_REPLY_MAX_MS = 1_900;
-const ELIZA_TYPING_MS = 480;
-const BEAT_PAUSE_MS = 300;
-const PRE_USER_MS = 650;
-const PRE_ELIZA_MS = 180;
-const PRE_CARD_MS = 360;
-const SEND_HOLD_MS = 300;
-const SCENARIO_OPENING_PAUSE_MS = 1_500;
-const SCENARIO_READING_HOLD_MS = 7_500;
-const SCENARIO_SWITCH_MS = 500;
+const USER_KEYSTROKE_MS = 34;
+const HUMAN_REPLY_BASE_MS = 950;
+const HUMAN_REPLY_PER_CHARACTER_MS = 16;
+const HUMAN_REPLY_MAX_MS = 1_650;
+const ELIZA_TYPING_MS = 420;
+const BEAT_PAUSE_MS = 270;
+const PRE_USER_MS = 560;
+const PRE_ELIZA_MS = 150;
+const PRE_CARD_MS = 300;
+const SEND_HOLD_MS = 260;
+const SCENARIO_OPENING_PAUSE_MS = 1_200;
+const SCENARIO_READING_HOLD_MS = 6_500;
+const SCENARIO_SWITCH_MS = 450;
+
+type LandingAudioWindow = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext;
+  };
+
+/** Play a quiet original welcome shimmer after a deliberate user gesture. */
+function playLandingAura(): void {
+  const audioWindow = window as LandingAudioWindow;
+  const AudioContextConstructor =
+    audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+  if (!AudioContextConstructor) return;
+
+  try {
+    const audioContext = new AudioContextConstructor();
+    const startedAt = audioContext.currentTime;
+    const master = audioContext.createGain();
+    master.gain.setValueAtTime(0.0001, startedAt);
+    master.gain.exponentialRampToValueAtTime(0.038, startedAt + 0.06);
+    master.gain.exponentialRampToValueAtTime(0.0001, startedAt + 1.35);
+    master.connect(audioContext.destination);
+
+    const notes = [
+      { delay: 0, frequency: 293.66, type: "sine" },
+      { delay: 0.07, frequency: 440, type: "sine" },
+      { delay: 0.15, frequency: 554.37, type: "triangle" },
+      { delay: 0.24, frequency: 659.25, type: "sine" },
+    ] as const;
+
+    for (const note of notes) {
+      const oscillator = audioContext.createOscillator();
+      const envelope = audioContext.createGain();
+      const noteStart = startedAt + note.delay;
+      oscillator.type = note.type;
+      oscillator.frequency.setValueAtTime(note.frequency, noteStart);
+      envelope.gain.setValueAtTime(0.0001, noteStart);
+      envelope.gain.exponentialRampToValueAtTime(0.22, noteStart + 0.04);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.9);
+      oscillator.connect(envelope);
+      envelope.connect(master);
+      oscillator.start(noteStart);
+      oscillator.stop(noteStart + 0.95);
+    }
+
+    void audioContext.resume().catch(() => undefined);
+    window.setTimeout(() => void audioContext.close(), 1_500);
+  } catch {
+    // Audio is decorative. Unsupported or blocked audio must never affect UX.
+  }
+}
 
 function humanReplyDelay(text: string): number {
   return Math.min(
@@ -952,6 +1002,7 @@ export default function LandingPage() {
     "idle" | "handoff" | "copied" | "error"
   >("idle");
   const phoneCopyOperation = useRef(0);
+  const landingAuraPlayed = useRef(false);
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
     browserWindow !== null &&
@@ -1005,6 +1056,13 @@ export default function LandingPage() {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
       if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
     }
+  };
+
+  const handleOpenContactSheet = () => {
+    setContactSheetOpen(true);
+    if (landingAuraPlayed.current) return;
+    landingAuraPlayed.current = true;
+    playLandingAura();
   };
 
   const phoneCopyLabel =
@@ -1143,7 +1201,7 @@ export default function LandingPage() {
         <button
           type="button"
           className="landing-tap-target"
-          onClick={() => setContactSheetOpen(true)}
+          onClick={handleOpenContactSheet}
           aria-label={t("homepage_eliza.landing.contactSheetOpen", {
             defaultValue: "All the ways to reach Eliza",
           })}

@@ -50,21 +50,21 @@ for (const viewport of [
   });
 }
 
-test("reduced motion renders the settled friends room without category labels", async ({
+test("reduced motion renders the settled household room without category labels", async ({
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
   // Reduced motion skips playback and renders one complete, stable
-  // friends-room snapshot without adding category or numeric progress text.
+  // household snapshot without adding category or numeric progress text.
   const demo = page.locator(".landing-iphone");
   await expect(demo).toHaveAttribute("data-demo-phase", "settled");
-  await expect(demo).toHaveAttribute("data-demo-scenario", "friends");
+  await expect(demo).toHaveAttribute("data-demo-scenario", "household");
   await expect(demo).toHaveAttribute("data-demo-scenarios", "5");
   await expect(demo).toHaveAttribute(
     "data-demo-visited",
-    "friends,co-parenting,household,trip,community",
+    "household,co-parenting,friends,trip,community",
   );
   await expect(demo).toHaveAttribute("data-demo-messages", "24");
   await expect(page.locator(".landing-scenario-strip")).toHaveCount(0);
@@ -75,16 +75,16 @@ test("reduced motion renders the settled friends room without category labels", 
     .locator(".landing-bubble--eliza")
     .allTextContents();
   expect(assistantMessages).toContain(
-    "Saturday after 7 is the only overlap on the calendars you chose to share. Jamie still needs to answer.",
+    "I balanced this against the house rotation: coffee and laundry are yours, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants.",
   );
-  await expect(
-    page.locator('[data-demo-source="calendar"]').first(),
-  ).toHaveText("4 calendars shared");
+  await expect(page.locator('[data-demo-source="memory"]').first()).toHaveText(
+    "Household memory · room only",
+  );
   const messageAuthors = await page
     .locator(".landing-message-author")
     .allTextContents();
   expect(new Set(messageAuthors)).toEqual(
-    new Set(["Maya", "Leo", "Priya", "Jamie", "Eliza"]),
+    new Set(["Noor", "Eli", "Jules", "Eliza"]),
   );
   await expect(page.locator(".landing-group-avatar")).toHaveCount(4);
   await expect(page.locator(".landing-group-avatar").last()).toHaveAttribute(

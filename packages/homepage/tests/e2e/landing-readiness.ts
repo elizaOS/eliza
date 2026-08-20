@@ -3,7 +3,7 @@
  * viewport renders the same phone-first hero; mobile compacts the controls so
  * the framed conversation can use the remaining display height. Readiness is
  * fonts, the visible heading, and the demo having rendered messages. Under
- * Reduced motion renders its settled friends room immediately (phase
+ * Reduced motion renders its settled first room immediately (phase
  * "settled"); otherwise the five-room playback begins within seconds.
  */
 

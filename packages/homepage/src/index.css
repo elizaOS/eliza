@@ -1971,15 +1971,14 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-message--typing-multiple .landing-message-avatar-slot {
-  flex-basis: 2.45rem;
-  width: 2.45rem;
+  justify-content: flex-start;
   overflow: visible;
 }
 
 .landing-message--typing-multiple
   .landing-message-avatar
   + .landing-message-avatar {
-  margin-left: -0.62rem;
+  margin-left: -0.95rem;
   box-shadow: 0 0 0 2px #ffffff;
 }
 
@@ -2644,8 +2643,8 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 
   .landing-message--typing-multiple .landing-message-avatar-slot {
-    flex-basis: 2.65rem;
-    width: 2.65rem;
+    flex-basis: 1.7rem;
+    width: 1.7rem;
   }
 
   .landing-demo-card {
