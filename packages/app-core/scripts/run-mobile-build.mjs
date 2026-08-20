@@ -5452,6 +5452,7 @@ export const ANDROID_LP3_COLOR_POLICY_ACTIONS = [
 ];
 
 export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
+  "GatewayConnectionService",
   "ElizaAgentService",
   "ElizaDialActivity",
   "ElizaAssistActivity",
@@ -5465,6 +5466,8 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaInCallService",
   "ElizaNotificationListenerService",
   "ElizaVoiceCaptureService",
+  "ElizaVoiceTileService",
+  "ElizaQuickActionsWidgetProvider",
   "ElizaSmsReceiver",
   "ElizaMmsReceiver",
   "ElizaSmsGatewayService",
@@ -5482,13 +5485,25 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
 // Permissions removed from the manifest. Anything that triggers a Play
 // Store policy review (sensitive runtime perms, system-only signature
 // perms, default-role / call / SMS perms, background location) gets
-// dropped. The remainder — INTERNET, POST_NOTIFICATIONS, FOREGROUND_SERVICE
-// + FOREGROUND_SERVICE_DATA_SYNC for the Gateway sync service, WAKE_LOCK,
-// scoped storage SDK fallbacks, RECORD_AUDIO/CAMERA/LOCATION needed for
-// Capacitor plugins the cloud renderer still uses — stays in place. Screen
-// capture is AOSP/direct-only, so MediaProjection FGS and the native
-// screencapture plugin are stripped here.
+// dropped. The Play client retains only ordinary HTTPS networking and
+// user-triggered microphone voice; it has no background service, notification,
+// camera, location, Bluetooth, health, telephony, or shared-storage contract.
 export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
+  "CAMERA",
+  "ACCESS_FINE_LOCATION",
+  "ACCESS_COARSE_LOCATION",
+  "BLUETOOTH_SCAN",
+  "BLUETOOTH_CONNECT",
+  "BLUETOOTH",
+  "BLUETOOTH_ADMIN",
+  "FOREGROUND_SERVICE",
+  "FOREGROUND_SERVICE_DATA_SYNC",
+  "POST_NOTIFICATIONS",
+  "WRITE_EXTERNAL_STORAGE",
+  "READ_EXTERNAL_STORAGE",
+  "WAKE_LOCK",
+  "SCHEDULE_EXACT_ALARM",
+  "VIBRATE",
   "READ_CONTACTS",
   "WRITE_CONTACTS",
   "CALL_PHONE",
@@ -5532,6 +5547,21 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 // Java sources removed from the merged sources tree so they don't
 // reference manifest-stripped classes and break compilation.
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
+  "BatteryOptimizationPlugin.java",
+  "BionicDecodeLoop.java",
+  "DeviceRamTierPolicy.java",
+  "ElizaQuickActionsWidgetProvider.java",
+  "ElizaTasksWorker.java",
+  "ElizaVoiceNative.java",
+  "ElizaVoicePlugin.java",
+  "ElizaVoiceTileService.java",
+  "GatewayConnectionService.java",
+  "GlassBridgePlugin.java",
+  "InferenceMemoryPolicy.java",
+  "NativeTranscriptPlugin.java",
+  "NativeTranscriptReducer.java",
+  "ResourceProbePlugin.java",
+  "SafePushNotificationsPlugin.java",
   "AndroidVirtualizationBridge.java",
   "ElizaAgentService.java",
   "ElizaAgentWatchdogPolicy.java",
@@ -5628,7 +5658,9 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
   }
 
   const allowedComponents = new Set(ANDROID_LP3_COLOR_POLICY_COMPONENTS);
-  const allowedPermissions = new Set(ANDROID_LP3_COLOR_POLICY_PERMISSIONS);
+  const allowedPermissions = new Set(
+    ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
+  );
   const allowedJavaFiles = new Set(ANDROID_LP3_COLOR_POLICY_JAVA_FILES);
   return {
     components: ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
@@ -5654,7 +5686,6 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
 export const ANDROID_CLOUD_REWRITTEN_JAVA_FILES = [
   "MainActivity.java",
   "AgentPlugin.java",
-  "ElizaTasksWorker.java",
   "ElizaNativeBridge.java",
 ];
 
@@ -5663,15 +5694,38 @@ export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
 ]);
 
 export const ANDROID_CLOUD_STRIPPED_RESOURCE_FILES = [
+  path.join("drawable", "eliza_voice_bar_bg.xml"),
+  path.join("drawable", "eliza_voice_bar_dot.xml"),
+  path.join("drawable", "eliza_widget_background.xml"),
+  path.join("drawable", "eliza_widget_button_background.xml"),
+  path.join("layout", "eliza_quick_actions_widget.xml"),
+  path.join("layout", "eliza_voice_ime.xml"),
+  path.join("layout", "eliza_voice_interaction_bar.xml"),
   path.join("xml", "eliza_accessibility_service.xml"),
+  path.join("xml", "eliza_quick_actions_widget.xml"),
+  path.join("xml", "eliza_recognition_service.xml"),
+  path.join("xml", "eliza_voice_interaction_service.xml"),
+  path.join("xml", "method.xml"),
 ];
 
 export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
+  ["@capacitor-community/bluetooth-le", "capacitor-community-bluetooth-le"],
+  ["@capacitor/background-runner", "capacitor-background-runner"],
+  ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
+  ["@capacitor/haptics", "capacitor-haptics"],
+  ["@capacitor/local-notifications", "capacitor-local-notifications"],
+  ["@capacitor/push-notifications", "capacitor-push-notifications"],
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
+  ["@elizaos/capacitor-browser-surface", "elizaos-capacitor-browser-surface"],
+  ["@elizaos/capacitor-camera", "elizaos-capacitor-camera"],
+  ["@elizaos/capacitor-canvas", "elizaos-capacitor-canvas"],
   ["@elizaos/capacitor-contacts", "elizaos-capacitor-contacts"],
+  ["@elizaos/capacitor-gateway", "elizaos-capacitor-gateway"],
+  ["@elizaos/capacitor-location", "elizaos-capacitor-location"],
   ["@elizaos/capacitor-messages", "elizaos-capacitor-messages"],
+  ["@elizaos/capacitor-mlkit-text", "elizaos-capacitor-mlkit-text"],
   [
     "@elizaos/capacitor-mobile-agent-bridge",
     "elizaos-capacitor-mobile-agent-bridge",
@@ -5679,11 +5733,25 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-mobile-signals", "elizaos-capacitor-mobile-signals"],
   ["@elizaos/capacitor-phone", "elizaos-capacitor-phone"],
   ["@elizaos/capacitor-screencapture", "elizaos-capacitor-screencapture"],
+  ["@elizaos/capacitor-swabble", "elizaos-capacitor-swabble"],
   ["@elizaos/capacitor-system", "elizaos-capacitor-system"],
   ["@elizaos/capacitor-websiteblocker", "elizaos-capacitor-websiteblocker"],
   ["@elizaos/capacitor-wifi", "elizaos-capacitor-wifi"],
   ["llama-cpp-capacitor", "llama-cpp-capacitor"],
 ];
+
+export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
+  "@capacitor/app",
+  "@capacitor/browser",
+  "@capacitor/device",
+  "@capacitor/filesystem",
+  "@capacitor/keyboard",
+  "@capacitor/network",
+  "@capacitor/preferences",
+  "@capacitor/share",
+  "@capacitor/status-bar",
+  "@elizaos/capacitor-talkmode",
+]);
 
 const ANDROID_SMS_GATEWAY_COMPONENTS = new Set([
   "ElizaSmsReceiver",
@@ -5848,15 +5916,7 @@ ${cloudBrandUserAgentMarkerLines()}
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
 
-        // Cloud builds keep the native glass tier: GlassBridgePlugin has no
-        // local-agent dependencies (android.* + Capacitor only).
-        registerPlugin(GlassBridgePlugin.class);
-
         super.onCreate(savedInstanceState);
-
-        if (getBridge() != null) {
-            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
-        }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
@@ -5869,22 +5929,6 @@ ${cloudBrandUserAgentMarkerLines()}
     protected void onNewIntent(Intent intent) {
         DeepLinkBufferPlugin.captureIntent(this, intent);
         super.onNewIntent(intent);
-    }
-
-    @Override
-    public void onStop() {
-        super.onStop();
-        if (!isFinishing()) {
-            GatewayConnectionService.start(this);
-        }
-    }
-
-    @Override
-    public void onDestroy() {
-        if (isFinishing()) {
-            GatewayConnectionService.stop(this);
-        }
-        super.onDestroy();
     }
 
     private void applyBrandUserAgentMarkers(WebSettings settings) {
@@ -6339,6 +6383,19 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
         "AndroidManifest.xml still allows global cleartext traffic",
       );
     }
+    if (!/android:allowBackup="false"/.test(xml)) {
+      failures.push("AndroidManifest.xml does not disable application backup");
+    }
+    for (const forbidden of [
+      "android.intent.category.HOME",
+      "com.google.android.apps.healthdata",
+      "android.hardware.telephony",
+      "android.hardware.bluetooth_le",
+    ]) {
+      if (xml.includes(forbidden)) {
+        failures.push(`AndroidManifest.xml still contains ${forbidden}`);
+      }
+    }
     if (!xml.includes('android:name="android.app.shortcuts"')) {
       failures.push("AndroidManifest.xml does not register @xml/shortcuts");
     }
@@ -6466,6 +6523,42 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
       if (source.includes(pkg) || source.includes(gradleProject)) {
         failures.push(`${relPath} still references ${pkg}/${gradleProject}`);
       }
+    }
+  }
+
+  const capacitorPluginManifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "assets",
+    "capacitor.plugins.json",
+  );
+  if (!fs.existsSync(capacitorPluginManifestPath)) {
+    failures.push("app/src/main/assets/capacitor.plugins.json is missing");
+  } else {
+    try {
+      const plugins = JSON.parse(
+        fs.readFileSync(capacitorPluginManifestPath, "utf8"),
+      );
+      const actualPackages = Array.isArray(plugins)
+        ? plugins
+            .map((plugin) => plugin?.pkg)
+            .filter(Boolean)
+            .sort()
+        : [];
+      const allowedPackages = [
+        ...ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
+      ].sort();
+      if (JSON.stringify(actualPackages) !== JSON.stringify(allowedPackages)) {
+        failures.push(
+          `capacitor.plugins.json packages differ from the Play allowlist: ${JSON.stringify(actualPackages)}`,
+        );
+      }
+    } catch (error) {
+      failures.push(
+        `capacitor.plugins.json is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -6681,6 +6774,16 @@ function stripAndroidForCloud({ env = process.env } = {}) {
       stripPolicy.mergerRemovedPermissions,
     );
     xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
+    xml = xml
+      .replace(
+        /\s*<package\s+android:name="com\.google\.android\.apps\.healthdata"\s*\/>/g,
+        "",
+      )
+      .replace(
+        /\s*<uses-feature\b(?=[^>]*android:name="android\.hardware\.(?:telephony|bluetooth_le)")[^>]*\/>/g,
+        "",
+      )
+      .replace(/android:allowBackup="[^"]*"/, 'android:allowBackup="false"');
 
     if (xml !== original) {
       fs.writeFileSync(manifestPath, xml, "utf8");
