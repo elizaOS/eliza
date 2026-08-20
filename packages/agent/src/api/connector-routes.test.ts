@@ -7,6 +7,12 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";
+import {
+  cloneWithoutBlockedObjectKeys,
+  hasBlockedObjectKeyDeep,
+  MAX_BLOCKED_OBJECT_DEPTH,
+  MAX_BLOCKED_OBJECT_NODES,
+} from "./blocked-object-keys";
 import type { ConnectorRouteContext } from "./connector-routes";
 import { handleConnectorRoutes } from "./connector-routes";
 
@@ -46,7 +52,8 @@ function createHarness(options: {
     redactConfigSecrets: (value) => value,
     isBlockedObjectKey: (key) =>
       key === "__proto__" || key === "constructor" || key === "prototype",
-    cloneWithoutBlockedObjectKeys: (value) => value,
+    hasBlockedObjectKeyDeep,
+    cloneWithoutBlockedObjectKeys,
     onConnectorDisconnect: options.onConnectorDisconnect,
   };
 
@@ -216,5 +223,92 @@ describe("connector routes", () => {
     await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
     expect(captured.status).toBe(200);
     expect(state.config.connectors?.["custom-connector"]).toBeUndefined();
+  });
+
+  it("POST /api/connectors rejects an over-depth config with 400 instead of letting the walk budget escape", async () => {
+    let config: Record<string, unknown> = { leaf: true };
+    for (let i = 0; i < MAX_BLOCKED_OBJECT_DEPTH + 8; i += 1) {
+      config = { a: config };
+    }
+    const saveElizaConfig = vi.fn();
+    const { ctx, captured, state } = createHarness({
+      method: "POST",
+      pathname: "/api/connectors",
+      body: { name: "telegram", config },
+      saveElizaConfig,
+    });
+
+    await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(400);
+    expect(captured.body).toEqual({
+      error: "Connector config contains a blocked object key",
+    });
+    expect(state.config.connectors?.telegram).toBeUndefined();
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/connectors rejects an over-node sparse config the same way", async () => {
+    const saveElizaConfig = vi.fn();
+    const { ctx, captured, state } = createHarness({
+      method: "POST",
+      pathname: "/api/connectors",
+      body: {
+        name: "telegram",
+        config: { items: new Array(MAX_BLOCKED_OBJECT_NODES + 10) },
+      },
+      saveElizaConfig,
+    });
+
+    await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(400);
+    expect(state.config.connectors?.telegram).toBeUndefined();
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/connectors rejects a config carrying a blocked key instead of silently stripping it", async () => {
+    const saveElizaConfig = vi.fn();
+    const { ctx, captured, state } = createHarness({
+      method: "POST",
+      pathname: "/api/connectors",
+      body: {
+        name: "telegram",
+        config: JSON.parse(
+          '{"enabled":true,"nested":{"__proto__":{"polluted":1},"keep":2}}',
+        ),
+      },
+      saveElizaConfig,
+    });
+
+    await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(400);
+    expect(state.config.connectors?.telegram).toBeUndefined();
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/connectors still persists an honest config byte-compatibly", async () => {
+    const honest = {
+      enabled: true,
+      token: "t",
+      channels: ["a", "b"],
+      limits: { rpm: 60, burst: 5 },
+    };
+    const saveElizaConfig = vi.fn();
+    const { ctx, captured, state } = createHarness({
+      method: "POST",
+      pathname: "/api/connectors",
+      body: { name: "telegram", config: honest },
+      saveElizaConfig,
+    });
+
+    await expect(handleConnectorRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(200);
+    expect(JSON.stringify(state.config.connectors?.telegram)).toBe(
+      JSON.stringify(honest),
+    );
+    expect(saveElizaConfig).toHaveBeenCalledTimes(1);
   });
 });

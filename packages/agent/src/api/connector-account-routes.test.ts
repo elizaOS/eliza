@@ -519,6 +519,7 @@ describe("connector account routes", () => {
       redactConfigSecrets: (value) => value,
       isBlockedObjectKey: (key) =>
         key === "__proto__" || key === "constructor" || key === "prototype",
+      hasBlockedObjectKeyDeep: () => false,
       cloneWithoutBlockedObjectKeys: (value) => value,
     });
     expect(configHandled).toBe(false);

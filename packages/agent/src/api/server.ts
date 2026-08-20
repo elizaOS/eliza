@@ -419,6 +419,7 @@ import { handleRuntimeSwitchRoutes } from "./runtime-switch-routes.ts";
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
+  hasBlockedObjectKeyDeep,
   hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,
@@ -2830,6 +2831,7 @@ async function handleRequest(
       saveElizaConfig,
       redactConfigSecrets,
       isBlockedObjectKey,
+      hasBlockedObjectKeyDeep,
       cloneWithoutBlockedObjectKeys,
     })
   ) {
