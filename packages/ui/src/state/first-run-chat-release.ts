@@ -35,7 +35,14 @@ export function observeFirstRunCompletion(
 ): FirstRunChatReleaseState {
   if (firstRunComplete === false) {
     if (state.observedIncomplete) return state;
-    return { ...state, observedIncomplete: true };
+    // A new incomplete epoch invalidates an unconsumed release from the prior
+    // epoch. Otherwise a reset that hides the overlay before it acknowledges
+    // FULL can make a later probe-only false -> true transition reopen chat.
+    return {
+      observedIncomplete: true,
+      mountedWhileIncomplete: false,
+      releasePending: false,
+    };
   }
   if (firstRunComplete !== true || !state.observedIncomplete) return state;
   return {
