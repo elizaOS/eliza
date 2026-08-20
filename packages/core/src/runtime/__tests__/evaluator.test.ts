@@ -1603,6 +1603,94 @@ describe("completion-truncation guard: one bounded retry, never a loop", () => {
 		});
 	});
 
+	it("records a retry budget rejection and falls back to the initial response", async () => {
+		vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", '{"tiny-evaluator":8000}');
+		try {
+			const stages: RecordedStage[] = [];
+			let completedCalls = 0;
+			const useModel = vi.fn(
+				async (
+					_modelType: string,
+					request: {
+						messages: ChatMessage[];
+						promptSegments?: PromptSegment[];
+						providerOptions?: Record<string, unknown>;
+						prepareModelAttempt?: (
+							attempt: {
+								modelType: string;
+								provider: string;
+								metadata: { displayModel: string };
+							},
+							params: {
+								messages: ChatMessage[];
+								promptSegments?: PromptSegment[];
+								providerOptions?: Record<string, unknown>;
+							},
+						) => Promise<void> | void;
+					},
+				) => {
+					await request.prepareModelAttempt?.(
+						{
+							modelType: ModelType.RESPONSE_HANDLER,
+							provider: "tiny",
+							metadata: { displayModel: "tiny-evaluator" },
+						},
+						request,
+					);
+					completedCalls++;
+					return completedCalls === 1 ? truncatedEnvelope : completeEnvelope;
+				},
+			);
+			const reportError = vi.fn();
+
+			const result = await runEvaluator({
+				...baseParams(useModel),
+				runtime: {
+					useModel,
+					supportsModelAttemptPreparation: true,
+					getModelRegistrations: () => [
+						{
+							modelType: ModelType.RESPONSE_HANDLER,
+							provider: "tiny",
+							metadata: { displayModel: "tiny-evaluator" },
+						},
+					],
+					reportError,
+				},
+				context: {
+					...baseParams(useModel).context,
+					staticPrefix: {
+						characterPrompt: {
+							content: `agent_name: Eliza\n${"x".repeat(10_000)}`,
+							stable: true,
+						},
+					},
+				},
+				recorder: captureRecorder(stages),
+				trajectoryId: "trajectory-evaluator-retry-budget",
+			});
+
+			expect(useModel).toHaveBeenCalledTimes(2);
+			expect(completedCalls).toBe(1);
+			expect(result).toMatchObject({
+				decision: "CONTINUE",
+				success: false,
+				protocolFailure: true,
+			});
+			expect(stages).toHaveLength(2);
+			expect(stages[1]?.model?.response).toContain(
+				"EVALUATOR_INPUT_OVER_BUDGET",
+			);
+			expect(reportError).toHaveBeenCalledWith(
+				"Evaluator.truncationRetry",
+				expect.objectContaining({ code: "EVALUATOR_INPUT_OVER_BUDGET" }),
+				expect.objectContaining({ retryMaxTokens: 4096 }),
+			);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
 	it("propagates non-provider failures from the bounded retry", async () => {
 		const programmerError = new TypeError("retry result adapter is broken");
 		const useModel = vi
