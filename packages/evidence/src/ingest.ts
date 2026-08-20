@@ -419,6 +419,12 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     lane: "scenario",
     roots: [{ label: "repo", dir: "reports/scenarios" }],
   },
+  {
+    silo: "provider-qualification",
+    source: "provider-qualification",
+    producedBy: "packages/scenario-runner/bin/eliza-provider-qualification",
+    roots: [{ label: "repo", dir: "reports/provider-qualification" }],
+  },
 ];
 
 function physicalPath(filePath: string): string {

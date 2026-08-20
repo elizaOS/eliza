@@ -100,6 +100,7 @@ artifacts (root exists but is empty).
 | `walkthrough-reports` | `reports/walkthrough/` | — |
 | `live-test-runs` | `reports/live-test-runs/` | — |
 | `scenario-runner` | `reports/scenarios/` | scenario |
+| `provider-qualification` | `reports/provider-qualification/` | — |
 
 The former roots `device-e2e-output/`,
 `packages/app/reports/walkthrough/`, and
@@ -109,6 +110,15 @@ reviewer with explicit `--source`; that compatibility mode never runs
 implicitly. Artifacts are copied into the bundle and hashed **as stored** so
 later producer writes cannot mutate a finalized run and a corrupt copy fails at
 add time.
+
+The provider-qualification verifier should place each canary's exclusive
+output directory beneath
+`reports/provider-qualification/<operator-run-id>/<scenario-slug>/`. Its
+private `qualification.json` and hash-only `qualification.md` are then copied
+into the canonical bundle by the named `provider-qualification` ingestor. The
+bundle is review material, not a publication redaction boundary: publish the
+reviewed Markdown or a separately redacted attachment, never the private JSON
+verbatim.
 
 ## CLI
 

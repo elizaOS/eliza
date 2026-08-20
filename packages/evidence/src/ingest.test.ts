@@ -3,7 +3,7 @@
  * on-disk shape (e2e-recordings run dirs, aesthetic-audit output, device-e2e
  * bundle dirs from packages/app/scripts/lib/device-e2e-bundle.mjs, Playwright
  * test-results, iOS boot captures/device logs, walkthrough/live-run reports,
- * scenario-runner reports). Also
+ * scenario-runner reports, and provider-qualification artifacts). Also
  * pins the honesty contract: an absent silo reports `absent`, an existing but
  * empty silo reports `ingested` with zero artifacts — never the same result.
  */
@@ -100,6 +100,18 @@ function buildFixtureRepo(): string {
   write(repo, "reports/live-test-runs/run-1/server.log", "log");
   // Canonical scenario-runner package commands write repo-level reports.
   write(repo, "reports/scenarios/live/native.jsonl", "{}\n");
+  // Offline provider qualification writes one private JSON artifact and one
+  // hash-only Markdown summary per independently verified canary.
+  write(
+    repo,
+    "reports/provider-qualification/run-1/gmail/qualification.json",
+    '{"schema":"eliza.provider-qualification-artifact.v3"}\n',
+  );
+  write(
+    repo,
+    "reports/provider-qualification/run-1/gmail/qualification.md",
+    "# Provider qualification\n",
+  );
   // Noise that must never be ingested.
   write(repo, "e2e-recordings/node_modules/pkg/index.js", "js");
   return repo;
@@ -401,6 +413,11 @@ describe("ingestAllSilos", () => {
         status: "ingested",
         artifactCount: 1,
       },
+      "provider-qualification": {
+        silo: "provider-qualification",
+        status: "ingested",
+        artifactCount: 2,
+      },
     });
   });
 
@@ -433,6 +450,16 @@ describe("ingestAllSilos", () => {
     expect(
       byPath["trajectories/scenario-runner/live/native.jsonl"],
     ).toMatchObject({ kind: "trajectory", lane: "scenario" });
+    expect(
+      byPath["misc/provider-qualification/run-1/gmail/qualification.json"],
+    ).toMatchObject({
+      kind: "report",
+      source: "provider-qualification",
+      producedBy: "packages/scenario-runner/bin/eliza-provider-qualification",
+    });
+    expect(
+      byPath["misc/provider-qualification/run-1/gmail/qualification.md"],
+    ).toMatchObject({ kind: "report", source: "provider-qualification" });
     expect(
       byPath["lanes/native/android-2026-07-05T01-02-03-004Z/summary.json"],
     ).toMatchObject({ kind: "report", source: "device-e2e" });

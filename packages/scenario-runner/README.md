@@ -240,7 +240,7 @@ bun run --cwd packages/scenario-runner provider-qualification -- \
   "semanticEvidenceFile": "semantic-evidence.json",
   "semanticJudgePublicKeyFiles": ["keys/semantic-judge.pub.pem"],
   "runnerReportFile": "runner-report.json",
-  "outputDir": "verified"
+  "outputDir": "/absolute/repo/reports/provider-qualification/operator-run-001/gmail"
 }
 ```
 
@@ -271,6 +271,13 @@ operator-controlled evidence bundle and can contain the runner transcript;
 publish the generated Markdown or a separately reviewed/redacted attachment,
 not the private JSON verbatim. This command does not execute ingress, collect
 evidence, access provider credentials, or post to GitHub.
+
+For repository evidence review, every canary output directory must resolve
+beneath `reports/provider-qualification/<operator-run-id>/<scenario-slug>/`.
+The canonical `provider-qualification` ingestor copies those outputs into the
+next evidence bundle and binds their bytes to its manifest. A verifier output
+left elsewhere is useful for private diagnostics but does not satisfy the
+repository's bundle-first issue or PR evidence requirement.
 
 Once every canary has an independently verified artifact, create the release
 catalog with a closed `eliza.provider-qualification-catalog-config.v1` file:
