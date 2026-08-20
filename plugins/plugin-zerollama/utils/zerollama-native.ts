@@ -510,13 +510,23 @@ export function zerollamaChatStream(args: {
         }
       }
 
-      if (args.plannerToolArgsOnly && toolCalls[0]) {
-        const argsJson =
-          typeof toolCalls[0].arguments === "string"
-            ? toolCalls[0].arguments
-            : JSON.stringify(toolCalls[0].arguments);
-        yield argsJson;
-        fullText = argsJson;
+      if (args.plannerToolArgsOnly) {
+        if (toolCalls[0]) {
+          const argsJson =
+            typeof toolCalls[0].arguments === "string"
+              ? toolCalls[0].arguments
+              : JSON.stringify(toolCalls[0].arguments);
+          yield argsJson;
+          fullText = argsJson;
+        } else if (fullText) {
+          // No forced tool call arrived (tool_choice is never sent on the
+          // native wire, so small/quantized models often answer with plain
+          // plan text). Yield the drained plan so core's textStream-only
+          // accumulator receives it, mirroring the AI-SDK sibling's
+          // `fallbackText` yield in models/text.ts. Without this the planner
+          // parse sees an empty string and the agent produces no reply.
+          yield fullText;
+        }
       }
 
       resolveText(fullText);
