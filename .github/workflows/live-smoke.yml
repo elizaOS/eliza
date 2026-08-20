@@ -14,6 +14,12 @@ on:
         default: all
         type: choice
         options: [all, app, scenarios, live-information, cloud, voice, dedicated]
+      planner_provider:
+        description: Planner backend for the focused live-information suite
+        required: true
+        default: openai
+        type: choice
+        options: [openai, anthropic, openrouter]
       stale_canary_suffix:
         description: "Exact prior dedicated-canary suffix (r<run-id>a<attempt>) to verify and delete before the fresh canary"
         required: false
@@ -47,6 +53,7 @@ jobs:
       CI: "true"
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
@@ -87,13 +94,24 @@ jobs:
         if: inputs.suite == 'live-information'
         env:
           SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
+          SCENARIO_TURN_TIMEOUT_MS: "300000"
         run: >-
           bun --conditions eliza-source --tsconfig-override tsconfig.json
           packages/scenario-runner/src/cli.ts run packages/test/scenarios
           --scenario cross.live-information-routing --lane live-only
-          --provider openai --run-dir reports/scenarios/live-information/run
+          --provider ${{ inputs.planner_provider }}
+          --run-dir reports/scenarios/live-information/run
           --report-dir reports/scenarios/live-information/report
           --export-native reports/scenarios/live-information/native.jsonl
+
+      - name: Upload live information evidence
+        if: always() && inputs.suite == 'live-information'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: live-information-${{ inputs.planner_provider }}-${{ github.run_id }}
+          path: reports/scenarios/live-information
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Cloud end-to-end
         if: inputs.suite == 'all' || inputs.suite == 'cloud'

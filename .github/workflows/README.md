@@ -87,7 +87,9 @@ Representative examples:
 - `live-smoke.yml` is the general credential-backed dispatcher. Its input
   selects `app`, `scenarios`, `live-information`, `cloud`, `voice`,
   `dedicated`, or `all`. The `live-information` route runs the focused current
-  information matrix with an independent judge requirement. The
+  information matrix against the selected OpenAI, Anthropic, or OpenRouter
+  planner with an independent judge requirement, a five-minute per-turn budget,
+  and an always-uploaded evidence bundle. The
   `dedicated` suite owns the managed dedicated staging canary and exact
   stale-canary recovery. Specialized app and voice evidence also flows through
   `app-live-e2e.yml` and `voice-live-e2e.yml`, which run on schedule or
