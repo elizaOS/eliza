@@ -32,6 +32,13 @@ function readConfiguredApiBase(): string | undefined {
   return typeof base === "string" && base.trim().length > 0 ? base : undefined;
 }
 
+/** Default timeout for all web-fallback HTTP hops (ms). */
+const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
+
+function fetchTimeout(ms?: number): AbortSignal {
+  return AbortSignal.timeout(ms ?? DEFAULT_FETCH_TIMEOUT_MS);
+}
+
 function assertNonEmptyText(text: unknown): string {
   if (typeof text !== "string" || text.trim().length === 0) {
     throw new Error("Agent.chat requires non-empty text");
@@ -140,6 +147,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
         ...this.authHeaders(),
       },
       body: JSON.stringify({ title: "Quick Chat" }),
+      signal: fetchTimeout(),
     });
     if (!res.ok) {
       throw new Error(`Failed to create conversation: ${res.status}`);
@@ -170,6 +178,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
           ...this.authHeaders(),
         },
         body: JSON.stringify({ text, channelType: "DM" }),
+        signal: fetchTimeout(),
       },
     );
 
@@ -254,6 +263,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     const res = await fetch(`${this.apiBase()}/api/agent/start`, {
       method: "POST",
       headers: this.authHeaders(),
+      signal: fetchTimeout(),
     });
     const data = await res.json();
     return data.status ?? data;
@@ -266,6 +276,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     const res = await fetch(`${this.apiBase()}/api/agent/stop`, {
       method: "POST",
       headers: this.authHeaders(),
+      signal: fetchTimeout(),
     });
     return res.json();
   }
@@ -282,6 +293,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     }
     const res = await fetch(`${this.apiBase()}/api/status`, {
       headers: this.authHeaders(),
+      signal: fetchTimeout(),
     });
     return res.json();
   }
@@ -324,6 +336,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
         ...options.headers,
       },
       body: options.body ?? undefined,
+      signal: fetchTimeout(options.timeoutMs),
     });
     const headers: Record<string, string> = {};
     res.headers.forEach((value, key) => {
