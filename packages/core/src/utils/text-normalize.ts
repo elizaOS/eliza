@@ -5,7 +5,53 @@
  * human-readable text blocks. Keeping this logic in one place makes prompt
  * construction more predictable and avoids each caller inventing slightly
  * different null/array/object coercion rules.
+ *
+ * The walk is depth-, visit-, and cycle-bounded. Provider output and memory
+ * metadata can carry a hostile nest; on origin a 20k-deep array threw
+ * `RangeError: Maximum call stack size exceeded`. Cycles still skip the
+ * back-edge (existing contract). Over-budget graphs throw `ElizaError`
+ * `TEXT_NORMALIZE_UNBOUNDED`.
  */
+
+import { ElizaError } from "../errors.ts";
+
+/** Nesting ceiling. Honest prompt values are a handful of objects deep. */
+export const MAX_TEXT_NORMALIZE_DEPTH = 64;
+/** Node ceiling across the whole flatten, including leaves. */
+export const MAX_TEXT_NORMALIZE_NODES = 2048;
+
+export const TEXT_NORMALIZE_UNBOUNDED = "TEXT_NORMALIZE_UNBOUNDED";
+
+type WalkContext = {
+	visits: number;
+	ancestors: WeakSet<object>;
+};
+
+function failUnbounded(
+	axis: "depth" | "visits",
+	context: Record<string, unknown>,
+): never {
+	throw new ElizaError(
+		axis === "depth"
+			? `text-normalize graph exceeds ${MAX_TEXT_NORMALIZE_DEPTH} nesting depth`
+			: `text-normalize graph exceeds ${MAX_TEXT_NORMALIZE_NODES} nodes`,
+		{
+			code: TEXT_NORMALIZE_UNBOUNDED,
+			context,
+			severity: "fatal",
+		},
+	);
+}
+
+function reserveVisit(ctx: WalkContext): void {
+	ctx.visits += 1;
+	if (ctx.visits > MAX_TEXT_NORMALIZE_NODES) {
+		failUnbounded("visits", {
+			visits: ctx.visits,
+			max: MAX_TEXT_NORMALIZE_NODES,
+		});
+	}
+}
 
 /**
  * Flatten a mixed nested value into text fragments.
@@ -18,24 +64,33 @@
  * - Scalars are stringified
  */
 export function flattenTextValues(value: unknown): string[] {
-	return flattenTextValuesWithAncestors(value, new WeakSet());
+	return flattenTextValuesWithAncestors(value, 0, {
+		visits: 0,
+		ancestors: new WeakSet(),
+	});
 }
 
 function flattenTextValuesWithAncestors(
 	value: unknown,
-	ancestors: WeakSet<object>,
+	depth: number,
+	ctx: WalkContext,
 ): string[] {
+	if (depth > MAX_TEXT_NORMALIZE_DEPTH) {
+		failUnbounded("depth", { depth, max: MAX_TEXT_NORMALIZE_DEPTH });
+	}
+	reserveVisit(ctx);
+
 	if (Array.isArray(value)) {
-		if (ancestors.has(value)) {
+		if (ctx.ancestors.has(value)) {
 			return [];
 		}
-		ancestors.add(value);
+		ctx.ancestors.add(value);
 		try {
 			return value.flatMap((item) =>
-				flattenTextValuesWithAncestors(item, ancestors),
+				flattenTextValuesWithAncestors(item, depth + 1, ctx),
 			);
 		} finally {
-			ancestors.delete(value);
+			ctx.ancestors.delete(value);
 		}
 	}
 
@@ -58,22 +113,23 @@ function flattenTextValuesWithAncestors(
 	}
 
 	if (typeof value === "object") {
-		if (ancestors.has(value)) {
+		if (ctx.ancestors.has(value)) {
 			return [];
 		}
-		ancestors.add(value);
+		ctx.ancestors.add(value);
 		try {
 			return Object.entries(value as Record<string, unknown>).flatMap(
 				([key, inner]) => {
 					const innerText = flattenTextValuesWithAncestors(
 						inner,
-						ancestors,
+						depth + 1,
+						ctx,
 					).join(", ");
 					return innerText ? [`${key}: ${innerText}`] : [];
 				},
 			);
 		} finally {
-			ancestors.delete(value);
+			ctx.ancestors.delete(value);
 		}
 	}
 
