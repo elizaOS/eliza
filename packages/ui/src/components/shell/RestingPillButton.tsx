@@ -7,7 +7,6 @@ import { Button } from "../ui/button";
 
 type RestingPillButtonProps = React.ComponentProps<typeof Button> & {
   breathing?: boolean;
-  nativeGlass?: boolean;
   markClassName?: string;
   markTestId?: string;
 };
@@ -18,7 +17,6 @@ type RestingPillButtonProps = React.ComponentProps<typeof Button> & {
  */
 export function RestingPillButton({
   breathing = false,
-  nativeGlass = false,
   markClassName,
   markTestId,
   className,
@@ -44,14 +42,7 @@ export function RestingPillButton({
             breathing && "eliza-chat-handle-breathe",
             markClassName,
           )}
-          style={{
-            backgroundColor: nativeGlass
-              ? "rgba(255, 255, 255, 0.18)"
-              : "rgba(255, 255, 255, 0.96)",
-            boxShadow: nativeGlass
-              ? "inset 0 0 0 0.5px rgba(255, 255, 255, 0.72)"
-              : undefined,
-          }}
+          style={{ backgroundColor: "rgba(255, 255, 255, 0.96)" }}
         />
       )}
     </Button>

@@ -1086,7 +1086,6 @@ function PillHandle({
   counterScale,
   onOpen,
   breathing,
-  nativeGlass,
   pilled,
 }: {
   binding: PullGestureBinding;
@@ -1095,7 +1094,6 @@ function PillHandle({
   counterScale: MotionValue<number>;
   onOpen: () => void;
   breathing: boolean;
-  nativeGlass: boolean;
   // Interactive ONLY while pilled. The handle's hit zone (`px-16 pt-10`) is tall
   // and wide and sits directly over the composer textarea; if it kept
   // `pointer-events-auto` while NOT pilled it would intercept the tap meant for
@@ -1114,7 +1112,6 @@ function PillHandle({
         markTestId="chat-pill-mark"
         aria-label="open chat"
         breathing={breathing}
-        nativeGlass={nativeGlass}
         // Pointer taps stay owned by the pull gesture's pointerup so one gesture
         // cannot open twice. macOS Accessibility invokes AXPress as a synthetic
         // click with detail=0 and no pointer sequence, so admit only that semantic
@@ -7343,7 +7340,6 @@ export function ChatOverlay({
               // for a live mic capture (`recording`) — the open-sheet grabber
               // deliberately does not (the composer glyphs carry that cue).
               breathing={listening || responding || recording}
-              nativeGlass={desktopOverlayHost}
               pilled={pilled}
             />
           </motion.div>

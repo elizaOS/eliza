@@ -31,8 +31,6 @@ static NSString *const kElectrobunNativeDragRightEdgeIdentifier =
 	@"ElectrobunNativeDragRightEdge";
 static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	@"ElizaInactiveTrafficLightsOverlay";
-static NSString *const kElizaInteractiveMaterialViewIdentifier =
-	@"ElizaInteractiveMaterialView";
 
 @interface ElizaWindowInteractiveMaterialController : NSObject
 {
@@ -46,7 +44,6 @@ static NSString *const kElizaInteractiveMaterialViewIdentifier =
 @property(nonatomic) NSSize materialSize;
 @property(nonatomic) CGFloat materialCornerRadius;
 @property(nonatomic) BOOL interactionPinned;
-@property(nonatomic, strong) NSView *materialView;
 @property(nonatomic, strong) id globalMonitor;
 @property(nonatomic, strong) id localMonitor;
 @property(nonatomic, strong) NSTimer *pointerPollTimer;
@@ -58,7 +55,6 @@ static NSString *const kElizaInteractiveMaterialViewIdentifier =
 - (void)setMaterialWidth:(CGFloat)width
 				  height:(CGFloat)height
 			cornerRadius:(CGFloat)cornerRadius;
-- (void)updateMaterialView;
 @end
 
 @implementation ElizaWindowInteractiveMaterialController
@@ -214,75 +210,7 @@ static NSString *const kElizaInteractiveMaterialViewIdentifier =
 			cornerRadius:(CGFloat)cornerRadius {
 	self.materialSize = NSMakeSize(width, height);
 	self.materialCornerRadius = cornerRadius;
-	[self updateMaterialView];
 	[self applyForScreenPoint:[NSEvent mouseLocation]];
-}
-
-- (void)updateMaterialView {
-	NSWindow *window = self.window;
-	NSView *contentView = window.contentView;
-	if (window == nil || contentView == nil) return;
-
-	NSRect bounds = contentView.bounds;
-	CGFloat width = MIN(MAX(0.0, self.materialSize.width), bounds.size.width);
-	CGFloat height = MIN(MAX(0.0, self.materialSize.height), bounds.size.height);
-	NSRect materialRect = NSMakeRect(
-		NSMidX(bounds) - width / 2.0,
-		[contentView isFlipped] ? NSMaxY(bounds) - height : NSMinY(bounds),
-		width,
-		height);
-	CGFloat radius = MIN(
-		MAX(0.0, self.materialCornerRadius),
-		MIN(materialRect.size.width, materialRect.size.height) / 2.0);
-
-	if (self.materialView == nil) {
-		NSView *materialView = nil;
-		if (@available(macOS 26.0, *)) {
-			NSGlassEffectView *glassView =
-				[[NSGlassEffectView alloc] initWithFrame:materialRect];
-			[glassView setStyle:NSGlassEffectViewStyleRegular];
-			[glassView setTintColor:[NSColor colorWithSRGBRed:0.04
-														 green:0.04
-														  blue:0.05
-														 alpha:0.20]];
-			materialView = glassView;
-		} else {
-			NSVisualEffectView *effectView =
-				[[NSVisualEffectView alloc] initWithFrame:materialRect];
-			[effectView setMaterial:NSVisualEffectMaterialPopover];
-			[effectView setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
-			[effectView setState:NSVisualEffectStateActive];
-			materialView = effectView;
-		}
-		[materialView setIdentifier:kElizaInteractiveMaterialViewIdentifier];
-		[materialView setWantsLayer:YES];
-		self.materialView = materialView;
-	}
-
-	[self.materialView setFrame:materialRect];
-	[self.materialView setHidden:NO];
-	[self.materialView layer].cornerRadius = radius;
-	[self.materialView layer].masksToBounds = YES;
-	if (@available(macOS 26.0, *)) {
-		if ([self.materialView isKindOfClass:[NSGlassEffectView class]]) {
-			[(NSGlassEffectView *)self.materialView setCornerRadius:radius];
-		}
-	}
-
-	NSView *relativeView = nil;
-	for (NSView *subview in [contentView subviews]) {
-		if (subview != self.materialView) {
-			relativeView = subview;
-			break;
-		}
-	}
-	if (relativeView != nil) {
-		[contentView addSubview:self.materialView
-					 positioned:NSWindowBelow
-					 relativeTo:relativeView];
-	} else if ([self.materialView superview] == nil) {
-		[contentView addSubview:self.materialView];
-	}
 }
 
 @end
