@@ -61,6 +61,9 @@ export const client = {
   },
   async openPermissionSettings() {},
 };
+export function ElizaClient() {
+  return client;
+}
 `,
 );
 const stubClient = {
