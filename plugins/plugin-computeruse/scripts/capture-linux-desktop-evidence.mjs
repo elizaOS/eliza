@@ -114,6 +114,14 @@ function runText(command, args, fallback = "unknown") {
   }
 }
 
+function readExactGitHead() {
+  const gitHead = runText("git", ["rev-parse", "HEAD"], "");
+  if (!/^[0-9a-f]{40}$/.test(gitHead)) {
+    throw new Error("could not resolve the exact 40-character Git head SHA");
+  }
+  return gitHead;
+}
+
 function createRuntime(settings = {}) {
   return {
     character: {},
@@ -307,8 +315,15 @@ async function runBrowserCheck(service, outDir, artifacts) {
       details: { open, quality },
     };
   } finally {
-    if (!closed) await service.executeCommand("browser_close");
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+      server.closeAllConnections?.();
+    });
+    if (!closed) {
+      // error-policy:J5 cleanup is intentionally detached so a non-cooperative
+      // browser driver cannot keep the loopback server or evidence job alive.
+      void service.executeCommand("browser_close").catch(() => undefined);
+    }
   }
 }
 
@@ -398,7 +413,7 @@ async function main() {
   ]);
   const kernelVersion = os.release();
   const displayServer = `X11:${process.env.DISPLAY}`;
-  const gitHead = runText("git", ["rev-parse", "--short", "HEAD"]);
+  const gitHead = readExactGitHead();
   const buildId = `${process.env.GITHUB_RUN_ID ?? "local"}:${process.env.GITHUB_RUN_ATTEMPT ?? gitHead}`;
   const artifacts = [];
   const details = {};
@@ -505,7 +520,6 @@ async function main() {
         requiredEvidence: [
           `listWindows returned ${windows.windows.length} visible window(s) with metadata`,
           `focusWindow/switchWindow succeeded for controlled xterm ${target.id}`,
-          "window operation failures retain dependency guidance",
         ],
         details: { target, sampleWindows: windows.windows.slice(0, 5) },
       };
@@ -576,7 +590,6 @@ async function main() {
         requiredEvidence: [
           `mouse_move and click succeeded at ${coordinate.join(",")} on display ${display.id}`,
           `type and Return wrote verified marker ${marker} in the controlled xterm`,
-          "post-action screenshots were requested by service configuration",
         ],
         details: { target, bounds: bounds.bounds, coordinate, marker },
       };
@@ -597,7 +610,7 @@ async function main() {
     }
 
     await runCheck(checks, details, "clipboardRoundTrip", async () => {
-      const original = await readClipboard().catch(() => "");
+      const original = await readClipboard();
       const token = `linux-clipboard-${Date.now()}`;
       try {
         await writeClipboard(token);
