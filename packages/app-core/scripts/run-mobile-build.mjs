@@ -77,6 +77,7 @@ import {
   ANDROID_LP3_POLICY_CLASSES,
   ANDROID_LP3_POLICY_MARKERS,
   ANDROID_LP3_PRIVATE_ACTIONS,
+  assertAndroidPlayManifestPolicyEvidence,
   ensureAndroidBundletoolJar,
   inspectAndroidAppBundle,
   resolveAndroidArtifactKind,
@@ -5753,6 +5754,68 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@elizaos/capacitor-talkmode",
 ]);
 
+export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
+  "android.permission.ACCESS_NETWORK_STATE",
+  "android.permission.INTERNET",
+  "android.permission.MODIFY_AUDIO_SETTINGS",
+  "android.permission.RECORD_AUDIO",
+  `${APP.appId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
+]);
+
+export const ANDROID_PLAY_ALLOWED_COMPONENTS = Object.freeze([
+  `activity:${APP.appId}.ElizaShareActivity`,
+  `activity:${APP.appId}.MainActivity`,
+  "activity:com.capacitorjs.plugins.browser.BrowserControllerActivity",
+  "provider:androidx.core.content.FileProvider",
+  "provider:androidx.startup.InitializationProvider",
+  "receiver:androidx.profileinstaller.ProfileInstallReceiver",
+]);
+
+export const ANDROID_PLAY_ALLOWED_ACTIONS = Object.freeze([
+  "android.intent.action.MAIN",
+  "android.intent.action.PROCESS_TEXT",
+  "android.intent.action.SEND",
+  "android.intent.action.VIEW",
+  "android.speech.RecognitionService",
+  "android.support.customtabs.action.CustomTabsService",
+  "androidx.profileinstaller.action.BENCHMARK_OPERATION",
+  "androidx.profileinstaller.action.INSTALL_PROFILE",
+  "androidx.profileinstaller.action.SAVE_PROFILE",
+  "androidx.profileinstaller.action.SKIP_FILE",
+]);
+
+export const ANDROID_PLAY_ALLOWED_METADATA_NAMES = Object.freeze([
+  "android.app.shortcuts",
+  "android.support.FILE_PROVIDER_PATHS",
+  "androidx.emoji2.text.EmojiCompatInitializer",
+  "androidx.lifecycle.ProcessLifecycleInitializer",
+  "androidx.profileinstaller.ProfileInstallerInitializer",
+]);
+
+export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
+  "android.speech.RecognitionService",
+  "android.support.customtabs.action.CustomTabsService",
+]);
+
+export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([]);
+
+export function createAndroidPlayManifestPolicy({ debug = false } = {}) {
+  return {
+    actions: [...ANDROID_PLAY_ALLOWED_ACTIONS],
+    application: {
+      allowBackup: "false",
+      debuggable: debug ? "true" : "false",
+      usesCleartextTraffic: "false",
+    },
+    components: [...ANDROID_PLAY_ALLOWED_COMPONENTS],
+    metadataNames: [...ANDROID_PLAY_ALLOWED_METADATA_NAMES],
+    permissions: [...ANDROID_PLAY_ALLOWED_PERMISSIONS],
+    queryActions: [...ANDROID_PLAY_ALLOWED_QUERY_ACTIONS],
+    queryPackages: [],
+    targetSdkVersion: "36",
+  };
+}
+
 const ANDROID_SMS_GATEWAY_COMPONENTS = new Set([
   "ElizaSmsReceiver",
   "ElizaMmsReceiver",
@@ -8184,6 +8247,25 @@ export function auditAndroidCloudArtifact(
       },
     );
   }
+  if (!lp3ColorPolicyEnabled) {
+    const nativeLibraries = entries
+      .filter((entry) => /(?:^|\/)lib\/[^/]+\/[^/]+\.so$/i.test(entry))
+      .sort();
+    if (
+      JSON.stringify(nativeLibraries) !==
+      JSON.stringify([...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES].sort())
+    ) {
+      throw mobileBuildError(
+        `[mobile-build] android-cloud native libraries differ from the Play allowlist:\n${nativeLibraries
+          .map((entry) => `  - ${entry}`)
+          .join("\n")}`,
+        {
+          code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+          context: { artifact, nativeLibraries },
+        },
+      );
+    }
+  }
   const integrityEntries = entries.filter((entry) =>
     artifactKind === "aab"
       ? /^[^/]+\/manifest\/AndroidManifest\.xml$/.test(entry) ||
@@ -8270,6 +8352,10 @@ export function auditAndroidCloudArtifact(
           appId: APP.appId,
           label: "normal Cloud",
         });
+        assertAndroidPlayManifestPolicyEvidence(
+          androidPlayManifestEvidenceFromAapt(manifestText),
+          createAndroidPlayManifestPolicy({ debug: true }),
+        );
       }
       auditAndroidArtifactDexLp3Policy(
         inspectedArtifact,
@@ -8304,6 +8390,7 @@ export function auditAndroidCloudArtifact(
         entries,
         env,
         javaHome,
+        playPolicy: createAndroidPlayManifestPolicy({ debug: false }),
         readDexEntries: (dexEntries) =>
           readAndroidArtifactEntryBuffers(
             inspectedArtifact,
@@ -8455,6 +8542,113 @@ export function dumpAndroidArtifactManifest(
     );
   }
   return manifest.stdout;
+}
+
+function parseAaptAttributeValue(encodedValue) {
+  const rawValue = encodedValue.match(/\(Raw: "([^"]*)"\)\s*$/)?.[1];
+  if (rawValue !== undefined) return rawValue;
+  const quotedValue = encodedValue.match(/^"([^"]*)"/)?.[1];
+  if (quotedValue !== undefined) return quotedValue;
+  const typedValue = encodedValue.match(
+    /^\(type (0x[0-9a-f]+)\)(0x[0-9a-f]+)$/i,
+  );
+  if (!typedValue) return encodedValue.trim();
+  if (typedValue[1].toLowerCase() === "0x12") {
+    return typedValue[2].toLowerCase() === "0x0" ? "false" : "true";
+  }
+  return String(Number.parseInt(typedValue[2], 16));
+}
+
+/** Converts AAPT's indented xmltree output into the policy evidence shape. */
+export function androidPlayManifestEvidenceFromAapt(manifestText) {
+  const tags = [];
+  const stack = [];
+  for (const line of String(manifestText).split(/\r?\n/)) {
+    const element = line.match(/^(\s*)E: ([^\s(]+)(?:\s|$)/);
+    if (element) {
+      const indent = element[1].length;
+      while (stack.length > 0 && stack.at(-1).indent >= indent) stack.pop();
+      const tag = {
+        ancestors: stack.map((ancestor) => ancestor.name),
+        attributes: new Map(),
+        indent,
+        name: element[2],
+      };
+      tags.push(tag);
+      stack.push(tag);
+      continue;
+    }
+    const attribute = line.match(
+      /^(\s*)A: ([^=(]+?)(?:\(0x[0-9a-f]+\))?=(.*)$/i,
+    );
+    if (!attribute || stack.length === 0) continue;
+    const qualifiedName = attribute[2].trim();
+    stack
+      .at(-1)
+      .attributes.set(
+        qualifiedName.split(":").at(-1),
+        parseAaptAttributeValue(attribute[3]),
+      );
+  }
+
+  const values = (names, attributeName = "name") =>
+    [
+      ...new Set(
+        tags
+          .filter((tag) => names.includes(tag.name))
+          .map((tag) => tag.attributes.get(attributeName))
+          .filter(Boolean),
+      ),
+    ].sort();
+  const componentNames = new Set([
+    "activity",
+    "activity-alias",
+    "provider",
+    "receiver",
+    "service",
+  ]);
+  const application = tags.find((tag) => tag.name === "application");
+  const usesSdk = tags.find((tag) => tag.name === "uses-sdk");
+  const isInsideQueries = (tag) => tag.ancestors.includes("queries");
+  return {
+    actions: values(["action"]),
+    application: {
+      allowBackup: application?.attributes.get("allowBackup") ?? null,
+      debuggable: application?.attributes.get("debuggable") ?? "false",
+      usesCleartextTraffic:
+        application?.attributes.get("usesCleartextTraffic") ?? null,
+    },
+    components: [
+      ...new Set(
+        tags
+          .filter((tag) => componentNames.has(tag.name))
+          .map((tag) => {
+            const componentName = tag.attributes.get("name");
+            return componentName ? `${tag.name}:${componentName}` : null;
+          })
+          .filter(Boolean),
+      ),
+    ].sort(),
+    metadataNames: values(["meta-data"]),
+    permissions: values(["uses-permission", "uses-permission-sdk-23"]),
+    queryActions: [
+      ...new Set(
+        tags
+          .filter((tag) => tag.name === "action" && isInsideQueries(tag))
+          .map((tag) => tag.attributes.get("name"))
+          .filter(Boolean),
+      ),
+    ].sort(),
+    queryPackages: [
+      ...new Set(
+        tags
+          .filter((tag) => tag.name === "package" && isInsideQueries(tag))
+          .map((tag) => tag.attributes.get("name"))
+          .filter(Boolean),
+      ),
+    ].sort(),
+    targetSdkVersion: usesSdk?.attributes.get("targetSdkVersion") ?? null,
+  };
 }
 
 function assertAndroidSmsGatewayArtifactManifest(manifestText) {
