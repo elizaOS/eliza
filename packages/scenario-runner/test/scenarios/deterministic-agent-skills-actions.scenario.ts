@@ -3,12 +3,12 @@
  * deterministic routing fixtures; no network service participates.
  */
 
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const guidanceSlug = "scenario-guidance";
 const removableSlug = "scenario-removable";

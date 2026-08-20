@@ -442,7 +442,8 @@ describe("planner-loop failed-operation correlation", () => {
 	});
 
 	it("resolves a failed SHELL command re-run verbatim inside a corrective retry (fail git commit -> succeed git config && git commit)", async () => {
-		const failedCommand = 'git add README.md && git commit -m "Add description"';
+		const failedCommand =
+			'git add README.md && git commit -m "Add description"';
 		const retryCommand = `git config user.email "e@x" && ${failedCommand}`;
 		const replyText = "Added the description and committed the change.";
 		const runtime = {

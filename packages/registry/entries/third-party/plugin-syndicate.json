@@ -39,11 +39,7 @@
     },
     "session": {
       "mode": "spectate-and-steer",
-      "features": [
-        "commands",
-        "telemetry",
-        "suggestions"
-      ]
+      "features": ["commands", "telemetry", "suggestions"]
     },
     "visibleInAppStore": true,
     "catalogSection": "other"

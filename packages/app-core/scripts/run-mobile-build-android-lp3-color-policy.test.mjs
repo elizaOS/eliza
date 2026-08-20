@@ -422,5 +422,4 @@ describe("LP3 direct Cloud build flag", () => {
     expect(readme).toContain("channel-level block");
     expect(readme).toContain("permission-prompt loop");
   });
-
 });

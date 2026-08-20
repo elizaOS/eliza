@@ -606,24 +606,24 @@ export async function runEvaluator(
 	const output = sanitizeOutputMessage(
 		repairFinishWithUnservedDeclaredIntents(
 			repairFinishWithProgressPromise(
-			repairFinishedToolTurnWithoutUserMessage(
-				repairMissingEvaluatorMessage(
-					repairMissingEvaluatorSuccess(
-						rejectEvaluatorInvocationMessage(
-							recoverEvaluatorTextOutput(
-								parseEvaluatorOutput(raw),
-								raw,
-								params.trajectory,
+				repairFinishedToolTurnWithoutUserMessage(
+					repairMissingEvaluatorMessage(
+						repairMissingEvaluatorSuccess(
+							rejectEvaluatorInvocationMessage(
+								recoverEvaluatorTextOutput(
+									parseEvaluatorOutput(raw),
+									raw,
+									params.trajectory,
+								),
 							),
+							params.trajectory,
 						),
+						params.context,
 						params.trajectory,
 					),
-					params.context,
 					params.trajectory,
 				),
 				params.trajectory,
-			),
-			params.trajectory,
 			),
 			params.context,
 			params.trajectory,

@@ -1,14 +1,15 @@
 /** Builds connector-certification scenarios against scenario-runner's real runtime. */
-import type {
-  ScenarioFinalCheck,
-  ScenarioSeedStep,
-} from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import type {
+  ScenarioFinalCheck,
+  ScenarioSeedStep,
+} from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export const CONNECTOR_CERTIFICATION_AXES = [
   "core",

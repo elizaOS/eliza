@@ -21,12 +21,7 @@ const SKIP_DIRS = new Set([
   "node_modules",
   "target",
 ]);
-const ROOT_DOCS = [
-  "README.md",
-  "CONTRIBUTING.md",
-  "SECURITY.md",
-  "WINDOWS.md",
-];
+const ROOT_DOCS = ["README.md", "CONTRIBUTING.md", "SECURITY.md", "WINDOWS.md"];
 const ISSUE_TEMPLATE_CONFIG = ".github/ISSUE_TEMPLATE/config.yml";
 const SECURITY_POLICY_FILE = "SECURITY.md";
 const SECURITY_POLICY_CONTACT_URL =
@@ -525,7 +520,8 @@ function checkSecurityPolicy(repoRoot) {
     errors.push({
       type: "missing-security-contact",
       file: ISSUE_TEMPLATE_CONFIG,
-      message: "missing Security vulnerability contact link in issue template config",
+      message:
+        "missing Security vulnerability contact link in issue template config",
     });
     return errors;
   }

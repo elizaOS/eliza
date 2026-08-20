@@ -339,21 +339,66 @@ const VITEST_DEFAULT_CONFIG_FILENAMES = [
 export const ORPHANED_PLUGIN_TEST_EXCEPTIONS = new Map([
   // Add a [path, reason] pair only for a triaged, deliberately-deferred
   // orphan -- never to silence an untriaged finding.
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/src/lib/services/parameter-sync.service.spec.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/client/page.svelte.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/e2e/demo.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/agentic-sections.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/agentic-strip.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/clipboard.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/latex-protection.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/mcp-service.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/model-id-parser.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/model-names.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/reasoning-context.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/redact.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/request-helpers.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/sanitize-headers.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
-  ["plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/uri-template.test.ts", "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these."],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/src/lib/services/parameter-sync.service.spec.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/client/page.svelte.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/e2e/demo.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/agentic-sections.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/agentic-strip.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/clipboard.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/latex-protection.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/mcp-service.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/model-id-parser.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/model-names.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/reasoning-context.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/redact.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/request-helpers.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/sanitize-headers.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
+  [
+    "plugins/plugin-local-inference/native/llama.cpp/tools/server/webui/tests/unit/uri-template.test.ts",
+    "2026-08-20: vendored upstream llama.cpp webui test (third-party tree under plugins/plugin-local-inference/native/); upstream owns its runner, we never execute these.",
+  ],
 ]);
 
 function findPluginDirectories() {

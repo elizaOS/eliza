@@ -1,1 +1,543 @@
-(()=>{function T(w,_){let b=w.map((Y)=>`"${Y}"`).join(", ");return Error(`This RPC instance cannot ${_} because the transport did not provide one or more of these methods: ${b}`)}function y(w={}){let _={},b={},Y=void 0;function G(B){if(b.unregisterHandler)b.unregisterHandler();b=B,b.registerHandler?.(o)}function W(B){if(typeof B==="function"){Y=B;return}Y=(I,S)=>{let J=B[I];if(J)return J(S);let Q=B._;if(!Q)throw Error(`The requested method has no handler: ${String(I)}`);return Q(I,S)}}let{maxRequestTime:A=1000}=w;if(w.transport)G(w.transport);if(w.requestHandler)W(w.requestHandler);if(w._debugHooks)_=w._debugHooks;let K=0;function f(){if(K<=10000000000)return++K;return K=0}let Z=new Map,$=new Map;function z(B,...I){let S=I[0];return new Promise((J,Q)=>{if(!b.send)throw T(["send"],"make requests");let F=f(),O={type:"request",id:F,method:B,params:S};if(Z.set(F,{resolve:J,reject:Q}),A!==1/0)$.set(F,setTimeout(()=>{$.delete(F),Z.delete(F),Q(Error("RPC request timed out."))},A));_.onSend?.(O),b.send(O)})}let H=new Proxy(z,{get:(B,I,S)=>{if(I in B)return Reflect.get(B,I,S);return(J)=>z(I,J)}}),j=H;function D(B,...I){let S=I[0];if(!b.send)throw T(["send"],"send messages");let J={type:"message",id:B,payload:S};_.onSend?.(J),b.send(J)}let R=new Proxy(D,{get:(B,I,S)=>{if(I in B)return Reflect.get(B,I,S);return(J)=>D(I,J)}}),L=R,V=new Map,U=new Set;function p(B,I){if(!b.registerHandler)throw T(["registerHandler"],"register message listeners");if(B==="*"){U.add(I);return}if(!V.has(B))V.set(B,new Set);V.get(B).add(I)}function m(B,I){if(B==="*"){U.delete(I);return}if(V.get(B)?.delete(I),V.get(B)?.size===0)V.delete(B)}async function o(B){if(_.onReceive?.(B),!("type"in B))throw Error("Message does not contain a type.");if(B.type==="request"){if(!b.send||!Y)throw T(["send","requestHandler"],"handle requests");let{id:I,method:S,params:J}=B,Q;try{Q={type:"response",id:I,success:!0,payload:await Y(S,J)}}catch(F){if(!(F instanceof Error))throw F;Q={type:"response",id:I,success:!1,error:F.message}}_.onSend?.(Q),b.send(Q);return}if(B.type==="response"){let I=$.get(B.id);if(I!=null)clearTimeout(I);$.delete(B.id);let{resolve:S,reject:J}=Z.get(B.id)??{};if(Z.delete(B.id),!B.success)J?.(Error(B.error));else S?.(B.payload);return}if(B.type==="message"){for(let S of U)S(B.id,B.payload);let I=V.get(B.id);if(!I)return;for(let S of I)S(B.payload);return}throw Error(`Unexpected RPC message type: ${B.type}`)}return{setTransport:G,setRequestHandler:W,request:H,requestProxy:j,send:R,sendProxy:L,addMessageListener:p,removeMessageListener:m,proxy:{send:L,request:j}}}function N(w,_){let b={maxRequestTime:_.maxRequestTime,requestHandler:{..._.handlers.requests,..._.extraRequestHandlers},transport:{registerHandler:()=>{}}},Y=y(b),G=_.handlers.messages;if(G)Y.addMessageListener("*",(W,A)=>{let K=G["*"];if(K)K(W,A);let f=G[W];if(f)f(A)});return Y}var{__electrobunWebviewId:q,__electrobunRpcSocketPort:h}=window;class x{bunSocket;rpc;rpcHandler;constructor(w){this.rpc=w.rpc,this.init()}init(){if(this.initSocketToBun(),window.__electrobun.receiveMessageFromBun=this.receiveMessageFromBun.bind(this),this.rpc)this.rpc.setTransport(this.createTransport())}initSocketToBun(){if(!h||!q)return;let w=new WebSocket(`ws://localhost:${h}/socket?webviewId=${q}`);this.bunSocket=w,w.addEventListener("open",()=>{}),w.addEventListener("message",async(_)=>{let b=_.data;if(typeof b==="string")try{let Y=JSON.parse(b),G=await window.__electrobun_decrypt(Y.encryptedData,Y.iv,Y.tag);this.rpcHandler?.(JSON.parse(G))}catch(Y){console.error("Error parsing bun message:",Y)}else if(b instanceof Blob);else console.error("UNKNOWN DATA TYPE RECEIVED:",_.data)}),w.addEventListener("error",(_)=>{console.error("Socket error:",_)}),w.addEventListener("close",(_)=>{})}createTransport(){let w=this;return{send(_){try{let b=JSON.stringify(_);w.bunBridge(b)}catch(b){console.error("bun: failed to serialize message to webview",b)}},registerHandler(_){w.rpcHandler=_}}}async bunBridge(w){if(this.bunSocket?.readyState===WebSocket.OPEN)try{let{encryptedData:_,iv:b,tag:Y}=await window.__electrobun_encrypt(w),W=JSON.stringify({encryptedData:_,iv:b,tag:Y});this.bunSocket.send(W);return}catch(_){console.error("Error sending message to bun via socket:",_)}window.__electrobunBunBridge?.postMessage(w)}receiveMessageFromBun(w){if(this.rpcHandler)this.rpcHandler(w)}static defineRPC(w){return N("webview",{...w,extraRequestHandlers:{evaluateJavascriptWithResponse:({script:_})=>{return new Promise((b)=>{try{let G=Function(_)();if(G instanceof Promise)G.then((W)=>{b(W)}).catch((W)=>{console.error("bun: async script execution failed",W),b(String(W))});else b(G)}catch(Y){console.error("bun: failed to eval script",Y),b(String(Y))}})}}})}}function P(w){return w>=500?"error":"warn"}var n={evaluate:async(w)=>({ok:!1,error:`BrowserWorkspaceView is not mounted — cannot evaluate tab ${w}`}),getTabRect:async()=>null};function C(){if(typeof window>"u")return n;return window.__ELIZA_BROWSER_TABS_REGISTRY__??n}var l=Symbol.for("elizaos.app.boot-config"),u=l;function v(w,_){let Y={...w.__ELIZAOS_APP_BOOT_CONFIG__??w.__ELIZA_APP_BOOT_CONFIG__??w[u]?.current??{},..._};return w.__ELIZAOS_APP_BOOT_CONFIG__=Y,w.__ELIZA_APP_BOOT_CONFIG__=Y,w[u]={current:Y},Y}function c(){if(typeof window.__electrobun>"u")window.__electrobun={receiveMessageFromBun:(w)=>{},receiveInternalMessageFromBun:(w)=>{}}}var X={},d="__ELIZA_ELECTROBUN_LOG_MIRROR__";function i(w){if(!w||typeof w!=="object")throw Error("Electrobun RPC params must be an object");return w}function k(w,_){let b=w[_];if(typeof b!=="string")throw Error(`Electrobun RPC param "${_}" must be a string`);return b}function g(w,_){let b=w[_];if(typeof b!=="number"||!Number.isFinite(b))throw Error(`Electrobun RPC param "${_}" must be a finite number`);return b}c();function t(w,_){if(w==="apiBaseUpdate"){let Y=_;if(typeof Y.externalApiBase==="string"&&Y.externalApiBase.trim())window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=Y.externalApiBase.trim();else Reflect.deleteProperty(window,"__ELIZA_DESKTOP_EXTERNAL_API_BASE__");v(window,{apiBase:Y.base,...Y.token?{apiToken:Y.token}:{}})}let b=X[w];if(!b)return;for(let Y of Array.from(b))try{Y(_)}catch(G){console.error(`[ElectrobunBridge] Listener error for ${w}:`,G)}}function r(w,_){if(typeof w==="string")t(w,_)}var E=x.defineRPC({maxRequestTime:600000,handlers:{requests:{browserWorkspaceRendererEvaluate:async(w)=>{let _=i(w),b=k(_,"id"),Y=k(_,"script"),G=g(_,"timeoutMs");return await C().evaluate(b,Y,G)},browserWorkspaceRendererGetTabRect:async(w)=>{let _=i(w);return C().getTabRect(k(_,"id"))}},messages:{"*":r}}});new x({rpc:E});function M(w){if(w instanceof Error)return{name:w.name,message:w.message,stack:w.stack};return w}var a=new Proxy(E.request,{get(w,_,b){let Y=Reflect.get(w,_,b);if(typeof Y!=="function")return Y;return async(G)=>{try{return await Y.call(w,G)}catch(W){throw E.request.rendererReportDiagnostic({level:"error",source:"rpc",message:`Electrobun RPC request failed: ${String(_)}`,details:M(W)}).catch(()=>{}),W}}}}),s={request:a,onMessage:(w,_)=>{if(!X[w])X[w]=new Set;X[w].add(_)},offMessage:(w,_)=>{if(X[w]?.delete(_),X[w]?.size===0)delete X[w]}};window.__ELIZA_ELECTROBUN_RPC__=s;function e(){let w=window;if(w[d])return;w[d]=!0;let _=(Y,G,W,A)=>{E.request.rendererReportDiagnostic({level:Y,source:G,message:W,details:A}).catch(()=>{})},b=["log","info","warn","error"];for(let Y of b){let G=console[Y].bind(console);console[Y]=(...W)=>{G(...W),_(Y,"console",W.map((A)=>{if(typeof A==="string")return A;try{return JSON.stringify(A)}catch{return String(A)}}).join(" "))}}if(window.addEventListener("error",(Y)=>{let G=Y.target;if(G&&(G.src||G.href)){_("error","resource","Failed to load resource",{tagName:G.tagName,src:G.src,href:G.href});return}_("error","window.onerror",Y.message||"Unhandled window error",{filename:Y.filename,lineno:Y.lineno,colno:Y.colno})},!0),window.addEventListener("unhandledrejection",(Y)=>{_("error","unhandledrejection","Unhandled promise rejection",M(Y.reason))}),typeof window.fetch==="function"){let Y=window.fetch.bind(window);window.fetch=async(...G)=>{let W=Date.now(),A=G[0],K=G[1],f=typeof A==="string"?A:A instanceof Request?A.url:String(A),Z=K?.method??(A instanceof Request?A.method:void 0)??"GET";try{let $=await Y(...G),z=$.ok?null:P($.status);if(z)_(z,"fetch",`HTTP ${$.status} ${$.statusText}`,{url:f,method:Z,durationMs:Date.now()-W});return $}catch($){throw _("error","fetch","Fetch failed",{url:f,method:Z,durationMs:Date.now()-W,error:M($)}),$}}}if(typeof XMLHttpRequest<"u"){let Y=XMLHttpRequest.prototype.open,G=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.open=function(W,A,...K){return this.__elizaDiag={method:W,url:String(A),startedAt:Date.now()},Y.call(this,W,A,...K)},XMLHttpRequest.prototype.send=function(...W){let A=this,K=()=>{let Z=A.__elizaDiag;if(!Z)return;let $=A.status>=400?P(A.status):null;if($)_($,"xhr",`HTTP ${A.status}`,{url:Z.url,method:Z.method,durationMs:Date.now()-Z.startedAt})},f=()=>{let Z=A.__elizaDiag;_("error","xhr","XMLHttpRequest failed",{url:Z?.url,method:Z?.method,durationMs:Z?Date.now()-Z.startedAt:void 0})};return A.addEventListener("loadend",K,{once:!0}),A.addEventListener("error",f,{once:!0}),G.call(this,...W)}}}e();})();
+(() => {
+  function T(w, _) {
+    const b = w.map((Y) => `"${Y}"`).join(", ");
+    return Error(
+      `This RPC instance cannot ${_} because the transport did not provide one or more of these methods: ${b}`,
+    );
+  }
+  function y(w = {}) {
+    let _ = {},
+      b = {},
+      Y = void 0;
+    function G(B) {
+      if (b.unregisterHandler) b.unregisterHandler();
+      (b = B), b.registerHandler?.(o);
+    }
+    function W(B) {
+      if (typeof B === "function") {
+        Y = B;
+        return;
+      }
+      Y = (I, S) => {
+        const J = B[I];
+        if (J) return J(S);
+        const Q = B._;
+        if (!Q)
+          throw Error(`The requested method has no handler: ${String(I)}`);
+        return Q(I, S);
+      };
+    }
+    const { maxRequestTime: A = 1000 } = w;
+    if (w.transport) G(w.transport);
+    if (w.requestHandler) W(w.requestHandler);
+    if (w._debugHooks) _ = w._debugHooks;
+    let K = 0;
+    function f() {
+      if (K <= 10000000000) return ++K;
+      return (K = 0);
+    }
+    const Z = new Map(),
+      $ = new Map();
+    function z(B, ...I) {
+      const S = I[0];
+      return new Promise((J, Q) => {
+        if (!b.send) throw T(["send"], "make requests");
+        const F = f(),
+          O = { type: "request", id: F, method: B, params: S };
+        if ((Z.set(F, { resolve: J, reject: Q }), A !== 1 / 0))
+          $.set(
+            F,
+            setTimeout(() => {
+              $.delete(F), Z.delete(F), Q(Error("RPC request timed out."));
+            }, A),
+          );
+        _.onSend?.(O), b.send(O);
+      });
+    }
+    const H = new Proxy(z, {
+        get: (B, I, S) => {
+          if (I in B) return Reflect.get(B, I, S);
+          return (J) => z(I, J);
+        },
+      }),
+      j = H;
+    function D(B, ...I) {
+      const S = I[0];
+      if (!b.send) throw T(["send"], "send messages");
+      const J = { type: "message", id: B, payload: S };
+      _.onSend?.(J), b.send(J);
+    }
+    const R = new Proxy(D, {
+        get: (B, I, S) => {
+          if (I in B) return Reflect.get(B, I, S);
+          return (J) => D(I, J);
+        },
+      }),
+      L = R,
+      V = new Map(),
+      U = new Set();
+    function p(B, I) {
+      if (!b.registerHandler)
+        throw T(["registerHandler"], "register message listeners");
+      if (B === "*") {
+        U.add(I);
+        return;
+      }
+      if (!V.has(B)) V.set(B, new Set());
+      V.get(B).add(I);
+    }
+    function m(B, I) {
+      if (B === "*") {
+        U.delete(I);
+        return;
+      }
+      if ((V.get(B)?.delete(I), V.get(B)?.size === 0)) V.delete(B);
+    }
+    async function o(B) {
+      if ((_.onReceive?.(B), !("type" in B)))
+        throw Error("Message does not contain a type.");
+      if (B.type === "request") {
+        if (!b.send || !Y)
+          throw T(["send", "requestHandler"], "handle requests");
+        let { id: I, method: S, params: J } = B,
+          Q;
+        try {
+          Q = { type: "response", id: I, success: !0, payload: await Y(S, J) };
+        } catch (F) {
+          if (!(F instanceof Error)) throw F;
+          Q = { type: "response", id: I, success: !1, error: F.message };
+        }
+        _.onSend?.(Q), b.send(Q);
+        return;
+      }
+      if (B.type === "response") {
+        const I = $.get(B.id);
+        if (I != null) clearTimeout(I);
+        $.delete(B.id);
+        const { resolve: S, reject: J } = Z.get(B.id) ?? {};
+        if ((Z.delete(B.id), !B.success)) J?.(Error(B.error));
+        else S?.(B.payload);
+        return;
+      }
+      if (B.type === "message") {
+        for (const S of U) S(B.id, B.payload);
+        const I = V.get(B.id);
+        if (!I) return;
+        for (const S of I) S(B.payload);
+        return;
+      }
+      throw Error(`Unexpected RPC message type: ${B.type}`);
+    }
+    return {
+      setTransport: G,
+      setRequestHandler: W,
+      request: H,
+      requestProxy: j,
+      send: R,
+      sendProxy: L,
+      addMessageListener: p,
+      removeMessageListener: m,
+      proxy: { send: L, request: j },
+    };
+  }
+  function N(w, _) {
+    const b = {
+        maxRequestTime: _.maxRequestTime,
+        requestHandler: { ..._.handlers.requests, ..._.extraRequestHandlers },
+        transport: { registerHandler: () => {} },
+      },
+      Y = y(b),
+      G = _.handlers.messages;
+    if (G)
+      Y.addMessageListener("*", (W, A) => {
+        const K = G["*"];
+        if (K) K(W, A);
+        const f = G[W];
+        if (f) f(A);
+      });
+    return Y;
+  }
+  var { __electrobunWebviewId: q, __electrobunRpcSocketPort: h } = window;
+  class x {
+    bunSocket;
+    rpc;
+    rpcHandler;
+    constructor(w) {
+      (this.rpc = w.rpc), this.init();
+    }
+    init() {
+      if (
+        (this.initSocketToBun(),
+        (window.__electrobun.receiveMessageFromBun =
+          this.receiveMessageFromBun.bind(this)),
+        this.rpc)
+      )
+        this.rpc.setTransport(this.createTransport());
+    }
+    initSocketToBun() {
+      if (!h || !q) return;
+      const w = new WebSocket(`ws://localhost:${h}/socket?webviewId=${q}`);
+      (this.bunSocket = w),
+        w.addEventListener("open", () => {}),
+        w.addEventListener("message", async (_) => {
+          const b = _.data;
+          if (typeof b === "string")
+            try {
+              const Y = JSON.parse(b),
+                G = await window.__electrobun_decrypt(
+                  Y.encryptedData,
+                  Y.iv,
+                  Y.tag,
+                );
+              this.rpcHandler?.(JSON.parse(G));
+            } catch (Y) {
+              console.error("Error parsing bun message:", Y);
+            }
+          else if (b instanceof Blob);
+          else console.error("UNKNOWN DATA TYPE RECEIVED:", _.data);
+        }),
+        w.addEventListener("error", (_) => {
+          console.error("Socket error:", _);
+        }),
+        w.addEventListener("close", (_) => {});
+    }
+    createTransport() {
+      const w = this;
+      return {
+        send(_) {
+          try {
+            const b = JSON.stringify(_);
+            w.bunBridge(b);
+          } catch (b) {
+            console.error("bun: failed to serialize message to webview", b);
+          }
+        },
+        registerHandler(_) {
+          w.rpcHandler = _;
+        },
+      };
+    }
+    async bunBridge(w) {
+      if (this.bunSocket?.readyState === WebSocket.OPEN)
+        try {
+          const {
+              encryptedData: _,
+              iv: b,
+              tag: Y,
+            } = await window.__electrobun_encrypt(w),
+            W = JSON.stringify({ encryptedData: _, iv: b, tag: Y });
+          this.bunSocket.send(W);
+          return;
+        } catch (_) {
+          console.error("Error sending message to bun via socket:", _);
+        }
+      window.__electrobunBunBridge?.postMessage(w);
+    }
+    receiveMessageFromBun(w) {
+      if (this.rpcHandler) this.rpcHandler(w);
+    }
+    static defineRPC(w) {
+      return N("webview", {
+        ...w,
+        extraRequestHandlers: {
+          evaluateJavascriptWithResponse: ({ script: _ }) => {
+            return new Promise((b) => {
+              try {
+                const G = Function(_)();
+                if (G instanceof Promise)
+                  G.then((W) => {
+                    b(W);
+                  }).catch((W) => {
+                    console.error("bun: async script execution failed", W),
+                      b(String(W));
+                  });
+                else b(G);
+              } catch (Y) {
+                console.error("bun: failed to eval script", Y), b(String(Y));
+              }
+            });
+          },
+        },
+      });
+    }
+  }
+  function P(w) {
+    return w >= 500 ? "error" : "warn";
+  }
+  var n = {
+    evaluate: async (w) => ({
+      ok: !1,
+      error: `BrowserWorkspaceView is not mounted — cannot evaluate tab ${w}`,
+    }),
+    getTabRect: async () => null,
+  };
+  function C() {
+    if (typeof window > "u") return n;
+    return window.__ELIZA_BROWSER_TABS_REGISTRY__ ?? n;
+  }
+  var l = Symbol.for("elizaos.app.boot-config"),
+    u = l;
+  function v(w, _) {
+    const Y = {
+      ...(w.__ELIZAOS_APP_BOOT_CONFIG__ ??
+        w.__ELIZA_APP_BOOT_CONFIG__ ??
+        w[u]?.current ??
+        {}),
+      ..._,
+    };
+    return (
+      (w.__ELIZAOS_APP_BOOT_CONFIG__ = Y),
+      (w.__ELIZA_APP_BOOT_CONFIG__ = Y),
+      (w[u] = { current: Y }),
+      Y
+    );
+  }
+  function c() {
+    if (typeof window.__electrobun > "u")
+      window.__electrobun = {
+        receiveMessageFromBun: (w) => {},
+        receiveInternalMessageFromBun: (w) => {},
+      };
+  }
+  var X = {},
+    d = "__ELIZA_ELECTROBUN_LOG_MIRROR__";
+  function i(w) {
+    if (!w || typeof w !== "object")
+      throw Error("Electrobun RPC params must be an object");
+    return w;
+  }
+  function k(w, _) {
+    const b = w[_];
+    if (typeof b !== "string")
+      throw Error(`Electrobun RPC param "${_}" must be a string`);
+    return b;
+  }
+  function g(w, _) {
+    const b = w[_];
+    if (typeof b !== "number" || !Number.isFinite(b))
+      throw Error(`Electrobun RPC param "${_}" must be a finite number`);
+    return b;
+  }
+  c();
+  function t(w, _) {
+    if (w === "apiBaseUpdate") {
+      const Y = _;
+      if (typeof Y.externalApiBase === "string" && Y.externalApiBase.trim())
+        window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__ = Y.externalApiBase.trim();
+      else
+        Reflect.deleteProperty(window, "__ELIZA_DESKTOP_EXTERNAL_API_BASE__");
+      v(window, { apiBase: Y.base, ...(Y.token ? { apiToken: Y.token } : {}) });
+    }
+    const b = X[w];
+    if (!b) return;
+    for (const Y of Array.from(b))
+      try {
+        Y(_);
+      } catch (G) {
+        console.error(`[ElectrobunBridge] Listener error for ${w}:`, G);
+      }
+  }
+  function r(w, _) {
+    if (typeof w === "string") t(w, _);
+  }
+  var E = x.defineRPC({
+    maxRequestTime: 600000,
+    handlers: {
+      requests: {
+        browserWorkspaceRendererEvaluate: async (w) => {
+          const _ = i(w),
+            b = k(_, "id"),
+            Y = k(_, "script"),
+            G = g(_, "timeoutMs");
+          return await C().evaluate(b, Y, G);
+        },
+        browserWorkspaceRendererGetTabRect: async (w) => {
+          const _ = i(w);
+          return C().getTabRect(k(_, "id"));
+        },
+      },
+      messages: { "*": r },
+    },
+  });
+  new x({ rpc: E });
+  function M(w) {
+    if (w instanceof Error)
+      return { name: w.name, message: w.message, stack: w.stack };
+    return w;
+  }
+  var a = new Proxy(E.request, {
+      get(w, _, b) {
+        const Y = Reflect.get(w, _, b);
+        if (typeof Y !== "function") return Y;
+        return async (G) => {
+          try {
+            return await Y.call(w, G);
+          } catch (W) {
+            throw (
+              (E.request
+                .rendererReportDiagnostic({
+                  level: "error",
+                  source: "rpc",
+                  message: `Electrobun RPC request failed: ${String(_)}`,
+                  details: M(W),
+                })
+                .catch(() => {}),
+              W)
+            );
+          }
+        };
+      },
+    }),
+    s = {
+      request: a,
+      onMessage: (w, _) => {
+        if (!X[w]) X[w] = new Set();
+        X[w].add(_);
+      },
+      offMessage: (w, _) => {
+        if ((X[w]?.delete(_), X[w]?.size === 0)) delete X[w];
+      },
+    };
+  window.__ELIZA_ELECTROBUN_RPC__ = s;
+  function e() {
+    const w = window;
+    if (w[d]) return;
+    w[d] = !0;
+    const _ = (Y, G, W, A) => {
+        E.request
+          .rendererReportDiagnostic({
+            level: Y,
+            source: G,
+            message: W,
+            details: A,
+          })
+          .catch(() => {});
+      },
+      b = ["log", "info", "warn", "error"];
+    for (const Y of b) {
+      const G = console[Y].bind(console);
+      console[Y] = (...W) => {
+        G(...W),
+          _(
+            Y,
+            "console",
+            W.map((A) => {
+              if (typeof A === "string") return A;
+              try {
+                return JSON.stringify(A);
+              } catch {
+                return String(A);
+              }
+            }).join(" "),
+          );
+      };
+    }
+    if (
+      (window.addEventListener(
+        "error",
+        (Y) => {
+          const G = Y.target;
+          if (G && (G.src || G.href)) {
+            _("error", "resource", "Failed to load resource", {
+              tagName: G.tagName,
+              src: G.src,
+              href: G.href,
+            });
+            return;
+          }
+          _("error", "window.onerror", Y.message || "Unhandled window error", {
+            filename: Y.filename,
+            lineno: Y.lineno,
+            colno: Y.colno,
+          });
+        },
+        !0,
+      ),
+      window.addEventListener("unhandledrejection", (Y) => {
+        _(
+          "error",
+          "unhandledrejection",
+          "Unhandled promise rejection",
+          M(Y.reason),
+        );
+      }),
+      typeof window.fetch === "function")
+    ) {
+      const Y = window.fetch.bind(window);
+      window.fetch = async (...G) => {
+        const W = Date.now(),
+          A = G[0],
+          K = G[1],
+          f =
+            typeof A === "string"
+              ? A
+              : A instanceof Request
+                ? A.url
+                : String(A),
+          Z = K?.method ?? (A instanceof Request ? A.method : void 0) ?? "GET";
+        try {
+          const $ = await Y(...G),
+            z = $.ok ? null : P($.status);
+          if (z)
+            _(z, "fetch", `HTTP ${$.status} ${$.statusText}`, {
+              url: f,
+              method: Z,
+              durationMs: Date.now() - W,
+            });
+          return $;
+        } catch ($) {
+          throw (
+            (_("error", "fetch", "Fetch failed", {
+              url: f,
+              method: Z,
+              durationMs: Date.now() - W,
+              error: M($),
+            }),
+            $)
+          );
+        }
+      };
+    }
+    if (typeof XMLHttpRequest < "u") {
+      const Y = XMLHttpRequest.prototype.open,
+        G = XMLHttpRequest.prototype.send;
+      (XMLHttpRequest.prototype.open = function (W, A, ...K) {
+        return (
+          (this.__elizaDiag = {
+            method: W,
+            url: String(A),
+            startedAt: Date.now(),
+          }),
+          Y.call(this, W, A, ...K)
+        );
+      }),
+        (XMLHttpRequest.prototype.send = function (...W) {
+          const K = () => {
+              const Z = this.__elizaDiag;
+              if (!Z) return;
+              const $ = this.status >= 400 ? P(this.status) : null;
+              if ($)
+                _($, "xhr", `HTTP ${this.status}`, {
+                  url: Z.url,
+                  method: Z.method,
+                  durationMs: Date.now() - Z.startedAt,
+                });
+            },
+            f = () => {
+              const Z = this.__elizaDiag;
+              _("error", "xhr", "XMLHttpRequest failed", {
+                url: Z?.url,
+                method: Z?.method,
+                durationMs: Z ? Date.now() - Z.startedAt : void 0,
+              });
+            };
+          return (
+            this.addEventListener("loadend", K, { once: !0 }),
+            this.addEventListener("error", f, { once: !0 }),
+            G.call(this, ...W)
+          );
+        });
+    }
+  }
+  e();
+})();

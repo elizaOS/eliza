@@ -253,7 +253,6 @@ const INTERACTION_DEBT: Readonly<Record<string, string>> = {
 
 const MAX_INTERACTION_DEBT = 1;
 
-
 function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
   return `${view.id}:${view.viewType}`;
 }
@@ -360,5 +359,4 @@ describe("plugin view interaction coverage", () => {
     expect(missingSpecs).toEqual([]);
     expect(missingSignals).toEqual([]);
   });
-
 });

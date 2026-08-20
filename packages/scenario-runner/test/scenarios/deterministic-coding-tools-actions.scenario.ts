@@ -8,6 +8,10 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { stringToUuid } from "@elizaos/core";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -15,10 +19,6 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 
 const execFileAsync = promisify(execFile);
 

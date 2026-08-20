@@ -5,5 +5,18 @@
   "description": "GAUGE: verifiable official-source signals for AI agents via x402 (USDC on Base, no API key). Flood-risk & river anomaly (USGS/NOAA), air quality (AQI/PM2.5), precipitation/drought, agriculture (USDM soil moisture + heat/GDD + crop VHI), power-grid demand & energy inflation (FRED), shipping route disruption + sea-state + live AIS throughput, and SEC-EDGAR corporate distress (8-K material events, late-filing delinquency, Form 4 insider). Free raw reading; paid screening-level records with official thresholds + statistical anomaly + record_hash provenance.",
   "homepage": "https://github.com/CHANGCHINFU/plugin-gauge-x402#readme",
   "version": "0.6.0",
-  "tags": ["x402", "usdc", "base", "verifiable", "flood-risk", "environment", "agriculture", "power-grid", "shipping", "sec-edgar", "micropayments", "no-api-key"]
+  "tags": [
+    "x402",
+    "usdc",
+    "base",
+    "verifiable",
+    "flood-risk",
+    "environment",
+    "agriculture",
+    "power-grid",
+    "shipping",
+    "sec-edgar",
+    "micropayments",
+    "no-api-key"
+  ]
 }

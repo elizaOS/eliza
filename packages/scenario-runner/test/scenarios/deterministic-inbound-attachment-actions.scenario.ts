@@ -4,9 +4,9 @@
  * live-inbound-attachment proves a real model reads and summarizes it.
  */
 import { ModelType } from "@elizaos/core";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { matchesScenarioInput } from "@elizaos/core/testing";
 
 // Deterministic INBOUND attachment coverage (#8876): a user message that
 // carries a `Media` attachment must flow end-to-end through a real AgentRuntime

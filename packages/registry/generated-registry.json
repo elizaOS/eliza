@@ -26,13 +26,7 @@
       },
       "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw — vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
       "homepage": "https://github.com/1clawAI/1claw-elizaos-plugin",
-      "topics": [
-        "security",
-        "secrets",
-        "vault",
-        "signing",
-        "multi-chain"
-      ],
+      "topics": ["security", "secrets", "vault", "signing", "multi-chain"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -118,14 +112,7 @@
       },
       "description": "Delegates open-ended on-chain workflows to Aomi while elizaOS retains wallet custody, subject-bound confirmation, signing, and submission.",
       "homepage": "https://github.com/aomi-labs/eliza-plugin-aomi",
-      "topics": [
-        "aomi",
-        "blockchain",
-        "wallet",
-        "evm",
-        "solana",
-        "defi"
-      ],
+      "topics": ["aomi", "blockchain", "wallet", "evm", "solana", "defi"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -210,14 +197,7 @@
       },
       "description": "WaaP wallet plugin for ElizaOS — 2-of-2 MPC signing for EVM and Sui, with native 2FA and server-enforced spending policies; the agent never holds private keys.",
       "homepage": "https://github.com/holonym-foundation/eliza-plugin-waap",
-      "topics": [
-        "wallet",
-        "mpc",
-        "2pc",
-        "evm",
-        "sui",
-        "2fa"
-      ],
+      "topics": ["wallet", "mpc", "2pc", "evm", "sui", "2fa"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -256,13 +236,7 @@
       },
       "description": "Clawbal — on-chain AI chatrooms on Solana with PnL tracking, token launching, and leaderboards.",
       "homepage": "https://github.com/IQCoreTeam/milady-clawbal",
-      "topics": [
-        "solana",
-        "chat",
-        "on-chain",
-        "pnl",
-        "trading"
-      ],
+      "topics": ["solana", "chat", "on-chain", "pnl", "trading"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -301,12 +275,7 @@
       },
       "description": "ElizaOS LLM plugin for LMX Cloud — pay per call in USDC via x402 on Base (no API key).",
       "homepage": "https://lmxcloud.io",
-      "topics": [
-        "lmxcloud",
-        "x402",
-        "usdc",
-        "llm"
-      ],
+      "topics": ["lmxcloud", "x402", "usdc", "llm"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -345,13 +314,7 @@
       },
       "description": "MEV-protected same-chain swaps via Ophis (CoW Protocol): the agent signs a GPv2 order with its own EVM key and it settles gaslessly in a batch auction (surplus returned, no sandwiching). Carries an integrator partner fee + optional referral rebate.",
       "homepage": "https://docs.ophis.fi/ai-agents",
-      "topics": [
-        "defi",
-        "swap",
-        "dex",
-        "cow-protocol",
-        "mev-protection"
-      ],
+      "topics": ["defi", "swap", "dex", "cow-protocol", "mev-protection"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -390,12 +353,7 @@
       },
       "description": "Send an elizaOS agent to Ruby High to enroll, attend classes, answer questions, and learn alongside humans and agents.",
       "homepage": "https://ruby-high.ai",
-      "topics": [
-        "ruby-high",
-        "education",
-        "agents",
-        "game"
-      ],
+      "topics": ["ruby-high", "education", "agents", "game"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -428,11 +386,7 @@
         },
         "session": {
           "mode": "external",
-          "features": [
-            "commands",
-            "telemetry",
-            "suggestions"
-          ]
+          "features": ["commands", "telemetry", "suggestions"]
         },
         "visibleInAppStore": true,
         "catalogSection": "other",
@@ -794,13 +748,7 @@
       },
       "description": "Multi-chain wallet and transaction intelligence with OFAC sanctions screening via ChainScope, paid per call in USDC on Base through x402.",
       "homepage": "https://chainsscope.duckdns.org",
-      "topics": [
-        "x402",
-        "blockchain",
-        "wallet",
-        "multi-chain",
-        "payments"
-      ],
+      "topics": ["x402", "blockchain", "wallet", "multi-chain", "payments"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -839,13 +787,7 @@
       },
       "description": "Cross-source search and claim corroboration across 18 real-time data sources via Concordance, paid per call in USDC on Base through x402 -- no API keys.",
       "homepage": "https://concordancehq.duckdns.org",
-      "topics": [
-        "x402",
-        "search",
-        "data",
-        "corroboration",
-        "payments"
-      ],
+      "topics": ["x402", "search", "data", "corroboration", "payments"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -884,13 +826,7 @@
       },
       "description": "Backtestable crypto trend signals and on-demand backtesting for BTC/ETH/SOL/XRP/ADA via Trading Strategy Data, paid per call in USDC on Base through x402.",
       "homepage": "https://strategysignals.duckdns.org",
-      "topics": [
-        "x402",
-        "trading",
-        "crypto",
-        "backtest",
-        "payments"
-      ],
+      "topics": ["x402", "trading", "crypto", "backtest", "payments"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -1021,13 +957,7 @@
       },
       "description": "Wealthville liquidity-pool scores, ENTER/HOLD/EXIT verdicts, and public miss-inclusive track record for DeFi agents (Solana + EVM).",
       "homepage": "https://wealthville.net/developers",
-      "topics": [
-        "solana",
-        "defi",
-        "liquidity-pools",
-        "scoring",
-        "wealthville"
-      ],
+      "topics": ["solana", "defi", "liquidity-pools", "scoring", "wealthville"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -1400,12 +1330,7 @@
       },
       "description": "Farcaster engagement discovery, like, reply, and follow/unfollow actions via Neynar REST API for ElizaOS agents",
       "homepage": null,
-      "topics": [
-        "farcaster",
-        "neynar",
-        "social",
-        "discovery"
-      ],
+      "topics": ["farcaster", "neynar", "social", "discovery"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -1493,11 +1418,7 @@
       },
       "description": "ElizaOS plugin for Reddit integration — search, engage, and manage Reddit interactions autonomously",
       "homepage": null,
-      "topics": [
-        "reddit",
-        "social",
-        "discovery"
-      ],
+      "topics": ["reddit", "social", "discovery"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -1585,13 +1506,7 @@
       },
       "description": "Buyer-side GET_YIELD_SIGNAL action: risk-weighted ETH liquid staking APY plus USDC/WETH lending APY on Base via x402, with client-side spend controls, EIP-712 response verification, schema validation and partial-reading disclosure.",
       "homepage": "https://yieldsignal.vercel.app",
-      "topics": [
-        "defi",
-        "x402",
-        "yield",
-        "base",
-        "payments"
-      ],
+      "topics": ["defi", "x402", "yield", "base", "payments"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -1966,11 +1881,7 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": [
-            "commands",
-            "telemetry",
-            "suggestions"
-          ]
+          "features": ["commands", "telemetry", "suggestions"]
         },
         "visibleInAppStore": true,
         "catalogSection": "other"

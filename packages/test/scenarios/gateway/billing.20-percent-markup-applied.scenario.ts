@@ -1,9 +1,10 @@
 /** Scenario fixture for billing 20 percent markup applied; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+
+import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
 
 function assertTwilioBillingResult(ctx: ScenarioContext): string | undefined {
   const action = ctx.turns?.[1]?.actionsCalled.find((entry) =>

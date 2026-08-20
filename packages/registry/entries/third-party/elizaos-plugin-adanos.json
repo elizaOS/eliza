@@ -5,11 +5,5 @@
   "description": "Read-only Adanos stock and crypto market sentiment for elizaOS agents.",
   "homepage": "https://adanos.org/",
   "version": "0.1.0",
-  "tags": [
-    "market-sentiment",
-    "stocks",
-    "crypto",
-    "alternative-data",
-    "adanos"
-  ]
+  "tags": ["market-sentiment", "stocks", "crypto", "alternative-data", "adanos"]
 }

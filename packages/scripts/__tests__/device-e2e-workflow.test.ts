@@ -109,9 +109,7 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
     );
     const script = runner.with?.script ?? "";
     expect(script).toContain("packages/app/scripts/android-e2e.mjs");
-    expect(script).toContain(
-      '--output "$ELIZA_DEVICE_BUNDLE_ROOT/android"',
-    );
+    expect(script).toContain('--output "$ELIZA_DEVICE_BUNDLE_ROOT/android"');
     expect(job.env?.ELIZA_DEVICE_BUNDLE_ROOT).toBe(
       "${{ github.workspace }}/device-e2e-artifacts",
     );

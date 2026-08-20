@@ -69,10 +69,7 @@ jobs:
       - run: bun run build
 `;
 
-function buildRepo({
-  workspaceSetup = WORKSPACE_SETUP_YAML,
-  workflows = {},
-}) {
+function buildRepo({ workspaceSetup = WORKSPACE_SETUP_YAML, workflows = {} }) {
   const root = mkdtempSync(join(tmpdir(), "turbo-cache-contract-"));
   mkdirSync(join(root, ".github", "actions", "setup-bun-workspace"), {
     recursive: true,

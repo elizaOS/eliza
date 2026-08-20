@@ -10891,8 +10891,7 @@ function decomposeImperativeClauses(text: string): string[] {
 		.split(/(?:[,;]|\.\s|\bthen\b|\band then\b|\bafter that\b)+/i)
 		.map((clause) => clause.trim())
 		.filter(
-			(clause) =>
-				clause.length >= 8 && IMPERATIVE_CLAUSE_VERB_RE.test(clause),
+			(clause) => clause.length >= 8 && IMPERATIVE_CLAUSE_VERB_RE.test(clause),
 		)
 		.slice(0, 6);
 }

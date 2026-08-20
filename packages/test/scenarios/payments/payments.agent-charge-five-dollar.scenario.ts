@@ -1,11 +1,13 @@
 /** Scenario fixture for payments agent charge five dollar; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import {
+  expectScenarioActionResultData,
+  expectTurnToCallAction,
+} from "@elizaos/scenario-runner/scenario-assertions";
+import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
-import { expectScenarioActionResultData } from "@elizaos/scenario-runner/scenario-assertions";
 import { appChargeTestPlugin } from "./_fixtures/app-charge-test-plugin.ts";
 
 function asRuntime(value: unknown): AgentRuntime {

@@ -35,8 +35,12 @@ import { loadEnvFiles } from "./local-dev-helpers";
 loadEnvFiles([".env.local", ".env"]);
 
 // Imports below depend on env being loaded first because they read process.env at module init.
-const { putObjectText } = await import("../../shared/src/lib/storage/object-store");
-const { ObjectNamespaces } = await import("../../shared/src/lib/storage/object-namespace");
+const { putObjectText } = await import(
+  "../../shared/src/lib/storage/object-store"
+);
+const { ObjectNamespaces } = await import(
+  "../../shared/src/lib/storage/object-namespace"
+);
 const { putTrajectoryPayload } = await import(
   "../../shared/src/lib/services/trajectory-object-storage"
 );

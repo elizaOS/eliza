@@ -375,7 +375,9 @@ async function threadOpsHandle(
         ? ctx.message.content.text
         : "";
     if (/\b(?:tasks?|(?:sub[- ]?)?agents?|jobs?)\b/i.test(messageText)) {
-      debug.push("abort targets durable work: routing to planner for TASKS cancel");
+      debug.push(
+        "abort targets durable work: routing to planner for TASKS cancel",
+      );
       return {
         mutateResult: (result) => {
           result.shouldRespond = "RESPOND";

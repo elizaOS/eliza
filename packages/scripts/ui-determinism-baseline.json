@@ -9,9 +9,7 @@
   "packages/ui/src/cloud-ui/components/voice/voice-status-badge.tsx": [
     "L35 new Date()"
   ],
-  "packages/ui/src/cloud-ui/runtime/render-telemetry.tsx": [
-    "L52 Date.now()"
-  ],
+  "packages/ui/src/cloud-ui/runtime/render-telemetry.tsx": ["L52 Date.now()"],
   "packages/ui/src/cloud/account-security/components/active-sessions-panel.tsx": [
     "L138 toLocaleString() [no locale]"
   ],
@@ -33,9 +31,7 @@
     "L184 toLocaleString() [no locale]",
     "L219 toLocaleString() [no locale]"
   ],
-  "packages/ui/src/cloud/analytics/_components/filters.tsx": [
-    "L56 new Date()"
-  ],
+  "packages/ui/src/cloud/analytics/_components/filters.tsx": ["L56 new Date()"],
   "packages/ui/src/cloud/analytics/_components/usage-chart.tsx": [
     "L107 toLocaleString() [no locale]",
     "L212 toLocaleString() [no locale]"
@@ -88,16 +84,10 @@
   "packages/ui/src/cloud/public-pages/pages/payment/app-charge-page.tsx": [
     "L150 Date.now()"
   ],
-  "packages/ui/src/components/pages/chat-view-hooks.tsx": [
-    "L817 Date.now()"
-  ],
+  "packages/ui/src/components/pages/chat-view-hooks.tsx": ["L817 Date.now()"],
   "packages/ui/src/components/pages/ElizaCloudDashboard.tsx": [
     "L605 Date.now()"
   ],
-  "packages/ui/src/components/shell/PairingView.tsx": [
-    "L55 Date.now()"
-  ],
-  "packages/ui/src/tutorial/TutorialConductor.tsx": [
-    "L229 Date.now()"
-  ]
+  "packages/ui/src/components/shell/PairingView.tsx": ["L55 Date.now()"],
+  "packages/ui/src/tutorial/TutorialConductor.tsx": ["L229 Date.now()"]
 }

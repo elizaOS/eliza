@@ -5,7 +5,10 @@
  */
 
 export function unavailableReleaseFinding(release) {
-  if (release.publishedAtLabel !== "unavailable" || release.prerelease !== false) {
+  if (
+    release.publishedAtLabel !== "unavailable" ||
+    release.prerelease !== false
+  ) {
     return {
       message: "unavailable release must use canonical publication metadata",
       details: [],

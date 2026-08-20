@@ -183,10 +183,7 @@ export function ChatLab({
         </div>
       </div>
       <GlassStyles />
-      <ChatOverlay
-        controller={chat.controller}
-        firstRunOpen={firstRun}
-      />
+      <ChatOverlay controller={chat.controller} firstRunOpen={firstRun} />
       {controlsEl ? createPortal(controls, controlsEl) : null}
     </>
   );

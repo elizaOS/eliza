@@ -15,9 +15,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-apps.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< My Apps\nInstall, create, and run your elizaOS apps.\na Advanced\n[TEE\nNo apps installed yet. Click ‘Create new app’ to\nscaffold one.\n+ AskEiza Ta)",
       "words": 27,
@@ -42,9 +40,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-apps.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "« My Apps\nInstall, create, and run your eliza0S apps.\nrope Advanced\ncrectenewapp rma\nNo apps installed yet. Click ‘Create new app’ to scaffold\none.\n+ Ask LU",
       "words": 28,
@@ -69,9 +65,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-apps.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< My Apps\nInstall, create, and run your elizaOS apps.\nme Advanced\n[ETE\nNo apps installed yet. Click ‘Create new app'to scaffold one.\n+ AskEliza a)",
       "words": 26,
@@ -96,9 +90,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-apps.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< My Apps\nInstall, create, and run your elizaOS apps.\nmr Advanced\n[TEE\nNo apps installed yet. Click ‘Create new app'to scaffold one.\n+ AskEiza Ta)",
       "words": 26,
@@ -123,9 +115,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-automations.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Automations +\nToma acve\n0 o\nPasse FALED\n0 0\nS Al © Prompts % Workflows\nD Active © Inactive\nNothing scheduled yet\nAskin chat to set up a workflow and it wil run\nhere.\n+ AskEiza Ta)",
       "words": 39,
@@ -150,9 +140,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-automations.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Automations +\nTora acve Passe FALED\n0 0 0 0\n\nS Al @Prompts % Workflows [> Active\n\n© Inactive\n\nNothing scheduled yet\nAskin chat to set up a workflow and it will run here.\n+ Ask woo",
       "words": 38,
@@ -177,9 +165,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-automations.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Automations +\nToraL acve Passe FALED\n0 0 0 0\nS Al @Prompts % Workflows D> Active @ Inactive\nNothing scheduled yet\nAskin chat to set up a workflow and it will run here.\n+ AskEliza wg",
       "words": 38,
@@ -204,9 +190,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-automations.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Automations +\nTora acve Passe FALED\n0 o o o\nS Al @Prompts % Workflows D> Active @ Inactive\nNothing scheduled yet\nAskin chat to set up a workflow and t will run here.\n+ AskEiza woo",
       "words": 38,
@@ -231,9 +215,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-background.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "+\n\nLp cad\n\nDesert Dusk\n\nMisty Forest\n\nOcean Deep\n\nAlpine Dawn\n\n-\n\nON",
       "words": 13,
@@ -266,9 +248,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-background.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Upioad\n\nDesert Dusk\n\nMisty Forest\n\nOcean Deep\n\nAlpine Dawn\n\n-\n\nON",
       "words": 11,
@@ -301,9 +281,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-background.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Ups cad\n\nMisty Forest\n\nDesert Dusk\n\nOcean Deep\n\nAlpine Dawn\n\nON\n\nEmber Night\n\nDusk Dunes\n\nReef\n\nSlate\n\nEmber Dunes\n\nCanopy",
       "words": 20,
@@ -336,9 +314,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-background.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "& Upload\nMisty Forest Desert Dusk cean Deep Cri\ncam wom\nSni—\n= on ”\n- or y / ['\na i /\nEmber Night Dusk Dunes Reef slate\ncory sil poy nour!\nEmber Dunes canopy\nhn wn\n+ AskEliza ao",
       "words": 41,
@@ -363,9 +339,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-browser.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Browser\n@ Notab © + © x Go\nNo browser tabs yet\nBrowser Bridge Available\nInstall Agent Browser Bridge\n5 Open Browser Bridge Folder\nOpen Chrome extensions\n© Refresh Browser Bridge\n+ AskEiza FT)",
       "words": 35,
@@ -390,9 +364,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-browser.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Browser\n@ Notab © + fs} x Enter a URL Go of\nmmm ae yee\nBrowser\nBridge\nAvailable\nAgent Browser Bridge\n5 + Ask FT)",
       "words": 26,
@@ -417,9 +389,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-browser.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Browser\n@ Notab © + fs} x Enter a URL Go of\nNo browser tabs yet\nBrowser Bridge Available\nInstall Agent Browser Bridge\n(> Open Browser B. Open Chrome exte.. © Refresh Browser...\n+ AskEiza Ta)",
       "words": 37,
@@ -444,9 +414,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-browser.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Browser\n@ Notab © + fs} x Enter a URL Go\nNo browser tabs yet\nBrowser Bridge Available\nInstall Agent Browser Bridge\n(> Open Browser B. Open Chrome exte.. © Refresh Browser...\n+ AskEiza Ta)",
       "words": 36,
@@ -579,9 +547,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-character.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\n\nPersonality Relationships Skills ~~ Experien\nName\nEliza\nSystem prompt\nYou are Eliza, a concise assistant for Ul smoke tests:\nAbout Me\nA concise local assistant for Ul smoke tests.\nStyle Rules\nNo style rules yet.\nAdd a style rule + Add rule\nChat Examples 0 Conversation Count\nNo chat examples yet.\n\n+ Add Conversation\nPost Examples 0 post Count\nNo post examples yet.\n\n+ AskEliza Ta)",
       "words": 68,
@@ -606,9 +572,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-character.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experience\nName\nEliza\nSystem prompt\nYou are Eliza, a concise assistant for Ul smoke tests:\n+ Ask woo",
       "words": 23,
@@ -633,9 +597,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-character.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experience\nName\nEliza\nSystem prompt\nYou are Eliza, a concise assistant for Ul smoke tests:\nAbout Me\nA concise local assistant for Ul smoke tests.\nStyle Rules\nNo style rules yet.\nAdd a style rule + Add rule\nChat Examples 0 Conversation Count\n+ AskEliza wg",
       "words": 51,
@@ -660,9 +622,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-character.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experience\nName\nEliza\nSystem prompt\nYou are Eliza, a concise assistant for Ul smoke tests;\nAbout Me\nA concise local assistant for Ul smoke tests.\nStyle Rules\nNo style rules yet.\nAdd a style rule + Add rule\nChat Examples 0 Conversation Count\nNo chat examples yet.\n+ Add Conversation\nPost Examples 0 post Count\nNo post examples yet.\n+ Add Post\n+ AskEliza Ta)",
       "words": 70,
@@ -687,9 +647,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-character-select.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Name\nEliza\nSystem prompt\nYou are liza, a concise assistant for Ul smoke tests:\nAbout Me\nAconcise local assistant for Uf smoke tests.\nStyle Rules\nNo style rules yet.\nAdd a style rule + Add rule\nChat Examples 0 Conversation Count\nNo chat examples yet.\n+ Add Conversation\nPost Examples 0 Post Count\nNo post examples yet.\n+ Add Post\n+ AskEliza Ta)",
       "words": 63,
@@ -714,9 +672,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-character-select.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Name\nEliza\nSystem prompt\nYou are Eliza, a concise assistant for Ui smoke tests.\n‘About Me\n+ Ask LU",
       "words": 19,
@@ -741,9 +697,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-character-select.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Name\nEliza\nSystem prompt\nYou are Eliza, a concise assistant for Ul smoke tests:\nAbout Me\nAconcise local assistant for Uf smoke tests.\nStyle Rules\nNo style rules yet.\nAdd a style rule + Add rule\nChat Examples 0 Conversation Count\nNo chat examples yet.\n\n+ Add Conversation\n\n+ AskEiza PT",
       "words": 51,
@@ -768,9 +722,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-character-select.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Name\nEliza\nSystem prompt\nYou are liza, a concise assistant for Ul smoke tests:\n‘About Me\nconcise local assistant for Uf smoke tests.\nStyle Rules\nNo style rules yet.\nAdd a style rule + Add rule\nChat Examples 0 Conversation Count\nNo chat examples yet.\n+ Add Conversation\nPost Examples 0 Post Count\nNo post examples yet.\n+ Add Post\n+ AskEliza Ta)",
       "words": 63,
@@ -795,9 +747,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-character-skills.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\n\nPersonality Relationships Skills Experien\n0 proposed 0 active 0 disabled\n\n1 haven't picked up any abilties yst. Browse the catalog or\n\nadd one by example, and fil start using it.",
       "words": 32,
@@ -822,9 +772,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-character-skills.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships | Skills Experience\n\n0 proposed 0 active 0 disabled\n\n1 haven't picked up any abilties yet. Browse the catalog or add one by\nexample, and ll start using it",
       "words": 33,
@@ -849,9 +797,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-character-skills.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experience\n0 proposed 0 active - 0 disabled\n1 haven't picked up any abilties yet. Browse the catalog or add one by example, and fl start using it.\n+ AskEliza ag",
       "words": 36,
@@ -876,9 +822,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-character-skills.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experience\n0 proposed 0 active 0 disabled\n1 haven't picked up any abilties yet. Browse the catalog or add one by example, and fl start using it.\n+ AskEliza ag",
       "words": 35,
@@ -903,9 +847,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-chat.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": ". °F\n12:28 Es 6 8\n1 AM\n\nThu, Aug 6 Mostly clear\n© Today\n\n® Learn conversational Spanish | esd aieniion\n\n© submit the quarterly report | bus today\n(4 Askeiza Ta) )\n\\ /",
       "words": 36,
@@ -930,9 +872,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-chat.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "NY hi\n12:28 #68\n1 AM :\nThursday, August 6 Mostly clear\n>\n9 Today\nLearn conversational Spanish | eed anion\n+ Ask ape @\na c———",
       "words": 27,
@@ -957,9 +897,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-chat.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "1 2:28 E |\n° AM i 6 8\nMostly clear\nThursday, August 6\n© Today\nLearn conversational Spanish ( Hed: er\n© submit the quarterly report | bus today\n>\n( 4 Askbiza FT\nRE ——— 4",
       "words": 38,
@@ -984,9 +922,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-chat.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "(5) °F\n1 2: 2 8 £25 8\nJ AM .\nMostly clear\nThursday, August 6\n9 Today\n@® Learn conversational spanish | suds ain\n© ‘submit the quarterly report | bus today\n2\nee)",
       "words": 35,
@@ -1011,9 +947,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-contacts.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Contacts\n0 contacts ew\nsearch\nname, phone, or email\naddress book\nNone\n+ AskEiza a O",
       "words": 17,
@@ -1038,9 +972,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-contacts.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Contacts\n0 contacts [rere |\nsearch\nname, phone, or email\naddress book\nNone\n+ Ask woo",
       "words": 17,
@@ -1065,9 +997,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-contacts.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Contacts\n0 contacts [rere |\nsearch\nname, phone, or email\naddress book\nNone\n+ AskEiza a O",
       "words": 18,
@@ -1092,9 +1022,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-contacts.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Contacts\n0 contacts [rere |\nsearch\nname, phone, or email\naddress book\nNone\n+ AskEiza a O",
       "words": 18,
@@ -1119,9 +1047,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-database.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Databases\n[@ Browse\ni]\nSelect a table\n+ Filter tables... Ta)",
       "words": 12,
@@ -1146,9 +1072,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-database.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Databases\nTables Media Vectors\n\nTable\n\nme sqL Editor\n© pglite\n\n\\y memories\n\nrows Select a table\n+ Ask LU",
       "words": 20,
@@ -1173,9 +1097,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-database.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Databases\nTables Media Vectors\nTable\n= sqL Editor\n© pglite\nyy memories\n1rows Select a table\nembeddings\nTrows\n[1g]\n+ Filter tables. a)",
       "words": 24,
@@ -1200,9 +1122,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-database.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Databases\nTables Media Vectors\nhired sqL Editor\n© pglite\nyy memories\n1rows Select a table\nembeddings\nTrows\n[1g]\n+ Filter tables. Ta)",
       "words": 23,
@@ -1227,9 +1147,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-desktop.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Desktop\n\nDesktop workspace tools are only\navailable inside the Electrobun desktop\nruntime.\n\n+ Aska Ta)",
       "words": 16,
@@ -1254,9 +1172,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-desktop.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Desktop\nDesktop workspace tools are only available\ninside the Electrobun desktop runtime.\n+ Ask Ta)",
       "words": 16,
@@ -1281,9 +1197,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-desktop.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Desktop\nDesktop workspace tools are only available inside the Electrobun desktop runtime.\n+ Askiza a)",
       "words": 16,
@@ -1308,9 +1222,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-desktop.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Desktop\nDesktop workspace tools are only available inside the Electrobun desktop runtime.\n+ Askliza Ta)",
       "words": 16,
@@ -1335,9 +1247,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-documents.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "3 Knowledge\nSAl~1 BDocs~l [3Images~0 ir\nAll Global Owner User Agent\nQuarterly Plan.md Delete\nB Upload + 7 fragments + 40 KB\n@ Global - MarkDOWN - ©) ataie\n+ search knowledge... Ta)",
       "words": 33,
@@ -1362,9 +1272,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-documents.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Knowledge\nSAI] @Docs~l [3Images~0 ii Audio ~0 @ Video ~0 & Transcripts ~0 + Add\nAll Global Owner User Agent\nQuarterly Plan.md\nB Upload + 7 fragments + 40 KB\n@ Global - MarkDOWN - © ataie\n+ Ask a",
       "words": 41,
@@ -1389,9 +1297,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-documents.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Knowledge\nSAl~1 BDocs~l [3Images~0 ii Audio ~0 EB Video ~0 & Transcripts ~0 + Add\nAll Global Owner User Agent\nQuarterly Plan.md\nB Upload + 7 fragments + 40 KB\n@ Global - MarkDOWN - ©) tale\n+ search knowledge. a O",
       "words": 43,
@@ -1416,9 +1322,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-documents.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Knowledge\nSAl~] BDocs~l [3Images~0 ii Audio ~0 @ Video ~0 & Transcripts ~0 + Adc\nAll Global Owner User Agent\nQuarterly Plan.md\nB Upload + 7 fragments + 40 KB\n@ Global - MarkDOWN - © tale\n+ search knowledge. a O",
       "words": 43,
@@ -1443,9 +1347,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-experience.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\n\nPersonality Relationships Skills Experien\n6016 shown\n\nCaptured\n\n[3\n\n5 need review\n\nAvg importance\n\n79%\n\nRanking weight\n\nAvg confidence\n\n82%\n\nEvidence strength\n\nCorrections\n\n[1]\n\nBeliefs revised\n\nAll Needsreview Cormected Supersedes\n\n+ AskEliza ae &",
       "words": 35,
@@ -1470,9 +1372,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-experience.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experience.\n\n6016 shown\nCaptured Avg Avg Corrections\n6 importance confidence\nSneedreview 79% 82% Beliefs revised\n\nRanking weig.. Evidence stre.\nAll Needsreview Comected Supersedes\n+ Ask wo",
       "words": 31,
@@ -1497,9 +1397,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-experience.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experience.\n6016 shown\nCaptured Avg importance Avg confidence Corrections\n6 79% 82% [1]\n5 need review Ranking weight Evidence strength Beliefs revised\nAll Needsreview Comected Supersedes\nReview queue i\na * Restart the dev server after changing eo | savereview\nenvironment variables so the running process\n© Prefer the latest explicit cadence preference when a loads new config\nImportance 82% Confidence 72% correction - coding - Created Apr 20, 2026, 5:00 AM - Updated Apr 21,2026,\nOlder automation cadence guidance conflicted withne ~~ 500 AM\ncorrection planning - Apr 25, 2026, 5:00 AM Learned takeaway importance 88%\n+ AskEliza ag",
       "words": 105,
@@ -1524,9 +1422,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-experience.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experience.\n6016 shown\nCaptured Avg importance Avg confidence Corrections\n6 79% 82% [1]\n5 need review Ranking weight Evidence strength Beliefs revised\nAll Needsreview Comected Supersedes\nReview queue\n© Prefer the latest explicit cadence preference when automation guidance conflicts.\nImportance 82% Confidence 72%\nOlder automation cadence guidance conflicted with newer direct feedback.\ncorrection planning - Apr 25, 2026, 5:00 AM + high importance\n© Use visual encodings in graph views and keep text in the detail panel outside the map.\nImportance 80% Confidence 82%\nThe experience graph used text cards inside the map.\nlearning + ux - Apr 24,2026, 5:00 AM high importance\n© Expose experience graph search as an action so planning context can stay compact but details remai\nImportance 86% Confidence 84%\nA graph search needed more than top-level context injection.\ndiscovery - coding «Apr 26, 2026, 5:00 AM + high importance\n+ AskEliza ag",
       "words": 152,
@@ -1551,9 +1447,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-files.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Files\nAll 0 Images 0 Audio 0\nVideo 0 Documents 0\nNo files yet\n+ search files by name. Ta)",
       "words": 21,
@@ -1578,9 +1472,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-files.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Files\nAll 0 Images 0 Audio 0 Video 0\nDocuments 0\nNo files yet\n+ Ask LU",
       "words": 18,
@@ -1605,9 +1497,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-files.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Files\nAll 0 Images 0 Audio 0 Video 0 Documents 0\nNo files yet\n+ search files by name... a)",
       "words": 21,
@@ -1632,9 +1522,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-files.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Files\nAll 0 Images 0 Audio 0 Video 0 Documents 0\nNo files yet\n+ search files by name... Ta)",
       "words": 21,
@@ -1659,9 +1547,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-inventory.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Wallet\n8 $1,550.50 o Rec\nEM esol\nQOO0 ev oxzs..5678 ©\n© sot som.mz ©\nDe ——\nom esol usDC\n© Tokens Defi B NFTs\n$900.00\nETH\n0250000 ETH =\n$125.50\nusbc\n1255000 Usoe: =\n$525.00\nsoL\n35000501 =\n20 7a 30d\n+ AskEiza ao",
       "words": 46,
@@ -1686,9 +1572,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-inventory.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Wallet\n5 $1,650.50 OOCCO we\n«Ew esol\n\nQO00 ev oxzs..5678 ©\n\n© sot som.mz ©\n\nCE —\n\noem esol soc\n\n+ Ask LU",
       "words": 24,
@@ -1713,9 +1597,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-inventory.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Wallet\ngo $1550.50 C0000 + we\n© EVM o sOL\nOOOO oi oxzs.s618 © Q) sot sommz ©\nEE —\n«EM esol usoc\nTokens SL B NFTs\n$900.00\nETH\n0250000 TH =\n$125.50\nusbc\n1255000 UsoC =\n$525.00\nso.\n35000501 =\n20 70 30d\nEE —\n«EM esol usoc\n+ AskEliza ae @",
       "words": 54,
@@ -1740,9 +1622,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-inventory.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Wallet\n5 $1,650.50 OOCCO o rec\n© EVM o sOL\nCO00 ew oazs.ser8 © Oso som.mz ©\nEE —\n«EM esol usoc\n2 Tokens SL B NFTs\n$900.00\nETH\n0250000 TH =\n$125.50\nusbc\n1255000 UsoC =\n$525.00\nso.\n35000501 =\n20 70 30d\nEE —\n«EM esol usoc\nTrade to see your PL here\nNo recent activity.\n+ AskEliza ae &",
       "words": 63,
@@ -1767,9 +1647,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-logs.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Logs\n1\n\nAll levels © Allsources v\nAlltags v\n\n122817 AM\n\nINFo\n\nsmoke\n\nsmoke API ready\n\n+ searchlogs.. ao",
       "words": 20,
@@ -1794,9 +1672,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-logs.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Logs\n1\nAlllevels © Alsources +\nAlitags. v\n122817 Am\nInFo\nsmoke\n+ Ask LU",
       "words": 16,
@@ -1821,9 +1697,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-logs.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Logs\n1\n\nAll levels © Allsources v Alltags v\n\n122817 AM\n\nFo\n\nsmoke\n\nsmoke\n\nsmoke API ready\n\n+ search logs.. PT",
       "words": 22,
@@ -1848,9 +1722,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-logs.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Logs\n1\n\nAll levels © Allsources v Altags v\n\n122617 AM\n\nINFo\n\nsmoke\n\nsmoke\n\nsmoke API ready\n\n+ search logs.. ao",
       "words": 22,
@@ -1875,9 +1747,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-memories.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "& Memories [© People\nFeed Browse\nNo memories yet\n(chat gf Facts [ Docs\n+ Aska Ta)",
       "words": 17,
@@ -1902,9 +1772,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-memories.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Memories\n— o Feed Browse\nFitter by type\n\nan q\n\nNo memories yet\n() chat gf Facts B boc\n\nPoopl\n\nNo people yet\n[1g]\n\n+ Ask woo",
       "words": 28,
@@ -1929,9 +1797,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-memories.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Memories\n— o Feed Browse\nFitter by type\n\na\nPeople\n\nNo people yet.\n\nNo memories yet\n(chat gf Facts [ Docs\n[1g]\n+ AskEliza wg",
       "words": 26,
@@ -1956,9 +1822,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-memories.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Memories\n— o Feed Browse\nFitter by type\n\nan\nPooplo\n\nNo people yet.\n\nNo memories yet\nchat gf Facts [ Docs\n\n[1g]\n\n+ AskEiza woo",
       "words": 26,
@@ -1983,9 +1847,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-messages.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Messages\nRefresh send\nbridge-only 0 threads\nSet default SMS.\nthreads\nNone\ncompose\nTo\nphone number\nBody\nmessage\nEE\n+ AskEiza a O",
       "words": 23,
@@ -2010,9 +1872,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-messages.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Messages\nRefresh send\nbridge-only 0 threads\nSet default SMS.\nthreads\nNone\ncompose\nTo\nphone number\n+ Ask woo",
       "words": 19,
@@ -2037,9 +1897,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-messages.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Messages\nRefresh send\nbridge-only 0 threads\nSet default SMS.\nthreads\nNone\ncompose\nTo\nphone number\nBody\nmessage\n| = =\n+ AskEiza a O",
       "words": 25,
@@ -2064,9 +1922,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-messages.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Messages\nRefresh send\nbridge-only 0 threads\nSet default SMS.\nthreads\nNone\ncompose\nTo\nphone number\nBody\nmessage\n| = =\n+ AskEiza a O",
       "words": 25,
@@ -2091,9 +1947,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-pendant-transcript.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Pendant Transcript\n\nomi pendant\n\n© off @ sattery--\n3 Connect\n\n0 resolved 0 pending\n\nCanonical private session synced across owner devices\n\n| Pendant session request failed\n\nCanonical transcript unavailable\nReconnect to the private agent session to\n\nretry sync.\n\n+ AskEiza a O",
       "words": 42,
@@ -2118,9 +1972,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-pendant-transcript.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Pendant Transcript\nP © off ®@ sattery—-\nomi pendant\n$ Connect 0 resolved 0 pending Canonical private session - synced across owner devices\n| Pendant session request failed\nCanonical transcript unavailable\nReconnect to the private agent session to retry sync.\n+ Ask LU",
       "words": 43,
@@ -2145,9 +1997,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-pendant-transcript.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Pendant Transcript\n\nP © off ®@ sattery--\nomi pendant\n\n$ Connect 0 resolved 0 pending Canonical private session - synced across owner devices\n| Pendant session request failed\nCanonical transcript unavailable\nReconnect to the private agent session to retry sync.\n+ AskEliza ao",
       "words": 43,
@@ -2172,9 +2022,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-pendant-transcript.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Pendant Transcript\nP © off ®@ sattery—-\n\nomi pendant\n\n$ Connect 0 resolved 0 pending Canonical private session - synced across owner devices\n| Pendant session request failed\n\nCanonical transcript unavailable\nReconnect to the private agent session to retry sync.\n+ AskEliza ao",
       "words": 43,
@@ -2199,9 +2047,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-phone.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Phone\nRefresh Call\ncall-blocked 0 recent\ndicer\nContacts\nrecent\nNone\n+ AskEliza ae @",
       "words": 15,
@@ -2226,9 +2072,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-phone.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Phone\nRefresh Call\ncall-blocked 0 recent\ndialer\nDobDnooaDn\n+ ask — a",
       "words": 13,
@@ -2253,9 +2097,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-phone.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Phone\nRefresh Call\n\ncall-blocked 0 recent\n\ndialer\n\nContacts\n\nrecent\n\nNone\n\n+ AskEliza ae @",
       "words": 15,
@@ -2280,9 +2122,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-phone.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Phone\nRefresh Call\ncall-blocked 0 recent\ndicer\nContacts\nrecent\nNone\n+ AskEliza ae @",
       "words": 15,
@@ -2307,9 +2147,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-plugins.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Plugins\nPlugin Catalog\nSearch plugins by typing in the chat.\n£3 Other Features 1\nAl Providers\nAl Anthropic fi\nAnthropic model provider fr.\n© OpenAl fi\nIntegrates Opens GPT models\nOther Features\nBrowser Workspace\nAgent-controlled browser.\n4 search plugins... FT)",
       "words": 41,
@@ -2334,9 +2172,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-plugins.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Plugins\n\nPlugin Catalog\n\nSearch plugins by typing in the chat.\n£3 Other Features 1\n\nAl Providers",
       "words": 17,
@@ -2361,9 +2197,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-plugins.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "& Plugins\nPlugin Catalog\nSearch plugins by typing in the chat.\noma @® AlProviders 2 3 Other Features 1\nAl Providers\nAl Anthropic fi\nAnthropic model provider for Claude chat and reasoning models.\n© OpenAl ort\nIntegrates Opens GPT modes for automate text generation with customizable prompts\nOther Features\nBrowser Workspace\nAgent-controlied browser workspace\n4 search plugins. FT)",
       "words": 58,
@@ -2388,9 +2222,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-plugins.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Plugins\nPlugin Catalog\nSearch plugins by typing in the chat.\noma @® AlProviders 2 3 Other Features 1\nAlProviders\nA\\ Anthropic or\nAnthropic model provider for Claude chat and reasoning models.\n© opera or\nIntegrates OpenArs GPT models for automated text generation with customizable prompts.\nOther Features\nBrowser Workspace\nAgent-controlled browser workspace.\n+ search plugins.. Ta)",
       "words": 57,
@@ -2415,9 +2247,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-relationships.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experien\nv Al v\nNo relationships yet\n+ search people... FT)",
       "words": 16,
@@ -2442,9 +2272,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-relationships.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships skills Experience\nv Al v\n+ Ask - ir &",
       "words": 14,
@@ -2469,9 +2297,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-relationships.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experience\nVAI N\nNo relationships yet\n[1g]\n+ search people... Ta)",
       "words": 16,
@@ -2496,9 +2322,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-relationships.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Character\nPersonality Relationships Skills Experience\nv Al v\nNo relationships yet\n[1g]\n+ search people... Ta)",
       "words": 17,
@@ -2523,9 +2347,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-rolodex.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "a200\nSettings Wallet Projects Calendar\n0000\nNotes Automations MyApps Browser\ne000\nCharacter Knowledge Memories Finances\n23333\na3\nLifeOps Orchestrator Phone\nCompanion",
       "words": 21,
@@ -2550,9 +2372,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-rolodex.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Settings Wallet Projects Calendar Notes\nAtomations My Apps Browser Character Knowledge\nMemories Finances Focus Goals Health\n+ Ask LU",
       "words": 19,
@@ -2577,9 +2397,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-rolodex.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Settings Wallet Projects Calendar Notes\nAutomations My Apps Browser Character Knowledge\n[UT Finances Focus Goals Health\nInbox Liteops orchestrator Phone\nCompanion\n+ AskEliza ag",
       "words": 24,
@@ -2604,9 +2422,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-rolodex.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "ae 3 @ 3\nSettings. wallet Projects Calendar Notes\n260006\nAutomations My Apps. Browser Character Knowledge\n00000\nMemories Finances Focus Goals Health\n000\nInbox Lifeops. Orchestrator [I\nCompanion\n<",
       "words": 29,
@@ -2631,9 +2447,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-runtime.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Runtime\n\n[@ Browse\n\nPlugins 1\n[0] plugin-browser : BrowserWorkspacePlugin\n(plugin-browser)\n\nActions 1\n[0] open_browser_workspace\nBrowserWorkspaceAction (browser-workspace-\naction)\n\nProviders 1\n[0] browser_workspace_provider\nBrowserWorkspaceProvider (browser-workspace-\nprovider)\n\nEvaluators 1\n[0] browser_workspace_nealth\nBrowserWorkspaceHealthevaluator (browser-\nworkspace-health)\n\n+ Filter sections wg",
       "words": 36,
@@ -2658,9 +2472,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-runtime.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Runtime\nExpand Top Plugins 1 Actions\n» Advanced\nlo] [o]\nplugin open_\nJop—— - brows\nz brows. er_wo\n3 signals\nerz rkspac\n. Brows ec\nRuntime Ive\nR erwork Brows\n3 roots\nspace erwork\n+ Ask wg",
       "words": 38,
@@ -2685,9 +2497,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-runtime.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Runtime\nExpand Top Plugins 1 Actions. 1\n» Advanced\n[0] plugin-browser : BrowserWorkspacePlugin (plugin-browser) [0] open_browser_workspace : BrowserWorkspaceAction (browser-workspace-action)\nSummary\nI\n3 signals Providers 1 Evaluators 1\nammo [0] browser_workspace_provider : BrowserWorkspaceprovider (browser-workspace- [0] browser_workspace_neath : BrowserWorkspaceHealthevaluator (browser\nR -\nJA— provider) workspace-heaith)\nActions f\nA ® available\nregistered services ( 1types) SILER] =\nhandlers agent UI smoke Runtime\n[0] browser-workspace 1\nstate: running\nProviders \\ [0] browser-workspace-service : BrowserWorkspaceservice (browser-workspace-\n4 model: stubbed\nloaded service)\ncontexts plugins: 1\nactions: 1\nPlugins f\nP providers: 1\nactive\nmodules evaluators: 1\nservices: 1\nservices \\\ns\ninstantiated\nservices\nEvaluators 1\nE\ndecision\nhooks\n+ Filter sections rT",
       "words": 107,
@@ -2712,9 +2522,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-runtime.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Runtime\nExpand Top Plugins 1 Actions. 1\n» Advanced\n[0] plugin-browser = [0] open_browser_workspace\nBrowserWorkspacePlugin (plugin- BrowserWorkspaceAction (browser-\nJp—— browser) workspace-action)\n3 signals\no Runtime we Providers 1 Evaluators 1\n3 roots\n[0] browser_workspace_provider [0] browser_workspace_nealth\npeti BrowserWorkspaceprovider BrowserWorkspaceHealthevaluator\nctions f\nA (browser-workspace-provider) (browser-workspace-health)\nregistered\nhandlers\n. « available\nProviders \\ services ( 1types) ETI\na agent Ul Smoke Runtime\n[0] browser-workspace 1\ncopies state: running\n[0] browser-workspace-service\ni modet stubbed\nPlugins f BrowserWorkspaceService\n3\nactive (browser-workspace-service) plugins: 1\nocules actions: 1\n. providers 1\nservices i\ns\ninstantiated FEE 0\nservices services: 1\nEvaluators 1\n3\ndecision\nhooks\n[1g]\n+ Filter sections ao",
       "words": 105,
@@ -2739,9 +2547,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-settings.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Settings\npe\n8 Basics\n@ Models & Providers\n& Connectors\nave\n@ Appearance\n20 Notifications\nBT Backups\nclow\n© Overview\nPRIVACY & SECURITY\n© Permissions",
       "words": 26,
@@ -2766,9 +2572,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-settings.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "& Settings\nAGENT\n8 Basics\n@ Models & Providers\n& Connectors\nave\n@ Appearance",
       "words": 14,
@@ -2793,9 +2597,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-settings.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Settings settings\nEE eT EE Basics\ncontrols\nAGENT\nIdentity\n2 Basics .\nVoice\n@® Models & Providers\nSelect a voice vow\n& Connectors\nave\n@ Appearance\n2 Notifications\n© Backups\ncioun\n© overview\nPRIVACY & SECURITY\nO Permissions\n+ AskEliza a O",
       "words": 42,
@@ -2820,9 +2622,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-settings.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Settings\nAGENT\n8 Basics\n@ Models & Providers\n& Connectors\nave\n@ Appearance\n2 Notifications\nBT Backups\nclow\n© Overview\nPRIVACY & SECURITY\n© Permissions\n+ Askliza ao",
       "words": 29,
@@ -2847,9 +2647,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-skills.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Skills\n[@ Browse\n®\nNo skills Installed\n+ search skills. Ta)",
       "words": 12,
@@ -2874,9 +2672,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-skills.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< skills\nA(©) | on (0)\noFF (0) ®\nNo skills Installed! No skills\nInstalled\n+ Ask — Wo",
       "words": 19,
@@ -2901,9 +2697,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-skills.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "& Skills\nNo Skills Installed No Skills Installed\n[ic]\n+ search skills. a)",
       "words": 13,
@@ -2928,9 +2722,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-skills.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Skills\nA) | on (0)\norF (0)\nDoE. No skills Installed\n[12]\n+ search skills... ao",
       "words": 17,
@@ -2955,9 +2747,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-stream.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Playwright\nOFFLINE ol\n. ares GOLIVE ©\nLJ\nStream Ready\nPress Go Live to start streaming\n+ Aska FT)",
       "words": 19,
@@ -2982,9 +2772,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-stream.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "® OFFLINE Playwright Smoke GO LIVE [\nLJ\nStream Ready\nPress Go Live to start streaming\n+ Ask LU",
       "words": 19,
@@ -3009,9 +2797,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-stream.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "® OFFLINE Playwright Smoke GO LIVE [\nLJ\nStream Ready\nPress Go Live to start streaming\n+ AskEiza Ta)",
       "words": 19,
@@ -3036,9 +2822,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-stream.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "® OFFLINE Playwright Smoke GO LIVE [\nLJ\nStream Ready\nPress Go Live to start streaming\n+ AskEiza Ta)",
       "words": 19,
@@ -3063,9 +2847,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-tasks.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Projects\noN\n[@\nNs\nNo coding tasks yet.\nDispatched coding tasks show up here.\n+ AskEiza wg",
       "words": 18,
@@ -3090,9 +2872,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-tasks.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "€ Projects\noN\n[@\nNs\nNo coding tasks yet.\nDispatched coding tasks show up here.\n+ Ask LU",
       "words": 18,
@@ -3117,9 +2897,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-tasks.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Projects\noN\n[@\nNs\nNo coding tasks yet.\nDispatched coding tasks show up here.\n+ AskEliza wg",
       "words": 18,
@@ -3144,9 +2922,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-tasks.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Projects\noN\n[@\nNs\nNo coding tasks yet.\nDispatched coding tasks show up here.\n+ AskEiza woo",
       "words": 18,
@@ -3171,9 +2947,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-trajectories.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Trajectories\n[@ Browse\nNo trajectories yet.\n+ search trajectories. Ta)",
       "words": 11,
@@ -3198,9 +2972,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-trajectories.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Trajectories\n& @ B® <=\nNo trajectories yet. No\ntrajectories\nyet.\n[1g]\n+ Ask LU",
       "words": 16,
@@ -3225,9 +2997,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-trajectories.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Trajectories\n& @ B®\nNo trajectories yet.\nNo trajectories yet.\n[1g]\n+ search trajectories... wg",
       "words": 16,
@@ -3252,9 +3022,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-trajectories.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Trajectories\n& @ B®\nNo trajectories yet.\nNo trajectories yet.\n©\n+ search trajectories... woo",
       "words": 16,
@@ -3279,9 +3047,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-transcripts.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Live meeting\nPaste a Meet, Teams, or Zoom link\nBot name (optional) Join meeting\n\n[©]\nNo live meeting. Paste a meeting link above to\nhave the agent join and transcribe. Past\nrecordings live in Knowledge.\n+ AskEliza ae @",
       "words": 40,
@@ -3306,9 +3072,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-transcripts.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Live meeting\nPaste a Meet, Te Bot name (optional)\nJoin meeting\n[©]\nNo live meeting. Paste a meeting link above to have\nthe agent join and transcribe. Past recordings live in\nKnowledge.\n+ Ask ae &",
       "words": 37,
@@ -3333,9 +3097,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-transcripts.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Live meeting\nPaste a Meet, Teams, or Zoom link Bot name (optional) Join meeting\n[©]\nNo live meeting. Paste a meeting link above to have\nthe agent join and transcribe. Past recordings live in\nKnowledge.\n+ AskEliza ae @",
       "words": 40,
@@ -3360,9 +3122,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-transcripts.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Live meeting\nPaste a Meet, Teams, or Zoom link Bot name (optional) Join meeting\n(@)\nNo live meeting. Paste a meeting link above to have\nthe agent join and transcribe. Past recordings live in\nKnowledge.\n+ AskEliza ae @",
       "words": 40,
@@ -3387,9 +3147,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/builtin-views.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "29006\nSettings Wallet Projects Calendar\n000\nNotes Automations My Apps Browser\n0200\nCharacter Knowledge Memories Finances.\n280006\n00a\nLifeOps Orchestrator Phone\nCompanion",
       "words": 22,
@@ -3414,9 +3172,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/builtin-views.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Settings Wallet Projects Calendar Notes\nAutomations My Apps Browser Character Knowledge\nMemories Finances Focus Goals Health\n+ Ask LU",
       "words": 19,
@@ -3441,9 +3197,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/builtin-views.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Settings Wallet Projects Calendar Notes\nAutomations My Apps Browser Character Knowledge\n[re Finances Focus. Goals Health\n< =\nInbox Liteops orchestrator Phone\nCompanion\n+ AskEiza Ta)",
       "words": 26,
@@ -3468,9 +3222,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/builtin-views.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "22000\nSettings Wallet Projects Calendar Notes\n00006\nAutomations. My Apps. Browser Character Knowledge\n00000\nMemories Finances Focus Goals Health\n000\nInbox LifeOps. Orchestrator Phone\n\nCompanion\n\n<",
       "words": 26,
@@ -3495,9 +3247,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-calendar-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Calendar\nAugust 2026\nCore Ce\nCe a\nTsource current Refresh\nClose source settings\nNew calendars join automatically. Exclude one from the\ncombined calendar.\nprimary [(wctude | showaotas\nFamily [mtu | show tas\nTravel [motte | showdotas\nRefresh sources\nagenda\n_ Design sync —\n9:00 AM - 10:00 AM - Primary\n_ Standup fo\n100 AM - 12:00 PM - Primary\n+ AskEliza ae @",
       "words": 65,
@@ -3522,9 +3272,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-calendar-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Calendar\nAugust 2026\n\nCore Ce\nEE. 0\nTsource current Refresh\n\nClose source settings\nNew calendars join automatically. Exclude one from the combined\ncalendar.\n+ Ask ae G",
       "words": 28,
@@ -3549,9 +3297,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-calendar-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Calendar\nAugust 2026\nCore Ce\nCC - H..\n1source current Refresh\nClose source settings\nNew calendars join automatically. Exclude one from the combined calendar.\nprimary [wide | showaotas\nFamily [mtu | show tas\nTravel [motte | showdotas\nRefresh sources\nagenda\n_ Design sync fo\n9:00 AM - 10:00 AM - Primary\n_ Standup —\n100 AM - 12:00 PM - Primary\n+ AskEliza ae @",
       "words": 66,
@@ -3576,9 +3322,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-calendar-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Calendar\nAugust 2026\nCore Ce\nEa 20\nTsource current Refresh\nClose source settings\nNew calendars join automatically. Exclude one from the combined calendar.\nprimary [wide | showaotas\nFamily [mtu | show tas\nTravel [motte | showdotas\nRefresh sources\nagenda\n_ Design sync fo\n9:00 AM - 10:00 AM - Primary\n_ Standup —\n100 AM - 12:00 PM - Primary\n+ AskEliza ae @",
       "words": 65,
@@ -3819,9 +3563,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-contacts-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Contacts\n0 contacts ew\nsearch\nname, phone, or email\naddress book\nNone\n+ AskEiza a O",
       "words": 17,
@@ -3846,9 +3588,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-contacts-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Contacts\n0 contacts [rere |\nsearch\nname, phone, or email\naddress book\nNone\n+ Ask woo",
       "words": 17,
@@ -3873,9 +3613,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-contacts-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Contacts\n0 contacts [rere |\nsearch\nname, phone, or email\naddress book\nNone\n+ AskEiza a O",
       "words": 18,
@@ -3900,9 +3638,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-contacts-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Contacts\n0 contacts [rere |\nsearch\nname, phone, or email\naddress book\nNone\n+ AskEiza a O",
       "words": 18,
@@ -4035,9 +3771,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-finances-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Finances\nBalance\n$2,765.50\nIn $4,000.00 Out $1,234.50\nAs of 6/17/2026\nTransactions (1)\nLatte -$42:50\n6/16/2026 « dining\nRecurring (1)\nNetflix\nmonthly - next 6/30/2026 $1582 [|\n+ AskEiza a O",
       "words": 31,
@@ -4062,9 +3796,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-finances-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Finances\nBalance\n$2,765.50\nIn $4,000.00 Out $1,234.50\nAs of 6/17/2026\nTransactions (1)\nLatte -$42:50\n6/16/2026 « dining\nRecurring (1)\nNetflix\nmonthly - next 6/30/2026 $1582 [|\n+ Ask ape @",
       "words": 31,
@@ -4089,9 +3821,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-finances-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Finances\nBalance\n$2,765.50\nIn $4,000.00 Out $1,234.50\nAs of 6/17/2026\nTransactions (1)\nLatte -$42.50\n6/16/2026 « dining\nRecurring (1)\nNetflix\nmonthly - next 6/30/2026 $15.99 [|\n+ AskEiza ao",
       "words": 30,
@@ -4116,9 +3846,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-finances-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Finances\nBalance\n$2,765.50\nIn $4,000.00 Out $1,234.50\nAs of 6/17/2026\nTransactions (1)\nEar -$42.50\n6/16/2026 « dining\nRecurring (1)\nNetflix\nmonthly - next 6/30/2026 $15.99 [|\n+ AskEliza iO",
       "words": 30,
@@ -4143,9 +3871,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-focus-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Focus\nIdle\n+ AskEiza FT)",
       "words": 6,
@@ -4170,9 +3896,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-focus-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Focus\nIdle\n+ Ask - ir &",
       "words": 8,
@@ -4197,9 +3921,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-focus-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Focus\nIdle\n+ AskEiza Ta)",
       "words": 6,
@@ -4224,9 +3946,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-focus-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Focus\nIdle\n+ AskEiza Ta)",
       "words": 6,
@@ -4251,9 +3971,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-goals-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Goals\n1goal needs a review.\nActive (1)\n© Run a half marathon on track\nweekly - 2Ikm continuous run -1linked Dec 31, 2025\npaused (1)\n, Learn conversational Spanish needs attention\ndaily Dec 31,2025\n+ AskEiza FT)",
       "words": 38,
@@ -4278,9 +3996,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-goals-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Goals\n1goal needs a review.\nActive (1)\n© Run a half marathon on track\n\nweekly - 2Ikm continuous run «linked Dec 31,2025\npaused (1)\n, Learn conversational Spanish needs attention\n\ndaily Dec 31,2025\n+ Ask FT)",
       "words": 37,
@@ -4305,9 +4021,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-goals-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Goals\n1goal needs a review.\nActive (1)\n© Run a half marathon on track\nweekly - 2Ikm continuous run «linked Dec 31,2025\npaused (1)\n, Learn conversational Spanish needs attention\ndaily Dec 31,2025\n+ AskEiza Ta)",
       "words": 37,
@@ -4332,9 +4046,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-goals-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Goals\n1goal needs a review.\nActive (1)\n© Run a half marathon on track\nweekly - 2Ikm continuous run «linked Dec 31,2025\npaused (1)\n, Learn conversational Spanish needs attention\ndaily Dec 31,2025\n+ AskEiza Ta)",
       "words": 37,
@@ -4359,9 +4071,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-health-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Health\n[JE]\nLast sleep\nDuration 7h asm\nBedtime 1/1/2026, 3:30:00 PM\nwake 11/2026, 1115:00 PM\nType overnight\nsource health\nConfidence 92%\nRegularity\nClassification Regular\nSRI 78\nBedtime spread 42m\nWake spread Im\nsamples 6\nBaseline\nTypical bedtime 23:30\nTypical wake 0715\nTypical duration 7h32m\nsamples 6\nWindow summary\nNights recorded 6\nAverage duration 7h32m\nOvernight 6\nNaps °\n+ AskEiza woo",
       "words": 62,
@@ -4386,9 +4096,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-health-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Health\n\ni | | sod J\nLast sloop. Regularity\nDuration 7hasm Classification Regular\nBedtime 1/1/2026, 3:30:00 PM SRI 78\nwake 11/2026, 1115:00 PM Bedtime spread 42m\nType overnight Wake spread 3m\nsource health samples 6\nConfidence 92%\nBaseline Window summary\nTypical bedtime 23:30 Nights recorded 6\nTypical wake 0715 Average duration 7h32m\nTypical duration 7h32m Overnight 6\ncnmntas & Nene a\n\n+ Ask woo",
       "words": 65,
@@ -4413,9 +4121,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-health-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Health\n8 Ea\nLast sleep Regularity Baseline Window summary\nDuration 7hasm Classification Regular Typical bedtime 23:30 Nights recorded 6\nBedtime 1/1/2026, 3:30:00 PM SRI 78 Typical wake 0715 Average duration 7h32m\nwake 11/2026, 1115:00 PM Bedtime spread 42m Typical duration 7h32m Overnight 6\nType overnight Wake spread 3m samples 6 Naps 0\nsource health Samples 6\nConfidence 92%\n+ AskEliza ao",
       "words": 62,
@@ -4440,9 +4146,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-health-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Health\n\n8 Ea\nLast sleep Regularity Baseline Window summary\nDuration 7hasm Classification Regular Typical bedtime 23:30 Nights recorded 6\nBecti. 1/1/2026,3:30:00 PM SRI 78 Typical wake 0715 Average duration 7h32m\nWake 1/1/2026, 1115:00 PM Beclime spread 42m Typicalduration ~~ 7h32m Overnight 6\nType overnight Wake spread 3m samples 6 Naps 0\nsource health Samples 6\nConfidence 92%\n\n+ AskEiza wg",
       "words": 61,
@@ -4467,9 +4171,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-inbox-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Inbox\n1thread still needs a reply.\nEmail (1)\nInvoice #42 overdue\n° [0\nAcme Billing - Please remit payment for |\nDiscord (1)\nuildmate\n09 Open\nguildmate - gm everyone — standup in 10.\n+ AskEliza ao",
       "words": 38,
@@ -4494,9 +4196,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-inbox-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Inbox\n1 thread still needs a reply.\nemail (1)\nInvoice #42 overdue\n° open\nAcme Billing - Please remit payment for last month’\nDiscord (1)\n© guildmate omen\nguildmate - gm everyone — standup in 10 + Jun 16, 2.. |_ OF\"\n+ Ask da",
       "words": 46,
@@ -4521,9 +4221,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-inbox-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Inbox\n1thread still needs a reply.\nEmail (1)\nInvoice #42 overdue\n[J § Open\nAcme Billing - Please remit payment for last month's services. + Jun 16, 3:00 AM\nDiscord (1)\nuildmate\n09 Open\nguildmate - gm everyone — standup in 10 + Jun 16, 2:30 AM\n+ AskEliza ao",
       "words": 51,
@@ -4548,9 +4246,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-inbox-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Inbox\nthread still needs a reply.\nEmail (1)\n¢ Invoice #42 overdue open\nAcme Billing - Please remit payment for last month's services. » Jun 16, 3:00 AM i\nDiscord (1)\n( Quildmate open\nguildmate - gm everyone — standup in 10 + Jun 16, 2:30 AM i\n+ AskEiza iO",
       "words": 52,
@@ -4683,9 +4379,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-messages-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Messages\nRefresh send\nbridge-only 0 threads\nSet default SMS.\nthreads\nNone\ncompose\nTo\nphone number\nBody\nmessage\nEEC CY\n+ AskEiza a O",
       "words": 24,
@@ -4710,9 +4404,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-messages-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Messages\nRefresh send\nbridge-only 0 threads\nSet default SMS.\nthreads\nNone\ncompose\nTo\nphone number\n+ Ask woo",
       "words": 19,
@@ -4737,9 +4429,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-messages-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Messages\nRefresh send\nbridge-only 0 threads\nSet default SMS.\nthreads\nNone\ncompose\nTo\nphone number\nBody\nmessage\n| = =\n+ AskEiza a O",
       "words": 25,
@@ -4764,9 +4454,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-messages-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Messages\nRefresh send\nbridge-only 0 threads\nSet default SMS.\nthreads\nNone\ncompose\nTo\nphone number\nBody\nmessage\n| = =\n+ AskEiza a O",
       "words": 25,
@@ -4791,9 +4479,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-notes-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "New note\nCreate a note from here or through chat.\nTitle\n\nWhat's worth remembering?\nDetails\n\nAdd a little context.\nColor\n® . . .\n\n+ Add note\n@ clear\n\nLaunch checklist\nDec 31 z @\nCloud agent, phone, and deck are ready.\nFollow up\nDec 31 z @\n+ AskEliza JT",
       "words": 51,
@@ -4818,9 +4504,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-notes-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "New note\nGrats ante from here or through chat\nTitle\n\nWhat's worth remembering?\nDetails\n\nAdd a little context.\nColor\n\n+ Ask woo",
       "words": 22,
@@ -4845,9 +4529,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-notes-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "New note @ Clear\nCreate a note from here or through chat.\nTitle Launch checklist Follow up\nDecal 2 Deca 7 8\nWhat's worth remembering?\nCloud agent, phone, and deck are ready. share the demo recording with the team.\nDetails\nAdd alittle context...\nColor\n® . . .\n+ Add note\n+ AskEiza PT",
       "words": 54,
@@ -4872,9 +4554,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-notes-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "New note @ Clear\nCreate a note from here or through chat.\nTitle Launch checklist\nDeca [a\nWhat's worth remembering?\nCloud agent, phone, and deck are ready.\nDetails\nAdd a little context...\n) Followup\nDeca 7 8\nColor\nShare the demo recording with the team.\n. . .\n+ Add note\n+ AskEiza PT",
       "words": 54,
@@ -4899,9 +4579,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-orchestrator-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Orchestrator\n9 Projects\nI — o\n< Orchestrator o\n0 asic\noN\n[@\nNs\nNo tasks yet.\nTasks you start appear here.\n+ AskEiza FT)",
       "words": 26,
@@ -4926,9 +4604,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-orchestrator-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "Orchestrator\n\nOrchestrator\n\n0",
       "words": 3,
@@ -4961,9 +4637,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-orchestrator-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Orchestrator\n9 Projects\nI — o\n\n< Orchestrator 0 tases o\noN\n[@\nNs\n\nNo tasks yet.\nTasks you start appear here.\n+ AskEiza Ta)",
       "words": 26,
@@ -4988,9 +4662,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-orchestrator-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Orchestrator\n9 Projects\nI — o\n< Orchestrator 0 tases o\noN\n[@\nNs\nNo tasks yet.\nTasks you start appear here.\n+ AskEiza Ta)",
       "words": 26,
@@ -5015,9 +4687,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-phone-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Phone\n\nRefresh Call\n\ncall-blocked 0 recent\ndicer\nContacts\nrecent\nNone\n\n+ AskEliza ae @",
       "words": 15,
@@ -5042,9 +4712,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-phone-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Phone\nRefresh Call\ncall-blocked 0 recent\ndialer\nDobnooaoDn\n+ ask — a",
       "words": 13,
@@ -5069,9 +4737,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-phone-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Phone\nRefresh Call\n\ncall-blocked 0 recent\n\ndialer\n\nContacts\n\nrecent\n\nNone\n\n+ AskEliza ae @",
       "words": 15,
@@ -5096,9 +4762,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-phone-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Phone\nRefresh Call\ncall-blocked 0 recent\ndicer\nContacts\nrecent\nNone\n+ AskEliza ae @",
       "words": 15,
@@ -5123,9 +4787,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-relationships-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Relationships\na. People Organizations Places.\nProjects Concepts\nGraph (3)\nowner |\n»PatDoe colleague _of - every 14d last Jun 9, 2026\npatos |\ndiscordipat#1\n» Acme Corp works_at\nAcme corp organics [J\n+ AskEiza a O",
       "words": 37,
@@ -5150,9 +4812,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-relationships-gui.png",
       "domVerdict": "needs-eyeball",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Relationships\na. People Organizations Places Projects\nConcepts\nGraph (3)\nowner |\n» Pat Doe colleague _of - every 14d - last Jun 9, 2026\npatos |\ndiscordipat#1\n+ Ask ao",
       "words": 31,
@@ -5177,9 +4837,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-relationships-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Relationships\na. People Organizations Places Projects Concepts\nGraph (3)\nowner people [|\n» Pat Doe colleague _of - every 14d - last Jun 9, 2026\nPat Doe people [|\ndiscordipat#1\n» Acme Corp works_at\nAcme corp organizations [|",
       "words": 39,
@@ -5204,9 +4862,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-relationships-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Relationships\na. People Organizations Places Projects Concepts\nGraph (3)\nowner peopl [|\n» Pat Doe colleague _of - every 14d - last Jun 9, 2026\nPat Doe People [|\ndiscordipat#1\n» Acme Corp works_at\nAcme corp organizations [|",
       "words": 39,
@@ -5231,9 +4887,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-task-coordinator-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Task Coordinator\n0 total\nsearch tasks show archived\nRefresh\ntasks\nDispatch a coding agent from chat\n+ AskEiza woo",
       "words": 20,
@@ -5258,9 +4912,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-task-coordinator-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Task Coordinator\n0 total\nsearch tasks show archived | Refresh\ntasks\nDispatch a coding agent from chat\n+ Ask LU",
       "words": 21,
@@ -5285,9 +4937,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-task-coordinator-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Task Coordinator\n0 total\nsearch tasks show archived | Refresh\ntasks\nDispatch a coding agent from chat\n+ AskEiza wg",
       "words": 21,
@@ -5312,9 +4962,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-task-coordinator-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Task Coordinator\n0 total\nsearch tasks show archived | Refresh\ntasks\nDispatch a coding agent from chat\n+ AskEiza wg",
       "words": 21,
@@ -5339,9 +4987,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-todos-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Todos\nToday (1)\nO submit the quarterly report Aug 6\nUpcoming (1)\n® Plan the offsite Aug ll\nSomeday (1)\nO Read the new design doc\n\n+ Aska FT)",
       "words": 30,
@@ -5366,9 +5012,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-todos-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Todos\nToday (1)\nO submit the quarterly report Aug 6\nUpcoming (1)\n® Plan the offsite Aug\nSomeday (1)\n© Read the new design doc\n\n+ Ask FT)",
       "words": 29,
@@ -5393,9 +5037,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-todos-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Todos\nToday (1)\nO submit the quarterly report Aug 6\nUpcoming (1)\n® Plan the offsite Aug\nSomeday (1)\nO Read the new design doc\n\n+ Askiza FT",
       "words": 29,
@@ -5420,9 +5062,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-todos-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Todos\nToday (1)\nO submit the quarterly report Aug 6\nUpcoming (1)\n® Plan the offsite Aug Tl\nSomeday (1)\nO Read the new design doc\n\n+ Askiza Ta)",
       "words": 30,
@@ -5447,9 +5087,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-trajectory-logger-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Trajectory Logger\nBack to apps\nBack route [idle\nnow\nno turn yet\nHANDLE idle open\nPLAN idle open\nACTION idle open\nEVALUATE idle open\nlast\nno turn yet\n- HANDLE idle open\nPLAN idle open\nACTION idle open\nEVALUATE idle open\n+ AskEiza FT)",
       "words": 45,
@@ -5474,9 +5112,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-trajectory-logger-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Trajectory Logger\nBack to apps\nBack route [idle\nnow\nno turn yet\n\nHANDLE idle open\nPLAN idle open\nACTION idle open",
       "words": 22,
@@ -5501,9 +5137,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-trajectory-logger-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Trajectory Logger\nBack to apps\nBack route [Tidie\nnow\nno turn yet\nHANDLE ide open\nPLAN idle open\nACTION idle open\nEVALUATE idle open\nlast\nno turn yet\n- HANDLE idle open\nPLAN idle open\nACTION idle open\nEVALUATE idle open\n+ AskEiza Ta)",
       "words": 45,
@@ -5528,9 +5162,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-trajectory-logger-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Trajectory Logger\nBack to apps\nBack route [idle\nnow\nno turn yet\nHANDLE ide open\nPLAN idle open\nACTION idle open\nEVALUATE idle open\nlast\nno turn yet\n- HANDLE idle open\nPLAN idle open\nACTION idle open\nEVALUATE idle open\n+ AskEiza Ta)",
       "words": 45,
@@ -5555,9 +5187,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-views-manager-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Views\nRefresh\n16/16 ready views\nviews\nContacts\n[contacts Open\ngui ready\nCalendar\nJealendar [a\ngui ready\nFinances\n[finances [a\ngui ready\nFocus\n[focus Open\ngui ready\nGoals\ngoals Open\ngui ready\nHealth\n[health Open\ngui ready\nInbox\n[inbox Open\ngui ready\nTodos\n[todos Open\ngui ready\nRelationships\nJrelationships [a\ngui ready\n+ AskEiza FT)",
       "words": 55,
@@ -5582,9 +5212,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-views-manager-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Views\nRefresh\n16/16 ready views\nviews\nContacts\nJeontacts [a\ngui ready\nCalendar\nJealendar [a\ngui ready\nFinances\n[finances [a\n+ Ask woo",
       "words": 23,
@@ -5609,9 +5237,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-views-manager-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Views\nRefresh\n16/16 ready views\nviews\nContacts\nJeontacts [a\ngui ready\nCalendar\nJealendar [a\ngui ready\nFinances\n[finances [a\ngui ready\nFocus\n[focus [a\ngui ready\nGoals\n/goals [a\ngui ready\nHealth\n[health [a\ngui ready\nInbox\n[inbox [a\ngui ready\nTodos\nJtodos [a\ngui ready\nRelationships\nJrelationships [a\ngui ready\nMessages\n[messages Open\ngui ready\n+ AskEiza Ta)",
       "words": 60,
@@ -5636,9 +5262,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-views-manager-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Views\nRefresh\n16/16 ready views\nviews\nContacts\nJeontacts [a\ngui ready\nCalendar\nJealendar [a\ngui ready\nFinances\n[finances [a\ngui ready\nFocus\n[focus [a\ngui ready\nGoals\n[goals Open\ngui ready\nHealth\n[health [a\ngui ready\nInbox\nJinbox [a\ngui ready\nTodos\nJtodos [a\ngui ready\nRelationships\n[relationships [a\ngui ready\nMessages\nmessages [0\ngui ready\nPhone\nIphone Open\ngui ready\nWallet\n[wallet [a\ngui ready\n+ AskEiza Ta)",
       "words": 70,
@@ -5663,9 +5287,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-portrait/plugin-wallet-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Wallet\n8 $1,550.50 o Rec\nEM esol\nQOO0 ev oxzs..5678 ©\n© sot som.mz ©\nDe —\nom esol usDC\n8 Tokens Dei B NFTs\n$900.00\nETH\n0250000 ETH =\n$125.50\nusbc\n1255000 Usoe: =\n$525.00\nsoL\n35000501 =\n20 7a 30d\n——————\n+ AskEiza ao",
       "words": 47,
@@ -5690,9 +5312,7 @@
       "path": "aesthetic-audit-output-voice-14806/mobile-landscape/plugin-wallet-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "« Wallet\n$1,650.50 CCO00 we\nB laa\nCO00 ew oazs.ser8 © Oso som.mz ©\nCE —\noem esol usc\n£2 Tokens < DeFi (3 NFTs\n+ Ask — ao",
       "words": 29,
@@ -5717,9 +5337,7 @@
       "path": "aesthetic-audit-output-voice-14806/desktop-landscape/plugin-wallet-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Wallet\n5 $1,550.50 OOCCO o rec\n© EVM o sOL\nCO00 ew oazs.ser8 © Oso som.mz ©\nEE —\n«EM esol usoc\nTokens SL B NFTs\n$900.00\nETH\n0250000 TH =\n$125.50\nusbc\n1255000 UsoC =\n$525.00\nso.\n35000501 =\n20 70 30d\nEE —\n«EM esol usoc\nTrade to see your PL here\n+ AskEliza ae &",
       "words": 59,
@@ -5744,9 +5362,7 @@
       "path": "aesthetic-audit-output-voice-14806/ipad-portrait/plugin-wallet-gui.png",
       "domVerdict": "good",
       "ocrVerdict": "verified",
-      "reasons": [
-        "pixels match declared expectation"
-      ],
+      "reasons": ["pixels match declared expectation"],
       "regression": false,
       "text": "< Wallet\n5 $1,650.50 OOCCO o rec\n© EVM o sOL\nCO00 ew oazs.ser8 © Oso som.mz ©\nEE —\n«EM esol usoc\n2 Tokens SL B NFTs\n$900.00\nETH\n0250000 TH =\n$125.50\nusbc\n1255000 UsoC =\n$525.00\nso.\n35000501 =\n20 70 30d\nEE —\n«EM esol usoc\nTrade to see your PL here\nNo recent activity.\nUnavailable\n+ AskEliza ae @",
       "words": 64,

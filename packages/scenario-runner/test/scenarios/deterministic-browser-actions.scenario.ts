@@ -2,6 +2,11 @@
  * Keyless catalog coverage for the browser-workspace action surface against a
  * seeded browser tab. Runs on the pr-deterministic lane under the model provider.
  */
+
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -13,10 +18,6 @@ import {
   ensureBrowserWorkspaceDefaultTab,
   executeBrowserWorkspaceCommand,
 } from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 
 const strictBrowserRoutes = [
   {

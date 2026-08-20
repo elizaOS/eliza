@@ -2,8 +2,9 @@
  * Live-model proof that an owner action's explicit missing-input marker may
  * authorize a clarification or grammar-valid scheduling form.
  */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { expectMissingInputTerminalRelay } from "@elizaos/scenario-runner/missing-input-terminal-relay";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "live-missing-input-terminal-relay",

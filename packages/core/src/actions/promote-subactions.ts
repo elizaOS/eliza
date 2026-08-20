@@ -323,9 +323,7 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 					// not silent rerouting — the parent runs the exact operation
 					// the call spelled out. An UNDECLARED value keeps the refusal:
 					// executing an unknown op on a guess would be the real hazard.
-					const declaredParent = parent.parameters?.find(
-						(p) => p.name === key,
-					);
+					const declaredParent = parent.parameters?.find((p) => p.name === key);
 					const parentEnum = (
 						declaredParent?.schema as { enum?: unknown } | undefined
 					)?.enum;

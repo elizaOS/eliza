@@ -1,1 +1,23 @@
-{"package":"plugin-gblin","repository":"github:gblinproject/GBLIN_PLUGIN","kind":"plugin","description":"ElizaOS plugin for GBLIN on Base — a gasless treasury rail for AI agents. Routes surplus agent capital into the MEV-protected GBLIN index (cbBTC/WETH/USDC, mint/redeem at NAV — managed crypto exposure, not a USDC substitute) and JIT-swaps back to USDC for x402 invoices. GBLIN is a discoverable ERC-8004 agent (#59286) on Base.","homepage":"https://gblin.digital/agents","version":"0.5.0","tags":["gblin","x402","base","usdc","cbbtc","weth","treasury","defi","mev-protection","jit-swap","ai-agent","index","erc-8004"]}
+{
+  "package": "plugin-gblin",
+  "repository": "github:gblinproject/GBLIN_PLUGIN",
+  "kind": "plugin",
+  "description": "ElizaOS plugin for GBLIN on Base — a gasless treasury rail for AI agents. Routes surplus agent capital into the MEV-protected GBLIN index (cbBTC/WETH/USDC, mint/redeem at NAV — managed crypto exposure, not a USDC substitute) and JIT-swaps back to USDC for x402 invoices. GBLIN is a discoverable ERC-8004 agent (#59286) on Base.",
+  "homepage": "https://gblin.digital/agents",
+  "version": "0.5.0",
+  "tags": [
+    "gblin",
+    "x402",
+    "base",
+    "usdc",
+    "cbbtc",
+    "weth",
+    "treasury",
+    "defi",
+    "mev-protection",
+    "jit-swap",
+    "ai-agent",
+    "index",
+    "erc-8004"
+  ]
+}

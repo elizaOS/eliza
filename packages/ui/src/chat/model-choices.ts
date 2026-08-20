@@ -27,11 +27,7 @@ const MAX_MODEL_CHOICES = 25;
 type ChatTarget = "small" | "large";
 
 /** Backend tokens `/model coding <backend>` accepts, in suggestion order. */
-export const CODING_BACKEND_CHOICES = [
-  "codex",
-  "claude",
-  "elizaos",
-] as const;
+export const CODING_BACKEND_CHOICES = ["codex", "claude", "elizaos"] as const;
 
 // Catalog provider that carries each backend's model list; elizaos
 // takes free-form model ids, so it gets no completion source.

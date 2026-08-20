@@ -35,17 +35,17 @@
  */
 
 import { type IAgentRuntime, Service, ServiceType } from "@elizaos/core";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+  type StrictActionRouteFixture,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
 
 type JsonRecord = Record<string, unknown>;
 

@@ -26,9 +26,7 @@ test("uses the repository as Vitest root and repository-relative test paths", ()
   expect(runner).toContain(
     '"packages/app-core/test/live-agent/plugin-lifecycle.live.e2e.test.ts"',
   );
-  expect(runner).toContain(
-    '"packages/scripts/vitest/live-e2e.config.ts"',
-  );
+  expect(runner).toContain('"packages/scripts/vitest/live-e2e.config.ts"');
   expect(runner).not.toContain('"eliza/packages/');
   expect(realConfig).toContain(
     '"scripts",\n  "vitest",\n  "fail-on-silent-skip.setup.ts"',

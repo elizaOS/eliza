@@ -1,7 +1,7 @@
 /** Scenario fixture for discord local mute channel; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import type { AgentRuntime } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

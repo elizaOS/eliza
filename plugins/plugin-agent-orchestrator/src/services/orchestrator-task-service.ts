@@ -1920,7 +1920,11 @@ export class OrchestratorTaskService extends Service {
         ).catch(() => undefined);
         void submitSettled.then(async () => {
           const { evidence: completionEvidence, bundle: completionBundle } =
-            await this.buildCompletionEvidence(taskId, sessionId, summary ?? "");
+            await this.buildCompletionEvidence(
+              taskId,
+              sessionId,
+              summary ?? "",
+            );
           return runWithTrajectoryContext(detachedContext, () =>
             withStandaloneTrajectory(
               this.runtime,

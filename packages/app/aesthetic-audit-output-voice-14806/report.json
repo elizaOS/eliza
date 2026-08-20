@@ -6837,10 +6837,7 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "borderRadiusViolations": [
-      "22px",
-      "999px"
-    ],
+    "borderRadiusViolations": ["22px", "999px"],
     "overlayPresent": true,
     "overlayClearanceIssues": [],
     "readableChars": 343,
@@ -6874,10 +6871,7 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "borderRadiusViolations": [
-      "22px",
-      "999px"
-    ],
+    "borderRadiusViolations": ["22px", "999px"],
     "overlayPresent": true,
     "overlayClearanceIssues": [],
     "readableChars": 343,
@@ -6911,10 +6905,7 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "borderRadiusViolations": [
-      "22px",
-      "999px"
-    ],
+    "borderRadiusViolations": ["22px", "999px"],
     "overlayPresent": true,
     "overlayClearanceIssues": [],
     "readableChars": 343,
@@ -6948,10 +6939,7 @@
     "blueColors": [],
     "hoverViolations": [],
     "hoverFailures": [],
-    "borderRadiusViolations": [
-      "22px",
-      "999px"
-    ],
+    "borderRadiusViolations": ["22px", "999px"],
     "overlayPresent": true,
     "overlayClearanceIssues": [],
     "readableChars": 343,

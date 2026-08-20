@@ -5,5 +5,12 @@
   "description": "Web search for elizaOS agents through SERPdive: every result carries the extracted, answer-ready content of the page instead of a link or snippet, so agents can quote and cite facts straight from the response. Registers a ServiceType.WEB_SEARCH service and the \"web\" search category, with two retrieval depths (fact-carrying sentences or full page text) and an optional synthesized answer.",
   "homepage": "https://serpdive.com",
   "version": "0.1.1",
-  "tags": ["web-search", "search", "serpdive", "rag", "research", "current-information"]
+  "tags": [
+    "web-search",
+    "search",
+    "serpdive",
+    "rag",
+    "research",
+    "current-information"
+  ]
 }

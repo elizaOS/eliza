@@ -32,9 +32,9 @@
 
 import {
   canonicalCloudPathForLegacyDashboard,
-  LANDING_AB_HOSTNAMES,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
+  LANDING_AB_HOSTNAMES,
 } from "@elizaos/shared/elizacloud/domain-contract";
 import { type PagesProxyEnv, proxyToApiWorker } from "./_proxy";
 

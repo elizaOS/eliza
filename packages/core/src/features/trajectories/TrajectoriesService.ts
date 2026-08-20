@@ -1081,9 +1081,7 @@ export class TrajectoriesService extends Service {
 		);
 	}
 
-	private withinLateCaptureGrace(trajectory: {
-		endTime?: number;
-	}): boolean {
+	private withinLateCaptureGrace(trajectory: { endTime?: number }): boolean {
 		return (
 			typeof trajectory.endTime === "number" &&
 			Date.now() - trajectory.endTime <=

@@ -2,17 +2,18 @@
  * Keyless coverage for the LifeOps ScheduledTask action surface. Runs on the
  * pr-deterministic lane under the model provider.
  */
+
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+  type StrictActionRouteFixture,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
 
 type JsonRecord = Record<string, unknown>;
 

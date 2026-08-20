@@ -1299,9 +1299,7 @@ const CODING_SURFACE_TOKENS = new Set([
 	"BRANCH",
 ]);
 
-function looksLikeCodingCandidateAction(
-	normalizedActionName: string,
-): boolean {
+function looksLikeCodingCandidateAction(normalizedActionName: string): boolean {
 	if (!normalizedActionName) return false;
 	const tokens = new Set(normalizedActionName.split(/_+/).filter(Boolean));
 	if (tokens.has("QR")) return false;

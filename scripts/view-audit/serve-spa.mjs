@@ -9,8 +9,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "bun";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const ROOT = process.env.APP_DIST_ROOT?.trim() || path.join(repoRoot, "packages/app/dist");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
+const ROOT =
+  process.env.APP_DIST_ROOT?.trim() || path.join(repoRoot, "packages/app/dist");
 
 // Minimal mock of the agent API so the renderer boots past "connecting" and
 // renders the shell + sections (empty/skeleton data is fine for spacing review).

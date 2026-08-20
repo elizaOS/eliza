@@ -15,11 +15,11 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   describeCalls,
   successfulActionData,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const CLOUD_ACCOUNT_STATUS = "CLOUD_ACCOUNT_STATUS";
 const CLOUD_BASE_URL = "https://cloud.test.invalid/api/v1";

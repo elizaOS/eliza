@@ -20,7 +20,9 @@ function readWorkflow(path: string): Workflow {
 }
 
 function runStep(workflow: Workflow, job: string, name: string): string {
-  const run = workflow.jobs?.[job]?.steps?.find((step) => step.name === name)?.run;
+  const run = workflow.jobs?.[job]?.steps?.find(
+    (step) => step.name === name,
+  )?.run;
   if (!run) throw new Error(`Missing ${job} workflow step: ${name}`);
   return run;
 }

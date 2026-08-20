@@ -25,7 +25,9 @@ import { CORE_BUILD_PACKAGES } from "./build-core-packages.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUN_TURBO = path.join(SCRIPT_DIR, "run-turbo.mjs");
-export const BUILD_CORE_PREREQUISITE_SCRIPTS = ["ensure-workspace-symlinks.mjs"];
+export const BUILD_CORE_PREREQUISITE_SCRIPTS = [
+  "ensure-workspace-symlinks.mjs",
+];
 
 /** The exact `run-turbo.mjs` argv for the core build, plus any forwarded args. */
 export function buildCoreTurboArgs(extra = []) {

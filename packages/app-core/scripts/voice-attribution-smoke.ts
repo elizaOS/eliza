@@ -37,7 +37,6 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
 import { handleLiveVoiceAttribution } from "@elizaos/plugin-local-inference/runtime/voice-entity-binding";
 import { resolveFusedLibraryPath } from "@elizaos/plugin-local-inference/services/desktop-fused-ffi-backend-runtime";
 import {
@@ -53,6 +52,7 @@ import {
   GgmlSileroVad,
   VadDetector,
 } from "@elizaos/plugin-local-inference/services/voice/vad";
+import { buildVoiceTurnSignal } from "../../../packages/shared/src/voice/respond-gate.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const WAV = path.join(

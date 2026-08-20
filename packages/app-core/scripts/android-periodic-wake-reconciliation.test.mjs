@@ -149,7 +149,7 @@ describe("Android periodic wake reconciliation (#17874)", () => {
   it("returns repeated service starts before the cold-boot process lock", () => {
     const service = source("ElizaAgentService.java");
     const requestStartBody = service.match(
-      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n    \}\n\n    private void startAgentProcess/,
+      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n {4}\}\n\n {4}private void startAgentProcess/,
     )?.[1];
 
     expect(service).toContain("private volatile Thread startWorker");
@@ -166,10 +166,10 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     ]) {
       const service = source(name);
       const onCreateBody = service.match(
-        /public void onCreate\(\) \{([\s\S]*?)\n    \}\n\n    @Override\n    public int onStartCommand/,
+        /public void onCreate\(\) \{([\s\S]*?)\n {4}\}\n\n {4}@Override\n {4}public int onStartCommand/,
       )?.[1];
       const bootstrapBody = service.match(
-        /private Notification buildBootstrapNotification\([\s\S]*?\) \{([\s\S]*?)\n    \}/,
+        /private Notification buildBootstrapNotification\([\s\S]*?\) \{([\s\S]*?)\n {4}\}/,
       )?.[1];
 
       expect(onCreateBody).toContain("buildBootstrapNotification");

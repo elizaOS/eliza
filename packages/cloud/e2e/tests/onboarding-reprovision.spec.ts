@@ -13,12 +13,15 @@ const DEAD_ERROR_MESSAGE =
   "Provisioning permanently failed after 3 attempts: Job timed out 3 times - max attempts reached";
 
 async function repositories() {
-  const { agentSandboxesRepository } =
-    await import("@elizaos/cloud-shared/db/repositories/agent-sandboxes");
-  const { jobsRepository } =
-    await import("@elizaos/cloud-shared/db/repositories/jobs");
-  const { ensureElizaAppProvisioning } =
-    await import("@elizaos/cloud-shared/lib/services/eliza-app/provisioning");
+  const { agentSandboxesRepository } = await import(
+    "@elizaos/cloud-shared/db/repositories/agent-sandboxes"
+  );
+  const { jobsRepository } = await import(
+    "@elizaos/cloud-shared/db/repositories/jobs"
+  );
+  const { ensureElizaAppProvisioning } = await import(
+    "@elizaos/cloud-shared/lib/services/eliza-app/provisioning"
+  );
   return {
     agentSandboxesRepository,
     jobsRepository,

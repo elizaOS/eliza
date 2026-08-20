@@ -988,20 +988,14 @@ async function launch() {
       force: viteDepForce,
       port: uiDevPort,
     });
-    pushChild(
-      "vite",
-      viteCommand.command,
-      viteCommand.args,
-      appDir,
-      {
-        NODE_ENV: "development",
-        ELIZA_VITE_LOOPBACK_ORIGIN: "1",
-        ELIZA_PORT: String(uiDevPort),
-        ELIZA_UI_PORT: String(uiDevPort),
-        ELIZA_API_PORT: apiPort,
-        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-      },
-    );
+    pushChild("vite", viteCommand.command, viteCommand.args, appDir, {
+      NODE_ENV: "development",
+      ELIZA_VITE_LOOPBACK_ORIGIN: "1",
+      ELIZA_PORT: String(uiDevPort),
+      ELIZA_UI_PORT: String(uiDevPort),
+      ELIZA_API_PORT: apiPort,
+      ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
+    });
     await waitForPort(uiDevPort);
     console.log(`[eliza] Vite ready on ${rendererUrlForShell}\n`);
   }
@@ -1011,15 +1005,9 @@ async function launch() {
       appDir,
       viteArgs: ["build", "--watch"],
     });
-    pushChild(
-      "vite",
-      viteWatchCommand.command,
-      viteWatchCommand.args,
-      appDir,
-      {
-        ELIZA_DESKTOP_VITE_FAST_DIST: "1",
-      },
-    );
+    pushChild("vite", viteWatchCommand.command, viteWatchCommand.args, appDir, {
+      ELIZA_DESKTOP_VITE_FAST_DIST: "1",
+    });
   }
 
   const electrobunChild = pushChild(

@@ -15,7 +15,9 @@ const updateBaseline = process.argv.includes("--update-baseline");
 const configPath = resolve(packageRoot, "tsconfig.json");
 const config = ts.readConfigFile(configPath, ts.sys.readFile);
 if (config.error) {
-  throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, "\n"));
+  throw new Error(
+    ts.flattenDiagnosticMessageText(config.error.messageText, "\n"),
+  );
 }
 const parsed = ts.parseJsonConfigFileContent(
   config.config,
@@ -34,9 +36,10 @@ if (!moduleSymbol) throw new Error("Could not resolve the root module symbol");
 const api = checker
   .getExportsOfModule(moduleSymbol)
   .map((symbol) => {
-    const resolved = symbol.flags & ts.SymbolFlags.Alias
-      ? checker.getAliasedSymbol(symbol)
-      : symbol;
+    const resolved =
+      symbol.flags & ts.SymbolFlags.Alias
+        ? checker.getAliasedSymbol(symbol)
+        : symbol;
     const declaration = resolved.declarations?.[0];
     const source = declaration?.getSourceFile().fileName;
     return {
@@ -72,11 +75,15 @@ if (currentText !== baselineText) {
   throw new Error(
     [
       "Root public API changed. Prefer an explicit subpath; update the baseline only for an intentional compatibility decision.",
-      added.length ? `Added: ${added.map((entry) => entry.name).join(", ")}` : "",
+      added.length
+        ? `Added: ${added.map((entry) => entry.name).join(", ")}`
+        : "",
       removed.length
         ? `Removed: ${removed.map((entry) => entry.name).join(", ")}`
         : "",
-      moved.length ? `Moved: ${moved.map((entry) => entry.name).join(", ")}` : "",
+      moved.length
+        ? `Moved: ${moved.map((entry) => entry.name).join(", ")}`
+        : "",
     ]
       .filter(Boolean)
       .join("\n"),

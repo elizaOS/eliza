@@ -3,6 +3,7 @@
  * in one pass. Runs on the pr-deterministic lane under the model provider.
  */
 import { ModelType } from "@elizaos/core";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -14,7 +15,6 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-import { matchesScenarioInput } from "@elizaos/core/testing";
 
 type RuntimeWithScenarioModelFixtures = {
   scenarioModelFixtures?: {
@@ -154,7 +154,8 @@ export default scenario({
               modelType: ModelType.TEXT_SMALL,
               input: "hello deterministic provider",
             },
-            response: "deterministic-test-response: hello deterministic provider",
+            response:
+              "deterministic-test-response: hello deterministic provider",
             required: false,
             times: { min: 0, max: 1 },
           },

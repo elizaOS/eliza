@@ -414,10 +414,7 @@ describe("immutable release candidate", () => {
     );
     const aManifest = JSON.parse(fs.readFileSync(aManifestPath, "utf8"));
     aManifest.dependencies = { "@release-fixture/b": "workspace:*" };
-    fs.writeFileSync(
-      aManifestPath,
-      `${JSON.stringify(aManifest, null, 2)}\n`,
-    );
+    fs.writeFileSync(aManifestPath, `${JSON.stringify(aManifest, null, 2)}\n`);
     git(fixture.repoRoot, ["add", "."]);
     git(fixture.repoRoot, ["commit", "-m", "workspace range"]);
     fixture.sourceSha = git(fixture.repoRoot, ["rev-parse", "HEAD"]);

@@ -5,5 +5,14 @@
   "description": "Music, video, and image generation from Suede AI, paid for per call by the agent's own wallet over x402 — USDC on Base, no service API key. Registers GENERATE_MUSIC_SUEDE, GENERATE_VIDEO_SUEDE, and GENERATE_IMAGE_SUEDE, and exports a SuedeClient that answers the 402 challenge by signing an EIP-3009 TransferWithAuthorization with viem.",
   "homepage": "https://suedeai.ai",
   "version": "1.0.0",
-  "tags": ["x402", "agent-commerce", "music-generation", "video-generation", "image-generation", "base", "usdc", "programmable-ip"]
+  "tags": [
+    "x402",
+    "agent-commerce",
+    "music-generation",
+    "video-generation",
+    "image-generation",
+    "base",
+    "usdc",
+    "programmable-ip"
+  ]
 }

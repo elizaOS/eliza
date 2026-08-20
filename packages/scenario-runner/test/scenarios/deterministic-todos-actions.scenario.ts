@@ -3,6 +3,7 @@
  * provider. Runs on the pr-deterministic lane under the model provider.
  */
 import { ModelType, stringToUuid, type UUID } from "@elizaos/core";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -14,7 +15,6 @@ import todosPlugin, {
   TodosService,
   todosTable,
 } from "../../../../plugins/plugin-todos/src/index.ts";
-import { matchesScenarioInput } from "@elizaos/core/testing";
 
 const SCENARIO_ID = "deterministic-todos-actions";
 const ENTITY_ID = stringToUuid(`scenario-account:${SCENARIO_ID}:main`);

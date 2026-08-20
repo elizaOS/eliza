@@ -5,10 +5,5 @@
   "description": "ElizaOS LLM plugin for LMX Cloud — pay per call in USDC via x402 on Base (no API key).",
   "homepage": "https://lmxcloud.io",
   "version": "0.2.0",
-  "tags": [
-    "lmxcloud",
-    "x402",
-    "usdc",
-    "llm"
-  ]
+  "tags": ["lmxcloud", "x402", "usdc", "llm"]
 }

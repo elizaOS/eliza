@@ -52,7 +52,8 @@ interface ActiveTurn {
 // import. Without it (non-Node), abortTurn cannot identify the calling turn
 // and aborts every turn in the room.
 type TurnStorage =
-	import("node:async_hooks").AsyncLocalStorage<ActiveTurn> | null;
+	| import("node:async_hooks").AsyncLocalStorage<ActiveTurn>
+	| null;
 let currentTurnStorage: TurnStorage = null;
 let currentTurnStorageInitialized = false;
 

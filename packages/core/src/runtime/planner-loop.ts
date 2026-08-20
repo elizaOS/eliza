@@ -561,17 +561,12 @@ async function runPlannerLoopIterations(
 					// two identical 400s, zero retries logged).
 					const detailParts = [
 						error instanceof Error ? error.message : String(error),
+						String((error as { responseBody?: unknown }).responseBody ?? ""),
 						String(
-							(error as { responseBody?: unknown }).responseBody ?? "",
-						),
-						String(
-							(error as { cause?: { message?: unknown } }).cause?.message ??
-								"",
+							(error as { cause?: { message?: unknown } }).cause?.message ?? "",
 						),
 					];
-					if (
-						!/failed to generate tool_call/i.test(detailParts.join(" "))
-					) {
+					if (!/failed to generate tool_call/i.test(detailParts.join(" "))) {
 						throw error;
 					}
 					params.runtime.logger?.warn?.(

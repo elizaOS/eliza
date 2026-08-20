@@ -53,7 +53,9 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
     const entries = triggerEntries(workflow?.on);
     for (const [eventName, config] of entries) {
       if (FORBIDDEN_EVENTS.has(eventName)) {
-        failures.push(`${name}: forbidden pull-request event trigger: ${eventName}`);
+        failures.push(
+          `${name}: forbidden pull-request event trigger: ${eventName}`,
+        );
       }
       if (eventName !== "push") continue;
 
@@ -67,7 +69,8 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       const branches = stringList(config.branches);
       const tags = stringList(config.tags);
       const hasBranchIgnore = stringList(config["branches-ignore"]).length > 0;
-      if (branches.length === 0 && tags.length > 0 && !hasBranchIgnore) continue;
+      if (branches.length === 0 && tags.length > 0 && !hasBranchIgnore)
+        continue;
       if (
         branches.length !== 1 ||
         branches[0] !== "develop" ||

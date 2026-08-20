@@ -1,11 +1,12 @@
 /** Scenario fixture for relationships status goals set; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   callPayloadBlob,
   describeCalls,
   successfulCalls,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 function expectRelationshipGoalPayload(
   ctx: ScenarioContext,

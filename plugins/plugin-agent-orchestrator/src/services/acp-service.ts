@@ -1367,9 +1367,13 @@ export class AcpService extends Service {
     // result the child had already computed (live 2026-08-20, prime-numbers
     // run). The orphan GC owns these dirs once the session record ages out.
     if (session.metadata?.smithersDurableRun !== undefined) {
-      this.log("debug", "scratch reclaim deferred to GC (durable-task session)", {
-        sessionId: session.id,
-      });
+      this.log(
+        "debug",
+        "scratch reclaim deferred to GC (durable-task session)",
+        {
+          sessionId: session.id,
+        },
+      );
       return;
     }
     const root = session.metadata?.[ACP_METADATA_WORKDIR_ROOT];
