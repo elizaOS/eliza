@@ -7,6 +7,7 @@
  * scenario runtime's PGlite-backed Maps service.
  */
 
+import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 const MAPS_SAVE = "MAPS_SAVE";
@@ -34,6 +35,12 @@ interface RuntimeSurface {
   getService(name: string): unknown;
 }
 
+type RuntimeWithScenarioModelFixtures = AgentRuntime & {
+  scenarioModelFixtures?: {
+    register: (...fixtures: Array<Record<string, unknown>>) => void;
+  };
+};
+
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -51,6 +58,90 @@ export default scenario({
 
   requires: { plugins: ["@elizaos/plugin-maps"] },
   isolation: "per-scenario",
+
+  seed: [
+    {
+      type: "custom",
+      name: "register-maps-model-fixtures",
+      apply: async (ctx) => {
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+        runtime.scenarioModelFixtures?.register(
+          {
+            name: "maps-save-stage1",
+            match: {
+              modelType: ModelType.RESPONSE_HANDLER,
+              input: (value: string) => value.includes("Pike Place Market"),
+              toolName: "HANDLE_RESPONSE",
+            },
+            response: {
+              contexts: ["location"],
+              intents: ["maps"],
+              replyText: "",
+              threadOps: [],
+              candidateActionNames: [MAPS_SAVE],
+            },
+            times: 1,
+          },
+          {
+            name: "maps-save-planner",
+            match: {
+              modelType: ModelType.ACTION_PLANNER,
+              input: (value: string) => value.includes("Pike Place Market"),
+              toolName: MAPS_SAVE,
+            },
+            response: {
+              text: "",
+              thought: "Save the coordinate-defined place once.",
+              messageToUser: "Saved Pike Place Market as a Favorite.",
+              completed: true,
+              finishReason: "tool-calls",
+              toolCalls: [
+                {
+                  id: "call-maps-save",
+                  name: MAPS_SAVE,
+                  type: "function",
+                  arguments: {
+                    name: "Pike Place Market",
+                    address: "85 Pike Street, Seattle, WA 98101",
+                    latitude: LATITUDE,
+                    longitude: LONGITUDE,
+                    label: "Favorite",
+                    idempotencyKey: "maps-save-pike-place-scenario",
+                  },
+                },
+              ],
+            },
+            times: 1,
+          },
+          {
+            name: "maps-save-post-turn-evaluation",
+            match: {
+              modelType: ModelType.TEXT_SMALL,
+              input: (value: string) =>
+                value.includes("# Task: Post-turn evaluation"),
+            },
+            response: JSON.stringify({
+              factMemory: { ops: [] },
+              preferences: { ops: [] },
+              relationships: { relationships: [] },
+              identities: { identities: [] },
+              success: {
+                completed: true,
+                reason: "MAPS_SAVE persisted the requested place.",
+              },
+              ftu_goal_discovery: {
+                goalFound: false,
+                goal: "",
+                confidence: 0,
+              },
+              experiencePatterns: { experiences: [] },
+            }),
+            times: 1,
+          },
+        );
+      },
+    },
+  ],
 
   rooms: [
     {
