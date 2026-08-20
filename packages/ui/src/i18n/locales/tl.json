@@ -6778,7 +6778,6 @@
   "cloud.privacyPanel.exportFailed": "Nabigo ang export: {{message}}",
   "cloud.privacyPanel.confirmPhrasePrompt": "Mangyaring i-type ang \"{{phrase}}\" para kumpirmahin.",
   "cloud.privacyPanel.deletionScheduled": "Naka-iskedyul ang pagbubura. Mayroon kang 30 araw para mabawi bago ang purge.",
-  "cloud.privacyPanel.deletionComingSoon": "Paparating na ang pagbubura ng account — hindi pa available sa server na ito.",
   "cloud.privacyPanel.deleteRequestFailed": "Nabigo ang kahilingan sa pagbubura: {{message}}",
   "cloud.privacyPanel.title": "Pribasidad",
   "cloud.privacyPanel.subtitle": "Kontrolin ang opsyonal na pagkuha ng data at gamitin ang iyong mga karapatan sa data.",

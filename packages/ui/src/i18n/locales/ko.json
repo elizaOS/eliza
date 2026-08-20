@@ -6785,7 +6785,6 @@
   "cloud.privacyPanel.exportFailed": "내보내기 실패: {{message}}",
   "cloud.privacyPanel.confirmPhrasePrompt": "확인을 위해 \"{{phrase}}\"를 입력하세요.",
   "cloud.privacyPanel.deletionScheduled": "삭제가 예약되었습니다. 삭제 전 30일 동안 복구할 수 있습니다.",
-  "cloud.privacyPanel.deletionComingSoon": "계정 삭제는 곧 제공됩니다 — 이 서버에서는 아직 사용할 수 없습니다.",
   "cloud.privacyPanel.deleteRequestFailed": "삭제 요청 실패: {{message}}",
   "cloud.privacyPanel.title": "개인정보",
   "cloud.privacyPanel.subtitle": "선택적 데이터 수집을 제어하고 데이터 권리를 행사하세요.",

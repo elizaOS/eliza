@@ -22,6 +22,14 @@ describe("Android Play account-deletion contract", () => {
     );
     expect(routes).toContain('path: "account-deletion"');
     expect(webEntry).toContain('"/account-deletion"');
+    for (const locale of fs.readdirSync(
+      path.join(root, "ui/src/i18n/locales"),
+    )) {
+      if (!locale.endsWith(".json")) continue;
+      expect(read(`ui/src/i18n/locales/${locale}`)).not.toContain(
+        '"cloud.privacyPanel.deletionComingSoon"',
+      );
+    }
   });
 
   it("keeps the server lifecycle and truthful retention disclosure wired", () => {
