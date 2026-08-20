@@ -1087,6 +1087,13 @@ async function runCreateLegacy(
   const baseLabel = baseLabelSane
     ? userReferenceLogView(baseLabelSane)
     : undefined;
+  // A planner-supplied label names ONE deliverable. Applying it to every lane
+  // of a multi-part create funneled both builds into the same slug dir — two
+  // children colliding in one directory, one dying mid-run (live 2026-08-20:
+  // "two lil pages" both routed to lucky-pages/, the 8-ball lane crashed and
+  // only the coin toss shipped). Multi-part lanes always derive their label
+  // from their own part text.
+  const singleLaneLabel = tasks.length === 1 ? baseLabel : undefined;
   const extraMetadata = additionalSessionMetadata(params, content);
   const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
     params,
@@ -1196,7 +1203,7 @@ async function runCreateLegacy(
   if (!syntheticRespawnInbound && callback) {
     const ackTitles = tasks.map(
       (part, index) =>
-        baseLabel ??
+        singleLaneLabel ??
         labelFrom(parseAgentPrefix(part, baseAgentType).task, index),
     );
     const { text } = await phraseForUser(
@@ -1374,7 +1381,7 @@ async function runCreateLegacy(
       const parsed = parseAgentPrefix(part, baseAgentType);
       const task = parsed.task;
       const agentType = parsed.agentType as AgentType;
-      const label = baseLabel ?? labelFrom(task, index);
+      const label = singleLaneLabel ?? labelFrom(task, index);
       // Request-voice part for THIS session. A deliberate multi-part fan-out
       // (one create call, several parts) mints a per-part suffix so each
       // genuinely parallel part owns its own terminal slot — the first part's
@@ -1775,7 +1782,7 @@ async function runCreateLegacy(
     const part = tasks[index];
     const parsed = parseAgentPrefix(part, baseAgentType);
     const agentType = parsed.agentType as AgentType;
-    const label = baseLabel ?? labelFrom(parsed.task, index);
+    const label = singleLaneLabel ?? labelFrom(parsed.task, index);
     const msg = failureMessage(outcome.reason);
     logger(runtime).error(
       `TASKS:create launch failed: ${JSON.stringify({
