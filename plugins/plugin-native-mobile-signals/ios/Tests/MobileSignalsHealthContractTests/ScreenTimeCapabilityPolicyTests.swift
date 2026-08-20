@@ -7,39 +7,69 @@ import XCTest
 
 final class ScreenTimeCapabilityPolicyTests: XCTestCase {
     func testHostDoesNotAdvertiseSandboxedOrUnimplementedData() {
-        XCTAssertFalse(ScreenTimeCapabilityPolicy.unavailableReason.isEmpty)
-        XCTAssertTrue(ScreenTimeCapabilityPolicy.unavailableReason.contains("no DeviceActivity presenter"))
-        XCTAssertFalse(ScreenTimeCapabilityPolicy.authorizationRequestAvailable)
-        XCTAssertFalse(ScreenTimeCapabilityPolicy.reportAvailable)
+        XCTAssertTrue(ScreenTimeCapabilityPolicy.reportAvailable(
+            environment: .device,
+            provisioning: .verified,
+            authorizationApproved: true,
+            reportExtensionBundled: true,
+            presenterAvailable: true
+        ))
         XCTAssertFalse(ScreenTimeCapabilityPolicy.coarseSummaryAvailable)
         XCTAssertFalse(ScreenTimeCapabilityPolicy.thresholdEventsAvailable)
         XCTAssertFalse(ScreenTimeCapabilityPolicy.rawUsageExportAvailable)
     }
 
-    func testSimulatorAndProvisioningStatesFailClosed() {
+    func testSimulatorAndMissingProvisioningFailClosed() {
         XCTAssertEqual(
             ScreenTimeCapabilityPolicy.availability(
                 environment: .simulator,
-                provisioningSatisfied: false,
-                provisioningInspected: false
+                provisioning: .unknown,
+                authorizationApproved: false,
+                reportExtensionBundled: true,
+                presenterAvailable: true
             ),
             "simulator-unavailable"
         )
         XCTAssertFalse(ScreenTimeCapabilityPolicy.platformSupported(
             environment: .simulator,
-            provisioningSatisfied: true
+            provisioning: .verified
         ))
         XCTAssertEqual(
             ScreenTimeCapabilityPolicy.availability(
                 environment: .device,
-                provisioningSatisfied: false,
-                provisioningInspected: false
+                provisioning: .missing,
+                authorizationApproved: false,
+                reportExtensionBundled: true,
+                presenterAvailable: true
             ),
-            "provisioning-unknown"
+            "provisioning-missing"
         )
         XCTAssertFalse(ScreenTimeCapabilityPolicy.platformSupported(
             environment: .device,
-            provisioningSatisfied: false
+            provisioning: .missing
         ))
+    }
+
+    func testUnknownPhysicalProvisioningRemainsRestrictedButSupported() {
+        XCTAssertTrue(ScreenTimeCapabilityPolicy.platformSupported(
+            environment: .device,
+            provisioning: .unknown
+        ))
+        XCTAssertTrue(ScreenTimeCapabilityPolicy.authorizationRequestAvailable(
+            environment: .device,
+            provisioning: .unknown,
+            reportExtensionBundled: true,
+            presenterAvailable: true
+        ))
+        XCTAssertEqual(
+            ScreenTimeCapabilityPolicy.availability(
+                environment: .device,
+                provisioning: .unknown,
+                authorizationApproved: false,
+                reportExtensionBundled: true,
+                presenterAvailable: true
+            ),
+            "authorization-required"
+        )
     }
 }

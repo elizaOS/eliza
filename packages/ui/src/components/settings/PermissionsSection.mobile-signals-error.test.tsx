@@ -44,6 +44,8 @@ const grantedStatus: MobileSignalsPermissionStatus = {
   canRequest: false,
   screenTime: {
     supported: false,
+    hostEnvironment: "web",
+    availability: "platform-unavailable",
     requirements: {
       entitlements: { familyControls: "" },
       frameworks: [],
@@ -53,6 +55,7 @@ const grantedStatus: MobileSignalsPermissionStatus = {
     entitlements: { familyControls: false },
     provisioning: {
       satisfied: false,
+      status: "missing",
       inspected: "not-inspectable",
       reason: null,
     },

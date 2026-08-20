@@ -57,6 +57,18 @@ const screenTimeReportSwift = readFileSync(
   ),
   "utf8",
 );
+const mobileSignalsSwiftRoot = path.join(
+  repoRoot,
+  "plugins/plugin-native-mobile-signals/ios/Sources/MobileSignalsPlugin",
+);
+const mobileSignalsPluginSwift = readFileSync(
+  path.join(mobileSignalsSwiftRoot, "MobileSignalsPlugin.swift"),
+  "utf8",
+);
+const screenTimeSupportSwift = readFileSync(
+  path.join(mobileSignalsSwiftRoot, "ScreenTimeSupport.swift"),
+  "utf8",
+);
 interface StringCatalogEntry {
   localizations?: Record<
     string,
@@ -396,13 +408,24 @@ describe("native assistant entry contracts", () => {
     ).toBe(1);
   });
 
-  it("keeps the unpresented Screen Time extension explicitly dormant", () => {
-    expect(screenTimeReportSwift).toContain(
-      "Screen Time reports are not available in this version.",
-    );
-    expect(screenTimeReportSwift).toContain("_ = data");
+  it("aggregates Screen Time only inside the report extension", () => {
+    expect(screenTimeReportSwift).toContain("for await deviceActivity in data");
+    expect(screenTimeReportSwift).toContain("segment.categories");
+    expect(screenTimeReportSwift).toContain("DeviceActivityReport.Context");
     expect(screenTimeReportSwift).not.toMatch(
-      /for await|UserDefaults|URLSession|appGroup|containerURL/,
+      /UserDefaults|URLSession|appGroup|containerURL/,
+    );
+  });
+
+  it("ships an authorization-gated native DeviceActivity presenter", () => {
+    expect(mobileSignalsPluginSwift).toContain(
+      'CAPPluginMethod(name: "presentScreenTimeReport"',
+    );
+    expect(mobileSignalsPluginSwift).toContain(
+      "AuthorizationCenter.shared.requestAuthorization(for: .individual)",
+    );
+    expect(screenTimeSupportSwift).toContain(
+      "DeviceActivityReport(.elizaScreenTimeSummary, filter: filter)",
     );
   });
 

@@ -28,6 +28,8 @@ function permissions(
     canRequest: true,
     screenTime: {
       supported: true,
+      hostEnvironment: "device",
+      availability: "authorization-required",
       requirements: {
         entitlements: { familyControls: "com.apple.developer.family-controls" },
         frameworks: ["FamilyControls", "DeviceActivity"],
@@ -37,6 +39,7 @@ function permissions(
       entitlements: { familyControls: true },
       provisioning: {
         satisfied: true,
+        status: "verified",
         inspected: "not-inspectable",
         reason: null,
       },
@@ -210,6 +213,7 @@ describe("createMobileSignalsPermissionsRegistry", () => {
           },
           provisioning: {
             satisfied: false,
+            status: "unknown",
             inspected: "not-inspectable",
             reason:
               "iOS entitlement inspection is handled by build validation and provisioning profile checks.",

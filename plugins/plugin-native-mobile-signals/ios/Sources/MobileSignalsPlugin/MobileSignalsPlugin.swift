@@ -6,7 +6,10 @@
  */
 import Foundation
 import Capacitor
+import DeviceActivity
+import FamilyControls
 import HealthKit
+import SwiftUI
 import UIKit
 import UserNotifications
 
@@ -17,6 +20,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "presentScreenTimeReport", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startMonitoring", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopMonitoring", returnType: CAPPluginReturnPromise),
@@ -123,9 +127,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc public override func requestPermissions(_ call: CAPPluginCall) {
         let target = call.getString("target") ?? "all"
         if target == "screenTime" {
-            buildPermissionResult { result in
-                call.resolve(result)
-            }
+            requestScreenTimeAuthorization(call)
             return
         }
         if target == "notifications" {
@@ -167,6 +169,61 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                     reason: healthReason
                 )
             }
+        }
+    }
+
+    private func requestScreenTimeAuthorization(_ call: CAPPluginCall) {
+        guard ScreenTimeSupport.canRequestAuthorization() else {
+            buildPermissionResult { result in call.resolve(result) }
+            return
+        }
+        guard #available(iOS 16.0, *) else {
+            buildPermissionResult { result in call.resolve(result) }
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
+                self.buildPermissionResult { result in call.resolve(result) }
+            } catch {
+                // error-policy:J1 The Capacitor permission boundary returns the native denial.
+                self.buildPermissionResult(reason: error.localizedDescription) { result in
+                    call.resolve(result)
+                }
+            }
+        }
+    }
+
+    @objc func presentScreenTimeReport(_ call: CAPPluginCall) {
+        guard #available(iOS 16.0, *) else {
+            call.resolve([
+                "presented": false,
+                "reason": "DeviceActivity reports require iOS 16 or later.",
+            ])
+            return
+        }
+        let status = ScreenTimeSupport.buildStatus()
+        guard status["reportAvailable"] as? Bool == true else {
+            call.resolve([
+                "presented": false,
+                "reason": status["reason"] ?? "Screen Time report is unavailable.",
+            ])
+            return
+        }
+        guard let presentingViewController = bridge?.viewController else {
+            call.resolve([
+                "presented": false,
+                "reason": "The native report presenter is not attached to the app window.",
+            ])
+            return
+        }
+
+        let reportViewController = UIHostingController(rootView: ElizaScreenTimeReportView())
+        reportViewController.modalPresentationStyle = .pageSheet
+        presentingViewController.present(reportViewController, animated: true) {
+            call.resolve(["presented": true, "reason": NSNull()])
         }
     }
 
@@ -492,7 +549,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 "canOpenSettings": true,
                 "settingsTarget": "app",
                 "engine": "healthkit-screen-time",
-                "capabilities": mobileSignalsCapabilities(),
+                "capabilities": mobileSignalsCapabilities(screenTimeStatus: screenTimeStatus),
                 "reason": overrideReason ?? unavailableReason,
                 "permissions": [
                     "sleep": false,
@@ -543,7 +600,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             "canOpenSettings": true,
             "settingsTarget": settingsTarget,
             "engine": "healthkit-screen-time",
-            "capabilities": mobileSignalsCapabilities(),
+            "capabilities": mobileSignalsCapabilities(screenTimeStatus: screenTimeStatus),
             "reason": overrideReason ?? NSNull(),
             "screenTime": screenTimeStatus,
             "setupActions": buildSetupActions(
@@ -560,10 +617,10 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         ]
     }
 
-    private func mobileSignalsCapabilities() -> [String: Any] {
+    private func mobileSignalsCapabilities(screenTimeStatus: [String: Any]) -> [String: Any] {
         [
             "health": healthKitAvailable,
-            "screenTime": false,
+            "screenTime": screenTimeStatus["reportAvailable"] as? Bool ?? false,
             "notifications": true,
             "settings": true,
         ]
@@ -597,6 +654,9 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             ? "health"
             : NSNull()
         let screenTimeReason = screenTimeStatus["reason"] ?? NSNull()
+        let screenTimeAuthorization = screenTimeStatus["authorization"] as? [String: Any]
+        let screenTimeCanRequest = screenTimeAuthorization?["canRequest"] as? Bool ?? false
+        let screenTimeReady = screenTimeStatus["reportAvailable"] as? Bool ?? false
         let notificationsReady = notification.status == "granted"
 
         return [
@@ -616,8 +676,8 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             [
                 "id": "screen_time_authorization",
                 "label": "Screen Time",
-                "status": "unavailable",
-                "canRequest": false,
+                "status": screenTimeReady ? "ready" : (screenTimeCanRequest ? "needs-action" : "unavailable"),
+                "canRequest": screenTimeCanRequest,
                 "canOpenSettings": false,
                 "settingsTarget": "screenTime",
                 "reason": screenTimeReason,

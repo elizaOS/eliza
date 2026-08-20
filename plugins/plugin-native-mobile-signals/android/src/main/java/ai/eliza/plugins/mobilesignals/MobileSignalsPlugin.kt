@@ -253,6 +253,14 @@ class MobileSignalsPlugin : Plugin() {
     }
 
     @PluginMethod
+    fun presentScreenTimeReport(call: PluginCall) {
+        call.resolve(JSObject().apply {
+            put("presented", false)
+            put("reason", "Android usage summaries are host-readable and do not use DeviceActivity reports.")
+        })
+    }
+
+    @PluginMethod
     fun getSnapshot(call: PluginCall) {
         val device = buildSnapshot("snapshot")
         scope.launch {
@@ -678,6 +686,8 @@ class MobileSignalsPlugin : Plugin() {
         }
         return JSObject().apply {
             put("supported", true)
+            put("hostEnvironment", "android")
+            put("availability", if (usageGranted) "report-available" else "authorization-required")
             put("requirements", JSObject().apply {
                 put("entitlements", JSObject().apply {
                     put("familyControls", FAMILY_CONTROLS_ENTITLEMENT)
@@ -695,6 +705,7 @@ class MobileSignalsPlugin : Plugin() {
             })
             put("provisioning", JSObject().apply {
                 put("satisfied", usageGranted)
+                put("status", if (usageGranted) "verified" else "missing")
                 put("inspected", "not-inspectable")
                 put("reason", resolvedReason ?: JSONObject.NULL)
             })

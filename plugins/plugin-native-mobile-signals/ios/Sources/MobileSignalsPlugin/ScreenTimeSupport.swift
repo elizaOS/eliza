@@ -6,6 +6,7 @@ import FamilyControls
 import DeviceActivity
 import Foundation
 import Security
+import SwiftUI
 
 enum ScreenTimeSupport {
     private static let familyControlsEntitlement = "com.apple.developer.family-controls"
@@ -33,8 +34,9 @@ enum ScreenTimeSupport {
             familyControls
         }
 
-        var canAttemptAuthorization: Bool {
-            inspected == "not-inspectable" || familyControls
+        var provisioningState: ScreenTimeCapabilityPolicy.ProvisioningState {
+            if familyControls { return .verified }
+            return inspected == "not-inspectable" ? .unknown : .missing
         }
     }
 
@@ -42,21 +44,27 @@ enum ScreenTimeSupport {
         let entitlementInspection = inspectEntitlements()
         let extensionInspection = inspectBundledExtensions()
         let familyControlsEnabled = entitlementInspection.familyControls
-        let authorizationEntitlementAvailable = entitlementInspection.canAttemptAuthorization
         let provisioningSatisfied = entitlementInspection.satisfied
+        let provisioningState = entitlementInspection.provisioningState
         let environment = ScreenTimeCapabilityPolicy.hostEnvironment
         let authorizationStatus = environment == .simulator
             ? "unavailable"
             : authorizationStatusString()
+        let authorizationApproved = authorizationStatus == "approved"
+        let presenterAvailable = reportPresenterAvailable
         let availability = ScreenTimeCapabilityPolicy.availability(
             environment: environment,
-            provisioningSatisfied: provisioningSatisfied,
-            provisioningInspected: entitlementInspection.inspected != "not-inspectable"
+            provisioning: provisioningState,
+            authorizationApproved: authorizationApproved,
+            reportExtensionBundled: extensionInspection.report,
+            presenterAvailable: presenterAvailable
         )
 
         let reason = derivedReason(
-            familyControlsEnabled: authorizationEntitlementAvailable,
-            extensionInspection: extensionInspection
+            provisioning: provisioningState,
+            authorizationStatus: authorizationStatus,
+            extensionInspection: extensionInspection,
+            presenterAvailable: presenterAvailable
         )
         let provisioningReason: Any
         if provisioningSatisfied {
@@ -69,7 +77,7 @@ enum ScreenTimeSupport {
         return [
             "supported": ScreenTimeCapabilityPolicy.platformSupported(
                 environment: environment,
-                provisioningSatisfied: provisioningSatisfied
+                provisioning: provisioningState
             ),
             "hostEnvironment": environment.rawValue,
             "availability": availability,
@@ -88,12 +96,18 @@ enum ScreenTimeSupport {
             ],
             "provisioning": [
                 "satisfied": provisioningSatisfied,
+                "status": provisioningState.rawValue,
                 "inspected": entitlementInspection.inspected,
                 "reason": provisioningReason,
             ],
             "authorization": [
                 "status": authorizationStatus,
-                "canRequest": ScreenTimeCapabilityPolicy.authorizationRequestAvailable,
+                "canRequest": ScreenTimeCapabilityPolicy.authorizationRequestAvailable(
+                    environment: environment,
+                    provisioning: provisioningState,
+                    reportExtensionBundled: extensionInspection.report,
+                    presenterAvailable: presenterAvailable
+                ),
             ],
             "extensions": [
                 "deviceActivityReportExtension": extensionInspection.report,
@@ -101,7 +115,13 @@ enum ScreenTimeSupport {
                 "inspected": extensionInspection.inspected,
                 "bundles": extensionInspection.bundles,
             ],
-            "reportAvailable": ScreenTimeCapabilityPolicy.reportAvailable,
+            "reportAvailable": ScreenTimeCapabilityPolicy.reportAvailable(
+                environment: environment,
+                provisioning: provisioningState,
+                authorizationApproved: authorizationApproved,
+                reportExtensionBundled: extensionInspection.report,
+                presenterAvailable: presenterAvailable
+            ),
             "coarseSummaryAvailable": ScreenTimeCapabilityPolicy.coarseSummaryAvailable,
             "thresholdEventsAvailable": ScreenTimeCapabilityPolicy.thresholdEventsAvailable,
             "rawUsageExportAvailable": ScreenTimeCapabilityPolicy.rawUsageExportAvailable,
@@ -132,22 +152,43 @@ enum ScreenTimeSupport {
     }
 
     private static func derivedReason(
-        familyControlsEnabled: Bool,
-        extensionInspection: ExtensionInspection
+        provisioning: ScreenTimeCapabilityPolicy.ProvisioningState,
+        authorizationStatus: String,
+        extensionInspection: ExtensionInspection,
+        presenterAvailable: Bool
     ) -> String? {
-        if !familyControlsEnabled {
+        if provisioning == .missing {
             return "Family Controls entitlement is missing from the app bundle."
         }
-        if !extensionInspection.complete {
-            if !extensionInspection.report && !extensionInspection.monitor {
-                return "DeviceActivity report and monitor extensions are not bundled with the app."
-            }
-            if !extensionInspection.report {
-                return "DeviceActivity report extension is not bundled with the app."
-            }
-            return "DeviceActivity monitor extension is not bundled with the app."
+        if !extensionInspection.report {
+            return "DeviceActivity report extension is not bundled with the app."
         }
-        return ScreenTimeCapabilityPolicy.unavailableReason
+        if !presenterAvailable {
+            return "This iOS version cannot present DeviceActivity reports."
+        }
+        if authorizationStatus == "denied" {
+            return "Screen Time authorization was denied."
+        }
+        if authorizationStatus != "approved" {
+            return "Screen Time authorization is required to present the private report."
+        }
+        return nil
+    }
+
+    static var reportPresenterAvailable: Bool {
+        if #available(iOS 16.0, *) { return true }
+        return false
+    }
+
+    static func canRequestAuthorization() -> Bool {
+        let entitlementInspection = inspectEntitlements()
+        let extensionInspection = inspectBundledExtensions()
+        return ScreenTimeCapabilityPolicy.authorizationRequestAvailable(
+            environment: ScreenTimeCapabilityPolicy.hostEnvironment,
+            provisioning: entitlementInspection.provisioningState,
+            reportExtensionBundled: extensionInspection.report,
+            presenterAvailable: reportPresenterAvailable
+        )
     }
 
     private static func inspectBundledExtensions() -> ExtensionInspection {
@@ -236,4 +277,38 @@ enum ScreenTimeSupport {
         }
         return DispatchQueue.main.sync(execute: work)
     }
+}
+
+@available(iOS 16.0, *)
+struct ElizaScreenTimeReportView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private let filter = DeviceActivityFilter(
+        segment: .daily(
+            during: DateInterval(
+                start: Calendar.current.date(byAdding: .day, value: -6, to: .now)
+                    ?? Calendar.current.startOfDay(for: .now),
+                end: .now
+            )
+        ),
+        devices: .all
+    )
+
+    var body: some View {
+        NavigationStack {
+            DeviceActivityReport(.elizaScreenTimeSummary, filter: filter)
+                .navigationTitle("Screen Time")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+        }
+    }
+}
+
+@available(iOS 16.0, *)
+private extension DeviceActivityReport.Context {
+    static let elizaScreenTimeSummary = Self("eliza.screen-time.summary")
 }

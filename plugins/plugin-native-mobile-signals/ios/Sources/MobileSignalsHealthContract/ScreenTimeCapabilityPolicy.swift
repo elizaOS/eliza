@@ -9,6 +9,12 @@ public enum ScreenTimeCapabilityPolicy {
         case simulator
     }
 
+    public enum ProvisioningState: String {
+        case verified
+        case unknown
+        case missing
+    }
+
     public static var hostEnvironment: HostEnvironment {
         #if targetEnvironment(simulator)
         return .simulator
@@ -19,24 +25,52 @@ public enum ScreenTimeCapabilityPolicy {
 
     public static func availability(
         environment: HostEnvironment,
-        provisioningSatisfied: Bool,
-        provisioningInspected: Bool
+        provisioning: ProvisioningState,
+        authorizationApproved: Bool,
+        reportExtensionBundled: Bool,
+        presenterAvailable: Bool
     ) -> String {
         if environment == .simulator { return "simulator-unavailable" }
-        if provisioningSatisfied { return "host-unavailable" }
-        return provisioningInspected ? "provisioning-missing" : "provisioning-unknown"
+        if provisioning == .missing { return "provisioning-missing" }
+        if !reportExtensionBundled { return "extension-missing" }
+        if !presenterAvailable { return "presenter-missing" }
+        if !authorizationApproved { return "authorization-required" }
+        return "report-available"
     }
 
     public static func platformSupported(
         environment: HostEnvironment,
-        provisioningSatisfied: Bool
+        provisioning: ProvisioningState
     ) -> Bool {
-        environment == .device && provisioningSatisfied
+        environment == .device && provisioning != .missing
     }
-    public static let unavailableReason =
-        "Screen Time reports are unavailable because the host app has no DeviceActivity presenter."
-    public static let authorizationRequestAvailable = false
-    public static let reportAvailable = false
+
+    public static func authorizationRequestAvailable(
+        environment: HostEnvironment,
+        provisioning: ProvisioningState,
+        reportExtensionBundled: Bool,
+        presenterAvailable: Bool
+    ) -> Bool {
+        platformSupported(environment: environment, provisioning: provisioning)
+            && reportExtensionBundled
+            && presenterAvailable
+    }
+
+    public static func reportAvailable(
+        environment: HostEnvironment,
+        provisioning: ProvisioningState,
+        authorizationApproved: Bool,
+        reportExtensionBundled: Bool,
+        presenterAvailable: Bool
+    ) -> Bool {
+        authorizationRequestAvailable(
+            environment: environment,
+            provisioning: provisioning,
+            reportExtensionBundled: reportExtensionBundled,
+            presenterAvailable: presenterAvailable
+        ) && authorizationApproved
+    }
+
     public static let coarseSummaryAvailable = false
     public static let thresholdEventsAvailable = false
     public static let rawUsageExportAvailable = false
