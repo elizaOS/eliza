@@ -1491,15 +1491,26 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-copy-notice-action {
-  min-height: 2.75rem;
-  margin-left: 0.75rem;
+  min-height: 2.5rem;
+  margin-left: 0.6rem;
+  padding: 0 0.85rem;
   border: 0;
-  background: transparent;
-  color: currentColor;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 7%);
+  color: #171717;
   font: inherit;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
+  white-space: nowrap;
   cursor: pointer;
+}
+
+.landing-copy-notice-action:hover,
+.landing-copy-notice-action:focus-visible {
+  background: rgb(0 0 0 / 12%);
+}
+
+.landing-copy-notice-action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 
 .landing-copy-notice--handoff {
@@ -2485,6 +2496,20 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
   .landing-hero-copy {
     display: contents;
+  }
+
+  .landing-copy-notice--handoff {
+    bottom: calc(4.4rem + env(safe-area-inset-bottom));
+    max-width: calc(100vw - 1.5rem);
+    min-height: 3.25rem;
+    padding: 0.35rem 0.4rem 0.35rem 0.9rem;
+    font-size: 0.88rem;
+    white-space: nowrap;
+  }
+
+  .landing-copy-notice--handoff .landing-copy-notice-action {
+    min-height: 2.55rem;
+    margin-left: 0.55rem;
   }
 
   .landing-hero-heading {

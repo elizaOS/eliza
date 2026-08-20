@@ -27,6 +27,7 @@ import {
   buildElizaDiscordHref,
   buildElizaTelegramHref,
   ELIZA_PHONE_NUMBER,
+  openOrCopyElizaCall,
   openOrCopyElizaMessage,
 } from "@/lib/contact";
 import {
@@ -100,7 +101,7 @@ const DEMO_SENDERS: Record<string, DemoSender> = {
 };
 
 const DEMO_SCENARIOS: readonly LandingDemoScenario[] = LANDING_DEMO_SCENARIOS;
-const PREFILLED_INTRO_ITEMS = 6;
+const PREFILLED_INTRO_ITEMS = 4;
 const USER_KEYSTROKE_MS = 34;
 const HUMAN_REPLY_BASE_MS = 950;
 const HUMAN_REPLY_PER_CHARACTER_MS = 16;
@@ -111,7 +112,7 @@ const PRE_USER_MS = 560;
 const PRE_ELIZA_MS = 150;
 const PRE_CARD_MS = 300;
 const SEND_HOLD_MS = 260;
-const SCENARIO_OPENING_PAUSE_MS = 1_200;
+const SCENARIO_OPENING_PAUSE_MS = 2_000;
 const SCENARIO_READING_HOLD_MS = 6_500;
 const SCENARIO_SWITCH_MS = 450;
 
@@ -880,12 +881,14 @@ function ContactSheet({
   open,
   onClose,
   onText,
+  onCall,
   accountHref,
   accountLabel,
 }: {
   open: boolean;
   onClose: () => void;
   onText: () => void;
+  onCall: () => void;
   accountHref: string;
   accountLabel: string;
 }) {
@@ -934,7 +937,7 @@ function ContactSheet({
               defaultValue: "Text Eliza on iMessage",
             })}
           </button>
-          <a className="landing-sheet-row" href={`tel:${ELIZA_PHONE_NUMBER}`}>
+          <button type="button" className="landing-sheet-row" onClick={onCall}>
             <svg
               viewBox="0 0 24 24"
               fill="currentColor"
@@ -946,7 +949,7 @@ function ContactSheet({
             {t("homepage_eliza.landing.channelPhone", {
               defaultValue: "Call Eliza",
             })}
-          </a>
+          </button>
           <a
             className="landing-sheet-row"
             href={buildElizaTelegramHref()}
@@ -1006,6 +1009,9 @@ export default function LandingPage() {
   const [phoneCopyState, setPhoneCopyState] = useState<
     "idle" | "handoff" | "copied" | "error"
   >("idle");
+  const [contactHandoff, setContactHandoff] = useState<"message" | "call">(
+    "message",
+  );
   const phoneCopyOperation = useRef(0);
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
@@ -1052,8 +1058,21 @@ export default function LandingPage() {
 
   const handleMessageEliza = async () => {
     const operation = ++phoneCopyOperation.current;
+    setContactHandoff("message");
     try {
       const outcome = await openOrCopyElizaMessage(window);
+      if (operation === phoneCopyOperation.current) setPhoneCopyState(outcome);
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
+    }
+  };
+
+  const handleCallEliza = async () => {
+    const operation = ++phoneCopyOperation.current;
+    setContactHandoff("call");
+    try {
+      const outcome = await openOrCopyElizaCall(window);
       if (operation === phoneCopyOperation.current) setPhoneCopyState(outcome);
     } catch {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
@@ -1083,10 +1102,13 @@ export default function LandingPage() {
           defaultValue: "Copied!",
         })
       : phoneCopyState === "handoff"
-        ? t("homepage_eliza.common.messageHandoff", {
-            defaultValue:
-              "Opening Messages. If nothing happens, copy the number.",
-          })
+        ? contactHandoff === "call"
+          ? t("homepage_eliza.common.callHandoff", {
+              defaultValue: "Phone didn't open?",
+            })
+          : t("homepage_eliza.landing.messageHandoffShort", {
+              defaultValue: "Messages didn't open?",
+            })
         : t("homepage_eliza.landing.phoneCopyFailed", {
             defaultValue: "Couldn't copy",
           });
@@ -1152,9 +1174,10 @@ export default function LandingPage() {
                 defaultValue: "Text Eliza",
               })}
             </button>
-            <a
+            <button
+              type="button"
               className="landing-cta landing-cta--white"
-              href={`tel:${ELIZA_PHONE_NUMBER}`}
+              onClick={() => void handleCallEliza()}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -1167,7 +1190,7 @@ export default function LandingPage() {
               {t("homepage_eliza.landing.ctaCall", {
                 defaultValue: "Call",
               })}
-            </a>
+            </button>
           </div>
           <div className="landing-secondary-channels">
             {channels.map((channel) => (
@@ -1200,9 +1223,12 @@ export default function LandingPage() {
                   type="button"
                   className="landing-copy-notice-action"
                   onClick={() => void handleCopyPhone()}
-                >
-                  {t("homepage_eliza.connected.copyPhoneAria", {
+                  aria-label={t("homepage_eliza.connected.copyPhoneAria", {
                     defaultValue: "Copy phone number",
+                  })}
+                >
+                  {t("homepage_eliza.landing.copyPhoneShort", {
+                    defaultValue: "Copy number",
                   })}
                 </button>
               )}
@@ -1225,6 +1251,10 @@ export default function LandingPage() {
         onText={() => {
           setContactSheetOpen(false);
           void handleMessageEliza();
+        }}
+        onCall={() => {
+          setContactSheetOpen(false);
+          void handleCallEliza();
         }}
         accountHref={
           signedIn

@@ -84,14 +84,12 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test("prefills through Eliza's first embed, then resumes the flow", async ({
-  page,
-}) => {
+test("prefills the human setup, then lets Eliza respond", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const phone = page.locator(".landing-iphone");
-  await expect(phone).toHaveAttribute("data-demo-messages", "6");
+  await expect(phone).toHaveAttribute("data-demo-messages", "4");
   await expect(
     page.getByText("we're low on coffee", { exact: true }),
   ).toBeVisible();
@@ -102,15 +100,19 @@ test("prefills through Eliza's first embed, then resumes the flow", async ({
   await expect(
     page.getByText("laundry got left in the washer again lol", { exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".landing-bubble--eliza")).toHaveCount(0);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(0);
+  await expect(phone).toHaveAttribute("data-demo-typing", "Eliza", {
+    timeout: 2_500,
+  });
   await expect(
     page.getByText(
       "I balanced this against the house rotation: coffee and laundry are yours, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants.",
       { exact: true },
     ),
-  ).toBeVisible();
-  await expect(page.locator(".landing-demo-card")).toHaveCount(1);
-  await expect(page.getByText("ugh ok lol", { exact: true })).toBeVisible({
-    timeout: 4_000,
+  ).toBeVisible({ timeout: 4_000 });
+  await expect(page.locator(".landing-demo-card")).toHaveCount(1, {
+    timeout: 5_000,
   });
 });
 
