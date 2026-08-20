@@ -181,8 +181,7 @@ describe("service Dockerfiles can resolve their workspace dependencies", () => {
     }
 
     expect(missing).toEqual([]);
-    expect(agentServer?.dockerfile).toContain("await symlink(");
-    expect(agentServer?.dockerfile).toContain('repeat(name.split("/").length)');
+    expect(agentServer?.dockerfile).toContain("COPY --from=deps /app /app");
   });
 
   test("gateway-webhook prunes build-only workspace links before production install", () => {

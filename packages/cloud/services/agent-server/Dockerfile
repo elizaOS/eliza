@@ -60,8 +60,7 @@ COPY plugins/plugin-todos/package.json plugins/plugin-todos/
 COPY plugins/plugin-web-search/package.json plugins/plugin-web-search/
 COPY plugins/plugin-workflow/package.json plugins/plugin-workflow/
 RUN bun -e 'const workspaces = ["packages/cloud/services/agent-server", "packages/cloud/services/_common", "packages/cloud/routing", "packages/cloud/sdk", "packages/cloud/shared", "packages/core", "packages/logger", "packages/prompts", "packages/registry", "packages/shared", "packages/ui", "plugins/plugin-cloud-apps", "plugins/plugin-elizacloud", "plugins/plugin-native-agent", "plugins/plugin-native-bun-runtime", "plugins/plugin-native-camera", "plugins/plugin-native-llama", "plugins/plugin-openai", "plugins/plugin-scheduling", "plugins/plugin-sql", "plugins/plugin-todos", "plugins/plugin-web-search", "plugins/plugin-workflow"]; await Bun.write("package.json", JSON.stringify({ name: "agent-server-build", private: true, workspaces }));' \
-    && bun install --production \
-    && bun -e 'import { mkdir, symlink } from "node:fs/promises"; import { dirname } from "node:path"; const { workspaces } = await Bun.file("package.json").json(); for (const workspace of workspaces) { const { name } = await Bun.file(`${workspace}/package.json`).json(); const link = `node_modules/${name}`; await mkdir(dirname(link), { recursive: true }); await symlink(`${"../".repeat(name.split("/").length)}${workspace}`, link); }'
+    && bun install --production
 
 # Production stage: run the service straight from TypeScript source, resolving
 # workspace packages through their `eliza-source` export condition.
@@ -73,11 +72,11 @@ ENV NODE_ENV=production
 
 RUN adduser -D -u 1001 appuser && mkdir -p /app/cache && chown appuser /app/cache
 
-# bun's store lives at the workspace root and each member directory holds its
-# links, so both keep their original paths.
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/package.json ./package.json
-COPY --from=deps /app/${SERVICE_DIR}/node_modules ./${SERVICE_DIR}/node_modules
+# Bun's store lives at the workspace root while each member directory holds
+# that package's internal and external dependency links. Copy the complete
+# pruned dependency stage so plugin imports resolve from their original paths;
+# the source copies below then overlay those package directories.
+COPY --from=deps /app /app
 COPY packages/cloud/services/_common packages/cloud/services/_common
 COPY packages/cloud/routing packages/cloud/routing
 COPY packages/cloud/sdk packages/cloud/sdk
