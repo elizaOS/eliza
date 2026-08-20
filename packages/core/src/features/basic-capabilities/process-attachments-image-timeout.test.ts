@@ -44,6 +44,10 @@ function image(url: string): Media {
 	return { id: url, url, contentType: ContentType.IMAGE } as Media;
 }
 
+function doc(url: string): Media {
+	return { id: url, url, contentType: ContentType.DOCUMENT } as Media;
+}
+
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
@@ -132,5 +136,28 @@ describe("processAttachments — local image fetch timeout", () => {
 			processAttachments([image("uploads/photo.png")], makeRuntime()),
 		).rejects.toThrow();
 		expect(fastTimeout).toHaveBeenCalled();
+	});
+
+	it("passes a bounded AbortSignal to the local document fetch too", async () => {
+		let capturedInit: RequestInit | undefined;
+		vi.stubGlobal("fetch", async (_input: string | URL, init?: RequestInit) => {
+			capturedInit = init;
+			return {
+				ok: true,
+				statusText: "OK",
+				headers: { get: () => "text/plain" },
+				text: async () => "plain notes body",
+				arrayBuffer: async () => Buffer.from("plain notes body", "utf-8"),
+			} as unknown as Response;
+		});
+
+		const [out] = await processAttachments(
+			[doc("uploads/notes.txt")],
+			makeRuntime(),
+		);
+
+		expect(capturedInit).toBeDefined();
+		expect(capturedInit?.signal).toBeInstanceOf(AbortSignal);
+		expect(out.text).toBe("plain notes body");
 	});
 });

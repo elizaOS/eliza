@@ -407,7 +407,9 @@ export async function processAttachments(
 			attachment.contentType === ContentType.DOCUMENT &&
 			!attachment.text
 		) {
-			const res = await fetch(url);
+			// Same fail-closed bound as the image branch: a stalled local
+			// media-server hop must not hang the attachment-processing turn.
+			const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
 			if (!res.ok) {
 				throw new Error(`Failed to fetch document: ${res.statusText}`);
 			}
