@@ -81,6 +81,21 @@ export class ScreenCaptureWeb extends WebPlugin {
     callback: (event: ScreenCaptureEventData) => void;
   }> = [];
 
+  /**
+   * Active-capture length in seconds. MediaRecorder emits no data while paused,
+   * so an in-progress pause segment is subtracted alongside the already-
+   * accumulated `pausedDuration`; otherwise stopping while paused would count
+   * paused wall-clock time as recorded content and desync `duration` from the
+   * stored media length.
+   */
+  private elapsedSeconds(): number {
+    const pausedNow = this.isPaused ? Date.now() - this.pauseStartTime : 0;
+    return (
+      (Date.now() - this.recordingStartTime - this.pausedDuration - pausedNow) /
+      1000
+    );
+  }
+
   async isSupported(): Promise<{ supported: boolean; features: string[] }> {
     const supported = hasDisplayMedia();
     const features: string[] = [];
@@ -280,8 +295,7 @@ export class ScreenCaptureWeb extends WebPlugin {
     this.recordingStateInterval = setInterval(() => {
       if (!this.isRecording || this.isPaused || autoStopping) return;
 
-      const duration =
-        (Date.now() - this.recordingStartTime - this.pausedDuration) / 1000;
+      const duration = this.elapsedSeconds();
       const fileSize = this.recordedChunks.reduce(
         (acc, chunk) => acc + chunk.size,
         0,
@@ -321,8 +335,7 @@ export class ScreenCaptureWeb extends WebPlugin {
         return;
       }
 
-      const duration =
-        (Date.now() - this.recordingStartTime - this.pausedDuration) / 1000;
+      const duration = this.elapsedSeconds();
 
       this.mediaRecorder.onstop = () => {
         if (this.recordingStateInterval) {
@@ -389,8 +402,7 @@ export class ScreenCaptureWeb extends WebPlugin {
     this.isPaused = true;
     this.pauseStartTime = Date.now();
 
-    const duration =
-      (Date.now() - this.recordingStartTime - this.pausedDuration) / 1000;
+    const duration = this.elapsedSeconds();
     const fileSize = this.recordedChunks.reduce(
       (acc, chunk) => acc + chunk.size,
       0,
@@ -418,9 +430,7 @@ export class ScreenCaptureWeb extends WebPlugin {
   }
 
   async getRecordingState(): Promise<ScreenRecordingState> {
-    const duration = this.isRecording
-      ? (Date.now() - this.recordingStartTime - this.pausedDuration) / 1000
-      : 0;
+    const duration = this.isRecording ? this.elapsedSeconds() : 0;
     const fileSize = this.recordedChunks.reduce(
       (acc, chunk) => acc + chunk.size,
       0,
