@@ -30,6 +30,7 @@ import {
 	parseFrontmatter,
 	validateFrontmatter,
 } from "../parser";
+import { buildSkillExecutionEnv } from "../security/skill-execution-env";
 import type { SkillScanReport, SkillScanStatus } from "../security/types";
 import {
 	createStorage,
@@ -1716,10 +1717,11 @@ export class AgentSkillsService extends Service {
 		const skillEnv = this.getSkillEnv(slug);
 		const apiKey = this.getSkillApiKey(slug);
 
-		const env: Record<string, string> = {
-			...(process.env as Record<string, string>),
-			...skillEnv,
-		};
+		// Inheriting process.env wholesale handed every skill script the agent's
+		// full credential set, which in a managed container is fleet-scoped and
+		// not tenant-scoped. buildSkillExecutionEnv allowlists what may be
+		// inherited and denylists what the per-skill overlay may inject.
+		const env = buildSkillExecutionEnv(process.env, skillEnv);
 
 		if (apiKey) {
 			// Inject API key with standard naming
