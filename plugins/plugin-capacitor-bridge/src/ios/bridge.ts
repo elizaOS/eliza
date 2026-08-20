@@ -25,6 +25,7 @@ import {
 	type StreamChunkCallback,
 	stringToUuid,
 	type UUID,
+	validateUuid,
 } from "@elizaos/core";
 import {
 	buildBrandEnvAliases,
@@ -1547,15 +1548,57 @@ interface UpdateTranscriptRequestBody {
 }
 
 /** Parse the stored {@link Transcript} back out of a memory row's content blob. */
-function rowToTranscript(row: Memory): Transcript | null {
+function rowToTranscript(row: Memory, expectedId?: UUID): Transcript | null {
 	const raw = (row.content as { transcript?: unknown }).transcript;
 	if (typeof raw !== "string") return null;
 	try {
 		const parsed: unknown = JSON.parse(raw);
-		return parsed && typeof parsed === "object" ? (parsed as Transcript) : null;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+			return null;
+		const transcript = parsed as Partial<Transcript>;
+		if (
+			typeof transcript.id !== "string" ||
+			(expectedId !== undefined && transcript.id !== expectedId) ||
+			typeof transcript.title !== "string" ||
+			typeof transcript.createdAt !== "number" ||
+			!Number.isFinite(transcript.createdAt) ||
+			typeof transcript.durationMs !== "number" ||
+			!Number.isFinite(transcript.durationMs) ||
+			!Array.isArray(transcript.segments) ||
+			typeof transcript.source !== "string" ||
+			typeof transcript.scope !== "string" ||
+			typeof transcript.status !== "string" ||
+			typeof transcript.speakerCount !== "number" ||
+			!Number.isFinite(transcript.speakerCount)
+		) {
+			return null;
+		}
+		return transcript as Transcript;
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Authorize a transcript row returned by the global memory-id lookup. The SQL
+ * adapter does not scope `getMemoryById` by agent or expose the memory table,
+ * so the persisted transcript markers and embedded id are part of this route's
+ * object-capability boundary.
+ */
+function transcriptFromOwnedMemory(
+	runtime: IAgentRuntime,
+	row: Memory | null,
+	id: UUID,
+): Transcript | null {
+	if (!row || row.agentId !== runtime.agentId) return null;
+	if (
+		row.metadata?.type !== "custom" ||
+		row.metadata.source !== TRANSCRIPT_METADATA_TYPE ||
+		row.metadata.transcriptId !== id
+	) {
+		return null;
+	}
+	return rowToTranscript(row, id);
 }
 
 function transcriptMemoryMetadata(transcript: Transcript): MemoryMetadata {
@@ -1601,6 +1644,7 @@ async function listTranscripts(
 ): Promise<TranscriptSummary[]> {
 	const rows = await runtime.getMemories({
 		tableName: TRANSCRIPTS_TABLE,
+		agentId: runtime.agentId as UUID,
 		roomId,
 		count: limit,
 		orderBy: "createdAt",
@@ -1619,7 +1663,7 @@ async function getTranscript(
 	id: UUID,
 ): Promise<Transcript | null> {
 	const row = await runtime.getMemoryById(id);
-	return row ? rowToTranscript(row) : null;
+	return transcriptFromOwnedMemory(runtime, row, id);
 }
 
 async function persistTranscript(
@@ -1661,10 +1705,6 @@ function decodePathComponent(raw: string): string | null {
 	}
 }
 
-function decodeTranscriptId(raw: string): UUID | null {
-	return decodePathComponent(raw) as UUID | null;
-}
-
 async function handleTranscriptsRoute(
 	runtime: IAgentRuntime,
 	method: string,
@@ -1703,11 +1743,15 @@ async function handleTranscriptsRoute(
 
 	const idMatch = pathname.match(/^\/api\/transcripts\/([^/]+)$/);
 	if (!idMatch) return null;
-	const id = decodeTranscriptId(idMatch[1] ?? "");
-	if (id === null) {
+	const decodedId = decodePathComponent(idMatch[1] ?? "");
+	if (decodedId === null) {
 		return jsonResponse(400, {
 			error: "invalid transcript id: malformed URL encoding",
 		});
+	}
+	const id = validateUuid(decodedId);
+	if (id === null) {
+		return jsonResponse(400, { error: "invalid transcript id: expected UUID" });
 	}
 
 	if (method === "GET") {
@@ -1724,6 +1768,12 @@ async function handleTranscriptsRoute(
 		// and removed with a 200.
 		const existing = await getTranscript(runtime, id);
 		if (!existing) return jsonResponse(404, { error: "not found" });
+		// Re-authorize immediately before the generic id-only delete. The public
+		// runtime storage contract has no atomic predicate-delete operation, so
+		// this detects replacements after route admission while minimizing the
+		// residual interval before the destructive call.
+		const current = await getTranscript(runtime, id);
+		if (!current) return jsonResponse(404, { error: "not found" });
 		await runtime.deleteMemory(id);
 		return jsonResponse(200, { ok: true });
 	}
@@ -1739,10 +1789,16 @@ async function handleTranscriptsRoute(
 		const existing = await getTranscript(runtime, id);
 		if (!existing) return jsonResponse(404, { error: "not found" });
 
-		const segments = patch.segments ?? existing.segments;
+		// Re-authorize immediately before the generic id-only update. The public
+		// runtime storage contract has no atomic predicate-update operation, so
+		// this detects replacements after route admission while minimizing the
+		// residual interval before the destructive write.
+		const current = await getTranscript(runtime, id);
+		if (!current) return jsonResponse(404, { error: "not found" });
+		const segments = patch.segments ?? current.segments;
 		const next: Transcript = {
-			...existing,
-			title: patch.title?.trim() || existing.title,
+			...current,
+			title: patch.title?.trim() || current.title,
 			segments,
 			durationMs: transcriptDurationMs(segments),
 			speakerCount: transcriptSpeakerCount(segments),
