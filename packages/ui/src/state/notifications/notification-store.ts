@@ -11,6 +11,8 @@
  * the live WS binding, and re-hydrates fresh for the new authority. A refresh
  * that resolves to the same authority is a no-op.
  */
+
+import { Capacitor } from "@capacitor/core";
 import {
   type AgentNotification,
   DEFAULT_NOTIFICATION_CATEGORY,
@@ -124,7 +126,15 @@ let notificationEventUnsub: (() => void) | null = null;
  */
 function notificationProbesEnabled(): boolean {
   const origin = typeof window !== "undefined" ? window.location.origin : null;
-  if (!protectedAgentProbesEnabled(isAuthenticatedNow(), origin)) return false;
+  if (
+    !protectedAgentProbesEnabled(
+      isAuthenticatedNow(),
+      origin,
+      undefined,
+      Capacitor.isNativePlatform() && !client.getBaseUrl().trim(),
+    )
+  )
+    return false;
 
   // Shared Cloud agents expose the conversation REST adapter, not the full
   // standalone-agent inbox API. A bare Cloud base has no selected agent at all.
