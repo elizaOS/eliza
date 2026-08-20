@@ -40,6 +40,44 @@ function reserve(ctx: WalkContext, count: number): void {
   ctx.visits += count;
 }
 
+function ownDataValue(value: object, key: string, location: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (!descriptor) return undefined;
+  if (!("value" in descriptor)) {
+    failUnbounded({ accessor: true, location });
+  }
+  return descriptor.value;
+}
+
+function snapshotPart(part: GmailMimePartLike): GmailMimePartLike {
+  const mimeType = ownDataValue(part, "mimeType", "part.mimeType");
+  const body = ownDataValue(part, "body", "part.body");
+  let safeBody: GmailMimePartLike["body"];
+  if (body && typeof body === "object") {
+    const data = ownDataValue(body, "data", "part.body.data");
+    safeBody = { data: typeof data === "string" || data === null ? data : undefined };
+  } else {
+    safeBody = body === null ? null : undefined;
+  }
+  return {
+    mimeType: typeof mimeType === "string" || mimeType === null ? mimeType : undefined,
+    body: safeBody,
+  };
+}
+
+function arrayLength(parts: GmailMimePartLike[]): number {
+  const length = ownDataValue(parts, "length", "part.parts.length");
+  if (!Number.isSafeInteger(length) || (length as number) < 0) {
+    failUnbounded({ arrayLength: true });
+  }
+  return length as number;
+}
+
+function arrayChild(parts: GmailMimePartLike[], index: number): GmailMimePartLike | undefined {
+  const child = ownDataValue(parts, String(index), `part.parts[${index}]`);
+  return child && typeof child === "object" ? child : undefined;
+}
+
 /**
  * Depth-first visit of a Gmail MIME part tree. `visit` returning true aborts
  * the remaining walk (used when extract has already found a body).
@@ -68,16 +106,14 @@ function walkGmailMimePartsInner(
   }
   ctx.visiting.add(part);
   try {
-    if (visit(part) === true) return true;
-    const partsDescriptor = Object.getOwnPropertyDescriptor(part, "parts");
-    if (!partsDescriptor || !("value" in partsDescriptor)) return false;
-    const children = partsDescriptor.value;
+    if (visit(snapshotPart(part)) === true) return true;
+    const children = ownDataValue(part, "parts", "part.parts");
     if (!Array.isArray(children)) return false;
-    reserve(ctx, children.length);
-    for (let index = 0; index < children.length; index += 1) {
-      if (!(index in children)) continue;
-      const child = children[index];
-      if (!child || typeof child !== "object") continue;
+    const length = arrayLength(children);
+    reserve(ctx, length);
+    for (let index = 0; index < length; index += 1) {
+      const child = arrayChild(children, index);
+      if (!child) continue;
       if (walkGmailMimePartsInner(child, depth + 1, ctx, visit, true)) {
         return true;
       }
@@ -122,28 +158,18 @@ function extractGmailMimeBodyInner(
   }
   ctx.visiting.add(part);
   try {
-    const directBody = Object.getOwnPropertyDescriptor(part, "body");
-    const mimeDescriptor = Object.getOwnPropertyDescriptor(part, "mimeType");
-    const mime = mimeDescriptor && "value" in mimeDescriptor ? mimeDescriptor.value : part.mimeType;
-    if (
-      mime === mimeType &&
-      directBody &&
-      "value" in directBody &&
-      directBody.value &&
-      typeof (directBody.value as { data?: unknown }).data === "string"
-    ) {
-      return readBody(part);
+    const safePart = snapshotPart(part);
+    if (safePart.mimeType === mimeType && typeof safePart.body?.data === "string") {
+      return readBody(safePart);
     }
 
-    const partsDescriptor = Object.getOwnPropertyDescriptor(part, "parts");
-    if (!partsDescriptor || !("value" in partsDescriptor)) return "";
-    const children = partsDescriptor.value;
+    const children = ownDataValue(part, "parts", "part.parts");
     if (!Array.isArray(children)) return "";
-    reserve(ctx, children.length);
-    for (let index = 0; index < children.length; index += 1) {
-      if (!(index in children)) continue;
-      const child = children[index];
-      if (!child || typeof child !== "object") continue;
+    const length = arrayLength(children);
+    reserve(ctx, length);
+    for (let index = 0; index < length; index += 1) {
+      const child = arrayChild(children, index);
+      if (!child) continue;
       const nested = extractGmailMimeBodyInner(child, mimeType, readBody, depth + 1, ctx, true);
       if (nested) return nested;
     }

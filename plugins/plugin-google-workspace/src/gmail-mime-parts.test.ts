@@ -4,6 +4,8 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import type { GoogleApiClientFactory } from "./client-factory";
+import { GoogleGmailClient } from "./gmail";
 
 import {
   extractGmailMimeBody,
@@ -20,6 +22,10 @@ function nestMime(depth: number): GmailMimePartLike {
     part = { mimeType: "multipart/mixed", parts: [part] };
   }
   return part;
+}
+
+function expectUnbounded(operation: () => unknown): void {
+  expect(operation).toThrowError(expect.objectContaining({ code: GMAIL_MIME_PART_UNBOUNDED }));
 }
 
 describe("walkGmailMimeParts", () => {
@@ -80,7 +86,43 @@ describe("walkGmailMimeParts", () => {
         return nestMime(20_000).parts ?? [];
       },
     };
-    walkGmailMimeParts(hostile, () => {});
+    expectUnbounded(() => walkGmailMimeParts(hostile, () => {}));
+    expect(invoked).toBe(0);
+  });
+
+  it.each(["mimeType", "body", "body.data"] as const)(
+    "fails closed without invoking a %s accessor",
+    (location) => {
+      let invoked = 0;
+      const part: GmailMimePartLike = { mimeType: "text/plain", body: { data: "ok" } };
+      const target = location === "body.data" ? part.body : part;
+      const key = location === "body.data" ? "data" : location;
+      Object.defineProperty(target, key, {
+        enumerable: true,
+        get() {
+          invoked += 1;
+          return "hostile";
+        },
+      });
+
+      expectUnbounded(() => extractGmailMimeBody(part, "text/plain", () => "decoded"));
+      expect(invoked).toBe(0);
+    }
+  );
+
+  it("fails closed without invoking a MIME child array accessor", () => {
+    let invoked = 0;
+    const parts: GmailMimePartLike[] = [];
+    Object.defineProperty(parts, "0", {
+      enumerable: true,
+      get() {
+        invoked += 1;
+        return { mimeType: "text/plain", body: { data: "hostile" } };
+      },
+    });
+    parts.length = 1;
+
+    expectUnbounded(() => walkGmailMimeParts({ parts }, () => {}));
     expect(invoked).toBe(0);
   });
 
@@ -138,5 +180,30 @@ describe("walkGmailMimeParts", () => {
       expect((error as ElizaError).code).toBe(GMAIL_MIME_PART_UNBOUNDED);
     }
     expect(performance.now() - extractStarted).toBeLessThan(50);
+  });
+
+  it("fails closed at the real Gmail message-detail boundary", async () => {
+    const factory = {
+      gmail: async () => ({
+        users: {
+          messages: {
+            get: async () => ({
+              data: {
+                id: "message-1",
+                threadId: "thread-1",
+                payload: nestMime(20_000),
+              },
+            }),
+          },
+        },
+      }),
+    } as unknown as GoogleApiClientFactory;
+
+    await expect(
+      new GoogleGmailClient(factory).getGmailMessageDetail({
+        accountId: "account-1",
+        messageId: "message-1",
+      })
+    ).rejects.toMatchObject({ code: GMAIL_MIME_PART_UNBOUNDED });
   });
 });
