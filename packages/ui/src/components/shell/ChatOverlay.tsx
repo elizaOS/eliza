@@ -1331,8 +1331,13 @@ export function ChatOverlay({
       : recording || phase === "listening"
         ? "listening"
         : "idle";
+  // The detached native companion replaces its textarea with the continuous
+  // voice activity while the local hands-free loop is active. Browser/mobile
+  // keep the canonical composer mounted unless the realtime voice controller
+  // itself owns the surface; hiding it for the fixture's batch hands-free path
+  // makes the input disappear after a VOICE_DM turn.
   const continuousVoiceComposerVisible =
-    realtimeVoiceComposerVisible || handsFree;
+    realtimeVoiceComposerVisible || (desktopOverlayHost && handsFree);
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
@@ -1567,12 +1572,14 @@ export function ChatOverlay({
   // detent are all DERIVED from it — so the impossible "open but not open" or
   // pilled-and-full combos can't exist and no transition has to hand-sync two
   // separate states (which is what bred the old stuck states).
-  // Onboarding openness pin: while first-run is active the sheet is
-  // structurally FULL and undismissable (see firstRunOpen docs above).
+  // Onboarding stays undismissable on every host. The detached native
+  // companion owns a full-height window during first-run; browser/mobile keep
+  // their established shared half-sheet contract.
   const pinnedOpen = firstRunOpen;
+  const pinnedMode: ChatMode = desktopOverlayHost ? "full" : "half";
   const [mode, setMode] = React.useState<ChatMode>(
     pinnedOpen
-      ? "full"
+      ? pinnedMode
       : initialMode === "pill" && (initiallyOpen || requestedOpen)
         ? "input"
         : initialMode,
@@ -1588,7 +1595,7 @@ export function ChatOverlay({
   // while onboarding is active, the derived openness is always FULL regardless
   // of the underlying `mode` transition state. The effect still drives the real
   // `mode` so the falling edge collapses correctly.
-  const effectiveMode: ChatMode = pinnedOpen ? "full" : mode;
+  const effectiveMode: ChatMode = pinnedOpen ? pinnedMode : mode;
   const pilled = effectiveMode === "pill";
   const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
   const expanded = effectiveMode === "full";
@@ -3791,7 +3798,8 @@ export function ChatOverlay({
       // follows the spring down; the settle listener below unmounts it once the
       // height reaches 0 (robust to the [baseH] effect re-issuing the spring).
       setDragPreviewMounted(true);
-      animateThreadClosed();
+      if (desktopOverlayHost) animateThreadClosed();
+      else animateThreadHeight(0);
       // Settle the pill morph to the input's resting end explicitly: a drag
       // that dipped past the bottom left openProgress below 1, and the
       // `pilled`-driven effect won't re-fire when `pilled` stays false — the
@@ -3805,7 +3813,9 @@ export function ChatOverlay({
     stopThreadAnimation,
     stopOpenProgressAnimation,
     animateThreadClosed,
+    animateThreadHeight,
     animateOpenProgress,
+    desktopOverlayHost,
     setDragPreviewMounted,
   ]);
 
@@ -3829,7 +3839,8 @@ export function ChatOverlay({
   // openProgress → 0 and the detent effect springs the thread height → 0.
   const collapseToPill = React.useCallback(() => {
     draggingRef.current = false;
-    const stageAtInput = !reduce && threadHeight.get() > 1;
+    const stageAtInput =
+      desktopOverlayHost && !reduce && threadHeight.get() > 1;
     pillCollapseStagingRef.current = stageAtInput;
     setPillCollapseStaging(stageAtInput);
     setDragPreviewMounted(stageAtInput);
@@ -3838,7 +3849,7 @@ export function ChatOverlay({
     setMode("pill");
     inputRef.current?.blur();
     detentHaptic();
-  }, [reduce, setDragPreviewMounted, threadHeight]);
+  }, [desktopOverlayHost, reduce, setDragPreviewMounted, threadHeight]);
 
   // Landing for a drag released AT THE BOTTOM (thread height within the detent
   // magnet of 0): PILL when the gesture carried past the bottom into the
@@ -3988,7 +3999,7 @@ export function ChatOverlay({
         threadHeight.set(target);
         openProgress.set(1);
       } else {
-        if (to === "collapsed") animateThreadClosed();
+        if (to === "collapsed" && desktopOverlayHost) animateThreadClosed();
         else animateThreadHeight(target);
         // Every detent is on the input side of the pill morph. A drag that
         // dipped past the bottom (openProgress < 1) then released upward onto a
@@ -4021,6 +4032,7 @@ export function ChatOverlay({
       animateFullBleedTo,
       overpullCapT,
       setDragPreviewMounted,
+      desktopOverlayHost,
     ],
   );
 
@@ -4099,26 +4111,23 @@ export function ChatOverlay({
     ],
   );
 
-  // First-run onboarding pin + release. While onboarding is active the sheet
-  // stays pinned FULL — a true full-screen chat (the seeded greeting/choices
-  // own the screen and the chat is undismissable; every collapse path below is
-  // also gated on `firstRunOpen`). On the FALLING edge — onboarding just
-  // completed — settle to the HALF detent: the sheet springs full → half in
-  // step with the onboarding scrim fade, so the home screen is revealed behind
-  // the top half while the conversation stays in hand. Edge-detected via a ref
-  // so an ordinary session (onboarding never active) never triggers it.
+  // First-run onboarding pin + release. The detached native companion owns a
+  // full-height first-run window and settles to its composer-friendly HALF
+  // stage. Browser/mobile retain the canonical HALF onboarding sheet and reveal
+  // the completed conversation at inset FULL. Keeping this host-specific avoids
+  // changing the browser state machine to satisfy native window geometry.
   const wasFirstRunOpenRef = React.useRef(firstRunOpen);
   React.useEffect(() => {
     const was = wasFirstRunOpenRef.current;
     wasFirstRunOpenRef.current = firstRunOpen;
     if (firstRunOpen) {
       setFreeH(null);
-      setMode("full");
-      setMaximized(fullBleedAllowed);
+      setMode(desktopOverlayHost ? "full" : "half");
+      setMaximized(false);
       return;
     }
     if (was || releaseFirstRunToHalf) {
-      goToDetent("half");
+      goToDetent(desktopOverlayHost ? "half" : "full");
       onFirstRunReleaseHandled?.();
     }
   }, [
@@ -4126,7 +4135,7 @@ export function ChatOverlay({
     goToDetent,
     onFirstRunReleaseHandled,
     releaseFirstRunToHalf,
-    fullBleedAllowed,
+    desktopOverlayHost,
   ]);
 
   // First-run backdrop. While onboarding pins the sheet FULL, a neutral scrim
@@ -4889,6 +4898,10 @@ export function ChatOverlay({
 
       if (start.composerFocusedAtPress) {
         composerFocusedAtPressRef.current = false;
+        // Browser/mobile historically treat the same outside tap that blurs
+        // the composer as the request to collapse the sheet. The detached
+        // native host intentionally keeps the composer visible after blur.
+        if (!desktopOverlayHost) collapse();
         return;
       }
       // The detached Mac companion keeps its composer visible on click-away.
@@ -6041,7 +6054,7 @@ export function ChatOverlay({
           the chat, preserving the configured background without compromising
           text contrast. On completion it fades out with the one-shot collapse.
           Pointer-transparent like the ordinary sheet backdrop. */}
-      {firstRunBackdrop !== "off" ? (
+      {desktopOverlayHost && firstRunBackdrop !== "off" ? (
         <motion.div
           aria-hidden="true"
           data-testid="chat-first-run-backdrop"
@@ -6239,11 +6252,9 @@ export function ChatOverlay({
               // settles. The full workstation/mobile contract remains unchanged.
               backgroundColor: desktopOverlayHost
                 ? GLASS_DESKTOP_SHEET_FILL
-                : firstRunOpen
-                  ? "transparent"
-                  : nativeInsetSheet
-                    ? "var(--bg)"
-                    : GLASS_SHEET_FILL,
+                : firstRunOpen || nativeInsetSheet
+                  ? "var(--bg)"
+                  : GLASS_SHEET_FILL,
               // Keep the large backdrop-filter layer's paint identity stable
               // throughout browser drag frames. The compositor child below
               // owns the glass-to-opaque blend. The detached native host stays

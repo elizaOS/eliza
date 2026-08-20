@@ -189,7 +189,7 @@ describe("ChatOverlay first-run gating", () => {
   it("drops the opaque backdrop off its opaque state on the completion edge (revealing the launcher)", () => {
     const controller = makeController();
     const { rerender } = render(
-      <ChatOverlay controller={controller} firstRunOpen />,
+      <ChatOverlay controller={controller} firstRunOpen desktopOverlayHost />,
     );
     expect(
       screen
@@ -200,19 +200,31 @@ describe("ChatOverlay first-run gating", () => {
     // Onboarding completes: the opaque layer fades to the normal scrim (or has
     // already unmounted under reduced-motion) — either way it is no longer the
     // full-opacity launcher-hiding layer.
-    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        firstRunOpen={false}
+        desktopOverlayHost
+      />,
+    );
     const after = screen.queryByTestId("chat-first-run-backdrop");
     expect(after?.getAttribute("data-first-run-opaque") ?? "false").not.toBe(
       "true",
     );
   });
 
-  it("opens edge-to-edge full-bleed (maximized) during onboarding without drag affordances", () => {
-    render(<ChatOverlay controller={makeController()} firstRunOpen />);
+  it("opens the native companion at its full inset detent without drag affordances", () => {
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        firstRunOpen
+        desktopOverlayHost
+      />,
+    );
     const sheet = screen.getByTestId("chat-sheet");
-    // The login/first-run chat is full-screen: full-bleed edge-to-edge.
-    expect(sheet.getAttribute("data-maximized")).toBe("true");
-    expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
+    // The native pill never morphs into the workstation's edge-to-edge style.
+    expect(sheet.getAttribute("data-maximized")).not.toBe("true");
+    expect(sheet.getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
     expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
@@ -448,7 +460,7 @@ describe("ChatOverlay first-run gating", () => {
       ],
     } as unknown as Partial<ShellController>);
     const { rerender } = render(
-      <ChatOverlay controller={controller} firstRunOpen />,
+      <ChatOverlay controller={controller} firstRunOpen desktopOverlayHost />,
     );
     const probe = screen.getByTestId("onboarding-state-probe");
     expect(probe.textContent).toContain("onboarding-step:runtime");
@@ -456,7 +468,13 @@ describe("ChatOverlay first-run gating", () => {
     expect(probe.textContent).toContain("__first_run__:runtime:remote");
 
     // Once onboarding completes the probe is gone.
-    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        firstRunOpen={false}
+        desktopOverlayHost
+      />,
+    );
     expect(screen.queryByTestId("onboarding-state-probe")).toBeNull();
   });
 
@@ -471,7 +489,13 @@ describe("ChatOverlay first-run gating", () => {
     expect(overlay.getAttribute("data-open")).toBe("true");
 
     // Onboarding completes: firstRunOpen falls true → false.
-    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        firstRunOpen={false}
+        desktopOverlayHost
+      />,
+    );
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("half");
     expect(overlay.getAttribute("data-open")).toBe("true");
@@ -513,6 +537,7 @@ describe("ChatOverlay first-run gating", () => {
         controller={makeController()}
         firstRunOpen={false}
         releaseFirstRunToHalf
+        desktopOverlayHost
         onFirstRunReleaseHandled={onHandled}
       />,
     );
