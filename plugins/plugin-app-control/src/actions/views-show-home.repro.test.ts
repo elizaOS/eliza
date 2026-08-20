@@ -309,9 +309,18 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 		);
 
 		expect(result?.values).toMatchObject({ mode: "show", viewId: "chat" });
-		expect(result?.text).toBe("Opened Home.");
-		expect(callback).toHaveBeenCalledTimes(1);
-		expect(callback).toHaveBeenCalledWith({ text: "Opened Home." });
+		expect(callback).not.toHaveBeenCalled();
+		expect(result).toMatchObject({
+			success: true,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+		});
+		expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+			effect: "view_navigation",
+			status: "accepted",
+			viewId: "chat",
+			label: "Home",
+		});
 		expect(fetchMock).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/chat/navigate",
 			expect.objectContaining({ method: "POST" }),
