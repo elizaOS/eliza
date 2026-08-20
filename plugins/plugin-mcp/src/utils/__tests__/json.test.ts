@@ -3,8 +3,15 @@
  * They cover fenced/prose-wrapped JSON extraction, JSON5 leniency, and schema checks for tool-call arguments.
  */
 
+import { ElizaError } from "@elizaos/core/errors";
 import { describe, expect, it } from "vitest";
-import { parseJSON, parseStructuredModelOutput, validateJsonSchema } from "../json";
+import {
+  assertMcpJsonSchemaBudget,
+  MCP_TOOL_SCHEMA_UNBOUNDED,
+  parseJSON,
+  parseStructuredModelOutput,
+  validateJsonSchema,
+} from "../json";
 
 describe("parseJSON", () => {
   it("parses a plain JSON object", () => {
@@ -162,6 +169,28 @@ describe("validateJsonSchema", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error).toMatch(/nesting depth/);
+    }
+  });
+});
+
+describe("assertMcpJsonSchemaBudget", () => {
+  it("accepts a small object schema", () => {
+    expect(() =>
+      assertMcpJsonSchemaBudget({
+        type: "object",
+        properties: { name: { type: "string" } },
+      })
+    ).not.toThrow();
+  });
+
+  it("throws MCP_TOOL_SCHEMA_UNBOUNDED on a cyclic graph", () => {
+    const cyclic: Record<string, unknown> = { type: "array" };
+    cyclic.items = cyclic;
+    expect(() => assertMcpJsonSchemaBudget(cyclic)).toThrowError(ElizaError);
+    try {
+      assertMcpJsonSchemaBudget(cyclic);
+    } catch (error) {
+      expect((error as ElizaError).code).toBe(MCP_TOOL_SCHEMA_UNBOUNDED);
     }
   });
 });

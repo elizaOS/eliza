@@ -510,7 +510,7 @@ export class McpService extends Service {
 
     const response = await connection.client.listTools();
 
-    const tools = (response?.tools ?? []).map((tool) => {
+    const tools = (response?.tools ?? []).flatMap((tool) => {
       const processedTool = { ...tool };
 
       if (tool.inputSchema) {
@@ -518,12 +518,27 @@ export class McpService extends Service {
           this.initializeToolCompatibility();
         }
 
-        processedTool.inputSchema = this.applyToolCompatibility(
-          tool.inputSchema as JSONSchema7
-        ) as typeof tool.inputSchema;
+        try {
+          processedTool.inputSchema = this.applyToolCompatibility(
+            tool.inputSchema as JSONSchema7
+          ) as typeof tool.inputSchema;
+        } catch (error) {
+          // error-policy:J3 attacker-controlled MCP tool inputSchema; omit the
+          // tool rather than RangeError the listing loop or forward the graph.
+          logger.warn(
+            {
+              src: "plugin:mcp:service",
+              serverName,
+              tool: tool.name,
+              error,
+            },
+            "MCP tool schema rejected as unbounded"
+          );
+          return [];
+        }
       }
 
-      return processedTool;
+      return [processedTool];
     });
 
     return tools;
