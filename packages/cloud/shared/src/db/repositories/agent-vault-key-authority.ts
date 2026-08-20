@@ -7,7 +7,11 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { isValidUUID } from "../../lib/utils/validation";
 import { getKmsClient } from "../crypto/kms-client";
 import { dbWrite } from "../helpers";
-import { agentBackupCatalogAuthorities } from "../schemas/agent-backup-catalog";
+import {
+  agentBackupCatalogAuthorities,
+  agentBackupRestoreLeases,
+  agentBackupRestoreOperations,
+} from "../schemas/agent-backup-catalog";
 import { agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
 import {
   AGENT_VAULT_KEY_AUTHORITY_FORMAT,
@@ -19,6 +23,7 @@ import {
   agentVaultKeyBackupBindings,
   agentVaultKeyGenerations,
 } from "../schemas/agent-vault-key-authority";
+import { dockerNodes, PLACEABLE_NODE_STATE } from "../schemas/docker-nodes";
 import {
   AgentBackupCatalogConflictError,
   lockAgentBackupCatalogAuthority,
@@ -28,6 +33,7 @@ import {
   type AgentBackupRestoreSourceV3Input,
   loadAgentBackupRestoreSourceV3,
 } from "./agent-backup-restore";
+import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const RAW_KEY_BYTES = 32;
 const PASSPHRASE_BYTES = RAW_KEY_BYTES * 2;
@@ -846,6 +852,11 @@ export async function bindAgentBackupVaultKeyGeneration(
 }
 
 export interface AgentBackupRestoreVaultPassphraseInput extends AgentBackupRestoreSourceV3Input {
+  /** Durable restore coordinator row; distinct from the source backup operation. */
+  restoreOperationId: string;
+  restoreClaimGeneration: string;
+  targetNodeRecordId: string;
+  targetNodeIncarnation: string;
   vaultKeyGenerationId: string;
   vaultKeyAuthorityReceiptDigest: string;
 }
@@ -856,7 +867,12 @@ export interface AgentBackupRestoreVaultPassphraseOptions {
 
 async function loadAgentBackupRestoreVaultGeneration(
   input: Readonly<AgentBackupRestoreVaultPassphraseInput>,
-): Promise<Readonly<AgentVaultKeyGeneration>> {
+): Promise<
+  Readonly<{
+    generation: Readonly<AgentVaultKeyGeneration>;
+    manifestImageDigest: string;
+  }>
+> {
   requireCanonicalUuid(input.vaultKeyGenerationId, "vaultKeyGenerationId");
   requireDigest(input.vaultKeyAuthorityReceiptDigest, "vaultKeyAuthorityReceiptDigest");
   const source = await loadAgentBackupRestoreSourceV3(input);
@@ -887,7 +903,158 @@ async function loadAgentBackupRestoreVaultGeneration(
     );
   }
   validateGenerationIntegrity(generation);
-  return Object.freeze({ ...generation });
+  return Object.freeze({
+    generation: Object.freeze({ ...generation }),
+    manifestImageDigest: source.manifest.runtime.imageDigest,
+  });
+}
+
+/**
+ * Prove that this callback still belongs to one live, claimed, target-pinned
+ * restore. Locks follow catalogue -> operation -> lease -> node, and the KMS
+ * call happens only after this transaction has released every lock.
+ */
+async function proveAgentBackupRestoreVaultTargetAuthority(
+  input: Readonly<AgentBackupRestoreVaultPassphraseInput>,
+  manifestImageDigest: string,
+): Promise<void> {
+  const restoreOperationId = requireCanonicalUuid(input.restoreOperationId, "restoreOperationId");
+  const restoreClaimGeneration = requireCanonicalUuid(
+    input.restoreClaimGeneration,
+    "restoreClaimGeneration",
+  );
+  const targetNodeRecordId = requireCanonicalUuid(input.targetNodeRecordId, "targetNodeRecordId");
+  const targetNodeIncarnation = requireCanonicalUuid(
+    input.targetNodeIncarnation,
+    "targetNodeIncarnation",
+  );
+  const sourceLifecycleRevision = requireCanonicalUint64(
+    input.sourceLifecycleRevision,
+    "sourceLifecycleRevision",
+  );
+  const catalogEpoch = requireCanonicalUint64(input.catalogEpoch, "catalogEpoch");
+
+  await dbWrite.transaction(async (tx) => {
+    const catalogAuthority = await lockAgentBackupCatalogAuthority(
+      tx,
+      input.organizationId,
+      input.agentId,
+    );
+    if (catalogAuthority.catalog_revision !== catalogEpoch) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore vault target was invalidated by a catalogue revision",
+      );
+    }
+
+    const [operation] = await tx
+      .select()
+      .from(agentBackupRestoreOperations)
+      .where(eq(agentBackupRestoreOperations.id, restoreOperationId))
+      .for("update")
+      .limit(1);
+    if (!operation) {
+      throw new AgentBackupCatalogConflictError("Restore vault operation is missing");
+    }
+    if (
+      operation.organization_id !== input.organizationId ||
+      operation.agent_id !== input.agentId ||
+      operation.backup_id !== input.backupId ||
+      operation.restore_attempt_id !== input.restoreAttemptId ||
+      operation.lease_id !== input.leaseId ||
+      operation.lease_generation !== input.fencingToken ||
+      operation.lease_owner_id !== input.ownerId ||
+      operation.catalog_epoch !== catalogEpoch ||
+      operation.copy_role !== input.copyRole ||
+      operation.expected_operation_id !== input.operationId ||
+      operation.expected_activation_generation !== input.sourceActivationGeneration ||
+      operation.expected_lifecycle_revision !== sourceLifecycleRevision ||
+      operation.expected_manifest_sha256 !== input.expectedManifestSha256
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore vault operation differs from its exact source and lease authority",
+      );
+    }
+    if (
+      operation.phase !== "reserved" &&
+      !(operation.phase === "failed_retryable" && operation.resume_phase === "reserved")
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        `Restore vault operation is not resumable from reserved (phase ${operation.phase})`,
+      );
+    }
+    if (
+      operation.expected_node_record_id !== targetNodeRecordId ||
+      operation.expected_node_incarnation !== targetNodeIncarnation ||
+      operation.expected_image_digest !== manifestImageDigest
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore vault operation lacks its exact complete target authority",
+      );
+    }
+
+    const [lease] = await tx
+      .select()
+      .from(agentBackupRestoreLeases)
+      .where(
+        and(
+          eq(agentBackupRestoreLeases.id, input.leaseId),
+          eq(agentBackupRestoreLeases.organization_id, input.organizationId),
+          eq(agentBackupRestoreLeases.agent_id, input.agentId),
+          eq(agentBackupRestoreLeases.backup_id, input.backupId),
+          eq(agentBackupRestoreLeases.operation_id, input.operationId),
+          eq(agentBackupRestoreLeases.activation_generation, input.sourceActivationGeneration),
+          eq(agentBackupRestoreLeases.lifecycle_revision, sourceLifecycleRevision),
+          eq(agentBackupRestoreLeases.expected_manifest_sha256, input.expectedManifestSha256),
+          eq(agentBackupRestoreLeases.copy_role, input.copyRole),
+          eq(agentBackupRestoreLeases.restore_attempt_id, input.restoreAttemptId),
+          eq(agentBackupRestoreLeases.owner_id, input.ownerId),
+          eq(agentBackupRestoreLeases.generation, input.fencingToken),
+          eq(agentBackupRestoreLeases.catalog_epoch, catalogEpoch),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!lease) {
+      throw new AgentBackupCatalogConflictError("Restore vault lease fence was lost");
+    }
+
+    const [node] = await tx
+      .select()
+      .from(dockerNodes)
+      .where(eq(dockerNodes.id, targetNodeRecordId))
+      .for("update")
+      .limit(1);
+    if (!node || node.node_incarnation !== targetNodeIncarnation) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore vault target node record or incarnation was lost",
+      );
+    }
+
+    // Read the primary clock only after all authority locks: a wait on the node
+    // must not let an expired claim or lease authorize secret material.
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (lease.released_at !== null || lease.expires_at <= databaseNow) {
+      throw new AgentBackupCatalogConflictError("Restore vault lease is expired or released");
+    }
+    if (
+      operation.claim_owner !== input.ownerId ||
+      operation.claim_generation !== restoreClaimGeneration ||
+      operation.claim_expires_at === null ||
+      operation.claim_expires_at <= databaseNow
+    ) {
+      throw new AgentBackupCatalogConflictError("Restore vault operation claim is not live");
+    }
+    if (
+      !node.enabled ||
+      node.status !== "healthy" ||
+      node.placement_state !== PLACEABLE_NODE_STATE ||
+      node.metadata.capacityProvisional === true
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore vault target is not an enabled, healthy, open existing node",
+      );
+    }
+  });
 }
 
 /**
@@ -899,11 +1066,13 @@ export async function withAgentBackupRestoreVaultPassphrase<T>(
   use: (passphrase: Uint8Array) => Promise<T> | T,
   options: Readonly<AgentBackupRestoreVaultPassphraseOptions> = {},
 ): Promise<T> {
-  const generation = await loadAgentBackupRestoreVaultGeneration(input);
-  const rawKey = await decryptGeneration(generation, options.kmsClient ?? getKmsClient());
+  const beforeKms = await loadAgentBackupRestoreVaultGeneration(input);
+  await proveAgentBackupRestoreVaultTargetAuthority(input, beforeKms.manifestImageDigest);
+  const rawKey = await decryptGeneration(beforeKms.generation, options.kmsClient ?? getKmsClient());
   const secret = new AgentVaultKeySecretHandle(rawKey);
   try {
-    await loadAgentBackupRestoreVaultGeneration(input);
+    const afterKms = await loadAgentBackupRestoreVaultGeneration(input);
+    await proveAgentBackupRestoreVaultTargetAuthority(input, afterKms.manifestImageDigest);
     return await secret.withPassphrase(use);
   } finally {
     secret.release();

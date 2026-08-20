@@ -135,6 +135,41 @@ describe("dormant restore API boundary", () => {
     expect(restoreVaultAuthority).not.toMatch(
       /agentVaultKeyAuthorities|ensureVolumeVaultPassphrase|buildVolumeVaultPassphraseCommand/,
     );
+    for (const requiredAuthorityField of [
+      "restoreOperationId",
+      "restoreClaimGeneration",
+      "targetNodeRecordId",
+      "targetNodeIncarnation",
+    ]) {
+      expect(restoreVaultAuthority).toContain(requiredAuthorityField);
+    }
+
+    const vaultCallback = restoreVaultAuthority.slice(
+      restoreVaultAuthority.indexOf("export async function withAgentBackupRestoreVaultPassphrase"),
+    );
+    const preKmsSource = vaultCallback.indexOf(
+      "const beforeKms = await loadAgentBackupRestoreVaultGeneration(input)",
+    );
+    const preKmsTargetProof = vaultCallback.indexOf(
+      "await proveAgentBackupRestoreVaultTargetAuthority(",
+      preKmsSource,
+    );
+    const kmsDecrypt = vaultCallback.indexOf("await decryptGeneration(", preKmsTargetProof);
+    const postKmsSource = vaultCallback.indexOf(
+      "const afterKms = await loadAgentBackupRestoreVaultGeneration(input)",
+      kmsDecrypt,
+    );
+    const postKmsTargetProof = vaultCallback.indexOf(
+      "await proveAgentBackupRestoreVaultTargetAuthority(",
+      preKmsTargetProof + 1,
+    );
+    const secretUse = vaultCallback.indexOf("secret.withPassphrase(use)", postKmsTargetProof);
+    expect(preKmsSource).toBeGreaterThanOrEqual(0);
+    expect(preKmsTargetProof).toBeGreaterThan(preKmsSource);
+    expect(kmsDecrypt).toBeGreaterThan(preKmsTargetProof);
+    expect(postKmsSource).toBeGreaterThan(kmsDecrypt);
+    expect(postKmsTargetProof).toBeGreaterThan(postKmsSource);
+    expect(secretUse).toBeGreaterThan(postKmsTargetProof);
   });
 
   test("contains no coordinator, capacity, billing, or probe migration in the dormant range", () => {
