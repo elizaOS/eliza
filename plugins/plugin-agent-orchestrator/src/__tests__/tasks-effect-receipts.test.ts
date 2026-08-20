@@ -108,11 +108,12 @@ describe("TASKS effect receipts", () => {
     // The unconfirmed-outcome projection is model-phrased with a factual
     // fallback (this runtime has no model) and carries no internal
     // receipt/commit vocabulary.
-    expect(result?.userFacingText).toContain("could not confirm");
-    expect(result?.userFacingText).not.toMatch(/receipt|commit/i);
-    expect(result?.userFacingEffectReceiptIds).toEqual([
-      result?.effectReceipts?.[0]?.receiptId,
-    ]);
+    // The hedge lives on planner-facing `text` now; userFacingText and the
+    // receipt binding are deliberately absent (see the license note above).
+    expect(result?.userFacingText).toBeUndefined();
+    expect(String(result?.text)).toContain("could not confirm");
+    expect(String(result?.text)).not.toMatch(/receipt|commit/i);
+    expect(result?.userFacingEffectReceiptIds).toBeUndefined();
   });
 
   it("binds non-empty action text without inventing a direct callback", async () => {
