@@ -166,6 +166,21 @@ This preflight only validates the trust binding; it does not execute the canary
 or manufacture qualification evidence. Non-qualifiable generic surfaces are
 source-documented in `_provider-canary-exclusions.json`.
 
+The Google Workspace operator controller covers the Gmail send, Google
+Calendar event-create, and Google Drive/Sheets spreadsheet-create canaries. It
+accepts only the exact result of an offline signed-manifest preflight and maps
+validated operations to the production `GoogleWorkspaceService` method shapes.
+Before it starts a run, the controller requires externally supplied capability
+implementations for account-scoped OAuth readiness, authenticated deployed
+ingress, deployed trajectory export, independent provider readback,
+authenticated replay, and both independently executed failure probes. A
+missing capability or OAuth scope is a hard refusal before ingress. Its output
+is raw unsigned source material with `qualificationClaimed: false`; the direct
+service adapter is also non-qualifying and is intended only behind the deployed
+ingress boundary. Provider qualification still requires the normal independent
+signing, trajectory verification, semantic judge, and offline artifact
+verification flow.
+
 ### Operator manifest authorization
 
 Before provisioning a target or sending authenticated ingress, authorize the
