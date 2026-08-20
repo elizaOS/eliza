@@ -350,6 +350,128 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
     expect(insertReturning).not.toHaveBeenCalled();
   });
 
+  it("binds Slack OWNER identity to workspace plus authorizing user without identity scopes", async () => {
+    const { handleOAuth2Callback } = await import("./oauth2");
+    const slackProvider = {
+      ...provider,
+      id: "slack",
+      endpoints: {
+        authorization: "https://slack.com/oauth/v2/authorize",
+        token: "https://test.example/token",
+      },
+      defaultScopes: ["users:read"],
+      allowedScopes: ["users:read", "chat:write"],
+      userScopes: undefined,
+      allowedUserScopes: ["users:read", "chat:write"],
+      tokenIdentityMappings: {
+        OWNER: { idParts: ["team.id", "authed_user.id"] },
+      },
+    } as never;
+    stateData = {
+      organizationId: "org-1",
+      userId: "user-1",
+      providerId: "slack",
+      redirectUrl: "/done",
+      scopes: [],
+      userScopes: ["users:read", "chat:write"],
+      connectionRole: "OWNER",
+      createdAt: Date.now(),
+    };
+    tokenBody = {
+      ok: true,
+      team: { id: "T123", name: "Workspace" },
+      authed_user: {
+        id: "U456",
+        access_token: "user-secret-must-not-reach-profile",
+        refresh_token: "refresh-secret-must-not-reach-profile",
+        expires_in: 43_200,
+        scope: "users:read,chat:write",
+      },
+    };
+
+    const result = await handleOAuth2Callback(slackProvider, "auth-code", "state-token");
+
+    expect(result.platformUserId).toBe("T123:U456");
+    expect(storedConnection?.platform_user_id).toBe("T123:U456");
+    expect(storedConnection?.source_context).toEqual({
+      connectionRole: "OWNER",
+      oauthUserScopes: ["users:read", "chat:write"],
+    });
+    expect(JSON.stringify(storedConnection?.profile_data)).not.toContain("secret-must-not");
+  });
+
+  it("fails closed when Slack omits the workspace component of its role-bound identity", async () => {
+    const { handleOAuth2Callback } = await import("./oauth2");
+    const slackProvider = {
+      ...provider,
+      id: "slack",
+      endpoints: {
+        authorization: "https://slack.com/oauth/v2/authorize",
+        token: "https://test.example/token",
+      },
+      userScopes: undefined,
+      allowedUserScopes: [],
+      tokenIdentityMappings: {
+        OWNER: { idParts: ["team.id", "authed_user.id"] },
+      },
+    } as never;
+    stateData = {
+      organizationId: "org-1",
+      userId: "user-1",
+      providerId: "slack",
+      redirectUrl: "/done",
+      scopes: ["a"],
+      userScopes: [],
+      connectionRole: "OWNER",
+      createdAt: Date.now(),
+    };
+    tokenBody = {
+      access_token: "bot-at-123",
+      authed_user: { id: "U456" },
+    };
+
+    await expect(handleOAuth2Callback(slackProvider, "auth-code", "state-token")).rejects.toThrow(
+      "role-bound identity",
+    );
+    expect(secretsCreateCalls).toHaveLength(0);
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+
+  it("redacts nested token material from token-response profile metadata", async () => {
+    const { handleOAuth2Callback } = await import("./oauth2");
+    const tokenIdentityProvider = {
+      ...provider,
+      userScopes: undefined,
+      allowedUserScopes: undefined,
+      tokenIdentityMappings: {
+        OWNER: { idParts: ["owner.id"] },
+      },
+    } as never;
+    stateData = {
+      organizationId: "org-1",
+      userId: "user-1",
+      providerId: "testprov",
+      redirectUrl: "/done",
+      scopes: ["a"],
+      userScopes: [],
+      connectionRole: "OWNER",
+      createdAt: Date.now(),
+    };
+    tokenBody = {
+      access_token: "top-level-secret",
+      refresh_token: "refresh-secret",
+      id_token: "identity-secret",
+      owner: {
+        id: "owner-1",
+        accessToken: "nested-secret",
+      },
+    };
+
+    await handleOAuth2Callback(tokenIdentityProvider, "auth-code", "state-token");
+
+    expect(storedConnection?.profile_data).toEqual({ owner: { id: "owner-1" } });
+  });
+
   it("uses GitHub's confirmed grant header and never continues on a merely requested repo scope", async () => {
     const { handleOAuth2Callback } = await import("./oauth2");
     const githubProvider = {
@@ -438,11 +560,68 @@ describe("initiateOAuth2 — incremental capability protocol (#19879)", () => {
       expectedPlatformUserId: "platform-user-1",
     });
   });
+
+  it("keeps Slack OWNER and bot grants in separate OAuth installations", async () => {
+    const { initiateOAuth2 } = await import("./oauth2");
+    const slackProvider = {
+      ...provider,
+      id: "slack",
+      defaultScopes: ["users:read"],
+      allowedScopes: ["users:read", "chat:write"],
+      userScopes: undefined,
+      allowedUserScopes: ["users:read", "chat:write"],
+      roleScopeDefaults: {
+        OWNER: { scopes: [], userScopes: ["users:read"] },
+        AGENT: { scopes: ["users:read"], userScopes: [] },
+      },
+    } as never;
+
+    const owner = await initiateOAuth2(slackProvider, {
+      organizationId: "org-1",
+      userId: "user-1",
+      connectionRole: "OWNER",
+    });
+    const ownerUrl = new URL(owner.authUrl);
+    expect(ownerUrl.searchParams.has("scope")).toBe(false);
+    expect(ownerUrl.searchParams.get("user_scope")).toBe("users:read");
+
+    const agent = await initiateOAuth2(slackProvider, {
+      organizationId: "org-1",
+      userId: "user-1",
+      connectionRole: "AGENT",
+    });
+    const agentUrl = new URL(agent.authUrl);
+    expect(agentUrl.searchParams.get("scope")).toBe("users:read");
+    expect(agentUrl.searchParams.has("user_scope")).toBe(false);
+  });
 });
 
 describe("OAuth2 provider credential lifecycle (#19879)", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
+  });
+
+  it("refreshes a Slack user grant from the nested authed_user response", async () => {
+    const { refreshOAuth2Token } = await import("./oauth2");
+    globalThis.fetch = mock(async () =>
+      jsonResponse({
+        ok: true,
+        authed_user: {
+          access_token: "rotated-user-token",
+          refresh_token: "rotated-user-refresh",
+          expires_in: 43_200,
+          scope: "users:read,chat:write",
+        },
+      }),
+    ) as unknown as typeof globalThis.fetch;
+
+    await expect(refreshOAuth2Token(provider as never, "old-user-refresh")).resolves.toEqual({
+      accessToken: "rotated-user-token",
+      expiresIn: 43_200,
+      newRefreshToken: "rotated-user-refresh",
+      grantedScopes: undefined,
+      grantedUserScopes: ["users:read", "chat:write"],
+    });
   });
 
   it("revokes only the selected GitHub token with authenticated app credentials", async () => {

@@ -26,6 +26,7 @@ import { Errors } from "../errors";
 import type {
   OAuthCapabilityAccess,
   OAuthProviderConfig,
+  TokenIdentityMapping,
   UserInfoMapping,
 } from "../provider-registry";
 import {
@@ -110,6 +111,14 @@ function parseGrantedScopeField(value: unknown): string[] {
     : [];
 }
 
+function nonEmptyTokenField(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function finiteNumberField(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 /**
  * Prefer scopes confirmed by the token response, while preserving providers
  * that omit scope on a successful exchange. Provider-added values are dropped
@@ -175,8 +184,9 @@ function pickUserInfoToken(
   provider: OAuthProviderConfig,
   tokens: TokenResponse,
   connectionRole: OAuthStandardConnectionRole,
+  requestedUserScopes: readonly string[],
 ): string {
-  if (connectionRole !== "OWNER" || !provider.userScopes || provider.userScopes.length === 0) {
+  if (connectionRole !== "OWNER" || requestedUserScopes.length === 0) {
     return tokens.access_token;
   }
   const authedUser = tokens.authed_user;
@@ -187,6 +197,53 @@ function pickUserInfoToken(
     }
   }
   throw Errors.forbidden();
+}
+
+const SENSITIVE_PROFILE_KEYS = new Set(["accesstoken", "refreshtoken", "idtoken", "clientsecret"]);
+
+function isSensitiveProfileKey(key: string): boolean {
+  return SENSITIVE_PROFILE_KEYS.has(key.replace(/[^a-z0-9]/gi, "").toLowerCase());
+}
+
+/** Remove credential material before provider profile metadata reaches Postgres. */
+function sanitizeProfileData(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeProfileData);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !isSensitiveProfileKey(key))
+      .map(([key, nested]) => [key, sanitizeProfileData(nested)]),
+  );
+}
+
+function extractTokenIdentity(
+  mapping: TokenIdentityMapping,
+  tokens: TokenResponse,
+): ExtractedUserInfo {
+  const idParts = mapping.idParts.map((path) => getNestedValue(tokens, path));
+  if (
+    idParts.length === 0 ||
+    idParts.some((part) => part === undefined || part === null || part === "")
+  ) {
+    throw new Error("[OAuth2] Could not extract role-bound identity from token response");
+  }
+  const profile = sanitizeProfileData(tokens) as Record<string, unknown>;
+  return {
+    id: idParts.map(String).join(":"),
+    email: mapping.email
+      ? (getNestedValue(tokens, mapping.email) as string | undefined)
+      : undefined,
+    username: mapping.username
+      ? (getNestedValue(tokens, mapping.username) as string | undefined)
+      : undefined,
+    displayName: mapping.displayName
+      ? (getNestedValue(tokens, mapping.displayName) as string | undefined)
+      : undefined,
+    avatarUrl: mapping.avatarUrl
+      ? (getNestedValue(tokens, mapping.avatarUrl) as string | undefined)
+      : undefined,
+    raw: profile,
+  };
 }
 
 function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectionRole {
@@ -314,8 +371,15 @@ export async function initiateOAuth2(
       "capabilityRequest.riskLevel cannot downgrade catalog risk",
     ]);
   }
-  const scopes = capabilityRequest?.scopes ?? resolveRequestedScopes(provider, params.scopes);
-  const userScopes = capabilityRequest?.userScopes ?? provider.userScopes ?? [];
+  const connectionRole = normalizeOAuthConnectionRole(params.connectionRole);
+  const roleDefaults = provider.roleScopeDefaults?.[connectionRole];
+  const scopes =
+    capabilityRequest?.scopes ??
+    (params.scopes === undefined && roleDefaults
+      ? [...roleDefaults.scopes]
+      : resolveRequestedScopes(provider, params.scopes));
+  const userScopes =
+    capabilityRequest?.userScopes ?? roleDefaults?.userScopes ?? provider.userScopes ?? [];
   const redirectUrl = params.redirectUrl || "/auth/success";
   if (normalizedBlockedRequest) {
     const continuationTarget = new URL(redirectUrl, baseUrl);
@@ -350,7 +414,7 @@ export async function initiateOAuth2(
     capabilities: params.capabilities,
     capabilityRequest: normalizedBlockedRequest,
     expectedPlatformUserId: params.expectedPlatformUserId,
-    connectionRole: normalizeOAuthConnectionRole(params.connectionRole),
+    connectionRole,
     createdAt: Date.now(),
     codeVerifier,
   };
@@ -380,8 +444,7 @@ export async function initiateOAuth2(
   // lookup to resolve to the same Slack user_id (the authorizer), which
   // the `storeConnection` dedup guard rejects with
   // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE` on the second click.
-  const normalizedRole = normalizeOAuthConnectionRole(params.connectionRole);
-  if (userScopes.length > 0 && normalizedRole !== "AGENT") {
+  if (userScopes.length > 0 && connectionRole !== "AGENT") {
     authUrl.searchParams.set("user_scope", userScopes.join(" "));
   }
 
@@ -460,11 +523,15 @@ export async function handleOAuth2Callback(
   // workspace admin who clicked Authorize on both buttons), and the
   // `storeConnection` dedup guard rejects the second connection with
   // `OAUTH_ACCOUNT_ALREADY_LINKED_TO_DIFFERENT_ROLE`.
-  const userInfoToken = pickUserInfoToken(provider, tokens, connectionRole);
+  const requestedUserScopes = stateData.userScopes ?? [];
+  const userInfoToken = pickUserInfoToken(provider, tokens, connectionRole, requestedUserScopes);
 
   // Fetch user info: userInfo endpoint, token metadata endpoint, or from token response
   let userInfo: ExtractedUserInfo;
-  if (provider.endpoints?.userInfo) {
+  const tokenIdentityMapping = provider.tokenIdentityMappings?.[connectionRole];
+  if (tokenIdentityMapping) {
+    userInfo = extractTokenIdentity(tokenIdentityMapping, tokens);
+  } else if (provider.endpoints?.userInfo) {
     userInfo = await fetchUserInfo(provider, userInfoToken);
   } else if (provider.endpoints?.tokenInfo) {
     userInfo = await fetchTokenInfo(provider, userInfoToken);
@@ -638,22 +705,36 @@ async function exchangeCodeForTokens(
     throw new Error(`Token exchange failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as Record<string, string | number | undefined>;
+  const data = (await response.json()) as Record<string, unknown>;
+
+  const rawAuthedUser = data.authed_user;
+  const authedUser =
+    rawAuthedUser && typeof rawAuthedUser === "object" && !Array.isArray(rawAuthedUser)
+      ? (rawAuthedUser as Record<string, unknown>)
+      : null;
 
   // Map non-standard field names if configured
   const tokenMapping = provider.tokenMapping;
-  const tokens: TokenResponse = {
-    access_token: data[tokenMapping?.accessToken || "access_token"] as string,
-    refresh_token: data[tokenMapping?.refreshToken || "refresh_token"] as string | undefined,
-    expires_in: data[tokenMapping?.expiresIn || "expires_in"] as number | undefined,
-    token_type: data[tokenMapping?.tokenType || "token_type"] as string | undefined,
-    scope: data[tokenMapping?.scope || "scope"] as string | undefined,
-    ...data,
-  };
-
-  if (!tokens.access_token) {
+  const accessToken =
+    nonEmptyTokenField(data[tokenMapping?.accessToken || "access_token"]) ??
+    nonEmptyTokenField(authedUser?.access_token);
+  if (!accessToken) {
     throw new Error("Token exchange did not return access_token");
   }
+  const tokens: TokenResponse = {
+    ...data,
+    access_token: accessToken,
+    refresh_token:
+      nonEmptyTokenField(data[tokenMapping?.refreshToken || "refresh_token"]) ??
+      nonEmptyTokenField(authedUser?.refresh_token),
+    expires_in:
+      finiteNumberField(data[tokenMapping?.expiresIn || "expires_in"]) ??
+      finiteNumberField(authedUser?.expires_in),
+    token_type:
+      nonEmptyTokenField(data[tokenMapping?.tokenType || "token_type"]) ??
+      nonEmptyTokenField(authedUser?.token_type),
+    scope: nonEmptyTokenField(data[tokenMapping?.scope || "scope"]),
+  };
 
   return tokens;
 }
@@ -813,7 +894,7 @@ function extractUserInfo(mapping: UserInfoMapping | undefined, data: unknown): E
       username: obj.username as string | undefined,
       displayName: (obj.name || obj.display_name) as string | undefined,
       avatarUrl: (obj.picture || obj.avatar_url || obj.avatar) as string | undefined,
-      raw: obj,
+      raw: sanitizeProfileData(obj) as Record<string, unknown>,
     };
   }
 
@@ -830,7 +911,7 @@ function extractUserInfo(mapping: UserInfoMapping | undefined, data: unknown): E
       ? (getNestedValue(data, mapping.displayName) as string)
       : undefined,
     avatarUrl: mapping.avatarUrl ? (getNestedValue(data, mapping.avatarUrl) as string) : undefined,
-    raw: data as Record<string, unknown>,
+    raw: sanitizeProfileData(data) as Record<string, unknown>,
   };
 }
 
@@ -1264,16 +1345,26 @@ export async function refreshOAuth2Token(
 
   const data = (await response.json()) as Record<string, unknown>;
   const tokenMapping = provider.tokenMapping;
-
-  const accessToken = data[tokenMapping?.accessToken || "access_token"] as string | undefined;
+  const rawAuthedUser = data.authed_user;
+  const authedUser =
+    rawAuthedUser && typeof rawAuthedUser === "object" && !Array.isArray(rawAuthedUser)
+      ? (rawAuthedUser as Record<string, unknown>)
+      : null;
+  const accessToken =
+    nonEmptyTokenField(data[tokenMapping?.accessToken || "access_token"]) ??
+    nonEmptyTokenField(authedUser?.access_token);
   if (!accessToken) {
     throw new Error("Token refresh response missing access_token");
   }
 
   return {
     accessToken,
-    expiresIn: data[tokenMapping?.expiresIn || "expires_in"] as number | undefined,
-    newRefreshToken: data[tokenMapping?.refreshToken || "refresh_token"] as string | undefined,
+    expiresIn:
+      finiteNumberField(data[tokenMapping?.expiresIn || "expires_in"]) ??
+      finiteNumberField(authedUser?.expires_in),
+    newRefreshToken:
+      nonEmptyTokenField(data[tokenMapping?.refreshToken || "refresh_token"]) ??
+      nonEmptyTokenField(authedUser?.refresh_token),
     grantedScopes:
       typeof data[tokenMapping?.scope || "scope"] === "string"
         ? parseGrantedScopeField(data[tokenMapping?.scope || "scope"])

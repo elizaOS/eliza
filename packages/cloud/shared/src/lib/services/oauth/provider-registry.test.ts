@@ -152,8 +152,12 @@ describe("incremental capability scope bundles (#19879)", () => {
 
     const request = resolveOAuthCapabilityRequest(slack, ["messages.send", "files.read"]);
 
-    expect(request.scopes).toEqual(["users:read"]);
-    expect(request.userScopes).toEqual(["identity.basic", "chat:write", "files:read"]);
+    expect(request.scopes).toEqual([]);
+    expect(request.userScopes).toEqual(["users:read", "chat:write", "files:read"]);
+    expect(request.userScopes.some((scope) => scope.startsWith("identity."))).toBe(false);
+    expect(
+      resolveOAuthCapabilityRequest(slack, Object.keys(slack.capabilityScopes ?? {})).scopes,
+    ).toEqual([]);
 
     const agentRequest = resolveOAuthCapabilityRequest(
       slack,
@@ -163,7 +167,7 @@ describe("incremental capability scope bundles (#19879)", () => {
       "AGENT",
     );
     expect(agentRequest.scopes).toEqual(["users:read", "chat:write", "files:read"]);
-    expect(agentRequest.userScopes).toEqual(["identity.basic"]);
+    expect(agentRequest.userScopes).toEqual([]);
   });
 
   test("deduplicates repeated capabilities and fails closed for unknown names", () => {

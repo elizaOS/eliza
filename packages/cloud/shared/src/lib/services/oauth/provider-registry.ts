@@ -35,6 +35,12 @@ export interface OAuthCapabilityScopeBundle {
   riskLevel: CapabilityRiskLevel;
 }
 
+/** Provider baseline grants when credential authority differs by connection role. */
+export interface OAuthRoleScopeDefaults {
+  scopes: string[];
+  userScopes: string[];
+}
+
 /** Capability availability projected without exposing provider credentials. */
 export interface OAuthCapabilityAccess {
   capabilityId: string;
@@ -118,6 +124,19 @@ export interface UserInfoMapping {
 }
 
 /**
+ * Identity fields carried by a provider's signed/token-endpoint response.
+ * `idParts` are joined so tenant/workspace-scoped subject IDs never collide
+ * when the same Cloud organization connects more than one provider tenant.
+ */
+export interface TokenIdentityMapping {
+  idParts: string[];
+  email?: string;
+  username?: string;
+  displayName?: string;
+  avatarUrl?: string;
+}
+
+/**
  * Mapping for non-standard token response fields.
  * Most OAuth2 providers use standard field names, but some differ.
  */
@@ -193,6 +212,9 @@ export interface OAuthProviderConfig {
   /** Stable product capabilities that may incrementally extend the baseline grant. */
   capabilityScopes?: Record<string, OAuthCapabilityScopeBundle>;
 
+  /** Role-specific least-privilege baselines for split user/app token providers. */
+  roleScopeDefaults?: Partial<Record<OAuthStandardConnectionRole, OAuthRoleScopeDefaults>>;
+
   /** Superset of user-level scopes accepted across named capability bundles. */
   allowedUserScopes?: string[];
 
@@ -221,6 +243,9 @@ export interface OAuthProviderConfig {
    * If not provided, uses standard OAuth2 claims.
    */
   userInfoMapping?: UserInfoMapping;
+
+  /** Role-specific identity authority in the token response. */
+  tokenIdentityMappings?: Partial<Record<OAuthStandardConnectionRole, TokenIdentityMapping>>;
 
   /**
    * How to map token response fields if non-standard.
@@ -537,13 +562,16 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     endpoints: {
       authorization: "https://slack.com/oauth/v2/authorize",
       token: "https://slack.com/api/oauth.v2.access",
-      userInfo: "https://slack.com/api/users.identity",
       revoke: "https://slack.com/api/auth.revoke",
     },
     defaultScopes: ["users:read"],
-    allowedScopes: ["identity.basic", "users:read", "chat:write", "channels:read", "files:read"],
+    allowedScopes: ["users:read", "chat:write", "channels:read", "files:read"],
     capabilityScopes: {
-      "channels.read": { scopes: ["channels:read"], riskLevel: "R1" },
+      "channels.read": {
+        scopes: ["channels:read"],
+        userScopes: ["channels:read"],
+        riskLevel: "R1",
+      },
       "directory.users.read": {
         scopes: ["users:read"],
         userScopes: ["users:read"],
@@ -566,20 +594,28 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       },
     },
     revocation: { transport: "bearer", token: "access", response: "slack_json" },
-    // User-level scopes requested for the OWNER role so the user's own
-    // Slack identity (authed_user.access_token, `xoxp-...`) can act on
-    // the user's behalf — read their channels, write as them, search
-    // their messages, and read files they have access to.
-    // `identity.basic` is required by Slack's `users.identity` endpoint
-    // (the userInfo URL above) — without it the OWNER callback's
-    // userInfo fetch fails with `missing_scope` and `extractUserInfo`
-    // cannot resolve `user_id`.
-    userScopes: ["identity.basic"],
-    allowedUserScopes: ["identity.basic", "chat:write", "search:read", "users:read", "files:read"],
-    userInfoMapping: {
-      id: "user_id",
-      displayName: "user",
-      // Bot tokens don't return email from auth.test - email is optional for bot auth
+    allowedUserScopes: ["channels:read", "chat:write", "search:read", "users:read", "files:read"],
+    roleScopeDefaults: {
+      OWNER: { scopes: [], userScopes: ["users:read"] },
+      AGENT: { scopes: ["users:read"], userScopes: [] },
+      TEAM: { scopes: ["users:read"], userScopes: [] },
+    },
+    // Slack forbids combining identity.* Sign-in-with-Slack scopes with
+    // ordinary app/user scopes. OAuth v2 already returns the authorizing user,
+    // bot, and workspace identities, so bind those instead of calling the
+    // legacy users.identity endpoint or requesting identity.basic.
+    tokenIdentityMappings: {
+      OWNER: {
+        idParts: ["team.id", "authed_user.id"],
+      },
+      AGENT: {
+        idParts: ["team.id", "bot_user_id"],
+        displayName: "team.name",
+      },
+      TEAM: {
+        idParts: ["team.id", "bot_user_id"],
+        displayName: "team.name",
+      },
     },
     storage: "platform_credentials",
     useGenericRoutes: true,
@@ -1192,9 +1228,13 @@ export function resolveOAuthCapabilityRequest(
 
   const normalizedGrantedScopes = normalizeScopes([...grantedScopes]);
   const normalizedGrantedUserScopes = normalizeScopes([...grantedUserScopes]);
-  const scopes = normalizeScopes([...(provider.defaultScopes ?? []), ...normalizedGrantedScopes]);
+  const roleDefaults = provider.roleScopeDefaults?.[connectionRole];
+  const scopes = normalizeScopes([
+    ...(roleDefaults?.scopes ?? provider.defaultScopes ?? []),
+    ...normalizedGrantedScopes,
+  ]);
   const userScopes = normalizeScopes([
-    ...(provider.userScopes ?? []),
+    ...(roleDefaults?.userScopes ?? provider.userScopes ?? []),
     ...normalizedGrantedUserScopes,
   ]);
   const grantedScopeSet = new Set(normalizedGrantedScopes);
