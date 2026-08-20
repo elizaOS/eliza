@@ -355,6 +355,102 @@ describe("evaluateLogicExpression budget", () => {
     expect(calls).toBe(0);
   });
 
+  it("translates an operator descriptor trap into a typed invalid error", () => {
+    const expression = new Proxy(
+      { path: "/ready" },
+      {
+        getOwnPropertyDescriptor: () => {
+          throw new Error("operator descriptor trap escaped");
+        },
+      },
+    );
+
+    try {
+      evaluateLogicExpression(expression, { ready: true });
+      throw new Error("expected descriptor trap to fail closed");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(LOGIC_EXPRESSION_INVALID);
+      expect((error as Error).message).not.toContain("trap escaped");
+    }
+  });
+
+  it("translates a dynamic-path descriptor trap into a typed invalid error", () => {
+    const dynamicPath = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor: () => {
+          throw new Error("dynamic descriptor trap escaped");
+        },
+      },
+    );
+
+    try {
+      evaluateLogicExpression({ eq: [dynamicPath, true] }, { ready: true });
+      throw new Error("expected descriptor trap to fail closed");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(LOGIC_EXPRESSION_INVALID);
+      expect((error as Error).message).not.toContain("trap escaped");
+    }
+  });
+
+  it("inspects tuple length without invoking a proxy get trap", () => {
+    let lengthGets = 0;
+    const operands = new Proxy([true, true], {
+      get: (target, key, receiver) => {
+        if (key === "length") {
+          lengthGets += 1;
+          throw new Error("tuple length get escaped");
+        }
+        return Reflect.get(target, key, receiver);
+      },
+    });
+
+    expect(evaluateLogicExpression({ eq: operands } as never, {})).toBe(true);
+    expect(lengthGets).toBe(0);
+  });
+
+  it("inspects child-array length without invoking a proxy get trap", () => {
+    let lengthGets = 0;
+    const children = new Proxy([{ path: "/ready" }], {
+      get: (target, key, receiver) => {
+        if (key === "length") {
+          lengthGets += 1;
+          throw new Error("child length get escaped");
+        }
+        return Reflect.get(target, key, receiver);
+      },
+    });
+
+    expect(evaluateLogicExpression({ and: children }, { ready: true })).toBe(
+      true,
+    );
+    expect(lengthGets).toBe(0);
+  });
+
+  it("translates an array-length descriptor trap into a typed invalid error", () => {
+    const operands = new Proxy([true, true], {
+      getOwnPropertyDescriptor: (target, key) => {
+        if (key === "length") throw new Error("length descriptor trap escaped");
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    });
+
+    expect(() =>
+      evaluateLogicExpression({ eq: operands } as never, {}),
+    ).toThrowError(ElizaError);
+  });
+
+  it("translates revoked-proxy array inspection into a typed invalid error", () => {
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+
+    expect(() => evaluateLogicExpression(proxy as never, {})).toThrowError(
+      ElizaError,
+    );
+  });
+
   it("bounds primitive string literals before equality comparison", () => {
     expect(() =>
       evaluateLogicExpression(

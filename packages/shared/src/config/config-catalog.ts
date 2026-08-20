@@ -272,22 +272,61 @@ const LOGIC_OPERATORS = [
   "lte",
 ] as const;
 
+function inspectOwnLogicProperty(
+  object: object,
+  key: PropertyKey,
+  context: Record<string, unknown>,
+): PropertyDescriptor | undefined {
+  try {
+    return Object.getOwnPropertyDescriptor(object, key);
+  } catch {
+    // error-policy:J3 hostile descriptor traps are invalid config metadata.
+    failLogicInvalid("a property descriptor could not be inspected", context);
+  }
+}
+
+function readLogicDataDescriptor(
+  descriptor: PropertyDescriptor | undefined,
+  context: Record<string, unknown>,
+): unknown {
+  if (!descriptor || !("value" in descriptor)) {
+    failLogicInvalid("accessor properties are not allowed", context);
+  }
+  return descriptor.value;
+}
+
 function readOwnLogicData(
   object: object,
   key: PropertyKey,
   context: Record<string, unknown>,
 ): unknown {
-  let descriptor: PropertyDescriptor | undefined;
+  return readLogicDataDescriptor(
+    inspectOwnLogicProperty(object, key, context),
+    context,
+  );
+}
+
+function isLogicArray(
+  value: unknown,
+  context: Record<string, unknown>,
+): value is unknown[] {
   try {
-    descriptor = Object.getOwnPropertyDescriptor(object, key);
+    return Array.isArray(value);
   } catch {
-    // error-policy:J3 hostile descriptor traps are invalid config metadata.
-    failLogicInvalid("a property descriptor could not be inspected", context);
+    // error-policy:J3 revoked proxies are invalid config metadata.
+    failLogicInvalid("array identity could not be inspected", context);
   }
-  if (!descriptor || !("value" in descriptor)) {
-    failLogicInvalid("accessor properties are not allowed", context);
+}
+
+function readLogicArrayLength(
+  value: unknown[],
+  context: Record<string, unknown>,
+): number {
+  const length = readOwnLogicData(value, "length", context);
+  if (!Number.isSafeInteger(length) || (length as number) < 0) {
+    failLogicInvalid("array length is invalid", context);
   }
-  return descriptor.value;
+  return length as number;
 }
 
 function requireLogicPath(path: unknown): string {
@@ -314,17 +353,16 @@ function resolveLogicDynamic(
   value: DynamicValue,
   state: Record<string, unknown>,
 ): unknown {
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    Object.hasOwn(value, "path")
-  ) {
-    return getByPath(
-      state,
-      requireLogicPath(
-        readOwnLogicData(value, "path", { operand: "dynamic-path" }),
-      ),
-    );
+  if (value !== null && typeof value === "object") {
+    const pathDescriptor = inspectOwnLogicProperty(value, "path", {
+      operand: "dynamic-path",
+    });
+    if (pathDescriptor) {
+      const path = readLogicDataDescriptor(pathDescriptor, {
+        operand: "dynamic-path",
+      });
+      return getByPath(state, requireLogicPath(path));
+    }
   }
   if (
     typeof value === "string" &&
@@ -342,7 +380,12 @@ function requireLogicTuple(
   value: unknown,
   operator: string,
 ): [DynamicValue, DynamicValue] {
-  if (!Array.isArray(value) || value.length !== 2) {
+  const context = { operator };
+  if (!isLogicArray(value, context)) {
+    failLogicInvalid(`${operator} requires exactly two operands`, { operator });
+  }
+  const length = readLogicArrayLength(value, context);
+  if (length !== 2) {
     failLogicInvalid(`${operator} requires exactly two operands`, { operator });
   }
   return [
@@ -356,19 +399,21 @@ function requireLogicChildren(
   operator: "and" | "or",
   ctx: LogicWalkContext,
 ): LogicExpression[] {
-  if (!Array.isArray(value)) {
+  const context = { operator };
+  if (!isLogicArray(value, context)) {
     failLogicInvalid(`${operator} requires an array`, { operator });
   }
+  const length = readLogicArrayLength(value, context);
   const remainingVisits = MAX_LOGIC_EXPRESSION_NODES - ctx.visits;
-  if (value.length > remainingVisits) {
+  if (length > remainingVisits) {
     failLogicUnbounded("visits", {
       operator,
-      visits: ctx.visits + value.length,
+      visits: ctx.visits + length,
       max: MAX_LOGIC_EXPRESSION_NODES,
     });
   }
   const children: LogicExpression[] = [];
-  for (let index = 0; index < value.length; index += 1) {
+  for (let index = 0; index < length; index += 1) {
     children.push(
       readOwnLogicData(value, index, { operator, index }) as LogicExpression,
     );
@@ -402,7 +447,11 @@ function evalLogic(
   if (depth > MAX_LOGIC_EXPRESSION_DEPTH) {
     failLogicUnbounded("depth", { depth, max: MAX_LOGIC_EXPRESSION_DEPTH });
   }
-  if (expr === null || typeof expr !== "object" || Array.isArray(expr)) {
+  if (
+    expr === null ||
+    typeof expr !== "object" ||
+    isLogicArray(expr, { depth, role: "node" })
+  ) {
     failLogicInvalid("a node must be an object", {
       depth,
       valueType: typeof expr,
@@ -419,19 +468,22 @@ function evalLogic(
     });
   }
   ctx.visiting.add(expr);
-  const operators = LOGIC_OPERATORS.filter((operator) =>
-    Object.hasOwn(expr, operator),
-  );
-  if (operators.length !== 1) {
+  const operatorEntries = LOGIC_OPERATORS.flatMap((operator) => {
+    const descriptor = inspectOwnLogicProperty(expr, operator, {
+      depth,
+      operator,
+    });
+    return descriptor ? [{ operator, descriptor }] : [];
+  });
+  if (operatorEntries.length !== 1) {
     failLogicInvalid("a node must contain exactly one logic operator", {
       depth,
-      operators,
+      operators: operatorEntries.map(({ operator }) => operator),
     });
   }
-  const operator = operators[0];
-  const node = expr as unknown as Record<string, unknown>;
+  const { operator, descriptor } = operatorEntries[0];
   try {
-    const operand = readOwnLogicData(node, operator, { depth, operator });
+    const operand = readLogicDataDescriptor(descriptor, { depth, operator });
     switch (operator) {
       case "and":
         return requireLogicChildren(operand, "and", ctx).every((child) =>
