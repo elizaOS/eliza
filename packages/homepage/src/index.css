@@ -1450,16 +1450,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   color: var(--brand-black);
 }
 
-.landing-hero-lede {
-  margin: 1.15rem 0 0;
-  max-width: 32rem;
-  color: rgb(17 17 17 / 70%);
-  font-size: clamp(1rem, 1.45vw, 1.2rem);
-  font-weight: 450;
-  line-height: 1.45;
-  text-wrap: pretty;
-}
-
 .landing-hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2525,8 +2515,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
   .landing-hero-actions,
   .landing-secondary-channels,
-  .landing-phone-number,
-  .landing-hero-lede {
+  .landing-phone-number {
     display: none;
   }
 

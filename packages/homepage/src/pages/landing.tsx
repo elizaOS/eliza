@@ -1158,15 +1158,9 @@ export default function LandingPage() {
         <div className="landing-hero-copy">
           <h1 className="landing-hero-heading">
             {t("homepage_eliza.landing.heroTitle", {
-              defaultValue: "The one member every group chat needs.",
+              defaultValue: "Four hours of your time back every week.",
             })}
           </h1>
-          <p className="landing-hero-lede">
-            {t("homepage_eliza.landing.heroLede", {
-              defaultValue:
-                "Eliza follows the conversation, remembers what the group decides, and keeps the plan clear.",
-            })}
-          </p>
           <div className="landing-hero-actions">
             <button
               type="button"

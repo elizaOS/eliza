@@ -333,13 +333,15 @@ test("landing leads with iMessage and keeps secondary channels available", async
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: /one member every group chat needs/i }),
+    page.getByRole("heading", {
+      name: /four hours of your time back every week/i,
+    }),
   ).toBeVisible({ timeout: 20_000 });
   await expect(
     page.getByText(
       "Eliza follows the conversation, remembers what the group decides, and keeps the plan clear.",
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByText("Friends · Co-parenting · Households · Trips · Communities"),
   ).toHaveCount(0);
