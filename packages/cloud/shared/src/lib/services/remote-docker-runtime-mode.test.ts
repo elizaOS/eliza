@@ -74,10 +74,7 @@ describe("applyRemoteDockerRuntimeMode", () => {
       AGENT_NAME: "kept",
     });
 
-    expect(Object.keys(applied).sort()).toEqual([
-      "AGENT_NAME",
-      "ELIZA_CLOUD_PAIR_DIRECT_RELAY",
-    ]);
+    expect(Object.keys(applied).sort()).toEqual(["AGENT_NAME", "ELIZA_CLOUD_PAIR_DIRECT_RELAY"]);
   });
 });
 
@@ -86,9 +83,7 @@ describe("DockerSandboxProvider remote runtime mode", () => {
     const provider = new DockerSandboxProvider();
     const createOnce = spyOn(
       provider as unknown as {
-        _createOnce: (config: {
-          environmentVars: Record<string, string>;
-        }) => Promise<never>;
+        _createOnce: (config: { environmentVars: Record<string, string> }) => Promise<never>;
       },
       "_createOnce",
     ).mockRejectedValue(new Error("captured remote create config"));
@@ -122,9 +117,7 @@ describe("DockerSandboxProvider remote runtime mode", () => {
     const provider = new DockerSandboxProvider();
     const createOnce = spyOn(
       provider as unknown as {
-        _createOnce: (config: {
-          environmentVars: Record<string, string>;
-        }) => Promise<never>;
+        _createOnce: (config: { environmentVars: Record<string, string> }) => Promise<never>;
       },
       "_createOnce",
     ).mockRejectedValue(new Error("captured remote create config"));
