@@ -323,6 +323,24 @@ function fsyncDirectory(directory: string): void {
   }
 }
 
+function validateProtectedPublicationParent(directory: string): string {
+  const absolute = path.resolve(directory);
+  const entry = lstatSync(absolute);
+  const actual = realpathSync(absolute);
+  const status = statSync(actual);
+  if (entry.isSymbolicLink() || !status.isDirectory()) {
+    throw new Error(
+      "external provider-canary output parent must be a real directory",
+    );
+  }
+  if (status.uid !== process.getuid?.() || (status.mode & 0o022) !== 0) {
+    throw new Error(
+      "external provider-canary output parent must be current-user-owned and not group/world writable",
+    );
+  }
+  return actual;
+}
+
 function writeExclusive(file: string, value: unknown): void {
   const descriptor = openSync(file, "wx", 0o600);
   try {
@@ -402,8 +420,11 @@ export function stageExternalCanaryDirectory(
   manifestSha256: string,
   writeStaging: (stagingDirectory: string) => void,
 ): ExternalCanaryPublicationReservation {
-  const output = path.resolve(outputDir);
-  const parent = path.dirname(output);
+  const requestedOutput = path.resolve(outputDir);
+  const parent = validateProtectedPublicationParent(
+    path.dirname(requestedOutput),
+  );
+  const output = path.join(parent, path.basename(requestedOutput));
   const staging = path.join(
     parent,
     `.${path.basename(output)}.${manifestSha256}.staging`,

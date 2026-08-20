@@ -231,6 +231,19 @@ describe("external provider-canary CLI", () => {
     ).toBe(false);
   });
 
+  it("rejects an output parent writable by another principal", () => {
+    const directory = temporaryDirectory();
+    chmodSync(directory, 0o777);
+    expect(() =>
+      stageExternalCanaryDirectory(
+        path.join(directory, "result"),
+        "c".repeat(64),
+        () => {},
+      ),
+    ).toThrow(/not group\/world writable/);
+    expect(existsSync(path.join(directory, "result"))).toBe(false);
+  });
+
   it("never exposes staged output when durable consumption fails", () => {
     const directory = temporaryDirectory();
     const output = path.join(directory, "result");
