@@ -6784,7 +6784,6 @@
   "cloud.privacyPanel.exportComingSoon": "データエクスポートは近日公開予定 — このサーバーではまだ利用できません。",
   "cloud.privacyPanel.exportFailed": "エクスポートに失敗しました: {{message}}",
   "cloud.privacyPanel.confirmPhrasePrompt": "確認のために「{{phrase}}」と入力してください。",
-  "cloud.privacyPanel.deletionScheduled": "削除をスケジュールしました。消去まで 30 日間の猶予があります。",
   "cloud.privacyPanel.deleteRequestFailed": "削除リクエストに失敗しました: {{message}}",
   "cloud.privacyPanel.title": "プライバシー",
   "cloud.privacyPanel.subtitle": "オプションのデータ収集を管理し、データに関する権利を行使してください。",

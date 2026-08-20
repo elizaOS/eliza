@@ -29,6 +29,9 @@ describe("Android Play account-deletion contract", () => {
       expect(read(`ui/src/i18n/locales/${locale}`)).not.toContain(
         '"cloud.privacyPanel.deletionComingSoon"',
       );
+      expect(read(`ui/src/i18n/locales/${locale}`)).not.toContain(
+        '"cloud.privacyPanel.deletionScheduled"',
+      );
     }
   });
 

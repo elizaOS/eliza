@@ -6784,7 +6784,6 @@
   "cloud.privacyPanel.exportComingSoon": "数据导出即将推出——此服务器尚不支持。",
   "cloud.privacyPanel.exportFailed": "导出失败：{{message}}",
   "cloud.privacyPanel.confirmPhrasePrompt": "请输入「{{phrase}}」以确认。",
-  "cloud.privacyPanel.deletionScheduled": "删除已计划。您有 30 天时间在清除前恢复。",
   "cloud.privacyPanel.deleteRequestFailed": "删除请求失败：{{message}}",
   "cloud.privacyPanel.title": "隐私",
   "cloud.privacyPanel.subtitle": "控制可选数据捕获并行使您的数据权利。",

@@ -6784,7 +6784,6 @@
   "cloud.privacyPanel.exportComingSoon": "A exportação de dados estará disponível em breve — ainda não disponível neste servidor.",
   "cloud.privacyPanel.exportFailed": "Exportação falhou: {{message}}",
   "cloud.privacyPanel.confirmPhrasePrompt": "Por favor, digite \"{{phrase}}\" para confirmar.",
-  "cloud.privacyPanel.deletionScheduled": "Exclusão agendada. Você tem 30 dias para recuperar antes da purga.",
   "cloud.privacyPanel.deleteRequestFailed": "Solicitação de exclusão falhou: {{message}}",
   "cloud.privacyPanel.title": "Privacidade",
   "cloud.privacyPanel.subtitle": "Controle a captura opcional de dados e exerça seus direitos sobre os dados.",
