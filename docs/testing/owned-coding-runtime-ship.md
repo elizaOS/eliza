@@ -8,18 +8,18 @@ Eliza's first-party coding path is the implementation being shipped. OpenCode
 and pi-agent were not copied into the runtime. They remain useful references or
 explicit optional ACP backends, but neither is required for the owned path.
 
-This is a local candidate, not a flawless or published release. Nothing from
-this coding-agent work is to be pushed while the remaining UX issues below are
-open. The latest checked-in local checkpoint is
-`7eade67fbe4864fee6e5f84975f33d2fc655a93b`; the API-only chat-relay fix and
-the completion/evidence fixes and this updated evidence are newer local
-working-tree changes. The final handoff must name the newer local checkpoint
-after the clean exact-head gate; it must not name a remote branch.
+This is a local candidate, not a flawless or published release. Per the latest
+owner instruction, none of this coding-agent work is pushed. The exact-head
+behavior checkpoint is `c7891c0b767bcbfe55cfc9ddf9f2f63c1f0d098e`; this
+document update is the only newer working-tree change before the final local
+evidence checkpoint.
 
 The earlier OpenRouter/Qwen diagnostic remains historical evidence only; it is
-not the current configuration. Current acceptance uses direct Cerebras with
-`gemma-4-31b`, through Eliza's protected provider-account store rather than a
-long-lived plaintext environment variable.
+not the current configuration. Interactive browser acceptance uses Cerebras
+`gemma-4-31b` through Eliza's protected provider-account store rather than a
+long-lived plaintext environment variable. The clean headless matrix uses the
+same provider/model through a single authorized process environment and retains
+no credential material.
 
 The tested production chain is:
 
@@ -250,25 +250,27 @@ read-only workspace was unchanged, and all three lifecycle sequences reached
 `done`, `archived`, then `active` after reopen. Its sanitized local report is
 `work/qa-artifacts/owned-parent-final-20260820-cbb6da2/owned-parent-2026-08-20T19-23-40-914Z-51341/report.json`.
 
-The latest clean exact-head rerun is retained at
-`work/qa-artifacts/owned-parent-cerebras-final-20260820/owned-parent-2026-08-20T22-55-52-416Z-72133/report.json`.
-It passed at local checkpoint
-`7eade67fbe4864fee6e5f84975f33d2fc655a93b`: the natural parent selected
-delegation, both concurrent children overlapped while running, all three
-workspaces remained unchanged, every task completed and traversed
-`done -> archived -> active`, and all recorded parent/child model stages used
-Cerebras `gemma-4-31b`.
+The final clean exact-head rerun is retained at
+`work/qa-artifacts/owned-parent-cerebras-c7891c0-20260820/owned-parent-2026-08-20T23-49-46-499Z-8606/report.json`.
+It passed at local behavior checkpoint
+`c7891c0b767bcbfe55cfc9ddf9f2f63c1f0d098e` with the repository clean at both
+start and end. The natural parent selected delegation, both concurrent children
+overlapped while running, all three independent fixture tests exited zero, all
+three workspaces remained unchanged, and every task traversed
+`done -> archived -> active`. The three child trajectory IDs are
+`tj-948910897f1bf5`, `tj-949ce94eb5f364`, and `tj-949ce26af9920c`.
 
-That report predates the newer API-only chat-relay fix. The relay fix has full
-package tests and a live browser/runtime regression below, but it does not yet
-have another clean exact-head parent matrix. The clean report is therefore
-strong evidence for the checked-in checkpoint, not proof that the current dirty
-working tree is ready to publish.
+The retained report bundle was scanned against the approved runtime credential
+and contains no copy of it. Provider/model fields identify direct Cerebras
+`gemma-4-31b`; no Qwen/OpenRouter model participated. This exact-head run covers
+the newer relay, prompt, residual-attribution, new-file capture, and durable
+artifact-verification changes in the behavior checkpoint.
 
-An exact-head repetition previously caught the `taskRoomId` ownership bug above
-and is recorded as a failed acceptance, despite the child itself completing the
-fixture work. The later clean report is the checked-in checkpoint's lifecycle
-evidence; a one-off green run is deliberately not treated as flawless proof.
+An earlier exact-head repetition caught the `taskRoomId` ownership bug above and
+is recorded as a failed acceptance, despite the child itself completing the
+fixture work. The final clean report is the behavior checkpoint's lifecycle
+evidence; a one-off green run is deliberately not described as proof of
+flawlessness.
 
 ### Browser-only Eliza UI acceptance
 
