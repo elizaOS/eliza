@@ -34,10 +34,12 @@ const CREDIT_DIRECTION_WORDS = ["credit", "deposit"];
 const NON_DIRECTIONAL_DESCRIPTORS = [
   // Order matters: consume the elliptical shared-card phrases before their
   // shorter suffixes, otherwise "Debit/Credit Card Amount" would retain the
-  // leading "debit" and be misclassified as a debit-only column.
-  /\b(?:debit\s*\/\s*credit|credit\s*\/\s*debit)\s+card\b/g,
-  /\bcredit\s+card\b/g,
-  /\bdebit\s+card\b/g,
+  // leading "debit" and be misclassified as a debit-only column. Exporters use
+  // slash, hyphen, ampersand, "and", and whitespace-only variants for the same
+  // shared card descriptor, so recognize the complete grammar in either order.
+  /\b(?:debit\s*(?:[/&_-]|\band\b|\s+)\s*credit|credit\s*(?:[/&_-]|\band\b|\s+)\s*debit)[\s_-]+card\b/g,
+  /\bcredit[\s_-]+card\b/g,
+  /\bdebit[\s_-]+card\b/g,
 ] as const;
 const MERCHANT_COLUMN_HINTS = [
   "merchant",

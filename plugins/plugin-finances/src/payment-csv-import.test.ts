@@ -311,11 +311,27 @@ describe("parseTransactionsCsv", () => {
     // a card noun, not a direction, so the sign of each value decides direction.
     for (const headerCell of [
       "Credit Card Amount",
+      "Credit-Card Amount",
+      "Credit_Card Amount",
+      "Credit  Card Amount",
       "Debit Card Amount",
+      "Debit-Card Amount",
+      "Debit_Card Amount",
+      "Debit  Card Amount",
       "Debit/Credit Card Amount",
       "Debit / Credit Card Amount",
       "Credit/Debit Card Amount",
       "Credit / Debit Card Amount",
+      "Debit-Credit Card Amount",
+      "Credit-Debit Card Amount",
+      "Debit_Credit Card Amount",
+      "Credit_Debit Card Amount",
+      "Debit & Credit Card Amount",
+      "Credit & Debit Card Amount",
+      "Debit and Credit Card Amount",
+      "Credit and Debit Card Amount",
+      "Debit Credit Card Amount",
+      "Credit Debit Card Amount",
     ]) {
       const r = parseTransactionsCsv(
         `Date,Payee,${headerCell}\n2026-01-15,Coffee,-4.50\n2026-01-16,Refund,10.00\n`,
@@ -328,6 +344,24 @@ describe("parseTransactionsCsv", () => {
       });
       expect(r.transactions[1]).toMatchObject({
         direction: "credit",
+        amountUsd: 10,
+      });
+    }
+  });
+
+  it("preserves an explicit direction outside a card descriptor", () => {
+    const cases = [
+      ["Credit Card Debit Amount", "debit"],
+      ["Debit Card Credit Amount", "credit"],
+    ] as const;
+    for (const [headerCell, direction] of cases) {
+      const r = parseTransactionsCsv(
+        `Date,Payee,${headerCell}\n2026-01-15,Adjustment,10.00\n`,
+      );
+      expect(r.errors).toEqual([]);
+      expect(r.transactions).toHaveLength(1);
+      expect(r.transactions[0]).toMatchObject({
+        direction,
         amountUsd: 10,
       });
     }
