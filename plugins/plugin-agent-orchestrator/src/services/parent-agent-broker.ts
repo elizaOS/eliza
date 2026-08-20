@@ -1307,6 +1307,9 @@ async function runCloudCommand(args: {
       ...(body ? { "Content-Type": "application/json" } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
+    // Bound the cloud-command hop so a stalled Eliza Cloud API cannot hang
+    // the TASKS action forever.
+    signal: AbortSignal.timeout(30_000),
   });
   const payload = await responsePayload(response);
   const payloadText =

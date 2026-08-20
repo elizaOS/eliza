@@ -304,6 +304,9 @@ export class ElizaCloudClient {
         params: { text, roomId, channelType },
       }),
       redirect: "manual",
+      // Same bound as the non-streaming sendMessage sibling; a stalled cloud
+      // agent must not hang the stream open forever.
+      signal: AbortSignal.timeout(60_000),
     });
 
     if (isRedirectResponse(response)) {
