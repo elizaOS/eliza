@@ -129,6 +129,7 @@ export interface TwilioRawStatusReceipt {
   toE164: string;
   direction: "outbound-api";
   status: string;
+  providerAccepted: true;
   payloadSha256: string | null;
   rawResponseSha256: string;
   qualificationClaimed: false;
@@ -785,6 +786,13 @@ export async function collectTwilioRawStatusReadback(input: {
       "Twilio REST response does not match the exact resource, account, and route",
     );
   }
+  const acceptedStatus =
+    input.preflight.plan.channel === "sms" ? "delivered" : "completed";
+  if (status !== acceptedStatus) {
+    fail(
+      `Twilio REST response.status does not prove accepted ${input.preflight.plan.channel} completion`,
+    );
+  }
   let payloadSha256: string | null = null;
   if (input.preflight.plan.channel === "sms") {
     const body = requiredString(value.body, "Twilio REST response.body");
@@ -803,6 +811,7 @@ export async function collectTwilioRawStatusReadback(input: {
     toE164,
     direction: "outbound-api",
     status,
+    providerAccepted: true,
     payloadSha256,
     rawResponseSha256,
     qualificationClaimed: false,

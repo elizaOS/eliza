@@ -448,6 +448,7 @@ describe("Twilio provider-canary operator", () => {
       channel: "sms",
       resourceSid: messageSid,
       status: "delivered",
+      providerAccepted: true,
       payloadSha256: hash(preflight.plan.expectedPayload),
       qualificationClaimed: false,
     });
@@ -486,9 +487,34 @@ describe("Twilio provider-canary operator", () => {
       channel: "voice",
       resourceSid: callSid,
       status: "completed",
+      providerAccepted: true,
       payloadSha256: null,
       qualificationClaimed: false,
     });
+  });
+
+  it("does not treat a valid failed or nonterminal Twilio state as provider acceptance", async () => {
+    const preflight = preflightTwilioOperatorCanary(fixture("sms"));
+    for (const status of ["queued", "sent", "failed", "undelivered"]) {
+      await expect(
+        collectTwilioRawStatusReadback({
+          preflight,
+          resourceSid: messageSid,
+          accountSid,
+          authToken,
+          fetchImpl: async () =>
+            Response.json({
+              sid: messageSid,
+              account_sid: accountSid,
+              from: fromE164,
+              to: toE164,
+              direction: "outbound-api",
+              status,
+              body: preflight.plan.expectedPayload,
+            }),
+        }),
+      ).rejects.toThrow(/does not prove accepted sms completion/);
+    }
   });
 
   it("rejects provider route/body drift and forged preflights", async () => {
