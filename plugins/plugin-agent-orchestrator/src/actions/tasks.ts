@@ -34,6 +34,7 @@ import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
   detectTaskType,
   type OrchestratorTaskType,
+  staticAcceptanceCriteria,
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
@@ -2119,6 +2120,10 @@ async function runSpawnAgent(
             goal: task,
             kind: "coding",
             priority: "normal",
+            // The child is already live at this point. Supply the deterministic
+            // contract so createTask cannot block durable ownership on an
+            // optional model refinement before attachSession runs.
+            acceptanceCriteria: staticAcceptanceCriteria(task, "coding"),
             originalRequest: requestText(message),
             ...(session.workdir ? { workdir: session.workdir } : {}),
             ...(message.roomId ? { roomId: message.roomId } : {}),

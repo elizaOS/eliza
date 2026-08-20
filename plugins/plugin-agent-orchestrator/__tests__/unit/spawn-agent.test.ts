@@ -609,7 +609,16 @@ describe("TASKS:spawn_agent durable restart owner", () => {
     );
     expect(result?.success).toBe(true);
     expect(tasks.createTask).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "coding", goal: "fix bug" }),
+      expect.objectContaining({
+        kind: "coding",
+        goal: "fix bug",
+        acceptanceCriteria: [
+          "typecheck passes",
+          "lint passes",
+          "tests pass",
+          "the change is summarized in the diff",
+        ],
+      }),
     );
     expect(tasks.attachSession).toHaveBeenCalledWith(
       "durable-task-1",
