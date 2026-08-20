@@ -173,6 +173,24 @@ describe("iOS bridge — transcripts route object scope", () => {
 		expect(runtime.deleteMemory).not.toHaveBeenCalled();
 	});
 
+	it("canonicalizes an uppercase UUID before lookup and object authorization", async () => {
+		const transcriptId = "00000000-0000-0000-0000-0000000000bc" as UUID;
+		await runtime.createMemory(transcriptMemory(transcriptId), "transcripts");
+
+		const { status, json } = await call(
+			backend,
+			"GET",
+			`/api/transcripts/${transcriptId.toUpperCase()}`,
+		);
+		expect(status).toBe(200);
+		expect(json).toEqual(
+			expect.objectContaining({
+				transcript: expect.objectContaining({ id: transcriptId }),
+			}),
+		);
+		expect(runtime.getMemoryById).toHaveBeenCalledWith(transcriptId);
+	});
+
 	it("does not treat transcript-shaped content in another memory table as a transcript", async () => {
 		const spoofId = "00000000-0000-0000-0000-0000000000b3" as UUID;
 		const spoof = transcriptMemory(spoofId);

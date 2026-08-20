@@ -1749,7 +1749,11 @@ async function handleTranscriptsRoute(
 			error: "invalid transcript id: malformed URL encoding",
 		});
 	}
-	const id = validateUuid(decodedId);
+	// UUID text is case-insensitive, while persisted transcript ids are emitted
+	// by crypto.randomUUID() in lowercase and compared as capability strings.
+	// Canonicalize before both storage lookup and marker comparisons so an
+	// uppercase spelling cannot turn an existing authorized object into a 404.
+	const id = validateUuid(decodedId.toLowerCase());
 	if (id === null) {
 		return jsonResponse(400, { error: "invalid transcript id: expected UUID" });
 	}
