@@ -342,6 +342,54 @@ function getStaticStringProperty(
   return undefined;
 }
 
+const STATIC_SCENARIO_METADATA_FIELDS = new Set([
+  "id",
+  "title",
+  "status",
+  "pendingReason",
+  "tier",
+  "lane",
+  "executionProfile",
+  "evidenceScope",
+]);
+
+function assertStaticScenarioMetadataObject(
+  objectLiteral: ts.ObjectLiteralExpression,
+  file: string,
+): void {
+  const authoredPropertyNames = new Set<string>();
+  for (const property of objectLiteral.properties) {
+    if (ts.isSpreadAssignment(property)) {
+      throw new Error(
+        `[scenario-loader] ${file}: scenario metadata cannot use object spreads because classification fields would not be statically auditable`,
+      );
+    }
+    if (!("name" in property) || !property.name) continue;
+    if (ts.isComputedPropertyName(property.name)) {
+      throw new Error(
+        `[scenario-loader] ${file}: scenario metadata cannot use computed property names because classification fields would not be statically auditable`,
+      );
+    }
+    const name = propertyNameText(property.name);
+    if (!name) continue;
+    if (authoredPropertyNames.has(name)) {
+      throw new Error(
+        `[scenario-loader] ${file}: scenario metadata cannot declare duplicate property "${name}" because static and runtime classification could disagree`,
+      );
+    }
+    authoredPropertyNames.add(name);
+    if (!STATIC_SCENARIO_METADATA_FIELDS.has(name)) continue;
+    if (
+      !ts.isPropertyAssignment(property) ||
+      staticStringValue(property.initializer) === undefined
+    ) {
+      throw new Error(
+        `[scenario-loader] ${file}: ${name} must be a statically readable string literal`,
+      );
+    }
+  }
+}
+
 function scenarioObjectFromExpression(
   expression: ts.Expression,
 ): ts.ObjectLiteralExpression | null {
@@ -403,6 +451,7 @@ export async function loadScenarioMetadataFile(
       `[scenario-loader] ${file}: no statically readable scenario object in default export or exported 'scenario' value.`,
     );
   }
+  assertStaticScenarioMetadataObject(objectLiteral, file);
   const id = getStaticStringProperty(objectLiteral, "id");
   if (!id) {
     throw new Error(
@@ -505,7 +554,8 @@ export async function loadAllScenarios(
     const candidates = [result, ...expanded];
     if (result.scenario.status === "pending" && !includePending) continue;
     for (const candidate of candidates) {
-      if (resolvedFilter && !resolvedFilter.has(candidate.scenario.id)) continue;
+      if (resolvedFilter && !resolvedFilter.has(candidate.scenario.id))
+        continue;
       loaded.push(candidate);
     }
   }
