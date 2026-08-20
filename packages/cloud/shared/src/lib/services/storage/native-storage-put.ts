@@ -186,7 +186,8 @@ async function reconcileNativeStorageQuota(
       !page ||
       typeof page.truncated !== "boolean" ||
       !Array.isArray(page.objects) ||
-      page.objects.length > NATIVE_STORAGE_QUOTA_RECONCILE_PAGE_SIZE
+      page.objects.length > NATIVE_STORAGE_QUOTA_RECONCILE_PAGE_SIZE ||
+      (page.cursor !== undefined && typeof page.cursor !== "string")
     ) {
       throw new NativeStoragePutError(
         "PROVIDER_INTEGRITY",
@@ -213,12 +214,21 @@ async function reconcileNativeStorageQuota(
       seenCursorDigests.add(cursorDigest);
       nextCursor = nextPageCursor;
     }
-    const candidates = page.objects.map((observed) => {
+    const candidates = [];
+    for (let index = 0; index < page.objects.length; index += 1) {
+      if (!Object.hasOwn(page.objects, index)) {
+        throw new NativeStoragePutError(
+          "PROVIDER_INTEGRITY",
+          "R2 returned incomplete legacy quota metadata",
+        );
+      }
+      const observed = page.objects[index];
       if (
         !observed ||
         typeof observed.key !== "string" ||
         !observed.key.startsWith(providerPrefix) ||
         observed.key.length === providerPrefix.length ||
+        observed.key.length > 1_024 ||
         utf8Encoder.encode(observed.key).byteLength > 1_024 ||
         typeof observed.etag !== "string" ||
         !observed.etag ||
@@ -233,7 +243,7 @@ async function reconcileNativeStorageQuota(
           "R2 returned incomplete legacy quota metadata",
         );
       }
-      return {
+      candidates.push({
         organizationId,
         logicalKey: observed.key.slice(providerPrefix.length),
         providerKey: observed.key,
@@ -241,8 +251,8 @@ async function reconcileNativeStorageQuota(
         contentType: adoptedContentType(observed),
         etag: observed.etag,
         uploadedAt: observed.uploaded ?? new Date(0),
-      };
-    });
+      });
+    }
     await orgStorageMutationsRepository.adoptLegacyObjects(candidates);
     hasMore = Boolean(nextCursor);
     if (nextCursor) {

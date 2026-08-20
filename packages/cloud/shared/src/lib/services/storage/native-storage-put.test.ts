@@ -295,6 +295,37 @@ describe("executeNativeStoragePut", () => {
     expect(reconcileNativeQuotaFromCatalog).not.toHaveBeenCalled();
   });
 
+  test("rejects a malformed cursor on a terminal page before catalog mutation", async () => {
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+    const bucket = fakeR2({ value: false });
+    bucket.list = mock().mockResolvedValue({
+      objects: [{ key: `org/${ORG}/valid.bin`, size: 1, etag: "etag" }],
+      truncated: false,
+      cursor: 7,
+    });
+
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).rejects.toMatchObject({
+      code: "PROVIDER_INTEGRITY",
+    });
+    expect(adoptLegacyObjects).not.toHaveBeenCalled();
+    expect(reconcileNativeQuotaFromCatalog).not.toHaveBeenCalled();
+  });
+
+  test("rejects a sparse provider page before catalog mutation", async () => {
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+    const bucket = fakeR2({ value: false });
+    bucket.list = mock().mockResolvedValue({
+      objects: new Array(1),
+      truncated: false,
+    });
+
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).rejects.toMatchObject({
+      code: "PROVIDER_INTEGRITY",
+    });
+    expect(adoptLegacyObjects).not.toHaveBeenCalled();
+    expect(reconcileNativeQuotaFromCatalog).not.toHaveBeenCalled();
+  });
+
   test("preserves an opaque large cursor while retaining fixed-size cycle state", async () => {
     quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
     const bucket = fakeR2({ value: false });
