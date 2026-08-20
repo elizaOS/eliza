@@ -14,6 +14,7 @@ import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isDesktopExternalHttpApiBaseUrl } from "./desktop-external-api-base";
 import {
   type AgentRequestTransport,
+  bodyToBase64,
   bodyToString,
   fetchAgentTransport,
   headersToRecord,
@@ -73,43 +74,84 @@ const desktopHttpTransport: AgentRequestTransport = {
     const method = init.method ?? "GET";
     const rawBody = init.body;
     const body = bodyToString(rawBody);
-    if (
-      (body === undefined && rawBody != null) ||
-      (!methodAllowsBody(method) && body != null)
-    ) {
+
+    // String body — send directly through the RPC bridge.
+    if (body !== undefined || rawBody === null || rawBody === undefined) {
+      if (
+        (body === undefined && rawBody != null) ||
+        (!methodAllowsBody(method) && body != null)
+      ) {
+        return fetchAgentTransport.request(url, init, context);
+      }
+
+      const result = (await request.call(rpc.request, {
+        url,
+        method,
+        headers: headersToRecord(init.headers),
+        body: methodAllowsBody(method) ? (body ?? null) : null,
+        timeoutMs: context?.timeoutMs,
+      })) as DesktopHttpRequestResult;
+
+      return decodeDesktopHttpResponse(result);
+    }
+
+    // Binary body (FormData, ArrayBuffer, Blob, Uint8Array) — serialize as
+    // base64 so the Electrobun RPC string bridge can carry it without
+    // corruption. The main process decodes base64 back to bytes and sets the
+    // correct Content-Type (including multipart boundary for FormData).
+    if (!methodAllowsBody(method)) {
       return fetchAgentTransport.request(url, init, context);
     }
+
+    const binaryBody = await bodyToBase64(rawBody);
+    if (!binaryBody) {
+      // Unrecognized body type — fall back to fetch.
+      return fetchAgentTransport.request(url, init, context);
+    }
+
+    // Merge the binary Content-Type into the headers, replacing any
+    // caller-supplied Content-Type (the boundary from FormData serialization
+    // is authoritative for multipart bodies).
+    const headers = headersToRecord(init.headers);
+    headers["content-type"] = binaryBody.contentType;
 
     const result = (await request.call(rpc.request, {
       url,
       method,
-      headers: headersToRecord(init.headers),
-      body: methodAllowsBody(method) ? (body ?? null) : null,
+      headers,
+      body: null,
+      bodyBase64: binaryBody.bodyBase64,
       timeoutMs: context?.timeoutMs,
     })) as DesktopHttpRequestResult;
 
-    // Binary responses (audio, image, etc.) arrive as base64 to avoid UTF-8
-    // corruption through the Electrobun RPC string bridge.
-    if (result.bodyBase64) {
-      const binary = atob(result.bodyBase64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      return new Response(bytes, {
-        status: result.status,
-        statusText: result.statusText ?? "",
-        headers: result.headers,
-      });
-    }
+    return decodeDesktopHttpResponse(result);
+  },
+};
 
-    return new Response(result.body ?? "", {
+function decodeDesktopHttpResponse(
+  result: DesktopHttpRequestResult,
+): Response {
+  // Binary responses (audio, image, etc.) arrive as base64 to avoid UTF-8
+  // corruption through the Electrobun RPC string bridge.
+  if (result.bodyBase64) {
+    const binary = atob(result.bodyBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new Response(bytes, {
       status: result.status,
       statusText: result.statusText ?? "",
       headers: result.headers,
     });
-  },
-};
+  }
+
+  return new Response(result.body ?? "", {
+    status: result.status,
+    statusText: result.statusText ?? "",
+    headers: result.headers,
+  });
+}
 
 export function desktopHttpTransportForUrl(
   url: string,

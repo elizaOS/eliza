@@ -177,6 +177,13 @@ export interface DesktopHttpRequestOptions {
   method?: string;
   headers?: Record<string, string>;
   body?: string | null;
+  /**
+   * Base64-encoded binary request body. Set by the renderer when the request
+   * body is a FormData, ArrayBuffer, Blob, or Uint8Array (e.g. STT audio
+   * upload). The main process decodes this back to bytes and uses it as the
+   * fetch body, with the Content-Type from the headers.
+   */
+  bodyBase64?: string | null;
   timeoutMs?: number;
 }
 

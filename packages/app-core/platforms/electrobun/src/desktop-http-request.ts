@@ -42,7 +42,7 @@ export function normalizeDesktopHttpRequest(params: unknown): {
   url: string;
   method: string;
   headers: Record<string, string>;
-  body: string | null;
+  body: string | Buffer | null;
   timeoutMs?: number;
 } {
   if (!params || typeof params !== "object") {
@@ -73,7 +73,17 @@ export function normalizeDesktopHttpRequest(params: unknown): {
             .map(([key, value]) => [key, value]),
         )
       : {};
-  const body = typeof record.body === "string" ? record.body : null;
+  // Binary request body (e.g. STT audio upload as FormData) arrives as base64;
+  // decode to a Buffer so fetch sends the raw bytes with the correct
+  // Content-Type (including multipart boundary) from the headers.
+  const bodyBase64 =
+    typeof record.bodyBase64 === "string" ? record.bodyBase64 : null;
+  const body =
+    bodyBase64 !== null
+      ? Buffer.from(bodyBase64, "base64")
+      : typeof record.body === "string"
+        ? record.body
+        : null;
   const timeoutMs =
     typeof record.timeoutMs === "number" &&
     Number.isFinite(record.timeoutMs) &&
@@ -104,7 +114,10 @@ export async function desktopHttpRequest(params: unknown): Promise<{
     const response = await fetch(request.url, {
       method: request.method,
       headers: request.headers,
-      body: request.body,
+      // Body may be a string (text) or Buffer (binary base64-decoded);
+      // Buffer is a valid BodyInit at runtime but the DOM lib types don't
+      // include it, so cast through BodyInit.
+      body: request.body as BodyInit | null,
       signal: abortController.signal,
     });
     const contentType = response.headers.get("content-type") ?? "";
