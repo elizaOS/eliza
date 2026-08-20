@@ -44,6 +44,7 @@ export async function elizacloudFetch<T = unknown>(
       "Content-Type": "application/json",
       ...reqInit.headers,
     },
+    signal: reqInit.signal ?? AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
     const text = await res.text();
