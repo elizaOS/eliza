@@ -96,6 +96,22 @@ describe("buildSkillExecutionEnv", () => {
 
     expect(env.GEMINI_API_KEY).toBe("from-skill-config");
   });
+
+  it("wins over an inherited entry that differs only in case", () => {
+    // POSIX treats these as two variables. Writing only the exact name would
+    // ship both, and a child reading the documented uppercase spelling would
+    // still get the ambient value — silently using the wrong credential.
+    const env = buildSkillExecutionEnv(
+      { PATH: "/usr/bin", GEMINI_API_KEY: "ambient" },
+      { Gemini_Api_Key: "from-skill-config" },
+    );
+
+    const spellings = Object.keys(env).filter(
+      (key) => key.toUpperCase() === "GEMINI_API_KEY",
+    );
+    expect(spellings).toHaveLength(1);
+    expect(env[spellings[0]]).toBe("from-skill-config");
+  });
 });
 
 describe("isInheritableSkillEnvKey", () => {

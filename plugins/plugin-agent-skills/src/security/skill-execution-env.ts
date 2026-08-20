@@ -100,7 +100,16 @@ export function buildSkillExecutionEnv(
       result[key] = value;
   }
   for (const [key, value] of Object.entries(sanitizeSpawnEnv(overlay))) {
-    if (value !== undefined) result[key] = value;
+    if (value === undefined) continue;
+    // Drop any inherited entry that differs only in case before writing. POSIX
+    // treats `GEMINI_API_KEY` and `Gemini_Api_Key` as two variables, so an
+    // exact-name overwrite would ship both and a child reading the documented
+    // spelling would still get the ambient value — the opposite of overlay-wins.
+    const upper = key.toUpperCase();
+    for (const existing of Object.keys(result)) {
+      if (existing !== key && existing.toUpperCase() === upper) delete result[existing];
+    }
+    result[key] = value;
   }
 
   // Without PATH, execvp falls back to a system default and bash synthesizes one
