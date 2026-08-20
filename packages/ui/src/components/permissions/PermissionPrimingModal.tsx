@@ -32,12 +32,13 @@ import {
 
 /**
  * Onboarding permission-priming modal — the "soft-ask" surface shown once,
- * post-login. For each relevant permission it presents *our* rationale and an
- * Enable / Not now choice; the real OS dialog only fires on Enable. Denied
- * permissions get an in-place recovery affordance (retry or open OS settings).
+ * post-login. Each relevant permission gets a short rationale and a Continue
+ * action; the real OS dialog remains the only place that grants or denies
+ * access. Denied permissions get an in-place recovery affordance (retry or
+ * open OS settings).
  *
  * This is a controlled dialog: the parent owns `open` and is told when the
- * sequence is finished via `onComplete` (granted, skipped, or dismissed).
+ * sequence is finished via `onComplete` (granted or explicitly skipped).
  */
 
 const ICONS: Record<string, LucideIcon> = {
@@ -127,39 +128,35 @@ function PermissionPrimingModalView({
   }, [done, onComplete]);
 
   const headerTitle = t("permissionpriming.title", {
-    defaultValue: "Set up {{appName}}",
+    defaultValue: "Permissions",
     ...appNameInterpolationVars(branding),
   });
   const headerSubtitle = t("permissionpriming.subtitle", {
-    defaultValue: "A couple of quick permissions so I'm ready to help.",
+    defaultValue:
+      "Choose what {{appName}} can use. Change this anytime in Settings.",
+    ...appNameInterpolationVars(branding),
   });
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        // Dismissing (X / Escape / outside tap) soft-skips the rest; the parent
-        // is then told via the done-effect.
-        if (!next) skipAll();
-      }}
-    >
+    <Dialog open={open}>
       <DialogContent
-        showCloseButton
+        showCloseButton={false}
         data-testid="permission-priming-modal"
+        data-position="center"
         aria-describedby="permission-priming-subtitle"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
         // The completion edge leaves the chat sheet open at the HALF detent
         // (its container stacks at the shell-overlay level), so this modal
         // must sit above the ambient chat — content and dim both — or the
         // sheet paints over it and eats its taps (mobile bottom-sheet dialogs
         // and the half sheet are both bottom-anchored).
-        className="z-[9500]"
+        className="z-[9500] w-[min(calc(100vw_-_2rem),26rem)] gap-5 rounded-3xl border-white/10 bg-bg/95 p-0 shadow-2xl max-sm:!bottom-auto max-sm:!top-1/2 max-sm:w-[min(calc(100vw_-_2rem),26rem)] max-sm:!-translate-y-1/2 max-sm:rounded-3xl max-sm:data-[state=closed]:slide-out-to-top-[48%] max-sm:data-[state=open]:slide-in-from-top-[48%]"
         overlayClassName="z-[9490]"
       >
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-accent" aria-hidden />
-            {headerTitle}
-          </DialogTitle>
+        <DialogHeader className="px-5 pt-5 text-center sm:text-center">
+          <DialogTitle>{headerTitle}</DialogTitle>
           <DialogDescription id="permission-priming-subtitle">
             {headerSubtitle}
           </DialogDescription>
@@ -167,7 +164,7 @@ function PermissionPrimingModalView({
 
         {!ready ? (
           <div
-            className="py-8 text-center text-sm text-muted"
+            className="px-5 pb-5 text-center text-sm text-muted"
             data-testid="permission-priming-loading"
           >
             {t("permissionpriming.checking", {
@@ -194,7 +191,7 @@ function PermissionPrimingModalView({
           />
         ) : (
           <div
-            className="py-8 text-center text-sm text-muted"
+            className="px-5 pb-5 text-center text-sm text-muted"
             data-testid="permission-priming-done"
           >
             {t("permissionpriming.allSet", { defaultValue: "You're all set." })}
@@ -256,7 +253,7 @@ function PrimingCard({
         {
           defaultValue:
             id === "microphone" && cloudOnly
-              ? "Turn on your microphone so you can speak instead of type. Audio is sent to Eliza Cloud only when you use voice."
+              ? "Speak to Eliza instead of typing. Voice is sent to Eliza Cloud only while you use it."
               : copy.rationale,
         },
       )
@@ -270,7 +267,10 @@ function PrimingCard({
   const needsRecovery = denied || requestError || recheckError;
 
   return (
-    <div className="flex flex-col gap-4" data-testid={`priming-card-${id}`}>
+    <div
+      className="flex flex-col gap-4 px-5 pb-5"
+      data-testid={`priming-card-${id}`}
+    >
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-border bg-bg-accent text-accent">
           <Icon className="h-5 w-5" aria-hidden />
@@ -365,43 +365,33 @@ function PrimingCard({
               {t("permissionpriming.continue", { defaultValue: "Continue" })}
             </Button>
           ) : (
-            <>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={onSkip}
-                disabled={requesting}
-                data-testid={`priming-skip-${id}`}
-              >
-                {t("permissionpriming.notNow", { defaultValue: "Not now" })}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="default"
-                onClick={onEnable}
-                disabled={requesting}
-                data-testid={`priming-enable-${id}`}
-              >
-                {requesting
-                  ? t("permissionpriming.requesting", {
-                      defaultValue: "Requesting…",
-                    })
-                  : t("permissionpriming.enable", { defaultValue: "Enable" })}
-              </Button>
-            </>
+            <Button
+              type="button"
+              size="sm"
+              variant="default"
+              onClick={onEnable}
+              disabled={requesting}
+              data-testid={`priming-enable-${id}`}
+            >
+              {requesting
+                ? t("permissionpriming.requesting", {
+                    defaultValue: "Opening…",
+                  })
+                : t("permissionpriming.continue", {
+                    defaultValue: "Continue",
+                  })}
+            </Button>
           )}
         </div>
       </div>
 
       <button
         type="button"
-        className="self-center text-xs text-muted underline-offset-2 hover:text-txt hover:underline"
+        className="self-center min-h-11 px-3 text-sm font-medium text-muted transition-colors hover:text-txt"
         onClick={onSkipAll}
         data-testid="priming-skip-all"
       >
-        {t("permissionpriming.skipAll", { defaultValue: "Skip for now" })}
+        {t("permissionpriming.notNow", { defaultValue: "Not now" })}
       </button>
     </div>
   );

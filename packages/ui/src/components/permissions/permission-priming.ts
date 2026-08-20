@@ -19,8 +19,8 @@ import { shellLocalStorage } from "../../surface-realm-channel";
  *     re-triggered from Settings.
  *
  * The soft-ask contract: the OS permission dialog is only ever fired when the
- * user taps "Enable" on a card. Priming a permission here does NOT request it —
- * it only decides that a rationale card is worth showing.
+ * user taps "Continue" on a card. Priming a permission here does NOT request it
+ * — it only decides that a rationale card is worth showing.
  */
 
 export type PrimingPlatform = "ios" | "android" | "desktop" | "web";
@@ -38,8 +38,8 @@ export interface PrimingPermissionCopy {
 
 /**
  * Value-proposition copy for every permission we ever prime. Keyed by
- * PermissionId. First-person, benefit-led — this is what earns the "Enable"
- * tap, so it must read as *why the user wins*, not what the OS is about to ask.
+ * PermissionId. Copy stays direct and specific so the system prompt—not this
+ * screen—owns the actual allow/deny decision.
  */
 export const PRIMING_COPY: Partial<
   Record<PermissionId, PrimingPermissionCopy>
@@ -47,42 +47,37 @@ export const PRIMING_COPY: Partial<
   microphone: {
     icon: "mic",
     titleKey: "permissionpriming.microphone.title",
-    title: "Talk to me",
+    title: "Microphone",
     rationaleKey: "permissionpriming.microphone.rationale",
-    rationale:
-      "Turn on your microphone so you can speak instead of type. Voice stays on your device unless you send it.",
+    rationale: "Speak to Eliza instead of typing.",
   },
   "speech-recognition": {
     icon: "audio-lines",
     titleKey: "permissionpriming.speechRecognition.title",
-    title: "Understand your voice",
+    title: "Speech recognition",
     rationaleKey: "permissionpriming.speechRecognition.rationale",
-    rationale:
-      "Allow speech recognition so I can turn what you say into text for hands-free chats.",
+    rationale: "Turn your voice into text.",
   },
   location: {
     icon: "map-pin",
     titleKey: "permissionpriming.location.title",
-    title: "Plan around where you are",
+    title: "Location",
     rationaleKey: "permissionpriming.location.rationale",
-    rationale:
-      "Share your location so I can factor in travel time, your time zone, and place-aware reminders.",
+    rationale: "Use nearby context for travel and reminders.",
   },
   notifications: {
     icon: "bell",
     titleKey: "permissionpriming.notifications.title",
-    title: "Reach you when it matters",
+    title: "Notifications",
     rationaleKey: "permissionpriming.notifications.rationale",
-    rationale:
-      "Let me send notifications for reminders, follow-ups, and results from work I do in the background.",
+    rationale: "Get reminders and updates when Eliza finishes work.",
   },
   camera: {
     icon: "camera",
     titleKey: "permissionpriming.camera.title",
-    title: "Show me things",
+    title: "Camera",
     rationaleKey: "permissionpriming.camera.rationale",
-    rationale:
-      "Enable the camera so you can capture photos and video for me to look at.",
+    rationale: "Take photos to share with Eliza.",
   },
 };
 
@@ -135,8 +130,8 @@ export function resolvePrimingSet(
 export const PERMISSION_PRIMING_STORAGE_KEY = "eliza:permissions-primed";
 
 /**
- * True once the priming modal has run to completion (granted, skipped, or
- * dismissed). Storage access can throw in locked-down webviews — a throw means
+ * True once the priming modal has run to completion (granted or explicitly
+ * skipped). Storage access can throw in locked-down webviews — a throw means
  * "we don't know", which we treat as not-yet-primed so the modal errs toward
  * showing rather than silently never appearing.
  */

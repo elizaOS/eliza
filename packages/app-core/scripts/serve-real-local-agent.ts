@@ -14,6 +14,7 @@ import { ModelType, type Plugin, type Route } from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
+import { installAgentHostBridge } from "../src/runtime/install-agent-host-bridge.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
 import { publishBoundDeviceE2ePort } from "./lib/device-e2e-port-advertisement.ts";
@@ -182,6 +183,11 @@ function resolvePositiveIntegerEnv(name: string, fallback: string): number {
 
 async function main(): Promise<void> {
   const t0 = Date.now();
+  // The device host supports real pairing, so its agent-server auth gate must
+  // recognize the machine session minted by app-core. Without this bridge,
+  // `/api/auth/me` succeeds while ordinary paired-device routes incorrectly
+  // return 401 (including the notification inbox).
+  installAgentHostBridge();
   const restoreRegistryFetch = await installGeneratedRegistryFixture();
   const port = resolvePort();
   const streamIntervalMs = resolveNonNegativeIntegerEnv(

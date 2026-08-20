@@ -3,8 +3,8 @@
  * Bundles permission-priming-fixture.tsx (the REAL modal on its live hook) with
  * esbuild, stubs the `api/client` singleton so OS requests are deterministic,
  * and drives the soft-ask gesture flow end to end in headless chromium:
- *   - the first card (microphone) shows Enable / Not now;
- *   - tapping Enable fires the (stubbed) OS request and advances to the next card;
+ *   - the centered modal ignores implicit dismissal and shows Continue / Not now;
+ *   - tapping Continue fires the (stubbed) OS request and advances to the next card;
  *   - a scripted denial keeps the card active and surfaces the recovery callout;
  *   - Continue advances past the denied card;
  *   - granting the last card completes the sequence (body[data-primed]).
@@ -161,13 +161,42 @@ async function snap(p, name) {
 async function runFlow(page, label) {
   await page.goto(url);
   await page.waitForSelector('[data-testid="priming-card-microphone"]');
+  await page.waitForTimeout(300);
+  const modal = page.getByTestId("permission-priming-modal");
+  const viewport = page.viewportSize();
+  const bounds = await modal.boundingBox();
   assert(
-    await page.getByTestId("priming-enable-microphone").isVisible(),
-    `[${label}] first card (microphone) shows Enable`,
+    bounds !== null &&
+      viewport !== null &&
+      Math.abs(bounds.y + bounds.height / 2 - viewport.height / 2) <= 4,
+    `[${label}] modal is vertically centered`,
+  );
+  assert(
+    (await page.getByTestId("priming-enable-microphone").textContent()) ===
+      "Continue",
+    `[${label}] first card (microphone) shows Continue`,
+  );
+  assert(
+    (await page.getByTestId("priming-skip-all").textContent()) === "Not now",
+    `[${label}] flow has one explicit Not now action`,
+  );
+  assert(
+    (await page.getByRole("button", { name: "Close" }).count()) === 0,
+    `[${label}] modal has no accidental close control`,
+  );
+  await page.keyboard.press("Escape");
+  assert(
+    await modal.isVisible(),
+    `[${label}] Escape does not dismiss the permission flow`,
+  );
+  await page.mouse.click(4, 4);
+  assert(
+    await modal.isVisible(),
+    `[${label}] backdrop click does not dismiss the permission flow`,
   );
   await snap(page, `${label}-01-microphone`);
 
-  // Enable microphone → granted → advance to location.
+  // Continue microphone → granted → advance to location.
   await page.getByTestId("priming-enable-microphone").click();
   await page.waitForSelector('[data-testid="priming-card-location"]');
   assert(
@@ -176,7 +205,7 @@ async function runFlow(page, label) {
   );
   await snap(page, `${label}-02-location`);
 
-  // Script a denial for location, then Enable → denied → recovery callout.
+  // Script a denial for location, then Continue → denied → recovery callout.
   await page.evaluate(() => {
     window.__deny = { location: true };
   });

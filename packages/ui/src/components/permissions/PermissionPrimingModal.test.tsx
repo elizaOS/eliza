@@ -1,9 +1,10 @@
 /** Verifies PermissionPrimingModal through the package's configured test harness. */
 // @vitest-environment jsdom
 //
-// PermissionPrimingModal rendering: the active card's rationale + Enable/Not now,
+// PermissionPrimingModal rendering: the active card's concise rationale,
+// Continue/Not now actions, non-dismissible shell,
 // the recovery callout for a denied card, the loading state, single onComplete
-// firing, and Skip-for-now. Drives the modal through an injected
+// firing, and explicit Not now. Drives the modal through an injected
 // `controllerOverride` stub (the live hook is covered by use-permission-priming.test).
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
 import {
@@ -74,7 +75,7 @@ function makeController(
 }
 
 describe("PermissionPrimingModal", () => {
-  it("renders the active card with rationale and Enable / Not now", () => {
+  it("renders concise copy with Continue and one whole-flow Not now action", () => {
     const controller = makeController({
       items: [item("microphone", "not-determined", true)],
       active: item("microphone", "not-determined", true),
@@ -92,12 +93,17 @@ describe("PermissionPrimingModal", () => {
 
     expect(screen.getByTestId("priming-card-microphone")).toBeTruthy();
     // MockAppProvider's t returns the defaultValue, so real copy renders.
-    expect(screen.getByText("Talk to me")).toBeTruthy();
+    expect(screen.getByText("Microphone")).toBeTruthy();
+    expect(screen.getByText("Speak to Eliza instead of typing.")).toBeTruthy();
     expect(screen.getByTestId("priming-enable-microphone")).toBeTruthy();
-    expect(screen.getByTestId("priming-skip-microphone")).toBeTruthy();
+    expect(screen.getByTestId("priming-enable-microphone").textContent).toBe(
+      "Continue",
+    );
+    expect(screen.getByTestId("priming-skip-all").textContent).toBe("Not now");
+    expect(screen.queryByTestId("priming-skip-microphone")).toBeNull();
   });
 
-  it("Enable fires the OS request, Not now skips without it", () => {
+  it("Continue fires the OS request and Not now skips the remaining flow", () => {
     const controller = makeController({
       items: [item("microphone", "not-determined", true)],
       active: item("microphone", "not-determined", true),
@@ -113,10 +119,36 @@ describe("PermissionPrimingModal", () => {
 
     fireEvent.click(screen.getByTestId("priming-enable-microphone"));
     expect(controller.request).toHaveBeenCalledWith("microphone");
-    expect(controller.skip).not.toHaveBeenCalled();
+    expect(controller.skipAll).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId("priming-skip-microphone"));
-    expect(controller.skip).toHaveBeenCalledWith("microphone");
+    fireEvent.click(screen.getByTestId("priming-skip-all"));
+    expect(controller.skipAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays centered and ignores Escape or backdrop dismissal", () => {
+    const controller = makeController({
+      items: [item("microphone", "not-determined", true)],
+      active: item("microphone", "not-determined", true),
+    });
+    renderModal(
+      <PermissionPrimingModal
+        ids={["microphone"]}
+        open
+        onComplete={vi.fn()}
+        controllerOverride={controller}
+      />,
+    );
+
+    const modal = screen.getByTestId("permission-priming-modal");
+    expect(modal.getAttribute("data-position")).toBe("center");
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+
+    expect(controller.skipAll).not.toHaveBeenCalled();
+    expect(screen.getByTestId("permission-priming-modal")).toBeTruthy();
   });
 
   it("shows the recovery callout for a denied card and routes recovery through the controller", async () => {
@@ -289,7 +321,7 @@ describe("PermissionPrimingModal", () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
-  it("Skip for now skips the whole flow", () => {
+  it("Not now skips the whole flow", () => {
     const controller = makeController({
       items: [item("microphone", "not-determined", true)],
       active: item("microphone", "not-determined", true),
