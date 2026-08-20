@@ -2,7 +2,9 @@
  * Bounds the household audit walk that searches stored event `inputs` /
  * `decision` graphs for audience entity IDs. A hostile nest RangeError'd
  * recordContainsAnyEntity at 8k depth on Node 24.15.0. Depth, node, and
- * cycle limits are all load-bearing.
+ * cycle limits are all load-bearing. Every reflective read is fail-closed
+ * to the typed unbounded error; array length and indexes come from own
+ * data descriptors so Proxy get/has traps cannot hang the export path.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -69,6 +71,23 @@ export function recordContainsAnyEntity(
     visits: 0,
     visiting: new WeakSet<object>(),
   });
+}
+
+/**
+ * Visibility predicate used by `HouseholdCoordinationService.exportFor`
+ * when filtering audit rows for a non-owner principal.
+ */
+export function householdExportAuditVisibleToAudience(
+  event: { inputs: unknown; decision: unknown; ownerId: string },
+  audience: ReadonlySet<string>,
+  options: { isOwner: boolean; principalEntityId: string },
+): boolean {
+  return (
+    options.isOwner ||
+    recordContainsAnyEntity(event.inputs, audience) ||
+    recordContainsAnyEntity(event.decision, audience) ||
+    event.ownerId === options.principalEntityId
+  );
 }
 
 function recordContainsAnyEntityInner(

@@ -5,13 +5,14 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-
 import {
   HOUSEHOLD_ENTITY_SCAN_UNBOUNDED,
+  householdExportAuditVisibleToAudience,
   MAX_HOUSEHOLD_ENTITY_SCAN_DEPTH,
   MAX_HOUSEHOLD_ENTITY_SCAN_NODES,
   recordContainsAnyEntity,
 } from "./household-entity-scan";
+import type { HouseholdAuditRecord } from "./types";
 
 function nestArray(depth: number): unknown {
   let value: unknown = "target";
@@ -140,6 +141,21 @@ describe("recordContainsAnyEntity", () => {
     expect(membershipChecks).toBe(0);
   });
 
+  it(`throws ${HOUSEHOLD_ENTITY_SCAN_UNBOUNDED} on a revoked Proxy instead of TypeError`, () => {
+    const { proxy, revoke } = Proxy.revocable(["target"], {});
+    revoke();
+    try {
+      recordContainsAnyEntity(proxy, audience);
+      expect.unreachable("scan should fail closed on a revoked Proxy");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(HOUSEHOLD_ENTITY_SCAN_UNBOUNDED);
+      expect((error as Error).name).not.toBe("TypeError");
+      expect((error as Error).cause).toBeInstanceOf(TypeError);
+      expect(String((error as Error).cause)).toMatch(/IsArray/);
+    }
+  });
+
   it("translates hostile Proxy inspection failures", () => {
     const hostile = new Proxy(
       {},
@@ -178,5 +194,52 @@ describe("recordContainsAnyEntity", () => {
       expect((error as Error).name).not.toBe("RangeError");
     }
     expect(performance.now() - started).toBeLessThan(50);
+  });
+
+  it("scans nested entity ids on the household exportFor audit payload", () => {
+    const event: Pick<HouseholdAuditRecord, "inputs" | "decision" | "ownerId"> =
+      {
+        ownerId: "owner-other",
+        inputs: {
+          householdId: "household:default",
+          affectedPartyEntityIds: ["partner"],
+          nested: { audience: ["x", { entityId: "target" }] },
+        },
+        decision: { activatedAgreementId: "agr-1" },
+      };
+    expect(
+      householdExportAuditVisibleToAudience(event, audience, {
+        isOwner: false,
+        principalEntityId: "principal",
+      }),
+    ).toBe(true);
+    expect(
+      householdExportAuditVisibleToAudience(
+        { ...event, inputs: { householdId: "household:default" } },
+        audience,
+        { isOwner: false, principalEntityId: "principal" },
+      ),
+    ).toBe(false);
+    expect(
+      householdExportAuditVisibleToAudience(
+        { ...event, inputs: { householdId: "household:default" } },
+        audience,
+        { isOwner: true, principalEntityId: "principal" },
+      ),
+    ).toBe(true);
+
+    try {
+      householdExportAuditVisibleToAudience(
+        { ...event, inputs: nestArray(8_000) as Record<string, unknown> },
+        audience,
+        { isOwner: false, principalEntityId: "principal" },
+      );
+      expect.unreachable(
+        "exportFor audit scan should fail closed on 8k inputs",
+      );
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(HOUSEHOLD_ENTITY_SCAN_UNBOUNDED);
+    }
   });
 });

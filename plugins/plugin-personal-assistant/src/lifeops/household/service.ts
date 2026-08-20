@@ -42,7 +42,7 @@ import {
   ensureHouseholdGrantExpiryWarning,
   type HouseholdGrantExpiryWarningReceipt,
 } from "./grant-expiry-warning.js";
-import { recordContainsAnyEntity } from "./household-entity-scan.js";
+import { householdExportAuditVisibleToAudience } from "./household-entity-scan.js";
 import { HouseholdCoordinationRepository } from "./repository.js";
 import {
   DEFAULT_HOUSEHOLD_ID,
@@ -2954,12 +2954,11 @@ export class HouseholdCoordinationService {
               : DEFAULT_HOUSEHOLD_ID;
         return eventHouseholdId === householdId;
       })
-      .filter(
-        (event) =>
-          isOwner ||
-          recordContainsAnyEntity(event.inputs, audience) ||
-          recordContainsAnyEntity(event.decision, audience) ||
-          event.ownerId === principalEntityId,
+      .filter((event) =>
+        householdExportAuditVisibleToAudience(event, audience, {
+          isOwner,
+          principalEntityId,
+        }),
       )
       .map((event): HouseholdAuditRecord => {
         if (isOwner) return event;
