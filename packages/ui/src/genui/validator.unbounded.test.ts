@@ -4,7 +4,7 @@
  * cases pin deep, wide, sparse, accessor, and hostile-reflection inputs against
  * the real exported validator without replacing its production walk.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   MAX_GENUI_UNSAFE_FIELD_DEPTH,
   MAX_GENUI_UNSAFE_FIELD_NODES,
@@ -172,6 +172,71 @@ describe("validateElizaGenUiSpec unbounded nests", () => {
     if (result.ok) {
       expect(result.spec).toEqual(JSON.parse(JSON.stringify(input)));
     }
+  });
+
+  it("rejects cumulative string bytes before the final stringify", () => {
+    const stringify = vi.spyOn(JSON, "stringify");
+    try {
+      const data = Object.fromEntries(
+        Array.from({ length: 40 }, (_, index) => [
+          `value${index}`,
+          "x".repeat(2_000),
+        ]),
+      );
+      const result = validateElizaGenUiSpec(specWithData(data));
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors).toContainEqual(
+          expect.objectContaining({ code: "too_large" }),
+        );
+      }
+      expect(stringify).not.toHaveBeenCalled();
+    } finally {
+      stringify.mockRestore();
+    }
+  });
+
+  it("accounts for exact ASCII, escape, and UTF-16 JSON boundaries", () => {
+    const empty = specWithData({ payload: "" });
+    const emptyBytes = new TextEncoder().encode(JSON.stringify(empty)).length;
+    for (const [value, serializedBytes] of [
+      ["xxxx", 4],
+      ["\u0000", 6],
+      ["😀", 4],
+      ["\ud800", 6],
+    ] as const) {
+      expect(
+        validateElizaGenUiSpec(specWithData({ payload: value }), {
+          maxJsonBytes: emptyBytes + serializedBytes,
+        }).ok,
+      ).toBe(true);
+      const over = validateElizaGenUiSpec(
+        specWithData({ payload: `${value}x` }),
+        { maxJsonBytes: emptyBytes + serializedBytes },
+      );
+      expect(over.ok).toBe(false);
+      if (!over.ok) {
+        expect(over.errors).toContainEqual(
+          expect.objectContaining({ code: "too_large" }),
+        );
+      }
+    }
+  });
+
+  it("preserves fractional and infinite public byte-limit overrides", () => {
+    const spec = specWithData({ payload: "ok" });
+    const exactBytes = new TextEncoder().encode(JSON.stringify(spec)).length;
+
+    expect(
+      validateElizaGenUiSpec(spec, { maxJsonBytes: exactBytes - 0.5 }).ok,
+    ).toBe(false);
+    expect(
+      validateElizaGenUiSpec(spec, { maxJsonBytes: exactBytes + 0.5 }).ok,
+    ).toBe(true);
+    expect(
+      validateElizaGenUiSpec(spec, { maxJsonBytes: Number.POSITIVE_INFINITY })
+        .ok,
+    ).toBe(true);
   });
 
   it("translates hostile reflection traps instead of throwing", () => {

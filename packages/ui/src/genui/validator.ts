@@ -87,22 +87,95 @@ function isSafeImageSrc(value: string): boolean {
   }
 }
 
+type SnapshotContext = {
+  visits: number;
+  ancestors: WeakSet<object>;
+  halted: boolean;
+  bytes: number;
+  maxBytes: number;
+};
+
+function chargeSnapshotBytes(
+  ctx: SnapshotContext,
+  issues: ElizaGenUiValidationIssue[],
+  bytes: number,
+  path: string,
+  componentId?: string,
+): boolean {
+  if (bytes <= ctx.maxBytes - ctx.bytes) {
+    ctx.bytes += bytes;
+    return true;
+  }
+  addIssue(issues, {
+    code: "too_large",
+    message: `Generated UI JSON must be at most ${ctx.maxBytes} bytes.`,
+    componentId,
+    path,
+  });
+  ctx.halted = true;
+  return false;
+}
+
+/** Charge the exact UTF-8 bytes produced by JSON string serialization. */
+function chargeSnapshotString(
+  ctx: SnapshotContext,
+  issues: ElizaGenUiValidationIssue[],
+  value: string,
+  path: string,
+  componentId?: string,
+): boolean {
+  if (!chargeSnapshotBytes(ctx, issues, 2, path, componentId)) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    let bytes: number;
+    if (
+      code === 0x22 ||
+      code === 0x5c ||
+      code === 0x08 ||
+      code === 0x09 ||
+      code === 0x0a ||
+      code === 0x0c ||
+      code === 0x0d
+    ) {
+      bytes = 2;
+    } else if (code <= 0x1f) {
+      bytes = 6;
+    } else if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes = 4;
+        index += 1;
+      } else {
+        bytes = 6;
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      bytes = 6;
+    } else if (code <= 0x7f) {
+      bytes = 1;
+    } else if (code <= 0x7ff) {
+      bytes = 2;
+    } else {
+      bytes = 3;
+    }
+    if (!chargeSnapshotBytes(ctx, issues, bytes, path, componentId)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function snapshotUnsafeFields(
   value: unknown,
   issues: ElizaGenUiValidationIssue[],
   path: string,
   componentId?: string,
   depth = 0,
-  ctx: {
-    visits: number;
-    ancestors: WeakSet<object>;
-    halted: boolean;
-    maxCodeUnits: number;
-  } = {
+  ctx: SnapshotContext = {
     visits: 0,
     ancestors: new WeakSet<object>(),
     halted: false,
-    maxCodeUnits: DEFAULT_MAX_JSON_BYTES,
+    bytes: 0,
+    maxBytes: DEFAULT_MAX_JSON_BYTES,
   },
 ): unknown {
   if (ctx.halted) return undefined;
@@ -127,15 +200,32 @@ function snapshotUnsafeFields(
     ctx.halted = true;
     return undefined;
   }
-  if (typeof value === "string" && value.length > ctx.maxCodeUnits) {
-    addIssue(issues, {
-      code: "too_large",
-      message: "Generated UI contains a string larger than its JSON budget.",
-      componentId,
+  if (value === null) {
+    return chargeSnapshotBytes(ctx, issues, 4, path, componentId)
+      ? value
+      : undefined;
+  }
+  if (typeof value === "string") {
+    return chargeSnapshotString(ctx, issues, value, path, componentId)
+      ? value
+      : undefined;
+  }
+  if (typeof value === "boolean") {
+    return chargeSnapshotBytes(ctx, issues, value ? 4 : 5, path, componentId)
+      ? value
+      : undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const normalized = value === 0 ? 0 : value;
+    return chargeSnapshotBytes(
+      ctx,
+      issues,
+      String(normalized).length,
       path,
-    });
-    ctx.halted = true;
-    return undefined;
+      componentId,
+    )
+      ? normalized
+      : undefined;
   }
   if (
     value === undefined ||
@@ -153,9 +243,7 @@ function snapshotUnsafeFields(
     ctx.halted = true;
     return undefined;
   }
-  if (!value || typeof value !== "object") {
-    return value;
-  }
+  if (typeof value !== "object") return value;
   if (ctx.ancestors.has(value)) {
     addIssue(issues, {
       code: "unbounded_nest",
@@ -206,6 +294,17 @@ function snapshotUnsafeFields(
         ctx.halted = true;
         return undefined;
       }
+      if (
+        !chargeSnapshotBytes(
+          ctx,
+          issues,
+          2 + Math.max(0, length - 1),
+          path,
+          componentId,
+        )
+      ) {
+        return undefined;
+      }
       const snapshot = new Array<unknown>(length);
       for (let index = 0; index < length; index += 1) {
         const descriptor = Object.getOwnPropertyDescriptor(
@@ -235,22 +334,16 @@ function snapshotUnsafeFields(
       }
       return snapshot;
     }
+    if (!chargeSnapshotBytes(ctx, issues, 2, path, componentId)) {
+      return undefined;
+    }
     const snapshot = Object.create(null) as Record<string, unknown>;
+    let includedProperties = 0;
     for (const key of Reflect.ownKeys(value)) {
       if (ctx.halted) return undefined;
       if (typeof key !== "string") continue;
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (!descriptor?.enumerable) continue;
-      if (key.length > ctx.maxCodeUnits) {
-        addIssue(issues, {
-          code: "too_large",
-          message: "Generated UI contains a key larger than its JSON budget.",
-          componentId,
-          path,
-        });
-        ctx.halted = true;
-        return undefined;
-      }
       if ("get" in descriptor || "set" in descriptor) {
         addIssue(issues, {
           code: "unbounded_nest",
@@ -269,6 +362,21 @@ function snapshotUnsafeFields(
           path: `${path}/${key}`,
         });
       }
+      if (
+        (includedProperties > 0 &&
+          !chargeSnapshotBytes(ctx, issues, 1, path, componentId)) ||
+        !chargeSnapshotString(
+          ctx,
+          issues,
+          key,
+          `${path}/${key}`,
+          componentId,
+        ) ||
+        !chargeSnapshotBytes(ctx, issues, 1, path, componentId)
+      ) {
+        return undefined;
+      }
+      includedProperties += 1;
       const entry = snapshotUnsafeFields(
         descriptor.value,
         issues,
@@ -567,7 +675,12 @@ export function validateElizaGenUiSpec(
     visits: 0,
     ancestors: new WeakSet<object>(),
     halted: false,
-    maxCodeUnits: options.maxJsonBytes,
+    bytes: 0,
+    // Preserve the public option's existing numeric comparison semantics:
+    // fractional limits naturally admit only integral byte counts below them,
+    // and Infinity remains an explicit unbounded override. Negative and NaN
+    // limits already failed the final size check and therefore fail here too.
+    maxBytes: options.maxJsonBytes >= 0 ? options.maxJsonBytes : 0,
   });
   if (issues.length > 0) return { ok: false, errors: issues };
   if (!validateJsonSize(snapshot, issues, options))
