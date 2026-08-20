@@ -3,6 +3,9 @@
  * values (the implicit `default` account), a `MATRIX_ACCOUNTS` JSON map, and
  * `character.settings.matrix`, merging per field. Supplies the Matrix service
  * the homeserver, access token, and room list for each configured account.
+ * Named or unrecognized accountIds fail closed: they cannot inherit the
+ * owner homeserver / userId / accessToken / password / deviceId from env
+ * or the top-level character `settings.matrix` identity fields.
  */
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { MatrixSettings } from "./types.js";
@@ -163,61 +166,61 @@ export function resolveMatrixAccountSettings(
   );
   const base = characterConfig(runtime);
   const account = accountConfig(runtime, accountId);
-  const allowEnv = accountId === DEFAULT_MATRIX_ACCOUNT_ID;
+  const allowOwnerBind = accountId === DEFAULT_MATRIX_ACCOUNT_ID;
 
   return {
     accountId,
     homeserver:
       account.homeserver ??
-      base.homeserver ??
-      (allowEnv ? stringSetting(runtime, "MATRIX_HOMESERVER") : undefined) ??
+      (allowOwnerBind ? base.homeserver : undefined) ??
+      (allowOwnerBind ? stringSetting(runtime, "MATRIX_HOMESERVER") : undefined) ??
       "",
     userId:
       account.userId ??
-      base.userId ??
-      (allowEnv ? stringSetting(runtime, "MATRIX_USER_ID") : undefined) ??
+      (allowOwnerBind ? base.userId : undefined) ??
+      (allowOwnerBind ? stringSetting(runtime, "MATRIX_USER_ID") : undefined) ??
       "",
     accessToken:
       account.accessToken ??
-      base.accessToken ??
-      (allowEnv ? stringSetting(runtime, "MATRIX_ACCESS_TOKEN") : undefined) ??
+      (allowOwnerBind ? base.accessToken : undefined) ??
+      (allowOwnerBind ? stringSetting(runtime, "MATRIX_ACCESS_TOKEN") : undefined) ??
       "",
     password:
       account.password ??
-      base.password ??
-      (allowEnv ? stringSetting(runtime, "MATRIX_PASSWORD") : undefined),
+      (allowOwnerBind ? base.password : undefined) ??
+      (allowOwnerBind ? stringSetting(runtime, "MATRIX_PASSWORD") : undefined),
     deviceId:
       account.deviceId ??
-      base.deviceId ??
-      (allowEnv ? stringSetting(runtime, "MATRIX_DEVICE_ID") : undefined),
+      (allowOwnerBind ? base.deviceId : undefined) ??
+      (allowOwnerBind ? stringSetting(runtime, "MATRIX_DEVICE_ID") : undefined),
     rooms: roomsValue(
-      account.rooms ?? base.rooms ?? (allowEnv ? stringSetting(runtime, "MATRIX_ROOMS") : undefined)
+      account.rooms ?? base.rooms ?? (allowOwnerBind ? stringSetting(runtime, "MATRIX_ROOMS") : undefined)
     ),
     verifyAllowlist: roomsValue(
       account.verifyAllowlist ??
         base.verifyAllowlist ??
-        (allowEnv ? stringSetting(runtime, "MATRIX_VERIFY_ALLOWLIST") : undefined)
+        (allowOwnerBind ? stringSetting(runtime, "MATRIX_VERIFY_ALLOWLIST") : undefined)
     ),
     // boolean flags: read raw via getSetting (NOT stringSetting, which drops real booleans)
     autoJoin: boolValue(
       account.autoJoin ??
         base.autoJoin ??
-        (allowEnv ? runtime.getSetting("MATRIX_AUTO_JOIN") : undefined)
+        (allowOwnerBind ? runtime.getSetting("MATRIX_AUTO_JOIN") : undefined)
     ),
     encryption: boolValue(
       account.encryption ??
         base.encryption ??
-        (allowEnv ? runtime.getSetting("MATRIX_ENCRYPTION") : undefined)
+        (allowOwnerBind ? runtime.getSetting("MATRIX_ENCRYPTION") : undefined)
     ),
     requireMention: boolValue(
       account.requireMention ??
         base.requireMention ??
-        (allowEnv ? runtime.getSetting("MATRIX_REQUIRE_MENTION") : undefined)
+        (allowOwnerBind ? runtime.getSetting("MATRIX_REQUIRE_MENTION") : undefined)
     ),
     personal: boolValue(
       account.personal ??
         base.personal ??
-        (allowEnv ? runtime.getSetting("MATRIX_PERSONAL") : undefined)
+        (allowOwnerBind ? runtime.getSetting("MATRIX_PERSONAL") : undefined)
     ),
     enabled: boolValue(account.enabled ?? base.enabled, true),
   };
