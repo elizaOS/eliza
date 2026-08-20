@@ -866,6 +866,9 @@ describe("runtime event trigger bridge", () => {
 
     await handle.runtime.emitEvent("workflow_run_event", {
       runtime: handle.runtime,
+      source: "runtime",
+      onComplete: () => undefined,
+      anotherCallback: () => undefined,
       event: {
         id: "smithers-non-match",
         type: "NodeFinished",
@@ -910,6 +913,13 @@ describe("runtime event trigger bridge", () => {
     const eventPayload = handle.dispatchCalls[0]?.payload?.eventPayload;
     expect(eventPayload).toBeDefined();
     expect((eventPayload as Record<string, unknown>).runtime).toBeUndefined();
+    expect((eventPayload as Record<string, unknown>).source).toBeUndefined();
+    expect(
+      (eventPayload as Record<string, unknown>).onComplete,
+    ).toBeUndefined();
+    expect(
+      (eventPayload as Record<string, unknown>).anotherCallback,
+    ).toBeUndefined();
     expect(handle.reportedErrors).toHaveLength(0);
   });
 

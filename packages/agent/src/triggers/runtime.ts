@@ -903,9 +903,13 @@ export async function executeTriggerTask(
 function serializableEventPayload(
   params: EventPayload,
 ): Record<string, unknown> {
-  const payload = { ...params } as Record<string, unknown>;
-  delete payload.runtime;
-  delete payload.onComplete;
+  const payload: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (key === "runtime" || key === "source" || typeof value === "function") {
+      continue;
+    }
+    payload[key] = value;
+  }
   return payload;
 }
 
@@ -940,8 +944,8 @@ async function listCachedRuntimeEventTasks(
 
 /**
  * Dispatch one runtime event through the same persisted trigger engine used by
- * the HTTP event boundary. Filtering happens before execution so unrelated
- * event triggers do not accumulate skipped-run metrics.
+ * the HTTP event boundary. Event-kind filtering happens before queueing; the
+ * exact payload filter is rechecked on the freshly loaded task at execution.
  */
 export async function dispatchRuntimeEventTriggers(
   runtime: IAgentRuntime,
