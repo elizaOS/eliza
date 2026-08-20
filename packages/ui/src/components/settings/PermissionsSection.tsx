@@ -699,7 +699,6 @@ function DesktopPermissionsView() {
  */
 function PermissionPrimingSettingsCard() {
   const t = useAppSelector((s) => s.t);
-  const branding = useBranding();
   const ids = useMemo(() => resolvePrimingSet(), []);
   const [open, setOpen] = useState(false);
 
@@ -710,24 +709,18 @@ function PermissionPrimingSettingsCard() {
       title={t("permissionssection.QuickSetup", {
         defaultValue: "Quick setup",
       })}
-      footer={t("permissionssection.QuickSetupNote", {
-        defaultValue:
-          "Walk through the key permissions ({{appName}} voice, location, notifications) with an explanation for each.",
-        ...appNameInterpolationVars(branding),
-      })}
     >
       <SettingsRow
         label={t("permissionssection.SetUpPermissions", {
-          defaultValue: "Set up permissions",
+          defaultValue: "Review permissions",
         })}
         description={t("permissionssection.SetUpPermissionsDesc", {
-          defaultValue:
-            "Re-run the guided permission prompts, including any you previously declined.",
+          defaultValue: "Microphone and notifications.",
         })}
         control={
           <SettingsActionButton
             agentId="perm-priming-open"
-            agentLabel="Set up permissions"
+            agentLabel="Review permissions"
             agentGroup="permissions"
             variant="default"
             size="sm"
