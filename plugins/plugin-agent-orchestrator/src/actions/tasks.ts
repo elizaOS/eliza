@@ -1896,12 +1896,16 @@ async function runSpawnAgent(
       content,
     );
     // Router-driven re-spawns (failed-verification respawn loops) and nested
-    // swarm children joining an explicit task room legitimately restate the
+    // swarm children carry explicit provenance and legitimately restate the
     // in-flight goal — the guard only screens fresh user-originated spawns.
+    // Provenance, not room routing, decides durable ownership. A top-level
+    // planner may legitimately supply taskRoomId so the new task uses a known
+    // thread; that must not make its child look parent-owned and skip the
+    // durable row. Router respawns and nested swarm children carry the explicit
+    // sub-agent source/metadata signals instead.
     const userOriginatedSpawn =
       content.source !== MESSAGE_SOURCE_SUB_AGENT &&
-      extraMetadata.subAgent !== true &&
-      !pickRoutingString(params, content, extraMetadata, "taskRoomId")?.trim();
+      extraMetadata.subAgent !== true;
     {
       const spawnTaskService = runtime.getService?.(
         OrchestratorTaskService.serviceType,

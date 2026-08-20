@@ -627,6 +627,34 @@ describe("TASKS:spawn_agent durable restart owner", () => {
     expect(result?.data).toMatchObject({ durableTaskId: "durable-task-1" });
   });
 
+  it("keeps durable ownership when a top-level planner supplies a task room", async () => {
+    const svc = serviceMock();
+    const tasks = taskServiceMock();
+    const result = await spawnAgentAction.handler(
+      durableRuntime(svc, tasks),
+      memory({
+        task: "fix bug",
+        agentType: "codex",
+        workdir: process.cwd(),
+        taskRoomId: TASK_ROOM,
+      }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+
+    expect(result?.success).toBe(true);
+    expect(tasks.createTask).toHaveBeenCalledOnce();
+    expect(tasks.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({ taskRoomId: TASK_ROOM }),
+    );
+    expect(tasks.attachSession).toHaveBeenCalledWith(
+      "durable-task-1",
+      expect.objectContaining({ sessionId: "abcdef123456" }),
+    );
+    expect(result?.data).toMatchObject({ durableTaskId: "durable-task-1" });
+  });
+
   it("skips the durable record for routed sub-agent respawns", async () => {
     const svc = serviceMock();
     const tasks = taskServiceMock();

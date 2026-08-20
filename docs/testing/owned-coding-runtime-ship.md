@@ -9,12 +9,12 @@ and pi-agent were not copied into the runtime. They remain useful references or
 explicit optional ACP backends, but neither is required for the owned path.
 
 Correctness is release-ready after both the normal-person browser regression and
-the exact-head parent/orchestrator matrix below. The final live matrix passed on
-`cbb6da285f8f983dbc16379fe2998c762704939e`, with a clean repository before and
-after the run. The OpenRouter/Qwen QA configuration is still not a flawless
-interactive experience: successful two- to four-step coding turns took 62-81
-seconds in the saved runtime trajectories. Treat provider/model latency as a
-visible ship caveat, not as evidence of a tool or orchestration failure.
+the exact-head parent/orchestrator matrix below. The pushed handoff identifies
+the final exact commit and its retained clean-start/clean-end report. The
+OpenRouter/Qwen QA configuration is still not a flawless interactive
+experience: successful two- to four-step coding turns took 62-81 seconds in the
+saved runtime trajectories. Treat provider/model latency as a visible ship
+caveat, not as evidence of a tool or orchestration failure.
 
 The tested production chain is:
 
@@ -73,8 +73,15 @@ Top-level `spawn_agent` now supplies Eliza's deterministic coding acceptance
 criteria when creating its post-spawn durable owner. `createTask` records those
 caller-owned criteria without another model request, then `attachSession` binds
 the already-live child immediately. A focused regression pins that exact input,
-and the final live rerun progressed through ownership, child completion,
-evidence ingestion, validation, archive, and reopen for all three scenarios.
+
+A later exact-head rerun exposed a second ownership path: a parent planner may
+legitimately supply a nonempty `taskRoomId`, but the action treated that routing
+choice as proof that the child was already owned by another coding task. The
+child performed the requested FILE/SHELL work, yet no durable row was created
+and the strict lookup timed out. Ownership classification now uses explicit
+sub-agent provenance (`source` / `metadata.subAgent`), not room routing. A
+top-level spawn with an explicit task room is regression-tested to create and
+attach exactly one durable task.
 
 ### Verifier-grade tool evidence
 
@@ -145,13 +152,18 @@ The live gate requires all of the following:
 7. The repository is clean at both the start and end of the run, so the report's
    `repoHead` identifies the exact source that produced the evidence.
 
-The final 2026-08-20 release run at
+The 2026-08-20 diagnostic pass at
 `cbb6da285f8f983dbc16379fe2998c762704939e` passed all three scenarios. Both
 concurrent sessions were observed `busy`, their execution windows overlapped,
 every independent fixture test returned one pass and zero failures, every
 read-only workspace was unchanged, and all three lifecycle sequences reached
-`done`, `archived`, then `active` after reopen. The sanitized local report is
+`done`, `archived`, then `active` after reopen. Its sanitized local report is
 `work/qa-artifacts/owned-parent-final-20260820-cbb6da2/owned-parent-2026-08-20T19-23-40-914Z-51341/report.json`.
+
+An exact-head repetition then caught the `taskRoomId` ownership bug above and is
+recorded as a failed acceptance, despite the child itself completing the fixture
+work. The pushed handoff names the later post-fix report that counts as the
+release gate; a one-off green run is deliberately not treated as flawless proof.
 
 ### Browser-only Eliza UI acceptance
 
@@ -248,10 +260,11 @@ for a normal handoff, and it should still be reviewed before publication.
   claimed here without a separate live run.
 - The first absolute-path browser run failed its UX acceptance even though its
   edit landed. Only the post-fix rerun counts as the grocery-list pass.
-- The first post-browser exact-head parent/orchestrator rerun also failed its
-  acceptance: the child spawned, but durable ownership stalled behind optional
-  model refinement. Only the deterministic-criteria rerun at `cbb6da285f` counts
-  as the final full-lifecycle pass.
+- The first post-browser exact-head parent/orchestrator rerun failed its
+  acceptance because durable ownership stalled behind optional model refinement.
+  A later run passed, and then an exact repetition exposed a separate
+  room-routing/provenance ownership bug. Only the post-provenance-fix exact-head
+  report named in the handoff counts as the final full-lifecycle pass.
 - The headless live harness deliberately has no connector send handler because
   browser QA owns visible asynchronous delivery. It can log a missing send
   handler and provider/router cancellation during intentional runtime shutdown,
