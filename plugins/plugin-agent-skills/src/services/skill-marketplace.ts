@@ -12,7 +12,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { logger, resolveStateDir } from "@elizaos/core";
+import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
 import { skillDownloadAbortError } from "./skill-package-bytes";
 
 const execFileAsync = promisify(execFile);
@@ -478,27 +478,14 @@ async function readInstallRecords(
     if (isMissingFile) return {};
     // error-policy:J2 Install records participate in directory publication;
     // malformed state must fail closed rather than being overwritten as empty.
-    throw new Error("Failed to read marketplace install records", {
+    throw new ElizaError("Marketplace install records are invalid", {
+      code: "SKILL_MARKETPLACE_RECORDS_INVALID",
+      context: {
+        boundary: "skill-marketplace-records",
+        workspaceDir: path.resolve(workspaceDir),
+      },
       cause: err,
     });
-  }
-}
-
-async function writeInstallRecords(
-  workspaceDir: string,
-  records: Record<string, InstalledMarketplaceSkill>,
-): Promise<void> {
-  await ensureInstallDirs(workspaceDir);
-  const recordPath = installsRecordPath(workspaceDir);
-  const stagingDir = await fs.mkdtemp(
-    path.join(path.dirname(recordPath), ".records-update-"),
-  );
-  const candidatePath = path.join(stagingDir, "next.json");
-  try {
-    await fs.writeFile(candidatePath, JSON.stringify(records, null, 2), "utf-8");
-    await fs.rename(candidatePath, recordPath);
-  } finally {
-    await removeMarketplaceStagingBestEffort(stagingDir);
   }
 }
 
@@ -1036,6 +1023,7 @@ export async function installMarketplaceSkill(
             let targetPublished = false;
             let recordPublished = false;
             let movedPreviousRecord = false;
+            let preserveRecordStage = false;
             try {
               fsSync.renameSync(stagedSkillDir, targetDir);
               targetPublished = true;
@@ -1074,14 +1062,29 @@ export async function installMarketplaceSkill(
                 rollbackFailures.push(rollbackCause);
               }
               if (rollbackFailures.length > 0) {
-                throw new AggregateError(
-                  [cause, ...rollbackFailures],
-                  "Marketplace install and rollback both failed",
+                preserveRecordStage = true;
+                throw new ElizaError(
+                  "Marketplace install rollback failed",
+                  {
+                    code: "SKILL_MARKETPLACE_ROLLBACK_FAILED",
+                    context: {
+                      boundary: "skill-marketplace-publication",
+                      workspaceDir: path.resolve(workspaceDir),
+                      skillId: id,
+                    },
+                    severity: "fatal",
+                    cause: new AggregateError(
+                      [cause, ...rollbackFailures],
+                      "Marketplace install and rollback both failed",
+                    ),
+                  },
                 );
               }
               throw cause;
             } finally {
-              await removeMarketplaceStagingBestEffort(recordStage);
+              if (!preserveRecordStage) {
+                await removeMarketplaceStagingBestEffort(recordStage);
+              }
             }
           },
         );
@@ -1117,25 +1120,118 @@ export async function uninstallMarketplaceSkill(
   skillId: string,
 ): Promise<InstalledMarketplaceSkill> {
   const id = safeName(skillId);
-  const records = await readInstallRecords(workspaceDir);
-  const existing = records[id];
-  if (!existing) {
-    throw new Error(`Installed marketplace skill "${id}" not found`);
-  }
+  await ensureInstallDirs(workspaceDir);
+  const existing = await withMarketplaceMutex(
+    marketplaceInstallMutexes,
+    `${path.resolve(workspaceDir)}:${id}`,
+    undefined,
+    () =>
+      withMarketplaceMutex(
+        marketplaceRecordsMutexes,
+        path.resolve(workspaceDir),
+        undefined,
+        async () => {
+          const records = await readInstallRecords(workspaceDir);
+          const record = records[id];
+          if (!record) {
+            throw new Error(`Installed marketplace skill "${id}" not found`);
+          }
 
-  // Security: ensure installPath is within the expected marketplace directory
-  const expectedRoot = path.resolve(installationRoot(workspaceDir));
-  const resolvedPath = path.resolve(existing.installPath);
-  if (
-    !resolvedPath.startsWith(`${expectedRoot}${path.sep}`) ||
-    resolvedPath === expectedRoot
-  ) {
-    throw new Error(`Refusing to remove skill outside ${expectedRoot}`);
-  }
+          const expectedRoot = path.resolve(installationRoot(workspaceDir));
+          const resolvedPath = path.resolve(record.installPath);
+          if (
+            !resolvedPath.startsWith(`${expectedRoot}${path.sep}`) ||
+            resolvedPath === expectedRoot
+          ) {
+            throw new Error(`Refusing to remove skill outside ${expectedRoot}`);
+          }
 
-  await fs.rm(existing.installPath, { recursive: true, force: true });
-  delete records[id];
-  await writeInstallRecords(workspaceDir, records);
+          const directoryStage = await fs.mkdtemp(
+            path.join(expectedRoot, ".uninstall-"),
+          );
+          const retainedSkillPath = path.join(directoryStage, "previous-skill");
+          const recordPath = installsRecordPath(workspaceDir);
+          const recordStage = await fs.mkdtemp(
+            path.join(path.dirname(recordPath), ".records-uninstall-"),
+          );
+          const nextRecordPath = path.join(recordStage, "next.json");
+          const previousRecordPath = path.join(recordStage, "previous.json");
+          delete records[id];
+          let preserveDirectoryStage = false;
+          let preserveRecordStage = false;
+          try {
+            await fs.writeFile(
+              nextRecordPath,
+              JSON.stringify(records, null, 2),
+              "utf-8",
+            );
+            let skillMoved = false;
+            let recordPublished = false;
+            let priorRecordMoved = false;
+            try {
+              fsSync.renameSync(resolvedPath, retainedSkillPath);
+              skillMoved = true;
+              if (fsSync.existsSync(recordPath)) {
+                fsSync.renameSync(recordPath, previousRecordPath);
+                priorRecordMoved = true;
+              }
+              fsSync.renameSync(nextRecordPath, recordPath);
+              recordPublished = true;
+            } catch (cause) {
+              const rollbackFailures: unknown[] = [];
+              try {
+                if (recordPublished && fsSync.existsSync(recordPath)) {
+                  fsSync.rmSync(recordPath, { force: true });
+                }
+                if (priorRecordMoved && fsSync.existsSync(previousRecordPath)) {
+                  fsSync.renameSync(previousRecordPath, recordPath);
+                }
+              } catch (rollbackCause) {
+                rollbackFailures.push(rollbackCause);
+              }
+              try {
+                if (skillMoved && fsSync.existsSync(retainedSkillPath)) {
+                  fsSync.renameSync(retainedSkillPath, resolvedPath);
+                }
+              } catch (rollbackCause) {
+                rollbackFailures.push(rollbackCause);
+              }
+              if (rollbackFailures.length > 0) {
+                preserveDirectoryStage = true;
+                preserveRecordStage = true;
+                throw new ElizaError(
+                  "Marketplace uninstall rollback failed",
+                  {
+                    code: "SKILL_MARKETPLACE_ROLLBACK_FAILED",
+                    context: {
+                      boundary: "skill-marketplace-uninstall",
+                      workspaceDir: path.resolve(workspaceDir),
+                      skillId: id,
+                    },
+                    severity: "fatal",
+                    cause: new AggregateError(
+                      [cause, ...rollbackFailures],
+                      "Uninstall and rollback both failed",
+                    ),
+                  },
+                );
+              }
+              throw cause;
+            }
+          } finally {
+            await Promise.all([
+              preserveRecordStage
+                ? Promise.resolve()
+                : removeMarketplaceStagingBestEffort(recordStage),
+              preserveDirectoryStage
+                ? Promise.resolve()
+                : removeMarketplaceStagingBestEffort(directoryStage),
+            ]);
+          }
+          return record;
+        },
+      ),
+  );
 
   logger.info(`[skills-marketplace] Uninstalled ${id}`);
   return existing;

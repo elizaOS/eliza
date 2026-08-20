@@ -2294,6 +2294,17 @@ export class AgentSkillsService extends Service {
 				if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 					throw new Error("lockfile root is not an object");
 				}
+				for (const [entrySlug, entry] of Object.entries(parsed)) {
+					if (
+						!entry ||
+						typeof entry !== "object" ||
+						Array.isArray(entry) ||
+						typeof (entry as { version?: unknown }).version !== "string" ||
+						typeof (entry as { installedAt?: unknown }).installedAt !== "string"
+					) {
+						throw new Error(`lockfile entry "${entrySlug}" is malformed`);
+					}
+				}
 				lockfile = parsed as Record<
 					string,
 					{ version: string; installedAt: string }
@@ -2313,14 +2324,19 @@ export class AgentSkillsService extends Service {
 		const stagingDir = fs.mkdtempSync(path.join(cacheDir, ".lock-update-"));
 		const candidatePath = path.join(stagingDir, "next.json");
 		const backupPath = path.join(stagingDir, "previous.json");
-		const descriptor = fs.openSync(candidatePath, "wx");
 		try {
-			fs.writeFileSync(descriptor, JSON.stringify(lockfile, null, 2), "utf-8");
-			fs.fsyncSync(descriptor);
-		} finally {
-			fs.closeSync(descriptor);
+			const descriptor = fs.openSync(candidatePath, "wx");
+			try {
+				fs.writeFileSync(descriptor, JSON.stringify(lockfile, null, 2), "utf-8");
+				fs.fsyncSync(descriptor);
+			} finally {
+				fs.closeSync(descriptor);
+			}
+			signal?.throwIfAborted();
+		} catch (cause) {
+			fs.rmSync(stagingDir, { recursive: true, force: true });
+			throw cause;
 		}
-		signal?.throwIfAborted();
 
 		let movedPrevious = false;
 		let published = false;
@@ -2446,14 +2462,12 @@ export class AgentSkillsService extends Service {
 				const previousEligibility = this.eligibilityCache.get(candidate.slug);
 				const hadEligibility = this.eligibilityCache.has(candidate.slug);
 				let storagePublished = false;
-				let lockfilePublished = false;
 				try {
 					signal?.throwIfAborted();
 					replacement.publish();
 					storagePublished = true;
 					signal?.throwIfAborted();
 					lockfileUpdate.publish();
-					lockfilePublished = true;
 					signal?.throwIfAborted();
 
 					if (previousLoaded?.source !== "workspace") {
@@ -2492,14 +2506,10 @@ export class AgentSkillsService extends Service {
 					} else {
 						this.eligibilityCache.delete(candidate.slug);
 					}
-					if (lockfilePublished) {
-						try {
-							lockfileUpdate.rollback();
-						} catch (rollbackCause) {
-							rollbackFailures.push(rollbackCause);
-						}
-					} else {
+					try {
 						lockfileUpdate.rollback();
+					} catch (rollbackCause) {
+						rollbackFailures.push(rollbackCause);
 					}
 					if (storagePublished) {
 						try {
@@ -2522,8 +2532,23 @@ export class AgentSkillsService extends Service {
 					throw cause;
 				}
 			});
-		} finally {
-			if (!committed) replacement.rollback();
+		} catch (cause) {
+			if (!committed) {
+				try {
+					replacement.rollback();
+				} catch (rollbackCause) {
+					throw new ElizaError("Skill install rollback failed", {
+						code: "SKILL_INSTALL_ROLLBACK_FAILED",
+						context: { slug: candidate.slug },
+						severity: "fatal",
+						cause: new AggregateError(
+							[cause, rollbackCause],
+							"Install and storage rollback both failed",
+						),
+					});
+				}
+			}
+			throw cause;
 		}
 		return scanReport;
 	}

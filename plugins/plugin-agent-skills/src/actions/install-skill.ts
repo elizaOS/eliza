@@ -84,21 +84,6 @@ export const installSkillAction = {
 			return { success: false, error: new Error(errorText) };
 		}
 
-		// Check if already installed
-		const loadedSkills = service.getLoadedSkills();
-		const existing = loadedSkills.find(
-			(s) => s.slug === slug || s.name.toLowerCase() === slug.toLowerCase(),
-		);
-		if (existing) {
-			const resultText = `Skill **${existing.name}** (\`${existing.slug}\`) is already installed.`;
-			if (callback) await callback({ text: resultText });
-			return {
-				success: true,
-				text: resultText,
-				data: { slug: existing.slug, alreadyInstalled: true },
-			};
-		}
-
 		const installSignal = getStreamingContext()?.abortSignal;
 		const cancellationResult = (
 			cause: unknown,
@@ -118,6 +103,24 @@ export const installSkillAction = {
 		};
 		if (installSignal?.aborted) {
 			return cancellationResult(installSignal.reason, slug);
+		}
+
+		// Check if already installed
+		const loadedSkills = service.getLoadedSkills();
+		const existing = loadedSkills.find(
+			(s) => s.slug === slug || s.name.toLowerCase() === slug.toLowerCase(),
+		);
+		if (existing) {
+			if (installSignal?.aborted) {
+				return cancellationResult(installSignal.reason, slug);
+			}
+			const resultText = `Skill **${existing.name}** (\`${existing.slug}\`) is already installed.`;
+			if (callback) await callback({ text: resultText });
+			return {
+				success: true,
+				text: resultText,
+				data: { slug: existing.slug, alreadyInstalled: true },
+			};
 		}
 
 		// Try to find the skill in the registry first. Echoes are display-clamped:
@@ -187,6 +190,9 @@ export const installSkillAction = {
 			}
 			return result;
 		}
+		if (installSignal?.aborted) {
+			return cancellationResult(installSignal.reason, installSlug);
+		}
 
 		if (!success) {
 			// install() returns false for non-lifecycle failures: ordinary network
@@ -207,6 +213,9 @@ export const installSkillAction = {
 
 		if (scanStatus === "critical" || scanStatus === "warning") {
 			const report = await service.getSkillScanReport(installSlug);
+			if (installSignal?.aborted) {
+				return cancellationResult(installSignal.reason, installSlug);
+			}
 			const findingCount = report
 				? report.findings.length + report.manifestFindings.length
 				: 0;
@@ -219,6 +228,9 @@ export const installSkillAction = {
 		}
 
 		const boundedResultText = truncateInstallSkillText(resultText);
+		if (installSignal?.aborted) {
+			return cancellationResult(installSignal.reason, installSlug);
+		}
 		if (callback) await callback({ text: boundedResultText });
 
 		return {

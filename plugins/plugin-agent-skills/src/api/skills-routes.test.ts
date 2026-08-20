@@ -6,7 +6,7 @@
  */
 import { EventEmitter } from "node:events";
 import type http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, ElizaError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { SKILL_NAME_MAX_LENGTH } from "../types";
 import {
@@ -327,6 +327,40 @@ describe("handleSkillsRoutes path encoding validation", () => {
 });
 
 describe("skill install request lifecycle", () => {
+  it.each([
+    ["SKILL_DOWNLOAD_TIMEOUT", 504],
+    ["SKILL_DOWNLOAD_ABORTED", 499],
+    ["SKILL_PACKAGE_TOO_LARGE", 413],
+  ])("returns typed %s install failures with their HTTP status", async (code, status) => {
+    const failure = new ElizaError("typed install failure", { code });
+    const runtime = {
+      getService: vi.fn(() => ({
+        install: vi.fn().mockRejectedValue(failure),
+        isInstalled: vi.fn().mockResolvedValue(false),
+      })),
+    } as unknown as AgentRuntime;
+    const { ctx, json, error } = createSkillsContext(
+      "POST",
+      "/api/skills/catalog/install",
+      {
+        readJsonBody: vi.fn().mockResolvedValue({ slug: "typed-failure" }),
+        state: { runtime, config: {}, skills: [] },
+      },
+    );
+
+    await expect(handleSkillsRoutes(ctx)).resolves.toBe(true);
+
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      {
+        error: "Skill install failed: typed install failure",
+        code,
+      },
+      status,
+    );
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["catalog", "/api/skills/catalog/install"],
     ["marketplace", "/api/skills/marketplace/install"],

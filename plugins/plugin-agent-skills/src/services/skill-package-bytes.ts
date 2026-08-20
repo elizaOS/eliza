@@ -33,6 +33,8 @@ const SKILL_DOWNLOAD_ERROR_CODES = new Set([
 	"SKILL_PACKAGE_TOO_LARGE",
 ]);
 
+const OWNED_SKILL_DOWNLOAD_ERRORS = new WeakSet<ElizaError>();
+
 /** One signal and deadline spanning every request and body read in an install. */
 export interface SkillDownloadLifecycle {
 	readonly signal: AbortSignal;
@@ -42,16 +44,18 @@ export interface SkillDownloadLifecycle {
 }
 
 function cancellationError(cause?: unknown): ElizaError {
-	return new ElizaError("Skill download was cancelled by its caller", {
+	const error = new ElizaError("Skill download was cancelled by its caller", {
 		code: "SKILL_DOWNLOAD_ABORTED",
 		context: { boundary: "skill-package-download" },
 		cause,
 		severity: "ephemeral",
 	});
+	OWNED_SKILL_DOWNLOAD_ERRORS.add(error);
+	return error;
 }
 
 function timeoutError(timeoutMs: number): ElizaError {
-	return new ElizaError(
+	const error = new ElizaError(
 		`Skill download exceeded its ${timeoutMs}ms deadline`,
 		{
 			code: "SKILL_DOWNLOAD_TIMEOUT",
@@ -59,6 +63,8 @@ function timeoutError(timeoutMs: number): ElizaError {
 			severity: "ephemeral",
 		},
 	);
+	OWNED_SKILL_DOWNLOAD_ERRORS.add(error);
+	return error;
 }
 
 /** Normalize an aborted signal without replacing its authoritative typed reason. */
@@ -66,7 +72,8 @@ export function skillDownloadAbortError(
 	signal: AbortSignal,
 	cause?: unknown,
 ): ElizaError {
-	return signal.reason instanceof ElizaError
+	return signal.reason instanceof ElizaError &&
+		OWNED_SKILL_DOWNLOAD_ERRORS.has(signal.reason)
 		? signal.reason
 		: cancellationError(cause ?? signal.reason);
 }
