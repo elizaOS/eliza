@@ -713,7 +713,7 @@ jobs:
         run: bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts
 
       - name: App screenshot quality diagnostics coverage
-        run: bun run --cwd packages/app test -- test/screenshot-quality.test.ts
+        run: bunx vitest run --config packages/app/vitest.config.ts packages/app/test/screenshot-quality.test.ts
 
       - name: App-core screenshot quality diagnostics coverage
         run: bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts
