@@ -240,7 +240,7 @@ bun run --cwd packages/scenario-runner provider-qualification -- \
   "semanticEvidenceFile": "semantic-evidence.json",
   "semanticJudgePublicKeyFiles": ["keys/semantic-judge.pub.pem"],
   "runnerReportFile": "runner-report.json",
-  "outputDir": "/absolute/repo/reports/provider-qualification/operator-run-001/gmail"
+  "outputDir": "/private/operator/provider-qualification/operator-run-001/gmail"
 }
 ```
 
@@ -272,12 +272,14 @@ publish the generated Markdown or a separately reviewed/redacted attachment,
 not the private JSON verbatim. This command does not execute ingress, collect
 evidence, access provider credentials, or post to GitHub.
 
-For repository evidence review, every canary output directory must resolve
-beneath `reports/provider-qualification/<operator-run-id>/<scenario-slug>/`.
-The canonical `provider-qualification` ingestor copies those outputs into the
-next evidence bundle and binds their bytes to its manifest. A verifier output
-left elsewhere is useful for private diagnostics but does not satisfy the
-repository's bundle-first issue or PR evidence requirement.
+Direct verifier output remains private operator material. For repository
+evidence review, use the coordinated matrix producer described in
+`scripts/evidence-review/README.md`; it stages all private JSON outside the
+repository and publishes hash-only summaries beneath
+`reports/provider-qualification/<operator-run-id>/` only after the exact
+13-canary catalog passes. A verifier output created before the matrix snapshot
+is baseline-excluded, and private JSON must never be copied into `reports/` or
+the bundle.
 
 Once every canary has an independently verified artifact, create the release
 catalog with a closed `eliza.provider-qualification-catalog-config.v2` file:
@@ -316,6 +318,12 @@ catalog command compares their signed scenario IDs to the repository-owned
 It rejects missing, extra, reordered, or substituted scenarios, modified
 artifact digests, unqualified decisions, repository drift, and mixed
 deployments before writing `catalog.json` and the PR/issue-ready `catalog.md`.
+
+When the catalog is run through the coordinated matrix producer, its private
+JSON and all verifier JSON stay in a mode-0700 temporary directory. The
+producer supplies the staged artifact paths and catalog output directory; the
+corresponding fields in the operator's direct-CLI configs are not publication
+destinations in this mode.
 
 ## Evidence scopes
 

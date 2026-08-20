@@ -17,6 +17,50 @@ the newest finalized bundle as a convenience. In both cases the canonical
 `@elizaos/evidence` verifier checks artifact bytes, sizes, hashes, provenance,
 unlisted files, and symlinks before the dashboard is written.
 
+Provider qualification is deliberately opt-in because it requires completed,
+operator-authorized real-provider runs and three independent signer domains:
+
+```bash
+bun run test:matrix -- --only=provider-qualification \
+  --provider-qualification-config=/private/operator/matrix-producer.json
+```
+
+The closed producer config contains paths, not credentials or evidence:
+
+```json
+{
+  "schema": "eliza.provider-qualification-matrix-producer-config.v1",
+  "verifyConfigFiles": [
+    "bluebubbles/verify.json",
+    "discord/verify.json",
+    "duffel/verify.json",
+    "gmail/verify.json",
+    "google-calendar/verify.json",
+    "google-sheets/verify.json",
+    "signal/verify.json",
+    "slack/verify.json",
+    "telegram/verify.json",
+    "twilio-sms/verify.json",
+    "twilio-voice/verify.json",
+    "whatsapp/verify.json",
+    "x-dm/verify.json"
+  ],
+  "catalogConfigFile": "catalog.json",
+  "publicationOutputDir": "/absolute/repo/reports/provider-qualification/operator-run-001"
+}
+```
+
+The producer requires exactly 13 unique verifier configs and the repository's
+exact production-canary inventory. It materializes absolute-path copies of
+those configs in a private temporary directory, runs all 13 offline verifiers,
+then runs the catalog over exactly their staged artifacts. Any command refusal,
+missing/extra/duplicate scenario, unqualified decision, repository/deployment
+drift, or missing catalog summary fails without creating the publication
+directory. On complete success it atomically publishes only hash-only Markdown;
+private verifier/catalog JSON and all raw inputs are deleted with the staging
+directory. Because this named step runs after the producer snapshot and before
+bundle ingestion, the summaries enter that exact bundle.
+
 `--source=<dir>` is an explicit compatibility escape hatch for archived or
 ad-hoc material. It may be repeated and may accompany `--bundle`; no producer
 directory is scanned implicitly. Compatibility inputs are copied through stable
@@ -39,6 +83,7 @@ dashboard cannot overwrite the signed manifest or add unlisted files.
 | Walkthrough capture | `reports/walkthrough/` | `walkthrough` |
 | Live-test artifact wrapper | `reports/live-test-runs/` | `live-test-runs` |
 | Scenario runner package commands | `reports/scenarios/` | `scenario-runner` / `scenario` |
+| Provider qualification matrix producer | `reports/provider-qualification/<operator-run-id>/` | `provider-qualification` |
 | Matrix lane result | temporary `matrix-run.json` | `test-matrix` / `matrix` |
 
 The old compatibility roots `device-e2e-output/`,

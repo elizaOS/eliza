@@ -422,7 +422,7 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
   {
     silo: "provider-qualification",
     source: "provider-qualification",
-    producedBy: "packages/scenario-runner/bin/eliza-provider-qualification",
+    producedBy: "scripts/evidence-review/provider-qualification-producer.mjs",
     roots: [{ label: "repo", dir: "reports/provider-qualification" }],
   },
 ];

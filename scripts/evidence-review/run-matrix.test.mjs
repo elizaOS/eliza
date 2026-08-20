@@ -22,8 +22,10 @@ import { fileURLToPath } from "node:url";
 import {
   captureEvidenceBaseline,
   createVerifiedBundle,
+  executeMatrixProduction,
   executeSteps,
   MATRIX_STEPS,
+  matrixStepsForOptions,
   parseMatrixArgs,
   probeRequirement,
   runReviewer,
@@ -152,6 +154,29 @@ test("can skip device lanes while keeping test and visual evidence lanes", () =>
   );
 });
 
+test("provider qualification is an explicit matrix producer", () => {
+  const defaults = parseMatrixArgs([]);
+  assert.equal(
+    matrixStepsForOptions(defaults).some(
+      (step) => step.id === "provider-qualification",
+    ),
+    false,
+  );
+
+  const options = parseMatrixArgs([
+    "--provider-qualification-config=/private/operator/matrix.json",
+    "--only=provider-qualification",
+  ]);
+  const selected = selectMatrixSteps(matrixStepsForOptions(options), options);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].id, "provider-qualification");
+  assert.deepEqual(selected[0].command, [
+    "node",
+    "scripts/evidence-review/provider-qualification-producer.mjs",
+    "/private/operator/matrix.json",
+  ]);
+});
+
 test("validates explicit step ids and requires OCR", () => {
   const options = parseMatrixArgs([
     "--only=e2e-recordings,app-audit",
@@ -175,6 +200,10 @@ test("validates explicit step ids and requires OCR", () => {
   assert.throws(
     () => parseMatrixArgs(["--review-ocr=auto"]),
     /--review-ocr must be on/,
+  );
+  assert.throws(
+    () => parseMatrixArgs(["--provider-qualification-config="]),
+    /requires a file/,
   );
   assert.equal(parseMatrixArgs(["--tier=full"]).tier, "full");
   assert.throws(() => parseMatrixArgs(["--tier=fast"]), /--tier must be/);
@@ -278,6 +307,40 @@ test("captures the producer baseline before lane execution", () => {
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
+});
+
+test("provider production runs after baseline and before bundle ingestion", () => {
+  const options = parseMatrixArgs([
+    "--provider-qualification-config=/private/operator/matrix.json",
+    "--only=provider-qualification",
+  ]);
+  const steps = selectMatrixSteps(matrixStepsForOptions(options), options);
+  const calls = [];
+  const result = executeMatrixProduction(steps, options, "/tmp/staging", {
+    captureBaseline: () => {
+      calls.push("baseline");
+      return "/tmp/baseline.json";
+    },
+    execute: (selected) => {
+      calls.push(`execute:${selected[0].id}`);
+      return [{ ...selected[0], status: "passed" }];
+    },
+    write: () => {
+      calls.push("manifest");
+      return { manifestPath: "/tmp/matrix-run.json" };
+    },
+    createBundle: (_bundleOptions, manifestPath, baselinePath) => {
+      calls.push(`bundle:${manifestPath}:${baselinePath}`);
+      return { bundleDir: "/tmp/bundle" };
+    },
+  });
+  assert.deepEqual(calls, [
+    "baseline",
+    "execute:provider-qualification",
+    "manifest",
+    "bundle:/tmp/matrix-run.json:/tmp/baseline.json",
+  ]);
+  assert.equal(result.results[0].status, "passed");
 });
 
 test("a filter combination selecting zero lanes fails with an actionable message", () => {

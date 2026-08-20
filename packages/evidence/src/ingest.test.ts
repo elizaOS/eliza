@@ -100,17 +100,17 @@ function buildFixtureRepo(): string {
   write(repo, "reports/live-test-runs/run-1/server.log", "log");
   // Canonical scenario-runner package commands write repo-level reports.
   write(repo, "reports/scenarios/live/native.jsonl", "{}\n");
-  // Offline provider qualification writes one private JSON artifact and one
-  // hash-only Markdown summary per independently verified canary.
-  write(
-    repo,
-    "reports/provider-qualification/run-1/gmail/qualification.json",
-    '{"schema":"eliza.provider-qualification-artifact.v3"}\n',
-  );
+  // The coordinated producer publishes only hash-bound summaries after every
+  // private verifier artifact passes the exact-inventory catalog.
   write(
     repo,
     "reports/provider-qualification/run-1/gmail/qualification.md",
     "# Provider qualification\n",
+  );
+  write(
+    repo,
+    "reports/provider-qualification/run-1/catalog/catalog.md",
+    "# Provider qualification catalog\n",
   );
   // Noise that must never be ingested.
   write(repo, "e2e-recordings/node_modules/pkg/index.js", "js");
@@ -451,11 +451,11 @@ describe("ingestAllSilos", () => {
       byPath["trajectories/scenario-runner/live/native.jsonl"],
     ).toMatchObject({ kind: "trajectory", lane: "scenario" });
     expect(
-      byPath["misc/provider-qualification/run-1/gmail/qualification.json"],
+      byPath["misc/provider-qualification/run-1/catalog/catalog.md"],
     ).toMatchObject({
       kind: "report",
       source: "provider-qualification",
-      producedBy: "packages/scenario-runner/bin/eliza-provider-qualification",
+      producedBy: "scripts/evidence-review/provider-qualification-producer.mjs",
     });
     expect(
       byPath["misc/provider-qualification/run-1/gmail/qualification.md"],

@@ -76,12 +76,20 @@ function initFixtureRepo(): string {
   );
   fs.mkdirSync(providerQualificationDir, { recursive: true });
   fs.writeFileSync(
-    path.join(providerQualificationDir, "qualification.json"),
-    '{"schema":"eliza.provider-qualification-artifact.v3"}\n',
-  );
-  fs.writeFileSync(
     path.join(providerQualificationDir, "qualification.md"),
     "# Provider qualification\n",
+  );
+  const providerCatalogDir = path.join(
+    repo,
+    "reports",
+    "provider-qualification",
+    "run-1",
+    "catalog",
+  );
+  fs.mkdirSync(providerCatalogDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(providerCatalogDir, "catalog.md"),
+    "# Provider qualification catalog\n",
   );
   fs.writeFileSync(path.join(repo, "tracked.txt"), "tracked\n");
   execFileSync("git", ["add", "tracked.txt"], { cwd: repo });
@@ -122,7 +130,7 @@ describe("runCli create", () => {
       "cli test",
     );
     expect(manifest.artifacts.map((entry) => entry.path)).toEqual([
-      "misc/provider-qualification/run-1/gmail/qualification.json",
+      "misc/provider-qualification/run-1/catalog/catalog.md",
       "misc/provider-qualification/run-1/gmail/qualification.md",
       "trajectories/scenario-runner/live/native.jsonl",
       "visual/aesthetic-audit/desktop/home--hover.png",

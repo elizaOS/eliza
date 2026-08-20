@@ -111,14 +111,15 @@ implicitly. Artifacts are copied into the bundle and hashed **as stored** so
 later producer writes cannot mutate a finalized run and a corrupt copy fails at
 add time.
 
-The provider-qualification verifier should place each canary's exclusive
-output directory beneath
-`reports/provider-qualification/<operator-run-id>/<scenario-slug>/`. Its
-private `qualification.json` and hash-only `qualification.md` are then copied
-into the canonical bundle by the named `provider-qualification` ingestor. The
-bundle is review material, not a publication redaction boundary: publish the
-reviewed Markdown or a separately redacted attachment, never the private JSON
-verbatim.
+The coordinated provider-qualification producer runs after the matrix captures
+its baseline. It stages each canary's private `qualification.json` and the
+release catalog outside the repository, refuses a missing, extra, duplicate, or
+unqualified canary, then atomically publishes only the 13 hash-only
+`qualification.md` files and `catalog/catalog.md` beneath
+`reports/provider-qualification/<operator-run-id>/`. The named ingestor copies
+those public summaries into the bundle. Raw authorization, target, operation,
+failure-probe, signed-evidence, runner, key, trajectory, and private JSON files
+are never producer output and must not be committed or placed under `reports/`.
 
 ## CLI
 
@@ -146,7 +147,10 @@ their identity changes during the copy.
 The coordinated matrix captures a content-and-filesystem-identity snapshot
 before its lanes run and passes it through `--baseline`; untouched files in
 persistent producer roots are excluded, while files written or replaced during
-the run are included even when their resulting bytes equal the prior bytes.
+the run are included even when their resulting bytes equal the prior bytes. The
+opt-in `--provider-qualification-config=<file>` step deliberately runs between
+that snapshot and bundle creation, so its atomically published summaries belong
+to the exact matrix bundle rather than being excluded as pre-existing output.
 
 ## How later pieces slot in
 
