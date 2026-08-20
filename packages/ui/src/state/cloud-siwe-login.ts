@@ -23,6 +23,8 @@
  * `chainId` to the nonce, and re-read immediately before the signature so a
  * mid-prompt chain switch is detected and the handshake rebuilds or fails
  * closed — never signing a stale mainnet (1) default for a Base/BSC wallet.
+ * Nonce and verify hops honor `SIWE_FETCH_TIMEOUT_MS` so a hung Cloud auth
+ * API cannot stall app SIWE login.
  */
 import { logger } from "@elizaos/logger";
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
@@ -163,6 +165,8 @@ async function readBody(res: Response): Promise<string> {
 }
 
 /** Bounded pre-signature nonce attempts before surfacing the failure. */
+/** Bound for Cloud SIWE nonce/verify so app login cannot hang forever. */
+export const SIWE_FETCH_TIMEOUT_MS = 15_000;
 const NONCE_MAX_ATTEMPTS = 3;
 /** Backoff between nonce attempts: 500ms then 1000ms (1.5s total worst case). */
 const NONCE_RETRY_BASE_DELAY_MS = 500;
@@ -195,6 +199,7 @@ async function fetchSiweNonce(
     try {
       nonceRes = await fetch(nonceUrl, {
         headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(SIWE_FETCH_TIMEOUT_MS),
       });
     } catch (error) {
       // Transport failure (offline, DNS, TLS, aborted): transient, retry.
@@ -352,6 +357,7 @@ export async function siweLoginWithInjectedWallet(
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ message, signature }),
+    signal: AbortSignal.timeout(SIWE_FETCH_TIMEOUT_MS),
   });
   if (!verifyRes.ok) {
     throw new Error(
