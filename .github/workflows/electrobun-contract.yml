@@ -3,6 +3,11 @@ name: Validate Electrobun Release Workflow
 
 on:
   workflow_dispatch:
+    inputs:
+      run_flatpak_e2e:
+        description: Build, install, and exercise the exact-head Flatpak without publishing
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -33,3 +38,91 @@ jobs:
         run: |
           bun run test:regression-matrix:release-contract
           bun run test:release:contract
+
+  flatpak-e2e:
+    name: Flatpak package, install, and liveness
+    if: ${{ inputs.run_flatpak_e2e }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact workflow ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Verify exact workflow head
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Free runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          docker system prune -af || true
+
+      - name: Install Linux desktop and Flatpak dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            flatpak \
+            libayatana-appindicator3-1 \
+            libgtk-3-0 \
+            libwebkit2gtk-4.1-0 \
+            mesa-utils \
+            xauth \
+            xvfb
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive -y flathub \
+            org.freedesktop.Platform//24.08 \
+            org.freedesktop.Sdk//24.08
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Build exact Electrobun desktop tree
+        run: node packages/app-core/scripts/desktop-build.mjs build
+
+      - name: Package exact desktop tree as Flatpak
+        run: |
+          version="$(node -p "require('./packages/app-core/platforms/electrobun/package.json').version")"
+          node packages/app-core/scripts/package-electrobun-flatpak.mjs \
+            --version="$version" \
+            --arch=x86_64
+
+      - name: Install and exercise Flatpak artifact
+        run: |
+          bundle="$(find packages/app-core/platforms/electrobun/artifacts -maxdepth 1 -type f -name '*.flatpak' -print -quit)"
+          test -n "$bundle"
+          flatpak install --user --noninteractive -y --reinstall "$bundle"
+          set +e
+          timeout 45s xvfb-run --auto-servernum \
+            --server-args="-screen 0 1280x900x24 -nolisten tcp" \
+            flatpak run ai.elizaos.app
+          status=$?
+          set -e
+          if [ "$status" -ne 124 ]; then
+            echo "::error::Flatpak app exited before the 45-second liveness window (status $status)."
+            exit 1
+          fi
+          flatpak info --user ai.elizaos.app
+
+      - name: Upload exact Flatpak artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: flatpak-exact-head
+          path: packages/app-core/platforms/electrobun/artifacts/*.flatpak
+          if-no-files-found: error
+          retention-days: 14
