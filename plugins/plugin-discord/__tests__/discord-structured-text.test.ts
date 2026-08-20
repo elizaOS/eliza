@@ -110,7 +110,7 @@ describe("normalizeDiscordMessageText", () => {
 		expect(invoked).toBe(0);
 	});
 
-	it("reads array entries by descriptor without invoking own or inherited accessors", () => {
+	it("fails typed on own array accessors without invoking them", () => {
 		let invoked = 0;
 		const ownAccessor = ["safe"];
 		Object.defineProperty(ownAccessor, "0", {
@@ -120,6 +120,14 @@ describe("normalizeDiscordMessageText", () => {
 			},
 		});
 
+		expect(() => normalizeDiscordMessageText(ownAccessor)).toThrowError(
+			expect.objectContaining({ code: DISCORD_STRUCTURED_TEXT_UNBOUNDED }),
+		);
+		expect(invoked).toBe(0);
+	});
+
+	it("skips inherited array accessors without invoking them", () => {
+		let invoked = 0;
 		const inheritedAccessor = new Array<unknown>(1);
 		Object.setPrototypeOf(inheritedAccessor, {
 			get 0() {
@@ -128,7 +136,6 @@ describe("normalizeDiscordMessageText", () => {
 			},
 		});
 
-		expect(normalizeDiscordMessageText(ownAccessor)).toBe("");
 		expect(normalizeDiscordMessageText(inheritedAccessor)).toBe("");
 		expect(invoked).toBe(0);
 	});
