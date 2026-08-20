@@ -138,7 +138,11 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
           }
 
           try {
-            const res = await fetch(`/api/v1/jobs/${job.jobId}`);
+            // Bound each poll hop so a hung job endpoint cannot pin
+            // pollInFlightRef forever and silently kill the poller.
+            const res = await fetch(`/api/v1/jobs/${job.jobId}`, {
+              signal: AbortSignal.timeout(10_000),
+            });
             if (!res.ok) {
               continue;
             }
