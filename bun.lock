@@ -2697,6 +2697,20 @@
         "react-dom": "^19.0.0",
       },
     },
+    "plugins/plugin-omarchy": {
+      "name": "@elizaos/plugin-omarchy",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
+      },
+    },
     "plugins/plugin-openai": {
       "name": "@elizaos/plugin-openai",
       "version": "2.0.3-beta.7",
@@ -4130,6 +4144,8 @@
     "@elizaos/plugin-native-settings": ["@elizaos/plugin-native-settings@workspace:plugins/plugin-native-settings"],
 
     "@elizaos/plugin-notes": ["@elizaos/plugin-notes@workspace:plugins/plugin-notes"],
+
+    "@elizaos/plugin-omarchy": ["@elizaos/plugin-omarchy@workspace:plugins/plugin-omarchy"],
 
     "@elizaos/plugin-openai": ["@elizaos/plugin-openai@workspace:plugins/plugin-openai"],
 

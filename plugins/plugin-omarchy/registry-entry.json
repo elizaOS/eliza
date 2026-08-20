@@ -1,0 +1,25 @@
+{
+  "id": "omarchy",
+  "name": "Omarchy",
+  "description": "Safe Omarchy desktop integration: shell status, explicit notifications, and the Eliza quick-chat pill.",
+  "npmName": "@elizaos/plugin-omarchy",
+  "version": "2.0.3-beta.7",
+  "source": "bundled",
+  "tags": ["desktop", "linux", "omarchy", "system"],
+  "config": {},
+  "render": {
+    "visible": false,
+    "pinTo": ["os-shell"],
+    "style": "card",
+    "icon": "MonitorCog",
+    "group": "system",
+    "actions": ["enable"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaOS/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "feature"
+}
