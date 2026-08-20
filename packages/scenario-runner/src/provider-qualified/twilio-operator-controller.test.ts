@@ -34,7 +34,7 @@ const callSid = `CA${"3".repeat(32)}`;
 const fromE164 = "+15551230001";
 const toE164 = "+15551230002";
 const runNonce = "n".repeat(64);
-const authToken = "twilio-primary-auth-token-for-tests";
+const authToken = "a".repeat(32);
 const consentGrant = { grant: "twilio-target-owner-consent", version: 1 };
 const consentEvidenceRefSha256 = hash(
   JSON.stringify(consentGrant, Object.keys(consentGrant).sort()),

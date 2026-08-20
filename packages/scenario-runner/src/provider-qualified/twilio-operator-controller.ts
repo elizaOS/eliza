@@ -22,11 +22,36 @@ const TWILIO_API_ORIGIN = "https://api.twilio.com";
 const ACCOUNT_SID_PATTERN = /^AC[a-fA-F0-9]{32}$/;
 const MESSAGE_SID_PATTERN = /^SM[a-fA-F0-9]{32}$/;
 const CALL_SID_PATTERN = /^CA[a-fA-F0-9]{32}$/;
+const AUTH_TOKEN_PATTERN = /^[a-fA-F0-9]{32}$/;
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_INGRESS_BYTES = 256 * 1024;
+const MESSAGE_STATUSES = new Set([
+  "accepted",
+  "scheduled",
+  "canceled",
+  "queued",
+  "sending",
+  "sent",
+  "failed",
+  "delivered",
+  "undelivered",
+  "receiving",
+  "received",
+  "read",
+]);
+const CALL_STATUSES = new Set([
+  "queued",
+  "ringing",
+  "in-progress",
+  "canceled",
+  "completed",
+  "busy",
+  "no-answer",
+  "failed",
+]);
 const validatedPreflights = new WeakSet<object>();
 
 export type TwilioCanaryChannel = "sms" | "voice";
@@ -166,6 +191,15 @@ function matching(
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function authToken(value: unknown): string {
+  return matching(
+    value,
+    "authToken",
+    AUTH_TOKEN_PATTERN,
+    "a 32-character Twilio primary Auth Token",
+  );
 }
 
 function expectedConfirmationBody(input: {
@@ -544,8 +578,7 @@ export function collectTwilioAuthenticatedIngress(input: {
   if (input.accountSid !== input.preflight.plan.accountSid) {
     fail("ingress account SID does not match the validated plan");
   }
-  if (input.authToken.length < 20)
-    fail("Twilio Auth Token is missing or invalid");
+  const validatedAuthToken = authToken(input.authToken);
   const requestUrl = parseHttpsUrl(input.requestUrl, "requestUrl");
   if (requestUrl !== input.preflight.plan.confirmationIngressUrl) {
     fail("ingress URL does not match the exact validated public callback URL");
@@ -556,7 +589,7 @@ export function collectTwilioAuthenticatedIngress(input: {
   const params = new URLSearchParams(input.rawFormBody);
   if (
     !validTwilioSignature({
-      authToken: input.authToken,
+      authToken: validatedAuthToken,
       requestUrl,
       params,
       signature: input.twilioSignature,
@@ -621,8 +654,7 @@ async function readTwilioJson(input: {
   fetchImpl: TwilioFetch;
 }): Promise<{ value: Record<string, unknown>; rawResponseSha256: string }> {
   requireValidatedPreflight(input.preflight);
-  if (input.authToken.length < 20)
-    fail("Twilio Auth Token is missing or invalid");
+  const validatedAuthToken = authToken(input.authToken);
   const sidPattern =
     input.preflight.plan.channel === "sms"
       ? MESSAGE_SID_PATTERN
@@ -646,7 +678,7 @@ async function readTwilioJson(input: {
       headers: {
         Accept: "application/json",
         Authorization: `Basic ${Buffer.from(
-          `${input.preflight.plan.accountSid}:${input.authToken}`,
+          `${input.preflight.plan.accountSid}:${validatedAuthToken}`,
         ).toString("base64")}`,
       },
       redirect: "error",
@@ -737,6 +769,11 @@ export async function collectTwilioRawStatusReadback(input: {
     "Twilio REST response.direction",
   );
   const status = requiredString(value.status, "Twilio REST response.status");
+  const allowedStatuses =
+    input.preflight.plan.channel === "sms" ? MESSAGE_STATUSES : CALL_STATUSES;
+  if (!allowedStatuses.has(status)) {
+    fail("Twilio REST response.status is not valid for the selected channel");
+  }
   if (
     resourceSid !== input.resourceSid ||
     accountSid !== input.preflight.plan.accountSid ||
