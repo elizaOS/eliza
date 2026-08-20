@@ -558,6 +558,8 @@ export type ScenarioRequirements = {
   services?: readonly string[];
   /** Production TaskService worker names required by deterministic background control. */
   workers?: readonly string[];
+  /** Declared workers whose plugin-owned durable TaskService rows must exist before seeds run. */
+  workerTasks?: readonly string[];
   /**
    * Named credential slots (e.g. `1password:eliza-e2e-autofill`) the live lane
    * must provision before this scenario is eligible; corpora-specific runners

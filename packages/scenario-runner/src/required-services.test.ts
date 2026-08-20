@@ -61,6 +61,7 @@ describe("scenario required-service contract", () => {
         plugins: ["@elizaos/plugin-wallet"],
         services: ["wallet-backend"],
         workers: ["LIFEOPS_SCHEDULER"],
+        workerTasks: ["LIFEOPS_SCHEDULER"],
       },
       turns: [],
     });
@@ -87,6 +88,13 @@ describe("scenario required-service contract", () => {
         requires: { workers: ["LIFEOPS_SCHEDULER", ""] },
       } as unknown as ScenarioDefinition),
     ).toThrow("invalid requires.workers");
+    expect(() =>
+      scenario({
+        ...definition,
+        id: "malformed-worker-tasks",
+        requires: { workerTasks: ["LIFEOPS_SCHEDULER", ""] },
+      } as unknown as ScenarioDefinition),
+    ).toThrow("invalid requires.workerTasks");
   });
 
   it("accepts corpus credential and os requirements and rejects malformed ones", () => {

@@ -293,10 +293,17 @@ function validateScenarioRequirements(value) {
     Array.isArray(requires)
   ) {
     throw new Error(
-      `scenario "${value?.id ?? "<unknown>"}" has invalid requires; expected { plugins?: string[], services?: string[], workers?: string[], credentials?: string[], os?: string }`,
+      `scenario "${value?.id ?? "<unknown>"}" has invalid requires; expected { plugins?: string[], services?: string[], workers?: string[], workerTasks?: string[], credentials?: string[], os?: string }`,
     );
   }
-  const knownKeys = ["plugins", "services", "workers", "credentials", "os"];
+  const knownKeys = [
+    "plugins",
+    "services",
+    "workers",
+    "workerTasks",
+    "credentials",
+    "os",
+  ];
   const unknownKeys = Object.keys(requires).filter(
     (key) => !knownKeys.includes(key),
   );
@@ -313,7 +320,13 @@ function validateScenarioRequirements(value) {
       `scenario "${value?.id ?? "<unknown>"}" has invalid requires.os; expected a non-empty string`,
     );
   }
-  for (const key of ["plugins", "services", "workers", "credentials"]) {
+  for (const key of [
+    "plugins",
+    "services",
+    "workers",
+    "workerTasks",
+    "credentials",
+  ]) {
     const requirements = requires[key];
     if (requirements === undefined) {
       continue;
@@ -329,6 +342,15 @@ function validateScenarioRequirements(value) {
         `scenario "${value?.id ?? "<unknown>"}" has invalid requires.${key}; expected non-empty strings`,
       );
     }
+  }
+  if (
+    Array.isArray(requires.workerTasks) &&
+    (!Array.isArray(requires.workers) ||
+      requires.workerTasks.some((name) => !requires.workers.includes(name)))
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid requires.workerTasks; every durable task row must name a declared worker`,
+    );
   }
 }
 

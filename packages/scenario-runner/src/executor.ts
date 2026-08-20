@@ -2503,7 +2503,9 @@ export async function runScenario(
         namespace: `scenario:${scenario.id}`,
         epoch: logicalNow,
         workers: requiredWorkers,
+        workerTasks: scenario.requires?.workerTasks,
       });
+      await backgroundRuntime.waitForBaselineReadiness();
       await backgroundRuntime.captureBaseline();
       await backgroundRuntime.start();
     }

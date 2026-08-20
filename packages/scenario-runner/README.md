@@ -69,6 +69,7 @@ a declared worker or driver is unavailable.
 requires: {
   services: ["activity_tracker"],
   workers: ["PROACTIVE_AGENT", "LIFEOPS_SCHEDULER"],
+  workerTasks: ["PROACTIVE_AGENT", "LIFEOPS_SCHEDULER"],
 },
 turns: [
   { kind: "background", name: "not due", operation: "step", advanceMs: 59_999 },

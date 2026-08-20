@@ -403,6 +403,50 @@ describe("ScenarioBackgroundRuntime production TaskService control", () => {
     await second.resetSharedRuntime();
     await second.stop();
   });
+
+  it("waits for an asynchronously ensured plugin task row before baseline capture", async () => {
+    const harness = createHarness();
+    await startTaskService(harness);
+    harness.runtime.registerTaskWorker({
+      name: "ASYNC_PLUGIN_HEARTBEAT",
+      execute: async () => undefined,
+    });
+    const background = new ScenarioBackgroundRuntime(
+      harness.runtime as unknown as AgentRuntime,
+      {
+        namespace: "scenario:async-plugin-baseline",
+        epoch: EPOCH,
+        workers: ["ASYNC_PLUGIN_HEARTBEAT"],
+        workerTasks: ["ASYNC_PLUGIN_HEARTBEAT"],
+      },
+    );
+
+    const initPromise = Promise.resolve();
+    void initPromise.then(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      harness.tasks.set("async-plugin-heartbeat", {
+        id: "async-plugin-heartbeat" as UUID,
+        name: "ASYNC_PLUGIN_HEARTBEAT",
+        agentId: AGENT_ID,
+        tags: ["queue", "repeat"],
+        metadata: { updateInterval: 60_000, updatedAt: Date.parse(EPOCH) },
+      });
+    });
+
+    await background.waitForBaselineReadiness(1_000);
+    await background.captureBaseline();
+    harness.tasks.set("scenario-seeded-task", {
+      id: "scenario-seeded-task" as UUID,
+      name: "ASYNC_PLUGIN_HEARTBEAT",
+      agentId: AGENT_ID,
+      tags: ["queue"],
+    });
+    await background.start();
+    await background.resetSharedRuntime();
+    expect(harness.tasks.has("async-plugin-heartbeat")).toBe(true);
+    expect(harness.tasks.has("scenario-seeded-task")).toBe(false);
+    await background.stop();
+  });
 });
 
 describe("ScenarioBackgroundRuntime scheduling and notification contract", () => {

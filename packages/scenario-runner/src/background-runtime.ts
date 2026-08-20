@@ -98,6 +98,7 @@ export interface ScenarioBackgroundRuntimeOptions {
   readonly namespace: string;
   readonly epoch: string | Date;
   readonly workers: readonly (string | BackgroundWorkerRequirement)[];
+  readonly workerTasks?: readonly string[];
   readonly ledger?: ObservationLedger;
 }
 
@@ -166,6 +167,30 @@ export class ScenarioBackgroundRuntime {
 
   async captureBaseline(): Promise<void> {
     this.baselineTasks = cloneTasks(await this.queueTasks());
+  }
+
+  /** Wait for detached plugin-init ensures to materialize declared worker rows. */
+  async waitForBaselineReadiness(timeoutMs = 5_000): Promise<void> {
+    const requiredRows = [...new Set(this.options.workerTasks ?? [])];
+    if (requiredRows.length === 0) return;
+    const deadline = Date.now() + timeoutMs;
+    while (true) {
+      const tasks = await this.queueTasks();
+      const present = new Set(tasks.map((task) => task.name));
+      const missing = requiredRows.filter((name) => !present.has(name));
+      if (missing.length === 0) return;
+      if (Date.now() >= deadline) {
+        throw new ElizaError(
+          `Required background task row(s) did not become ready: ${missing.join(", ")}`,
+          {
+            code: "SCENARIO_BACKGROUND_TASK_ROW_UNAVAILABLE",
+            context: { workers: missing, timeoutMs },
+            severity: "fatal",
+          },
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
   }
 
   async start(): Promise<void> {
