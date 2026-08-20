@@ -962,6 +962,8 @@ function classifyDirectoryChannel(
   return "public_channel";
 }
 
+export const MAX_SLACK_DIRECTORY_PAGES = 250;
+
 async function listAllChannels(
   client: SlackPolicyDirectoryClient,
   accountId: string,
@@ -969,7 +971,15 @@ async function listAllChannels(
   const result: SlackDirectoryChannel[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
+  let pageCount = 0;
   do {
+    pageCount += 1;
+    if (pageCount > MAX_SLACK_DIRECTORY_PAGES) {
+      throw new SlackPolicyConfigurationError(
+        "channel directory exceeds the 250-page safety limit; use immutable IDs only",
+        accountId,
+      );
+    }
     const page = await client.conversations.list({
       ...(cursor ? { cursor } : {}),
       limit: 200,
@@ -986,7 +996,10 @@ async function listAllChannels(
     result.push(...channels);
     const next = page.response_metadata?.next_cursor?.trim() || undefined;
     if (next && seenCursors.has(next)) {
-      throw new Error("Slack conversations.list returned a repeated cursor");
+      throw new SlackPolicyConfigurationError(
+        "Slack conversations.list returned a repeated cursor",
+        accountId,
+      );
     }
     if (next) seenCursors.add(next);
     cursor = next;
@@ -1001,7 +1014,15 @@ async function listAllUsers(
   const result: SlackDirectoryUser[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
+  let pageCount = 0;
   do {
+    pageCount += 1;
+    if (pageCount > MAX_SLACK_DIRECTORY_PAGES) {
+      throw new SlackPolicyConfigurationError(
+        "user directory exceeds the 250-page safety limit; use explicit id:<opaque-slack-id> entries",
+        accountId,
+      );
+    }
     const page = await client.users.list({
       ...(cursor ? { cursor } : {}),
       limit: 200,
@@ -1016,7 +1037,10 @@ async function listAllUsers(
     result.push(...members);
     const next = page.response_metadata?.next_cursor?.trim() || undefined;
     if (next && seenCursors.has(next)) {
-      throw new Error("Slack users.list returned a repeated cursor");
+      throw new SlackPolicyConfigurationError(
+        "Slack users.list returned a repeated cursor",
+        accountId,
+      );
     }
     if (next) seenCursors.add(next);
     cursor = next;
