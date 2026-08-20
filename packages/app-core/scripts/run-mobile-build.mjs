@@ -5594,6 +5594,20 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   ...ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
 ];
 
+// Host-side JVM tests for source-stripped on-device runtime code must not be
+// compiled in the generated Play tree. Keep them in the canonical Android
+// source tree so direct/local targets retain their coverage, but remove them
+// alongside the production classes they exercise for cloud builds.
+export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
+  "BionicDecodeLoopTest.java",
+  "DeviceRamTierPolicyTest.java",
+  "ElizaAgentAutostartPolicyTest.java",
+  "ElizaAssetExtractionPolicyTest.java",
+  "ElizaWorkSchedulerPolicyTest.java",
+  "InferenceMemoryPolicyTest.java",
+  "NativeTranscriptReducerTest.java",
+];
+
 export function isAndroidLp3ColorPolicyEnabled(env = process.env) {
   return ["1", "true", "yes"].includes(
     String(env.ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED ?? "")
@@ -5649,6 +5663,7 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
       mergerRemovedPermissions:
         ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
       javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
+      testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
     };
   }
 
@@ -5671,6 +5686,7 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
     javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
       (file) => !allowedJavaFiles.has(file),
     ),
+    testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
   };
 }
 
@@ -6932,6 +6948,34 @@ function stripAndroidForCloud({ env = process.env } = {}) {
     );
   }
   rewriteCloudJavaSources(javaRoots, androidPackage);
+
+  const testJavaRoots = [
+    path.join(
+      androidDir,
+      "app",
+      "src",
+      "test",
+      "java",
+      packageNameToPath(androidPackage),
+    ),
+    path.join(androidDir, "app", "src", "test", "java", "ai", "elizaos", "app"),
+  ];
+  let removedTestJavaCount = 0;
+  for (const root of testJavaRoots) {
+    if (!fs.existsSync(root)) continue;
+    for (const file of stripPolicy.testJavaFiles) {
+      const target = path.join(root, file);
+      if (fs.existsSync(target)) {
+        fs.rmSync(target);
+        removedTestJavaCount += 1;
+      }
+    }
+  }
+  if (removedTestJavaCount > 0) {
+    console.log(
+      `[mobile-build] Removed ${removedTestJavaCount} JVM test source(s) for source-stripped Android runtime code.`,
+    );
+  }
 
   const resRoot = path.join(androidDir, "app", "src", "main", "res");
   let removedResourceCount = 0;
