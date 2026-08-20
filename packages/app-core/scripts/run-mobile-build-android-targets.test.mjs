@@ -91,7 +91,10 @@ describe("Android mobile build target table", () => {
   });
 
   it("runs the exact mobile CLI through a pre-mutation Android guard", () => {
-    const result = spawnSync(process.execPath, [mobileBuildScript, "android"], {
+    // The production package scripts invoke this CLI with Node. `process.execPath`
+    // points at Bun under `bun test`, which spends long enough compiling this
+    // large orchestrator to hit Bun's per-test timeout before the guard runs.
+    const result = spawnSync("node", [mobileBuildScript, "android"], {
       encoding: "utf8",
       env: {
         ...process.env,
