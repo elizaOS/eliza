@@ -1486,7 +1486,8 @@ async function runCreateLegacy(
         // existed, and task_complete ingest silently attached nothing (live
         // 2026-08-20: every chat-built app task carried zero child
         // trajectories).
-        ...(threadId && taskService
+        ...(threadId &&
+        typeof taskService?.buildChildTraceEnv === "function"
           ? { env: taskService.buildChildTraceEnv(threadId) }
           : {}),
         metadata: {
@@ -2437,6 +2438,87 @@ function appBuildSlugWorkdir(
       .replace(/^-+|-+$/g, "")
       .slice(0, 40)
       .replace(/-+$/g, "") || "app";
+  // Edit-shaped asks reuse the newest EXISTING app in the slug family instead
+  // of minting the next free slot: "make the unit converter dark mode, same
+  // link" re-derived the slug from its label, landed on the STALE bare
+  // `unit-converter/` while the app the user meant lived at
+  // `unit-converter-3/`, and verification rightly parked the run (live
+  // 2026-08-20). Creation phrasing ("make me a ...") keeps the never-clobber
+  // slot scan.
+  const editIntent =
+    /\b(?:same\s+(?:link|url)|keep\s+the\s+(?:same\s+)?(?:link|url)|existing)\b/i.test(
+      task,
+    ) ||
+    (/\b(?:the|my|our)\s+[\w -]{0,40}\b(?:page|app|site|game|tool)\b/i.test(
+      task,
+    ) &&
+      !/\b(?:make|build|create|spin(?:\s+up)?|whip(?:\s+up)?)\s+(?:me|us)\s+a\b/i.test(
+        task,
+      ));
+  if (editIntent) {
+    // The label rarely matches the app's dir name ("Dark Mode for Unit
+    // Converter" vs unit-converter-3), so match by NAME TOKENS against the
+    // whole apps tree: an existing dir qualifies when every token of its
+    // name (numeric suffix stripped) appears in the ask and at least one
+    // token is distinctive. Newest mtime wins across the whole tree.
+    const GENERIC_NAME_TOKENS = new Set([
+      "app",
+      "page",
+      "site",
+      "game",
+      "tool",
+      "the",
+      "a",
+      "for",
+      "my",
+      "lil",
+    ]);
+    const taskTokens = new Set(
+      task.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean),
+    );
+    let newest: { dir: string; mtimeMs: number } | undefined;
+    let entries: string[] = [];
+    try {
+      entries = fs.readdirSync(appsDir);
+    } catch {
+      // error-policy:J6 unreadable apps dir just skips the reuse scan.
+    }
+    for (const name of entries) {
+      const tokens = name
+        .replace(/-\d+$/, "")
+        .split("-")
+        .filter(Boolean);
+      if (tokens.length === 0) continue;
+      if (!tokens.every((token) => taskTokens.has(token))) continue;
+      if (
+        !tokens.some(
+          (token) => token.length >= 4 && !GENERIC_NAME_TOKENS.has(token),
+        )
+      ) {
+        continue;
+      }
+      const candidate = nodePathJoin(appsDir, name);
+      try {
+        const stat = fs.statSync(candidate);
+        if (!stat.isDirectory() || fs.readdirSync(candidate).length === 0) {
+          continue;
+        }
+        if (!newest || stat.mtimeMs > newest.mtimeMs) {
+          newest = { dir: candidate, mtimeMs: stat.mtimeMs };
+        }
+      } catch {
+        // error-policy:J6 an unreadable candidate just drops out of the scan.
+      }
+    }
+    if (newest) {
+      if (runtime) {
+        logger(runtime).info(
+          `[app-slug] edit-intent ask reuses existing app dir ${newest.dir}`,
+        );
+      }
+      return newest.dir;
+    }
+  }
   let slug = baseSlug;
   for (let n = 2; n <= 9; n++) {
     const candidate = nodePathJoin(appsDir, slug);
