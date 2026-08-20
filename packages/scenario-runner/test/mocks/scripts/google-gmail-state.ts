@@ -95,7 +95,7 @@ interface GmailMockAccount {
   grantId: string;
 }
 
-type GmailFixtureMessage = MessageResponse & {
+export type GmailFixtureMessage = MessageResponse & {
   accountId?: string;
   snippet: string;
   internalDateOffsetMs: number;

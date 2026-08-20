@@ -26,6 +26,7 @@ import {
   GITHUB_FIXTURE_SEARCH_ITEMS,
 } from "../helpers/github-octokit-fixture.ts";
 import type { GoogleCalendarRequestLedgerMetadata } from "./google-calendar-state.ts";
+import { loadCorpusGmailMockOptions } from "./google-gmail-corpus.ts";
 import {
   createGoogleMockState,
   type GmailRequestLedgerMetadata,
@@ -121,6 +122,12 @@ interface StartedFixtureServer {
 
 interface MockFixtureOptions {
   simulator?: boolean;
+  /**
+   * Shard tree of validated, verified-scrub corpus messages
+   * (`<platform>/<account>/<yyyy-mm>.jsonl`). When set, gmail-platform rows
+   * seed the Google mock alongside the built-in fixtures.
+   */
+  corpusDir?: string;
 }
 
 export interface MockRequestLedgerEntry {
@@ -3874,10 +3881,14 @@ async function createDynamicProviderState(
   opts?: MockFixtureOptions,
 ): Promise<DynamicProviderState> {
   if (environmentName === "Google APIs") {
+    const corpusOptions = opts?.corpusDir
+      ? await loadCorpusGmailMockOptions(opts.corpusDir)
+      : undefined;
     return {
       kind: "google",
       state: createGoogleMockState({
         simulator: opts?.simulator,
+        ...(corpusOptions ?? {}),
       }),
     };
   }
@@ -4578,8 +4589,12 @@ async function startFixtureServer(
 export async function startMocks(opts?: {
   envs?: readonly MockEnvironmentName[];
   simulator?: boolean;
+  /** Corpus shard tree for corpus-loaded mocks; ELIZA_CORPUS_DIR is the env fallback. */
+  corpusDir?: string;
 }): Promise<StartedMocks> {
   const envs = opts?.envs ?? MOCK_ENVIRONMENTS;
+  const corpusDir =
+    opts?.corpusDir ?? process.env.ELIZA_CORPUS_DIR ?? undefined;
 
   const dataPaths = envs.map((e) => path.resolve(ENVS_DIR, `${e}.json`));
   const missing = dataPaths.filter((p) => !fs.existsSync(p));
@@ -4593,6 +4608,7 @@ export async function startMocks(opts?: {
       servers.push(
         await startFixtureServer(dataPath, {
           simulator: Boolean(opts?.simulator),
+          ...(corpusDir ? { corpusDir } : {}),
         }),
       );
     }
@@ -4633,13 +4649,26 @@ export async function startMocks(opts?: {
 function parseCliArgs(argv: readonly string[]): {
   envs: readonly MockEnvironmentName[] | undefined;
   simulator: boolean;
+  corpusDir: string | undefined;
 } {
   let envs: readonly MockEnvironmentName[] | undefined;
   let simulator = false;
+  let corpusDir: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--simulator" || arg === "--seed-simulator") {
       simulator = true;
+      continue;
+    }
+    if (arg === "--corpus-dir") {
+      const value = argv[i + 1];
+      if (!value) throw new Error("--corpus-dir requires a directory path");
+      corpusDir = value;
+      i++;
+      continue;
+    }
+    if (arg.startsWith("--corpus-dir=")) {
+      corpusDir = arg.slice("--corpus-dir=".length);
       continue;
     }
     if (arg === "--envs" || arg === "-e") {
@@ -4660,7 +4689,7 @@ function parseCliArgs(argv: readonly string[]): {
         .filter(Boolean) as readonly MockEnvironmentName[];
     }
   }
-  return { envs, simulator };
+  return { envs, simulator, corpusDir };
 }
 
 const isCliInvocation =
@@ -4670,8 +4699,8 @@ const isCliInvocation =
   fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 
 if (isCliInvocation) {
-  const { envs, simulator } = parseCliArgs(process.argv.slice(2));
-  startMocks({ envs, simulator })
+  const { envs, simulator, corpusDir } = parseCliArgs(process.argv.slice(2));
+  startMocks({ envs, simulator, corpusDir })
     .then((mocks) => {
       const lines: string[] = [];
       lines.push("Mock servers running. Press Ctrl+C to stop.");

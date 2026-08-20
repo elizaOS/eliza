@@ -19,6 +19,10 @@ source-archive collectors consumed by later PII and LifeOps mock-loader work.
 - Collector output must be idempotent and resumable: re-running against the
   same input reuses byte-identical shards and rewrites only missing or changed
   ones.
+- The loader (`src/loader.ts`) is the release gate for downstream consumers:
+  its scrub floor defaults to `verified` and any shard validation issue aborts
+  the load. Never add a consumer path that bypasses it to read shards
+  directly.
 - Reviewed deletion is two-phase and derived-output-only. Never mutate raw
   shards; bind every owner decision to the exact queue/rules/source hashes and
   keep review contents local while exposing only sanitized counts and digests.

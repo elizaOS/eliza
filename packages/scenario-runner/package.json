@@ -83,6 +83,7 @@
   "dependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/corpus-tools": "workspace:*",
     "@elizaos/logger": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-app-control": "workspace:*",
