@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { buildSkillExecutionEnv } from "./skill-execution-env";
+import {
+  buildSkillExecutionEnv,
+  isInheritableSkillEnvKey,
+} from "./skill-execution-env";
 
 /**
- * The five keys below were measured byte-identical across five production agent
- * containers on five different nodes, while the per-agent keys in the same
- * containers all differed. Each carries authority over the whole fleet rather
- * than over the tenant whose container holds it, which is why a skill script
- * must never receive them.
+ * Fleet-scoped credentials: one value shared by every container, as opposed to
+ * the per-agent keys alongside them. None is in BLOCKED_SPAWN_ENV_KEYS, which is
+ * why an allowlist rather than a denylist is what keeps them out.
  */
 const FLEET_SCOPED = {
-  AGENT_SERVER_SHARED_SECRET: "authenticates-as-owner-on-every-agent",
+  AGENT_SERVER_SHARED_SECRET: "shared-across-every-agent-container",
   ELIZA_LOCAL_ROOT_KEY: "derives-every-org-dek",
   SANDBOX_REGISTRY_REDIS_URL: "redis://shared-registry",
   STEWARD_REFRESH_SERVICE_TOKEN: "mints-a-jwt-for-any-agent-id",
@@ -26,15 +27,16 @@ describe("buildSkillExecutionEnv", () => {
     for (const key of Object.keys(FLEET_SCOPED)) {
       expect(env).not.toHaveProperty(key);
     }
+    expect(env.HOME).toBe("/root");
   });
 
   it("keeps the agent-scoped cloud identity, which is minted per agent", () => {
-    // ELIZAOS_CLOUD_API_KEY comes from createForAgent(org, user, sandbox), so a
-    // skill reading it reads its own agent's key. Four bundled skills document
-    // doing exactly that.
     const env = buildSkillExecutionEnv(
       {
         ELIZAOS_CLOUD_API_KEY: "agent-own-key",
+        // The spelling the platform actually injects.
+        ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app",
+        // The spelling the bundled eliza-cloud skill documents.
         ELIZA_CLOUD_BASE_URL: "https://api.eliza.app",
         PATH: "/usr/bin",
       },
@@ -42,16 +44,22 @@ describe("buildSkillExecutionEnv", () => {
     );
 
     expect(env.ELIZAOS_CLOUD_API_KEY).toBe("agent-own-key");
+    expect(env.ELIZAOS_CLOUD_BASE_URL).toBe("https://api.eliza.app");
     expect(env.ELIZA_CLOUD_BASE_URL).toBe("https://api.eliza.app");
   });
 
-  it("keeps a usable PATH, because the spawn sites use bare interpreter names", () => {
-    // use-skill.ts spawns `python3` / `bash` / `node` by name. An env without
-    // PATH does not secure the skill, it breaks every skill.
-    const env = buildSkillExecutionEnv({ PATH: "/usr/bin:/bin" }, {});
+  it("passes the parent's own PATH through rather than a substitute", () => {
+    const env = buildSkillExecutionEnv({ PATH: "/opt/custom/bin:/bin" }, {});
 
-    expect(typeof env.PATH).toBe("string");
-    expect(env.PATH?.length).toBeGreaterThan(0);
+    expect(env.PATH).toBe("/opt/custom/bin:/bin");
+  });
+
+  it("refuses to build an env with no PATH instead of letting bash synthesize one", () => {
+    // A synthesized bash PATH ends in `.`, so a bare command name would resolve
+    // against the working directory. Fail closed.
+    expect(() => buildSkillExecutionEnv({ HOME: "/root" }, {})).toThrow(
+      /no PATH/,
+    );
   });
 
   it("drops an unrecognised ambient key rather than passing it through", () => {
@@ -64,8 +72,6 @@ describe("buildSkillExecutionEnv", () => {
   });
 
   it("strips spawn-injection primitives from the per-skill overlay", () => {
-    // setSkillEnv accepts arbitrary keys with no validation, so the overlay is
-    // a caller-controlled channel into the child environment.
     const env = buildSkillExecutionEnv(
       { PATH: "/usr/bin" },
       {
@@ -82,12 +88,23 @@ describe("buildSkillExecutionEnv", () => {
     expect(env.GEMINI_API_KEY).toBe("legitimate");
   });
 
-  it("lets the overlay supply a credential the ambient env does not carry", () => {
+  it("lets the overlay replace an inherited value", () => {
     const env = buildSkillExecutionEnv(
-      { PATH: "/usr/bin" },
-      { NOTION_KEY: "from-skill-config" },
+      { PATH: "/usr/bin", GEMINI_API_KEY: "ambient" },
+      { GEMINI_API_KEY: "from-skill-config" },
     );
 
-    expect(env.NOTION_KEY).toBe("from-skill-config");
+    expect(env.GEMINI_API_KEY).toBe("from-skill-config");
+  });
+});
+
+describe("isInheritableSkillEnvKey", () => {
+  it("agrees with what the filter emits, so eligibility cannot report green then fail", () => {
+    // The eligibility check calls this; if the two disagreed, a skill would be
+    // reported ready and then spawned without the variable it declared.
+    expect(isInheritableSkillEnvKey("GEMINI_API_KEY")).toBe(true);
+    expect(isInheritableSkillEnvKey("gemini_api_key")).toBe(true);
+    expect(isInheritableSkillEnvKey("AGENT_SERVER_SHARED_SECRET")).toBe(false);
+    expect(isInheritableSkillEnvKey("SOME_THIRD_PARTY_KEY")).toBe(false);
   });
 });

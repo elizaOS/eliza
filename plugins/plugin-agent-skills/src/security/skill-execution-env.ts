@@ -1,35 +1,26 @@
 /**
  * Builds the environment a skill script is spawned with.
  *
- * Two different threats need two different filters here, which is why this is
- * not one denylist.
+ * The inherited half is an ALLOWLIST because the threat is credentials that are
+ * fleet-scoped rather than tenant-scoped — the shared server secret, the
+ * local-KMS root key, the sandbox-registry Redis URL, the Steward service token,
+ * the shared Postgres DSN. None is a spawn-injection primitive, so
+ * `sanitizeSpawnEnv` neither does nor should remove them; only naming what may
+ * pass keeps them out.
  *
- * The inherited half is an ALLOWLIST. In a managed cloud container the agent
- * process environment carries credentials whose authority is fleet-wide rather
- * than tenant-scoped — the shared server secret that authenticates to every
- * tenant's agent container, the local-KMS root key that re-derives every
- * organisation's DEK, the sandbox-registry Redis URL, the Steward service token
- * that mints a JWT for any agent id, and the shared Postgres DSN. None of those
- * is a spawn-injection primitive, so `sanitizeSpawnEnv` does not and should not
- * remove them. Only naming what may pass keeps them out.
+ * The per-skill overlay is passed through `sanitizeSpawnEnv` as well. That
+ * channel has no producer today — nothing calls `setSkillEnv` and the runtime
+ * starts the service without `skillEntries` — so this is cheap insurance on an
+ * API surface, not a live threat. Note it also means an overlay entry for
+ * `PATH`, `HOME` or `SHELL` is now dropped where it used to win.
  *
- * The per-skill overlay is a DENYLIST. `setSkillEnv` accepts arbitrary keys with
- * no validation, so a skill's own configuration can carry `LD_PRELOAD`,
- * `NODE_OPTIONS`, `BASH_FUNC_*` and the rest. That is exactly the class
- * `sanitizeSpawnEnv` exists for.
- *
- * PATH is on the allowlist rather than re-derived: the spawn sites use bare
- * `python3` / `bash` / `node`, so an environment without a usable PATH breaks
- * every skill rather than securing it. Inheriting the parent's PATH keeps that
- * behaviour byte-identical to what it was before this filter existed, which is
- * the conservative choice for a change whose point is to remove things.
+ * Only `USE_SKILL` in script mode reaches this. Shell blocks in a SKILL.md are
+ * run by the agent's own shell tool, so extend the allowlist from what skill
+ * SCRIPTS read, not from what SKILL.md prose mentions.
  */
 import { sanitizeSpawnEnv } from "@elizaos/core";
 
-/**
- * Process-level keys a child needs to run at all. Nothing here identifies the
- * platform or authorises anything against it.
- */
+/** Process-level keys a child needs to run. None carries authority. */
 const HOST_ENV_KEYS = [
   "PATH",
   "HOME",
@@ -47,16 +38,19 @@ const HOST_ENV_KEYS = [
 ] as const;
 
 /**
- * Agent-scoped identity. These are reserved platform keys, and they are on this
- * list deliberately: `ELIZAOS_CLOUD_API_KEY` is minted per agent by
- * `apiKeysService.createForAgent(org, user, sandbox)`, so a skill reading it
- * reads its OWN agent's key, not a shared one. The bundled `eliza-cloud`,
- * `eliza-cloud-buy-domain`, `eliza-cloud-manage-domain` and
- * `build-monetized-app` skills document reading them. Do not add a
- * fleet-scoped key to this list — that is the distinction the whole file turns on.
+ * The group that carries authority, so the one to guard: **do not add a
+ * fleet-scoped key here.**
+ *
+ * `ELIZAOS_CLOUD_API_KEY` is admitted despite being platform-reserved because
+ * the platform mints it per agent (`apiKeysService.createForAgent` in
+ * `managed-eliza-config`), so a skill reading it reads its own agent's key.
+ * Both base-URL spellings are present because the platform injects
+ * `ELIZAOS_CLOUD_BASE_URL` while the bundled `eliza-cloud` skill documents
+ * `ELIZA_CLOUD_BASE_URL`.
  */
 const AGENT_SCOPED_ENV_KEYS = [
   "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
   "ELIZA_CLOUD_BASE_URL",
   "ELIZA_CLOUD_PUBLIC_URL",
   "ELIZA_CLOUD_URL",
@@ -64,53 +58,60 @@ const AGENT_SCOPED_ENV_KEYS = [
 ] as const;
 
 /**
- * Third-party credentials the bundled skills document reading from the ambient
- * environment. These belong to the user's own integrations, not to the
- * platform. A skill added later should carry its credential through the
- * per-skill env channel instead of extending this list, which is why the list
- * is explicit rather than a pattern.
+ * Credentials a bundled skill script reads or declares in `requires.env`
+ * (`nano-banana-pro`, `tmux`, `notion`, `trello`, `things-mac`). Every entry is
+ * a real read or a real declaration — an entry justified only by prose admits a
+ * credential nothing uses.
  */
-const SKILL_DOCUMENTED_ENV_KEYS = [
+const SKILL_DECLARED_ENV_KEYS = [
   "GEMINI_API_KEY",
-  "NOTION_KEY",
+  "OTTO_TMUX_SOCKET_DIR",
   "NOTION_API_KEY",
   "TRELLO_API_KEY",
   "TRELLO_TOKEN",
   "THINGS_AUTH_TOKEN",
-  "SUNO_API_KEY",
-  "SUNO_BASE_URL",
-  "OTTO_TMUX_SOCKET_DIR",
 ] as const;
 
 const INHERITABLE_ENV_KEYS: ReadonlySet<string> = new Set<string>([
   ...HOST_ENV_KEYS,
   ...AGENT_SCOPED_ENV_KEYS,
-  ...SKILL_DOCUMENTED_ENV_KEYS,
+  ...SKILL_DECLARED_ENV_KEYS,
 ]);
 
+/**
+ * Also consulted by the eligibility check, so a skill requiring a variable this
+ * filter will not pass reports blocked instead of running without it.
+ */
 export function isInheritableSkillEnvKey(key: string): boolean {
-  return INHERITABLE_ENV_KEYS.has(key.trim().toUpperCase());
+  return INHERITABLE_ENV_KEYS.has(key.toUpperCase());
 }
 
 /**
- * @param processEnv the parent environment to inherit from, filtered by allowlist
+ * @param processEnv parent environment, filtered by allowlist
  * @param overlay per-skill configured env, filtered by the spawn denylist
  */
 export function buildSkillExecutionEnv(
   processEnv: NodeJS.ProcessEnv,
   overlay: Record<string, string>,
 ): Record<string, string> {
-  const inherited: Record<string, string> = {};
+  const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(processEnv)) {
-    if (value !== undefined && isInheritableSkillEnvKey(key)) {
-      inherited[key] = value;
-    }
+    if (value !== undefined && isInheritableSkillEnvKey(key))
+      result[key] = value;
   }
-
-  const safeOverlay = sanitizeSpawnEnv(overlay);
-  const result: Record<string, string> = { ...inherited };
-  for (const [key, value] of Object.entries(safeOverlay)) {
+  for (const [key, value] of Object.entries(sanitizeSpawnEnv(overlay))) {
     if (value !== undefined) result[key] = value;
   }
+
+  // Without PATH, execvp falls back to a system default and bash synthesizes one
+  // ending in `.`, so a skill shelling out to a bare command name would run a
+  // same-named file from the working directory. A filter meant to remove
+  // authority must not create that, so refuse rather than spawn.
+  if (!result.PATH?.trim()) {
+    throw new Error(
+      "[agent-skills] refusing to run a skill script with no PATH: the child would resolve bare command names against a synthesized default",
+    );
+  }
+
   return result;
 }
