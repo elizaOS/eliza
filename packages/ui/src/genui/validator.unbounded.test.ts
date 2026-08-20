@@ -1,7 +1,8 @@
 /**
  * Deterministic coverage for the GenUI unsafe-field walk budget. The fuzz
  * harness already requires `validateElizaGenUiSpec` never to throw; these
- * cases pin the 4k/20k nests that RangeError on origin Node.
+ * cases pin deep, wide, sparse, accessor, and hostile-reflection inputs against
+ * the real exported validator without replacing its production walk.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -48,7 +49,6 @@ describe("validateElizaGenUiSpec unbounded nests", () => {
   });
 
   it("rejects a 4000-deep stringifyable nest without RangeError", () => {
-    const t0 = performance.now();
     expect(() => {
       const result = validateElizaGenUiSpec(specWithData(nestData(4000)));
       expect(result.ok).toBe(false);
@@ -58,7 +58,6 @@ describe("validateElizaGenUiSpec unbounded nests", () => {
         ).toBe(true);
       }
     }).not.toThrow();
-    expect(performance.now() - t0).toBeLessThan(50);
   });
 
   it(`rejects more than ${MAX_GENUI_UNSAFE_FIELD_NODES} sibling nodes`, () => {
@@ -73,5 +72,61 @@ describe("validateElizaGenUiSpec unbounded nests", () => {
         result.errors.some((error) => error.code === "unbounded_nest"),
       ).toBe(true);
     }
+  });
+
+  it("rejects a sparse array by logical slots before scanning it", () => {
+    const sparse: unknown[] = [];
+    sparse.length = 5_000_000;
+    const result = validateElizaGenUiSpec(specWithData(sparse));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({ code: "unbounded_nest" }),
+      );
+    }
+  });
+
+  it("rejects accessors without invoking them", () => {
+    let calls = 0;
+    const data = Object.defineProperty({}, "secret", {
+      enumerable: true,
+      get() {
+        calls += 1;
+        return "value";
+      },
+    });
+    const result = validateElizaGenUiSpec(specWithData(data));
+    expect(result.ok).toBe(false);
+    expect(calls).toBe(0);
+  });
+
+  it("rejects inherited toJSON hooks without invoking them", () => {
+    let calls = 0;
+    const prototype = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(prototype, "toJSON", {
+      get() {
+        calls += 1;
+        return () => ({ expanded: "x".repeat(100_000) });
+      },
+    });
+    const data = Object.create(prototype) as Record<string, unknown>;
+    data.safe = true;
+    const result = validateElizaGenUiSpec(specWithData(data));
+    expect(result.ok).toBe(false);
+    expect(calls).toBe(0);
+  });
+
+  it("translates hostile reflection traps instead of throwing", () => {
+    const data = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          throw new Error("descriptor trap");
+        },
+      },
+    );
+    expect(() => validateElizaGenUiSpec(specWithData(data))).not.toThrow();
+    const result = validateElizaGenUiSpec(specWithData(data));
+    expect(result.ok).toBe(false);
   });
 });

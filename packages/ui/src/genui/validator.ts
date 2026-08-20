@@ -93,11 +93,19 @@ function validateUnsafeFields(
   path: string,
   componentId?: string,
   depth = 0,
-  ctx: { visits: number; ancestors: WeakSet<object> } = {
+  ctx: {
+    visits: number;
+    ancestors: WeakSet<object>;
+    halted: boolean;
+    maxCodeUnits: number;
+  } = {
     visits: 0,
     ancestors: new WeakSet<object>(),
+    halted: false,
+    maxCodeUnits: DEFAULT_MAX_JSON_BYTES,
   },
 ): void {
+  if (ctx.halted) return;
   if (depth > MAX_GENUI_UNSAFE_FIELD_DEPTH) {
     addIssue(issues, {
       code: "unbounded_nest",
@@ -105,6 +113,7 @@ function validateUnsafeFields(
       componentId,
       path,
     });
+    ctx.halted = true;
     return;
   }
   ctx.visits += 1;
@@ -115,6 +124,17 @@ function validateUnsafeFields(
       componentId,
       path,
     });
+    ctx.halted = true;
+    return;
+  }
+  if (typeof value === "string" && value.length > ctx.maxCodeUnits) {
+    addIssue(issues, {
+      code: "too_large",
+      message: "Generated UI contains a string larger than its JSON budget.",
+      componentId,
+      path,
+    });
+    ctx.halted = true;
     return;
   }
   if (!value || typeof value !== "object") {
@@ -127,14 +147,72 @@ function validateUnsafeFields(
       componentId,
       path,
     });
+    ctx.halted = true;
     return;
   }
   ctx.ancestors.add(value);
   try {
+    // JSON.stringify performs an ordinary Get of `toJSON`, including through
+    // the prototype chain. Inspect descriptors without invoking accessors so a
+    // hostile object cannot run code or synthesize a second, unbudgeted graph.
+    let prototype: object | null = value;
+    while (prototype) {
+      const descriptor = Object.getOwnPropertyDescriptor(prototype, "toJSON");
+      if (descriptor) {
+        if (
+          "get" in descriptor ||
+          "set" in descriptor ||
+          typeof descriptor.value === "function"
+        ) {
+          addIssue(issues, {
+            code: "unbounded_nest",
+            message:
+              "Generated UI values may not define custom JSON serialization.",
+            componentId,
+            path,
+          });
+          ctx.halted = true;
+          return;
+        }
+        break;
+      }
+      prototype = Object.getPrototypeOf(prototype);
+    }
+
     if (Array.isArray(value)) {
-      for (let index = 0; index < value.length; index += 1) {
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+      const length = lengthDescriptor?.value;
+      if (
+        !Number.isSafeInteger(length) ||
+        length < 0 ||
+        length > MAX_GENUI_UNSAFE_FIELD_NODES - ctx.visits
+      ) {
+        addIssue(issues, {
+          code: "unbounded_nest",
+          message: `Generated UI value exceeds ${MAX_GENUI_UNSAFE_FIELD_NODES} nodes.`,
+          componentId,
+          path,
+        });
+        ctx.halted = true;
+        return;
+      }
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(
+          value,
+          String(index),
+        );
+        if (descriptor && ("get" in descriptor || "set" in descriptor)) {
+          addIssue(issues, {
+            code: "unbounded_nest",
+            message: "Generated UI values may not contain accessors.",
+            componentId,
+            path: `${path}/${index}`,
+          });
+          ctx.halted = true;
+          return;
+        }
         validateUnsafeFields(
-          value[index],
+          descriptor?.value,
           issues,
           `${path}/${index}`,
           componentId,
@@ -144,7 +222,30 @@ function validateUnsafeFields(
       }
       return;
     }
-    for (const [key, entry] of Object.entries(value)) {
+    for (const key in value) {
+      if (ctx.halted) return;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable) continue;
+      if (key.length > ctx.maxCodeUnits) {
+        addIssue(issues, {
+          code: "too_large",
+          message: "Generated UI contains a key larger than its JSON budget.",
+          componentId,
+          path,
+        });
+        ctx.halted = true;
+        return;
+      }
+      if ("get" in descriptor || "set" in descriptor) {
+        addIssue(issues, {
+          code: "unbounded_nest",
+          message: "Generated UI values may not contain accessors.",
+          componentId,
+          path: `${path}/${key}`,
+        });
+        ctx.halted = true;
+        return;
+      }
       if (UNSAFE_FIELD_NAMES.has(key)) {
         addIssue(issues, {
           code: "unsafe_field",
@@ -154,7 +255,7 @@ function validateUnsafeFields(
         });
       }
       validateUnsafeFields(
-        entry,
+        descriptor.value,
         issues,
         `${path}/${key}`,
         componentId,
@@ -162,6 +263,16 @@ function validateUnsafeFields(
         ctx,
       );
     }
+  } catch {
+    // error-policy:J3 proxies and racing descriptors are invalid input; the
+    // public validator never lets reflection failures escape.
+    addIssue(issues, {
+      code: "unbounded_nest",
+      message: "Generated UI value could not be inspected safely.",
+      componentId,
+      path,
+    });
+    ctx.halted = true;
   } finally {
     ctx.ancestors.delete(value);
   }
@@ -305,7 +416,6 @@ function validateComponent(
   if ("action" in record) {
     validateAction(record.action, issues, id, options);
   }
-  validateUnsafeFields(record, issues, path, id);
   childRefs.push(...collectChildRefs(record));
   return true;
 }
@@ -429,6 +539,13 @@ export function validateElizaGenUiSpec(
 ): ElizaGenUiValidationResult {
   const issues: ElizaGenUiValidationIssue[] = [];
   const options = normalizeValidationOptions(validationOptions);
+  validateUnsafeFields(value, issues, "", undefined, 0, {
+    visits: 0,
+    ancestors: new WeakSet<object>(),
+    halted: false,
+    maxCodeUnits: options.maxJsonBytes,
+  });
+  if (issues.length > 0) return { ok: false, errors: issues };
   if (!validateJsonSize(value, issues, options))
     return { ok: false, errors: issues };
   const record = asRecord(value);
@@ -442,8 +559,6 @@ export function validateElizaGenUiSpec(
   validateSpecHeader(record, issues);
   const components = validateComponentsArray(record, issues, options);
   if (components === null) return { ok: false, errors: issues };
-  validateUnsafeFields(record.data, issues, "data");
-  validateUnsafeFields(record.metadata, issues, "metadata");
   const refs = validateComponents(components, issues, options);
   validateReferences(record, refs.ids, refs.childRefs, issues);
   if (issues.length > 0) {
