@@ -2,6 +2,8 @@
 export {
   createOwnerSendPolicy,
   OWNER_SEND_APPROVAL_TASK_NAME,
+  OWNER_SEND_OUTBOX_TASK_NAME,
+  OwnerSendKnownNonDeliveryError,
   registerOwnerSendApprovalWorker,
 } from "./owner-send-policy.js";
 

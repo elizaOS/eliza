@@ -76,6 +76,11 @@ function makeRuntime(rows?: Map<string, Task>): FakeRuntimeHarness {
       const row = taskRows.get(String(id));
       return row ? jsonRoundTrip(row) : null;
     },
+    updateTask: async (id: UUID, patch: Partial<Task>) => {
+      const row = taskRows.get(String(id));
+      if (!row) throw new Error(`missing task ${String(id)}`);
+      taskRows.set(String(id), jsonRoundTrip({ ...row, ...patch }));
+    },
     deleteTask: async (id: UUID) => {
       taskRows.delete(String(id));
       deletedTaskIds.push(id);
@@ -211,7 +216,15 @@ describe("owner send-approval worker", () => {
     expect(adapter.sentDraftIds).toEqual(["rec-draft-1"]);
     // The closure executor is dead weight by design — never invoked.
     expect(executor).not.toHaveBeenCalled();
-    expect(harness.deletedTaskIds).toContain(task.id);
+    expect(harness.deletedTaskIds).not.toContain(task.id);
+    expect(harness.rows.get(String(task.id))?.metadata).toMatchObject({
+      paused: true,
+      outboxReceipt: {
+        externalId: "ext-rec-draft-1",
+        draftId: "rec-draft-1",
+        accepted: true,
+      },
+    });
     // The triage store learned about the sent draft.
     const stored = getDefaultTriageService().getStore().getDraft("rec-draft-1");
     expect(stored).toMatchObject({
@@ -245,7 +258,10 @@ describe("owner send-approval worker", () => {
     });
     expect(freshAdapter.sentDraftIds).toEqual(["rec-draft-1"]);
     expect(executor).not.toHaveBeenCalled();
-    expect(fresh.rows.has(String(task.id))).toBe(false);
+    expect(fresh.rows.get(String(task.id))?.metadata).toMatchObject({
+      paused: true,
+      outboxReceipt: { externalId: "ext-rec-draft-1" },
+    });
   });
 
   it("reject (cancel) executes nothing and clears the task", async () => {
@@ -275,7 +291,7 @@ describe("owner send-approval worker", () => {
 
     await expect(
       dispatchChosenOption(harness.runtime, task, "confirm"),
-    ).rejects.toThrow(/no longer exists/u);
+    ).rejects.toThrow(/already delivered.*durable receipt/u);
     expect(adapter.createDraftCalls).toHaveLength(1);
     expect(adapter.sentDraftIds).toHaveLength(1);
   });

@@ -19,8 +19,10 @@ import type {
   IAgentRuntime,
   MessageSource,
   SendPolicy,
+  Task,
+  TaskService,
 } from "@elizaos/core";
-import { getDefaultTriageService, logger } from "@elizaos/core";
+import { getDefaultTriageService, logger, ServiceType } from "@elizaos/core";
 import { getConnectorRegistry } from "../connectors/registry.js";
 
 /**
@@ -31,6 +33,19 @@ import { getConnectorRegistry } from "../connectors/registry.js";
  * per-task name.
  */
 export const OWNER_SEND_APPROVAL_TASK_NAME = "OWNER_SEND_APPROVAL";
+export const OWNER_SEND_OUTBOX_TASK_NAME = "OWNER_SEND_OUTBOX";
+
+const OWNER_SEND_RETRY_INTERVAL_MS = 1_000;
+
+/** A connector-proven failure before the provider accepted any side effect. */
+export class OwnerSendKnownNonDeliveryError extends Error {
+  readonly accepted = false;
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "OwnerSendKnownNonDeliveryError";
+  }
+}
 
 /**
  * Task ids with a confirm currently executing in this process. The claim is
@@ -151,7 +166,41 @@ export function registerOwnerSendApprovalWorker(runtime: IAgentRuntime): void {
       "[OwnerSendPolicy] runtime.registerTaskWorker is required for outbound approvals",
     );
   }
-  if (runtime.getTaskWorker(OWNER_SEND_APPROVAL_TASK_NAME)) return;
+  if (
+    runtime.getTaskWorker(OWNER_SEND_APPROVAL_TASK_NAME) &&
+    runtime.getTaskWorker(OWNER_SEND_OUTBOX_TASK_NAME)
+  ) {
+    return;
+  }
+  runtime.registerTaskWorker({
+    name: OWNER_SEND_OUTBOX_TASK_NAME,
+    execute: async (rt, _options, task) => {
+      try {
+        await dispatchApprovedDraft(rt, task);
+      } catch (error) {
+        if (error instanceof OwnerSendKnownNonDeliveryError) throw error;
+        if (task.id) {
+          const latest = await rt.getTask(task.id);
+          if (latest) {
+            await rt.updateTask(task.id, {
+              metadata: {
+                ...latest.metadata,
+                paused: true,
+                outboxReconciliationRequired: true,
+                outboxLastError:
+                  error instanceof Error ? error.message : String(error),
+              },
+            });
+          }
+        }
+        logger.error(
+          { taskId: task.id, error },
+          "[OwnerSendPolicy] ambiguous outbox outcome paused for reconciliation",
+        );
+      }
+      return undefined;
+    },
+  });
   runtime.registerTaskWorker({
     name: OWNER_SEND_APPROVAL_TASK_NAME,
     execute: async (rt, options, task) => {
@@ -206,6 +255,19 @@ export function registerOwnerSendApprovalWorker(runtime: IAgentRuntime): void {
             `[OwnerSendPolicy] send approval ${taskId} no longer exists (already sent or cancelled); nothing was sent`,
           );
         }
+        if (live.name === OWNER_SEND_OUTBOX_TASK_NAME) {
+          const delivered = live.metadata?.outboxReceipt;
+          throw new Error(
+            delivered
+              ? `[OwnerSendPolicy] send approval ${taskId} was already delivered and has a durable receipt; nothing was sent twice`
+              : `[OwnerSendPolicy] send approval ${taskId} was already approved and is pending delivery; nothing was sent twice`,
+          );
+        }
+        if (live.metadata?.outboxReconciliationRequired === true) {
+          throw new Error(
+            `[OwnerSendPolicy] send approval ${taskId} has an ambiguous provider outcome and requires manual reconciliation; automatic retry is unsafe`,
+          );
+        }
         const draft = parsePersistedDraft(live.metadata?.payload);
         if (!draft) {
           await rt.deleteTask(task.id);
@@ -213,41 +275,131 @@ export function registerOwnerSendApprovalWorker(runtime: IAgentRuntime): void {
             `[OwnerSendPolicy] send approval ${taskId} has a missing or invalid persisted draft payload; nothing was sent — please re-send the draft`,
           );
         }
-        const service = getDefaultTriageService();
-        const adapter = service.getAdapter(draft.source);
-        if (!adapter) {
-          throw new Error(
-            `[OwnerSendPolicy] no "${draft.source}" message adapter is registered; nothing was sent — retry once the connector is available`,
-          );
+        try {
+          await dispatchApprovedDraft(rt, live, draft);
+          return undefined;
+        } catch (error) {
+          const latest = await rt.getTask(task.id);
+          if (latest) {
+            if (error instanceof OwnerSendKnownNonDeliveryError) {
+              await rt.updateTask(task.id, {
+                name: OWNER_SEND_OUTBOX_TASK_NAME,
+                tags: [
+                  "queue",
+                  "repeat",
+                  "OUTBOX",
+                  OWNER_SEND_OUTBOX_TASK_NAME,
+                ],
+                dueAt:
+                  (typeof rt.getService === "function"
+                    ? rt
+                        .getService<TaskService>(ServiceType.TASK)
+                        ?.currentTime()
+                        .getTime()
+                    : undefined) ?? Date.now(),
+                metadata: {
+                  ...latest.metadata,
+                  updateInterval: OWNER_SEND_RETRY_INTERVAL_MS,
+                  maxFailures: 5,
+                },
+              });
+            } else {
+              await rt.updateTask(task.id, {
+                metadata: {
+                  ...latest.metadata,
+                  outboxReconciliationRequired: true,
+                  outboxLastError:
+                    error instanceof Error ? error.message : String(error),
+                },
+              });
+            }
+          }
+          throw error;
         }
-        const { draftId, preview } = await adapter.createDraft(rt, draft);
-        const record: DraftRecord = {
-          draftId,
-          source: draft.source,
-          inReplyToId: draft.inReplyToId,
-          threadId: draft.threadId,
-          to: draft.to,
-          subject: draft.subject,
-          body: draft.body,
-          preview,
-          createdAtMs: Date.now(),
-          sent: false,
-          worldId: draft.worldId,
-          channelId: draft.channelId,
-        };
-        service.getStore().saveDraft(record);
-        const { externalId } = await adapter.sendDraft(rt, draftId);
-        service.getStore().markDraftSent(draftId, externalId);
-        await rt.deleteTask(task.id);
-        logger.info(
-          `[OwnerSendPolicy] approved send ${taskId} executed from the persisted draft payload (externalId=${externalId})`,
-        );
-        return undefined;
       } finally {
         claims.delete(taskId);
       }
     },
   });
+}
+
+async function dispatchApprovedDraft(
+  runtime: IAgentRuntime,
+  task: Task,
+  parsedDraft?: DraftRequest,
+): Promise<void> {
+  if (!task.id) {
+    throw new Error("[OwnerSendPolicy] outbox task is missing its id");
+  }
+  const draft = parsedDraft ?? parsePersistedDraft(task.metadata?.payload);
+  if (!draft) {
+    await runtime.deleteTask(task.id);
+    throw new Error(
+      `[OwnerSendPolicy] send approval ${String(task.id)} has a missing or invalid persisted draft payload; nothing was sent — please re-send the draft`,
+    );
+  }
+  const service = getDefaultTriageService();
+  const adapter = service.getAdapter(draft.source);
+  if (!adapter) {
+    throw new Error(
+      `[OwnerSendPolicy] no "${draft.source}" message adapter is registered; nothing was sent — retry once the connector is available`,
+    );
+  }
+  const persisted = task.metadata?.outboxDraft;
+  let record: DraftRecord;
+  if (persisted && typeof persisted === "object" && !Array.isArray(persisted)) {
+    record = persisted as unknown as DraftRecord;
+  } else {
+    const { draftId, preview } = await adapter.createDraft(runtime, draft);
+    record = {
+      draftId,
+      source: draft.source,
+      inReplyToId: draft.inReplyToId,
+      threadId: draft.threadId,
+      to: draft.to,
+      subject: draft.subject,
+      body: draft.body,
+      preview,
+      createdAtMs: Date.now(),
+      sent: false,
+      worldId: draft.worldId,
+      channelId: draft.channelId,
+    };
+    await runtime.updateTask(task.id, {
+      metadata: { ...task.metadata, outboxDraft: record },
+    });
+  }
+  service.getStore().saveDraft(record);
+  if (record.sent) {
+    return;
+  }
+  const { externalId } = await adapter.sendDraft(runtime, record.draftId);
+  service.getStore().markDraftSent(record.draftId, externalId);
+  const latest = await runtime.getTask(task.id);
+  if (!latest) {
+    throw new Error(
+      `[OwnerSendPolicy] approved send ${String(task.id)} was accepted but its durable outbox row disappeared`,
+    );
+  }
+  await runtime.updateTask(task.id, {
+    name: OWNER_SEND_OUTBOX_TASK_NAME,
+    tags: ["queue", "repeat", "OUTBOX", OWNER_SEND_OUTBOX_TASK_NAME],
+    metadata: {
+      ...latest.metadata,
+      paused: true,
+      updateInterval:
+        latest.metadata?.updateInterval ?? OWNER_SEND_RETRY_INTERVAL_MS,
+      outboxDraft: { ...record, sent: true, sentExternalId: externalId },
+      outboxReceipt: {
+        externalId,
+        draftId: record.draftId,
+        accepted: true,
+      },
+    },
+  });
+  logger.info(
+    `[OwnerSendPolicy] approved send ${String(task.id)} executed from the durable outbox (externalId=${externalId})`,
+  );
 }
 
 /**
