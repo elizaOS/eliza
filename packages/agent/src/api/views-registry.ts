@@ -28,7 +28,7 @@ import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import {
   isPathWithinRoot,
   resolveRealPathSync,
-} from "./realpath-confinement.ts";
+} from "@elizaos/shared/platform/path-confinement";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import { viewSearchIndex } from "./views-search-index.ts";
 

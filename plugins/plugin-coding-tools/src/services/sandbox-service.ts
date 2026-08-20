@@ -14,11 +14,11 @@ import {
 } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared";
 import {
-  isAbsolutePath,
-  isUncPath,
-  isWithin,
+  isPathWithinRoot,
   resolveRealPath,
-} from "../lib/path-utils.js";
+  resolveRealPathSync,
+} from "@elizaos/shared/platform/path-confinement";
+import { isAbsolutePath, isUncPath } from "../lib/path-utils.js";
 import { CODING_TOOLS_LOG_PREFIX, SANDBOX_SERVICE } from "../types.js";
 
 /**
@@ -40,13 +40,72 @@ import { CODING_TOOLS_LOG_PREFIX, SANDBOX_SERVICE } from "../types.js";
  *
  * Both `~` and `$HOME` are expanded.
  */
+/**
+ * A policy entry keeps BOTH spellings: `canonical` is null when the path has
+ * a dangling or unresolvable component. An entry is never dropped for failing
+ * to resolve — a blocklist that shrinks on resolution failure fails open, and
+ * removing the last allow-root would disable the allowlist entirely (an empty
+ * list means "no allowlist configured", not "deny all").
+ */
+type PathEntry = { lexical: string; canonical: string | null };
+
+/**
+ * Blocklist match — deliberately asymmetric with `admitsRoot`. Denying on ANY
+ * spelling of the candidate against ANY spelling of the entry over-blocks at
+ * worst (fail closed). Admission is the opposite: only the CANONICAL candidate
+ * may satisfy a root, or a symlink planted inside a root would lexically
+ * re-admit a path whose real target escaped it.
+ */
+function deniesEntry(
+  candidateCanonical: string,
+  candidateLexical: string,
+  entry: PathEntry,
+): boolean {
+  if (entry.canonical !== null) {
+    if (
+      isPathWithinRoot(candidateCanonical, entry.canonical, { allowRoot: true })
+    )
+      return true;
+    if (
+      isPathWithinRoot(candidateLexical, entry.canonical, { allowRoot: true })
+    )
+      return true;
+  }
+  return (
+    isPathWithinRoot(candidateCanonical, entry.lexical, { allowRoot: true }) ||
+    isPathWithinRoot(candidateLexical, entry.lexical, { allowRoot: true })
+  );
+}
+
+/** Allowlist match: the canonical candidate against the entry's best spelling. */
+function admitsRoot(candidateCanonical: string, entry: PathEntry): boolean {
+  return isPathWithinRoot(candidateCanonical, entry.canonical ?? entry.lexical, {
+    allowRoot: true,
+  });
+}
+
+async function toPathEntry(raw: string): Promise<PathEntry> {
+  const lexical = path.resolve(expandHome(raw));
+  return { lexical, canonical: await resolveRealPath(lexical) };
+}
+
+function dedupeEntries(entries: PathEntry[]): PathEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const key = `${entry.lexical}\u0000${entry.canonical ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export class SandboxService extends Service {
   static serviceType = SANDBOX_SERVICE;
   capabilityDescription =
     "Path safety policy for coding tools. Blocks sensitive paths and optionally constrains access to configured workspace roots.";
 
-  private blockedPaths: string[] = [];
-  private allowedRoots: string[] = [];
+  private blockedPaths: PathEntry[] = [];
+  private allowedRoots: PathEntry[] = [];
   private conversationRoots = new Map<string, Set<string>>();
 
   static async start(runtime: IAgentRuntime): Promise<SandboxService> {
@@ -86,40 +145,32 @@ export class SandboxService extends Service {
     if (additions && additions.trim().length > 0) {
       paths = paths.concat(parseList(additions));
     }
-    // realpath each path so macOS /var ↔ /private/var (and Linux symlinked
-    // paths) match correctly against realpath-resolved targets in
-    // validatePath.
-    const resolved = await Promise.all(
-      paths.map(async (p) => resolveRealPath(path.resolve(expandHome(p)))),
+    // Keep both spellings so macOS /var ↔ /private/var (and Linux symlinked
+    // paths) match whichever form the candidate resolves to in validatePath.
+    this.blockedPaths = dedupeEntries(
+      await Promise.all(paths.map(toPathEntry)),
     );
-    this.blockedPaths = dedupe(resolved);
 
-    const resolvedAllowedRoots =
+    this.allowedRoots = dedupeEntries(
       allowedRoots && allowedRoots.trim().length > 0
-        ? await Promise.all(
-            parseList(allowedRoots).map(async (p) =>
-              resolveRealPath(path.resolve(expandHome(p))),
-            ),
-          )
-        : [];
-    this.allowedRoots = dedupe(resolvedAllowedRoots);
+        ? await Promise.all(parseList(allowedRoots).map(toPathEntry))
+        : [],
+    );
   }
 
-  /**
-   * Return the active blocklist (resolved absolute paths). Used by tests and
-   * the available-tools provider.
-   */
+  /** Test-only accessor: the active blocklist, best spelling per entry. */
   getBlockedPaths(): string[] {
-    return this.blockedPaths.slice();
+    return this.blockedPaths.map((entry) => entry.canonical ?? entry.lexical);
   }
 
   /**
-   * Return globally configured allow roots (resolved absolute paths).
-   * Conversation-scoped roots are intentionally omitted unless a conversation
-   * id is provided.
+   * Test-only accessor: allow roots, best spelling per entry.
+   * Conversation-scoped roots are omitted unless a conversation id is given.
    */
   getAllowedRoots(conversationId?: string): string[] {
-    return this.resolveAllowedRoots(conversationId).slice();
+    return this.resolveAllowedRoots(conversationId).map(
+      (entry) => entry.canonical ?? entry.lexical,
+    );
   }
 
   addRoot(conversationId: string | undefined, absPath: string): void {
@@ -153,6 +204,7 @@ export class SandboxService extends Service {
         reason:
           | "not_absolute"
           | "unc_path"
+          | "unresolvable_path"
           | "blocked"
           | "outside_allowed_roots";
         message: string;
@@ -172,20 +224,28 @@ export class SandboxService extends Service {
         message: `UNC paths are not permitted: ${absPath}`,
       };
     }
+    const lexicalResolved = path.resolve(absPath);
     const resolved = await resolveRealPath(absPath);
+    if (resolved === null) {
+      return {
+        ok: false,
+        reason: "unresolvable_path",
+        message: `Path ${absPath} has a dangling or unresolvable component.`,
+      };
+    }
     for (const blocked of this.blockedPaths) {
-      if (isWithin(resolved, blocked) || resolved === blocked) {
+      if (deniesEntry(resolved, lexicalResolved, blocked)) {
         return {
           ok: false,
           reason: "blocked",
-          message: `Path ${absPath} is under blocked location ${blocked}.`,
+          message: `Path ${absPath} is under blocked location ${blocked.canonical ?? blocked.lexical}.`,
         };
       }
     }
     const allowedRoots = this.resolveAllowedRoots(conversationId);
     if (allowedRoots.length > 0) {
-      const underAllowedRoot = allowedRoots.some(
-        (root) => isWithin(resolved, root) || resolved === root,
+      const underAllowedRoot = allowedRoots.some((root) =>
+        admitsRoot(resolved, root),
       );
       if (!underAllowedRoot) {
         return {
@@ -198,13 +258,19 @@ export class SandboxService extends Service {
     return { ok: true, resolved };
   }
 
-  private resolveAllowedRoots(conversationId?: string): string[] {
+  private resolveAllowedRoots(conversationId?: string): PathEntry[] {
     const roots = [...this.allowedRoots];
     if (conversationId) {
       const scoped = this.conversationRoots.get(conversationId);
-      if (scoped) roots.push(...scoped);
+      if (scoped) {
+        // Scoped roots canonicalize at read time: a root registered before
+        // its directory exists starts matching once it does.
+        for (const lexical of scoped) {
+          roots.push({ lexical, canonical: resolveRealPathSync(lexical) });
+        }
+      }
     }
-    return dedupe(roots);
+    return dedupeEntries(roots);
   }
 }
 
@@ -342,8 +408,4 @@ function isAndroidRuntime(): boolean {
     readAliasedEnv("ELIZA_PLATFORM")?.toLowerCase() === "android" ||
     Boolean(process.env.ANDROID_ROOT || process.env.ANDROID_DATA)
   );
-}
-
-function dedupe(arr: string[]): string[] {
-  return Array.from(new Set(arr));
 }

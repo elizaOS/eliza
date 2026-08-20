@@ -65,7 +65,7 @@ import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
-import { isPathWithinRoot, resolveRealPath } from "./realpath-confinement.ts";
+import { isPathWithinRoot, resolveRealPath } from "@elizaos/shared/platform/path-confinement";
 import { decodePathComponent } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";

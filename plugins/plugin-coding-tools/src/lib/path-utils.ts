@@ -1,11 +1,11 @@
 /**
  * Path predicates and resolution used by the sandbox policy and file handlers.
- * Relative FILE inputs resolve through the conversation's session cwd, while
- * device and `/proc/<pid>/fd` pseudo-paths remain blocked. Missing leaves
- * realpath through the longest existing parent so symlink directories cannot
- * smuggle a write outside the workspace.
+ * Relative FILE inputs resolve through the conversation's session cwd.
+ * `isBlockedPath` names device and `/proc/<pid>/fd` pseudo-paths but is not
+ * yet wired into `validatePath` (tracked on #22944). Canonical
+ * resolution and containment live in
+ * `@elizaos/shared/platform/path-confinement` (fail-closed; see #22944).
  */
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { IAgentRuntime, Service } from "@elizaos/core";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
@@ -49,64 +49,8 @@ export function isBlockedPath(p: string): boolean {
   return false;
 }
 
-export function normalizeAbsolute(p: string): string {
-  return path.resolve(p);
-}
-
-export async function resolveRealPath(p: string): Promise<string> {
-  const absolute = path.resolve(p);
-  try {
-    return await fs.realpath(absolute);
-  } catch {
-    // error-policy:J3 the leaf (or an ancestor) is missing. Walk up to the
-    // longest existing prefix and realpath that, then rejoin the tail so a
-    // workspace symlink-to-elsewhere cannot hide behind a not-yet-created
-    // basename. A fully missing chain falls back to the lexical absolute.
-  }
-  const tail: string[] = [];
-  let current = absolute;
-  while (true) {
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return absolute;
-    }
-    tail.unshift(path.basename(current));
-    try {
-      return path.join(await fs.realpath(parent), ...tail);
-    } catch {
-      current = parent;
-    }
-  }
-}
-
-export function isWithin(child: string, parent: string): boolean {
-  const resolvedChild = path.resolve(child);
-  const resolvedParent = path.resolve(parent);
-  if (resolvedChild === resolvedParent) return true;
-  const rel = path.relative(resolvedParent, resolvedChild);
-  return rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel);
-}
-
-export async function isWithinAnyRoot(
-  p: string,
-  roots: string[],
-): Promise<boolean> {
-  if (roots.length === 0) return false;
-  const real = await resolveRealPath(p);
-  for (const root of roots) {
-    const rootReal = await resolveRealPath(root);
-    if (isWithin(real, rootReal)) return true;
-  }
-  return false;
-}
-
 export function isUncPath(p: string): boolean {
   return p.startsWith("\\\\") || p.startsWith("//");
-}
-
-export function relativeFromRoot(p: string, root: string): string {
-  const rel = path.relative(path.resolve(root), path.resolve(p));
-  return rel === "" ? "." : rel;
 }
 
 /**

@@ -275,7 +275,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
   "@elizaos/plugin-cloud-apps", // Eliza Cloud Apps: LIST_CLOUD_APPS / GET_APP + CLOUD_APPS provider, plus CREATE_APP / DEPLOY_APP (READY+reachability completion gate) / GET_APP_DEPLOY_STATUS / DELETE_APP (two-phase confirm) + deploy-success facts cache. Reaches local/native + Discord/Telegram via the shared pipeline. Cloud-hosted agents add this separately via agent-loader, gated behind CLOUD_APPS_PLUGIN_ENABLED.
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target=device via Capacitor on iOS/Android, Node fs/promises rooted under resolveStateDir()/workspace on desktop/AOSP
-  "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools + shell service, approvals, and history provider (desktop-only
+  "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools + shell service, approvals, and history provider (runs on desktop AND cloud dedicated agents; the plugin gate excludes android/ios and store builds, re-admitting android under local-yolo)
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.

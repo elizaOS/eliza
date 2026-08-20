@@ -15,7 +15,7 @@ import { getOrReadCachedFile } from "./memory-bounds.ts";
 import {
   isPathWithinRoot,
   resolveRealPathSync,
-} from "./realpath-confinement.ts";
+} from "@elizaos/shared/platform/path-confinement";
 import { findOwnPackageRoot } from "./server-helpers.ts";
 
 // One-time warning when an operator opts into embedding the API token in served

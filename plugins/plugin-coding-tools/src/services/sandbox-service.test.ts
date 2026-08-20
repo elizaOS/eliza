@@ -1,5 +1,5 @@
 /** Tests for the SandboxService path policy: blocklist defaults and allow-root enforcement. */
-import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -282,4 +282,230 @@ describe("SandboxService default blocklist", () => {
     );
     expect(v.ok).toBe(true);
   });
+});
+
+describe("SandboxService canonical confinement (#22944)", () => {
+  const temps: string[] = [];
+
+  beforeEach(() => {
+    savedEnv = {};
+    for (const key of ENV_KEYS) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      const previous = savedEnv[key];
+      if (previous === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = previous;
+      }
+    }
+    for (const dir of temps.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function makeTempDir(): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "eliza-ct-"));
+    temps.push(dir);
+    return dir;
+  }
+
+  async function startWithRoots(roots: string, blocked?: string) {
+    process.env.CODING_TOOLS_WORKSPACE_ROOTS = roots;
+    if (blocked !== undefined) {
+      process.env.CODING_TOOLS_BLOCKED_PATHS_ADD = blocked;
+    }
+    return SandboxService.start(mockRuntime());
+  }
+
+  it("denies a dangling-symlink component inside an allowed root", async () => {
+    const root = makeTempDir();
+    const realRoot = realpathSync(root);
+    symlinkSync(
+      path.join(realRoot, "gone"),
+      path.join(realRoot, "dangling"),
+      "dir",
+    );
+    const svc = (await startWithRoots(realRoot)) as SandboxService;
+    const verdict = await svc.validatePath(
+      undefined,
+      path.join(realRoot, "dangling", "planted.txt"),
+    );
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.reason).toBe("unresolvable_path");
+  });
+
+  it("allows a dot-dot-prefixed sibling name inside an allowed root", async () => {
+    const root = makeTempDir();
+    const realRoot = realpathSync(root);
+    const svc = (await startWithRoots(realRoot)) as SandboxService;
+    const verdict = await svc.validatePath(
+      undefined,
+      path.join(realRoot, "..safe.js"),
+    );
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) {
+      expect(verdict.resolved).toBe(path.join(realRoot, "..safe.js"));
+    }
+  });
+
+  it("keeps blocking an unresolvable blocklist entry by its lexical spelling", async () => {
+    const root = makeTempDir();
+    const realRoot = realpathSync(root);
+    const ghost = path.join(realRoot, "ghost-dir");
+    symlinkSync(path.join(realRoot, "nowhere"), ghost, "dir");
+    const svc = (await startWithRoots(realRoot, ghost)) as SandboxService;
+    const verdict = await svc.validatePath(
+      undefined,
+      path.join(ghost, "secret.txt"),
+    );
+    expect(verdict.ok).toBe(false);
+    // The candidate's own dangling component fails closed before the
+    // blocklist; the entry itself must still be present, not dropped.
+    expect(svc.getBlockedPaths()).toContain(ghost);
+  });
+
+  it("matches a blocklist entry given in its aliased spelling (macOS /var vs /private/var)", async () => {
+    const root = makeTempDir();
+    const realRoot = realpathSync(root);
+    if (realRoot === path.resolve(root)) {
+      // No aliasing on this platform (plain Linux tmpdir); the dual-form
+      // matrix is still exercised by the canonical-vs-canonical arm below.
+      const svc = (await startWithRoots(realRoot, realRoot)) as SandboxService;
+      const verdict = await svc.validatePath(
+        undefined,
+        path.join(realRoot, "x.txt"),
+      );
+      expect(verdict.ok).toBe(false);
+      return;
+    }
+    // Configure the blocklist with the UNcanonicalized spelling; validate a
+    // candidate that resolves to the canonical one.
+    const svc = (await startWithRoots(
+      path.resolve(root),
+      path.resolve(root),
+    )) as SandboxService;
+    const verdict = await svc.validatePath(
+      undefined,
+      path.join(realRoot, "x.txt"),
+    );
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.reason).toBe("blocked");
+  });
+
+  it("never drops an unresolvable allow-root into the empty-list bypass", async () => {
+    const root = makeTempDir();
+    const realRoot = realpathSync(root);
+    const missingRoot = path.join(realRoot, "not-created-yet");
+    const svc = (await startWithRoots(missingRoot)) as SandboxService;
+    // The allowlist must still be enforced: a path outside the (sole,
+    // unresolvable) root is refused rather than allowed by an emptied list.
+    const outside = await svc.validatePath(
+      undefined,
+      path.join(realRoot, "outside.txt"),
+    );
+    expect(outside.ok).toBe(false);
+    if (!outside.ok) expect(outside.reason).toBe("outside_allowed_roots");
+    // And a path under the root's lexical spelling stays admissible.
+    const inside = await svc.validatePath(
+      undefined,
+      path.join(missingRoot, "file.txt"),
+    );
+    expect(inside.ok).toBe(true);
+  });
+});
+
+describe("SandboxService blocklist resolution drift (#22944)", () => {
+  const temps: string[] = [];
+
+  beforeEach(() => {
+    savedEnv = {};
+    for (const key of ENV_KEYS) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      const previous = savedEnv[key];
+      if (previous === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = previous;
+      }
+    }
+    for (const dir of temps.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  const itSymlink = process.platform === "win32" ? it.skip : it;
+
+  const itNonRoot =
+    process.platform === "win32" || process.getuid?.() === 0 ? it.skip : it;
+
+  itNonRoot(
+    "admits a root that was unreadable at start once it resolves again",
+    async () => {
+      const base = mkdtempSync(path.join(tmpdir(), "eliza-ct-eacces-"));
+      temps.push(base);
+      const real = realpathSync(base);
+      const locked = path.join(real, "locked");
+      const ws = path.join(locked, "ws");
+      mkdirSync(locked);
+      mkdirSync(ws);
+      chmodSync(locked, 0o000);
+      try {
+        process.env.CODING_TOOLS_WORKSPACE_ROOTS = ws;
+        const svc = await SandboxService.start(mockRuntime());
+        // Entry canonicalization failed (EACCES) — the root must survive in
+        // lexical form rather than emptying the allowlist or denying forever.
+        chmodSync(locked, 0o755);
+        const verdict = await svc.validatePath(
+          undefined,
+          path.join(ws, "file.txt"),
+        );
+        expect(verdict.ok).toBe(true);
+      } finally {
+        chmodSync(locked, 0o755);
+      }
+    },
+  );
+
+  itSymlink(
+    "still blocks a blocklist symlink retargeted after service start",
+    async () => {
+      const base = mkdtempSync(path.join(tmpdir(), "eliza-ct-drift-"));
+      temps.push(base);
+      const real = realpathSync(base);
+      const targetA = path.join(real, "target-a");
+      const targetB = path.join(real, "target-b");
+      const alias = path.join(real, "alias");
+      mkdirSync(targetA);
+      mkdirSync(targetB);
+      symlinkSync(targetA, alias, "dir");
+
+      process.env.CODING_TOOLS_BLOCKED_PATHS_ADD = alias;
+      const svc = await SandboxService.start(mockRuntime());
+
+      // Retarget the alias AFTER the entry canonicalized to target-a. The
+      // candidate's canonical spelling (target-b/…) no longer matches the
+      // entry's canonical (target-a); only the lexical arm still blocks it.
+      rmSync(alias);
+      symlinkSync(targetB, alias, "dir");
+
+      const verdict = await svc.validatePath(
+        undefined,
+        path.join(alias, "secret.txt"),
+      );
+      expect(verdict.ok).toBe(false);
+      if (!verdict.ok) expect(verdict.reason).toBe("blocked");
+    },
+  );
 });

@@ -183,6 +183,16 @@
       "import": "./dist/local-inference/verify.js",
       "default": "./dist/local-inference/verify.js"
     },
+    "./platform/path-confinement": {
+      "types": "./dist/platform/path-confinement.d.ts",
+      "eliza-source": {
+        "types": "./src/platform/path-confinement.ts",
+        "import": "./src/platform/path-confinement.ts",
+        "default": "./src/platform/path-confinement.ts"
+      },
+      "import": "./dist/platform/path-confinement.js",
+      "default": "./dist/platform/path-confinement.js"
+    },
     "./platform/native-library-policy": {
       "types": "./dist/platform/native-library-policy.d.ts",
       "eliza-source": {

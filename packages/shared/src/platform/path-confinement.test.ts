@@ -17,7 +17,7 @@ import {
   isPathWithinRoot,
   resolveRealPath,
   resolveRealPathSync,
-} from "./realpath-confinement.ts";
+} from "./path-confinement.ts";
 
 const cleanupPaths: string[] = [];
 

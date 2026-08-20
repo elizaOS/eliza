@@ -1,5 +1,6 @@
 /**
- * Canonical path confinement shared by agent HTTP file-serving boundaries.
+ * Canonical path confinement shared by the agent HTTP file-serving
+ * boundaries and the coding-tools sandbox write policy.
  *
  * Missing leaves resolve through their deepest existing ancestor. Benign
  * symlink prefixes are followed, while dangling links, loops, permission
