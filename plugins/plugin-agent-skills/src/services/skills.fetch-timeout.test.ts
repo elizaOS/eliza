@@ -239,7 +239,7 @@ describe("AgentSkillsService fetch timeouts", () => {
 		expect(fetchMock.mock.calls[0][1]).toMatchObject({ signal: undefined });
 	});
 
-	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+	it.each([0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648])(
 		"rejects invalid service deadline %s",
 		async (fetchTimeoutMs) => {
 			await expect(
@@ -249,7 +249,7 @@ describe("AgentSkillsService fetch timeouts", () => {
 					storage: new MemorySkillStore(),
 				}),
 			).rejects.toThrow(
-				"fetchTimeoutMs must be a positive finite number or null",
+				"fetchTimeoutMs must be a positive bounded integer or null",
 			);
 		},
 	);
@@ -277,13 +277,14 @@ describe("AgentSkillsService fetch timeouts", () => {
 				localService.getCatalog({ forceRefresh: true }),
 			).resolves.toEqual([]);
 			expect(performance.now() - startedAt).toBeLessThan(2_000);
+			const requestCountAfterTimeout = requestCount;
 
 			// A timed-out catalog fetch enters the existing cooldown even when a
 			// caller forces refresh, so retries cannot hammer an unhealthy registry.
 			await expect(
 				localService.getCatalog({ forceRefresh: true }),
 			).resolves.toEqual([]);
-			expect(requestCount).toBe(1);
+			expect(requestCount).toBe(requestCountAfterTimeout);
 		} finally {
 			await endpoint.close();
 		}

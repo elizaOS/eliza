@@ -58,8 +58,14 @@ import type {
 import { SKILL_SOURCE_PRECEDENCE } from "../types";
 import { binaryExistsInPath } from "./bin-lookup";
 import {
+	createSkillDownloadLifecycle,
+	DEFAULT_SKILL_DOWNLOAD_TIMEOUT_MS,
+	isSkillDownloadError,
+	MAX_SKILL_DOWNLOAD_TIMEOUT_MS,
 	readCappedSkillPackage,
 	readCappedSkillText,
+	type SkillDownloadLifecycle,
+	skillDownloadAbortError,
 } from "./skill-package-bytes";
 
 // ============================================================
@@ -82,7 +88,6 @@ const CACHE_TTL = {
  */
 const FETCH_ERROR_COOLDOWN = 1000 * 60 * 5;
 const MAX_CATALOG_PAGES = 100;
-const DEFAULT_REGISTRY_FETCH_TIMEOUT_MS = 30_000;
 
 class CatalogPaginationError extends Error {
 	constructor(message: string) {
@@ -119,6 +124,20 @@ function sanitizeSlug(slug: string): string {
 		throw new Error(`Invalid skill slug: ${slug}`);
 	}
 	return sanitized;
+}
+
+async function fetchInstallResource(
+	url: string,
+	lifecycle: SkillDownloadLifecycle,
+	init: RequestInit = {},
+): Promise<Response> {
+	lifecycle.throwIfAborted();
+	try {
+		return await fetch(url, { ...init, signal: lifecycle.signal });
+	} catch (cause) {
+		lifecycle.throwIfAborted(cause);
+		throw cause;
+	}
 }
 
 // ============================================================
@@ -281,13 +300,17 @@ export class AgentSkillsService extends Service {
 		if (
 			configuredFetchTimeout !== undefined &&
 			configuredFetchTimeout !== null &&
-			(!Number.isFinite(configuredFetchTimeout) || configuredFetchTimeout <= 0)
+			(!Number.isInteger(configuredFetchTimeout) ||
+				configuredFetchTimeout <= 0 ||
+				configuredFetchTimeout > MAX_SKILL_DOWNLOAD_TIMEOUT_MS)
 		) {
-			throw new Error("fetchTimeoutMs must be a positive finite number or null");
+			throw new Error(
+				"fetchTimeoutMs must be a positive bounded integer or null",
+			);
 		}
 		this.fetchTimeoutMs =
 			configuredFetchTimeout === undefined
-				? DEFAULT_REGISTRY_FETCH_TIMEOUT_MS
+				? DEFAULT_SKILL_DOWNLOAD_TIMEOUT_MS
 				: configuredFetchTimeout;
 
 		// Registry I/O is opt-in during startup. getSetting() may preserve the
@@ -1834,9 +1857,10 @@ export class AgentSkillsService extends Service {
 	private fetchSkillResource(
 		input: string | URL,
 		init: RequestInit = {},
+		deadlineManaged = false,
 	): Promise<Response> {
 		const timeoutSignal =
-			this.fetchTimeoutMs === null
+			deadlineManaged || this.fetchTimeoutMs === null
 				? undefined
 				: AbortSignal.timeout(this.fetchTimeoutMs);
 		const signal =
@@ -1896,6 +1920,7 @@ export class AgentSkillsService extends Service {
 				const url = `${this.apiBase}/api/v1/skills?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
 				const response = await this.fetchSkillResource(url, {
 					headers: { Accept: "application/json" },
+					signal: options.signal,
 				});
 
 				if (!response.ok) {
@@ -1951,6 +1976,9 @@ export class AgentSkillsService extends Service {
 
 			return entries;
 		} catch (error) {
+			if (options.signal?.aborted) {
+				throw skillDownloadAbortError(options.signal, error);
+			}
 			this.lastFetchErrorAt = Date.now();
 			this.runtime.logger.warn(
 				`AgentSkills: Catalog fetch failed (will retry after cooldown): ${error}`,
@@ -1988,6 +2016,7 @@ export class AgentSkillsService extends Service {
 			const url = `${this.apiBase}/api/v1/search?q=${encodeURIComponent(query)}&limit=${limit}`;
 			const response = await this.fetchSkillResource(url, {
 				headers: { Accept: "application/json" },
+				signal: options.signal,
 			});
 
 			if (!response.ok) {
@@ -2001,6 +2030,9 @@ export class AgentSkillsService extends Service {
 
 			return results;
 		} catch (error) {
+			if (options.signal?.aborted) {
+				throw skillDownloadAbortError(options.signal, error);
+			}
 			this.runtime.logger.error(`AgentSkills: Search error: ${error}`);
 			return this.searchCache.get(cacheKey)?.data || [];
 		}
@@ -2012,6 +2044,14 @@ export class AgentSkillsService extends Service {
 	async getSkillDetails(
 		slug: string,
 		options: CacheOptions = {},
+	): Promise<SkillDetails | null> {
+		return this.getSkillDetailsWithDeadline(slug, options, false);
+	}
+
+	private async getSkillDetailsWithDeadline(
+		slug: string,
+		options: CacheOptions,
+		deadlineManaged: boolean,
 	): Promise<SkillDetails | null> {
 		const safeSlug = sanitizeSlug(slug);
 		const ttl = options.notOlderThan ?? CACHE_TTL.SKILL_DETAILS;
@@ -2028,7 +2068,8 @@ export class AgentSkillsService extends Service {
 			const url = `${this.apiBase}/api/v1/skills/${safeSlug}`;
 			const response = await this.fetchSkillResource(url, {
 				headers: { Accept: "application/json" },
-			});
+				signal: options.signal,
+			}, deadlineManaged);
 
 			if (!response.ok) {
 				if (response.status === 404) return null;
@@ -2040,6 +2081,9 @@ export class AgentSkillsService extends Service {
 
 			return details;
 		} catch (error) {
+			if (options.signal?.aborted) {
+				throw skillDownloadAbortError(options.signal, error);
+			}
 			this.runtime.logger.error(`AgentSkills: Details fetch error: ${error}`);
 			return this.detailsCache.get(safeSlug)?.data || null;
 		}
@@ -2229,24 +2273,40 @@ export class AgentSkillsService extends Service {
 				`AgentSkills: Installing ${safeSlug}@${version}...`,
 			);
 
-			// Get skill details
-			const details = await this.getSkillDetails(safeSlug);
-			if (!details) {
-				throw new Error(`Skill "${safeSlug}" not found`);
+			const lifecycle = createSkillDownloadLifecycle({
+				signal: options.signal,
+				downloadTimeoutMs:
+					options.downloadTimeoutMs === undefined
+						? this.fetchTimeoutMs
+						: options.downloadTimeoutMs,
+			});
+			let resolvedVersion: string;
+			let zipBuffer: Uint8Array;
+			try {
+				// Catalog resolution and package bytes share one wall-clock deadline.
+				const details = await this.getSkillDetailsWithDeadline(safeSlug, {
+					signal: lifecycle.signal,
+				}, true);
+				if (!details) {
+					throw new Error(`Skill "${safeSlug}" not found`);
+				}
+
+				resolvedVersion =
+					version === "latest" ? details.latestVersion.version : version;
+
+				const downloadUrl = `${this.apiBase}/api/v1/download?slug=${safeSlug}&version=${resolvedVersion}`;
+				const response = await fetchInstallResource(downloadUrl, lifecycle);
+
+				if (!response.ok) {
+					throw new Error(`Download failed: ${response.status}`);
+				}
+
+				zipBuffer = await readCappedSkillPackage(response, {
+					signal: lifecycle.signal,
+				});
+			} finally {
+				lifecycle.dispose();
 			}
-
-			const resolvedVersion =
-				version === "latest" ? details.latestVersion.version : version;
-
-			// Download
-			const downloadUrl = `${this.apiBase}/api/v1/download?slug=${safeSlug}&version=${resolvedVersion}`;
-			const response = await this.fetchSkillResource(downloadUrl);
-
-			if (!response.ok) {
-				throw new Error(`Download failed: ${response.status}`);
-			}
-
-			const zipBuffer = await readCappedSkillPackage(response);
 
 			// Extract and save based on storage type
 			if (this.storage instanceof MemorySkillStore) {
@@ -2277,6 +2337,9 @@ export class AgentSkillsService extends Service {
 			return true;
 		} catch (error) {
 			this.runtime.logger.error(`AgentSkills: Install error: ${error}`);
+			if (options.throwOnDownloadError && isSkillDownloadError(error)) {
+				throw error;
+			}
 			return false;
 		}
 	}
@@ -2357,34 +2420,49 @@ export class AgentSkillsService extends Service {
 			const basePath = skillPath ? `${skillPath}/` : "";
 			const rawBase = `https://raw.githubusercontent.com/${owner}/${repoName}/${branch}/${basePath}`;
 
-			// Download SKILL.md
-			const skillMdUrl = `${rawBase}SKILL.md`;
-			const response = await this.fetchSkillResource(skillMdUrl);
-
-			if (!response.ok) {
-				throw new Error(
-					`Failed to fetch SKILL.md: ${response.status} from ${skillMdUrl}`,
-				);
-			}
-
-			const skillMdContent = await readCappedSkillText(response);
-
-			// Create a minimal skill package
-			const files: Array<{ name: string; content: string | Uint8Array }> = [
-				{ name: "SKILL.md", content: skillMdContent },
-			];
-
-			// Try to fetch README.md if it exists (optional)
+			const lifecycle = createSkillDownloadLifecycle({
+				signal: options.signal,
+				downloadTimeoutMs:
+					options.downloadTimeoutMs === undefined
+						? this.fetchTimeoutMs
+						: options.downloadTimeoutMs,
+			});
+			let files: Array<{ name: string; content: string | Uint8Array }>;
 			try {
-				const readmeUrl = `${rawBase}README.md`;
-				const readmeResponse = await this.fetchSkillResource(readmeUrl);
-				if (readmeResponse.ok) {
-					const readmeContent = await readCappedSkillText(readmeResponse);
-					files.push({ name: "README.md", content: readmeContent });
+				// Required and optional GitHub resources consume the same deadline.
+				const skillMdUrl = `${rawBase}SKILL.md`;
+				const response = await fetchInstallResource(skillMdUrl, lifecycle);
+
+				if (!response.ok) {
+					throw new Error(
+						`Failed to fetch SKILL.md: ${response.status} from ${skillMdUrl}`,
+					);
 				}
-			} catch {
-				// error-policy:J4 README enrichment is optional; a timeout or missing
-				// file leaves the installed skill visibly without that extra file.
+
+				const skillMdContent = await readCappedSkillText(response, {
+					signal: lifecycle.signal,
+				});
+				files = [{ name: "SKILL.md", content: skillMdContent }];
+
+				try {
+					const readmeUrl = `${rawBase}README.md`;
+					const readmeResponse = await fetchInstallResource(readmeUrl, lifecycle);
+					if (readmeResponse.ok) {
+						const readmeContent = await readCappedSkillText(readmeResponse, {
+							signal: lifecycle.signal,
+						});
+						files.push({ name: "README.md", content: readmeContent });
+					}
+				} catch (cause) {
+					lifecycle.throwIfAborted(cause);
+					if (isSkillDownloadError(cause) || !(cause instanceof TypeError)) {
+						throw cause;
+					}
+					// error-policy:J4 an optional README transport failure leaves the
+					// installed package visibly without README.md; required SKILL.md is intact.
+				}
+			} finally {
+				lifecycle.dispose();
 			}
 
 			// Save to storage
@@ -2422,6 +2500,9 @@ export class AgentSkillsService extends Service {
 			return true;
 		} catch (error) {
 			this.runtime.logger.error(`AgentSkills: GitHub install error: ${error}`);
+			if (options.throwOnDownloadError && isSkillDownloadError(error)) {
+				throw error;
+			}
 			return false;
 		}
 	}
@@ -2434,14 +2515,6 @@ export class AgentSkillsService extends Service {
 		options: InstallSkillOptions & { slug?: string } = {},
 	): Promise<boolean> {
 		try {
-			const response = await this.fetchSkillResource(url);
-
-			if (!response.ok) {
-				throw new Error(`Failed to fetch: ${response.status}`);
-			}
-
-			const contentType = response.headers.get("content-type") || "";
-
 			// Determine slug from URL or options
 			const urlPath = new URL(url).pathname;
 			const derivedSlug =
@@ -2453,11 +2526,38 @@ export class AgentSkillsService extends Service {
 					?.replace(/\.(md|zip)$/i, "") ||
 				"skill";
 			const safeSlug = sanitizeSlug(derivedSlug);
+			const lifecycle = createSkillDownloadLifecycle({
+				signal: options.signal,
+				downloadTimeoutMs:
+					options.downloadTimeoutMs === undefined
+						? this.fetchTimeoutMs
+						: options.downloadTimeoutMs,
+			});
+			let zipBuffer: Uint8Array | undefined;
+			let skillMdContent: string | undefined;
+			try {
+				const response = await fetchInstallResource(url, lifecycle);
 
-			if (contentType.includes("application/zip") || url.endsWith(".zip")) {
+				if (!response.ok) {
+					throw new Error(`Failed to fetch: ${response.status}`);
+				}
+
+				const contentType = response.headers.get("content-type") || "";
+				if (contentType.includes("application/zip") || url.endsWith(".zip")) {
+					zipBuffer = await readCappedSkillPackage(response, {
+						signal: lifecycle.signal,
+					});
+				} else {
+					skillMdContent = await readCappedSkillText(response, {
+						signal: lifecycle.signal,
+					});
+				}
+			} finally {
+				lifecycle.dispose();
+			}
+
+			if (zipBuffer) {
 				// Handle zip package
-				const zipBuffer = await readCappedSkillPackage(response);
-
 				if (this.storage instanceof MemorySkillStore) {
 					await (this.storage as MemorySkillStore).loadFromZip(
 						safeSlug,
@@ -2471,10 +2571,12 @@ export class AgentSkillsService extends Service {
 				}
 			} else {
 				// Assume it's a SKILL.md file
-				const content = await readCappedSkillText(response);
+				if (skillMdContent === undefined) {
+					throw new Error("Skill download did not produce package content");
+				}
 
 				const files: Array<{ name: string; content: string | Uint8Array }> = [
-					{ name: "SKILL.md", content },
+					{ name: "SKILL.md", content: skillMdContent },
 				];
 
 				if (this.storage instanceof MemorySkillStore) {
@@ -2511,6 +2613,9 @@ export class AgentSkillsService extends Service {
 			return true;
 		} catch (error) {
 			this.runtime.logger.error(`AgentSkills: URL install error: ${error}`);
+			if (options.throwOnDownloadError && isSkillDownloadError(error)) {
+				throw error;
+			}
 			return false;
 		}
 	}
