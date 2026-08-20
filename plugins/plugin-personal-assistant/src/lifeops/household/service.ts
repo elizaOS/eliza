@@ -2,7 +2,8 @@
  * Household coordination policy over the runtime graph, approval queue, and
  * commitment ledger. The service turns mutable scheduling discussions into
  * version-pinned proposals and activates an agreement only after every named
- * adult approves those exact proposal bytes.
+ * adult approves those exact proposal bytes. Audit-record entity scans are
+ * bounded in `household-entity-scan.ts`.
  */
 import crypto from "node:crypto";
 import {
@@ -41,6 +42,7 @@ import {
   ensureHouseholdGrantExpiryWarning,
   type HouseholdGrantExpiryWarningReceipt,
 } from "./grant-expiry-warning.js";
+import { recordContainsAnyEntity } from "./household-entity-scan.js";
 import { HouseholdCoordinationRepository } from "./repository.js";
 import {
   DEFAULT_HOUSEHOLD_ID,
@@ -242,20 +244,6 @@ function nonNegativeInteger(value: number, field: string, minimum = 0): number {
     );
   }
   return value;
-}
-
-function recordContainsAnyEntity(
-  value: unknown,
-  entityIds: ReadonlySet<string>,
-): boolean {
-  if (typeof value === "string") return entityIds.has(value);
-  if (Array.isArray(value)) {
-    return value.some((entry) => recordContainsAnyEntity(entry, entityIds));
-  }
-  if (!value || typeof value !== "object") return false;
-  return Object.values(value).some((entry) =>
-    recordContainsAnyEntity(entry, entityIds),
-  );
 }
 
 function latestProposalVersions(
