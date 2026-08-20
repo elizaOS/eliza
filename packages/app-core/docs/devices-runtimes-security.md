@@ -20,8 +20,13 @@ implementation detail and users do not need a Tailscale account.
 
 ## Transport and commands
 
-- Managed Macs and VPS hosts use a locked `tag:eliza-remote-host` Headscale ACL.
-  Remote hosts cannot initiate connections to agents or one another.
+- V1 always has an E2E-encrypted Cloud mailbox data path, so pairing and control
+  remain available while managed networking is unavailable or being migrated.
+- When Headscale is configured, Cloud also mints a one-use, non-ephemeral
+  `tag:eliza-remote-host` enrollment credential. It is stored device-securely
+  for a future managed direct-path client; issuing the credential does not mark
+  the host as joined. The locked ACL prevents remote hosts from initiating
+  connections to agents or one another.
 - Commands are signed, encrypted end to end, bound to owner/session/controller/
   target/nonce/sequence/expiry/payload digest, and rejected on replay.
 - Cloud relay code treats encrypted envelopes as opaque data. Authorization and
@@ -29,6 +34,10 @@ implementation detail and users do not need a Tailscale account.
 - Advanced SSH uses the desktop SSH agent by default, passes arguments without a
   shell, remembers first-seen host keys, rejects changed keys, and exposes only
   a loopback tunnel to the renderer.
+- Each SSH VPS is a distinct pairable Cloud target. The owning Mac decrypts the
+  command, restores its loopback-only SSH tunnel, and forwards only the same
+  allowlisted agent routes. VPS bearer tokens are loaded in the native process;
+  controllers and Cloud never receive SSH keys or VPS tokens.
 
 ## Secret storage
 

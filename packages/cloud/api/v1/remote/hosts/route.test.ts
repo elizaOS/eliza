@@ -85,13 +85,15 @@ describe("remote host enrollment", () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         display_name: "Studio Mac",
-        connection_mode: "managed_headscale",
+        connection_mode: "cloud_relay",
         runtime_key_id: "host-key-1",
       }),
     );
     const body = (await response.json()) as { data: Record<string, unknown> };
     expect(body.data.authKey).toBe("one-use-enrollment-key");
     expect(body.data.loginServer).toBe("https://headscale.example.test");
+    expect(body.data.connectionMode).toBe("cloud_relay");
+    expect(body.data.managedNetworkEnrollmentAvailable).toBe(true);
     expect(body.data.hostToken).toMatch(/^eliza_host_[A-Za-z0-9_-]{43}$/);
     expect(create.mock.calls[0]?.[0]?.host_token_hash).toMatch(
       /^[0-9a-f]{64}$/,
@@ -101,7 +103,7 @@ describe("remote host enrollment", () => {
     );
   });
 
-  test("fails closed without server-side Headscale configuration", async () => {
+  test("falls back to the encrypted Cloud relay without Headscale configuration", async () => {
     const response = await app.fetch(
       new Request("https://api.example.test/api/v1/remote/hosts", {
         method: "POST",
@@ -110,8 +112,18 @@ describe("remote host enrollment", () => {
       }),
       {} as AppEnv["Bindings"],
     );
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     expect(createPreAuthKey).not.toHaveBeenCalled();
-    expect(create).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connection_mode: "cloud_relay",
+        headscale_hostname: null,
+      }),
+    );
+    const body = (await response.json()) as { data: Record<string, unknown> };
+    expect(body.data.connectionMode).toBe("cloud_relay");
+    expect(body.data.authKey).toBeNull();
+    expect(body.data.loginServer).toBeNull();
+    expect(body.data.hostToken).toMatch(/^eliza_host_/);
   });
 });

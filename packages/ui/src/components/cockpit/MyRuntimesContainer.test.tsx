@@ -14,6 +14,16 @@ import type { AgentProfile } from "../../state/agent-profile-types";
 const mocks = vi.hoisted(() => ({
   loadAgentProfileRegistry: vi.fn(),
   addAgentProfile: vi.fn(),
+  removeAgentProfile: vi.fn(),
+  updateAgentProfile: vi.fn(),
+  deleteRuntimeCredential: vi.fn(),
+  loadRuntimeCredential: vi.fn(),
+  storeRuntimeCredential: vi.fn(),
+  startSshRuntime: vi.fn(),
+  stopSshRuntime: vi.fn(),
+  revokeCloudRemoteHost: vi.fn(),
+  revokeCloudRemoteSession: vi.fn(),
+  listCloudRemoteSessions: vi.fn(async () => []),
   // The container only reads `ok` + `reason`; type the mock to the subset it
   // consumes so both success and the untrusted-remote case are assignable.
   switchRuntimeNonDestructive: vi.fn((): { ok: boolean; reason?: string } => ({
@@ -27,7 +37,25 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../state", () => ({
   loadAgentProfileRegistry: mocks.loadAgentProfileRegistry,
   addAgentProfile: mocks.addAgentProfile,
+  removeAgentProfile: mocks.removeAgentProfile,
   switchRuntimeNonDestructive: mocks.switchRuntimeNonDestructive,
+  updateAgentProfile: mocks.updateAgentProfile,
+}));
+vi.mock("../../platform/runtime-credential-store", () => ({
+  deleteRuntimeCredential: mocks.deleteRuntimeCredential,
+  loadRuntimeCredential: mocks.loadRuntimeCredential,
+  storeRuntimeCredential: mocks.storeRuntimeCredential,
+}));
+vi.mock("../../platform/ssh-runtime", () => ({
+  startSshRuntime: mocks.startSshRuntime,
+  stopSshRuntime: mocks.stopSshRuntime,
+}));
+vi.mock("../../api", () => ({
+  client: {
+    revokeCloudRemoteHost: mocks.revokeCloudRemoteHost,
+    revokeCloudRemoteSession: mocks.revokeCloudRemoteSession,
+    listCloudRemoteSessions: mocks.listCloudRemoteSessions,
+  },
 }));
 vi.mock("../../state/runtime-url-trust", () => ({
   isTrustedRestoreApiBaseUrl: mocks.isTrustedRestoreApiBaseUrl,
@@ -39,7 +67,10 @@ vi.mock("../../platform/android-runtime", () => ({
   isAndroidCloudBuild: mocks.isAndroidCloudBuild,
 }));
 
-import { MyRuntimesContainer } from "./MyRuntimesContainer";
+import {
+  MyRuntimesContainer,
+  pairingTargetHostId,
+} from "./MyRuntimesContainer";
 
 const PROFILES: AgentProfile[] = [
   {
@@ -79,6 +110,65 @@ describe("MyRuntimesContainer", () => {
       apiBase: "http://100.72.1.9:3000",
       createdAt: "2026-06-30T00:00:00.000Z",
     });
+    localStorage.clear();
+  });
+
+  it("pairs the active SSH VPS instead of the gateway Mac", () => {
+    expect(
+      pairingTargetHostId(
+        {
+          ...REG,
+          activeProfileId: "vps-1",
+          profiles: [
+            PROFILES[0],
+            {
+              ...PROFILES[1],
+              sshGateway: {
+                hostId: "host-vps-1",
+                runtimeId: "ssh-runtime-1",
+                target: "eliza@vps.example.com",
+                sshPort: 22,
+                remoteApiPort: 2138,
+              },
+            },
+          ],
+        },
+        "host-mac-1",
+      ),
+    ).toBe("host-vps-1");
+    expect(pairingTargetHostId(REG, "host-mac-1")).toBe("host-mac-1");
+  });
+
+  it("confirms VPS removal, revokes its Cloud host, and deletes secure credentials", async () => {
+    mocks.loadAgentProfileRegistry.mockReturnValue({
+      ...REG,
+      profiles: [
+        PROFILES[0],
+        {
+          ...PROFILES[1],
+          credentialRef: "ssh-runtime-1",
+          sshGateway: {
+            hostId: "host-vps-1",
+            runtimeId: "ssh-runtime-1",
+            target: "eliza@vps.example.com",
+            sshPort: 22,
+            remoteApiPort: 2138,
+          },
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<MyRuntimesContainer />);
+    await user.click(screen.getByRole("button", { name: "Remove My VPS" }));
+    expect(screen.getByTestId("remove-runtime-dialog")).toBeTruthy();
+    await user.click(screen.getByTestId("remove-runtime-confirm"));
+    expect(mocks.revokeCloudRemoteHost).toHaveBeenCalledWith("host-vps-1");
+    expect(mocks.stopSshRuntime).toHaveBeenCalledWith("ssh-runtime-1");
+    expect(mocks.deleteRuntimeCredential).toHaveBeenCalledWith(
+      "managed-host:host-vps-1",
+    );
+    expect(mocks.deleteRuntimeCredential).toHaveBeenCalledWith("ssh-runtime-1");
+    expect(mocks.removeAgentProfile).toHaveBeenCalledWith("vps-1");
   });
 
   it("renders the runtimes from the registry", () => {

@@ -158,6 +158,7 @@ import {
 } from "./settings-mutations-rpc";
 import type { ShellControllerEndpoint } from "./shell-sync-relay";
 import {
+  desktopSshRuntimeRequest,
   desktopStartSshRuntime,
   desktopStopSshRuntime,
 } from "./ssh-runtime-rpc";
@@ -703,6 +704,7 @@ export function buildBunRpcHandlers({
     desktopOpenRemoteCommand,
     desktopOpenRemoteCommandResult,
     desktopSealRemoteCommandResult,
+    desktopSshRuntimeRequest,
     desktopStartSshRuntime,
     desktopStopSshRuntime,
     nativeTranscriptPublishStream: async (params) =>

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   desktopStartSshRuntime,
   desktopStopSshRuntime,
+  normalizeSshRuntimeRequest,
 } from "./ssh-runtime-rpc";
 
 describe("SSH runtime RPC", () => {
@@ -38,5 +39,45 @@ describe("SSH runtime RPC", () => {
     await expect(
       desktopStopSshRuntime({ runtimeId: "not-running" }),
     ).resolves.toEqual({ stopped: false });
+  });
+
+  it("allows only the remote agent API surface and strips untrusted headers", () => {
+    expect(
+      normalizeSshRuntimeRequest({
+        runtimeId: "runtime-1",
+        credentialRef: "credential-1",
+        path: "/api/conversations/c-1/messages?wait=true",
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          authorization: "attacker-controlled",
+          "x-forwarded-host": "evil.example",
+        },
+        body: "{}",
+        timeoutMs: 60_000,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        path: "/api/conversations/c-1/messages?wait=true",
+        headers: { accept: "application/json" },
+      }),
+    );
+  });
+
+  it.each([
+    "/api/settings",
+    "/api/health/../settings",
+    "https://evil.example/api/health",
+  ])("rejects a non-agent or origin-changing request path: %s", (path) => {
+    expect(() =>
+      normalizeSshRuntimeRequest({
+        runtimeId: "runtime-1",
+        path,
+        method: "GET",
+        headers: {},
+        body: null,
+        timeoutMs: 1_000,
+      }),
+    ).toThrow("route is not allowed");
   });
 });

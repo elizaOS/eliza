@@ -170,7 +170,7 @@ export interface CloudRemoteHost {
   id: string;
   displayName: string;
   platform: "macos" | "linux" | "windows";
-  connectionMode: "managed_headscale" | "ssh" | "direct";
+  connectionMode: "cloud_relay" | "managed_headscale" | "ssh" | "direct";
   hostname: string | null;
   runtimeKeyId: string;
   signingPublicKeyJwk: JsonWebKey;
@@ -1550,11 +1550,12 @@ declare module "./client-base" {
     }): Promise<{
       host: CloudRemoteHost;
       enrollment: {
-        authKey: string;
+        managedNetworkEnrollmentAvailable: boolean;
+        authKey: string | null;
         hostToken: string;
-        loginServer: string;
-        hostname: string;
-        expiresAt: string;
+        loginServer: string | null;
+        hostname: string | null;
+        expiresAt: string | null;
       };
     }>;
     revokeCloudRemoteHost(hostId: string): Promise<void>;
@@ -2451,11 +2452,13 @@ ElizaClient.prototype.enrollCloudRemoteHost = async function (
       data: {
         hostId: string;
         displayName: string;
-        loginServer: string;
-        authKey: string;
+        connectionMode: "cloud_relay" | "managed_headscale";
+        managedNetworkEnrollmentAvailable: boolean;
+        loginServer: string | null;
+        authKey: string | null;
         hostToken: string;
-        hostname: string;
-        expiresAt: string;
+        hostname: string | null;
+        expiresAt: string | null;
         status: "pending";
       };
     }>(this, "/api/v1/remote/hosts", {
@@ -2468,7 +2471,7 @@ ElizaClient.prototype.enrollCloudRemoteHost = async function (
       id: response.data.hostId,
       displayName: response.data.displayName,
       platform: input.platform,
-      connectionMode: "managed_headscale" as const,
+      connectionMode: response.data.connectionMode,
       hostname: response.data.hostname,
       runtimeKeyId: input.hostIdentity.keyId,
       signingPublicKeyJwk: input.hostIdentity.signingPublicKeyJwk,
@@ -2478,6 +2481,8 @@ ElizaClient.prototype.enrollCloudRemoteHost = async function (
       createdAt: new Date().toISOString(),
     },
     enrollment: {
+      managedNetworkEnrollmentAvailable:
+        response.data.managedNetworkEnrollmentAvailable,
       authKey: response.data.authKey,
       hostToken: response.data.hostToken,
       loginServer: response.data.loginServer,

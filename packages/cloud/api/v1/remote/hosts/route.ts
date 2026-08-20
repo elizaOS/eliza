@@ -94,34 +94,36 @@ app.post("/", async (c) => {
     const publicUrl = readEnv(c.env.HEADSCALE_PUBLIC_URL) ?? apiUrl;
     const apiKey = readEnv(c.env.HEADSCALE_API_KEY);
     const userName = readEnv(c.env.HEADSCALE_USER) ?? "tunnel";
-    if (!apiUrl || !publicUrl || !apiKey) {
-      return c.json(
-        {
-          success: false,
-          error: "Managed private host enrollment is unavailable",
-        },
-        503,
-      );
-    }
     const hostId = crypto.randomUUID();
-    const hostname = `eliza-host-${hostId.replace(/-/g, "").slice(0, 20)}`;
+    const managedHeadscale = Boolean(apiUrl && publicUrl && apiKey);
+    const hostname = managedHeadscale
+      ? `eliza-host-${hostId.replace(/-/g, "").slice(0, 20)}`
+      : null;
     const hostToken = generateRemoteHostToken();
     const hostTokenHash = await hashRemoteHostToken(hostToken);
     const expiration = new Date(Date.now() + ENROLLMENT_TTL_MS).toISOString();
-    const client = new HeadscaleClient({ apiUrl, apiKey, user: userName });
-    const preAuthKey = await client.createPreAuthKey({
-      reusable: false,
-      ephemeral: false,
-      expiration,
-      aclTags: [REMOTE_HOST_TAG],
-    });
+    const preAuthKey = managedHeadscale
+      ? await new HeadscaleClient({
+          apiUrl: apiUrl as string,
+          apiKey: apiKey as string,
+          user: userName,
+        }).createPreAuthKey({
+          reusable: false,
+          ephemeral: false,
+          expiration,
+          aclTags: [REMOTE_HOST_TAG],
+        })
+      : null;
     const host = await remoteHostsRepository.create({
       id: hostId,
       organization_id: user.organization_id,
       user_id: user.id,
       display_name: parsed.data.displayName,
       platform: parsed.data.platform,
-      connection_mode: "managed_headscale",
+      // The shipped v1 data plane is the E2E-encrypted Cloud mailbox. A
+      // Headscale key is an optional one-use upgrade credential, not evidence
+      // that this host has joined the managed tailnet yet.
+      connection_mode: "cloud_relay",
       headscale_hostname: hostname,
       runtime_key_id: parsed.data.hostIdentity.keyId,
       signing_public_jwk: parsed.data.hostIdentity.signingPublicKeyJwk,
@@ -135,11 +137,14 @@ app.post("/", async (c) => {
       data: {
         hostId: host.id,
         displayName: host.display_name,
-        loginServer: publicUrl,
-        authKey: preAuthKey.key,
+        connectionMode: host.connection_mode,
+        managedNetworkEnrollmentAvailable: managedHeadscale,
+        loginServer: managedHeadscale ? publicUrl : null,
+        authKey: preAuthKey?.key ?? null,
         hostToken,
         hostname,
-        expiresAt: preAuthKey.expiration || expiration,
+        expiresAt:
+          preAuthKey?.expiration || (managedHeadscale ? expiration : null),
         status: host.status,
       },
     });

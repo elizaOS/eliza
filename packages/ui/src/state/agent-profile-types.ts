@@ -31,6 +31,17 @@ export interface AgentProfile {
     targetSigningPublicKeyJwk: JsonWebKey;
     targetEncryptionPublicKeyJwk: JsonWebKey;
   };
+  /** Public gateway metadata for an SSH runtime hosted by this desktop. */
+  sshGateway?: {
+    /** Cloud relay target representing this VPS (not the gateway Mac). */
+    hostId: string;
+    /** Native tunnel identity; also survives a desktop restart. */
+    runtimeId: string;
+    target: string;
+    sshPort: number;
+    remoteApiPort: number;
+    identityFile?: string;
+  };
   /** ISO-8601 creation timestamp. */
   createdAt: string;
   /** ISO-8601 timestamp of last successful connection. */

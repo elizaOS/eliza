@@ -10,12 +10,28 @@ import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getOrCreateControllerPublicIdentity } from "../../platform/remote-controller-identity";
 import { loadRuntimeCredential } from "../../platform/runtime-credential-store";
+import { requestSshRuntime, startSshRuntime } from "../../platform/ssh-runtime";
+import {
+  loadAgentProfileRegistry,
+  switchRuntimeNonDestructive,
+  updateAgentProfile,
+} from "../../state";
+import type { AgentProfile } from "../../state/agent-profile-types";
 
 const CLOUD_HOST_ID_KEY = "eliza.remote-host.id.v1";
 
 interface ManagedHostCredential {
   hostToken: string;
 }
+
+export type RelayTarget =
+  | { kind: "local" }
+  | {
+      kind: "ssh";
+      profile: AgentProfile & {
+        sshGateway: NonNullable<AgentProfile["sshGateway"]>;
+      };
+    };
 
 function parseCredential(value: string): ManagedHostCredential | null {
   try {
@@ -28,7 +44,48 @@ function parseCredential(value: string): ManagedHostCredential | null {
   }
 }
 
-async function callLocalAgent(command: SignedRemoteCommand): Promise<unknown> {
+export async function dispatchAgentRequest(
+  target: RelayTarget,
+  params: {
+    path: string;
+    method: "GET" | "POST" | "PATCH" | "DELETE";
+    headers: Record<string, string>;
+    body: string | null;
+    timeoutMs: number;
+  },
+): Promise<{
+  status: number;
+  body?: string | null;
+  headers?: Record<string, string>;
+}> {
+  if (target.kind === "local") {
+    const response = await invokeDesktopBridgeRequest<{
+      status: number;
+      body?: string | null;
+      headers?: Record<string, string>;
+    }>({
+      rpcMethod: "localAgentRequest",
+      ipcChannel: "local-agent:request",
+      params,
+    });
+    if (!response) throw new Error("The local agent transport is unavailable");
+    return response;
+  }
+  const tunnel = await startSshRuntime(target.profile.sshGateway);
+  if (target.profile.apiBase !== tunnel.apiBase) {
+    updateAgentProfile(target.profile.id, { apiBase: tunnel.apiBase });
+  }
+  return requestSshRuntime({
+    runtimeId: target.profile.sshGateway.runtimeId,
+    credentialRef: target.profile.credentialRef,
+    ...params,
+  });
+}
+
+async function callAgent(
+  command: SignedRemoteCommand,
+  target: RelayTarget,
+): Promise<unknown> {
   let path: string;
   let method: "GET" | "POST";
   let body: string | null = null;
@@ -81,24 +138,13 @@ async function callLocalAgent(command: SignedRemoteCommand): Promise<unknown> {
                 .map(([key, value]) => [key, value as string]),
             )
           : {};
-      const response = await invokeDesktopBridgeRequest<{
-        status: number;
-        body?: string | null;
-        headers?: Record<string, string>;
-      }>({
-        rpcMethod: "localAgentRequest",
-        ipcChannel: "local-agent:request",
-        params: {
-          path: `${requestUrl.pathname}${requestUrl.search}`,
-          method: payload.method as "GET" | "POST" | "PATCH" | "DELETE",
-          headers: requestHeaders,
-          body: typeof payload.body === "string" ? payload.body : null,
-          timeoutMs: 10 * 60_000,
-        },
+      return dispatchAgentRequest(target, {
+        path: `${requestUrl.pathname}${requestUrl.search}`,
+        method: payload.method as "GET" | "POST" | "PATCH" | "DELETE",
+        headers: requestHeaders,
+        body: typeof payload.body === "string" ? payload.body : null,
+        timeoutMs: 10 * 60_000,
       });
-      if (!response)
-        throw new Error("The local agent transport is unavailable");
-      return response;
     }
     case "agent.message": {
       const payload = command.body.payload as {
@@ -142,21 +188,13 @@ async function callLocalAgent(command: SignedRemoteCommand): Promise<unknown> {
       method = "POST";
       break;
   }
-  const response = await invokeDesktopBridgeRequest<{
-    status: number;
-    body?: string | null;
-  }>({
-    rpcMethod: "localAgentRequest",
-    ipcChannel: "local-agent:request",
-    params: {
-      path,
-      method,
-      headers: { "content-type": "application/json" },
-      body,
-      timeoutMs: 90_000,
-    },
+  const response = await dispatchAgentRequest(target, {
+    path,
+    method,
+    headers: { "content-type": "application/json" },
+    body,
+    timeoutMs: 90_000,
   });
-  if (!response) throw new Error("The local agent transport is unavailable");
   const parsed = response.body
     ? (() => {
         try {
@@ -188,11 +226,12 @@ async function sealResult(input: {
   return envelope;
 }
 
-async function processClaim(
+export async function processClaim(
   hostId: string,
   hostToken: string,
   hostIdentity: Awaited<ReturnType<typeof getOrCreateControllerPublicIdentity>>,
   sessionId: string,
+  target: RelayTarget,
 ): Promise<boolean> {
   const claim = await client.claimCloudRemoteCommand({
     sessionId,
@@ -218,7 +257,7 @@ async function processClaim(
       commandId: command.body.commandId,
       targetRuntimeId: command.body.targetRuntimeId,
       status: "completed",
-      result: await callLocalAgent(command),
+      result: await callAgent(command, target),
       completedAt: Date.now(),
     };
   } catch {
@@ -253,31 +292,67 @@ export function RemoteHostRelayAgent() {
   useEffect(() => {
     if (!isElectrobunRuntime()) return;
     let stopped = false;
+    const bootstrappedSshRuntimes = new Set<string>();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const run = async () => {
       let delay = 5_000;
       try {
-        const hostId = globalThis.localStorage
+        const localHostId = globalThis.localStorage
           ?.getItem(CLOUD_HOST_ID_KEY)
           ?.trim();
-        if (!hostId) return;
-        const raw = await loadRuntimeCredential(`managed-host:${hostId}`);
-        const credential = raw ? parseCredential(raw) : null;
-        if (!credential) return;
-        const [hostIdentity, sessions] = await Promise.all([
-          getOrCreateControllerPublicIdentity(),
-          client.listCloudRemoteSessions({ hostId }),
-        ]);
+        const registry = loadAgentProfileRegistry();
+        const active = registry.profiles.find(
+          (profile) => profile.id === registry.activeProfileId,
+        );
+        if (
+          active?.sshGateway &&
+          !bootstrappedSshRuntimes.has(active.sshGateway.runtimeId)
+        ) {
+          const tunnel = await startSshRuntime(active.sshGateway);
+          if (active.apiBase !== tunnel.apiBase) {
+            updateAgentProfile(active.id, { apiBase: tunnel.apiBase });
+          }
+          const token = active.credentialRef
+            ? await loadRuntimeCredential(active.credentialRef)
+            : null;
+          const switched = token
+            ? switchRuntimeNonDestructive(active.id, token)
+            : switchRuntimeNonDestructive(active.id);
+          if (!switched.ok) throw new Error("SSH runtime restore failed");
+          bootstrappedSshRuntimes.add(active.sshGateway.runtimeId);
+        }
+        const targets = new Map<string, RelayTarget>();
+        if (localHostId) targets.set(localHostId, { kind: "local" });
+        for (const profile of registry.profiles) {
+          if (profile.sshGateway?.hostId) {
+            targets.set(profile.sshGateway.hostId, {
+              kind: "ssh",
+              profile: profile as AgentProfile & {
+                sshGateway: NonNullable<AgentProfile["sshGateway"]>;
+              },
+            });
+          }
+        }
+        if (targets.size === 0) return;
+        const hostIdentity = await getOrCreateControllerPublicIdentity();
         let worked = false;
-        for (const session of sessions) {
-          if (session.status !== "active" || stopped) continue;
-          worked =
-            (await processClaim(
-              hostId,
-              credential.hostToken,
-              hostIdentity,
-              session.id,
-            )) || worked;
+        for (const [hostId, target] of targets) {
+          if (stopped) break;
+          const raw = await loadRuntimeCredential(`managed-host:${hostId}`);
+          const credential = raw ? parseCredential(raw) : null;
+          if (!credential) continue;
+          const sessions = await client.listCloudRemoteSessions({ hostId });
+          for (const session of sessions) {
+            if (session.status !== "active" || stopped) continue;
+            worked =
+              (await processClaim(
+                hostId,
+                credential.hostToken,
+                hostIdentity,
+                session.id,
+                target,
+              )) || worked;
+          }
         }
         delay = worked ? 100 : 1_500;
       } catch {

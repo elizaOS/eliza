@@ -25,3 +25,39 @@ export async function startSshRuntime(
   }
   return result;
 }
+
+export async function stopSshRuntime(runtimeId: string): Promise<void> {
+  await invokeDesktopBridgeRequest({
+    rpcMethod: "desktopStopSshRuntime",
+    ipcChannel: "desktop:stopSshRuntime",
+    params: { runtimeId },
+  });
+}
+
+export async function requestSshRuntime(input: {
+  runtimeId: string;
+  credentialRef?: string;
+  path: string;
+  method: "GET" | "POST" | "PATCH" | "DELETE";
+  headers: Record<string, string>;
+  body: string | null;
+  timeoutMs: number;
+}): Promise<{
+  status: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  body?: string | null;
+}> {
+  const result = await invokeDesktopBridgeRequest<{
+    status: number;
+    statusText?: string;
+    headers?: Record<string, string>;
+    body?: string | null;
+  }>({
+    rpcMethod: "desktopSshRuntimeRequest",
+    ipcChannel: "desktop:sshRuntimeRequest",
+    params: input,
+  });
+  if (!result) throw new Error("The SSH gateway transport is unavailable.");
+  return result;
+}

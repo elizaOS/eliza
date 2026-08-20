@@ -13,13 +13,15 @@ import {
   takePendingRemotePairingCode,
 } from "../../platform/remote-pairing-deep-link";
 import {
+  deleteRuntimeCredential,
   loadRuntimeCredential,
   storeRuntimeCredential,
 } from "../../platform/runtime-credential-store";
-import { startSshRuntime } from "../../platform/ssh-runtime";
+import { startSshRuntime, stopSshRuntime } from "../../platform/ssh-runtime";
 import {
   addAgentProfile,
   loadAgentProfileRegistry,
+  removeAgentProfile,
   switchRuntimeNonDestructive,
   updateAgentProfile,
 } from "../../state";
@@ -30,6 +32,22 @@ import type { LinkedElizaDevice } from "./MyRuntimesSection";
 import { MyRuntimesSection } from "./MyRuntimesSection";
 
 const CLOUD_HOST_ID_KEY = "eliza.remote-host.id.v1";
+
+function activeSshProfile(
+  registry: ReturnType<typeof loadAgentProfileRegistry>,
+) {
+  const active = registry.profiles.find(
+    (profile) => profile.id === registry.activeProfileId,
+  );
+  return active?.sshGateway ? active : null;
+}
+
+export function pairingTargetHostId(
+  registry: ReturnType<typeof loadAgentProfileRegistry>,
+  localHostId: string | null,
+): string | null {
+  return activeSshProfile(registry)?.sshGateway?.hostId ?? localHostId;
+}
 
 function localHostPlatform(): "macos" | "linux" | "windows" {
   const platform = navigator.platform.toLowerCase();
@@ -101,9 +119,16 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
             return;
           }
         }
-        const target = loadAgentProfileRegistry().profiles.find(
+        let target = loadAgentProfileRegistry().profiles.find(
           (profile) => profile.id === id,
         );
+        if (target?.sshGateway) {
+          const tunnel = await startSshRuntime(target.sshGateway);
+          if (target.apiBase !== tunnel.apiBase) {
+            updateAgentProfile(target.id, { apiBase: tunnel.apiBase });
+            target = { ...target, apiBase: tunnel.apiBase };
+          }
+        }
         const credential = target?.credentialRef
           ? await loadRuntimeCredential(target.credentialRef)
           : null;
@@ -113,6 +138,12 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         if (!res.ok) {
           setError(switchFailureMessage(res.reason));
         }
+      } catch (cause) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "That runtime could not be started.",
+        );
       } finally {
         refresh();
         setBusy(false);
@@ -193,19 +224,28 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
   }, []);
 
   useEffect(() => {
-    const hostId = globalThis.localStorage?.getItem(CLOUD_HOST_ID_KEY)?.trim();
+    const hostId = pairingTargetHostId(
+      registry,
+      globalThis.localStorage?.getItem(CLOUD_HOST_ID_KEY)?.trim() ?? null,
+    );
     if (hostId) void refreshLinkedDevices(hostId).catch(() => {});
-  }, [refreshLinkedDevices]);
+    else setDevices([]);
+  }, [refreshLinkedDevices, registry]);
 
   const onCreatePairing = useCallback(async () => {
-    let hostId = globalThis.localStorage?.getItem(CLOUD_HOST_ID_KEY)?.trim();
+    const currentRegistry = loadAgentProfileRegistry();
+    const sshProfile = activeSshProfile(currentRegistry);
+    let hostId =
+      sshProfile?.sshGateway?.hostId ??
+      globalThis.localStorage?.getItem(CLOUD_HOST_ID_KEY)?.trim();
     const hosts = await client.listCloudRemoteHosts();
     if (!hostId || !hosts.some((host) => host.id === hostId)) {
-      const platform = localHostPlatform();
+      const platform = sshProfile ? "linux" : localHostPlatform();
       const hostIdentity = await getOrCreateControllerPublicIdentity();
       const enrolled = await client.enrollCloudRemoteHost({
-        displayName:
-          platform === "macos"
+        displayName: sshProfile
+          ? sshProfile.label
+          : platform === "macos"
             ? "My Mac"
             : platform === "windows"
               ? "My Windows PC"
@@ -222,7 +262,13 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         `managed-host:${hostId}`,
         JSON.stringify(enrolled.enrollment),
       );
-      shellLocalStorage.setItem(CLOUD_HOST_ID_KEY, hostId);
+      if (sshProfile?.sshGateway) {
+        updateAgentProfile(sshProfile.id, {
+          sshGateway: { ...sshProfile.sshGateway, hostId },
+        });
+      } else {
+        shellLocalStorage.setItem(CLOUD_HOST_ID_KEY, hostId);
+      }
     }
     const pairing = await client.createCloudRemotePairing({ hostId });
     const payload = new URL("elizaos://pair");
@@ -233,6 +279,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
       code: pairing.code,
       qrPayload: payload.toString(),
       expiresAt: pairing.expiresAt,
+      targetLabel: sshProfile?.label ?? "this computer",
     };
   }, [refreshLinkedDevices]);
 
@@ -318,6 +365,45 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
     [refreshLinkedDevices],
   );
 
+  const onRemoveRuntime = useCallback(
+    async (profileId: string) => {
+      const profile = loadAgentProfileRegistry().profiles.find(
+        (candidate) => candidate.id === profileId,
+      );
+      if (!profile || profile.id === registry.activeProfileId) {
+        throw new Error("Switch to another runtime before removing this one.");
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        if (profile.sshGateway) {
+          await client.revokeCloudRemoteHost(profile.sshGateway.hostId);
+          await stopSshRuntime(profile.sshGateway.runtimeId);
+          await deleteRuntimeCredential(
+            `managed-host:${profile.sshGateway.hostId}`,
+          );
+        } else if (profile.remoteRelay) {
+          await client.revokeCloudRemoteSession(profile.remoteRelay.sessionId);
+        }
+        if (profile.credentialRef) {
+          await deleteRuntimeCredential(profile.credentialRef);
+        }
+        removeAgentProfile(profile.id);
+        refresh();
+      } catch (cause) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "The runtime could not be removed.",
+        );
+        throw cause;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refresh, registry.activeProfileId],
+  );
+
   const onAddSshHost = useCallback(
     async (entry: {
       label: string;
@@ -327,33 +413,62 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
       identityFile?: string;
       accessToken?: string;
     }) => {
+      setBusy(true);
+      setError(null);
       const runtimeId = crypto.randomUUID();
-      const tunnel = await startSshRuntime({
-        runtimeId,
-        target: entry.target,
-        sshPort: entry.sshPort,
-        remoteApiPort: entry.remoteApiPort,
-        identityFile: entry.identityFile,
-      });
-      const profile = addAgentProfile(
-        {
-          kind: "remote",
-          label: entry.label,
-          apiBase: tunnel.apiBase,
-        },
-        { activate: false },
-      );
-      if (entry.accessToken) {
-        await storeRuntimeCredential(profile.id, entry.accessToken);
-        updateAgentProfile(profile.id, { credentialRef: profile.id });
+      let tunnelStarted = false;
+      try {
+        const sshGateway = {
+          runtimeId,
+          target: entry.target,
+          sshPort: entry.sshPort,
+          remoteApiPort: entry.remoteApiPort,
+          ...(entry.identityFile ? { identityFile: entry.identityFile } : {}),
+        };
+        const tunnel = await startSshRuntime(sshGateway);
+        tunnelStarted = true;
+        const hostIdentity = await getOrCreateControllerPublicIdentity();
+        const enrolled = await client.enrollCloudRemoteHost({
+          displayName: entry.label,
+          platform: "linux",
+          hostIdentity: {
+            keyId: hostIdentity.keyId,
+            signingPublicKeyJwk: hostIdentity.signingPublicKeyJwk,
+            encryptionPublicKeyJwk: hostIdentity.encryptionPublicKeyJwk,
+          },
+        });
+        await storeRuntimeCredential(
+          `managed-host:${enrolled.host.id}`,
+          JSON.stringify(enrolled.enrollment),
+        );
+        if (entry.accessToken) {
+          await storeRuntimeCredential(runtimeId, entry.accessToken);
+        }
+        const profile = addAgentProfile(
+          {
+            kind: "remote",
+            label: entry.label,
+            apiBase: tunnel.apiBase,
+            ...(entry.accessToken ? { credentialRef: runtimeId } : {}),
+            sshGateway: { ...sshGateway, hostId: enrolled.host.id },
+          },
+          { activate: false },
+        );
+        const switched = entry.accessToken
+          ? switchRuntimeNonDestructive(profile.id, entry.accessToken)
+          : switchRuntimeNonDestructive(profile.id);
+        if (!switched.ok)
+          throw new Error(switchFailureMessage(switched.reason));
+        await refreshLinkedDevices(enrolled.host.id).catch(() => {});
+        refresh();
+      } catch (cause) {
+        if (tunnelStarted) await stopSshRuntime(runtimeId).catch(() => {});
+        throw cause;
+      } finally {
+        setBusy(false);
       }
-      const switched = entry.accessToken
-        ? switchRuntimeNonDestructive(profile.id, entry.accessToken)
-        : switchRuntimeNonDestructive(profile.id);
-      if (!switched.ok) throw new Error(switchFailureMessage(switched.reason));
-      refresh();
     },
-    [refresh],
+    [refresh, refreshLinkedDevices],
   );
 
   return (
@@ -372,6 +487,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         activeId={registry.activeProfileId}
         devices={devices}
         onSwitch={onSwitch}
+        onRemoveRuntime={onRemoveRuntime}
         onCreatePairing={hideLocal ? undefined : onCreatePairing}
         onRedeemPairing={onRedeemPairing}
         onRevokeDevice={onRevokeDevice}

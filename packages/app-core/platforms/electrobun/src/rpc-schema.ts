@@ -1652,6 +1652,23 @@ export type ElizaDesktopRPCSchema = {
         };
         response: { apiBase: string; localPort: number };
       };
+      desktopSshRuntimeRequest: {
+        params: {
+          runtimeId: string;
+          credentialRef?: string;
+          path: string;
+          method: "GET" | "POST" | "PATCH" | "DELETE";
+          headers: Record<string, string>;
+          body: string | null;
+          timeoutMs: number;
+        };
+        response: {
+          status: number;
+          statusText: string;
+          headers: Record<string, string>;
+          body: string;
+        };
+      };
       desktopStopSshRuntime: {
         params: { runtimeId: string };
         response: { stopped: boolean };
@@ -2611,6 +2628,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:openRemoteCommandResult": "desktopOpenRemoteCommandResult",
   "desktop:sealRemoteCommandResult": "desktopSealRemoteCommandResult",
   "desktop:startSshRuntime": "desktopStartSshRuntime",
+  "desktop:sshRuntimeRequest": "desktopSshRuntimeRequest",
   "desktop:stopSshRuntime": "desktopStopSshRuntime",
   "desktop:openLogsFolder": "desktopOpenLogsFolder",
   "desktop:createBugReportBundle": "desktopCreateBugReportBundle",

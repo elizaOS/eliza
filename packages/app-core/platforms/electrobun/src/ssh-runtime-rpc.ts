@@ -1,6 +1,8 @@
 /** Native SSH-agent tunnel lifecycle for Advanced remote runtime enrollment. */
 import { type ChildProcess, spawn } from "node:child_process";
 import net from "node:net";
+import { createNodePlatformSecureStore } from "@elizaos/app-core/security/platform-secure-store-node";
+import { loadRemoteRuntimeAccessToken } from "@elizaos/app-core/security/remote-device-identity";
 
 interface SshRuntimeParams {
   runtimeId: string;
@@ -10,8 +12,23 @@ interface SshRuntimeParams {
   identityFile?: string;
 }
 
-const tunnels = new Map<string, ChildProcess>();
+interface SshTunnel {
+  child: ChildProcess;
+  localPort: number;
+  fingerprint: string;
+}
+
+const tunnels = new Map<string, SshTunnel>();
 const TARGET_PATTERN = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/;
+
+function tunnelFingerprint(input: SshRuntimeParams): string {
+  return JSON.stringify([
+    input.target,
+    input.sshPort,
+    input.remoteApiPort,
+    input.identityFile ?? null,
+  ]);
+}
 
 function parseParams(params: unknown): SshRuntimeParams {
   if (!params || typeof params !== "object") {
@@ -106,7 +123,14 @@ export async function desktopStartSshRuntime(
 ): Promise<{ apiBase: string; localPort: number }> {
   const input = parseParams(params);
   const prior = tunnels.get(input.runtimeId);
-  if (prior && prior.exitCode === null) prior.kill("SIGTERM");
+  const fingerprint = tunnelFingerprint(input);
+  if (prior?.child.exitCode === null && prior.fingerprint === fingerprint) {
+    return {
+      apiBase: `http://127.0.0.1:${prior.localPort}`,
+      localPort: prior.localPort,
+    };
+  }
+  if (prior?.child.exitCode === null) prior.child.kill("SIGTERM");
   const localPort = await reserveLoopbackPort();
   const args = [
     "-N",
@@ -157,9 +181,11 @@ export async function desktopStartSshRuntime(
           : "SSH tunnel failed",
     );
   }
-  tunnels.set(input.runtimeId, child);
+  const tunnel = { child, localPort, fingerprint };
+  tunnels.set(input.runtimeId, tunnel);
   child.once("exit", () => {
-    if (tunnels.get(input.runtimeId) === child) tunnels.delete(input.runtimeId);
+    if (tunnels.get(input.runtimeId) === tunnel)
+      tunnels.delete(input.runtimeId);
   });
   return { apiBase: `http://127.0.0.1:${localPort}`, localPort };
 }
@@ -174,8 +200,141 @@ export async function desktopStopSshRuntime(
   if (typeof runtimeId !== "string" || !runtimeId.trim()) {
     throw new Error("runtimeId is required");
   }
-  const child = tunnels.get(runtimeId.trim());
-  if (!child) return { stopped: false };
+  const tunnel = tunnels.get(runtimeId.trim());
+  if (!tunnel) return { stopped: false };
   tunnels.delete(runtimeId.trim());
-  return { stopped: child.kill("SIGTERM") };
+  return { stopped: tunnel.child.kill("SIGTERM") };
+}
+
+interface SshRuntimeRequest {
+  runtimeId: string;
+  credentialRef?: string;
+  path: string;
+  method: "GET" | "POST" | "PATCH" | "DELETE";
+  headers: Record<string, string>;
+  body: string | null;
+  timeoutMs: number;
+}
+
+const ALLOWED_AGENT_PATHS = [
+  /^\/api\/health$/,
+  /^\/api\/agents$/,
+  /^\/api\/conversations$/,
+  /^\/api\/conversations\/messages\/search$/,
+  /^\/api\/conversations\/[^/]+$/,
+  /^\/api\/conversations\/[^/]+\/messages$/,
+  /^\/api\/conversations\/[^/]+\/messages\/stream$/,
+  /^\/api\/conversations\/[^/]+\/greeting$/,
+  /^\/api\/turns\/[^/]+\/abort$/,
+  /^\/api\/agent\/(pause|resume|stop)$/,
+];
+
+export function normalizeSshRuntimeRequest(params: unknown): SshRuntimeRequest {
+  if (!params || typeof params !== "object")
+    throw new Error("SSH runtime request params must be an object");
+  const record = params as Record<string, unknown>;
+  const runtimeId = record.runtimeId;
+  const credentialRef = record.credentialRef;
+  const path = record.path;
+  const method = record.method;
+  const body = record.body;
+  const timeoutMs = record.timeoutMs;
+  if (
+    typeof runtimeId !== "string" ||
+    !runtimeId.trim() ||
+    runtimeId.length > 256 ||
+    (credentialRef !== undefined &&
+      (typeof credentialRef !== "string" ||
+        !credentialRef.trim() ||
+        credentialRef.length > 256)) ||
+    typeof path !== "string" ||
+    path.length > 2_048 ||
+    typeof method !== "string" ||
+    !["GET", "POST", "PATCH", "DELETE"].includes(method) ||
+    (body !== null && (typeof body !== "string" || body.length > 1_000_000)) ||
+    typeof timeoutMs !== "number" ||
+    !Number.isFinite(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > 10 * 60_000
+  ) {
+    throw new Error("SSH runtime request fields are invalid");
+  }
+  const parsedPath = new URL(path, "http://eliza.ssh");
+  if (
+    parsedPath.origin !== "http://eliza.ssh" ||
+    !ALLOWED_AGENT_PATHS.some((pattern) => pattern.test(parsedPath.pathname))
+  ) {
+    throw new Error("SSH runtime request route is not allowed");
+  }
+  const headers =
+    record.headers && typeof record.headers === "object"
+      ? Object.fromEntries(
+          Object.entries(record.headers as Record<string, unknown>)
+            .filter(
+              ([key, value]) =>
+                ["accept", "content-type"].includes(key.toLowerCase()) &&
+                typeof value === "string" &&
+                value.length <= 256,
+            )
+            .map(([key, value]) => [key, value as string]),
+        )
+      : {};
+  return {
+    runtimeId: runtimeId.trim(),
+    ...(typeof credentialRef === "string"
+      ? { credentialRef: credentialRef.trim() }
+      : {}),
+    path: `${parsedPath.pathname}${parsedPath.search}`,
+    method: method as SshRuntimeRequest["method"],
+    headers,
+    body: body as string | null,
+    timeoutMs,
+  };
+}
+
+export async function desktopSshRuntimeRequest(params: unknown): Promise<{
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+}> {
+  const request = normalizeSshRuntimeRequest(params);
+  const tunnel = tunnels.get(request.runtimeId);
+  if (!tunnel || tunnel.child.exitCode !== null) {
+    throw new Error("SSH runtime tunnel is not running");
+  }
+  const token = request.credentialRef
+    ? await loadRemoteRuntimeAccessToken(
+        createNodePlatformSecureStore(),
+        request.credentialRef,
+      )
+    : null;
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), request.timeoutMs);
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${tunnel.localPort}${request.path}`,
+      {
+        method: request.method,
+        headers: {
+          ...request.headers,
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: request.body,
+        signal: abortController.signal,
+      },
+    );
+    const headers: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+      body: await response.text(),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }

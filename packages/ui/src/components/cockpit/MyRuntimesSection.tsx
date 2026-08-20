@@ -19,6 +19,7 @@ import {
   Smartphone,
   Tag,
   Terminal,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
@@ -77,12 +78,14 @@ export interface RuntimePairingChallenge {
   code: string;
   qrPayload: string;
   expiresAt: string;
+  targetLabel?: string;
 }
 
 export interface MyRuntimesSectionProps {
   runtimes: AgentProfile[];
   activeId: string | null;
   onSwitch: (id: string) => void | Promise<void>;
+  onRemoveRuntime?: (id: string) => void | Promise<void>;
   devices?: LinkedElizaDevice[];
   onCreatePairing?: () => Promise<RuntimePairingChallenge>;
   onRedeemPairing?: (code: string) => Promise<void>;
@@ -127,6 +130,7 @@ export function MyRuntimesSection({
   activeId,
   devices = [],
   onSwitch,
+  onRemoveRuntime,
   onCreatePairing,
   onRedeemPairing,
   onRevokeDevice,
@@ -143,6 +147,11 @@ export function MyRuntimesSection({
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [pairError, setPairError] = useState<string | null>(null);
   const [pairBusy, setPairBusy] = useState(false);
+  const [runtimeToRemove, setRuntimeToRemove] = useState<AgentProfile | null>(
+    null,
+  );
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
   const [enteredCode, setEnteredCode] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [sshOpen, setSshOpen] = useState(false);
@@ -377,17 +386,35 @@ export function MyRuntimesSection({
                       <Check className="size-3.5" aria-hidden /> Active
                     </span>
                   ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="min-h-11"
-                      data-testid={`runtime-${rt.id}-use`}
-                      disabled={busy}
-                      onClick={() => onSwitch(rt.id)}
-                    >
-                      Use
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="min-h-11"
+                        data-testid={`runtime-${rt.id}-use`}
+                        disabled={busy}
+                        onClick={() => onSwitch(rt.id)}
+                      >
+                        Use
+                      </Button>
+                      {onRemoveRuntime && rt.kind === "remote" ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-11 text-destructive"
+                          aria-label={`Remove ${rt.label}`}
+                          disabled={busy}
+                          onClick={() => {
+                            setRemoveError(null);
+                            setRuntimeToRemove(rt);
+                          }}
+                        >
+                          <Trash2 className="size-4" aria-hidden />
+                        </Button>
+                      ) : null}
+                    </div>
                   )
                 }
               />
@@ -395,6 +422,62 @@ export function MyRuntimesSection({
           );
         })}
       </SettingsGroup>
+
+      <Dialog
+        open={Boolean(runtimeToRemove)}
+        onOpenChange={(open) => {
+          if (!open && !removeBusy) setRuntimeToRemove(null);
+        }}
+      >
+        <DialogContent data-testid="remove-runtime-dialog">
+          <DialogHeader>
+            <DialogTitle>Remove {runtimeToRemove?.label}?</DialogTitle>
+            <DialogDescription>
+              {runtimeToRemove?.sshGateway
+                ? "This revokes phone access, closes the SSH tunnel, and deletes its saved tokens from this Mac. Your SSH private key is not deleted."
+                : "This revokes the linked session and deletes its saved access token from this device."}
+            </DialogDescription>
+          </DialogHeader>
+          {removeError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {removeError}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={removeBusy}
+              onClick={() => setRuntimeToRemove(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              data-testid="remove-runtime-confirm"
+              disabled={removeBusy || !runtimeToRemove}
+              onClick={() => {
+                if (!runtimeToRemove || !onRemoveRuntime) return;
+                setRemoveBusy(true);
+                setRemoveError(null);
+                void Promise.resolve(onRemoveRuntime(runtimeToRemove.id))
+                  .then(() => setRuntimeToRemove(null))
+                  .catch((cause: unknown) => {
+                    setRemoveError(
+                      cause instanceof Error
+                        ? cause.message
+                        : "The runtime could not be removed.",
+                    );
+                  })
+                  .finally(() => setRemoveBusy(false));
+              }}
+            >
+              {removeBusy ? "Removing…" : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <SettingsGroup>
         <SettingsRow
@@ -511,7 +594,7 @@ export function MyRuntimesSection({
             </DialogTitle>
             <DialogDescription>
               {pairMode === "show"
-                ? "On the other device, open Eliza → Settings → Devices & Runtimes."
+                ? `This links the other device to ${challenge?.targetLabel ?? "the active runtime"}. On it, open Eliza → Settings → Devices & Runtimes.`
                 : "Enter the code shown by the Mac or server you want to control."}
             </DialogDescription>
           </DialogHeader>
