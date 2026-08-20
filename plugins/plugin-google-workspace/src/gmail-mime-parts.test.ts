@@ -16,6 +16,27 @@ import {
   walkGmailMimeParts,
 } from "./gmail-mime-parts";
 
+function gmailClientForPayload(payload: unknown): GoogleGmailClient {
+  const fakeGmail = {
+    users: {
+      messages: {
+        get: async () => ({
+          data: {
+            id: "msg_hostile",
+            threadId: "thread_hostile",
+            snippet: "nested",
+            payload,
+          },
+        }),
+      },
+    },
+  };
+  const factory = {
+    gmail: async () => fakeGmail,
+  } as unknown as GoogleApiClientFactory;
+  return new GoogleGmailClient(factory);
+}
+
 function nestMime(depth: number): GmailMimePartLike {
   let part: GmailMimePartLike = { mimeType: "text/plain", body: { data: "leaf" } };
   for (let index = 0; index < depth; index += 1) {
@@ -206,6 +227,86 @@ describe("walkGmailMimeParts", () => {
     expect(invoked).toBe(0);
   });
 
+  it("does not inspect later accessor siblings after DFS abort-on-match", () => {
+    let invoked = 0;
+    const children: GmailMimePartLike[] = [{ mimeType: "text/plain", body: { data: "a" } }];
+    Object.defineProperty(children, 1, {
+      configurable: true,
+      enumerable: true,
+      get(): GmailMimePartLike {
+        invoked += 1;
+        return { mimeType: "text/html", body: { data: "b" } };
+      },
+    });
+    const seen: Array<string | null | undefined> = [];
+    walkGmailMimeParts({ mimeType: "multipart/mixed", parts: children }, (part) => {
+      seen.push(part.mimeType);
+      return part.mimeType === "text/plain";
+    });
+    expect(seen).toEqual(["multipart/mixed", "text/plain"]);
+    expect(invoked).toBe(0);
+  });
+
+  it("extracts the first body without reading a later accessor sibling", () => {
+    let invoked = 0;
+    const children: GmailMimePartLike[] = [{ mimeType: "text/plain", body: { data: "first" } }];
+    Object.defineProperty(children, 1, {
+      configurable: true,
+      enumerable: true,
+      get(): GmailMimePartLike {
+        invoked += 1;
+        return { mimeType: "text/plain", body: { data: "second" } };
+      },
+    });
+    const body = extractGmailMimeBody(
+      { mimeType: "multipart/mixed", parts: children },
+      "text/plain",
+      (part) => part.body?.data ?? ""
+    );
+    expect(body).toBe("first");
+    expect(invoked).toBe(0);
+  });
+
+  it("fails closed on a hostile getOwnPropertyDescriptor trap", () => {
+    const hostile = new Proxy(
+      { mimeType: "text/plain", body: { data: "x" } },
+      {
+        getOwnPropertyDescriptor() {
+          throw new Error("descriptor trap");
+        },
+      }
+    );
+    try {
+      walkGmailMimeParts(hostile, () => {});
+      expect.unreachable("walk should fail closed on a descriptor trap");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(GMAIL_MIME_PART_UNBOUNDED);
+      expect((error as ElizaError).context).toMatchObject({
+        reflection: "getOwnPropertyDescriptor",
+      });
+      expect((error as Error).cause).toBeInstanceOf(Error);
+    }
+  });
+
+  it("fails closed on a revoked parts array Proxy", () => {
+    const { proxy, revoke } = Proxy.revocable(
+      [{ mimeType: "text/plain", body: { data: "x" } }],
+      {}
+    );
+    revoke();
+    try {
+      walkGmailMimeParts({ mimeType: "multipart/mixed", parts: proxy }, () => {});
+      expect.unreachable("walk should fail closed on a revoked parts Proxy");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(GMAIL_MIME_PART_UNBOUNDED);
+      expect((error as ElizaError).context).toMatchObject({
+        reflection: "Array.isArray",
+      });
+    }
+  });
+
   it("aborts remaining siblings once visit returns true", () => {
     const seen: Array<string | null | undefined> = [];
     walkGmailMimeParts(
@@ -265,24 +366,7 @@ describe("walkGmailMimeParts", () => {
 
 describe("GoogleGmailClient.getGmailMessageDetail MIME bound", () => {
   it("fails closed on a 20k MIME nest without RangeError", async () => {
-    const fakeGmail = {
-      users: {
-        messages: {
-          get: async () => ({
-            data: {
-              id: "msg_hostile",
-              threadId: "thread_hostile",
-              snippet: "nested",
-              payload: nestMime(20_000),
-            },
-          }),
-        },
-      },
-    };
-    const factory = {
-      gmail: async () => fakeGmail,
-    } as unknown as GoogleApiClientFactory;
-    const client = new GoogleGmailClient(factory);
+    const client = gmailClientForPayload(nestMime(20_000));
     const started = performance.now();
     try {
       await client.getGmailMessageDetail({
@@ -296,5 +380,73 @@ describe("GoogleGmailClient.getGmailMessageDetail MIME bound", () => {
       expect((error as Error).name).not.toBe("RangeError");
     }
     expect(performance.now() - started).toBeLessThan(50);
+  });
+
+  it("does not invoke an inherited body getter on the octet-stream fallback", async () => {
+    let invoked = 0;
+    const proto: object = {};
+    Object.defineProperty(proto, "body", {
+      configurable: true,
+      get(): { data: string } {
+        invoked += 1;
+        return { data: "secret" };
+      },
+    });
+    const payload = Object.create(proto) as GmailMimePartLike;
+    payload.mimeType = "application/octet-stream";
+    const detail = await gmailClientForPayload(payload).getGmailMessageDetail({
+      accountId: "acct_1",
+      messageId: "msg_hostile",
+    });
+    expect(invoked).toBe(0);
+    expect(detail?.bodyText).toBe("nested");
+  });
+
+  it("fails closed on a hostile descriptor trap at getGmailMessageDetail", async () => {
+    const payload = new Proxy(
+      { mimeType: "text/plain", body: { data: "x" } },
+      {
+        getOwnPropertyDescriptor() {
+          throw new Error("descriptor trap");
+        },
+      }
+    );
+    try {
+      await gmailClientForPayload(payload).getGmailMessageDetail({
+        accountId: "acct_1",
+        messageId: "msg_hostile",
+      });
+      expect.unreachable("getGmailMessageDetail should fail closed on a descriptor trap");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(GMAIL_MIME_PART_UNBOUNDED);
+      expect((error as ElizaError).context).toMatchObject({
+        reflection: "getOwnPropertyDescriptor",
+      });
+    }
+  });
+
+  it("fails closed on a revoked parts Proxy at getGmailMessageDetail", async () => {
+    const { proxy, revoke } = Proxy.revocable(
+      [{ mimeType: "text/plain", body: { data: "x" } }],
+      {}
+    );
+    revoke();
+    try {
+      await gmailClientForPayload({
+        mimeType: "multipart/mixed",
+        parts: proxy,
+      }).getGmailMessageDetail({
+        accountId: "acct_1",
+        messageId: "msg_hostile",
+      });
+      expect.unreachable("getGmailMessageDetail should fail closed on a revoked parts Proxy");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(GMAIL_MIME_PART_UNBOUNDED);
+      expect((error as ElizaError).context).toMatchObject({
+        reflection: "Array.isArray",
+      });
+    }
   });
 });

@@ -24,11 +24,12 @@ type WalkContext = {
 
 type OwnData = { found: false } | { found: true; value: unknown };
 
-function failUnbounded(context: Record<string, unknown>): never {
+function failUnbounded(context: Record<string, unknown>, cause?: unknown): never {
   throw new ElizaError("Gmail MIME part tree exceeds the ingest walk budget", {
     code: GMAIL_MIME_PART_UNBOUNDED,
     context,
     severity: "fatal",
+    ...(cause !== undefined ? { cause } : {}),
   });
 }
 
@@ -43,7 +44,13 @@ function reserve(ctx: WalkContext, count: number): void {
 }
 
 function ownData(object: object, key: PropertyKey, field: string): OwnData {
-  const descriptor = Object.getOwnPropertyDescriptor(object, key);
+  let descriptor: PropertyDescriptor | undefined;
+  try {
+    descriptor = Object.getOwnPropertyDescriptor(object, key);
+  } catch (cause) {
+    // error-policy:J2 hostile descriptor traps become typed MIME fail-closed.
+    failUnbounded({ reflection: "getOwnPropertyDescriptor", field }, cause);
+  }
   if (!descriptor) return { found: false };
   if (!Object.hasOwn(descriptor, "value")) {
     failUnbounded({ accessor: field });
@@ -51,7 +58,16 @@ function ownData(object: object, key: PropertyKey, field: string): OwnData {
   return { found: true, value: descriptor.value };
 }
 
-function snapshotMimePart(part: object): GmailMimePartLike {
+function isMimeChildArray(value: unknown): value is unknown[] {
+  try {
+    return Array.isArray(value);
+  } catch (cause) {
+    // error-policy:J2 revoked or trapping arrays become typed MIME fail-closed.
+    failUnbounded({ reflection: "Array.isArray", field: "parts" }, cause);
+  }
+}
+
+export function snapshotGmailMimePart(part: object): GmailMimePartLike {
   const mime = ownData(part, "mimeType", "mimeType");
   const bodyOwn = ownData(part, "body", "body");
   const snapshot: GmailMimePartLike = {};
@@ -77,24 +93,27 @@ function snapshotMimePart(part: object): GmailMimePartLike {
   return snapshot;
 }
 
-function childParts(part: object, ctx: WalkContext): object[] {
+function forEachMimeChild(
+  part: object,
+  ctx: WalkContext,
+  visitChild: (child: object) => boolean
+): boolean {
   const partsOwn = ownData(part, "parts", "parts");
-  if (!partsOwn.found) return [];
+  if (!partsOwn.found) return false;
+  if (!isMimeChildArray(partsOwn.value)) return false;
   const children = partsOwn.value;
-  if (!Array.isArray(children)) return [];
   const lengthOwn = ownData(children, "length", "parts.length");
   const length = lengthOwn.found ? lengthOwn.value : 0;
   if (typeof length !== "number" || !Number.isInteger(length) || length < 0) {
     failUnbounded({ field: "parts.length", length });
   }
   reserve(ctx, length);
-  const out: object[] = [];
   for (let index = 0; index < length; index += 1) {
     const slot = ownData(children, index, "parts[]");
     if (!slot.found || !slot.value || typeof slot.value !== "object") continue;
-    out.push(slot.value);
+    if (visitChild(slot.value)) return true;
   }
-  return out;
+  return false;
 }
 
 /**
@@ -126,14 +145,11 @@ function walkGmailMimePartsInner(
   }
   ctx.visiting.add(part);
   try {
-    const snapshot = snapshotMimePart(part);
+    const snapshot = snapshotGmailMimePart(part);
     if (visit(snapshot) === true) return true;
-    for (const child of childParts(part, ctx)) {
-      if (walkGmailMimePartsInner(child, depth + 1, ctx, visit, true)) {
-        return true;
-      }
-    }
-    return false;
+    return forEachMimeChild(part, ctx, (child) =>
+      walkGmailMimePartsInner(child, depth + 1, ctx, visit, true)
+    );
   } finally {
     ctx.visiting.delete(part);
   }
@@ -173,15 +189,20 @@ function extractGmailMimeBodyInner(
   }
   ctx.visiting.add(part);
   try {
-    const snapshot = snapshotMimePart(part);
+    const snapshot = snapshotGmailMimePart(part);
     if (snapshot.mimeType === mimeType && typeof snapshot.body?.data === "string") {
       return readBody(snapshot);
     }
-    for (const child of childParts(part, ctx)) {
+    let found = "";
+    forEachMimeChild(part, ctx, (child) => {
       const nested = extractGmailMimeBodyInner(child, mimeType, readBody, depth + 1, ctx, true);
-      if (nested) return nested;
-    }
-    return "";
+      if (nested) {
+        found = nested;
+        return true;
+      }
+      return false;
+    });
+    return found;
   } finally {
     ctx.visiting.delete(part);
   }
