@@ -356,7 +356,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
       {
         kind: "member",
         name: "Nina",
-        text: "ok her blue bag is packed. inhaler is in front",
+        text: "ok her blue bag is packed",
       },
       { kind: "user", text: "wait who has soccer saturday" },
       {
@@ -398,10 +398,10 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         text: "Pickups and soccer are covered. Backpack, cleats, and permission slip are accounted for. No direct negotiation required.",
       },
       {
-        capability: "conversation-memory",
+        capability: "room-memory",
         kind: "card",
         card: {
-          capability: "conversation-memory",
+          capability: "room-memory",
           label: "Treaty status",
           title: "Everyone knows their job",
           rows: [
@@ -410,6 +410,10 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
             "Sat soccer · Nina",
             "Backpack is ready",
           ],
+          source: {
+            kind: "memory",
+            label: "Remembered for Co-parenting",
+          },
           status: "Zero extra replies needed",
         },
       },
@@ -445,9 +449,9 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         text: "is it in the front pocket",
       },
       {
-        capability: "conversation-memory",
+        capability: "room-memory",
         kind: "eliza",
-        text: "Yep, front pocket of the blue backpack. Nina packed it there earlier.",
+        text: "Yep, front pocket of the blue backpack. That's where Ava's inhaler stays.",
       },
       { kind: "member", name: "Nina", text: "good" },
       { kind: "user", text: "cool thanks" },

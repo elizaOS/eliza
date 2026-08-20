@@ -228,9 +228,10 @@ describe("landing Shared-agent capability contract", () => {
     );
     const copy = coParenting?.steps.map(landingDemoStepText).join(" ") ?? "";
 
-    expect(copy).toContain("inhaler is in front");
+    expect(copy).toContain("ok her blue bag is packed");
+    expect(copy).not.toContain("inhaler is in front");
     expect(copy).toContain(
-      "Yep, front pocket of the blue backpack. Nina packed it there earlier.",
+      "Yep, front pocket of the blue backpack. That's where Ava's inhaler stays.",
     );
     expect(copy).not.toContain("yes. consensus. unsettling.");
   });
