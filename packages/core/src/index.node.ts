@@ -200,6 +200,8 @@ export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
 export * from "./identity-clusters";
 export * from "./inference-timing";
+// Export the managed-provider adapter SDK (connection, transport, health)
+export * from "./integrations/managed-provider";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
 // Export markdown utilities
