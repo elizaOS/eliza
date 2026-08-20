@@ -79,4 +79,11 @@ describe("ensureMobileDeviceBridgeInferenceHandlers — dead-bridge gating (#112
 		// TEXT_SMALL + TEXT_LARGE at minimum register through the served path.
 		expect(runtime.registerModel).toHaveBeenCalled();
 	});
+
+	it("exports RECOMMENDED_MODEL_DOWNLOAD_TIMEOUT_MS with 10-minute bound", async () => {
+		const { RECOMMENDED_MODEL_DOWNLOAD_TIMEOUT_MS } = await import(
+			"./mobile-device-bridge-bootstrap"
+		);
+		expect(RECOMMENDED_MODEL_DOWNLOAD_TIMEOUT_MS).toBe(600_000);
+	});
 });

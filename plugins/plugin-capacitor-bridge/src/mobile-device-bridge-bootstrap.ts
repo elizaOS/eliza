@@ -1258,6 +1258,8 @@ const RECOMMENDED_MODELS: Record<
 	},
 };
 
+export const RECOMMENDED_MODEL_DOWNLOAD_TIMEOUT_MS = 600_000;
+
 const inflightDownloads = new Map<string, Promise<string>>();
 
 function buildHfResolveUrl(model: RecommendedModel): string {
@@ -1319,16 +1321,29 @@ async function downloadRecommendedModelFor(
 		logger.info(
 			`[mobile-device-bridge] Auto-downloading recommended ${slot} model ${model.id} from ${url}`,
 		);
-		const response = await fetch(url, { redirect: "follow" });
+		const response = await fetch(url, {
+			redirect: "follow",
+			signal: AbortSignal.timeout(RECOMMENDED_MODEL_DOWNLOAD_TIMEOUT_MS),
+		});
 		if (!response.ok || !response.body) {
 			throw new Error(
 				`[mobile-device-bridge] Recommended-model download failed (${slot}): HTTP ${response.status} ${response.statusText} from ${url}`,
 			);
 		}
-		await pipeline(
-			Readable.fromWeb(response.body as never),
-			createWriteStream(stagingPath),
-		);
+		try {
+			await pipeline(
+				Readable.fromWeb(response.body as never),
+				createWriteStream(stagingPath),
+			);
+		} catch (streamError) {
+			try {
+				unlinkSync(stagingPath);
+			} catch {
+				// error-policy:J6 best-effort teardown — clear the partial file
+				// when pipeline streaming fails or times out.
+			}
+			throw streamError;
+		}
 		const stagedSize = statSync(stagingPath).size;
 		if (model.expectedSizeBytes && stagedSize !== model.expectedSizeBytes) {
 			try {
