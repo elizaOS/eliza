@@ -15,6 +15,7 @@ import {
 /** Coarse task classification driving which template set is applied. */
 export type OrchestratorTaskType =
   | "coding"
+  | "script-run"
   | "view-create"
   | "app-build"
   | "deploy";
@@ -60,6 +61,16 @@ export const DEFAULT_CRITERIA_TEMPLATES: Readonly<
     "the deliverable file exists in the workdir",
     "the page serves the requested content",
   ],
+  // One-shot "write a script and run it" asks: the deliverable is the RUN
+  // OUTPUT, not a maintained codebase. The coding template's lint/test-suite
+  // demands parked a two-tool write+run task whose script worked on the first
+  // try (live 2026-08-20: prime-numbers ask, three verify attempts burned on
+  // "a test suite passes").
+  "script-run": [
+    "the script file exists in the workdir",
+    "the script runs to completion without errors",
+    "the captured run output contains the requested result",
+  ],
   "view-create": [
     "a Plugin.views entry is declared with a viewKind",
     "the view appears in /api/views",
@@ -85,6 +96,12 @@ export function shouldRequireGoalContract(): boolean {
 
 /** Keyword groups feeding {@link detectTaskType}. Ordered most-specific-first
  *  so a goal that matches several groups gets the narrower classification. */
+// "write/make a <lang> script … and run it" (or "run it for me"): a compute
+// deliverable judged by its output. Requires BOTH a script noun and a run
+// verb so "add a build script to package.json" stays coding.
+const SCRIPT_RUN_RE =
+  /\b(?:script|one[- ]?liner)\b[\s\S]{0,80}\b(?:run|execute)\b|\b(?:run|execute)\b[\s\S]{0,40}\bscript\b/i;
+
 const VIEW_RE =
   /\b(view|views|viewkind|widget|dashboard\s+(?:card|panel|tile)|render\s+a\s+view)\b/i;
 const DEPLOY_RE =
@@ -116,6 +133,7 @@ export function detectTaskType(goal: string): OrchestratorTaskType {
   if (VIEW_RE.test(text)) return "view-create";
   if (DEPLOY_RE.test(text)) return "deploy";
   if (APP_BUILD_RE.test(text)) return "app-build";
+  if (SCRIPT_RUN_RE.test(text)) return "script-run";
   return "coding";
 }
 
@@ -237,6 +255,9 @@ export async function generateDefaultAcceptanceCriteria(
   // The template criteria — reachable URL, files on disk, served content —
   // are exactly what the evidence pipeline can prove.
   if (type === "app-build") return fallback;
+  // Same purity rule for script-run: refinement re-invents the lint/test-suite
+  // demands the template exists to avoid.
+  if (type === "script-run") return fallback;
 
   if (!runtime || typeof runtime.useModel !== "function") return fallback;
 

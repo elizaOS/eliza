@@ -3398,7 +3398,9 @@ export class OrchestratorTaskService extends Service {
         const detected = detectTaskType(
           `${input.goal}\n${input.originalRequest ?? ""}`,
         );
-        return detected === "app-build" ? detected : "coding";
+        return detected === "app-build" || detected === "script-run"
+          ? detected
+          : "coding";
       }
       case "view-create":
       case "app-build":
