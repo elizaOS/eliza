@@ -14,6 +14,7 @@ import {
 } from "./web-entry-policy";
 
 const PUBLIC_PATHS = [
+  "/account-deletion",
   "/login",
   "/login/",
   "/auth/success",
