@@ -137,9 +137,9 @@ afterEach(() => {
 describe("AuthTokenSync 401 handling", () => {
   it("never carries a pending Telegram account claim through the passive token sync", async () => {
     // The passive JWT → cookie mirror runs on any authenticated page load with
-    // no user gesture, so it must not execute the account-claim merge: only
-    // the /get-started confirmation click or a sign-in ceremony may consume
-    // the pending claim (W9-001).
+    // no user gesture, so it must not execute the account-claim merge. Login
+    // and SSO establish auth only; /get-started confirmation is the sole
+    // consumer.
     const token = makeJwt({
       sub: "u1",
       exp: Math.floor(Date.now() / 1000) + 3600,

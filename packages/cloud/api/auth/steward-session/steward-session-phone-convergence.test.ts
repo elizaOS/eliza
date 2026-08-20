@@ -134,6 +134,7 @@ describe("POST /api/auth/steward-session phone convergence", () => {
     const response = await post({
       token: "steward-session-token",
       telegramContinuation: "opaque-telegram-claim-token",
+      telegramClaimConfirmation: "explicit",
     });
 
     expect(response.status).toBe(200);
@@ -147,10 +148,22 @@ describe("POST /api/auth/steward-session phone convergence", () => {
     });
   });
 
+  test("rejects claim authority without the explicit confirmation contract", async () => {
+    const response = await post({
+      token: "steward-session-token",
+      telegramContinuation: "opaque-telegram-claim-token",
+    });
+
+    expect(response.status).toBe(409);
+    expect(syncUserFromSteward).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
   test("rejects malformed Telegram claims before Steward sync", async () => {
     const response = await post({
       token: "steward-session-token",
       telegramContinuation: "platform:telegram:123456789",
+      telegramClaimConfirmation: "explicit",
     });
 
     expect(response.status).toBe(409);
@@ -169,6 +182,7 @@ describe("POST /api/auth/steward-session phone convergence", () => {
     const response = await post({
       token: "steward-session-token",
       telegramContinuation: "opaque-telegram-claim-token",
+      telegramClaimConfirmation: "explicit",
     });
 
     expect(response.status).toBe(409);

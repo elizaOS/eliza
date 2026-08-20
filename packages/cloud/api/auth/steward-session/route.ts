@@ -7,6 +7,7 @@ import {
   type StewardSessionErrorCode,
   type StewardSessionRequest,
   type StewardSessionResponse,
+  type StewardTelegramClaimConfirmationRequest,
   sanitizeTelegramAccountClaimContinuation,
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
@@ -137,9 +138,9 @@ app.post("/", async (c) => {
 
     const body = (await c.req
       .json()
-      .catch(
-        () => ({}) as Partial<StewardSessionRequest>,
-      )) as Partial<StewardSessionRequest>;
+      .catch(() => ({}) as Partial<StewardSessionRequest>)) as Partial<
+      StewardSessionRequest & StewardTelegramClaimConfirmationRequest
+    >;
     const token = body.token;
     const refreshToken = body.refreshToken;
     const verifiedPhoneHint = body.verifiedPhone;
@@ -167,6 +168,29 @@ app.post("/", async (c) => {
       logStewardAuth("telegram-claim-invalid", null);
       return c.json(
         errorBody("Invalid Telegram account claim", "telegram_claim_conflict"),
+        409,
+      );
+    }
+    if (telegramContinuation && body.telegramClaimConfirmation !== "explicit") {
+      logStewardAuth("telegram-claim-confirmation-missing", null);
+      return c.json(
+        errorBody(
+          "Telegram account confirmation required",
+          "telegram_claim_conflict",
+        ),
+        409,
+      );
+    }
+    if (
+      body.telegramClaimConfirmation !== undefined &&
+      (!telegramContinuation || body.telegramClaimConfirmation !== "explicit")
+    ) {
+      logStewardAuth("telegram-claim-confirmation-invalid", null);
+      return c.json(
+        errorBody(
+          "Invalid Telegram account confirmation",
+          "telegram_claim_conflict",
+        ),
         409,
       );
     }

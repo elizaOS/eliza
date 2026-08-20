@@ -80,6 +80,24 @@ describe("pending-token persistence", () => {
     );
   });
 
+  it("uses the newest cross-tab continuation instead of a stale session entry", () => {
+    vi.useFakeTimers();
+    storePendingOnboardingSession(TOKEN, TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
+    const staleClaim = window.sessionStorage.getItem(
+      "eliza.join.onboardingSession",
+    );
+    vi.advanceTimersByTime(1);
+    const newerLink = "bbbbbbbb-test-test-test-tokentoken02";
+    storePendingOnboardingSession(newerLink, "link");
+    if (!staleClaim) throw new Error("Expected stored claim fixture");
+    window.sessionStorage.setItem("eliza.join.onboardingSession", staleClaim);
+
+    expect(peekPendingOnboardingSession()).toBe(newerLink);
+    expect(
+      peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE),
+    ).toBeNull();
+  });
+
   it("never stores an invalid token", () => {
     storePendingOnboardingSession("platform:discord:123456789012");
     expect(peekPendingOnboardingSession()).toBeNull();
@@ -165,6 +183,22 @@ describe("completePendingOnboardingContinuation", () => {
       completePendingOnboardingContinuation(TOKEN, transport),
     ).rejects.toThrow("503");
     expect(peekPendingOnboardingSession()).toBe(TOKEN);
+  });
+
+  it("does not clear a newer Telegram claim when an older link succeeds", async () => {
+    vi.useFakeTimers();
+    storePendingOnboardingSession(TOKEN, "link");
+    vi.advanceTimersByTime(1);
+    const newerClaim = "cccccccc-test-test-test-tokentoken03";
+    storePendingOnboardingSession(newerClaim, TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
+
+    await completePendingOnboardingContinuation(TOKEN, {
+      post: vi.fn().mockResolvedValue({}),
+    });
+
+    expect(peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE)).toBe(
+      newerClaim,
+    );
   });
 
   it("silently ignores an unsanitizable token", async () => {

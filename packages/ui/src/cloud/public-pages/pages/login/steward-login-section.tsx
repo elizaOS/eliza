@@ -782,13 +782,10 @@ export default function StewardLoginSection() {
         const storedToken = readStoredStewardToken();
         if (storedToken) {
           try {
-            // Passive recovery runs on page load with no user gesture, so it
-            // must not consume a pending Telegram account claim: only the
-            // /get-started confirmation or a sign-in ceremony may fire it
-            // (W9-001). The claim stays stored for those paths.
-            await syncStewardSessionCookie(storedToken, null, {
-              skipPendingTelegramClaim: true,
-            });
+            // Session recovery establishes auth only. A pending Telegram claim
+            // remains inert until /get-started previews it and the user
+            // confirms it explicitly.
+            await syncStewardSessionCookie(storedToken, null);
             if (!cancelled) {
               setRedirectTo(resolveLoginReturnTo(searchParams));
             }
