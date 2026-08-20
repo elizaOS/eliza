@@ -64,6 +64,9 @@ export const HOUSEHOLD_ACCESS_SCOPES = [
   "calendar.freebusy",
   "calendar.details",
   "calendar.mutate",
+  "schedule.propose",
+  "schedule.approve",
+  "household.export",
 ] as const;
 export type HouseholdAccessScope = (typeof HOUSEHOLD_ACCESS_SCOPES)[number];
 
@@ -330,14 +333,54 @@ export const ROLE_SCOPE_LIMITS: Readonly<
   owner: HOUSEHOLD_ACCESS_SCOPES,
   co_parent: HOUSEHOLD_ACCESS_SCOPES,
   current_partner: HOUSEHOLD_ACCESS_SCOPES,
-  caregiver: ["household.visibility", "calendar.freebusy", "calendar.details"],
+  caregiver: [
+    "household.visibility",
+    "calendar.freebusy",
+    "calendar.details",
+    "schedule.propose",
+    "household.export",
+  ],
   child: ["household.visibility", "calendar.freebusy"],
   professional: [
     "household.visibility",
     "calendar.freebusy",
     "calendar.details",
+    "schedule.propose",
+    "household.export",
   ],
 };
+
+/**
+ * Closure of the scope-implication lattice. Broader authorities always carry
+ * the narrower ones they depend on: mutating a schedule implies proposing
+ * changes to it, approving implies reading event detail, proposing implies
+ * free/busy visibility, and every calendar or export authority implies basic
+ * household visibility. Used both when a grant is issued and when a persisted
+ * grant (possibly written before a scope existed) is checked, so stored scope
+ * lists never need migration.
+ */
+export function expandGrantScopes(
+  scopes: readonly HouseholdAccessScope[],
+): HouseholdAccessScope[] {
+  const expanded = new Set(scopes);
+  if (expanded.has("calendar.mutate")) {
+    expanded.add("schedule.propose");
+    expanded.add("calendar.details");
+  }
+  if (expanded.has("schedule.approve")) {
+    expanded.add("calendar.details");
+  }
+  if (expanded.has("schedule.propose")) {
+    expanded.add("calendar.freebusy");
+  }
+  if (expanded.has("calendar.details")) {
+    expanded.add("calendar.freebusy");
+  }
+  if (expanded.has("calendar.freebusy") || expanded.has("household.export")) {
+    expanded.add("household.visibility");
+  }
+  return HOUSEHOLD_ACCESS_SCOPES.filter((scope) => expanded.has(scope));
+}
 
 export function uniqueStrings(values: readonly string[]): string[] {
   return Array.from(
@@ -363,19 +406,8 @@ export function normalizeGrantScopes(
   requestedScopes: readonly HouseholdAccessScope[],
 ): HouseholdAccessScope[] {
   const maximum = ROLE_SCOPE_LIMITS[role];
-  const requested = new Set(requestedScopes);
-  if (requested.has("calendar.mutate")) {
-    requested.add("calendar.details");
-  }
-  if (requested.has("calendar.details")) {
-    requested.add("calendar.freebusy");
-  }
-  if (requested.has("calendar.freebusy")) {
-    requested.add("household.visibility");
-  }
-  const forbidden = Array.from(requested).filter(
-    (scope) => !maximum.includes(scope),
-  );
+  const requested = expandGrantScopes(requestedScopes);
+  const forbidden = requested.filter((scope) => !maximum.includes(scope));
   if (forbidden.length > 0) {
     throw new HouseholdCoordinationError(
       `Role ${role} cannot receive scopes: ${forbidden.join(", ")}`,
@@ -383,7 +415,7 @@ export function normalizeGrantScopes(
       { role, forbidden },
     );
   }
-  return HOUSEHOLD_ACCESS_SCOPES.filter((scope) => requested.has(scope));
+  return requested;
 }
 
 const RFC3339_INSTANT_PATTERN =

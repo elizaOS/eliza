@@ -1000,7 +1000,7 @@ describe("household coordination — real PGlite", () => {
       principalEntityId: caregiverId,
       role: "caregiver",
       subjectEntityIds: [childId],
-      scopes: ["calendar.freebusy"],
+      scopes: ["calendar.freebusy", "household.export"],
       issuedByEntityId: SELF_ENTITY_ID,
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     });
@@ -1708,7 +1708,7 @@ describe("household coordination — real PGlite", () => {
       principalEntityId: coParentId,
       role: "co_parent",
       subjectEntityIds: [sharedChildId],
-      scopes: ["calendar.details"],
+      scopes: ["calendar.details", "household.export"],
       issuedByEntityId: SELF_ENTITY_ID,
     });
     const visible = await coordinator.createProposal({
@@ -1816,7 +1816,7 @@ describe("household coordination — real PGlite", () => {
       principalEntityId: partnerId,
       role: "current_partner",
       subjectEntityIds: [sharedChildId],
-      scopes: ["household.visibility", "calendar.freebusy"],
+      scopes: ["calendar.freebusy", "household.export"],
       issuedByEntityId: SELF_ENTITY_ID,
     });
     await coordinator.createProposal({
@@ -1832,7 +1832,11 @@ describe("household coordination — real PGlite", () => {
     await expect(
       coordinator.exportFor({ principalEntityId: partnerId }),
     ).resolves.toMatchObject({
-      effectiveScopes: ["household.visibility", "calendar.freebusy"],
+      effectiveScopes: [
+        "household.visibility",
+        "calendar.freebusy",
+        "household.export",
+      ],
     });
 
     if (!binding.relationshipId) {
@@ -2267,7 +2271,7 @@ describe("household coordination — real PGlite", () => {
       principalEntityId: professionalId,
       role: "professional",
       subjectEntityIds: [childId],
-      scopes: ["calendar.freebusy"],
+      scopes: ["calendar.freebusy", "household.export"],
       issuedByEntityId: SELF_ENTITY_ID,
     });
     const secret = `secret-${randomUUID()}`;
@@ -2351,5 +2355,161 @@ describe("household coordination — real PGlite", () => {
       }),
     ]);
     expect(String(columns[0]?.column_default)).toContain("0");
+  });
+
+  it("lets a caregiver with schedule.propose create a proposal without mutation authority", async () => {
+    const childId = await person("propose-child");
+    const caregiverId = await person("propose-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const coordinator = service();
+    const attempt = () =>
+      coordinator.createProposal({
+        coordinationId: `caregiver-propose-${randomUUID()}`,
+        terms: terms({
+          summary: "Caregiver-suggested pickup",
+          childEntityIds: [childId],
+        }),
+        affectedPartyEntityIds: [childId],
+        requiredApproverEntityIds: [SELF_ENTITY_ID],
+        createdByEntityId: caregiverId,
+      });
+    await expect(attempt()).rejects.toMatchObject({
+      code: "HOUSEHOLD_ACCESS_DENIED",
+    });
+    await coordinator.issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["schedule.propose"],
+      issuedByEntityId: SELF_ENTITY_ID,
+    });
+    const proposal = await attempt();
+    expect(proposal.createdByEntityId).toBe(caregiverId);
+    expect(proposal.status).toBe("pending");
+    // Proposing never confers direct mutation authority.
+    await expect(
+      coordinator.requireScope({
+        principalEntityId: caregiverId,
+        subjectEntityId: childId,
+        scope: "calendar.mutate",
+      }),
+    ).rejects.toMatchObject({ code: "HOUSEHOLD_ACCESS_DENIED" });
+  });
+
+  it("refuses approval responses from a party whose standing was removed after routing", async () => {
+    const childId = await person("standing-child");
+    const coParentId = await person("standing-co-parent");
+    await bindFamily({ childId, coParentId });
+    const coordinator = service();
+    const proposal = await coordinator.createProposal({
+      coordinationId: `standing-${randomUUID()}`,
+      terms: terms({
+        summary: "Weekend handoff",
+        childEntityIds: [childId],
+      }),
+      affectedPartyEntityIds: [childId, coParentId],
+      requiredApproverEntityIds: [coParentId],
+      createdByEntityId: SELF_ENTITY_ID,
+    });
+    const link = (
+      await householdRepository.listApprovalLinks(
+        proposal.proposalId,
+        proposal.version,
+      )
+    ).find((candidate) => candidate.partyEntityId === coParentId);
+    if (!link) throw new Error("co-parent approval link missing");
+    const binding = (await coordinator.listRoleBindings()).find(
+      (candidate) => candidate.entityId === coParentId,
+    );
+    if (!binding?.relationshipId) {
+      throw new Error("co-parent relationship binding missing");
+    }
+    // Narrow the co-parent's relationship so it no longer covers the child.
+    await coordinator.bindRole({
+      entityId: coParentId,
+      role: "co_parent",
+      subjectEntityIds: [],
+      relationshipId: binding.relationshipId,
+      evidence: "Owner removed this child from the co-parent relationship.",
+      boundByEntityId: SELF_ENTITY_ID,
+    });
+    await expect(
+      coordinator.respondToProposal({
+        proposalId: proposal.proposalId,
+        proposalVersion: proposal.version,
+        partyEntityId: coParentId,
+        approvalRequestId: link.approvalRequestId,
+        decision: "approve",
+        reason: "I approve these exact proposal bytes.",
+      }),
+    ).rejects.toMatchObject({ code: "HOUSEHOLD_ACCESS_DENIED" });
+    // Restoring coverage restores intrinsic approval standing.
+    await coordinator.bindRole({
+      entityId: coParentId,
+      role: "co_parent",
+      subjectEntityIds: [childId],
+      relationshipId: binding.relationshipId,
+      evidence: "Owner restored the co-parent relationship to the child.",
+      boundByEntityId: SELF_ENTITY_ID,
+    });
+    await expect(
+      coordinator.respondToProposal({
+        proposalId: proposal.proposalId,
+        proposalVersion: proposal.version,
+        partyEntityId: coParentId,
+        approvalRequestId: link.approvalRequestId,
+        decision: "approve",
+        reason: "I approve these exact proposal bytes.",
+      }),
+    ).resolves.toMatchObject({ state: "approved" });
+  });
+
+  it("withholds the audit trail from principals without the household.export scope", async () => {
+    const childId = await person("audit-scope-child");
+    const caregiverId = await person("audit-scope-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const coordinator = service();
+    const grant = await coordinator.issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+    });
+    expect(grant.scopes).not.toContain("household.export");
+    await coordinator.createProposal({
+      coordinationId: `audit-scope-${randomUUID()}`,
+      terms: terms({
+        summary: "Visible schedule, private history",
+        childEntityIds: [childId],
+      }),
+      affectedPartyEntityIds: [childId],
+      requiredApproverEntityIds: [SELF_ENTITY_ID],
+      createdByEntityId: SELF_ENTITY_ID,
+    });
+    const withoutExport = await coordinator.exportFor({
+      principalEntityId: caregiverId,
+    });
+    expect(withoutExport.schedules).toHaveLength(1);
+    expect(withoutExport.effectiveScopes).not.toContain("household.export");
+    expect(withoutExport.audit).toEqual([]);
+
+    await coordinator.revokeGrant({
+      grantId: grant.id,
+      revokedByEntityId: SELF_ENTITY_ID,
+      reason: "Replacing the view-only grant with an exporting grant.",
+    });
+    await coordinator.issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy", "household.export"],
+      issuedByEntityId: SELF_ENTITY_ID,
+    });
+    const withExport = await coordinator.exportFor({
+      principalEntityId: caregiverId,
+    });
+    expect(withExport.effectiveScopes).toContain("household.export");
+    expect(withExport.audit.length).toBeGreaterThan(0);
   });
 });

@@ -178,7 +178,7 @@ describe("household authorization boundaries — real PGlite", () => {
       principalEntityId: principalId,
       role: "co_parent",
       subjectEntityIds: [childA],
-      scopes: ["calendar.freebusy"],
+      scopes: ["calendar.freebusy", "household.export"],
       issuedByEntityId: SELF_ENTITY_ID,
     });
     await service.issueGrant({
@@ -186,7 +186,7 @@ describe("household authorization boundaries — real PGlite", () => {
       principalEntityId: principalId,
       role: "caregiver",
       subjectEntityIds: [childB],
-      scopes: ["calendar.freebusy"],
+      scopes: ["calendar.freebusy", "household.export"],
       issuedByEntityId: SELF_ENTITY_ID,
     });
 
