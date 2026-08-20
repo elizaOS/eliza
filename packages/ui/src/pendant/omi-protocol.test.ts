@@ -443,6 +443,51 @@ describe("OmiFrameReassembler", () => {
     expect(overflow.metrics.emittedFrames).toBe(0);
     expect(8 * chunk).toBeLessThanOrEqual(MAX_OMI_REASSEMBLED_FRAME_BYTES);
     expect(9 * chunk).toBeGreaterThan(MAX_OMI_REASSEMBLED_FRAME_BYTES);
+
+    const recovery = pushAll(r, [
+      notif(9, 0, [10, 11]),
+      notif(10, 0, [12, 13]),
+    ]);
+    expect(emittedPayloads(recovery)).toEqual([[10, 11]]);
+  });
+
+  it("accepts the exact reassembled-frame byte limit", () => {
+    const r = new OmiFrameReassembler();
+    const fullPayload = MAX_OMI_NOTIFICATION_BYTES - OMI_PACKET_HEADER_SIZE;
+    const remainder = MAX_OMI_REASSEMBLED_FRAME_BYTES - 4 * fullPayload;
+    const results = pushAll(r, [
+      notif(0, 0, payload(fullPayload, 1)),
+      notif(1, 1, payload(fullPayload, 2)),
+      notif(2, 2, payload(fullPayload, 3)),
+      notif(3, 3, payload(fullPayload, 4)),
+      notif(4, 4, payload(remainder, 5)),
+      notif(5, 0, [6]),
+    ]);
+
+    const frames = results.flatMap((result) => result.frames);
+    expect(frames).toHaveLength(1);
+    expect(frames[0]?.data).toHaveLength(MAX_OMI_REASSEMBLED_FRAME_BYTES);
+    expect(diagnostics(results)).not.toContain("dropped-buffered-frame");
+  });
+
+  it("removes deferred retransmit bytes from the frame budget", () => {
+    const r = new OmiFrameReassembler();
+    const fullPayload = MAX_OMI_NOTIFICATION_BYTES - OMI_PACKET_HEADER_SIZE;
+    const repeated = payload(fullPayload, 1);
+    const results = pushAll(r, [
+      notif(10, 0, repeated),
+      notif(10, 1, repeated),
+      notif(11, 1, payload(fullPayload, 2)),
+      notif(12, 2, payload(fullPayload, 3)),
+      notif(13, 3, payload(100, 4)),
+      notif(14, 0, [5]),
+    ]);
+
+    expect(diagnostics(results)).toContain("duplicate-notification");
+    expect(diagnostics(results)).not.toContain("dropped-buffered-frame");
+    expect(results.flatMap((result) => result.frames)[0]?.data).toHaveLength(
+      3 * fullPayload + 100,
+    );
   });
 
   it("still reassembles an honest multi-chunk Opus-sized frame", () => {

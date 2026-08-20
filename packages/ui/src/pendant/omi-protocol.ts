@@ -92,8 +92,9 @@ export const OMI_OPUS_FRAME_SAMPLES = 160 as const;
 export const OMI_PACKET_HEADER_SIZE = 3 as const;
 
 /**
- * Hard ceiling on one GATT notification, header included. Larger than any
- * Bluetooth LE ATT MTU we ship against (typically 185–517, rarely 1024).
+ * Defensive ceiling on one GATT notification, header included. It leaves
+ * compatibility room above the 517-byte ATT MTU used by current Android while
+ * containing malformed native-bridge or test-transport payloads.
  */
 export const MAX_OMI_NOTIFICATION_BYTES = 4096 as const;
 
@@ -102,7 +103,7 @@ export const MAX_OMI_NOTIFICATION_BYTES = 4096 as const;
  * ~256 ms of 16 kHz PCM16 or hundreds of 10 ms Opus frames; honest firmware
  * emits one ~40–80 byte Opus packet per notify.
  */
-export const MAX_OMI_REASSEMBLED_FRAME_BYTES = (16 * 1024) as const;
+export const MAX_OMI_REASSEMBLED_FRAME_BYTES = 16_384 as const;
 
 /** Device advertising name prefixes we accept (currently "Friend", soon "eliza"). */
 export const OMI_NAME_PREFIXES = ["Friend", "Omi", "eliza"] as const;
@@ -525,6 +526,7 @@ export class OmiFrameReassembler {
       const previous = this.buffer.chunks[this.buffer.chunks.length - 2];
       if (last && previous && payloadsEqual(last, previous)) {
         this.buffer.chunks.pop();
+        this.buffer.byteLength -= last.length;
         this.buffer.expectedChunkIndex -= 1;
         this.metrics.duplicates += 1;
         diagnostics.push({
