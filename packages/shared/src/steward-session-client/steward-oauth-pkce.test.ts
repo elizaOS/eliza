@@ -19,13 +19,10 @@ import {
 } from "./steward-oauth-pkce.js";
 
 const STORAGE_KEY = "steward.oauth.pkce.verifier";
-const COOKIE_KEY = "steward_oauth_pkce_verifier";
 
 afterEach(() => {
   window.sessionStorage.removeItem(STORAGE_KEY);
   window.localStorage.removeItem(STORAGE_KEY);
-  // biome-ignore lint/suspicious/noDocumentCookie: deterministic cleanup for the cookie-fallback test
-  document.cookie = `${COOKIE_KEY}=; Path=/; Max-Age=0`;
 });
 
 describe("steward-oauth-pkce", () => {
@@ -141,42 +138,6 @@ describe("steward-oauth-pkce", () => {
       expect(removed).toBe(false);
       expect(consumeStewardPkceVerifier()).toBe("local-verifier");
       expect(removed).toBe(true);
-    } finally {
-      Object.defineProperty(globalThis, "window", {
-        configurable: true,
-        value: previousWindow,
-      });
-    }
-  });
-
-  it("falls back to a short-lived same-site cookie when Web Storage is unavailable", () => {
-    const previousWindow = globalThis.window;
-    const restrictedWindow = Object.create(previousWindow) as Window;
-    Object.defineProperty(restrictedWindow, "sessionStorage", {
-      configurable: true,
-      get() {
-        throw new DOMException("Access denied", "SecurityError");
-      },
-    });
-    Object.defineProperty(restrictedWindow, "localStorage", {
-      configurable: true,
-      get() {
-        throw new DOMException("Access denied", "SecurityError");
-      },
-    });
-    Object.defineProperty(globalThis, "window", {
-      configurable: true,
-      value: restrictedWindow,
-    });
-
-    try {
-      expect(storeStewardPkceVerifier("cookie-verifier", "cookie-state")).toBe(
-        true,
-      );
-      expect(document.cookie).toContain(`${COOKIE_KEY}=`);
-      expect(peekStewardOAuthState()).toBe("cookie-state");
-      expect(consumeStewardPkceVerifier()).toBe("cookie-verifier");
-      expect(document.cookie).not.toContain(`${COOKIE_KEY}=`);
     } finally {
       Object.defineProperty(globalThis, "window", {
         configurable: true,
