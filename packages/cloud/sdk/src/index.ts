@@ -28,6 +28,7 @@ export {
   ELIZA_CLOUD_PUBLIC_ENDPOINTS,
   ElizaCloudPublicRoutesClient,
 } from "./public-routes.js";
+export * from "./redemption-contract.js";
 export type * from "./types.js";
 export {
   buildWalletProvisionChallenge,

@@ -65,11 +65,12 @@ curl -X POST "https://api.eliza.app/api/v1/redemptions" \
   -d '{
     "pointsAmount": 10000,
     "network": "base",
+    "asset": "eliza",
     "payoutAddress": "0x1234567890abcdef1234567890abcdef12345678"
   }'
 ```
 
-Supported networks are `ethereum`, `base`, `bnb`, and `solana`, subject to payout availability.
+Send `asset: "eliza"` explicitly for this token-quote flow. Legacy raw requests that omit `asset` default to `usdc`; do not rely on that fallback when pairing a quote and redemption. Supported networks are `ethereum`, `base`, `bnb`, and `solana`, subject to payout availability.
 
 <Info>
   Large redemptions can require admin approval, and network availability can change with hot-wallet balances. Always request a quote immediately before creating a redemption.
