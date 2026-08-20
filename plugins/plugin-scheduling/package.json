@@ -91,7 +91,7 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@electric-sql/pglite": "^0.4.5",
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
@@ -103,6 +103,6 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.0",
-    "vitest": "^4.0.17"
+    "vitest": "^4.1.10"
   }
 }

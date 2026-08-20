@@ -114,7 +114,7 @@
     "tsup": "^8.5.1",
     "react-dom": "*",
     "vite": "^8.0.0",
-    "vitest": "^4.0.17"
+    "vitest": "^4.1.10"
   },
   "peerDependencies": {
     "react": "*",
