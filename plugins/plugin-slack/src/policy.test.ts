@@ -531,4 +531,102 @@ describe("SlackAccountPolicyResolver event policy", () => {
       second.authorize(event({ channelId: CHANNEL, userId: ALICE })),
     ).resolves.toMatchObject({ allowed: false, reason: "channel_not_allowed" });
   });
+
+  it("rejects repeating pagination cursors when compiling channels directory", async () => {
+    const client = {
+      conversations: {
+        list: vi.fn().mockResolvedValue({
+          channels: [],
+          response_metadata: { next_cursor: "repeated-cursor" },
+        }),
+        info: vi.fn(),
+      },
+      users: {
+        list: vi.fn().mockResolvedValue({ members: [] }),
+      },
+    } as unknown as SlackPolicyDirectoryClient;
+
+    await expect(
+      resolver(
+        { groupPolicy: "allowlist", channels: { ops: true } },
+        { client, accountId: "test-acc" },
+      ),
+    ).rejects.toThrowError(SlackPolicyConfigurationError);
+  });
+
+  it("rejects repeating pagination cursors when compiling users directory", async () => {
+    const client = {
+      conversations: {
+        list: vi.fn().mockResolvedValue({ channels: [] }),
+        info: vi.fn(),
+      },
+      users: {
+        list: vi.fn().mockResolvedValue({
+          members: [],
+          response_metadata: { next_cursor: "repeated-cursor" },
+        }),
+      },
+    } as unknown as SlackPolicyDirectoryClient;
+
+    await expect(
+      resolver(
+        { dm: { policy: "allowlist", allowFrom: ["alice"] } },
+        { client, accountId: "test-acc" },
+      ),
+    ).rejects.toThrowError(SlackPolicyConfigurationError);
+  });
+
+  it("rejects channel directory pagination exceeding the maximum page limit", async () => {
+    let callCount = 0;
+    const client = {
+      conversations: {
+        list: vi.fn().mockImplementation(async () => {
+          callCount += 1;
+          return {
+            channels: [],
+            response_metadata: { next_cursor: `cursor-${callCount}` },
+          };
+        }),
+        info: vi.fn(),
+      },
+      users: {
+        list: vi.fn().mockResolvedValue({ members: [] }),
+      },
+    } as unknown as SlackPolicyDirectoryClient;
+
+    await expect(
+      resolver(
+        { groupPolicy: "allowlist", channels: { ops: true } },
+        { client, accountId: "test-acc" },
+      ),
+    ).rejects.toThrowError(
+      /channel directory exceeds the 250-page safety limit/,
+    );
+  });
+
+  it("rejects user directory pagination exceeding the maximum page limit", async () => {
+    let callCount = 0;
+    const client = {
+      conversations: {
+        list: vi.fn().mockResolvedValue({ channels: [] }),
+        info: vi.fn(),
+      },
+      users: {
+        list: vi.fn().mockImplementation(async () => {
+          callCount += 1;
+          return {
+            members: [],
+            response_metadata: { next_cursor: `cursor-${callCount}` },
+          };
+        }),
+      },
+    } as unknown as SlackPolicyDirectoryClient;
+
+    await expect(
+      resolver(
+        { dm: { policy: "allowlist", allowFrom: ["alice"] } },
+        { client, accountId: "test-acc" },
+      ),
+    ).rejects.toThrowError(/user directory exceeds the 250-page safety limit/);
+  });
 });
