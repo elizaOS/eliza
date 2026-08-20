@@ -23,7 +23,8 @@
     "voice:validate:dry": "bun src/voice/voice-live-validation.ts",
     "voice:validate:live": "bun src/voice/voice-live-validation.ts",
     "build:preload": "node ../../scripts/build-electrobun-preload.mjs",
-    "build:native-effects": "bash scripts/build-macos-effects.sh"
+    "build:native-effects": "bash scripts/build-macos-effects.sh",
+    "bench:cloud-login": "node scripts/bench-cloud-login.mjs"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
