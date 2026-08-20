@@ -7,7 +7,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { agentSandboxes } from "../../schemas/agent-sandboxes";
+import { apiKeys } from "../../schemas/api-keys";
+import { dockerNodes } from "../../schemas/docker-nodes";
+import { generations } from "../../schemas/generations";
+import { jobs } from "../../schemas/jobs";
 import { organizations } from "../../schemas/organizations";
+import { usageRecords } from "../../schemas/usage-records";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
 
@@ -42,10 +47,33 @@ beforeAll(async () => {
   const repositoryModule = await import("../agent-sandboxes");
   repository = new repositoryModule.AgentSandboxesRepository();
 
-  const schema = { organizations, users, userCharacters, agentSandboxes };
+  const schema = {
+    organizations,
+    users,
+    userCharacters,
+    agentSandboxes,
+    dockerNodes,
+    apiKeys,
+    usageRecords,
+    generations,
+    jobs,
+  };
   const { apply } = await pushSchema(schema as never, dbWrite as never);
   await apply();
   await repository.countAllPoolEntries({ image: IMAGE });
+
+  // Replenish reads the tenant-starvation guard inputs (queued tenant jobs +
+  // placeable-node slack). Seed one open node with ample free capacity so the
+  // guard observes real rows instead of an empty cluster clipping every fill.
+  await dbWrite.insert(dockerNodes).values({
+    node_id: "node-1",
+    hostname: "127.0.0.1",
+    capacity: 16,
+    allocated_count: 0,
+    enabled: true,
+    placement_state: "open",
+    status: "healthy",
+  });
 
   await dbWrite.insert(organizations).values({
     id: USER_ORG_ID,
