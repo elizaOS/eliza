@@ -3,7 +3,7 @@
  * redaction over the tool-call cache write path.
  */
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { defaultPrivacyRedactor } from "./tool-call-cache/redact.ts";
+import { defaultPrivacyRedactor } from "./redact.ts";
 
 const ORIG_ENV = { ...process.env };
 
