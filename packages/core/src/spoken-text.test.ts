@@ -78,6 +78,19 @@ describe("sanitizeSpeechText", () => {
 		);
 	});
 
+	it.each(["*", "**"])(
+		"does not expose deeply nested %s directions after the peel budget",
+		(marker) => {
+			let nested = `${marker}pause${marker}`;
+			for (let depth = 0; depth < 12; depth += 1) {
+				nested = `${marker}secret-${depth} ${nested} tail-${depth}${marker}`;
+			}
+			expect(sanitizeSpeechText(`Say this. ${nested} Done.`)).toBe(
+				"Say this. Done.",
+			);
+		},
+	);
+
 	it("keeps legacy unmatched-direction text while dropping its delimiter", () => {
 		expect(sanitizeSpeechText("Say this (perhaps later")).toBe(
 			"Say this perhaps later",

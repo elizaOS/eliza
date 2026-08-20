@@ -188,6 +188,27 @@ describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
     expect(JSON.stringify(upstream[0].body)).not.toContain("secret-");
   });
 
+  test.each(["*", "**"])(
+    "keeps deeply nested %s directions out of the upstream speech request",
+    async (marker) => {
+      let nestedDirection = `${marker}pause${marker}`;
+      for (let layer = 0; layer < 12; layer += 1) {
+        nestedDirection = `${marker}secret-${layer} ${nestedDirection} tail-${layer}${marker}`;
+      }
+
+      const { res, state } = fakeRes();
+      await handleCloudTtsPreviewRoute(
+        fakeReq(JSON.stringify({ text: `Say this. ${nestedDirection} Done.` })),
+        res,
+      );
+
+      expect(state.statusCode).toBe(200);
+      expect(upstream).toHaveLength(1);
+      expect(upstream[0].body).toMatchObject({ text: "Say this. Done." });
+      expect(JSON.stringify(upstream[0].body)).not.toContain("secret-");
+    },
+  );
+
   test("honors a host pre-parsed JSON body when the stream is already drained (#16348)", async () => {
     const { res, state } = fakeRes();
     await handleCloudTtsPreviewRoute(

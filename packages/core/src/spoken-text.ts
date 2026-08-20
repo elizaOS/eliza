@@ -10,7 +10,10 @@
  * rescan is O(remaining), so an uncapped `((((…hello…))))` bomb hangs TTS.
  * {@link MAX_NON_SPEECH_STRIP_PASSES} bounds the compatibility peel. If it
  * exhausts that budget, a linear interval scan removes every remaining
- * balanced direction rather than exposing text from the outer layers.
+ * balanced direction rather than exposing text from the outer layers. Lines
+ * with more star markers than that budget can represent are removed between
+ * their outer markers before peeling, preventing emphasis nesting from
+ * exposing alternating layers without rescans.
  */
 
 function collapseWhitespace(input: string): string {
@@ -39,8 +42,9 @@ function stripThinkingAndMarkup(input: string): string {
 	return text;
 }
 
-const NON_SPEECH_SEGMENT_PATTERNS = [
-	/\*{1,2}[^*\n]+\*{1,2}/g,
+const STAR_DIRECTION_PATTERN = /\*{1,2}[^*\n]+\*{1,2}/g;
+
+const BALANCED_DIRECTION_PATTERNS = [
 	/\([^()]*\)/g,
 	/\[[^[\]]*\]/g,
 	/\{[^{}]*\}/g,
@@ -107,12 +111,39 @@ function stripResidualBalancedDirections(input: string): string {
 	return parts.join("");
 }
 
+/** Fail-closes lines whose emphasis markers exceed the peel budget. */
+function stripExcessiveStarDirections(input: string): string {
+	return input
+		.split("\n")
+		.map((line) => {
+			let markerCount = 0;
+			let first = -1;
+			let last = -1;
+			for (let index = 0; index < line.length; ) {
+				if (line[index] !== "*") {
+					index += 1;
+					continue;
+				}
+				if (first < 0) first = index;
+				const runStart = index;
+				while (line[index] === "*") index += 1;
+				markerCount += Math.ceil((index - runStart) / 2);
+				last = index - 1;
+			}
+			return markerCount > MAX_NON_SPEECH_STRIP_PASSES * 2 && last > first
+				? `${line.slice(0, first)} ${line.slice(last + 1)}`
+				: line;
+		})
+		.join("\n");
+}
+
 function stripNonSpeechDirections(input: string): string {
-	let text = input;
+	let text = stripExcessiveStarDirections(input);
 	let stabilized = false;
 	for (let pass = 0; pass < MAX_NON_SPEECH_STRIP_PASSES; pass += 1) {
 		const previous = text;
-		for (const pattern of NON_SPEECH_SEGMENT_PATTERNS) {
+		text = text.replace(STAR_DIRECTION_PATTERN, " ");
+		for (const pattern of BALANCED_DIRECTION_PATTERNS) {
 			text = text.replace(pattern, " ");
 		}
 		if (text === previous) {
