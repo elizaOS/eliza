@@ -8,11 +8,13 @@ Eliza's first-party coding path is the implementation being shipped. OpenCode
 and pi-agent were not copied into the runtime. They remain useful references or
 explicit optional ACP backends, but neither is required for the owned path.
 
-Correctness is release-ready after the normal-person browser regression below,
-but the OpenRouter/Qwen QA configuration is not a flawless interactive
-experience: successful two- to four-step coding turns took 62-81 seconds in the
-saved runtime trajectories. Treat provider/model latency as a visible ship
-caveat, not as evidence of a tool or orchestration failure.
+Correctness is release-ready after both the normal-person browser regression and
+the exact-head parent/orchestrator matrix below. The final live matrix passed on
+`cbb6da285f8f983dbc16379fe2998c762704939e`, with a clean repository before and
+after the run. The OpenRouter/Qwen QA configuration is still not a flawless
+interactive experience: successful two- to four-step coding turns took 62-81
+seconds in the saved runtime trajectories. Treat provider/model latency as a
+visible ship caveat, not as evidence of a tool or orchestration failure.
 
 The tested production chain is:
 
@@ -58,6 +60,22 @@ accepts only the canonical task directory and that validated direct child of the
 managed trajectory root, path-checks it, deduplicates it, and attaches each
 trajectory as a task artifact with correlation metadata.
 
+### Immediate durable ownership after spawn
+
+The first exact-head rerun after the normal-person browser fix exposed a second
+real failure: native ACP successfully spawned the child, but the durable coding
+task did not appear before the five-minute gate timed out. `spawn_agent` created
+the durable row only after the child was live, and criteria-free `createTask`
+then made an optional `TEXT_SMALL` model request before writing that row. A slow
+or stuck provider could therefore leave a running child temporarily unowned.
+
+Top-level `spawn_agent` now supplies Eliza's deterministic coding acceptance
+criteria when creating its post-spawn durable owner. `createTask` records those
+caller-owned criteria without another model request, then `attachSession` binds
+the already-live child immediately. A focused regression pins that exact input,
+and the final live rerun progressed through ownership, child completion,
+evidence ingestion, validation, archive, and reopen for all three scenarios.
+
 ### Verifier-grade tool evidence
 
 Completion evidence now contains an ordered, bounded child tool trace. It keeps
@@ -100,8 +118,8 @@ read/edit calls only and produced a clean final response.
   packaged `index.js`/`acp.js` build passed.
 - Focused regression coverage proves planner-visible exact-workdir locking,
   top-level pre-task trace reservation, trace/session correlation, detached
-  trajectory ingestion, secret redaction, source-content exclusion, and exact
-  FILE/SHELL completion evidence.
+  trajectory ingestion, immediate deterministic durable ownership, secret
+  redaction, source-content exclusion, and exact FILE/SHELL completion evidence.
 
 ### Real parent and concurrent child acceptance
 
@@ -127,11 +145,13 @@ The live gate requires all of the following:
 7. The repository is clean at both the start and end of the run, so the report's
    `repoHead` identifies the exact source that produced the evidence.
 
-The 2026-08-20 release run passed all three scenarios. Both concurrent sessions
-were observed `busy`, their execution windows overlapped, every independent
-fixture test returned one pass and zero failures, every read-only workspace was
-unchanged, and all three lifecycle sequences reached `done`, `archived`, then
-`active` after reopen.
+The final 2026-08-20 release run at
+`cbb6da285f8f983dbc16379fe2998c762704939e` passed all three scenarios. Both
+concurrent sessions were observed `busy`, their execution windows overlapped,
+every independent fixture test returned one pass and zero failures, every
+read-only workspace was unchanged, and all three lifecycle sequences reached
+`done`, `archived`, then `active` after reopen. The sanitized local report is
+`work/qa-artifacts/owned-parent-final-20260820-cbb6da2/owned-parent-2026-08-20T19-23-40-914Z-51341/report.json`.
 
 ### Browser-only Eliza UI acceptance
 
@@ -170,9 +190,10 @@ dedicated live matrix above separately proves the full parent -> orchestrator ->
 packaged eliza-code child path, including concurrent children and durable
 lifecycle transitions.
 
-The local-only evidence bundle contains the three clean UI captures, fixture
-diffs/files, and the corresponding trajectories (`tj-893f281f56b99c`,
-`tj-8ada53325b7132`, and `tj-8ccb7336aab84a`). The original broken run remains
+The local-only `work/qa-artifacts/normie-coding-qa-20260820` bundle contains
+four clean UI captures plus the fixture diffs/files. The corresponding saved
+runtime trajectories are `tj-893f281f56b99c`, `tj-8ada53325b7132`,
+`tj-8ccb7336aab84a`, and `tj-8eb677a191c1d2`. The original broken run remains
 available as `tj-830fad609544a3` so the regression is auditable rather than
 hidden.
 
@@ -183,6 +204,12 @@ Install and run the deterministic gates from the repository root:
 ```bash
 bun install
 bun run --cwd plugins/plugin-agent-orchestrator test
+bun run --cwd plugins/plugin-agent-orchestrator typecheck
+bun run --cwd plugins/plugin-agent-orchestrator lint:check
+bun run --cwd plugins/plugin-agent-orchestrator build
+bun run --cwd plugins/plugin-coding-tools test
+bun run --cwd plugins/plugin-coding-tools typecheck
+bun run --cwd plugins/plugin-coding-tools build
 bun run --cwd packages/examples/code test
 bun run --cwd packages/examples/code typecheck
 bun run --cwd packages/examples/code build
@@ -221,16 +248,25 @@ for a normal handoff, and it should still be reviewed before publication.
   claimed here without a separate live run.
 - The first absolute-path browser run failed its UX acceptance even though its
   edit landed. Only the post-fix rerun counts as the grocery-list pass.
+- The first post-browser exact-head parent/orchestrator rerun also failed its
+  acceptance: the child spawned, but durable ownership stalled behind optional
+  model refinement. Only the deterministic-criteria rerun at `cbb6da285f` counts
+  as the final full-lifecycle pass.
+- The headless live harness deliberately has no connector send handler because
+  browser QA owns visible asynchronous delivery. It can log a missing send
+  handler and provider/router cancellation during intentional runtime shutdown,
+  after the report has been retained. Those messages are teardown noise, not a
+  successful UI-delivery claim; the separate browser captures are that proof.
 - The root macOS SourceKitten/native-gateway verifier remains a host toolchain
   concern and is not evidence against this JavaScript/ACP coding path.
 
 ## VPS handoff
 
-Fetch the dedicated `codex/coding-runtime-ship-20260820` branch, inspect the two
-candidate commits relative to `761b5e8d7`, install dependencies, and run the
-deterministic commands above. Use a private environment-secret mechanism for a
-live OpenRouter rerun. Do not copy a credential, local state directory, PGlite
-database, or unsanitized trajectory directory from the QA host.
+Fetch the dedicated `codex/coding-runtime-ship-20260820` branch, inspect the
+reported delivery commit, install dependencies, and run the deterministic
+commands above. Use a private environment-secret mechanism for a live OpenRouter
+rerun. Do not copy a credential, local state directory, PGlite database, or
+unsanitized trajectory directory from the QA host.
 
 The exact pushed delivery commit is reported by the handoff message and can be
 confirmed after checkout with `git rev-parse HEAD`.
