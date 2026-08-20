@@ -102,7 +102,7 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         Task { @MainActor in
-            let micOk = await self.requestMicrophonePermission()
+            let micOk = await self.requestRecordPermission()
             guard micOk else {
                 call.resolve(["started": false, "error": "Microphone permission denied"])
                 return
