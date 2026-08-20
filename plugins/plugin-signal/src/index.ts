@@ -61,15 +61,19 @@ const signalPlugin: Plugin = {
     // Register the cross-connector triage adapter for the "signal" source.
     registerSignalTriageAdapter();
 
-    const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
-    const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
-    const cliPath = runtime.getSetting("SIGNAL_CLI_PATH") as string;
-    const effectiveCliPath = cliPath.trim() || DEFAULT_SIGNAL_CLI_PATH;
-    const ignoreGroups = runtime.getSetting("SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES") as string;
+    const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER");
+    const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL");
+    const cliPath = runtime.getSetting("SIGNAL_CLI_PATH");
+    // getSetting returns null for an unset key. SIGNAL_CLI_PATH is optional and
+    // must default to the signal-cli binary name rather than throw on .trim().
+    const configuredCliPath =
+      typeof cliPath === "string" && cliPath.trim().length > 0 ? cliPath.trim() : undefined;
+    const effectiveCliPath = configuredCliPath ?? DEFAULT_SIGNAL_CLI_PATH;
+    const ignoreGroups = runtime.getSetting("SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES");
 
     // Log configuration status
-    const maskNumber = (number: string | undefined): string => {
-      if (!number || number.trim() === "") return "[not set]";
+    const maskNumber = (number: string | boolean | number | null): string => {
+      if (typeof number !== "string" || number.trim() === "") return "[not set]";
       if (number.length <= 6) return "***";
       return `${number.slice(0, 3)}...${number.slice(-2)}`;
     };
@@ -81,14 +85,14 @@ const signalPlugin: Plugin = {
         settings: {
           accountNumber: maskNumber(accountNumber),
           httpUrl: httpUrl || "[not set]",
-          cliPath: cliPath ? cliPath : `[default: ${DEFAULT_SIGNAL_CLI_PATH}]`,
+          cliPath: configuredCliPath ?? `[default: ${DEFAULT_SIGNAL_CLI_PATH}]`,
           ignoreGroups: ignoreGroups || "false",
         },
       },
       "Signal plugin initializing"
     );
 
-    if (!accountNumber || accountNumber.trim() === "") {
+    if (typeof accountNumber !== "string" || accountNumber.trim() === "") {
       logger.warn(
         { src: "plugin:signal", agentId: runtime.agentId },
         "SIGNAL_ACCOUNT_NUMBER not provided - Signal plugin is loaded but will not be functional"
