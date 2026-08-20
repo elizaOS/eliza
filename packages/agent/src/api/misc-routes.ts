@@ -42,7 +42,10 @@ import {
 import { runShell } from "../services/shell-execution-router.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 import type { ServerState } from "./server-types.ts";
-import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
+import {
+  resolveRequestedTerminalRunId,
+  resolveTerminalRunLimits,
+} from "./terminal-run-limits.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -491,11 +494,17 @@ export async function handleMiscRoutes(
     const captureOutput = body.captureOutput === true;
     const MAX_CAPTURE_BYTES = 128 * 1024;
 
-    if (!captureOutput) {
-      json(res, { ok: true });
+    const runId = resolveRequestedTerminalRunId(
+      req.headers["x-eliza-terminal-run-id"],
+    );
+    if (!runId) {
+      error(res, "Invalid X-Eliza-Terminal-Run-Id header", 400);
+      return true;
     }
 
-    const runId = `run-${crypto.randomUUID()}`;
+    if (!captureOutput) {
+      json(res, { ok: true, runId });
+    }
 
     emitTerminalEvent({
       type: "terminal-output",

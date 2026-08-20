@@ -12,7 +12,15 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { terminalAction } from "./terminal.ts";
+import {
+  resolveTerminalTransportTimeoutMs,
+  terminalAction,
+} from "./terminal.ts";
+
+vi.mock("node:crypto", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:crypto")>()),
+  randomUUID: () => "7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
+}));
 
 function runtime(): IAgentRuntime {
   return {
@@ -331,6 +339,27 @@ describe("terminal action effect proof", () => {
     });
   });
 
+  it("rejects execution proof for a different run identity", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        terminalResponse({
+          runId: "run-00000000-0000-4000-8000-000000000001",
+        }),
+      ),
+    );
+
+    await expect(
+      terminalAction.handler(runtime(), message(), undefined, options()),
+    ).rejects.toMatchObject({
+      code: "TERMINAL_RESPONSE_INVALID",
+      context: {
+        expectedRunId: "run-7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
+        receivedRunId: "run-00000000-0000-4000-8000-000000000001",
+      },
+    });
+  });
+
   it("surfaces an HTTP rejection as a typed action failure", async () => {
     vi.stubGlobal(
       "fetch",
@@ -343,6 +372,102 @@ describe("terminal action effect proof", () => {
       code: "TERMINAL_REQUEST_FAILED",
       context: { status: 503 },
     });
+  });
+
+  it("derives its transport deadline from the configured server run limit", () => {
+    vi.stubEnv("ELIZA_TERMINAL_MAX_DURATION_MS", "125000");
+    expect(resolveTerminalTransportTimeoutMs()).toBe(135_000);
+
+    vi.stubEnv("ELIZA_TERMINAL_MAX_DURATION_MS", "9999999999");
+    expect(resolveTerminalTransportTimeoutMs()).toBe(3_610_000);
+  });
+
+  it("cancels a stalled response body with the caller's abort reason", async () => {
+    const caller = new AbortController();
+    let bodyCancelled = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              cancel: () => {
+                bodyCancelled = true;
+              },
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    const abortReason = new Error("turn cancelled");
+    const pending = terminalAction.handler(runtime(), message(), undefined, {
+      ...options(),
+      abortSignal: caller.signal,
+    } as HandlerOptions & { abortSignal: AbortSignal });
+
+    await vi.waitFor(() => {
+      expect(fetch).toHaveBeenCalledOnce();
+    });
+    caller.abort(abortReason);
+
+    await expect(pending).rejects.toBe(abortReason);
+    expect(bodyCancelled).toBe(true);
+  });
+
+  it("rejects and cancels a response whose declared body exceeds the cap", async () => {
+    let bodyCancelled = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              cancel: () => {
+                bodyCancelled = true;
+              },
+            }),
+            {
+              status: 200,
+              headers: { "Content-Length": String(2 * 1024 * 1024 + 1) },
+            },
+          ),
+      ),
+    );
+
+    await expect(
+      terminalAction.handler(runtime(), message(), undefined, options()),
+    ).rejects.toMatchObject({ code: "TERMINAL_RESPONSE_INVALID" });
+    expect(bodyCancelled).toBe(true);
+  });
+
+  it("binds an acceptance-unknown transport failure to the dispatched run id", async () => {
+    let dispatchedRunId = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        dispatchedRunId =
+          new Headers(init?.headers).get("X-Eliza-Terminal-Run-Id") ?? "";
+        throw new TypeError("connection reset");
+      }),
+    );
+
+    let caught: unknown;
+    try {
+      await terminalAction.handler(runtime(), message(), undefined, options());
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+      context: {
+        acceptance: "unknown",
+        runId: expect.stringMatching(/^run-[0-9a-f-]{36}$/u),
+        transportTimeoutMs: 310_000,
+      },
+    });
+    expect((caught as { context: { runId: string } }).context.runId).toBe(
+      dispatchedRunId,
+    );
   });
 });
 
