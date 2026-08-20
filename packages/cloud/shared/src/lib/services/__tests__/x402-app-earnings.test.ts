@@ -305,6 +305,31 @@ test("settle refuses a zero-amount request instead of settling for nothing", asy
   expect(settle).not.toHaveBeenCalled();
 });
 
+test("settle refuses alternate stored-money syntax before moving funds", async () => {
+  for (const amountUsd of ["0x10", "0b10", "1e2", " 0.05 ", "+0.05", ".05", "00.05"]) {
+    findPaymentById.mockResolvedValue(
+      paymentRecord({
+        metadata: {
+          kind: "x402_payment_request",
+          appId: APP_ID,
+          amountUsd,
+          description: "Noncanonical amount",
+          requirements: { scheme: "exact", network: "eip155:8453", payTo: "0xpayto" },
+        },
+      }),
+    );
+
+    await expect(x402PaymentRequestsService.settle(PAYMENT_ID, validPayload)).rejects.toThrow(
+      /corrupt amountUsd/i,
+    );
+  }
+
+  expect(settle).not.toHaveBeenCalled();
+  expect(markAsConfirmed).not.toHaveBeenCalled();
+  expect(addPurchaseEarnings).not.toHaveBeenCalled();
+  expect(addEarnings).not.toHaveBeenCalled();
+});
+
 test("public projection refuses corrupt stored amount and fee values", () => {
   expect(() =>
     x402PaymentRequestsService.toView(
