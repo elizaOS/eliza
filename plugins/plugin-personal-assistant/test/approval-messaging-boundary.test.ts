@@ -12,6 +12,24 @@ import {
 import type { LifeOpsService } from "../src/lifeops/service.js";
 
 describe("approval messaging boundary", () => {
+  it("does not claim provider idempotency for Twilio SMS", async () => {
+    vi.stubEnv("TWILIO_ACCOUNT_SID", "AC123");
+    vi.stubEnv("TWILIO_AUTH_TOKEN", "token");
+    vi.stubEnv("TWILIO_PHONE_NUMBER", "+15550000000");
+    try {
+      const prepared = await prepareCrossChannelSend({
+        runtime: {} as IAgentRuntime,
+        service: {} as LifeOpsService,
+        channel: "sms",
+        target: "+15551234567",
+        body: "hello",
+      });
+      expect(prepared.supportsProviderIdempotency).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("does not fall back after Telegram accepted-then-timeout", async () => {
     const fallback = vi.fn();
     const telegram = vi.fn(async () => {
