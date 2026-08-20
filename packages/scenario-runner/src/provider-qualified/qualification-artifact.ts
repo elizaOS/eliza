@@ -497,7 +497,10 @@ function qualifiedReportProjection(input: {
 }
 
 function compareCanonical(left: unknown, right: unknown, label: string): void {
-  if (canonicalJson(left) !== canonicalJson(right)) {
+  if (
+    canonicalJson(canonicalJsonValue(left, `${label}.recomputed`)) !==
+    canonicalJson(canonicalJsonValue(right, `${label}.persisted`))
+  ) {
     throw new Error(
       `provider qualification artifact ${label} does not reverify`,
     );
