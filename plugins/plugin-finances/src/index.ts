@@ -59,6 +59,22 @@ export {
   lifeSubscriptionCandidates,
 } from "./db/schema.ts";
 export {
+  buildCapabilityMeta,
+  buildWriteReceipt,
+  computeBudgetStatus,
+  computeSourceBalances,
+  detectAnomalies,
+  type FinanceAnomaly,
+  type FinanceBudgetStatus,
+  type FinanceCalculationMethod,
+  type FinanceCapabilityMeta,
+  type FinanceSourceBalance,
+  type FinanceSubscriptionRecord,
+  type FinanceWriteReceipt,
+  isPendingTransaction,
+  normalizeSubscriptions,
+} from "./finance-capabilities.ts";
+export {
   FinancesServiceError,
   financeErrorMessage,
 } from "./finance-normalize.ts";

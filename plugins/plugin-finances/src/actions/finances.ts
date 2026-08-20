@@ -22,6 +22,14 @@ import {
   decodeChildcareWorkScenarioInput,
   evaluateChildcareWorkScenario,
 } from "../childcare-work-scenario.ts";
+import {
+  buildCapabilityMeta,
+  buildWriteReceipt,
+  computeBudgetStatus,
+  computeSourceBalances,
+  detectAnomalies,
+  normalizeSubscriptions,
+} from "../finance-capabilities.ts";
 import { FinancesServiceError } from "../finance-normalize.ts";
 import {
   FinancesService,
@@ -68,6 +76,7 @@ export const MONEY_PARAMETERS: readonly {
     name: "subaction",
     description:
       "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges " +
+      "| balances | budget_status | subscriptions | anomalies " +
       "| childcare_work_scenario | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
     required: false,
     schema: { type: "string" },
@@ -170,6 +179,13 @@ export const MONEY_PARAMETERS: readonly {
     schema: { type: "boolean" },
   },
   {
+    name: "budgetUsd",
+    description:
+      "For budget_status: the user-supplied budget in USD to compare spend against.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
     name: "scenarioJson",
     description:
       "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero.",
@@ -254,6 +270,10 @@ type PaymentsSubaction =
   | "list_transactions"
   | "spending_summary"
   | "recurring_charges"
+  | "balances"
+  | "budget_status"
+  | "subscriptions"
+  | "anomalies"
   | "childcare_work_scenario";
 
 type PaymentsActionParams = {
@@ -274,6 +294,7 @@ type PaymentsActionParams = {
   limit?: number;
   merchantContains?: string;
   onlyDebits?: boolean;
+  budgetUsd?: number;
   scenarioJson?: string;
 };
 
@@ -311,6 +332,10 @@ function normalizeSubaction(value: unknown): PaymentsSubaction | null {
     "list_transactions",
     "spending_summary",
     "recurring_charges",
+    "balances",
+    "budget_status",
+    "subscriptions",
+    "anomalies",
     "childcare_work_scenario",
   ];
   return (subactions as string[]).includes(normalized)
@@ -409,7 +434,16 @@ async function runPaymentsActionInner(
       return {
         success: true,
         text: `Added ${source.kind} source "${source.label}".`,
-        data: { source },
+        data: {
+          source,
+          receipt: buildWriteReceipt({
+            capability: "finance.add_source",
+            operation: "create",
+            entityType: "payment_source",
+            entityId: source.id,
+            now: new Date(),
+          }),
+        },
       };
     }
     case "remove_source": {
@@ -424,7 +458,16 @@ async function runPaymentsActionInner(
       return {
         success: true,
         text: "Payment source removed.",
-        data: { sourceId: params.sourceId },
+        data: {
+          sourceId: params.sourceId,
+          receipt: buildWriteReceipt({
+            capability: "finance.remove_source",
+            operation: "delete",
+            entityType: "payment_source",
+            entityId: params.sourceId,
+            now: new Date(),
+          }),
+        },
       };
     }
     case "import_csv": {
@@ -445,10 +488,30 @@ async function runPaymentsActionInner(
         categoryColumn: params.categoryColumn,
       });
       const summary = `Imported ${result.inserted} transaction${result.inserted === 1 ? "" : "s"} (${result.skipped} already on file, ${result.errors.length} error${result.errors.length === 1 ? "" : "s"}).`;
+      const applied = result.errors.length === 0 || result.inserted > 0;
       return {
-        success: result.errors.length === 0 || result.inserted > 0,
+        success: applied,
         text: summary,
-        data: { result },
+        data: {
+          result,
+          // A receipt is only issued when the import actually changed state.
+          ...(applied
+            ? {
+                receipt: buildWriteReceipt({
+                  capability: "finance.import_csv",
+                  operation: "import",
+                  entityType: "transactions",
+                  entityId: params.sourceId,
+                  now: new Date(),
+                  counts: {
+                    inserted: result.inserted,
+                    skipped: result.skipped,
+                    errors: result.errors.length,
+                  },
+                }),
+              }
+            : {}),
+        },
       };
     }
     case "list_transactions": {
@@ -488,6 +551,169 @@ async function runPaymentsActionInner(
         success: true,
         text: `Detected ${charges.length} recurring charge${charges.length === 1 ? "" : "s"} worth ~$${annualized.toFixed(2)}/yr.`,
         data: { charges },
+      };
+    }
+    case "balances": {
+      const now = new Date();
+      const [sources, transactions] = await Promise.all([
+        service.listPaymentSources(),
+        service.listTransactions({ sourceId: params.sourceId ?? null }),
+      ]);
+      const scoped = params.sourceId
+        ? sources.filter((source) => source.id === params.sourceId)
+        : sources;
+      const balances = computeSourceBalances(scoped, transactions);
+      return {
+        success: true,
+        text:
+          balances.length === 0
+            ? "No payment sources connected, so no balances can be derived."
+            : `Derived ledger balances for ${balances.length} source${balances.length === 1 ? "" : "s"} (net flow of credits minus settled debits, not institution-reported balances).`,
+        data: {
+          balances,
+          meta: buildCapabilityMeta({
+            capability: "finance.balances",
+            now,
+            transactions,
+            sourceCount: scoped.length,
+            method: "derived_from_transactions",
+            notes: [
+              "Net flow is derived from the imported/synced transaction ledger; it is not an institution-reported balance.",
+              "Pending transactions are excluded from settled figures and reported separately.",
+            ],
+          }),
+        },
+      };
+    }
+    case "budget_status": {
+      if (
+        typeof params.budgetUsd !== "number" ||
+        !Number.isFinite(params.budgetUsd) ||
+        params.budgetUsd <= 0
+      ) {
+        return {
+          success: false,
+          text: "budget_status requires a positive budgetUsd amount to compare spend against.",
+          data: { error: "MISSING_BUDGET_AMOUNT" },
+        };
+      }
+      const now = new Date();
+      const windowDays = Math.max(
+        1,
+        Math.min(
+          365,
+          typeof params.windowDays === "number" &&
+            Number.isFinite(params.windowDays)
+            ? Math.trunc(params.windowDays)
+            : 30,
+        ),
+      );
+      const transactions = await service.listTransactions({
+        sourceId: params.sourceId ?? null,
+        sinceAt: new Date(
+          now.getTime() - windowDays * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+      });
+      const budget = computeBudgetStatus({
+        transactions,
+        budgetUsd: params.budgetUsd,
+        windowDays,
+        now,
+      });
+      return {
+        success: true,
+        text: `Spent $${budget.spentUsd.toFixed(2)} of the $${budget.budgetUsd.toFixed(2)} budget over ${budget.windowDays} days (${budget.status.replace(/_/g, " ")}).`,
+        data: {
+          budget,
+          meta: buildCapabilityMeta({
+            capability: "finance.budget_status",
+            now,
+            transactions,
+            sourceCount: params.sourceId ? 1 : 0,
+            method: "user_supplied_input",
+            windowDays,
+            notes: [
+              "The budget amount is supplied by the user; spend is derived from settled debit transactions in the window.",
+            ],
+          }),
+        },
+      };
+    }
+    case "subscriptions": {
+      const now = new Date();
+      const charges = await service.getRecurringCharges({
+        sourceId: params.sourceId ?? null,
+        sinceDays: params.sinceDays ?? null,
+      });
+      const subscriptions = normalizeSubscriptions(charges);
+      const annualized = subscriptions.reduce(
+        (total, sub) => total + sub.annualizedCostUsd,
+        0,
+      );
+      return {
+        success: true,
+        text:
+          subscriptions.length === 0
+            ? "No subscription-like recurring charges detected."
+            : `Detected ${subscriptions.length} likely subscription${subscriptions.length === 1 ? "" : "s"} totaling ~$${annualized.toFixed(2)}/yr.`,
+        data: {
+          subscriptions,
+          meta: buildCapabilityMeta({
+            capability: "finance.subscriptions",
+            now,
+            transactions: [],
+            sourceCount: params.sourceId ? 1 : 0,
+            method: "derived_from_transactions",
+            windowDays: params.sinceDays ?? null,
+            notes: [
+              "Subscriptions are inferred from regular-cadence recurring debits with detection confidence >= 0.5; this is detection, not billing-provider data.",
+            ],
+          }),
+        },
+      };
+    }
+    case "anomalies": {
+      const now = new Date();
+      const transactions = await service.listTransactions({
+        sourceId: params.sourceId ?? null,
+        sinceAt: new Date(
+          now.getTime() -
+            Math.max(
+              7,
+              Math.min(
+                365,
+                typeof params.sinceDays === "number" &&
+                  Number.isFinite(params.sinceDays)
+                  ? Math.trunc(params.sinceDays)
+                  : 90,
+              ),
+            ) *
+              24 *
+              60 *
+              60 *
+              1000,
+        ).toISOString(),
+      });
+      const anomalies = detectAnomalies(transactions);
+      return {
+        success: true,
+        text:
+          anomalies.length === 0
+            ? `No duplicate-charge or amount-spike anomalies detected across ${transactions.length} transactions.`
+            : `Flagged ${anomalies.length} possible anomal${anomalies.length === 1 ? "y" : "ies"} (duplicate charges or amount spikes) for review.`,
+        data: {
+          anomalies,
+          meta: buildCapabilityMeta({
+            capability: "finance.anomalies",
+            now,
+            transactions,
+            sourceCount: params.sourceId ? 1 : 0,
+            method: "derived_from_transactions",
+            notes: [
+              "Heuristic detection over settled debits: same-merchant same-amount charges within 3 days, and debits >= 2.5x a merchant's prior average. Flags are candidates for human review, not confirmed errors.",
+            ],
+          }),
+        },
       };
     }
   }
