@@ -1681,6 +1681,17 @@ export class SubAgentRouter extends Service {
     // only the diff summary. The verifiedUrls path keeps its dedicated handling.
     if (event === "task_complete" && verifiedUrls.length === 0) {
       deliverable = extractShortToolDeliverable(data);
+      if (deliverable === undefined) {
+        deliverable = extractAskedOutputDeliverable(
+          data,
+          userTaskFromInitialTask(
+            pickPlainString(
+              (session.metadata as Record<string, unknown> | undefined)
+                ?.initialTask,
+            ),
+          ),
+        );
+      }
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
     // are unreachable — the build is incomplete (missing or empty files).
@@ -3942,6 +3953,30 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
       : inner;
   }
   return undefined;
+}
+
+/** "run it and show me the output" asks: the answer is whatever the child
+ *  printed, and the parent model routinely paraphrases it into a generic
+ *  status line ("dinner-picker is all set. everything passes." for a captured
+ *  "Tonight's dinner idea is: Homemade Pizza", live 2026-08-20). When the ask
+ *  requests output/results and the final response is a short plain block with
+ *  no [tool output] markers, that response IS the deliverable — relay it
+ *  verbatim. */
+const OUTPUT_ASK_RE =
+  /\b(?:show|print|display|give|tell|share)\b[\s\S]{0,40}\b(?:output|result|results)\b|\bwhat(?:'s| is) the (?:output|result)\b/i;
+
+export function extractAskedOutputDeliverable(
+  data: unknown,
+  userAsk: string,
+): string | undefined {
+  if (!OUTPUT_ASK_RE.test(userAsk)) return undefined;
+  const response =
+    pickPayloadString(data, "response") ?? pickPayloadString(data, "finalText");
+  const trimmed = response?.trim();
+  if (!trimmed) return undefined;
+  return Buffer.byteLength(trimmed, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
+    ? undefined
+    : trimmed;
 }
 
 /**
