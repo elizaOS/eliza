@@ -2213,13 +2213,16 @@ export class SubAgentRouter extends Service {
       return;
     }
     this.releasingDeferredRelaySessions.add(pending.sessionId);
-    void this.handleEvent(
-      pending.sessionId,
-      "task_complete",
-      pending.data,
-      undefined,
-      pending.turnId,
-    )
+    void this.waitForOriginTurnToSettle(pending.sessionId)
+      .then(() =>
+        this.handleEvent(
+          pending.sessionId,
+          "task_complete",
+          pending.data,
+          undefined,
+          pending.turnId,
+        ),
+      )
       .catch((err) => {
         // error-policy:J7 the released relay is observability-critical; a
         // failure is reported, not rethrown into the verdict writer.
@@ -2231,6 +2234,34 @@ export class SubAgentRouter extends Service {
       .finally(() => {
         this.releasingDeferredRelaySessions.delete(pending.sessionId);
       });
+  }
+
+  /** Let the origin room's in-flight planner turn finish before the released
+   *  relay posts. A follow-up absorbed into the running build produces a slow
+   *  planner turn whose reply PROMISES the work ("got it — adding the split
+   *  option now"), and the verified completion beat it by ~1s — the user read
+   *  fulfillment, then the promise, then silence (live 2026-08-20). Bounded:
+   *  a turn that never settles only delays the relay, never drops it. */
+  private async waitForOriginTurnToSettle(sessionId: string): Promise<void> {
+    const deadline = Date.now() + 60_000;
+    try {
+      const session = await this.acp?.getSession(sessionId);
+      const roomId = (session?.metadata as { roomId?: unknown } | undefined)
+        ?.roomId;
+      if (typeof roomId !== "string" || !roomId) return;
+      const registry = (
+        this.runtime as {
+          turnControllers?: { hasActiveTurn?: (roomId: string) => boolean };
+        }
+      ).turnControllers;
+      if (typeof registry?.hasActiveTurn !== "function") return;
+      while (registry.hasActiveTurn(roomId) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    } catch {
+      // error-policy:J4 settle-wait is best-effort ordering; a probe failure
+      // releases the relay immediately rather than risking a swallowed one.
+    }
   }
 
   private async postQuestionToOriginRoom(
