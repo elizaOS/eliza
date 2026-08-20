@@ -6117,7 +6117,15 @@ async function runManageIssues(
     (content.issueAction as string) ??
     legacyIssueAction ??
     inferIssueAction(text);
-  const repo = (params.repo as string) ?? (content.repo as string);
+  let repo = (params.repo as string) ?? (content.repo as string);
+  // A normie names the repo bare ("my eliza-code-sandbox repo"); the planner
+  // passes it through ownerless and parseOwnerRepo threw "Cannot parse
+  // owner/repo" at the user (live 2026-08-20). Same owner-defaulting the
+  // create path uses: the configured token's account.
+  if (repo && !repo.includes("/")) {
+    const owner = await githubTokenOwner(runtime);
+    if (owner) repo = `${owner}/${repo.trim()}`;
+  }
 
   if (!repo) {
     const urlMatch = text.match(
