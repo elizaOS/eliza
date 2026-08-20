@@ -304,6 +304,7 @@ export function renderProviderQualificationMarkdown(
     `- Manifest SHA-256: \`${artifact.manifestSha256}\``,
     `- Trajectory set SHA-256: \`${artifact.trajectorySetSha256}\``,
     `- Artifact SHA-256: \`${artifact.artifactSha256}\``,
+    `- Provider authorization verified: **${artifact.decision.guarantees.providerAuthorizationVerified ? "yes" : "no"}**`,
     `- Provider acceptance verified: **${artifact.decision.guarantees.providerAcceptanceVerified ? "yes" : "no"}**`,
     `- Provider readback verified: **${artifact.decision.guarantees.providerReadbackVerified ? "yes" : "no"}**`,
     `- Idempotent replay verified: **${artifact.decision.guarantees.providerIdempotencyVerified ? "yes" : "no"}**`,

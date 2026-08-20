@@ -316,6 +316,7 @@ function fixture(): DeriveProviderQualificationInput & {
         provider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("connection"),
+        authorizationGrantSha256s: [hash("grant")],
         operation: manifest.target.operation,
       },
     ],
@@ -521,6 +522,7 @@ function noEffectFixture(): ReturnType<typeof fixture> {
         provider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("connection"),
+        authorizationGrantSha256s: [hash("grant")],
         operation: manifest.target.operation,
       },
     ],
@@ -566,6 +568,7 @@ describe("deriveProviderQualification", () => {
       { observationId: "effect-1", contractId: "calendar-create" },
     ]);
     expect(decision.guarantees).toEqual({
+      providerAuthorizationVerified: true,
       providerAcceptanceVerified: true,
       providerReadbackVerified: true,
       providerIdempotencyVerified: true,
@@ -952,6 +955,30 @@ describe("deriveProviderQualification", () => {
         "observation:effect-1:connector-mismatch",
       ]),
     });
+
+    const wrongAuthorization = fixture();
+    wrongAuthorization.signedEvidence.payload.connectorBindings[0].authorizationGrantSha256s =
+      [hash("another-grant")];
+    resignProvider(wrongAuthorization);
+    const wrongAuthorizationDecision =
+      deriveProviderQualification(wrongAuthorization);
+    expect(wrongAuthorizationDecision.qualification).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "observation:effect-1:authorization-grant-mismatch",
+      ]),
+    });
+    expect(
+      wrongAuthorizationDecision.guarantees.providerAuthorizationVerified,
+    ).toBe(false);
+
+    const duplicateAuthorization = fixture();
+    duplicateAuthorization.signedEvidence.payload.connectorBindings[0].authorizationGrantSha256s =
+      [hash("grant"), hash("grant")];
+    resignProvider(duplicateAuthorization);
+    expect(() => deriveProviderQualification(duplicateAuthorization)).toThrow(
+      /authorizationGrantSha256s must be unique and lexicographically sorted/,
+    );
 
     const wrongTarget = fixture();
     wrongTarget.signedEvidence.payload.connectorBindings[0].operation = {

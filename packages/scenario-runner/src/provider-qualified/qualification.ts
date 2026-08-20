@@ -67,6 +67,7 @@ export interface SignedObservationConnectorBinding {
   provider: string;
   accountRefSha256: string;
   connectionRefSha256: string;
+  authorizationGrantSha256s: readonly [string, ...string[]];
   operation: ProviderOperationBinding;
 }
 
@@ -150,6 +151,7 @@ export interface ProviderQualificationDecision {
     contractId: string;
   }[];
   guarantees: {
+    providerAuthorizationVerified: boolean;
     providerAcceptanceVerified: boolean;
     providerReadbackVerified: boolean;
     providerIdempotencyVerified: boolean;
@@ -615,6 +617,7 @@ function parseSignedEvidenceRuntime(
             "provider",
             "accountRefSha256",
             "connectionRefSha256",
+            "authorizationGrantSha256s",
             "operation",
           ]
         : ["observationId", "trajectoryId", "stageId", "stageSha256"];
@@ -625,6 +628,31 @@ function parseSignedEvidenceRuntime(
       for (const field of fields) {
         if (field === "operation") {
           validateProviderOperationBinding(item[field]);
+          continue;
+        }
+        if (field === "authorizationGrantSha256s") {
+          const grants = runtimeArray(
+            item[field],
+            `${itemPath}.${field}`,
+            MAX_EFFECT_KINDS,
+          );
+          if (grants.length === 0) {
+            throw new Error(`${itemPath}.${field} cannot be empty`);
+          }
+          const validated = grants.map((grant, grantIndex) =>
+            runtimeHash(grant, `${itemPath}.${field}[${grantIndex}]`),
+          );
+          if (
+            new Set(validated).size !== validated.length ||
+            validated.some(
+              (grant, grantIndex) =>
+                grantIndex > 0 && grant <= validated[grantIndex - 1],
+            )
+          ) {
+            throw new Error(
+              `${itemPath}.${field} must be unique and lexicographically sorted`,
+            );
+          }
           continue;
         }
         if (field.endsWith("Sha256")) {
@@ -1173,9 +1201,10 @@ function exactObservationAssignment(
 function verifyConnectorBindings(
   assignment: readonly ObservationAssignment[],
   bindings: readonly SignedObservationConnectorBinding[],
-  expectedOperation: ProviderOperationBinding,
+  manifest: ProviderQualificationManifest,
   reasons: string[],
-): void {
+): boolean {
+  let authorizationVerified = true;
   const byObservationId = new Map<string, SignedObservationConnectorBinding>();
   for (const binding of bindings) {
     if (byObservationId.has(binding.observationId)) {
@@ -1190,9 +1219,43 @@ function verifyConnectorBindings(
     )
   ) {
     reasons.push("connector-binding:multiset-mismatch");
+    authorizationVerified = false;
   }
   for (const { observation, contract } of assignment) {
     const binding = byObservationId.get(observation.observationId);
+    const contractCapabilities =
+      contract.kind === "provider-effect"
+        ? [contract.operation]
+        : contract.kind === "provider-no-effect"
+          ? contract.effectKinds
+          : [];
+    const expectedAuthorizationGrants = [
+      ...new Set(
+        manifest.capabilities
+          .filter(
+            (capability) =>
+              capability.provider === contract.connectorProvider &&
+              capability.accountRefSha256 === contract.accountRefSha256 &&
+              capability.connectionRefSha256 === contract.connectionRefSha256 &&
+              contractCapabilities.includes(capability.capability),
+          )
+          .map((capability) => capability.authorizationGrantSha256),
+      ),
+    ].sort();
+    const expectedOperation = manifest.target.operation;
+    const authorizationMismatch =
+      !binding ||
+      binding.authorizationGrantSha256s.length !==
+        expectedAuthorizationGrants.length ||
+      binding.authorizationGrantSha256s.some(
+        (grant, index) => grant !== expectedAuthorizationGrants[index],
+      );
+    if (authorizationMismatch) {
+      authorizationVerified = false;
+      reasons.push(
+        `observation:${observation.observationId}:authorization-grant-mismatch`,
+      );
+    }
     if (
       !binding ||
       binding.provider !== contract.connectorProvider ||
@@ -1210,6 +1273,7 @@ function verifyConnectorBindings(
       );
     }
   }
+  return authorizationVerified;
 }
 
 function verifyTrajectoryReferences(
@@ -1407,6 +1471,7 @@ function verifyFinalStateTiming(
 function verifyProviderAssurances(
   assignment: readonly ObservationAssignment[],
   assurances: readonly ProviderEffectAssurance[],
+  authorizationVerified: boolean,
   reasons: string[],
 ): ProviderQualificationDecision["guarantees"] {
   const effects = assignment.filter(
@@ -1474,6 +1539,7 @@ function verifyProviderAssurances(
     }
   }
   return {
+    providerAuthorizationVerified: authorizationVerified,
     providerAcceptanceVerified: acceptance,
     providerReadbackVerified: readback,
     providerIdempotencyVerified: idempotency,
@@ -1879,10 +1945,10 @@ export function deriveProviderQualification(
     reasons,
   );
   const effectiveAssignment = assignment ?? [];
-  verifyConnectorBindings(
+  const authorizationVerified = verifyConnectorBindings(
     effectiveAssignment,
     payload.connectorBindings,
-    input.manifest.target.operation,
+    input.manifest,
     reasons,
   );
   verifyObservationFreshness(
@@ -1895,6 +1961,7 @@ export function deriveProviderQualification(
   const guarantees = verifyProviderAssurances(
     effectiveAssignment,
     payload.providerEffectAssurances,
+    authorizationVerified,
     reasons,
   );
   verifyLocalResults(input, payload, reasons);
@@ -1911,6 +1978,7 @@ export function deriveProviderQualification(
     uniqueReasons.includes("semantic-signature:key-not-independent") ||
     uniqueReasons.includes("semantic-correlation:mismatch")
   ) {
+    guarantees.providerAuthorizationVerified = false;
     guarantees.providerAcceptanceVerified = false;
     guarantees.providerReadbackVerified = false;
     guarantees.providerIdempotencyVerified = false;

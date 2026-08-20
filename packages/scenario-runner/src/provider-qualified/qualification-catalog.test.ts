@@ -40,6 +40,7 @@ function artifact(
       },
       matchedObservationContracts: [],
       guarantees: {
+        providerAuthorizationVerified: true,
         providerAcceptanceVerified: true,
         providerReadbackVerified: true,
         providerIdempotencyVerified: true,

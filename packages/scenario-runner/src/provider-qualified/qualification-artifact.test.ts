@@ -130,6 +130,7 @@ describe("provider qualification artifact", () => {
           { observationId: "private-observation", contractId: "contract-1" },
         ],
         guarantees: {
+          providerAuthorizationVerified: true,
           providerAcceptanceVerified: true,
           providerReadbackVerified: true,
           providerIdempotencyVerified: true,
@@ -139,6 +140,7 @@ describe("provider qualification artifact", () => {
     } satisfies ProviderQualificationArtifact;
     const markdown = renderProviderQualificationMarkdown(artifact);
     expect(markdown).toContain("**QUALIFIED**");
+    expect(markdown).toContain("Provider authorization verified: **yes**");
     expect(markdown).toContain("Idempotent replay verified: **yes**");
     expect(markdown).not.toContain("private-observation");
   });

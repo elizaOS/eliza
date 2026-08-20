@@ -195,10 +195,11 @@ only the SPKI public-key pin, and keep provider credentials out of the manifest.
 The provider target and complete non-credential operation input remain in
 operator-controlled JSON; their canonical hashes are signed into the manifest
 and rechecked before execution.
-The independent observer must repeat that exact hash-only operation binding in
-each signed connector-binding record. Qualification rejects evidence for a
-different recipient, resource, or operation input even when the observer
-signature and connector account are otherwise valid.
+The independent observer must repeat that exact hash-only operation binding and
+the manifest-authorized capability grant hashes in each signed
+connector-binding record. Qualification rejects evidence for a different
+recipient, resource, operation input, or authorization grant even when the
+observer signature and connector account are otherwise valid.
 This preflight proves operator authorization of the exact scenario and binding
 contract only. It does not contact a provider, create observations, run the
 independent semantic judge, or make evidence publishable.
