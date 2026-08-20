@@ -160,8 +160,13 @@ async function handleWebhookVerify(
     return;
   }
 
-  // Webhook verification must return the challenge as plain text
-  res.status(200).json(verifiedChallenge);
+  // Meta compares the GET verification response body byte-for-byte against the
+  // hub.challenge it sent, so it must be the raw challenge as text/plain. The
+  // runtime RouteResponse adapter serializes json() with JSON.stringify, which
+  // would emit a JSON-quoted string and fail verification; send() emits the
+  // string verbatim. This matches the sibling api/whatsapp-routes.ts handler.
+  res.setHeader?.("Content-Type", "text/plain");
+  res.status(200).send(verifiedChallenge);
 }
 
 // ── POST /api/whatsapp/webhook ─────────────────────────────────────────
@@ -209,8 +214,11 @@ async function handleWebhookEvent(
 
   await service.handleWebhook(body);
 
-  // Meta expects a 200 with "EVENT_RECEIVED" text
-  res.status(200).json("EVENT_RECEIVED");
+  // Meta expects a 200 with the plain "EVENT_RECEIVED" acknowledgement. send()
+  // emits the string verbatim; json() would JSON-quote it as with the sibling
+  // api/whatsapp-routes.ts handler.
+  res.setHeader?.("Content-Type", "text/plain");
+  res.status(200).send("EVENT_RECEIVED");
 }
 
 // ── POST /api/whatsapp/pair ────────────────────────────────────────────
