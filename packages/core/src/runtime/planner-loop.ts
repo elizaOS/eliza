@@ -555,9 +555,25 @@ async function runPlannerLoopIterations(
 				try {
 					return await callPlanner(args);
 				} catch (error) {
-					const message =
-						error instanceof Error ? error.message : String(error);
-					if (!/failed to generate tool_calls/i.test(message)) throw error;
+					// The AI SDK often masks the cause: message says "Bad Request"
+					// while the actionable text lives on responseBody / cause. Match
+					// across all of them or the retry never engages (live 2026-08-20:
+					// two identical 400s, zero retries logged).
+					const detailParts = [
+						error instanceof Error ? error.message : String(error),
+						String(
+							(error as { responseBody?: unknown }).responseBody ?? "",
+						),
+						String(
+							(error as { cause?: { message?: unknown } }).cause?.message ??
+								"",
+						),
+					];
+					if (
+						!/failed to generate tool_call/i.test(detailParts.join(" "))
+					) {
+						throw error;
+					}
 					params.runtime.logger?.warn?.(
 						{ src: "planner-loop", iteration },
 						"provider failed to generate a required tool call; retrying once",
