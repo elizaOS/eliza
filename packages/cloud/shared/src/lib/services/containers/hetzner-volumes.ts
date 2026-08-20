@@ -22,6 +22,7 @@
 
 import type { DockerNode } from "../../../db/schemas/docker-nodes";
 import { logger } from "../../utils/logger";
+import { shellQuote } from "../docker-sandbox-utils";
 import { DockerSSHClient } from "../docker-ssh";
 import {
   getHetznerCloudClient,
@@ -238,7 +239,8 @@ export class HetznerVolumeService {
 
     // Wait briefly for the device node to appear after attach. udev
     // sometimes lags by a second or two.
-    const waitScript = `for i in $(seq 1 30); do [ -b ${shellQuote(devicePath)} ] && exit 0; sleep 1; done; echo "device ${devicePath} did not appear" >&2; exit 1`;
+    const missingDeviceMessage = shellQuote(`device ${devicePath} did not appear`);
+    const waitScript = `for i in $(seq 1 30); do [ -b ${shellQuote(devicePath)} ] && exit 0; sleep 1; done; printf '%s\n' ${missingDeviceMessage} >&2; exit 1`;
     await ssh.exec(waitScript, 60_000);
 
     // Skip mkfs if the device already has a filesystem. The `|| true` makes
@@ -264,10 +266,6 @@ export class HetznerVolumeService {
       30_000,
     );
   }
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 let cached: HetznerVolumeService | null = null;
