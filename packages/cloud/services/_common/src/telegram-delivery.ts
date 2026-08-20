@@ -21,7 +21,11 @@ export interface TelegramDeliveryLedger {
   ): Promise<TelegramDeliveryState | null>;
   claimChunk(chunkIndex: number, chunkDigest: string): Promise<boolean>;
   releaseChunk(chunkIndex: number, chunkDigest: string): Promise<void>;
-  markChunkDelivered(chunkIndex: number, chunkDigest: string): Promise<void>;
+  markChunkDelivered(
+    chunkIndex: number,
+    chunkDigest: string,
+    providerMessageId?: string,
+  ): Promise<void>;
   markDelivered(): Promise<void>;
 }
 
@@ -106,12 +110,12 @@ export async function executeTelegramDelivery(
       activeChunk = { index, digest };
       return true;
     },
-    async accepted(index) {
+    async accepted(index, _chunk, providerMessageId) {
       const digest = requireChunk(index);
       if (activeChunk?.index !== index || activeChunk.digest !== digest) {
         throw new Error("Telegram accepted an unclaimed delivery chunk");
       }
-      await ledger.markChunkDelivered(index, digest);
+      await ledger.markChunkDelivered(index, digest, providerMessageId);
       activeChunk = null;
     },
     async rejected(index) {
