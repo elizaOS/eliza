@@ -456,6 +456,39 @@ describe("createMobileLifecycle — app lifecycle", () => {
     expect(ctx.handleDeepLink).toHaveBeenCalledWith("elizaos://chat/abc");
   });
 
+  it("routes a later intentional repeat of the same warm deep link", async () => {
+    vi.useFakeTimers();
+    const ctx = makeContext();
+    const lifecycle = createMobileLifecycle(ctx);
+    const url = "elizaos://settings";
+
+    lifecycle.initializeAppLifecycle();
+    await vi.waitFor(() => expect(appListeners.has("appUrlOpen")).toBe(true));
+
+    fireAppEvent("appUrlOpen", { url });
+    await vi.advanceTimersByTimeAsync(501);
+    fireAppEvent("appUrlOpen", { url });
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledTimes(2);
+    expect(ctx.handleDeepLink).toHaveBeenNthCalledWith(1, url);
+    expect(ctx.handleDeepLink).toHaveBeenNthCalledWith(2, url);
+  });
+
+  it("collapses duplicate appUrlOpen delivery from one native burst", async () => {
+    vi.useFakeTimers();
+    const ctx = makeContext();
+    const lifecycle = createMobileLifecycle(ctx);
+    const url = "elizaos://settings";
+
+    lifecycle.initializeAppLifecycle();
+    await vi.waitFor(() => expect(appListeners.has("appUrlOpen")).toBe(true));
+
+    fireAppEvent("appUrlOpen", { url });
+    fireAppEvent("appUrlOpen", { url });
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
+  });
+
   it("captures a warm URL before the rest of app lifecycle initializes", async () => {
     const ctx = makeContext();
     const lifecycle = createMobileLifecycle(ctx);

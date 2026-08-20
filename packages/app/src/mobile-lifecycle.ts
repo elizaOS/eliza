@@ -47,6 +47,7 @@ let activeOfflineHandler: (() => void) | null = null;
 
 const COLD_LAUNCH_URL_REPLAY_MS = 15_000;
 const COLD_LAUNCH_URL_REPLAY_INTERVAL_MS = 1_000;
+const NATIVE_DEEP_LINK_DELIVERY_BURST_MS = 500;
 
 function unrefTimer(timer: ReturnType<typeof setInterval>): void {
   (timer as unknown as { unref?: () => void }).unref?.();
@@ -62,7 +63,8 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   let deepLinkHandlingReady = false;
   let lifecycleListenersRegistered = false;
   let networkStatusListenerRegistered = false;
-  const handledDeepLinks = new Set<string>();
+  const routedDeepLinks = new Set<string>();
+  const lastRoutedDeepLinkAt = new Map<string, number>();
   const pendingDeepLinks = new Map<string, Array<() => void>>();
 
   function logNativePluginUnavailable(
@@ -142,13 +144,29 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       };
     };
 
-    const captureDeepLinkOnce = (
+    const captureDeepLink = (
       url: string | null | undefined,
+      source: "app-event" | "replay",
       acknowledge?: () => void,
     ): boolean => {
       const trimmed = url?.trim();
       if (!trimmed) return false;
-      if (handledDeepLinks.has(trimmed)) {
+
+      // Capacitor can report one native open through appUrlOpen, getLaunchUrl,
+      // and the Android recovery buffer. Replays are therefore URL-idempotent
+      // for this renderer, while a later appUrlOpen is a new user action and
+      // must remain routable (for example, opening Settings twice). Collapse
+      // only the short delivery burst shared by one native open.
+      const wasAlreadyRouted = routedDeepLinks.has(trimmed);
+      const lastRoutedAt = lastRoutedDeepLinkAt.get(trimmed);
+      const routedRecently =
+        lastRoutedAt !== undefined &&
+        Date.now() - lastRoutedAt <= NATIVE_DEEP_LINK_DELIVERY_BURST_MS;
+      if (
+        pendingDeepLinks.has(trimmed) ||
+        (source === "replay" && wasAlreadyRouted) ||
+        (source === "app-event" && routedRecently)
+      ) {
         if (deepLinkHandlingReady) {
           acknowledge?.();
         } else if (acknowledge) {
@@ -156,7 +174,8 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
         }
         return false;
       }
-      handledDeepLinks.add(trimmed);
+      routedDeepLinks.add(trimmed);
+      lastRoutedDeepLinkAt.set(trimmed, Date.now());
       if (deepLinkHandlingReady) {
         ctx.handleDeepLink(trimmed);
         acknowledge?.();
@@ -171,7 +190,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     // dispatches a URL only into the previous document's dead callback registry.
     void Promise.resolve(
       CapacitorApp.addListener("appUrlOpen", ({ url }) => {
-        captureDeepLinkOnce(url);
+        captureDeepLink(url, "app-event");
       }),
       // error-policy:J4 App plugin unavailable — deep links degrade to the
       // cold-launch replay below / web routing
@@ -189,7 +208,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     const readLaunchUrls = (): void => {
       void CapacitorApp.getLaunchUrl()
         .then((result) => {
-          captureDeepLinkOnce(result?.url);
+          captureDeepLink(result?.url, "replay");
         })
         // error-policy:J4 App plugin unavailable — native replay may still work
         .catch((error) => {
@@ -200,8 +219,9 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
           .peekPendingUrl()
           .then((result) => {
             const url = result?.url;
-            captureDeepLinkOnce(
+            captureDeepLink(
               url,
+              "replay",
               url ? acknowledgeBufferedUrl(url) : undefined,
             );
           })
