@@ -3,14 +3,21 @@
  * serialized with `JSON.stringify` before being bound as a `$1::jsonb`
  * parameter, so JSON escaping is already handled by the serializer;
  * `sanitizeJsonObject` must therefore only strip NUL characters (PostgreSQL/
- * PGlite jsonb rejects the escape JSON.stringify emits for them) and break
- * circular references — nothing else. A prior implementation also doubled
+ * PGlite jsonb rejects the escape JSON.stringify emits for them), break
+ * circular references, and fail closed past a nesting ceiling — nothing else.
+ * A prior implementation also doubled
  * every backslash not followed by an allowlisted escape character and
  * mangled non-hex unicode-escape sequences, so a Windows path like
  * "C:\Users" round-tripped corrupted with doubled backslashes.
  */
+
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { sanitizeJsonObject } from "../../utils";
+import {
+  MAX_SQL_JSON_SANITIZE_DEPTH,
+  SQL_JSON_SANITIZE_UNBOUNDED,
+  sanitizeJsonObject,
+} from "../../sanitize-json";
 
 describe("sanitizeJsonObject", () => {
   it("preserves backslashes exactly (no double-escaping)", () => {
@@ -88,5 +95,38 @@ describe("sanitizeJsonObject", () => {
     expect(sanitized.self).toBeNull();
     // Must be serializable after the cycle is broken
     expect(() => JSON.stringify(sanitized)).not.toThrow();
+  });
+
+  function nestArray(depth: number): unknown {
+    let value: unknown = "leaf";
+    for (let i = 0; i < depth; i++) {
+      value = [value];
+    }
+    return value;
+  }
+
+  it(`accepts a ${MAX_SQL_JSON_SANITIZE_DEPTH}-deep array nest`, () => {
+    expect(sanitizeJsonObject(nestArray(MAX_SQL_JSON_SANITIZE_DEPTH))).toEqual(
+      nestArray(MAX_SQL_JSON_SANITIZE_DEPTH)
+    );
+  });
+
+  it(`throws ${SQL_JSON_SANITIZE_UNBOUNDED} one past depth ${MAX_SQL_JSON_SANITIZE_DEPTH}`, () => {
+    expect(() => sanitizeJsonObject(nestArray(MAX_SQL_JSON_SANITIZE_DEPTH + 1))).toThrowError(
+      ElizaError
+    );
+    try {
+      sanitizeJsonObject(nestArray(MAX_SQL_JSON_SANITIZE_DEPTH + 1));
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(SQL_JSON_SANITIZE_UNBOUNDED);
+      expect(error).not.toBeInstanceOf(RangeError);
+    }
+  });
+
+  it("does not RangeError a 20k array nest", () => {
+    const t0 = performance.now();
+    expect(() => sanitizeJsonObject(nestArray(20_000))).toThrowError(ElizaError);
+    expect(performance.now() - t0).toBeLessThan(50);
   });
 });
