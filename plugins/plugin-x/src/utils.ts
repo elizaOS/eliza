@@ -255,8 +255,14 @@ export async function sendTweet(
     }
 
     try {
-      client.recordLatestCheckedTweetId(profile.id, BigInt(tweetResult.id));
-      await client.cacheLatestCheckedTweetId(profile);
+      // Do NOT advance the mention cursor (`lastCheckedTweetId`) on an outgoing
+      // publish. That cursor is the primary gate `processMentionTweets` uses to
+      // decide which incoming @mentions are new; because a freshly-published
+      // tweet always has the newest snowflake id, moving it here would silently
+      // skip every unprocessed mention that arrived before this post. The
+      // interactions loop owns and persists the cursor, and the self-tweet
+      // filter (`tweet.userId !== profileId`) already prevents self-replies, so
+      // the only local bookkeeping a send needs is caching the tweet itself.
       await client.cacheTweet({
         ...tweetResult,
         userId: profile.id,
