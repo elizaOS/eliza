@@ -15,6 +15,7 @@
 export type StewardOAuthProvider = "google" | "discord" | "github" | "twitter";
 
 const STEWARD_PKCE_VERIFIER_STORAGE_KEY = "steward.oauth.pkce.verifier";
+const STEWARD_PKCE_VERIFIER_COOKIE_KEY = "steward_oauth_pkce_verifier";
 const STEWARD_PKCE_VERIFIER_TTL_MS = 10 * 60 * 1000;
 const PKCE_VERIFIER_BYTES = 48;
 const OAUTH_STATE_BYTES = 32;
@@ -91,6 +92,19 @@ export function storeStewardPkceVerifier(
   } catch {
     // same as above
   }
+  // Some privacy-focused browser profiles discard Web Storage while bouncing
+  // through an external identity provider. Keep the same short-lived record in
+  // a SameSite cookie so the callback can still prove state + PKCE ownership.
+  // It is deleted as soon as the verifier is consumed and never leaves the
+  // first-party Eliza origin.
+  try {
+    // biome-ignore lint/suspicious/noDocumentCookie: broad browser support is required for the Web Storage fallback
+    document.cookie = `${STEWARD_PKCE_VERIFIER_COOKIE_KEY}=${encodeURIComponent(stored)}; Path=/; Max-Age=${Math.floor(STEWARD_PKCE_VERIFIER_TTL_MS / 1000)}; SameSite=Lax${window.location.protocol === "https:" ? "; Secure" : ""}`;
+    storedAnywhere =
+      readStoredPkceRecordFromCookie() !== null || storedAnywhere;
+  } catch {
+    // cookies disabled
+  }
   return storedAnywhere;
 }
 
@@ -100,7 +114,8 @@ export function consumeStewardPkceVerifier(): string | null {
     () => window.sessionStorage,
   );
   const localVerifier = consumeStoredPkceVerifier(() => window.localStorage);
-  return sessionVerifier ?? localVerifier;
+  const cookieVerifier = consumeStoredPkceVerifierFromCookie();
+  return sessionVerifier ?? localVerifier ?? cookieVerifier;
 }
 
 /**
@@ -113,7 +128,35 @@ export function peekStewardOAuthState(): string | null {
   if (typeof window === "undefined") return null;
   const sessionRecord = readStoredPkceRecord(() => window.sessionStorage);
   const localRecord = readStoredPkceRecord(() => window.localStorage);
-  return sessionRecord?.state ?? localRecord?.state ?? null;
+  const cookieRecord = readStoredPkceRecordFromCookie();
+  return (
+    sessionRecord?.state ?? localRecord?.state ?? cookieRecord?.state ?? null
+  );
+}
+
+function readStoredPkceRecordFromCookie(): StoredPkceVerifier | null {
+  try {
+    const prefix = `${STEWARD_PKCE_VERIFIER_COOKIE_KEY}=`;
+    const value = document.cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(prefix))
+      ?.slice(prefix.length);
+    return value ? parseStoredPkceRecord(decodeURIComponent(value)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function consumeStoredPkceVerifierFromCookie(): string | null {
+  const record = readStoredPkceRecordFromCookie();
+  try {
+    // biome-ignore lint/suspicious/noDocumentCookie: delete the compatibility cookie synchronously on consume
+    document.cookie = `${STEWARD_PKCE_VERIFIER_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax${window.location.protocol === "https:" ? "; Secure" : ""}`;
+  } catch {
+    // cookies disabled
+  }
+  return record?.verifier ?? null;
 }
 
 function consumeStoredPkceVerifier(getStorage: () => Storage): string | null {
@@ -135,27 +178,31 @@ function readStoredPkceRecord(
     const storage = getStorage();
     const value = storage.getItem(STEWARD_PKCE_VERIFIER_STORAGE_KEY);
     if (!value) return null;
-    try {
-      const parsed = JSON.parse(value) as Partial<StoredPkceVerifier>;
-      if (
-        typeof parsed.verifier === "string" &&
-        typeof parsed.expiresAt === "number" &&
-        parsed.expiresAt >= Date.now()
-      ) {
-        return {
-          verifier: parsed.verifier,
-          ...(typeof parsed.state === "string" ? { state: parsed.state } : {}),
-          expiresAt: parsed.expiresAt,
-        };
-      }
-      return null;
-    } catch {
-      // Pre-JSON blobs stored the bare verifier string; they carry no state,
-      // so the callback's required state match fails for them by design.
-      return null;
-    }
+    return parseStoredPkceRecord(value);
   } catch {
     // error-policy:J4 web storage unavailable -> no stored record
+    return null;
+  }
+}
+
+function parseStoredPkceRecord(value: string): StoredPkceVerifier | null {
+  try {
+    const parsed = JSON.parse(value) as Partial<StoredPkceVerifier>;
+    if (
+      typeof parsed.verifier === "string" &&
+      typeof parsed.expiresAt === "number" &&
+      parsed.expiresAt >= Date.now()
+    ) {
+      return {
+        verifier: parsed.verifier,
+        ...(typeof parsed.state === "string" ? { state: parsed.state } : {}),
+        expiresAt: parsed.expiresAt,
+      };
+    }
+    return null;
+  } catch {
+    // Pre-JSON blobs stored the bare verifier string; they carry no state,
+    // so the callback's required state match fails for them by design.
     return null;
   }
 }
