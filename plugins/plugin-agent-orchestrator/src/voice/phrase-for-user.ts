@@ -263,6 +263,7 @@ export async function phraseForUser(
     // error-policy:J4 the phrased line is cosmetic voice over caller-owned
     // facts; model rejection/timeout degrades to the factual fallback string,
     // never fabricated data.
+    let callError: string | undefined;
     const raw = await Promise.race([
       Promise.resolve(
         runtime.useModel(ModelType.TEXT_SMALL, {
@@ -271,18 +272,29 @@ export async function phraseForUser(
           maxTokens: 128,
           temperature: 0.7,
         }),
-      ).catch(() => null),
+      ).catch((err) => {
+        callError = err instanceof Error ? err.message : String(err);
+        return null;
+      }),
       timeout,
     ]).finally(() => {
       if (timer) clearTimeout(timer);
     });
     const text = typeof raw === "string" ? tidyModelOutput(raw) : "";
     if (!validatePhrasedText(text, req, maxChars)) {
-      // Reason-tagged: the canned fallbacks kept reaching users and the cause
-      // (timeout vs rejected output) was invisible (2026-08-19).
-      runtime.logger?.debug?.(
+      // WARN, not debug: the canned fallbacks kept reaching users while this
+      // deployment drops plugin debug logs entirely — the cause (timeout vs
+      // model error vs rejected output) was invisible for two days
+      // (2026-08-20). The error text is load-bearing diagnosis.
+      runtime.logger?.warn?.(
         {
-          reason: raw === null ? "timeout-or-error" : "validation-reject",
+          reason:
+            raw === null
+              ? callError
+                ? "model-error"
+                : "timeout"
+              : "validation-reject",
+          ...(callError ? { error: callError.slice(0, 200) } : {}),
           rejected: text.slice(0, 120),
           intent: req.intent,
         },
