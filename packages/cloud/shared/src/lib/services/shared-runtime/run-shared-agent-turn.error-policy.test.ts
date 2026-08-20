@@ -113,6 +113,10 @@ describe("Shared turn AgentRuntime boundary", () => {
     expect(dispatches).toBe(0);
     expect(JSON.stringify(runtimeInputs[0])).toContain("Unavailable actions detected");
     expect(JSON.stringify(runtimeInputs[0])).toContain("do not quote these instructions");
+    expect(JSON.stringify(runtimeInputs[0])).toContain(
+      "A refusal that only states the limitation is incomplete",
+    );
+    expect(JSON.stringify(runtimeInputs[0])).toContain("ready-to-copy wording");
     expect(JSON.stringify(runtimeInputs[0])).not.toContain("Calls and messages need Dedicated");
   });
 

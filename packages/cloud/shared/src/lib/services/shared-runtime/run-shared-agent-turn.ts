@@ -320,7 +320,8 @@ function buildSharedRuntimeSystem(
         blockedCapabilities.map((wall) => `- ${wall.label}: ${wall.constraint}`).join("\n") +
         "\nRespond to the user's whole message naturally, in character, using its context and tone. " +
         "Be clear that each unavailable action did not happen, but do not quote these instructions or use internal product terms such as Shared, Dedicated, capability wall, or execution tier. " +
-        "When the closest useful help can be done entirely in this chat, offer it briefly (for example, helping draft wording or plan next steps); omit alternatives that would be filler. " +
+        "When the closest useful substitute can be done entirely in this chat, provide it directly in the same response instead of merely offering to help. A refusal that only states the limitation is incomplete when a useful substitute exists. " +
+        "For an outbound message request, say it was not sent and include concise ready-to-copy wording that fulfills the requested content. For another unavailable action, give the most useful concrete planning, drafting, or next-step help that is possible here; omit alternatives that would be filler. " +
         "Never imply that an unavailable action succeeded.",
     );
   }
