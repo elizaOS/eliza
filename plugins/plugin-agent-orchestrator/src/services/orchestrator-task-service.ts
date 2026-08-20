@@ -807,7 +807,11 @@ export function residualsOrchestratorOwnedArtifacts(
   session: Pick<OrchestratorTaskSession, "sessionId" | "metadata"> | undefined,
 ): OrchestratorOwnedArtifact[] {
   if (!session) return [];
-  const live = acp?.getOrchestratorOwnedArtifacts(session.sessionId) ?? [];
+  // Optional METHOD call, not just optional receiver: transports (and test
+  // fakes) that predate the artifact registry lack the method entirely, and
+  // the bare call turned the whole auto-verify pass into a silent no-verdict
+  // failure ("acp?.getOrchestratorOwnedArtifacts is not a function").
+  const live = acp?.getOrchestratorOwnedArtifacts?.(session.sessionId) ?? [];
   return live.length > 0
     ? live
     : readOwnedArtifactsFromMetadata(session.metadata);

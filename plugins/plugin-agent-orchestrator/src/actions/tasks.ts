@@ -39,7 +39,10 @@ import {
   detectTaskType,
   type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
-import { markSessionAdministrativelyStopped } from "../services/admin-stop-marker.js";
+import {
+  ADMIN_STOP_META_KEY,
+  markSessionAdministrativelyStopped,
+} from "../services/admin-stop-marker.js";
 import {
   augmentTaskWithDeployGuidance,
   isAppBuildTask,
@@ -845,6 +848,34 @@ async function runPromptViaSmithers(
     }
     completed = true;
   } catch (error) {
+    // A prompt that died because the SESSION was administratively stopped
+    // (user stop, or the interruption path absorbing a follow-up) is a
+    // cancellation, not a failure. The workflow's own terminal says "failed"
+    // either way (the killed worker exits non-zero), so the stamp is the only
+    // reliable signal — surface it as a typed code the lane classifier keys
+    // on, and skip the error event (the router suppresses it via the same
+    // stamp anyway).
+    let adminStopReason: string | undefined;
+    try {
+      const fresh = await service.getSession?.(session.sessionId);
+      const freshMeta = fresh?.metadata as
+        | Record<string, unknown>
+        | undefined;
+      const stamp = freshMeta?.[ADMIN_STOP_META_KEY];
+      if (typeof stamp === "string" && stamp) adminStopReason = stamp;
+    } catch {
+      // error-policy:J4 stamp lookup failure keeps the genuine-failure path.
+    }
+    if (adminStopReason) {
+      throw new ElizaError(
+        `Lane interrupted (${adminStopReason}) — the running child was stopped so a successor can absorb the new instruction`,
+        {
+          code: "LANE_INTERRUPTED",
+          context: { sessionId: session.sessionId, reason: adminStopReason },
+          severity: "ephemeral",
+        },
+      );
+    }
     // error-policy:J1 action boundary translates a durable-run failure into the
     // legacy session-event contract before propagating it to TASKS.
     if (service.emitsPromptTerminalEvents !== true) {
@@ -1776,7 +1807,11 @@ async function runCreateLegacy(
   // cancellation shape is structural: the prompt/workflow terminal carries a
   // cancelled/stopped status, never a spawn error.
   const interruptCancelled = allFailed.filter((result) =>
-    /\b(?:cancell?ed|stopped)\b/i.test(String(result.error ?? "")),
+    // ONLY the typed marker (stamped admin-stop → LANE_INTERRUPTED): a bare
+    // cancelled/stopped prompt with no stamp is a reportable failure — a
+    // text-shape match here silently swallowed those (unit pin: "reports a
+    // cancelled PromptResult as failed").
+    /\bLane interrupted\b/i.test(String(result.error ?? "")),
   );
   if (interruptCancelled.length > 0) {
     logger(runtime).warn(
@@ -3534,6 +3569,65 @@ async function runSend(
     const target = await resolveSession(service, sessionId, state);
 
     if (!target.session) {
+      // Deterministic interrupt redirect: the planner routinely answers a
+      // mid-build follow-up with a SEND, but the interruption path has just
+      // killed that session so a successor can absorb the new instruction —
+      // the send then died SESSION_NOT_FOUND and no successor ever spawned
+      // (live 2026-08-20: "Session 7df50ecd not found." was the user-visible
+      // end of "oh also add a running score counter"). When an
+      // interrupt-stopped predecessor with a recorded task exists in this
+      // room, convert the send into the successor create carrying BOTH the
+      // original task and the follow-up.
+      const followUp = pickString(params, content, "input") ??
+        pickString(params, content, "task");
+      if (followUp) {
+        const roomId = String(_message.roomId ?? "");
+        const all = await Promise.resolve(service.listSessions());
+        const predecessor = [...all]
+          .reverse()
+          .find((candidate) => {
+            const meta = candidate.metadata as
+              | Record<string, unknown>
+              | undefined;
+            return (
+              typeof meta?.[ADMIN_STOP_META_KEY] === "string" &&
+              String(meta[ADMIN_STOP_META_KEY]).includes("interrupt") &&
+              typeof meta.initialTask === "string" &&
+              (!roomId || String(meta.roomId ?? "") === roomId)
+            );
+          });
+        const predecessorMeta = predecessor?.metadata as
+          | Record<string, unknown>
+          | undefined;
+        const rawPredecessorTask =
+          typeof predecessorMeta?.initialTask === "string"
+            ? predecessorMeta.initialTask
+            : "";
+        const marker = "--- User Task ---";
+        const markerAt = rawPredecessorTask.indexOf(marker);
+        const predecessorTask = (
+          markerAt >= 0
+            ? rawPredecessorTask.slice(markerAt + marker.length)
+            : rawPredecessorTask
+        ).trim();
+        if (predecessor && predecessorTask) {
+          logger(runtime).info(
+            `[TASKS:send] target session gone after interrupt; redirecting follow-up to a successor create (predecessor=${predecessor.id})`,
+          );
+          return runCreateLegacy(
+            runtime,
+            _message,
+            state,
+            {
+              ...params,
+              action: "create",
+              task: `${predecessorTask}\n\nFollow-up from the user (fold into the SAME deliverable): ${followUp}`,
+            },
+            content,
+            _callback,
+          );
+        }
+      }
       if (target.missingId) {
         return errorResult(
           "SESSION_NOT_FOUND",
