@@ -1,88 +1,83 @@
 /**
  * Splits text into the first sentence and the rest of the text.
  * Handles common abbreviations to avoid false positives.
+ *
+ * The walk is linear. Origin called `text.substring(0, i).match(/([\w.]+)$/)`
+ * at every abbreviation-period, which is O(n²) on stacked titles
+ * (`"Mr. ".repeat(n)`). Reply/TTS early-emit calls this on streaming model
+ * text; a hostile or degenerate abbreviation run hung the turn.
  */
+
+const ABBREVIATIONS = new Set([
+	"mr",
+	"mrs",
+	"ms",
+	"dr",
+	"prof",
+	"sr",
+	"jr",
+	"st",
+	"vs",
+	"etc",
+	"e.g",
+	"i.e",
+]);
+
+const SENTENCE_END = new Set([".", "?", "!"]);
+const BOUNDARY_FOLLOWERS = new Set([
+	'"',
+	"'",
+	"\u201D",
+	"\u2019",
+	")",
+	"]",
+	"}",
+]);
+const TRAILING_CLOSERS = "\"'\u201D\u2019)]}";
+
+function isAsciiWordChar(ch: string): boolean {
+	return (
+		(ch >= "A" && ch <= "Z") ||
+		(ch >= "a" && ch <= "z") ||
+		(ch >= "0" && ch <= "9") ||
+		ch === "_"
+	);
+}
+
+function isBoundaryFollower(ch: string | undefined): boolean {
+	return ch === undefined || /\s/.test(ch) || BOUNDARY_FOLLOWERS.has(ch);
+}
+
 export function extractFirstSentence(text: string): {
 	first: string;
 	rest: string;
 	/** Whether a sentence boundary was actually found in `text`. */
 	complete: boolean;
 } {
-	// Regex for finding sentence boundaries.
-	// Looks for a period, question mark, or exclamation mark followed by a space or end of string.
-	const abbreviations = [
-		"Mr",
-		"Mrs",
-		"Ms",
-		"Dr",
-		"Prof",
-		"Sr",
-		"Jr",
-		"St",
-		"vs",
-		"etc",
-		"e.g",
-		"i.e",
-	];
-
+	let lastWord = "";
 	let boundaryIndex = -1;
 
-	// Simple iteration to find the first valid boundary
 	for (let i = 0; i < text.length; i++) {
 		const char = text[i];
-		if (".?!".includes(char)) {
-			// Check if it's followed by a space, closing delimiter, or end of string
-			const nextChar = text[i + 1];
-			if (
-				nextChar === undefined ||
-				/\s/.test(nextChar) ||
-				nextChar === '"' ||
-				nextChar === "'" ||
-				nextChar === "\u201D" ||
-				nextChar === "\u2019" ||
-				nextChar === ")" ||
-				nextChar === "]" ||
-				nextChar === "}"
-			) {
-				// Potential boundary. Check prior context for abbreviations.
-				// We look at the word preceding the punctuation.
-				const preText = text.substring(0, i);
-				// Include "." in the preceding word so dotted abbreviations match.
-				// \w excludes ".", so the old \b(\w+)$ extracted only "g" from
-				// "e.g" — the "e.g"/"i.e" list entries were dead and those got split
-				// mid-token (the first-sentence / TTS early-emit path chopped "e.g."
-				// into "e."). Strip a trailing dot before comparing to the list.
-				// No prefix anchor: leftmost matching captures the maximal trailing
-				// [\w.] run, and any other char (space, quote, paren, asterisk, dash)
-				// or start-of-string delimits it — a (?:^|\s) anchor rejected
-				// punctuation-preceded abbreviations ('"Dr' / '(Mr') that the
-				// original \b handled, chopping mid-name.
-				const lastWordMatch = preText.match(/([\w.]+)$/);
-
-				let isAbbreviation = false;
-				if (lastWordMatch) {
-					const lastWord = lastWordMatch[1].replace(/\.$/, "");
-					// Case insensitive check
-					if (
-						abbreviations.some(
-							(abbr) => abbr.toLowerCase() === lastWord.toLowerCase(),
-						)
-					) {
-						isAbbreviation = true;
-					}
+		if (SENTENCE_END.has(char) && isBoundaryFollower(text[i + 1])) {
+			// Include "." in the preceding word so dotted abbreviations match.
+			// Strip a trailing dot before comparing to the list (e.g. "e.g.").
+			const word = lastWord.endsWith(".") ? lastWord.slice(0, -1) : lastWord;
+			if (!ABBREVIATIONS.has(word.toLowerCase())) {
+				boundaryIndex = i + 1;
+				while (
+					boundaryIndex < text.length &&
+					TRAILING_CLOSERS.includes(text[boundaryIndex])
+				) {
+					boundaryIndex++;
 				}
-
-				if (!isAbbreviation) {
-					boundaryIndex = i + 1;
-					while (
-						boundaryIndex < text.length &&
-						"\"'\u201D\u2019)]}".includes(text[boundaryIndex])
-					) {
-						boundaryIndex++;
-					}
-					break;
-				}
+				break;
 			}
+		}
+		if (isAsciiWordChar(char) || char === ".") {
+			lastWord += char;
+		} else {
+			lastWord = "";
 		}
 	}
 

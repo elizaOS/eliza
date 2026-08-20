@@ -115,3 +115,16 @@ describe("hasFirstSentence", () => {
 		expect(hasFirstSentence("See e.g. the")).toBe(false);
 	});
 });
+
+describe("extractFirstSentence quadratic abbreviation runs", () => {
+	it("scans stacked title abbreviations in linear time", () => {
+		const stacked = "Mr. ".repeat(40_000);
+		const started = performance.now();
+		const result = extractFirstSentence(stacked);
+		const elapsed = performance.now() - started;
+		expect(result.complete).toBe(false);
+		expect(result.first.startsWith("Mr.")).toBe(true);
+		// Origin spent ~16s on this input (substring+regex per period).
+		expect(elapsed).toBeLessThan(200);
+	});
+});
