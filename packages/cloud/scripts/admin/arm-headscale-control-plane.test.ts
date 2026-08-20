@@ -42,7 +42,6 @@ interface HeadscaleWorkflow {
       inputs: {
         environment: { options: string[] };
         operation: { options: string[] };
-        skip_nginx_cert: { type: string; default: boolean };
       };
     };
   };
@@ -262,28 +261,6 @@ describe("Headscale protected workflow contract", () => {
     ).run;
     expect(sourceGuard).toContain('production) expected_ref="refs/heads/main"');
     expect(sourceGuard).toContain('if [ "$GITHUB_REF" != "$expected_ref" ]');
-  });
-
-  test("can reach the ACL when the certificate step is the broken thing", () => {
-    // The remote script runs the nginx + Let's Encrypt block BEFORE it writes
-    // acl.hujson and the headscale policy config, so a cert failure aborts the
-    // run with the policy left unconverged. That is exactly what happened on
-    // 2026-08-18: both production runs died at certbot and the corrected ACL
-    // never reached the box. This input is the escape hatch.
-    const inputs = workflow.on.workflow_dispatch.inputs;
-    expect(inputs.skip_nginx_cert.type).toBe("boolean");
-    expect(inputs.skip_nginx_cert.default).toBe(false);
-
-    const converge = namedStep(
-      workflow,
-      "Inspect or converge Headscale control plane",
-    ).run;
-    expect(converge).toContain("args+=(--skip-nginx-cert)");
-    // The script refuses this pairing itself; the workflow must refuse it
-    // before SSH rather than after.
-    expect(converge).toContain(
-      "skip_nginx_cert cannot be combined with legacy vhost retirement",
-    );
   });
 
   test("invokes the reviewed script without exposing a force-reauth input", () => {

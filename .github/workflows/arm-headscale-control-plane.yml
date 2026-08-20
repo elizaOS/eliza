@@ -24,16 +24,6 @@ on:
         required: false
         type: string
         default: ""
-      skip_nginx_cert:
-        description: >-
-          Skip the nginx vhost + Let's Encrypt step. The certificate covers both
-          the canonical and the legacy hostname, so a conflicting server_name on
-          the box fails the whole run - and that step runs BEFORE the ACL and
-          config are written, so a cert failure leaves the policy unconverged.
-          Set this to reach the ACL when the cert is the thing that is broken.
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -52,7 +42,6 @@ jobs:
       TARGET_ENVIRONMENT: ${{ inputs.environment }}
       TARGET_OPERATION: ${{ inputs.operation }}
       TARGET_REVIEWED_LEGACY_VHOST_SHA256: ${{ inputs.reviewed_legacy_vhost_sha256 }}
-      TARGET_SKIP_NGINX_CERT: ${{ inputs.skip_nginx_cert }}
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.ELIZA_PROVISIONING_SSH_KNOWN_HOSTS }}
@@ -199,15 +188,6 @@ jobs:
               )
               ;;
           esac
-          if [ "$TARGET_SKIP_NGINX_CERT" = "true" ]; then
-            # The script rejects this combination itself; fail here with the
-            # reason rather than after SSH has already run.
-            if [ "$TARGET_OPERATION" = "retire-legacy-vhost-and-converge" ]; then
-              echo "::error::skip_nginx_cert cannot be combined with legacy vhost retirement"
-              exit 1
-            fi
-            args+=(--skip-nginx-cert)
-          fi
           "${args[@]}"
 
       - name: Verify dual-SAN public identity and health
