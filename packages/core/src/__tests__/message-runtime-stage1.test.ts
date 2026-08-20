@@ -6,7 +6,8 @@
  * runtime whose useModel returns queued responses (deterministic — no live
  * model, no DB); a few cases assert directly over the services/message.ts source.
  */
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../actions/promote-subactions";
@@ -286,6 +287,63 @@ async function seededPiiSession(): Promise<{
 }
 
 describe("runV5MessageRuntimeStage1", () => {
+	it("persists the trusted MessageService ingress timestamp as trajectory start", async () => {
+		const rootDir = await mkdtemp(join(tmpdir(), "eliza-stage1-ingress-"));
+		const envKeys = [
+			"ELIZA_DISABLE_TRAJECTORY_LOGGING",
+			"ELIZA_TRAJECTORY_DIR",
+			"ELIZA_TRAJECTORY_LOGGING",
+			"ELIZA_TRAJECTORY_REVIEW_MODE",
+			"ELIZA_AWAIT_FACTS_STAGE",
+		] as const;
+		const priorEnv = new Map(
+			envKeys.map((key) => [key, process.env[key]] as const),
+		);
+		try {
+			delete process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
+			process.env.ELIZA_TRAJECTORY_DIR = rootDir;
+			process.env.ELIZA_TRAJECTORY_LOGGING = "1";
+			process.env.ELIZA_TRAJECTORY_REVIEW_MODE = "0";
+			process.env.ELIZA_AWAIT_FACTS_STAGE = "true";
+			const turnStartedAt = Date.now() - 1_250;
+			const runtime = makeRuntime([
+				stage1Response({
+					thought: "A direct greeting needs no tools.",
+					contexts: ["simple"],
+					replyText: "Hello.",
+				}),
+			]);
+
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "hello" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				turnStartedAt,
+			});
+
+			const agentDir = join(rootDir, String(runtime.agentId));
+			const trajectoryFiles = (await readdir(agentDir)).filter((file) =>
+				file.endsWith(".json"),
+			);
+			expect(trajectoryFiles).toHaveLength(1);
+			const trajectory = JSON.parse(
+				await readFile(join(agentDir, trajectoryFiles[0]), "utf8"),
+			) as { startedAt?: number; endedAt?: number };
+			expect(trajectory.startedAt).toBe(turnStartedAt);
+			expect(
+				(trajectory.endedAt ?? 0) - (trajectory.startedAt ?? 0),
+			).toBeGreaterThanOrEqual(1_250);
+		} finally {
+			for (const key of envKeys) {
+				const previous = priorEnv.get(key);
+				if (previous === undefined) delete process.env[key];
+				else process.env[key] = previous;
+			}
+			await rm(rootDir, { recursive: true, force: true });
+		}
+	});
+
 	it("keeps the message pipeline from laundering missing planner inputs through empty fallbacks", async () => {
 		const source = await readFile(
 			join(__dirname, "../services/message.ts"),

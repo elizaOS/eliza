@@ -249,7 +249,7 @@ The current delta fixes those causes without branching on greeting text:
   generic text retrieval cannot re-add an action that the evaluator explicitly
   cleared.
 
-Focused verification for this delta currently covers 361 passing tests: 275
+Focused verification for this delta currently covers 362 passing tests: 276
 agent/core routing, prompt, embedding, and trajectory tests; 17 `eliza-code`
 provider/CLI/status/harness tests; 12 thread-operation evaluator tests; and 57
 first-party Cerebras transport/configuration tests. Core's Node/browser/edge
