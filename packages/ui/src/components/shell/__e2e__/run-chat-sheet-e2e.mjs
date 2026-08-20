@@ -1125,6 +1125,34 @@ async function runContinuumSuite(p, pointer, tag) {
       .count()) === 1 && (await chatState(p)) === "MAXIMIZED",
     `[${tag}-continuum] releasing the held pill→top drag commits MAXIMIZED`,
   );
+  const restoreHandle = p.getByTestId("chat-maximize-restore-handle");
+  assert(
+    (await restoreHandle.count()) === 1 &&
+      (await p
+        .getByTestId("chat-maximize-restore-zone")
+        .locator('[data-testid="chat-maximize-restore-handle"]')
+        .count()) === 1,
+    `[${tag}-continuum] fullscreen shows one compact handle inside the restore gesture target`,
+  );
+  const restoreHandlePaint = await restoreHandle.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return {
+      backgroundColor: style.backgroundColor,
+      height: rect.height,
+      width: rect.width,
+      top: rect.top,
+    };
+  });
+  assert(
+    restoreHandlePaint.width >= 32 &&
+      restoreHandlePaint.width <= 40 &&
+      restoreHandlePaint.height >= 3 &&
+      restoreHandlePaint.height <= 5 &&
+      restoreHandlePaint.top >= 0 &&
+      restoreHandlePaint.backgroundColor !== "rgba(0, 0, 0, 0)",
+    `[${tag}-continuum] fullscreen handle paints compact at the top (${Math.round(restoreHandlePaint.width)}x${Math.round(restoreHandlePaint.height)} @ y=${Math.round(restoreHandlePaint.top)}, ${restoreHandlePaint.backgroundColor})`,
+  );
   // State commits before the desktop width spring finishes. Wait for the
   // painted full-bleed endpoint before evaluating its geometry.
   await waitForPanelEdgeToEdge(p);
@@ -1836,9 +1864,9 @@ async function runFingerTrackingSuite(page) {
   );
   assert(
     down.every(
-      (row) => row.sheetGrabbers === 0 && row.restoreHandles === 0,
+      (row) => row.sheetGrabbers === 0 && row.restoreHandles === 1,
     ),
-    `[finger] held restore does not paint a second handle over the sheet chrome`,
+    `[finger] held restore keeps the single fullscreen handle inside its latched restore target`,
   );
   assert(
     down.every((row) => row.rimMounted),
@@ -3693,6 +3721,13 @@ try {
       )}, h=${Math.round(
         header?.height ?? -1,
       )})`,
+    );
+    const safeAreaHandle = await p
+      .getByTestId("chat-maximize-restore-handle")
+      .boundingBox();
+    assert(
+      !!safeAreaHandle && safeAreaHandle.y >= 30 && safeAreaHandle.y <= 50,
+      `MAX-INSET: fullscreen handle clears the simulated 30px top safe area (y=${Math.round(safeAreaHandle?.y ?? -1)})`,
     );
     await snap(p, "state-maximized-with-inset");
     await p.close();

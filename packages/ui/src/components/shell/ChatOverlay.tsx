@@ -6019,7 +6019,23 @@ export function ChatOverlay({
                 style={{
                   height: `calc(env(safe-area-inset-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
                 }}
-              />
+              >
+                <span
+                  aria-hidden="true"
+                  data-testid="chat-maximize-restore-handle"
+                  className="pointer-events-none absolute left-1/2 h-1 w-9 -translate-x-1/2 rounded-full"
+                  style={{
+                    // The visible bar is INSIDE the existing restore button, so
+                    // fullscreen still has exactly one gesture owner. Keep it
+                    // below the device cutout and otherwise tight to the top.
+                    // The shared shell owns this canonical safe-area variable;
+                    // the 14px optical inset also keeps the full 4px bar visible
+                    // when a tall edge-to-edge viewport overscans its content.
+                    top: "calc(var(--safe-area-top, 0px) + 0.875rem)",
+                    backgroundColor: HANDLE_BAR_COLOR,
+                  }}
+                />
+              </button>
             ) : null}
 
             {/* Sheet header — shown at the HALF detent and up (not just FULL).

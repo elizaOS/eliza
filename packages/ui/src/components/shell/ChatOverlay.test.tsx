@@ -4300,8 +4300,15 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
     // Appears once maximized.
     bigPullUp();
-    expect(screen.getByTestId("chat-maximize-restore-zone")).toBeTruthy();
-    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    const handle = screen.getByTestId("chat-maximize-restore-handle");
+    expect(zone.contains(handle)).toBe(true);
+    expect(handle.getAttribute("aria-hidden")).toBe("true");
+    expect(handle.className).toContain("h-1");
+    expect(handle.className).toContain("w-9");
+    expect(handle.className).toContain("rounded-full");
+    expect(handle.style.backgroundColor).not.toBe("");
+    expect(handle.style.top).toContain("var(--safe-area-top");
   });
 
   it("a downward pull in the top-20% restore zone exits full-bleed back to the overlay (not a full collapse)", () => {
@@ -4346,7 +4353,9 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       pointerId: 81,
     });
     expect(sheet.getAttribute("data-maximized")).toBe("true");
-    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
+    expect(
+      zone.contains(screen.getByTestId("chat-maximize-restore-handle")),
+    ).toBe(true);
     expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     expect(sheet.style.height).toBe("auto");
     fireEvent.pointerUp(zone, {
