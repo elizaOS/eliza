@@ -1017,9 +1017,21 @@ async function runCreateLegacy(
   // children racing each other's writes in one directory. Collapse to a single
   // lane carrying the full instruction; genuine multi-app fan-outs (different
   // targets, creation asks) keep their lanes.
-  if (tasks.length > 1 && isAppEditIntentText(text) && isAppBuildTask(text)) {
+  // A single-repo ask whose PR/submit clause got split into its own lane is
+  // the same disease: "add CONTRIBUTING.md and open a PR" fanned into two
+  // agents, and the second invented unrequested work to justify its lane
+  // (live 2026-08-20: a README edit nobody asked for, plus an overclaimed
+  // "finished that pr" with no PR behind it). Opening the PR is the SUBMIT
+  // step of the one task, never a second agent.
+  const singleRepoPrAsk =
+    /\b(?:repo|repository)\b/i.test(text) &&
+    /\b(?:pr|pull request)\b/i.test(text);
+  if (
+    tasks.length > 1 &&
+    ((isAppEditIntentText(text) && isAppBuildTask(text)) || singleRepoPrAsk)
+  ) {
     logger(runtime).warn(
-      `[TASKS:create] collapsing ${tasks.length} planner lanes to 1 for an edit of an existing app`,
+      `[TASKS:create] collapsing ${tasks.length} planner lanes to 1 (single-deliverable ask)`,
     );
     tasks = [tasks.join("\n")];
   }
