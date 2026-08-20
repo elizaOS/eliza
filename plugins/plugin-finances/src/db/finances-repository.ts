@@ -619,6 +619,64 @@ export class FinancesRepository {
     );
   }
 
+  /**
+   * Deletes provider-removed transactions by their stable external ids.
+   * Returns the number of rows actually deleted so callers can distinguish
+   * a replayed (already-applied) removal from a fresh one.
+   */
+  async deletePaymentTransactionsByExternalIds(
+    agentId: string,
+    sourceId: string,
+    externalIds: string[],
+  ): Promise<number> {
+    if (externalIds.length === 0) {
+      return 0;
+    }
+    const idList = externalIds.map((id) => sqlQuote(id)).join(", ");
+    const rows = await executeRawSql(
+      this.runtime,
+      `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND source_id = ${sqlQuote(sourceId)}
+          AND external_id IN (${idList})
+      RETURNING id`,
+    );
+    return rows.length;
+  }
+
+  /**
+   * Applies a provider "modified" delta in place, keyed on the stable
+   * external id (Plaid transaction_id). Returns false when no row with that
+   * external id exists, so the caller can fall back to an insert.
+   */
+  async updatePaymentTransactionByExternalId(
+    agentId: string,
+    sourceId: string,
+    transaction: LifeOpsPaymentTransaction,
+  ): Promise<boolean> {
+    if (!transaction.externalId) {
+      return false;
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE ${FINANCE_TABLES.paymentTransactions}
+          SET posted_at = ${sqlQuote(transaction.postedAt)},
+              amount_usd = ${sqlNumber(transaction.amountUsd)},
+              direction = ${sqlQuote(transaction.direction)},
+              merchant_raw = ${sqlQuote(transaction.merchantRaw)},
+              merchant_normalized = ${sqlQuote(transaction.merchantNormalized)},
+              description = ${sqlText(transaction.description)},
+              category = ${sqlText(transaction.category)},
+              currency = ${sqlQuote(transaction.currency)},
+              metadata_json = ${sqlJson(transaction.metadata)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND source_id = ${sqlQuote(sourceId)}
+          AND external_id = ${sqlQuote(transaction.externalId)}
+      RETURNING id`,
+    );
+    return rows.length > 0;
+  }
+
   async insertPaymentTransaction(
     transaction: LifeOpsPaymentTransaction,
   ): Promise<boolean> {
