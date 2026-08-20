@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type {
   Action,
   ActionResult,
+  ChoiceInteraction,
   EffectReceipt,
   FormInteraction,
   HandlerCallback,
@@ -13,6 +14,14 @@ import type {
   State,
 } from "@elizaos/core";
 import { appendInteractionBlock } from "@elizaos/core";
+import {
+  appendMapsCard,
+  handoffCard,
+  MAPS_CARD_MAX_PLACES,
+  type MapsLocateCard,
+  routeCard,
+  toCardPlace,
+} from "./card.js";
 import { MapsError } from "./errors.js";
 import { getMapsService, type MapsService } from "./service.js";
 import {
@@ -54,6 +63,10 @@ function text(value: unknown): string | undefined {
 
 function opaqueText(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function flag(value: unknown): boolean {
+  return value === true || value === "true";
 }
 
 function number(value: unknown): number | undefined {
@@ -126,11 +139,90 @@ function missingInput(
       action,
       reason: "missing_input",
       awaitingUserInput: true,
-      missingFields: fields.map((field) => field.name),
+      missingFields: fields
+        .filter((field) => field.required)
+        .map((field) => field.name),
       uiRequest: form,
     },
   };
 }
+
+/**
+ * The request referenced the user's current position but supplied no
+ * coordinates: hand the surface a locate card so it can collect a precise
+ * device location behind the platform permission prompt. Coordinates are never
+ * fabricated server-side.
+ */
+function awaitingLocation(
+  action: MapsSubaction,
+  intent: MapsLocateCard["intent"],
+  prompt: string,
+): ActionResult {
+  const userFacingText = appendMapsCard(prompt, {
+    kind: "locate",
+    intent,
+    prompt,
+  });
+  return {
+    success: false,
+    text: prompt,
+    userFacingText,
+    verifiedUserFacing: true,
+    data: {
+      actionName: "MAPS",
+      action,
+      reason: "missing_location",
+      awaitingUserInput: true,
+    },
+  };
+}
+
+/**
+ * Sharing a location is gated on an explicit in-chat confirmation so a model
+ * turn can never disclose coordinates without the user's visible consent.
+ */
+function shareConfirmation(message: Memory, place: PlaceRef): ActionResult {
+  const prompt = `Share the location of ${place.name}?`;
+  const choice: ChoiceInteraction = {
+    kind: "choice",
+    id: `maps-share-${String(message.id ?? "request")}`,
+    scope: "maps-share",
+    prompt,
+    options: [
+      {
+        value: `Yes, share the location of ${place.name} (confirmed).`,
+        label: "Share location",
+      },
+      { value: "No, do not share my location.", label: "Don't share" },
+    ],
+  };
+  return {
+    success: false,
+    text: prompt,
+    userFacingText: appendInteractionBlock(prompt, choice),
+    verifiedUserFacing: true,
+    data: {
+      actionName: "MAPS",
+      action: "share",
+      reason: "confirmation_required",
+      awaitingUserInput: true,
+      place: toCardPlace(place),
+    },
+  };
+}
+
+const TRAVEL_MODE_FIELD = {
+  name: "travelMode",
+  type: "select",
+  label: "Travel mode",
+  required: false,
+  options: [
+    { value: "drive", label: "Drive" },
+    { value: "walk", label: "Walk" },
+    { value: "bicycle", label: "Bicycle" },
+    { value: "transit", label: "Transit" },
+  ],
+} as const satisfies FormInteraction["fields"][number];
 
 function directPlace(params: Params, prefix = ""): PlaceRef | null {
   const field = (name: string) =>
@@ -272,9 +364,12 @@ async function execute(
             {
               success: true,
               text: `Found ${place.name}.`,
-              userFacingText: place.formattedAddress
-                ? `${place.name} — ${place.formattedAddress}`
-                : place.name,
+              userFacingText: appendMapsCard(
+                place.formattedAddress
+                  ? `${place.name} — ${place.formattedAddress}`
+                  : place.name,
+                { kind: "place", place: toCardPlace(place) },
+              ),
               verifiedUserFacing: true,
               data: { actionName: "MAPS", action, status: "found", place },
             },
@@ -295,6 +390,12 @@ async function execute(
                   label: "Place or address",
                   required: true,
                 },
+                {
+                  name: "limit",
+                  type: "number",
+                  label: "Max results (1-100)",
+                  required: false,
+                },
               ],
               "What place or address should I look up?",
             ),
@@ -303,6 +404,21 @@ async function execute(
         }
         const latitude = number(params.latitude);
         const longitude = number(params.longitude);
+        if (
+          flag(params.useCurrentLocation) &&
+          latitude === undefined &&
+          longitude === undefined
+        ) {
+          return result(
+            action,
+            awaitingLocation(
+              action,
+              "place-near",
+              `I need your precise location to search near you for “${query}”.`,
+            ),
+            callback,
+          );
+        }
         const near =
           latitude !== undefined || longitude !== undefined
             ? validated(
@@ -330,7 +446,17 @@ async function execute(
               : `Found ${page.places.length} place${page.places.length === 1 ? "" : "s"}.`,
             userFacingText: empty
               ? "No matching places were found."
-              : page.places.map((place) => place.name).join("\n"),
+              : appendMapsCard(
+                  page.places.map((place) => place.name).join("\n"),
+                  {
+                    kind: "places",
+                    query,
+                    places: page.places
+                      .slice(0, MAPS_CARD_MAX_PLACES)
+                      .map(toCardPlace),
+                    nextCursor: page.nextCursor,
+                  },
+                ),
             verifiedUserFacing: true,
             data: {
               actionName: "MAPS",
@@ -355,6 +481,17 @@ async function execute(
           (destinationPlaceId
             ? await service.getPlace(destinationPlaceId, text(params.provider))
             : null);
+        if (!origin && destination && flag(params.useCurrentLocation)) {
+          return result(
+            action,
+            awaitingLocation(
+              action,
+              "route-origin",
+              `I need your precise location to start the route to ${destination.name}.`,
+            ),
+            callback,
+          );
+        }
         if (!origin || !destination) {
           const unresolvedFields: FormInteraction["fields"] = [];
           if (!origin) {
@@ -373,6 +510,7 @@ async function execute(
               required: true,
             });
           }
+          unresolvedFields.push(TRAVEL_MODE_FIELD);
           return result(
             action,
             missingInput(
@@ -406,7 +544,10 @@ async function execute(
           {
             success: true,
             text: `${route.distanceMeters} m, about ${minutes} min by ${route.travelMode}.`,
-            userFacingText: `${route.origin.name} to ${route.destination.name}: about ${minutes} min by ${route.travelMode}.`,
+            userFacingText: appendMapsCard(
+              `${route.origin.name} to ${route.destination.name}: about ${minutes} min by ${route.travelMode}.`,
+              routeCard(route),
+            ),
             verifiedUserFacing: true,
             data: { actionName: "MAPS", action, route },
           },
@@ -559,22 +700,35 @@ async function execute(
             callback,
           );
         }
+        if (action === "share" && !flag(params.confirm)) {
+          return result(action, shareConfirmation(message, place), callback);
+        }
         const handoff =
           action === "share"
             ? service.createShareHandoff(place)
             : service.createNavigationHandoff(place);
-        const userFacingText =
+        const sharedAt =
+          action === "share" ? new Date().toISOString() : undefined;
+        const prose =
           action === "share"
-            ? `Share ${place.name}: ${handoff.uri}`
+            ? `Shared ${place.name}: ${handoff.uri}`
             : `Open navigation to ${place.name}: ${handoff.uri}`;
         return result(
           action,
           {
             success: true,
-            text: userFacingText,
-            userFacingText,
+            text: prose,
+            userFacingText: appendMapsCard(
+              prose,
+              handoffCard(handoff, sharedAt),
+            ),
             verifiedUserFacing: true,
-            data: { actionName: "MAPS", action, handoff },
+            data: {
+              actionName: "MAPS",
+              action,
+              handoff,
+              ...(sharedAt ? { sharedAt } : {}),
+            },
           },
           callback,
         );
@@ -747,6 +901,22 @@ export const mapsAction: Action = {
       required: false,
       schema: { type: "string", enum: ["drive", "walk", "bicycle", "transit"] },
       subactions: ["route"],
+    },
+    {
+      name: "useCurrentLocation",
+      description:
+        "True when the request references the user's current position and no coordinates were supplied; the chat surface then collects a precise device location.",
+      required: false,
+      schema: { type: "boolean" },
+      subactions: ["place", "route"],
+    },
+    {
+      name: "confirm",
+      description:
+        "Required true to emit a share link; without it the user is asked to confirm sharing their location.",
+      required: false,
+      schema: { type: "boolean" },
+      subactions: ["share"],
     },
     {
       name: "label",

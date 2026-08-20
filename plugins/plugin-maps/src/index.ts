@@ -2,6 +2,7 @@
 
 export * from "./action.js";
 export * from "./adapter.js";
+export * from "./card.js";
 export * from "./errors.js";
 export * from "./google.js";
 export { default, mapsPlugin } from "./plugin.js";
