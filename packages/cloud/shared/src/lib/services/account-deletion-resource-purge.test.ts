@@ -32,6 +32,9 @@ function orderedDependencies(
     deleteBillingCustomer: mock(async () => {
       events.push("delete-customer");
     }),
+    prepareManagedDomains: mock(async () => {
+      events.push("prepare-domains");
+    }),
     listAgentIds: mock(async () => ["agent-1", "agent-2"]),
     deleteAgent: mock(async (id) => {
       events.push(`delete-${id}`);
@@ -64,6 +67,7 @@ describe("personal organization resource purge", () => {
     expect(events).toEqual([
       "disable-billing",
       "delete-customer",
+      "prepare-domains",
       "delete-agent-1",
       "delete-agent-2",
       "delete-app-1",
@@ -88,9 +92,34 @@ describe("personal organization resource purge", () => {
         dependencies,
       }),
     ).rejects.toThrow("container unavailable");
-    expect(events).toEqual(["disable-billing", "delete-customer", "delete-agent-1"]);
+    expect(events).toEqual([
+      "disable-billing",
+      "delete-customer",
+      "prepare-domains",
+      "delete-agent-1",
+    ]);
     expect(dependencies.deleteApp).not.toHaveBeenCalled();
     expect(dependencies.purgeObjectStorage).not.toHaveBeenCalled();
+  });
+
+  test("stops before hosted-resource destruction when a registered domain needs transfer", async () => {
+    const events: string[] = [];
+    const dependencies = orderedDependencies(events, {
+      prepareManagedDomains: mock(async () => {
+        events.push("prepare-domains");
+        throw new Error("registered domain requires transfer");
+      }),
+    });
+
+    await expect(
+      purgePersonalOrganizationResources({
+        organizationId,
+        blob: fakeBucket(),
+        dependencies,
+      }),
+    ).rejects.toThrow("requires transfer");
+    expect(events).toEqual(["disable-billing", "delete-customer", "prepare-domains"]);
+    expect(dependencies.deleteAgent).not.toHaveBeenCalled();
   });
 });
 

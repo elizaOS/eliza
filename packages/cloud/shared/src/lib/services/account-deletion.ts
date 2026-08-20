@@ -45,12 +45,34 @@ export async function getOpenAccountDeletionRequest(userId: string) {
   return await accountDeletionRequestsRepository.findOpenByUserId(userId);
 }
 
-export async function requestAccountDeletion(input: {
-  userId: string;
-  organizationId: string;
-  stewardUserId: string;
-  now?: Date;
-}): Promise<AccountDeletionRequest> {
+export interface RequestAccountDeletionDependencies {
+  deactivateStewardUser: typeof deactivateStewardPlatformUser;
+  updateUser: typeof usersService.update;
+  deactivateApiKeys: typeof apiKeysRepository.deactivateByUserAndOrganization;
+  endUserSessions: typeof userSessionsService.endAllUserSessions;
+  updateOrganization: typeof organizationsService.update;
+}
+
+function defaultRequestDependencies(): RequestAccountDeletionDependencies {
+  return {
+    deactivateStewardUser: deactivateStewardPlatformUser,
+    updateUser: (userId, data) => usersService.update(userId, data),
+    deactivateApiKeys: (userId, organizationId) =>
+      apiKeysRepository.deactivateByUserAndOrganization(userId, organizationId),
+    endUserSessions: (userId) => userSessionsService.endAllUserSessions(userId),
+    updateOrganization: (organizationId, data) => organizationsService.update(organizationId, data),
+  };
+}
+
+export async function requestAccountDeletion(
+  input: {
+    userId: string;
+    organizationId: string;
+    stewardUserId: string;
+    now?: Date;
+  },
+  dependencies: RequestAccountDeletionDependencies = defaultRequestDependencies(),
+): Promise<AccountDeletionRequest> {
   const now = input.now ?? new Date();
   const members = await usersRepository.listByOrganization(input.organizationId);
   const current = members.find((member) => member.id === input.userId);
@@ -80,14 +102,14 @@ export async function requestAccountDeletion(input: {
   if (request.status === "scheduled") return request;
 
   try {
-    await deactivateStewardPlatformUser(input.stewardUserId);
-    await usersService.update(input.userId, { is_active: false, deleted_at: now });
+    await dependencies.deactivateStewardUser(input.stewardUserId);
+    await dependencies.updateUser(input.userId, { is_active: false, deleted_at: now });
     await Promise.all([
-      apiKeysRepository.deactivateByUserAndOrganization(input.userId, input.organizationId),
-      userSessionsService.endAllUserSessions(input.userId),
+      dependencies.deactivateApiKeys(input.userId, input.organizationId),
+      dependencies.endUserSessions(input.userId),
     ]);
     if (members.length === 1) {
-      await organizationsService.update(input.organizationId, { is_active: false });
+      await dependencies.updateOrganization(input.organizationId, { is_active: false });
     }
     const scheduled = await accountDeletionRequestsRepository.update(request.id, {
       status: "scheduled",
@@ -126,6 +148,9 @@ export interface ProcessAccountDeletionResult {
 export interface ProcessAccountDeletionResources {
   blob: RuntimeR2Bucket;
   purgeOrganizationResources?: typeof purgePersonalOrganizationResources;
+  deleteStewardUser?: typeof deleteStewardPlatformUser;
+  findUserForWrite?: typeof usersRepository.findByIdForWrite;
+  deletePersonalAccount?: typeof usersService.deletePersonalAccount;
 }
 
 /**
@@ -157,12 +182,17 @@ export async function processDueAccountDeletions(
         organizationId: request.organization_id,
         blob: resources.blob,
       });
-      await deleteStewardPlatformUser(request.steward_user_id);
-      const user = await usersRepository.findByIdForWrite(request.user_id);
+      await (resources.deleteStewardUser ?? deleteStewardPlatformUser)(request.steward_user_id);
+      const user = await (
+        resources.findUserForWrite ?? ((userId) => usersRepository.findByIdForWrite(userId))
+      )(request.user_id);
       if (!user) {
         throw new Error("Cloud user disappeared before database erasure completed");
       }
-      await usersService.deletePersonalAccount(request.user_id, request.organization_id);
+      await (
+        resources.deletePersonalAccount ??
+        ((userId, organizationId) => usersService.deletePersonalAccount(userId, organizationId))
+      )(request.user_id, request.organization_id);
       await accountDeletionRequestsRepository.update(request.id, {
         status: "completed",
         completed_at: new Date(),

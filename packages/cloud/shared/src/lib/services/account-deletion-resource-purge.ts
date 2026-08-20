@@ -9,11 +9,13 @@ import { logger } from "../utils/logger";
 import { deleteAppWithCleanup } from "./app-cleanup";
 import { appsService } from "./apps";
 import { elizaSandboxService } from "./eliza-sandbox";
+import { managedDomainsService } from "./managed-domains";
 import { voiceCloningService } from "./voice-cloning";
 
 export interface AccountDeletionResourcePurgeDependencies {
   disableBilling(organizationId: string): Promise<string | null>;
   deleteBillingCustomer(customerId: string): Promise<void>;
+  prepareManagedDomains(organizationId: string): Promise<void>;
   listAgentIds(organizationId: string): Promise<string[]>;
   deleteAgent(agentId: string, organizationId: string): Promise<void>;
   listAppIds(organizationId: string): Promise<string[]>;
@@ -48,7 +50,7 @@ export async function purgeOrganizationObjectStorage(
 
   let cursor: string | undefined;
   let truncated = true;
-  let deleted = 0;
+  const keysToDelete: string[] = [];
   const seenCursors = new Set<string>();
   while (truncated) {
     const page = await bucket.list({ cursor, include: ["customMetadata"], limit: 1_000 });
@@ -59,8 +61,7 @@ export async function purgeOrganizationObjectStorage(
           : false,
       )
       .map((object) => object.key as string);
-    await Promise.all(keys.map((key) => bucket.delete(key)));
-    deleted += keys.length;
+    keysToDelete.push(...keys);
 
     truncated = page.truncated;
     if (!truncated) break;
@@ -71,7 +72,10 @@ export async function purgeOrganizationObjectStorage(
     cursor = page.cursor;
   }
 
-  return deleted;
+  for (let index = 0; index < keysToDelete.length; index += 100) {
+    await Promise.all(keysToDelete.slice(index, index + 100).map((key) => bucket.delete(key)));
+  }
+  return keysToDelete.length;
 }
 
 export function defaultAccountDeletionResourcePurgeDependencies(): AccountDeletionResourcePurgeDependencies {
@@ -90,6 +94,20 @@ export function defaultAccountDeletionResourcePurgeDependencies(): AccountDeleti
         await getStripe().customers.del(customerId);
       } catch (error) {
         if (!isMissingStripeResource(error)) throw error;
+      }
+    },
+    async prepareManagedDomains(organizationId) {
+      const domains = await managedDomainsService.listForOrganization(organizationId);
+      const registered = domains.filter((domain) => domain.registrar === "cloudflare");
+      await Promise.all(
+        registered
+          .filter((domain) => domain.autoRenew)
+          .map((domain) => managedDomainsService.setAutoRenew(domain.id, false)),
+      );
+      if (registered.length > 0) {
+        throw new Error(
+          "Registered domains must be transferred or released before account deletion can complete",
+        );
       }
     },
     async listAgentIds(organizationId) {
@@ -112,6 +130,7 @@ export function defaultAccountDeletionResourcePurgeDependencies(): AccountDeleti
       const result = await deleteAppWithCleanup(appId, {
         continueOnError: false,
         deleteGitHubRepo: true,
+        requireContainerTeardownCompletion: true,
       });
       if (!result.success) throw new Error(result.errors.join("; "));
     },
@@ -121,7 +140,7 @@ export function defaultAccountDeletionResourcePurgeDependencies(): AccountDeleti
       let hasMore = true;
       while (hasMore) {
         const result = await userVoicesRepository.listByOrganization(organizationId, {
-          includeInactive: true,
+          includeInactive: false,
           limit: 100,
           offset,
         });
@@ -149,6 +168,7 @@ export async function purgePersonalOrganizationResources(input: {
   const dependencies = input.dependencies ?? defaultAccountDeletionResourcePurgeDependencies();
   const customerId = await dependencies.disableBilling(input.organizationId);
   if (customerId) await dependencies.deleteBillingCustomer(customerId);
+  await dependencies.prepareManagedDomains(input.organizationId);
 
   for (const agentId of await dependencies.listAgentIds(input.organizationId)) {
     await dependencies.deleteAgent(agentId, input.organizationId);

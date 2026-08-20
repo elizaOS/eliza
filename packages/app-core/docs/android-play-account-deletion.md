@@ -27,14 +27,25 @@ qualify.
 3. Steward identity access, Cloud sessions, and user API keys are disabled
    immediately. A sole-user organization is also disabled.
 4. The request is due after 30 days. A CRON-secret-protected processor claims
-   rows with a database lock, deletes the Steward identity, and deletes the
-   Cloud user. Last-user deletion cascades through the personal organization.
-5. Interrupted claims are recovered. Failed purges retry hourly up to five
+   rows with a database lock, disables billing and removes the Stripe customer,
+   deletes agent/container, app/GitHub, cloned-voice, and R2 object resources,
+   then deletes the Steward identity.
+5. Database erasure deletes the sole-user personal organization first, in one
+   transaction, so declared cascades remove the user and associated content.
+   Any restrictive retention FK rolls the whole transaction back instead of
+   leaving a half-deleted account that a retry could falsely complete.
+6. App containers use the existing daemon teardown queue. The account request
+   remains retryable and the app row remains present until the daemon confirms
+   every container is gone; only then can app and organization deletion finish.
+7. Cloudflare-registered domains are an external asset rather than disposable
+   app data. Their auto-renewal is disabled and deletion pauses for an operator
+   to transfer or release the registration. External domains need no transfer.
+8. Interrupted claims are recovered. Failed purges retry hourly up to five
    attempts and then become `action_required` for operator resolution. The
    receipt survives user/org deletion; account identifiers are cleared on
    completion so only the request ID, timestamps, state, and bounded result
    metadata remain.
-6. A sole owner of a multi-user organization must transfer ownership first;
+9. A sole owner of a multi-user organization must transfer ownership first;
    shared-organization content remains owned by that organization.
 
 ## Retention disclosure
@@ -82,8 +93,19 @@ logging, and bundled SDK behavior.
   `platform:user-lifecycle:write` and `platform:user:delete` scopes.
 - Schedule authenticated POST requests to
   `/api/cron/process-account-deletions` at least hourly.
+- Configure and verify Stripe, ElevenLabs, GitHub, container-daemon, and R2
+  deletion credentials in staging. The processor fails closed when one is
+  unavailable; it must never mark the receipt complete after a partial purge.
+- Monitor `action_required` receipts by request ID. Resolve registered-domain
+  transfer/release and any legitimate retained-record FK before replaying the
+  request. Do not put email, domain, provider errors, or other PII into the
+  durable receipt or operator ticket title.
 - Exercise create account → delete request → immediate sign-in denial → forced
-  due-date processing → confirmed Steward/Cloud absence in staging.
+  due-date processing → confirmed Steward/Cloud/provider absence in staging.
+- Exercise an account with a deployed app: first run must queue container
+  teardown without deleting the app row; a later run after daemon completion
+  must finish. Exercise a registered-domain account and confirm auto-renew is
+  disabled while completion stays blocked for transfer/release.
 - Deploy the web/API revision and verify both public URLs without authentication.
 - Enter the URLs and Data safety answers in Play Console as a draft and review
   the listing preview before submission.
