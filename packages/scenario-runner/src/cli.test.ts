@@ -29,6 +29,7 @@ import {
   writeReport as writeReportToDisk,
   writeScenarioRunViewer as writeScenarioRunViewerToDisk,
 } from "./reporter.ts";
+import { scenarioLiveProviderPreflightProblems } from "./runtime-factory.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
 const ENV_KEYS = [
@@ -38,6 +39,9 @@ const ENV_KEYS = [
   "ELIZA_LIFEOPS_RUN_ID",
   "ELIZA_LIFEOPS_SCENARIO_ID",
   "LIFEOPS_LIVE_JUDGE_MIN_SCORE",
+  "OPENAI_API_KEY",
+  "CEREBRAS_API_KEY",
+  "SCENARIO_JUDGE_REQUIRE_INDEPENDENT",
   "SKIP_REASON",
 ] as const;
 const DETERMINISTIC_PROVIDER_NAME = "deterministic-model-provider" as const;
@@ -219,6 +223,7 @@ function createDependencies(
   return {
     availableProviderNames: vi.fn(() => ["unit-test"]),
     shouldUseDeterministicModel: vi.fn(() => true),
+    scenarioLiveProviderPreflightProblems: vi.fn(() => []),
     createScenarioRuntime: vi.fn(async () => ({
       runtime: {} as never,
       pgliteDir: tmpdir(),
@@ -282,7 +287,7 @@ describe("scenario-runner CLI", () => {
     vi.restoreAllMocks();
   });
 
-  it("parses run filters and rejects invalid lanes without exiting the process", () => {
+  it("parses run filters and provider selection, rejecting invalid values", () => {
     const parsed = parseArgs([
       "run",
       tempDir,
@@ -290,6 +295,8 @@ describe("scenario-runner CLI", () => {
       "alpha,beta",
       "--lane",
       "pr-deterministic",
+      "--provider",
+      "cli",
       "nested/*.scenario.ts",
     ]);
 
@@ -297,10 +304,119 @@ describe("scenario-runner CLI", () => {
     expect(parsed.dir).toBe(path.resolve(tempDir));
     expect([...(parsed.filter ?? [])]).toEqual(["alpha", "beta"]);
     expect(parsed.lane).toBe("pr-deterministic");
+    expect(parsed.provider).toBe("cli");
     expect(parsed.fileGlobs).toEqual(["nested/*.scenario.ts"]);
     expect(() => parseArgs(["list", tempDir, "--lane", "bad-lane"])).toThrow(
       CliUsageError,
     );
+    expect(() =>
+      parseArgs(["run", tempDir, "--provider", "not-a-provider"]),
+    ).toThrow(CliUsageError);
+  });
+
+  it("passes the requested live provider to runtime construction", async () => {
+    writeScenario(tempDir, "provider-selected", { lane: "live-only" });
+    const createScenarioRuntime = vi.fn(
+      createDependencies(() => "passed").createScenarioRuntime,
+    );
+    const dependencies = createDependencies(() => "passed", {
+      availableProviderNames: vi.fn(() => ["anthropic"]),
+      shouldUseDeterministicModel: vi.fn(() => false),
+      createScenarioRuntime,
+    });
+
+    await expect(
+      runCli(["run", tempDir, "--provider", "anthropic"], dependencies),
+    ).resolves.toBe(0);
+    expect(createScenarioRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredProvider: "anthropic" }),
+    );
+  });
+
+  it("fails before runtime construction when a requested provider is unavailable or deterministic mode is enabled", async () => {
+    writeScenario(tempDir, "provider-preflight", { lane: "live-only" });
+    const createScenarioRuntime = vi.fn();
+
+    await expect(
+      runCli(
+        ["run", tempDir, "--provider", "anthropic"],
+        createDependencies(() => "passed", {
+          availableProviderNames: vi.fn(() => ["openai"]),
+          shouldUseDeterministicModel: vi.fn(() => false),
+          createScenarioRuntime,
+        }),
+      ),
+    ).resolves.toBe(2);
+    expect(stderr).toContain("requested provider anthropic is unavailable");
+    expect(createScenarioRuntime).not.toHaveBeenCalled();
+
+    stderr = "";
+    await expect(
+      runCli(
+        ["run", tempDir, "--provider", "openai"],
+        createDependencies(() => "passed", {
+          availableProviderNames: vi.fn(() => ["openai"]),
+          shouldUseDeterministicModel: vi.fn(() => true),
+          createScenarioRuntime,
+        }),
+      ),
+    ).resolves.toBe(2);
+    expect(stderr).toContain(
+      "cannot be combined with deterministic model mode",
+    );
+    expect(createScenarioRuntime).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [undefined, "missing"],
+    ["   ", "blank"],
+  ] as const)(
+    "fails before runtime construction when the requested provider credential is %s",
+    async (openaiKey) => {
+      writeScenario(tempDir, "provider-exact-key", { lane: "live-only" });
+      const createScenarioRuntime = vi.fn();
+      process.env.CEREBRAS_API_KEY = "judge-key";
+      process.env.SCENARIO_JUDGE_REQUIRE_INDEPENDENT = "1";
+      if (openaiKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = openaiKey;
+
+      await expect(
+        runCli(
+          ["run", tempDir, "--provider", "openai"],
+          createDependencies(() => "passed", {
+            availableProviderNames: vi.fn(() => ["openai"]),
+            shouldUseDeterministicModel: vi.fn(() => false),
+            scenarioLiveProviderPreflightProblems,
+            createScenarioRuntime,
+          }),
+        ),
+      ).resolves.toBe(2);
+      expect(stderr).toContain("--provider openai requires OPENAI_API_KEY");
+      expect(createScenarioRuntime).not.toHaveBeenCalled();
+    },
+  );
+
+  it("fails before runtime construction when acting and judge identities match", async () => {
+    writeScenario(tempDir, "provider-independent-judge", {
+      lane: "live-only",
+    });
+    const createScenarioRuntime = vi.fn();
+
+    await expect(
+      runCli(
+        ["run", tempDir, "--provider", "openai"],
+        createDependencies(() => "passed", {
+          availableProviderNames: vi.fn(() => ["openai"]),
+          shouldUseDeterministicModel: vi.fn(() => false),
+          scenarioLiveProviderPreflightProblems: vi.fn(() => [
+            "acting provider cerebras cannot also be the independent judge provider",
+          ]),
+          createScenarioRuntime,
+        }),
+      ),
+    ).resolves.toBe(2);
+    expect(stderr).toContain("cannot also be the independent judge provider");
+    expect(createScenarioRuntime).not.toHaveBeenCalled();
   });
 
   it("forwards declared plugins to a simulated scenario runtime", async () => {

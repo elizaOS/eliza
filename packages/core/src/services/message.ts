@@ -5572,6 +5572,7 @@ export function messageHandlerFromFieldResult(
 		requestedPlanning &&
 		!modelCommittedToDelegation &&
 		!modelCommittedToPlanning &&
+		!looksLikeWebSearchRequest(currentMessageText) &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
 			candidateActions: runnableCandidateActions,

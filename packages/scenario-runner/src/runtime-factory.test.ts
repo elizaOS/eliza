@@ -9,8 +9,77 @@ import {
   loadScenarioTestMocksForTests,
   resolveScenarioDeterministicModelCall,
   resolveScenarioProviderConfig,
+  scenarioLiveProviderPreflightProblems,
   shouldUseDeterministicModel,
 } from "./runtime-factory";
+
+describe("scenario live provider preflight", () => {
+  const cerebrasActingConfig = {
+    name: "openai" as const,
+    apiKey: "acting-key",
+    baseUrl: "https://api.cerebras.ai/v1",
+    smallModel: "acting-model",
+    largeModel: "acting-model",
+    pluginPackage: "@elizaos/plugin-openai",
+    env: { ELIZA_PROVIDER: "cerebras" },
+  };
+
+  it.each([undefined, "   "])(
+    "rejects an explicitly selected OpenAI planner when OPENAI_API_KEY is %s",
+    (openaiKey) => {
+      const env = {
+        OPENAI_API_KEY: openaiKey,
+        CEREBRAS_API_KEY: "judge-key",
+        SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1",
+      };
+
+      expect(
+        scenarioLiveProviderPreflightProblems(
+          "openai",
+          cerebrasActingConfig,
+          env,
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("--provider openai requires OPENAI_API_KEY"),
+          expect.stringContaining(
+            "acting provider cerebras cannot also be the independent judge provider",
+          ),
+        ]),
+      );
+    },
+  );
+
+  it("accepts exact planner and distinct judge identities", () => {
+    expect(
+      scenarioLiveProviderPreflightProblems(
+        "openai",
+        {
+          ...cerebrasActingConfig,
+          apiKey: "openai-key",
+          baseUrl: "https://api.openai.com/v1",
+          env: {},
+        },
+        {
+          OPENAI_API_KEY: "openai-key",
+          CEREBRAS_API_KEY: "judge-key",
+          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1",
+        },
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects strict same-provider judging even when the acting key is populated", () => {
+    expect(
+      scenarioLiveProviderPreflightProblems(undefined, cerebrasActingConfig, {
+        CEREBRAS_API_KEY: "shared-key",
+        SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1",
+      }),
+    ).toContain(
+      "acting provider cerebras cannot also be the independent judge provider",
+    );
+  });
+});
 
 describe("scenario runtime deterministic model mode", () => {
   it("can be enabled explicitly through runtime options", () => {
@@ -37,6 +106,15 @@ describe("scenario runtime deterministic model mode", () => {
       env: {},
       pluginPackage: null,
     });
+  });
+
+  it("rejects an explicit live provider when deterministic mode is enabled", () => {
+    expect(() =>
+      resolveScenarioProviderConfig(
+        { preferredProvider: "openai", useDeterministicModel: true },
+        {},
+      ),
+    ).toThrow(/cannot be combined with the deterministic model provider/);
   });
 
   it("loads scenario test helpers while the model provider comes from core testing", async () => {

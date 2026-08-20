@@ -291,6 +291,11 @@ describe("looksLikeLocalShellRequest", () => {
 describe("looksLikeWebSearchRequest", () => {
 	it("fires on explicit search or current-market/news intent", () => {
 		expect(looksLikeWebSearchRequest("search the web for elizaOS")).toBe(true);
+		expect(
+			looksLikeWebSearchRequest(
+				"Fetch https://httpstat.us/503 and summarize the response",
+			),
+		).toBe(true);
 		expect(looksLikeWebSearchRequest("what is the current price of BTC")).toBe(
 			true,
 		);
