@@ -35,6 +35,7 @@ export const VOICE_STREAM_PROTOCOL = "delta-v2" as const;
 const MAX_SERVER_TIMING_HEADER_CHARS = 2_048;
 const MAX_SERVER_TIMING_ENTRIES = 16;
 const MAX_SERVER_TIMING_DURATION_MS = 10 * 60 * 1_000;
+const CANONICAL_SERVER_TIMING_DURATION = /^(?:0|[1-9]\d{0,5})(?:\.\d)?$/;
 const SERVER_TIMING_METRICS = [
   "parse",
   "bridge",
@@ -93,6 +94,7 @@ export function parseElizaServerTiming(raw: string | null): ElizaServerTimingRec
       .find((param) => param.toLowerCase().startsWith("dur="))
       ?.slice(4);
     if (!durationText) continue;
+    if (!CANONICAL_SERVER_TIMING_DURATION.test(durationText)) continue;
     const duration = Number(durationText);
     if (!Number.isFinite(duration) || duration < 0 || duration > MAX_SERVER_TIMING_DURATION_MS) {
       continue;
