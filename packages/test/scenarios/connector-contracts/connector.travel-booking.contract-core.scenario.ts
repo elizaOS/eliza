@@ -1,4 +1,4 @@
-/** Proves an approved Duffel booking commits once and is readable from the durable approval ledger. */
+/** Proves an approved Duffel hold commits once without payment and is durably readable. */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
@@ -21,12 +21,12 @@ const offer = {
   id: "off_contract_123",
   total_amount: "299.50",
   total_currency: "USD",
-  expires_at: "2026-08-20T18:00:00Z",
+  expires_at: "2027-08-20T18:00:00Z",
   passengers: [{ id: "pas_contract_1", type: "adult" }],
   payment_requirements: {
     requires_instant_payment: false,
-    price_guarantee_expires_at: "2026-08-20T18:00:00Z",
-    payment_required_by: "2026-08-21T18:00:00Z",
+    price_guarantee_expires_at: "2027-08-20T18:00:00Z",
+    payment_required_by: "2027-08-21T18:00:00Z",
   },
   slices: [
     {
@@ -38,8 +38,8 @@ const offer = {
         {
           origin: { iata_code: "SFO" },
           destination: { iata_code: "JFK" },
-          departing_at: "2026-08-24T16:00:00Z",
-          arriving_at: "2026-08-24T21:30:00Z",
+          departing_at: "2027-08-24T16:00:00Z",
+          arriving_at: "2027-08-24T21:30:00Z",
           operating_carrier: { iata_code: "UA" },
           flight_number: "UA100",
           duration: "PT5H30M",
@@ -49,7 +49,7 @@ const offer = {
   ],
 };
 
-function order(documents: unknown[] = []) {
+function order() {
   return {
     id: "ord_contract_123",
     booking_reference: "RZPNX8",
@@ -64,11 +64,11 @@ function order(documents: unknown[] = []) {
       },
     ],
     payment_status: {
-      awaiting_payment: documents.length === 0,
-      payment_required_by: "2026-08-21T18:00:00Z",
-      price_guarantee_expires_at: "2026-08-20T18:00:00Z",
+      awaiting_payment: true,
+      payment_required_by: "2027-08-21T18:00:00Z",
+      price_guarantee_expires_at: "2027-08-20T18:00:00Z",
     },
-    documents,
+    documents: [],
   };
 }
 
@@ -117,31 +117,7 @@ async function installDuffelFixture(
     }
     if (url.endsWith("/air/orders/ord_contract_123")) {
       fixture.orderReads += 1;
-      return Response.json({
-        data: order(
-          fixture.orderReads > 1
-            ? [
-                {
-                  type: "electronic_ticket",
-                  unique_identifier: "123-1230984567",
-                },
-              ]
-            : [],
-        ),
-      });
-    }
-    if (url.endsWith("/air/payments")) {
-      return Response.json({
-        data: {
-          id: "pay_contract_123",
-          order_id: "ord_contract_123",
-          status: "succeeded",
-          currency: "USD",
-          amount: "299.50",
-          type: "balance",
-          created_at: "2026-08-20T12:00:00Z",
-        },
-      });
+      return Response.json({ data: order() });
     }
     throw new Error(`unexpected Duffel contract request: ${method} ${url}`);
   }) as typeof globalThis.fetch;
@@ -191,7 +167,9 @@ async function assertDuffelBooking(
     approvedData.state !== "done" ||
     approvedData.orderId !== "ord_contract_123" ||
     approvedData.bookingReference !== "RZPNX8" ||
-    approvedData.paymentId !== "pay_contract_123"
+    approvedData.orderType !== "hold" ||
+    approvedData.paymentCommitted !== false ||
+    approvedData.paymentId !== null
   ) {
     return `approved travel request omitted its provider receipt: ${JSON.stringify(approved?.result)}`;
   }
@@ -206,15 +184,36 @@ async function assertDuffelBooking(
     (request) =>
       request.method === "POST" && request.url.endsWith("/air/payments"),
   );
-  if (orderWrites.length !== 1 || paymentWrites.length !== 1) {
-    return `expected one order and one payment commit, saw ${orderWrites.length}/${paymentWrites.length}`;
+  if (orderWrites.length !== 1 || paymentWrites.length !== 0) {
+    return `expected one hold and zero payment commits, saw ${orderWrites.length}/${paymentWrites.length}`;
+  }
+  if (fixture.orderReads !== 1) {
+    return `expected one provider order readback, saw ${fixture.orderReads}`;
   }
   const orderBody = JSON.parse(orderWrites[0]?.body ?? "{}") as {
-    data?: Record<string, unknown>;
+    data?: {
+      type?: unknown;
+      selected_offers?: unknown;
+      passengers?: unknown;
+      payments?: unknown;
+      metadata?: unknown;
+    };
+  };
+  const expectedPassenger = {
+    id: "pas_contract_1",
+    given_name: "Taylor",
+    family_name: "Owner",
+    born_on: "1990-01-02",
+    email: "taylor@example.test",
   };
   if (
-    !JSON.stringify(orderBody.data).includes("off_contract_123") ||
-    !JSON.stringify(orderBody.data).includes("Taylor")
+    orderBody.data?.type !== "hold" ||
+    JSON.stringify(orderBody.data.selected_offers) !==
+      JSON.stringify(["off_contract_123"]) ||
+    JSON.stringify(orderBody.data.passengers) !==
+      JSON.stringify([expectedPassenger]) ||
+    orderBody.data.payments !== undefined ||
+    !record(orderBody.data.metadata).eliza_approval_key
   ) {
     return `Duffel order did not preserve selected offer/passenger: ${orderWrites[0]?.body}`;
   }
@@ -227,7 +226,10 @@ async function assertDuffelBooking(
   );
   if (
     durable?.state !== "done" ||
-    durable.execution?.providerReceipt?.orderId !== "ord_contract_123"
+    durable.execution?.providerReceipt?.orderId !== "ord_contract_123" ||
+    durable.execution?.providerReceipt?.orderType !== "hold" ||
+    durable.execution?.providerReceipt?.paymentCommitted !== false ||
+    durable.execution?.providerReceipt?.paymentId !== null
   ) {
     return `durable approval readback omitted the committed order: ${JSON.stringify(durable)}`;
   }
@@ -237,7 +239,7 @@ async function assertDuffelBooking(
 export default scenario({
   lane: "pr-deterministic",
   id: "connector.travel-booking.contract-core",
-  title: "Duffel booking commits exactly once after durable approval",
+  title: "Duffel hold commits once without payment after durable approval",
   domain: "connector-contract",
   evidenceScope: "domain-contract",
   executionProfile: "simulated",
@@ -249,7 +251,7 @@ export default scenario({
     "durable-readback",
   ],
   description:
-    "Executes the production PERSONAL_ASSISTANT travel handler and RESOLVE_REQUEST approval action against a deterministic Duffel HTTP boundary. It proves pending-before-write ordering, exact offer/passenger binding, one order and payment, provider receipt fields, and durable done-state readback; it does not claim a live booking.",
+    "Executes the production PERSONAL_ASSISTANT travel handler and RESOLVE_REQUEST approval action against a deterministic Duffel HTTP boundary. It proves pending-before-write ordering, exact offer/passenger binding, one hold with zero payment writes, provider receipt fields, and durable done-state readback; it does not claim a live booking.",
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-agent-skills"] },
   seed: [
@@ -286,7 +288,7 @@ export default scenario({
           action: "book_travel",
           origin: "SFO",
           destination: "JFK",
-          departureDate: "2026-08-24",
+          departureDate: "2027-08-24",
           passengers: [
             {
               givenName: "Taylor",
@@ -297,6 +299,18 @@ export default scenario({
           ],
           calendarSync: { enabled: false },
         },
+      },
+      assertTurn: (turn) => {
+        const action = turn.actionsCalled.find(
+          (candidate) => candidate.actionName === "PERSONAL_ASSISTANT",
+        );
+        const data = record(action?.result?.data);
+        return action?.result?.success === true &&
+          data.state === "pending" &&
+          data.orderId === undefined &&
+          data.paymentCommitted === undefined
+          ? undefined
+          : `proposal was not a pending no-receipt checkpoint: ${JSON.stringify(action?.result)}`;
       },
     },
     {

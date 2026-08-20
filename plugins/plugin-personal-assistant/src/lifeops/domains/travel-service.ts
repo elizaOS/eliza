@@ -4,6 +4,7 @@
  * itinerary into the owner's calendar. Booking is a sensitive action gated by
  * owner approval upstream in the action/route layer.
  */
+import { ElizaError } from "@elizaos/core";
 import {
   createOrder,
   createPayment,
@@ -23,6 +24,7 @@ import type {
 } from "@elizaos/shared";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import type {
+  ApprovedFlightBookingSnapshot,
   FlightBookingExecutionResult,
   PreparedFlightBooking,
   TravelBookingPassenger,
@@ -63,12 +65,99 @@ export class TravelPostBookingProjectionError extends Error {
     cause: unknown,
   ) {
     super(
-      `Duffel booking ${booking.order.id} succeeded, but itinerary projection failed: ${
+      `Duffel booking ${booking.order.id} succeeded, but post-booking verification or projection failed: ${
         cause instanceof Error ? cause.message : String(cause)
       }`,
       { cause },
     );
     this.name = "TravelPostBookingProjectionError";
+  }
+}
+
+export class TravelApprovalDriftError extends ElizaError {
+  override readonly name = "TravelApprovalDriftError";
+
+  constructor(message: string) {
+    super(message, {
+      code: "TRAVEL_APPROVED_QUOTE_CHANGED",
+      severity: "ephemeral",
+    });
+  }
+}
+
+function assertApprovedQuoteUnchanged(
+  prepared: PreparedFlightBooking,
+  approved: ApprovedFlightBookingSnapshot,
+): void {
+  const currentTotalCents = Math.round(
+    Number(prepared.offer.totalAmount) * 100,
+  );
+  const expiresAt = prepared.offer.expiresAt
+    ? Date.parse(prepared.offer.expiresAt)
+    : Number.NaN;
+  if (
+    prepared.offer.id !== approved.offerId ||
+    prepared.orderType !== approved.orderType ||
+    currentTotalCents !== approved.totalCents ||
+    prepared.offer.totalCurrency !== approved.currency ||
+    (Number.isFinite(expiresAt) && expiresAt <= Date.now())
+  ) {
+    throw new TravelApprovalDriftError(
+      "Duffel offer changed after approval; refusing to create an order until the owner approves a fresh quote",
+    );
+  }
+}
+
+function assertOrderMatchesApprovedBooking(args: {
+  order: DuffelOrder;
+  offer: DuffelOffer;
+  passengers: ReadonlyArray<TravelBookingPassenger>;
+  orderType: "hold" | "instant";
+}): void {
+  const orderTotalCents = Math.round(Number(args.order.totalAmount) * 100);
+  const offerTotalCents = Math.round(Number(args.offer.totalAmount) * 100);
+  const passengerMatches = args.passengers.every((passenger, index) => {
+    const observed = args.order.passengers[index];
+    return (
+      observed?.id === resolveOfferPassengerId(args.offer, passenger, index) &&
+      observed.givenName === passenger.givenName.trim() &&
+      observed.familyName === passenger.familyName.trim()
+    );
+  });
+  const itineraryMatches = args.offer.slices.every((slice, sliceIndex) => {
+    const observedSlice = args.order.slices[sliceIndex];
+    return (
+      observedSlice?.origin === slice.origin &&
+      observedSlice.destination === slice.destination &&
+      slice.segments.every((segment, segmentIndex) => {
+        const observedSegment = observedSlice.segments[segmentIndex];
+        return (
+          observedSegment?.origin === segment.origin &&
+          observedSegment.destination === segment.destination &&
+          observedSegment.departingAt === segment.departingAt &&
+          observedSegment.arrivingAt === segment.arrivingAt &&
+          observedSegment.carrierIataCode === segment.carrierIataCode &&
+          observedSegment.flightNumber === segment.flightNumber
+        );
+      })
+    );
+  });
+  const paymentStateMatches =
+    args.orderType === "hold"
+      ? args.order.paymentStatus?.awaitingPayment === true
+      : args.order.paymentStatus?.awaitingPayment !== true;
+  if (
+    orderTotalCents !== offerTotalCents ||
+    args.order.totalCurrency !== args.offer.totalCurrency ||
+    args.order.passengers.length !== args.passengers.length ||
+    !passengerMatches ||
+    args.order.slices.length !== args.offer.slices.length ||
+    !itineraryMatches ||
+    !paymentStateMatches
+  ) {
+    throw new Error(
+      "Duffel order readback did not match the approved quote, passengers, itinerary, or payment state",
+    );
   }
 }
 
@@ -333,6 +422,7 @@ export class TravelDomain {
     offer: DuffelOffer;
     passengers: ReadonlyArray<TravelBookingPassenger>;
     orderType: "hold" | "instant";
+    providerIdempotencyKey: string;
   }): Promise<DuffelOrder> {
     const config = readDuffelConfigFromEnv();
     return createOrder(
@@ -358,6 +448,9 @@ export class TravelDomain {
                 currency: args.offer.totalCurrency,
               }
             : undefined,
+        metadata: {
+          eliza_approval_key: args.providerIdempotencyKey,
+        },
       },
       config,
     );
@@ -385,35 +478,48 @@ export class TravelDomain {
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
       calendarGrantId?: string;
+      approved: ApprovedFlightBookingSnapshot;
+      providerIdempotencyKey: string;
     },
   ): Promise<FlightBookingExecutionResult> {
     const prepared = await this.prepareFlightBooking(args);
+    assertApprovedQuoteUnchanged(prepared, args.approved);
     const order = await this.createFlightOrder({
       offer: prepared.offer,
       passengers: args.passengers,
       orderType: prepared.orderType,
+      providerIdempotencyKey: args.providerIdempotencyKey,
     });
 
     let refreshedOrder = order;
-    let payment: DuffelPayment | null = null;
-    if (
-      prepared.orderType === "hold" &&
-      refreshedOrder.paymentStatus?.awaitingPayment
-    ) {
+    const payment: DuffelPayment | null = null;
+    try {
       refreshedOrder = await this.getTravelOrder(order.id);
-      payment = await this.payTravelOrder({
-        orderId: refreshedOrder.id,
-        amount: refreshedOrder.totalAmount,
-        currency: refreshedOrder.totalCurrency,
+      assertOrderMatchesApprovedBooking({
+        order: refreshedOrder,
+        offer: prepared.offer,
+        passengers: args.passengers,
+        orderType: prepared.orderType,
       });
-      refreshedOrder = await this.getTravelOrder(order.id);
+    } catch (cause) {
+      throw new TravelPostBookingProjectionError(
+        {
+          offer: prepared.offer,
+          order,
+          orderType: prepared.orderType,
+          paymentCommitted: prepared.orderType === "instant",
+          payment,
+          calendarEvent: null,
+        },
+        cause,
+      );
     }
 
     let calendarEvent: Awaited<
       ReturnType<TravelDeps["createCalendarEvent"]>
     > | null = null;
     const calendarSync = args.calendarSync ?? null;
-    if (calendarSync?.enabled !== false) {
+    if (prepared.orderType === "instant" && calendarSync?.enabled !== false) {
       try {
         calendarEvent = await this.deps.createCalendarEvent(requestUrl, {
           mode: "local",
@@ -443,6 +549,8 @@ export class TravelDomain {
           {
             offer: prepared.offer,
             order: refreshedOrder,
+            orderType: prepared.orderType,
+            paymentCommitted: prepared.orderType === "instant",
             payment,
             calendarEvent: null,
           },
@@ -454,6 +562,8 @@ export class TravelDomain {
     return {
       offer: prepared.offer,
       order: refreshedOrder,
+      orderType: prepared.orderType,
+      paymentCommitted: prepared.orderType === "instant",
       payment,
       calendarEvent,
     };

@@ -522,12 +522,22 @@ interface DuffelRequest {
   cloudRelayPath: string;
   body?: unknown;
   operation: string;
+  /** Booking/payment endpoints can legitimately take up to two minutes. */
+  timeoutMs?: number;
 }
 
 async function duffelFetch<T>(
   args: DuffelRequest,
 ): Promise<DuffelFetchResult<T>> {
-  const { config, method, directPath, cloudRelayPath, body, operation } = args;
+  const {
+    config,
+    method,
+    directPath,
+    cloudRelayPath,
+    body,
+    operation,
+    timeoutMs = 30_000,
+  } = args;
 
   const isCloud = config.mode === "cloud";
   const url = isCloud
@@ -546,7 +556,7 @@ async function duffelFetch<T>(
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -781,6 +791,7 @@ export async function createOrder(
     cloudRelayPath: "/api/cloud/travel-providers/duffel/orders",
     body: { data },
     operation: "order_create",
+    timeoutMs: 135_000,
   });
 
   return mapOrder(response.data);
@@ -841,6 +852,7 @@ export async function createPayment(
       },
     },
     operation: "payment_create",
+    timeoutMs: 135_000,
   });
 
   return mapPayment(response.data);

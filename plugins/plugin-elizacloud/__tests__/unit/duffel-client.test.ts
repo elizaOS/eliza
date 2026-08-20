@@ -301,6 +301,7 @@ describe("createOrder", () => {
 
   it("posts a hold order and maps the response", async () => {
     let capturedBody: unknown;
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation((_url: string, opts: RequestInit) => {
@@ -361,6 +362,7 @@ describe("createOrder", () => {
     expect(order.id).toBe("ord_123");
     expect(order.bookingReference).toBe("RZPNX8");
     expect(order.paymentStatus?.awaitingPayment).toBe(true);
+    expect(timeoutSpy).toHaveBeenCalledWith(135_000);
   });
 
   it("throws if no offer is supplied", async () => {
@@ -431,6 +433,7 @@ describe("getOrder", () => {
 describe("createPayment", () => {
   it("posts a balance payment for a hold order", async () => {
     let capturedBody: unknown;
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation((_url: string, opts: RequestInit) => {
@@ -468,6 +471,7 @@ describe("createPayment", () => {
     };
     expect(body.data.order_id).toBe("ord_123");
     expect(body.data.payment.type).toBe("balance");
+    expect(timeoutSpy).toHaveBeenCalledWith(135_000);
     expect(payment.id).toBe("pay_123");
     expect(payment.status).toBe("succeeded");
   });

@@ -1,7 +1,7 @@
 /**
- * Integration coverage for BOOK_TRAVEL approval: the handler queues an approval, then books
- * and syncs the itinerary to calendar only after approval, and on rejection performs no
- * order/payment/calendar side effects. Real approval queue, stubbed connectors.
+ * Integration coverage for travel approval: a payment-free hold stays a hold,
+ * remains off the confirmed calendar, and rejection has no provider effects.
+ * The harness uses the real approval queue against stubbed provider boundaries.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -13,6 +13,7 @@ import { saveEnv } from "../../../packages/app-core/test/helpers/test-utils";
 import { runBookTravelHandler } from "../src/actions/book-travel.js";
 import { resolveRequestAction } from "../src/actions/resolve-request.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
+import { TravelDomain } from "../src/lifeops/domains/travel-service.js";
 import { createFeatureFlagService } from "../src/lifeops/feature-flags.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import {
@@ -100,7 +101,7 @@ function installTravelAndCalendarFetchStub() {
                     id: "off_test_123",
                     total_amount: "299.50",
                     total_currency: "USD",
-                    expires_at: "2026-06-01T18:00:00Z",
+                    expires_at: "2027-06-01T18:00:00Z",
                     passengers: [
                       {
                         id: "pas_offer_1",
@@ -111,8 +112,8 @@ function installTravelAndCalendarFetchStub() {
                     ],
                     payment_requirements: {
                       requires_instant_payment: false,
-                      price_guarantee_expires_at: "2026-06-01T18:00:00Z",
-                      payment_required_by: "2026-06-02T18:00:00Z",
+                      price_guarantee_expires_at: "2027-06-01T18:00:00Z",
+                      payment_required_by: "2027-06-02T18:00:00Z",
                     },
                     slices: [
                       {
@@ -124,8 +125,8 @@ function installTravelAndCalendarFetchStub() {
                           {
                             origin: { iata_code: "JFK" },
                             destination: { iata_code: "LHR" },
-                            departing_at: "2026-06-15T09:00:00Z",
-                            arriving_at: "2026-06-15T16:30:00Z",
+                            departing_at: "2027-06-15T09:00:00Z",
+                            arriving_at: "2027-06-15T16:30:00Z",
                             operating_carrier: { iata_code: "BA" },
                             flight_number: "BA178",
                             duration: "PT7H30M",
@@ -149,7 +150,7 @@ function installTravelAndCalendarFetchStub() {
                 id: "off_test_123",
                 total_amount: "299.50",
                 total_currency: "USD",
-                expires_at: "2026-06-01T18:00:00Z",
+                expires_at: "2027-06-01T18:00:00Z",
                 passengers: [
                   {
                     id: "pas_offer_1",
@@ -160,8 +161,8 @@ function installTravelAndCalendarFetchStub() {
                 ],
                 payment_requirements: {
                   requires_instant_payment: false,
-                  price_guarantee_expires_at: "2026-06-01T18:00:00Z",
-                  payment_required_by: "2026-06-02T18:00:00Z",
+                  price_guarantee_expires_at: "2027-06-01T18:00:00Z",
+                  payment_required_by: "2027-06-02T18:00:00Z",
                 },
                 slices: [
                   {
@@ -173,8 +174,8 @@ function installTravelAndCalendarFetchStub() {
                       {
                         origin: { iata_code: "JFK" },
                         destination: { iata_code: "LHR" },
-                        departing_at: "2026-06-15T09:00:00Z",
-                        arriving_at: "2026-06-15T16:30:00Z",
+                        departing_at: "2027-06-15T09:00:00Z",
+                        arriving_at: "2027-06-15T16:30:00Z",
                         operating_carrier: { iata_code: "BA" },
                         flight_number: "BA178",
                         duration: "PT7H30M",
@@ -209,8 +210,8 @@ function installTravelAndCalendarFetchStub() {
                       {
                         origin: { iata_code: "JFK" },
                         destination: { iata_code: "LHR" },
-                        departing_at: "2026-06-15T09:00:00Z",
-                        arriving_at: "2026-06-15T16:30:00Z",
+                        departing_at: "2027-06-15T09:00:00Z",
+                        arriving_at: "2027-06-15T16:30:00Z",
                         operating_carrier: { iata_code: "BA" },
                         flight_number: "BA178",
                         duration: "PT7H30M",
@@ -227,8 +228,8 @@ function installTravelAndCalendarFetchStub() {
                 ],
                 payment_status: {
                   awaiting_payment: body.data?.type === "hold",
-                  payment_required_by: "2026-06-02T18:00:00Z",
-                  price_guarantee_expires_at: "2026-06-01T18:00:00Z",
+                  payment_required_by: "2027-06-02T18:00:00Z",
+                  price_guarantee_expires_at: "2027-06-01T18:00:00Z",
                 },
                 documents: [],
               },
@@ -256,8 +257,8 @@ function installTravelAndCalendarFetchStub() {
                       {
                         origin: { iata_code: "JFK" },
                         destination: { iata_code: "LHR" },
-                        departing_at: "2026-06-15T09:00:00Z",
-                        arriving_at: "2026-06-15T16:30:00Z",
+                        departing_at: "2027-06-15T09:00:00Z",
+                        arriving_at: "2027-06-15T16:30:00Z",
                         operating_carrier: { iata_code: "BA" },
                         flight_number: "BA178",
                         duration: "PT7H30M",
@@ -274,8 +275,8 @@ function installTravelAndCalendarFetchStub() {
                 ],
                 payment_status: {
                   awaiting_payment: orderReadCount === 1,
-                  payment_required_by: "2026-06-02T18:00:00Z",
-                  price_guarantee_expires_at: "2026-06-01T18:00:00Z",
+                  payment_required_by: "2027-06-02T18:00:00Z",
+                  price_guarantee_expires_at: "2027-06-01T18:00:00Z",
                 },
                 documents:
                   orderReadCount === 1
@@ -303,7 +304,7 @@ function installTravelAndCalendarFetchStub() {
                 currency: "USD",
                 amount: "299.50",
                 type: "balance",
-                created_at: "2026-06-01T12:00:00Z",
+                created_at: "2027-06-01T12:00:00Z",
               },
             }),
           } as Response;
@@ -414,7 +415,7 @@ afterAll(async () => {
 });
 
 describe("BOOK_TRAVEL approval execution", () => {
-  it("queues approval, books after approval, and syncs the itinerary to calendar", async () => {
+  it("queues approval and creates an unpaid hold without confirmed projections", async () => {
     stubGoogleCalendarCreate();
     const fetchMock = installTravelAndCalendarFetchStub();
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
@@ -427,7 +428,7 @@ describe("BOOK_TRAVEL approval execution", () => {
         parameters: {
           origin: "JFK",
           destination: "LHR",
-          departureDate: "2026-06-15",
+          departureDate: "2027-06-15",
           passengers: [
             {
               givenName: "Tony",
@@ -503,7 +504,8 @@ describe("BOOK_TRAVEL approval execution", () => {
         success: true,
       }),
     );
-    expect(String(approved?.text ?? "")).toContain("Booked");
+    expect(String(approved?.text ?? "")).toContain("Held");
+    expect(String(approved?.text ?? "")).toContain("No payment was submitted");
 
     const done = await queue.byId(
       pendingRequest.id,
@@ -515,15 +517,23 @@ describe("BOOK_TRAVEL approval execution", () => {
     const events = await repository.listCalendarEvents(
       String(runtime.agentId),
       "google",
-      "2026-06-15T00:00:00.000Z",
-      "2026-06-16T23:59:59.999Z",
+      "2027-06-15T00:00:00.000Z",
+      "2027-06-16T23:59:59.999Z",
       "owner",
     );
-    expect(events.some((event) => event.title === "London flight")).toBe(true);
+    expect(events).toHaveLength(0);
 
     const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(true);
-    expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(true);
+    expect(
+      calledUrls.filter((url) => url.includes("/air/orders/ord_test_123")),
+    ).toHaveLength(1);
+    expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(false);
+    expect(
+      calledUrls.some((url) =>
+        url.includes("www.googleapis.com/calendar/v3/calendars"),
+      ),
+    ).toBe(false);
   });
 
   it("rejects approval without executing order, payment, or calendar sync", async () => {
@@ -538,7 +548,7 @@ describe("BOOK_TRAVEL approval execution", () => {
         parameters: {
           origin: "JFK",
           destination: "LHR",
-          departureDate: "2026-06-15",
+          departureDate: "2027-06-15",
           passengers: [
             {
               givenName: "Tony",
@@ -599,5 +609,88 @@ describe("BOOK_TRAVEL approval execution", () => {
       pendingRequest.subjectUserId,
     );
     expect(latest?.state).toBe("rejected");
+  });
+
+  it("fails closed before order creation when the approved quote drifts", async () => {
+    const fetchMock = installTravelAndCalendarFetchStub();
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+    const queued = await runBookTravelHandler(
+      runtime,
+      ownerMessage("Hold the quoted JFK to LHR flight after approval."),
+      {} as never,
+      {
+        parameters: {
+          origin: "JFK",
+          destination: "LHR",
+          departureDate: "2027-06-15",
+          passengers: [
+            {
+              givenName: "Tony",
+              familyName: "Stark",
+              bornOn: "1980-07-24",
+            },
+          ],
+          calendarSync: { enabled: false },
+        },
+      } as never,
+      undefined,
+    );
+    const requestId = String(
+      (queued?.data as Record<string, unknown> | undefined)?.requestId ?? "",
+    );
+    const request = await queue.byId(requestId, String(runtime.agentId));
+    if (!request) {
+      throw new Error("Expected a pending travel approval request");
+    }
+
+    const originalGetOffer = TravelDomain.prototype.getFlightOffer;
+    const getOfferSpy = vi
+      .spyOn(TravelDomain.prototype, "getFlightOffer")
+      .mockImplementation(async function (offerId) {
+        const offer = await originalGetOffer.call(this, offerId);
+        return { ...offer, totalAmount: "399.50" };
+      });
+    const createOrderSpy = vi.spyOn(
+      TravelDomain.prototype,
+      "createFlightOrder",
+    );
+    const restoreModel = installApprovalResolutionModelStub(
+      request.id,
+      "approve the exact quoted hold",
+    );
+    let result: ActionResult | undefined;
+    let createOrderCallCount = 0;
+    try {
+      result = await approveRequestAction.handler?.(
+        runtime,
+        ownerMessage("approve that exact hold"),
+        {} as never,
+        {
+          parameters: { subaction: "approve", requestId: request.id },
+        } as never,
+        undefined,
+      );
+    } finally {
+      createOrderCallCount = createOrderSpy.mock.calls.length;
+      restoreModel();
+      getOfferSpy.mockRestore();
+      createOrderSpy.mockRestore();
+    }
+
+    expect(result?.success).toBe(false);
+    expect(result?.data).toEqual(
+      expect.objectContaining({
+        error: "APPROVAL_DELIVERY_FAILED_RETRYABLE",
+        executed: false,
+        deliveryUnknown: false,
+      }),
+    );
+    expect(createOrderCallCount).toBe(0);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith("/air/orders") && init?.method === "POST",
+      ),
+    ).toBe(false);
   });
 });
