@@ -458,6 +458,7 @@ async function dialE164(
         to,
         message: messageBody,
         awaitingUserInput: decision.status === "pending",
+        idempotencyKey: draftIdempotencyKey,
       },
     };
   }

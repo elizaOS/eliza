@@ -87,7 +87,11 @@ describe("VOICE_CALL idempotency", () => {
     );
     expect(first).toMatchObject({
       success: false,
-      data: { draft: true, awaitingUserInput: true },
+      data: {
+        draft: true,
+        awaitingUserInput: true,
+        idempotencyKey: expect.stringMatching(/^voice-call:/),
+      },
     });
     expect(mocks.sendTwilioVoiceCall).not.toHaveBeenCalled();
 
@@ -103,6 +107,7 @@ describe("VOICE_CALL idempotency", () => {
       idempotencyKey?: string;
     };
     expect(dispatched.idempotencyKey).toMatch(/^voice-call:/);
+    expect(dispatched.idempotencyKey).toBe(first.data?.idempotencyKey);
     expect(confirmed).toMatchObject({
       success: true,
       data: {
