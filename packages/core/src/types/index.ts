@@ -75,6 +75,7 @@ export * from "./settings";
 // Setup types
 export * from "./setup";
 export * from "./shortcut";
+export * from "./social-compliance";
 export * from "./state";
 export * from "./streaming";
 export type {
