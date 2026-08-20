@@ -48,7 +48,20 @@ function evidence(): AccountDeletionStagingCanaryEvidence {
       controlPreserved: true,
     },
     cleanup: { status: "passed", possibleResidue: false },
-    timingsMs: { total: 1 },
+    timingsMs: {
+      cloud_deploy: 1,
+      database_identity: 1,
+      provider_probe: 1,
+      provision: 1,
+      cloud_sync: 1,
+      request: 1,
+      immediate: 1,
+      accelerate: 1,
+      scheduled_worker: 1,
+      final: 1,
+      cleanup: 1,
+      total: 12,
+    },
     failure: null,
   };
 }
@@ -146,6 +159,32 @@ describe("account deletion staging canary", () => {
     expect(validateAccountDeletionStagingCanaryEvidence(contaminated)).toBe(
       false,
     );
+  });
+
+  test("rejects a pass verdict when any proof phase or cleanup is incomplete", () => {
+    const incompletePath = evidence();
+    incompletePath.path.providerErasure = false;
+    expect(validateAccountDeletionStagingCanaryEvidence(incompletePath)).toBe(
+      false,
+    );
+
+    const residue = evidence();
+    residue.cleanup = { status: "failed", possibleResidue: true };
+    expect(validateAccountDeletionStagingCanaryEvidence(residue)).toBe(false);
+
+    const missingTiming = evidence();
+    delete missingTiming.timingsMs.final;
+    expect(validateAccountDeletionStagingCanaryEvidence(missingTiming)).toBe(
+      false,
+    );
+  });
+
+  test("requires a structured failure for a fail verdict", () => {
+    const failed = evidence();
+    failed.verdict = "fail";
+    expect(validateAccountDeletionStagingCanaryEvidence(failed)).toBe(false);
+    failed.failure = { phase: "provider_probe", code: "provider_probe_failed" };
+    expect(validateAccountDeletionStagingCanaryEvidence(failed)).toBe(true);
   });
 
   test("locks exact-row acceleration and scoped cleanup in source", () => {

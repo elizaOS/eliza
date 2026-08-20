@@ -1393,6 +1393,20 @@ export function validateAccountDeletionStagingCanaryEvidence(
     "internal",
     "total",
   ]);
+  const requiredPassTimings: readonly (Phase | "total")[] = [
+    "cloud_deploy",
+    "database_identity",
+    "provider_probe",
+    "provision",
+    "cloud_sync",
+    "request",
+    "immediate",
+    "accelerate",
+    "scheduled_worker",
+    "final",
+    "cleanup",
+    "total",
+  ];
   const failurePhases = new Set<Phase>([
     "config",
     "cloud_deploy",
@@ -1443,6 +1457,23 @@ export function validateAccountDeletionStagingCanaryEvidence(
       return false;
     }
   }
+  if (value.verdict === "pass") {
+    if (
+      value.failure !== null ||
+      value.cloudCommit === null ||
+      database.identityVerified !== true ||
+      !pathKeys.every((key) => path[key] === true) ||
+      cleanup.status !== "passed" ||
+      cleanup.possibleResidue !== false ||
+      !requiredPassTimings.every((key) => key in timingsMs)
+    ) {
+      return false;
+    }
+  } else if (value.verdict === "fail") {
+    if (value.failure === null) return false;
+  } else {
+    return false;
+  }
   const serialized = JSON.stringify(value);
   if (
     /@steward\.test|postgres(?:ql)?:|switchback|steward-api|api-staging|[0-9a-f]{8}-[0-9a-f-]{27,}/i.test(
@@ -1452,10 +1483,9 @@ export function validateAccountDeletionStagingCanaryEvidence(
     return false;
   }
   return (
-    (value.verdict === "pass" || value.verdict === "fail") &&
-    (value.cloudCommit === null ||
-      (typeof value.cloudCommit === "string" &&
-        COMMIT_PATTERN.test(value.cloudCommit)))
+    value.cloudCommit === null ||
+    (typeof value.cloudCommit === "string" &&
+      COMMIT_PATTERN.test(value.cloudCommit))
   );
 }
 
