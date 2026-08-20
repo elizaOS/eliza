@@ -212,22 +212,22 @@ function groundingWords(value: string): Set<string> {
   );
 }
 
-function selectedGroundingIndices(
+type SelectedGrounding = {
+  index: number;
+  grounding: SharedRuntimePublicGrounding;
+  status: "available" | "unavailable" | "fresh_search_required";
+};
+
+function selectedGrounding(
   history: SharedRuntimeHistoryMessageLike[],
   queryText: string,
   now: number,
-): Set<number> {
+): SelectedGrounding | undefined {
   const query = groundingWords(queryText);
   const ranked = history.flatMap((message, index) => {
     const grounding =
       message.role === "assistant" ? parseSharedPublicWebGrounding(message.grounding) : undefined;
     if (!grounding) return [];
-    if (
-      grounding.observedAt < now - MAX_PUBLIC_WEB_GROUNDING_AGE_MS ||
-      grounding.observedAt > now + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS
-    ) {
-      return [];
-    }
     let precedingUserQuery = "";
     for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
       if (history[cursor].role !== "user") continue;
@@ -248,7 +248,80 @@ function selectedGroundingIndices(
     (left, right) =>
       right.grounding.observedAt - left.grounding.observedAt || right.index - left.index,
   )[0];
-  return latest?.grounding.kind === "web_search" ? new Set([latest.index]) : new Set();
+  if (!latest) return undefined;
+  if (latest.grounding.kind === "web_search_unavailable") {
+    return { ...latest, status: "unavailable" };
+  }
+  if (
+    latest.grounding.observedAt < now - MAX_PUBLIC_WEB_GROUNDING_AGE_MS ||
+    latest.grounding.observedAt > now + MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS
+  ) {
+    return { ...latest, status: "fresh_search_required" };
+  }
+  return { ...latest, status: "available" };
+}
+
+function groundingAuthorityMarker(selection: SelectedGrounding): ModelMessage {
+  return {
+    role: "system",
+    content: JSON.stringify({
+      type: "public_web_search_authority",
+      status: selection.status,
+      query: selection.grounding.query,
+      policy: "do_not_use_prior_assistant_web_claims",
+    }),
+  };
+}
+
+function groundingProjectionMessages(
+  message: SharedRuntimeHistoryMessageLike,
+  selection: SelectedGrounding,
+): ModelMessage[] {
+  if (selection.status !== "available") return [groundingAuthorityMarker(selection)];
+  if (selection.grounding.kind !== "web_search") return [];
+  const toolCallId = `persisted-web-${stringToUuid(`shared:${messageIdentity(message)}`)}`;
+  return [
+    {
+      role: "assistant",
+      content: [
+        {
+          type: "tool-call",
+          toolCallId,
+          toolName: "WEB_SEARCH",
+          input: { query: selection.grounding.query },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId,
+          toolName: "WEB_SEARCH",
+          output: {
+            type: "text",
+            value: encodeSharedPublicWebGrounding(selection.grounding),
+          },
+        },
+      ],
+    },
+  ];
+}
+
+/**
+ * Projects only canonical grounding authority derived from typed assistant
+ * grounding. Persisted system and transcript strings never enter this result.
+ */
+export function sharedRuntimeGroundingProjectionMessages(
+  history: SharedRuntimeHistoryMessageLike[],
+  queryText: string,
+  now = Date.now(),
+): ModelMessage[] {
+  const selected = selectedGrounding(history, queryText, now);
+  if (!selected) return [];
+  const message = history[selected.index];
+  return message ? groundingProjectionMessages(message, selected) : [];
 }
 
 /** Projects selected evidence as native tool results while keeping assistant prose separate. */
@@ -257,38 +330,16 @@ export function sharedRuntimeModelHistoryMessages(
   queryText: string,
   now = Date.now(),
 ): ModelMessage[] {
-  const selected = selectedGroundingIndices(history, queryText, now);
+  const selected = selectedGrounding(history, queryText, now);
   const messages: ModelMessage[] = [];
   for (const [index, message] of history.entries()) {
-    const grounding = selected.has(index)
-      ? parseSharedPublicWebGrounding(message.grounding)
-      : undefined;
-    if (grounding?.kind === "web_search") {
-      const toolCallId = `persisted-web-${stringToUuid(`shared:${messageIdentity(message)}`)}`;
-      messages.push({
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId,
-            toolName: "WEB_SEARCH",
-            input: { query: grounding.query },
-          },
-        ],
-      });
-      messages.push({
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId,
-            toolName: "WEB_SEARCH",
-            output: { type: "text", value: encodeSharedPublicWebGrounding(grounding) },
-          },
-        ],
-      });
+    if (selected?.index === index && selected.status === "available") {
+      messages.push(...groundingProjectionMessages(message, selected));
     }
     messages.push({ role: message.role, content: sharedRuntimeModelHistoryContent(message) });
+    if (selected?.index === index && selected.status !== "available") {
+      messages.push(...groundingProjectionMessages(message, selected));
+    }
   }
   return messages;
 }

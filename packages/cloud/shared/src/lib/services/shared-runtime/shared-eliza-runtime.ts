@@ -70,7 +70,7 @@ import {
 import {
   insertSharedRuntimeGroundingMessages,
   sharedPublicWebGrounding,
-  sharedRuntimeModelHistoryMessages,
+  sharedRuntimeGroundingProjectionMessages,
 } from "./shared-runtime-history-policy";
 import {
   sharedRuntimeConversationRoomId,
@@ -570,10 +570,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
   const model = getInteractiveCerebrasLanguageModel(input.model);
-  const persistedGroundingMessages = sharedRuntimeModelHistoryMessages(
+  const persistedGroundingMessages = sharedRuntimeGroundingProjectionMessages(
     input.history,
     input.message,
-  ).filter((message) => typeof message.content !== "string");
+  );
 
   const modelHandler = async (
     _runtime: IAgentRuntime,
