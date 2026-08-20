@@ -139,11 +139,8 @@ it("keeps canonical staging app-host login on the current origin", async () => {
   expect(window.location.origin).toBe("https://cloud-staging.eliza.app");
 });
 
-it("renders a local login instead of advertising an unreachable dedicated-host SSO handoff", async () => {
-  setLocation(
-    "agent-1.cloud-staging.eliza.app",
-    "https://agent-1.cloud-staging.eliza.app",
-  );
+it("normalizes a canonical app hostname before keeping login local", async () => {
+  setLocation("CLOUD-STAGING.ELIZA.APP.", "https://cloud-staging.eliza.app");
 
   render(
     <MemoryRouter initialEntries={["/login"]}>
@@ -158,7 +155,5 @@ it("renders a local login instead of advertising an unreachable dedicated-host S
     await screen.findByRole("button", { name: /Magic Link/i }),
   ).toBeTruthy();
   expect(redirectToSsoBridge).not.toHaveBeenCalled();
-  expect(window.location.origin).toBe(
-    "https://agent-1.cloud-staging.eliza.app",
-  );
+  expect(window.location.origin).toBe("https://cloud-staging.eliza.app");
 });

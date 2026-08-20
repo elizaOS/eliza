@@ -62,38 +62,25 @@ describe("steward email sign-in adapter", () => {
     );
   });
 
-  it.each([
-    { challengeId: undefined, pollSecret: "poll-secret" },
-    { challengeId: "challenge-1", pollSecret: undefined },
-    { challengeId: "   ", pollSecret: "poll-secret" },
-    { challengeId: "challenge-1", pollSecret: "" },
-  ])(
-    "rejects a send response without the complete one-tab challenge contract: $challengeId / $pollSecret",
-    async ({ challengeId, pollSecret }) => {
-      const fetchImpl = vi.fn().mockResolvedValue(
-        jsonResponse({
-          ok: true,
-          data: {
-            expiresAt: "2026-07-17T12:10:00.000Z",
-            challengeId,
-            pollSecret,
-          },
-        }),
-      );
+  it("preserves magic-link-only login during a rolling Steward deployment", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        data: { expiresAt: "2026-07-17T12:10:00.000Z" },
+      }),
+    );
 
-      await expect(
-        startStewardEmailLogin(
-          { baseUrl: "/steward", tenantId: "elizacloud", fetchImpl },
-          "person@example.com",
-        ),
-      ).rejects.toMatchObject({
-        status: 502,
-        code: "companion_code_unavailable",
-        message:
-          "Steward email sign-in did not provide the required one-tab verification challenge.",
-      });
-    },
-  );
+    await expect(
+      startStewardEmailLogin(
+        { baseUrl: "/steward", tenantId: "elizacloud", fetchImpl },
+        "person@example.com",
+      ),
+    ).resolves.toEqual({
+      expiresAt: "2026-07-17T12:10:00.000Z",
+      challengeId: undefined,
+      pollSecret: undefined,
+    });
+  });
 
   it("leaves code delivery unknown when the send response does not declare factors", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(

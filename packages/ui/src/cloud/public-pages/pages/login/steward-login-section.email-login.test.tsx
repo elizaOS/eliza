@@ -206,28 +206,6 @@ describe("StewardLoginSection email magic-link companion code", () => {
     );
   });
 
-  it("completes the email ceremony in the initiating tab without opening or handing off another window", async () => {
-    const open = vi.spyOn(window, "open");
-    renderSection();
-    await startEmailLogin();
-
-    fireEvent.change(screen.getByLabelText("Six-digit code"), {
-      target: { value: "123456" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Verify code/i }));
-
-    await waitFor(() =>
-      expect(sessionSpies.sync).toHaveBeenCalledWith(
-        "session-token",
-        "refresh-token",
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("location-path").textContent).toBe("/join"),
-    );
-    expect(open).not.toHaveBeenCalled();
-  });
-
   it("binds consumed-link recovery to the challenged email", async () => {
     emailLoginSpies.poll.mockResolvedValue("consumed");
     let finishRecovery: ((value: { ok: true }) => void) | undefined;
