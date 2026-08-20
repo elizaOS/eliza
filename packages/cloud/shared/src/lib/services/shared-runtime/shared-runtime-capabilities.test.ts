@@ -49,7 +49,7 @@ describe("Shared runtime capability components", () => {
     expect(result.text).toContain(REQUEST_DEDICATED_UPGRADE_ACTION);
   });
 
-  test("returns a review handoff without provisioning or charging", async () => {
+  test("returns a structured review handoff for an in-character continuation", async () => {
     const action = createRequestDedicatedUpgradeAction("personal:user/1");
     const delivered: string[] = [];
     const result = await action.handler(
@@ -69,6 +69,8 @@ describe("Shared runtime capability components", () => {
       mutationPerformed: false,
       requiresUserConfirmation: true,
     });
-    expect(delivered[0]).toContain("Nothing has been activated or charged");
+    expect(result.text).toContain("no mutation or charge was performed");
+    expect(delivered).toEqual([]);
+    expect(action.suppressPostActionContinuation).not.toBe(true);
   });
 });

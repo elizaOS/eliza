@@ -278,7 +278,7 @@ describe("buildTurnSummary compaction", () => {
         capabilityWall: {
           capability: "reminders",
           label: "Reminders",
-          reply: "Reminders need Dedicated — but I can draft the reminder text for you.",
+          constraint: "This transport has no trusted reminder delivery.",
         },
       }),
       ...identity,
@@ -286,6 +286,25 @@ describe("buildTurnSummary compaction", () => {
     expect(summary.finishReason).toBe("capability-wall");
     expect(summary.stages).toEqual([{ name: "capability-wall", tool: "reminders" }]);
     expect(JSON.stringify(summary)).not.toContain("Dedicated");
+  });
+
+  test("records model-backed capability responses as model plus wall", () => {
+    const summary = buildTurnSummary({
+      result: turnResult({
+        model: "gpt-oss-120b",
+        capabilityWall: {
+          capability: "reminders",
+          label: "Reminders",
+          constraint: "This transport has no trusted reminder delivery.",
+        },
+      }),
+      ...identity,
+    });
+    expect(summary.finishReason).toBe("capability-wall");
+    expect(summary.stages).toEqual([
+      { name: "model" },
+      { name: "capability-wall", tool: "reminders" },
+    ]);
   });
 
   test("classifies the designed no-model unavailable state as degraded", () => {

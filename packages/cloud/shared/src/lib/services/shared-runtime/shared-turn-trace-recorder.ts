@@ -139,6 +139,7 @@ export function buildTurnSummary(input: BuildTurnSummaryInput): SharedTurnSummar
   const stages: SharedTurnTraceStage[] = [];
   if (result.capabilityWall) {
     finishReason = "capability-wall";
+    if (result.model !== "capability-wall") stages.push({ name: "model" });
     stages.push({ name: "capability-wall", tool: result.capabilityWall.capability });
   } else if (result.degraded) {
     finishReason = "degraded";
