@@ -1429,7 +1429,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		).toMatchObject({ tool: { name: "VIEWS", success: true } });
 	});
 
-	it("runs one model-only acknowledgement after a deterministic navigation action", async () => {
+	it("runs one grounded small-model response after a deterministic navigation action", async () => {
 		let viewCalls = 0;
 		const views = makeMockAction({
 			name: "VIEWS",
@@ -1452,10 +1452,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				viewCalls++;
 				return {
 					success: true,
-					text: '{"effect":"view_navigation","status":"accepted"}',
+					text: '{"effect":"view_navigation","status":"accepted","viewId":"notes","label":"Notes"}',
 					transcriptVisibility: "internal",
 					modelReplyRequired: true,
-					modelReplyStyle: "brief_ui_acknowledgement",
 				};
 			},
 		});
@@ -1486,8 +1485,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					}),
 				},
 				{
-					expectModelType: ModelType.ACTION_PLANNER,
-					body: "All set.",
+					expectModelType: ModelType.TEXT_SMALL,
+					body: '{"response":"Notes is open."}',
 				},
 			],
 		});
@@ -1503,12 +1502,20 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(viewCalls).toBe(1);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe("All set.");
+			expect(result.result.responseContent?.text).toBe("Notes is open.");
 		}
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
-			ModelType.ACTION_PLANNER,
+			ModelType.TEXT_SMALL,
 		]);
+		const presentationCall = getCalls(runtime)[1];
+		expect(presentationCall).toBeDefined();
+		const presentationPrompt = (
+			presentationCall?.params as { prompt?: string } | undefined
+		)?.prompt;
+		expect(presentationPrompt).toContain('User request: "open notes"');
+		expect(presentationPrompt).toContain('"viewId":"notes"');
+		expect(presentationPrompt).toContain('"label":"Notes"');
 		expect(runtime.composeState).not.toHaveBeenCalled();
 		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
 			stages: Array<{ kind: string }>;

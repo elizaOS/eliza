@@ -213,9 +213,6 @@ export function projectActionResultForClipboard(
 		...(result.modelReplyRequired !== undefined
 			? { modelReplyRequired: result.modelReplyRequired }
 			: {}),
-		...(result.modelReplyStyle !== undefined
-			? { modelReplyStyle: result.modelReplyStyle }
-			: {}),
 		...(result.continueChain !== undefined
 			? { continueChain: result.continueChain }
 			: {}),
@@ -255,9 +252,6 @@ function projectSettledResultForObserver(
 			: {}),
 		...(projected.modelReplyRequired !== undefined
 			? { modelReplyRequired: projected.modelReplyRequired }
-			: {}),
-		...(projected.modelReplyStyle !== undefined
-			? { modelReplyStyle: projected.modelReplyStyle }
 			: {}),
 		...(projected.continueChain !== undefined
 			? { continueChain: projected.continueChain }
@@ -929,7 +923,6 @@ function actionResultToStreamingResult(
 				: result.values,
 		turnComplete: result.turnComplete,
 		modelReplyRequired: result.modelReplyRequired,
-		modelReplyStyle: result.modelReplyStyle,
 		continueChain: result.continueChain,
 	};
 	return actionResultToContentRecord(streamingResult);

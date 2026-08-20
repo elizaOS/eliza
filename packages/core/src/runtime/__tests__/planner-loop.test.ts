@@ -3781,7 +3781,7 @@ describe("v5 planner loop — evaluator gate", () => {
 				],
 			})
 			.mockResolvedValueOnce({
-				text: "Got it, now in Notes.",
+				text: "Notes are open.",
 				toolCalls: [],
 			});
 		const evaluate = vi.fn(async () => ({
@@ -3811,7 +3811,6 @@ describe("v5 planner loop — evaluator gate", () => {
 				text: '{"effect":"view_navigation","status":"accepted"}',
 				transcriptVisibility: "internal" as const,
 				modelReplyRequired: true,
-				modelReplyStyle: "brief_ui_acknowledgement" as const,
 			})),
 			evaluate,
 			recorder,
@@ -3825,66 +3824,15 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(synthesisParams).not.toHaveProperty("tools");
 		expect(synthesisParams).not.toHaveProperty("toolChoice");
 		expect(JSON.stringify(synthesisParams?.messages)).toContain(
-			"Do not mention or describe the UI",
+			"view_navigation",
 		);
-		expect(JSON.stringify(synthesisParams?.messages)).not.toContain("notes");
 		expect(evaluate).not.toHaveBeenCalled();
-		expect(result.finalMessage).toBe("Got it");
+		expect(result.finalMessage).toBe("Notes are open.");
 		expect(result.evaluator?.thought).toContain("model-authored reply");
 		expect(
 			recordedStages.find((stage) => stage.kind === "evaluation")?.evaluation
 				?.reason,
 		).toBe("post_tool_model_reply");
-	});
-
-	it("regenerates a required UI acknowledgement that narrates internal view state", async () => {
-		const useModel = vi
-			.fn()
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "views-1",
-						name: "VIEWS",
-						arguments: {
-							action: "show",
-							view: "notes",
-							[TURN_SCOPE_ARG]: TURN_SCOPE_FINAL,
-						},
-					},
-				],
-			})
-			.mockResolvedValueOnce({
-				text: "Back to the Messages view.",
-				toolCalls: [],
-			})
-			.mockResolvedValueOnce({ text: "All set.", toolCalls: [] });
-		const executeToolCall = vi.fn(async () => ({
-			success: true,
-			text: '{"effect":"view_navigation","status":"accepted"}',
-			transcriptVisibility: "internal" as const,
-			modelReplyRequired: true,
-			modelReplyStyle: "brief_ui_acknowledgement" as const,
-		}));
-		const evaluate = vi.fn();
-
-		const result = await runPlannerLoop({
-			runtime: { useModel },
-			context: { id: "ctx" },
-			tools: [{ name: "VIEWS", description: "Open a UI view." }],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(useModel).toHaveBeenCalledTimes(3);
-		expect(executeToolCall).toHaveBeenCalledTimes(1);
-		expect(evaluate).not.toHaveBeenCalled();
-		expect(result.finalMessage).toBe("All set.");
-		const repairParams = useModel.mock.calls[2]?.[1] as
-			| { messages?: unknown }
-			| undefined;
-		expect(JSON.stringify(repairParams?.messages)).not.toContain("Messages");
-		expect(JSON.stringify(repairParams?.messages)).not.toContain("notes");
 	});
 
 	it("fails closed on a required-reply synthesis that invents a tool call, routing the completed action through the evaluator (#22609)", async () => {
@@ -4047,44 +3995,6 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(result.finalMessage).toBe("Notes are open.");
 	});
 
-	it("honors a constrained bare-navigation reply despite an incorrect pending scope", async () => {
-		const useModel = vi
-			.fn()
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "views-1",
-						name: "VIEWS",
-						arguments: {
-							action: "show",
-							view: "notes",
-							[TURN_SCOPE_ARG]: TURN_SCOPE_MORE_WORK_PENDING,
-						},
-					},
-				],
-			})
-			.mockResolvedValueOnce({ text: "Sure thing.", toolCalls: [] });
-		const evaluate = vi.fn();
-
-		const result = await runPlannerLoop({
-			runtime: { useModel },
-			context: { id: "ctx" },
-			tools: [{ name: "VIEWS", description: "Open a UI view." }],
-			executeToolCall: vi.fn(async () => ({
-				success: true,
-				text: '{"effect":"view_navigation","status":"accepted"}',
-				modelReplyRequired: true,
-				modelReplyStyle: "brief_ui_acknowledgement" as const,
-			})),
-			evaluate,
-		});
-
-		expect(useModel).toHaveBeenCalledTimes(2);
-		expect(evaluate).not.toHaveBeenCalled();
-		expect(result.finalMessage).toBe("Sure thing.");
-	});
-
 	it("completes a native sequential multi-op turn instead of truncating after the first terminal result", async () => {
 		// The #17034 canonical regression: the model emits its two operations
 		// one planner round at a time. Round 1 declares more_work_pending, so
@@ -4197,14 +4107,12 @@ describe("v5 planner loop — evaluator gate", () => {
 			text: "internal navigation receipt",
 			transcriptVisibility: "internal",
 			modelReplyRequired: true,
-			modelReplyStyle: "brief_ui_acknowledgement",
 		});
 
 		expect(result).toMatchObject({
 			success: true,
 			transcriptVisibility: "internal",
 			modelReplyRequired: true,
-			modelReplyStyle: "brief_ui_acknowledgement",
 		});
 	});
 

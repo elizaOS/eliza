@@ -67,7 +67,6 @@ describe("post-turn semantic signal", () => {
 					{
 						success: true,
 						transcriptVisibility: "internal",
-						modelReplyStyle: "brief_ui_acknowledgement",
 						data: { actionName: "VIEWS" },
 					},
 				]),
@@ -84,7 +83,6 @@ describe("post-turn semantic signal", () => {
 					{
 						success: true,
 						transcriptVisibility: "internal",
-						modelReplyStyle: "brief_ui_acknowledgement",
 						data: { actionName: "VIEWS" },
 					},
 				]),

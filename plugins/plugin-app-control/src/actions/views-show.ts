@@ -68,18 +68,6 @@ function isRealtimeVoiceTurn(message: Memory): boolean {
 	);
 }
 const NOTES_SURFACE_WORD = /\bnotes?\b/i;
-const MULTI_INTENT_NAVIGATION =
-	/(?:[,;]|\b(?:also|and|before|depois|dann|et|luego|plus|puis|then|und|y)\b|(?:そして|然后|然後|그리고|và|rồi))/iu;
-
-function isBareNavigationRequest(text: string): boolean {
-	const trimmed = text.trim();
-	return (
-		trimmed.length > 0 &&
-		trimmed.length <= 80 &&
-		matchViewCommand(trimmed) !== null &&
-		!MULTI_INTENT_NAVIGATION.test(trimmed)
-	);
-}
 
 // Match a show-verb on WORD BOUNDARIES at the earliest position in the text.
 // Anchoring with \b stops the bare verb "view" from firing inside words like
@@ -573,7 +561,6 @@ export async function runViewsShow({
 	originatingClientId,
 }: RunViewsShowInput): Promise<ActionResult> {
 	const messageText = userRequestMessageText(message);
-	const bareNavigationRequest = isBareNavigationRequest(messageText);
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
 	// no explicit view name, so the verb scan yields nothing — the domain intent
 	// supplies the view id. Either source is enough to proceed.
@@ -704,9 +691,6 @@ export async function runViewsShow({
 		...(result.ok
 			? {
 					modelReplyRequired: true,
-					...(bareNavigationRequest
-						? { modelReplyStyle: "brief_ui_acknowledgement" as const }
-						: {}),
 				}
 			: { turnComplete: false }),
 		values: {

@@ -201,8 +201,6 @@ export interface PlannerToolResult {
 	 * action whose planner call explicitly declared final scope.
 	 */
 	modelReplyRequired?: boolean;
-	/** Constrained runtime-owned style for a required model-authored reply. */
-	modelReplyStyle?: "brief_ui_acknowledgement";
 	/**
 	 * Explicit chain-control override. `false` unconditionally aborts the
 	 * remaining planner queue, including for legacy failure and fire-and-forget
@@ -260,11 +258,6 @@ export interface PlannerLoopResult {
 export interface PlannerLoopParams {
 	runtime: PlannerRuntime;
 	context: ContextObject;
-	/**
-	 * Begin with one model-only reply synthesis pass after a deterministic caller
-	 * has already completed and verified the action outside the planner queue.
-	 */
-	initialModelReplyStyle?: PlannerToolResult["modelReplyStyle"];
 	config?: Partial<ChainingLoopConfig>;
 	executeToolCall: (
 		toolCall: PlannerToolCall,

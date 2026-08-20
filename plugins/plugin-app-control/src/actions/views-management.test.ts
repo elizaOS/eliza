@@ -2447,7 +2447,6 @@ describe("view management actions", () => {
 			success: true,
 			values: { mode: "show", viewId: "chat", label: "Home" },
 			modelReplyRequired: true,
-			modelReplyStyle: "brief_ui_acknowledgement",
 		});
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/navigate",
