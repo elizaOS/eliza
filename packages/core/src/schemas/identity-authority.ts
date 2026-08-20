@@ -120,7 +120,7 @@ export const identityClaimSchema: SchemaTable = {
 				{ expression: "external_subject_id", isExpression: false },
 			],
 			isUnique: true,
-			where: "status IN ('active', 'disputed')",
+			where: "status = 'active'",
 		},
 		identity_claim_principal_idx: {
 			name: "identity_claim_principal_idx",
@@ -151,8 +151,8 @@ export const identityClaimSchema: SchemaTable = {
 			name: "fk_identity_claim_principal",
 			tableFrom: "identity_claims",
 			tableTo: "entities",
-			columnsFrom: ["principal_entity_id"],
-			columnsTo: ["id"],
+			columnsFrom: ["principal_entity_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
 			onDelete: "restrict",
 			schemaTo: "",
 		},
@@ -160,8 +160,8 @@ export const identityClaimSchema: SchemaTable = {
 			name: "fk_identity_claim_connector_account",
 			tableFrom: "identity_claims",
 			tableTo: "connector_accounts",
-			columnsFrom: ["connector_account_id"],
-			columnsTo: ["id"],
+			columnsFrom: ["connector_account_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
 			onDelete: "restrict",
 			schemaTo: "",
 		},
@@ -211,7 +211,7 @@ export const identityAuthorityStateSchema: SchemaTable = {
 		},
 		generation: {
 			name: "generation",
-			type: "integer",
+			type: "bigint",
 			notNull: true,
 			default: 0,
 		},
@@ -279,9 +279,19 @@ export const identityMergeJournalSchema: SchemaTable = {
 			type: "text",
 			notNull: true,
 		},
+		commit_idempotency_key: {
+			name: "commit_idempotency_key",
+			type: "text",
+		},
+		commit_request_digest: {
+			name: "commit_request_digest",
+			type: "text",
+		},
+		plan_digest: { name: "plan_digest", type: "text", notNull: true },
+		expires_at: { name: "expires_at", type: "timestamp", notNull: true },
 		expected_generation: {
 			name: "expected_generation",
-			type: "integer",
+			type: "bigint",
 			notNull: true,
 		},
 		source_principal_ids: {
@@ -316,6 +326,15 @@ export const identityMergeJournalSchema: SchemaTable = {
 			columns: [{ expression: "parent_journal_id", isExpression: false }],
 			isUnique: false,
 		},
+		identity_merge_journal_commit_idempotency_unique: {
+			name: "identity_merge_journal_commit_idempotency_unique",
+			columns: [
+				{ expression: "agent_id", isExpression: false },
+				{ expression: "commit_idempotency_key", isExpression: false },
+			],
+			isUnique: true,
+			where: "commit_idempotency_key IS NOT NULL",
+		},
 	},
 	foreignKeys: {
 		fk_identity_merge_journal_agent: agentForeignKey(
@@ -326,8 +345,8 @@ export const identityMergeJournalSchema: SchemaTable = {
 			name: "fk_identity_merge_journal_parent",
 			tableFrom: "identity_merge_journal",
 			tableTo: "identity_merge_journal",
-			columnsFrom: ["parent_journal_id"],
-			columnsTo: ["id"],
+			columnsFrom: ["parent_journal_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
 			onDelete: "restrict",
 			schemaTo: "",
 		},
@@ -335,8 +354,8 @@ export const identityMergeJournalSchema: SchemaTable = {
 			name: "fk_identity_merge_journal_actor",
 			tableFrom: "identity_merge_journal",
 			tableTo: "entities",
-			columnsFrom: ["actor_principal_id"],
-			columnsTo: ["id"],
+			columnsFrom: ["actor_principal_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
 			onDelete: "restrict",
 			schemaTo: "",
 		},
@@ -344,8 +363,8 @@ export const identityMergeJournalSchema: SchemaTable = {
 			name: "fk_identity_merge_journal_canonical",
 			tableFrom: "identity_merge_journal",
 			tableTo: "entities",
-			columnsFrom: ["canonical_principal_id"],
-			columnsTo: ["id"],
+			columnsFrom: ["canonical_principal_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
 			onDelete: "restrict",
 			schemaTo: "",
 		},
@@ -355,6 +374,10 @@ export const identityMergeJournalSchema: SchemaTable = {
 		identity_merge_journal_idempotency_unique: {
 			name: "identity_merge_journal_idempotency_unique",
 			columns: ["agent_id", "operation", "idempotency_key"],
+		},
+		identity_merge_journal_id_agent_unique: {
+			name: "identity_merge_journal_id_agent_unique",
+			columns: ["id", "agent_id"],
 		},
 	},
 	checkConstraints: {
@@ -366,6 +389,14 @@ export const identityMergeJournalSchema: SchemaTable = {
 			name: "identity_merge_journal_status_check",
 			value:
 				"status IN ('planned', 'committed', 'completed', 'reverted', 'failed')",
+		},
+		identity_merge_journal_generation_check: {
+			name: "identity_merge_journal_generation_check",
+			value: "expected_generation >= 0",
+		},
+		identity_merge_journal_expiry_check: {
+			name: "identity_merge_journal_expiry_check",
+			value: "expires_at > created_at",
 		},
 	},
 };
@@ -391,7 +422,7 @@ export const identityMergeConfirmationSchema: SchemaTable = {
 		plan_digest: { name: "plan_digest", type: "text", notNull: true },
 		expected_generation: {
 			name: "expected_generation",
-			type: "integer",
+			type: "bigint",
 			notNull: true,
 		},
 		status: {
@@ -410,15 +441,6 @@ export const identityMergeConfirmationSchema: SchemaTable = {
 		consumed_at: { name: "consumed_at", type: "timestamp" },
 	},
 	indexes: {
-		identity_merge_confirmation_active_unique: {
-			name: "identity_merge_confirmation_active_unique",
-			columns: [
-				{ expression: "agent_id", isExpression: false },
-				{ expression: "journal_id", isExpression: false },
-			],
-			isUnique: true,
-			where: "status = 'active'",
-		},
 		identity_merge_confirmation_expiry_idx: {
 			name: "identity_merge_confirmation_expiry_idx",
 			columns: [
@@ -437,8 +459,8 @@ export const identityMergeConfirmationSchema: SchemaTable = {
 			name: "fk_identity_merge_confirmation_journal",
 			tableFrom: "identity_merge_confirmations",
 			tableTo: "identity_merge_journal",
-			columnsFrom: ["journal_id"],
-			columnsTo: ["id"],
+			columnsFrom: ["journal_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
 			onDelete: "restrict",
 			schemaTo: "",
 		},
@@ -446,14 +468,19 @@ export const identityMergeConfirmationSchema: SchemaTable = {
 			name: "fk_identity_merge_confirmation_actor",
 			tableFrom: "identity_merge_confirmations",
 			tableTo: "entities",
-			columnsFrom: ["actor_principal_id"],
-			columnsTo: ["id"],
+			columnsFrom: ["actor_principal_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
 			onDelete: "restrict",
 			schemaTo: "",
 		},
 	},
 	compositePrimaryKeys: {},
-	uniqueConstraints: {},
+	uniqueConstraints: {
+		identity_merge_confirmation_journal_unique: {
+			name: "identity_merge_confirmation_journal_unique",
+			columns: ["agent_id", "journal_id"],
+		},
+	},
 	checkConstraints: {
 		identity_merge_confirmation_status_check: {
 			name: "identity_merge_confirmation_status_check",
@@ -462,6 +489,15 @@ export const identityMergeConfirmationSchema: SchemaTable = {
 		identity_merge_confirmation_generation_check: {
 			name: "identity_merge_confirmation_generation_check",
 			value: "expected_generation >= 0",
+		},
+		identity_merge_confirmation_time_check: {
+			name: "identity_merge_confirmation_time_check",
+			value: "expires_at > confirmed_at",
+		},
+		identity_merge_confirmation_consumed_check: {
+			name: "identity_merge_confirmation_consumed_check",
+			value:
+				"(status = 'consumed' AND consumed_at IS NOT NULL) OR (status <> 'consumed' AND consumed_at IS NULL)",
 		},
 	},
 };
@@ -493,7 +529,7 @@ export const identityCanonicalRedirectSchema: SchemaTable = {
 			type: "uuid",
 			notNull: true,
 		},
-		version: { name: "version", type: "integer", notNull: true },
+		version: { name: "version", type: "bigint", notNull: true },
 		status: {
 			name: "status",
 			type: "text",
@@ -527,6 +563,15 @@ export const identityCanonicalRedirectSchema: SchemaTable = {
 			],
 			isUnique: false,
 		},
+		identity_redirect_journal_idx: {
+			name: "identity_redirect_journal_idx",
+			columns: [
+				{ expression: "agent_id", isExpression: false },
+				{ expression: "merge_journal_id", isExpression: false },
+				{ expression: "status", isExpression: false },
+			],
+			isUnique: false,
+		},
 	},
 	foreignKeys: {
 		fk_identity_canonical_redirect_agent: agentForeignKey(
@@ -537,8 +582,8 @@ export const identityCanonicalRedirectSchema: SchemaTable = {
 			name: "fk_identity_canonical_redirect_source",
 			tableFrom: "identity_canonical_redirects",
 			tableTo: "entities",
-			columnsFrom: ["source_principal_id"],
-			columnsTo: ["id"],
+			columnsFrom: ["source_principal_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
 			onDelete: "restrict",
 			schemaTo: "",
 		},
@@ -546,8 +591,8 @@ export const identityCanonicalRedirectSchema: SchemaTable = {
 			name: "fk_identity_canonical_redirect_target",
 			tableFrom: "identity_canonical_redirects",
 			tableTo: "entities",
-			columnsFrom: ["canonical_principal_id"],
-			columnsTo: ["id"],
+			columnsFrom: ["canonical_principal_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
 			onDelete: "restrict",
 			schemaTo: "",
 		},
@@ -555,8 +600,8 @@ export const identityCanonicalRedirectSchema: SchemaTable = {
 			name: "fk_identity_canonical_redirect_journal",
 			tableFrom: "identity_canonical_redirects",
 			tableTo: "identity_merge_journal",
-			columnsFrom: ["merge_journal_id"],
-			columnsTo: ["id"],
+			columnsFrom: ["merge_journal_id", "agent_id"],
+			columnsTo: ["id", "agent_id"],
 			onDelete: "restrict",
 			schemaTo: "",
 		},

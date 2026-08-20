@@ -53,6 +53,7 @@ import {
 } from "./pglite/manager-cache";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+import { SqlIdentityResolutionService } from "./services/sql-identity-resolution";
 import { stringToUuid } from "./utils/string-to-uuid";
 import { resolvePgliteDir } from "./utils.node.ts";
 
@@ -179,7 +180,7 @@ export const plugin: Plugin = {
   description: "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema: schema,
-  services: [AdvancedMemoryStorageService],
+  services: [SqlIdentityResolutionService, AdvancedMemoryStorageService],
   init: async (_config, runtime: IAgentRuntime) => {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
     runtime.logger.info(
@@ -254,6 +255,10 @@ export {
   uninstallRLS,
 } from "./rls";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+export {
+  computeIdentityRequestDigest,
+  SqlIdentityResolutionService,
+} from "./services/sql-identity-resolution";
 
 /**
  * Query the live Electric Sync status from the global PGliteClientManager

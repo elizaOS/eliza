@@ -6,10 +6,10 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   foreignKey,
   index,
-  integer,
   jsonb,
   pgTable,
   real,
@@ -64,7 +64,7 @@ export const identityClaimTable = pgTable(
         table.connectorAccountId,
         table.externalSubjectId
       )
-      .where(sql`${table.status} IN ('active', 'disputed')`),
+      .where(sql`${table.status} = 'active'`),
     index("identity_claim_principal_idx").on(table.agentId, table.principalEntityId),
     index("identity_claim_lookup_idx").on(
       table.agentId,
@@ -81,13 +81,13 @@ export const identityClaimTable = pgTable(
     }).onDelete("cascade"),
     foreignKey({
       name: "fk_identity_claim_principal",
-      columns: [table.principalEntityId],
-      foreignColumns: [entityTable.id],
+      columns: [table.principalEntityId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
     }).onDelete("restrict"),
     foreignKey({
       name: "fk_identity_claim_connector_account",
-      columns: [table.connectorAccountId],
-      foreignColumns: [connectorAccountsTable.id],
+      columns: [table.connectorAccountId, table.agentId],
+      foreignColumns: [connectorAccountsTable.id, connectorAccountsTable.agentId],
     }).onDelete("restrict"),
     foreignKey({
       name: "fk_identity_claim_owner_binding",
@@ -117,7 +117,7 @@ export const identityAuthorityStateTable = pgTable(
   "identity_authority_state",
   {
     agentId: uuid("agent_id").primaryKey().notNull(),
-    generation: integer("generation").notNull().default(0),
+    generation: bigint("generation", { mode: "number" }).notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (table) => [
@@ -142,7 +142,11 @@ export const identityMergeJournalTable = pgTable(
     canonicalPrincipalId: uuid("canonical_principal_id").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     requestDigest: text("request_digest").notNull(),
-    expectedGeneration: integer("expected_generation").notNull(),
+    commitIdempotencyKey: text("commit_idempotency_key"),
+    commitRequestDigest: text("commit_request_digest"),
+    planDigest: text("plan_digest").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    expectedGeneration: bigint("expected_generation", { mode: "number" }).notNull(),
     sourcePrincipalIds: jsonb("source_principal_ids").$type<string[]>().notNull(),
     plan: jsonb("plan").$type<Record<string, unknown>>().notNull(),
     beforeState: jsonb("before_state").$type<Record<string, unknown>>().notNull(),
@@ -156,11 +160,15 @@ export const identityMergeJournalTable = pgTable(
     index("identity_merge_journal_agent_status_idx").on(table.agentId, table.status),
     index("identity_merge_journal_canonical_idx").on(table.agentId, table.canonicalPrincipalId),
     index("identity_merge_journal_parent_idx").on(table.parentJournalId),
+    uniqueIndex("identity_merge_journal_commit_idempotency_unique")
+      .on(table.agentId, table.commitIdempotencyKey)
+      .where(sql`${table.commitIdempotencyKey} IS NOT NULL`),
     unique("identity_merge_journal_idempotency_unique").on(
       table.agentId,
       table.operation,
       table.idempotencyKey
     ),
+    unique("identity_merge_journal_id_agent_unique").on(table.id, table.agentId),
     foreignKey({
       name: "fk_identity_merge_journal_agent",
       columns: [table.agentId],
@@ -168,24 +176,26 @@ export const identityMergeJournalTable = pgTable(
     }).onDelete("cascade"),
     foreignKey({
       name: "fk_identity_merge_journal_parent",
-      columns: [table.parentJournalId],
-      foreignColumns: [table.id],
+      columns: [table.parentJournalId, table.agentId],
+      foreignColumns: [table.id, table.agentId],
     }).onDelete("restrict"),
     foreignKey({
       name: "fk_identity_merge_journal_actor",
-      columns: [table.actorPrincipalId],
-      foreignColumns: [entityTable.id],
+      columns: [table.actorPrincipalId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
     }).onDelete("restrict"),
     foreignKey({
       name: "fk_identity_merge_journal_canonical",
-      columns: [table.canonicalPrincipalId],
-      foreignColumns: [entityTable.id],
+      columns: [table.canonicalPrincipalId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
     }).onDelete("restrict"),
     check("identity_merge_journal_operation_check", sql`${table.operation} IN ('merge', 'split')`),
     check(
       "identity_merge_journal_status_check",
       sql`${table.status} IN ('planned', 'committed', 'completed', 'reverted', 'failed')`
     ),
+    check("identity_merge_journal_generation_check", sql`${table.expectedGeneration} >= 0`),
+    check("identity_merge_journal_expiry_check", sql`${table.expiresAt} > ${table.createdAt}`),
   ]
 );
 
@@ -197,16 +207,14 @@ export const identityMergeConfirmationTable = pgTable(
     journalId: uuid("journal_id").notNull(),
     actorPrincipalId: uuid("actor_principal_id").notNull(),
     planDigest: text("plan_digest").notNull(),
-    expectedGeneration: integer("expected_generation").notNull(),
+    expectedGeneration: bigint("expected_generation", { mode: "number" }).notNull(),
     status: text("status").notNull().default("active"),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull().default(sql`now()`),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("identity_merge_confirmation_active_unique")
-      .on(table.agentId, table.journalId)
-      .where(sql`${table.status} = 'active'`),
+    unique("identity_merge_confirmation_journal_unique").on(table.agentId, table.journalId),
     index("identity_merge_confirmation_expiry_idx").on(table.status, table.expiresAt),
     foreignKey({
       name: "fk_identity_merge_confirmation_agent",
@@ -215,19 +223,24 @@ export const identityMergeConfirmationTable = pgTable(
     }).onDelete("cascade"),
     foreignKey({
       name: "fk_identity_merge_confirmation_journal",
-      columns: [table.journalId],
-      foreignColumns: [identityMergeJournalTable.id],
+      columns: [table.journalId, table.agentId],
+      foreignColumns: [identityMergeJournalTable.id, identityMergeJournalTable.agentId],
     }).onDelete("restrict"),
     foreignKey({
       name: "fk_identity_merge_confirmation_actor",
-      columns: [table.actorPrincipalId],
-      foreignColumns: [entityTable.id],
+      columns: [table.actorPrincipalId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
     }).onDelete("restrict"),
     check(
       "identity_merge_confirmation_status_check",
       sql`${table.status} IN ('active', 'consumed', 'expired', 'revoked')`
     ),
     check("identity_merge_confirmation_generation_check", sql`${table.expectedGeneration} >= 0`),
+    check("identity_merge_confirmation_time_check", sql`${table.expiresAt} > ${table.confirmedAt}`),
+    check(
+      "identity_merge_confirmation_consumed_check",
+      sql`(${table.status} = 'consumed' AND ${table.consumedAt} IS NOT NULL) OR (${table.status} <> 'consumed' AND ${table.consumedAt} IS NULL)`
+    ),
   ]
 );
 
@@ -239,7 +252,7 @@ export const identityCanonicalRedirectTable = pgTable(
     sourcePrincipalId: uuid("source_principal_id").notNull(),
     canonicalPrincipalId: uuid("canonical_principal_id").notNull(),
     mergeJournalId: uuid("merge_journal_id").notNull(),
-    version: integer("version").notNull(),
+    version: bigint("version", { mode: "number" }).notNull(),
     status: text("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     supersededAt: timestamp("superseded_at", { withTimezone: true }),
@@ -258,6 +271,7 @@ export const identityCanonicalRedirectTable = pgTable(
       table.canonicalPrincipalId,
       table.status
     ),
+    index("identity_redirect_journal_idx").on(table.agentId, table.mergeJournalId, table.status),
     foreignKey({
       name: "fk_identity_canonical_redirect_agent",
       columns: [table.agentId],
@@ -265,18 +279,18 @@ export const identityCanonicalRedirectTable = pgTable(
     }).onDelete("cascade"),
     foreignKey({
       name: "fk_identity_canonical_redirect_source",
-      columns: [table.sourcePrincipalId],
-      foreignColumns: [entityTable.id],
+      columns: [table.sourcePrincipalId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
     }).onDelete("restrict"),
     foreignKey({
       name: "fk_identity_canonical_redirect_target",
-      columns: [table.canonicalPrincipalId],
-      foreignColumns: [entityTable.id],
+      columns: [table.canonicalPrincipalId, table.agentId],
+      foreignColumns: [entityTable.id, entityTable.agentId],
     }).onDelete("restrict"),
     foreignKey({
       name: "fk_identity_canonical_redirect_journal",
-      columns: [table.mergeJournalId],
-      foreignColumns: [identityMergeJournalTable.id],
+      columns: [table.mergeJournalId, table.agentId],
+      foreignColumns: [identityMergeJournalTable.id, identityMergeJournalTable.agentId],
     }).onDelete("restrict"),
     check(
       "identity_canonical_redirect_status_check",

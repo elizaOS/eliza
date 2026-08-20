@@ -28,6 +28,7 @@ import {
 } from "./pglite/manager-cache";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+import { SqlIdentityResolutionService } from "./services/sql-identity-resolution";
 
 const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");
 
@@ -114,7 +115,7 @@ export const plugin: Plugin = {
   description: "A plugin for SQL database access (PGlite WASM in browser).",
   priority: 0,
   schema: schema,
-  services: [AdvancedMemoryStorageService],
+  services: [SqlIdentityResolutionService, AdvancedMemoryStorageService],
   init: async (_config, runtime: IAgentRuntime) => {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
     logger.info({ src: "plugin:sql" }, "plugin-sql (browser) init starting");
@@ -195,4 +196,8 @@ export type {
 } from "./pglite/manager-cache";
 export * from "./schema";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+export {
+  computeIdentityRequestDigest,
+  SqlIdentityResolutionService,
+} from "./services/sql-identity-resolution";
 export type { DrizzleDatabase } from "./types";

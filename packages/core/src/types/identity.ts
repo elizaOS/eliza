@@ -113,6 +113,36 @@ export interface IdentityCanonicalResolution {
 	generation: number;
 }
 
+export interface EvaluateOwnerBindingRequest {
+	agentId: UUID;
+	actorPrincipalId: UUID;
+	candidateOwnerPrincipalIds: readonly UUID[];
+	purpose:
+		| "role_resolution"
+		| "connector_account"
+		| "sensitive_request"
+		| "delivery";
+}
+
+export type OwnerBindingEvaluation =
+	| {
+			decision: "bound";
+			actorCanonicalPrincipalId: UUID;
+			ownerPrincipalId: UUID;
+			claimId: UUID;
+			ownerBindingId: string;
+			generation: number;
+			reason: "verified_owner_binding";
+	  }
+	| {
+			decision: "not_bound";
+			reason: "no_active_binding" | "revoked" | "disputed" | "wrong_owner";
+	  }
+	| {
+			decision: "unavailable";
+			reason: "not_implemented" | "service_unavailable" | "read_failed";
+	  };
+
 export interface IdentityCanonicalRedirect {
 	contractVersion: typeof IDENTITY_AUTHORITY_CONTRACT_VERSION;
 	id: UUID;
@@ -142,6 +172,7 @@ export interface IdentityClaimConflict {
 
 export interface IdentityMergePlan {
 	contractVersion: typeof IDENTITY_AUTHORITY_CONTRACT_VERSION;
+	/** The durable planned merge-journal row identifier. */
 	id: UUID;
 	agentId: UUID;
 	operation: IdentityMergeOperation;
@@ -206,8 +237,11 @@ export interface IdentityMergeConfirmation {
 	planId: UUID;
 	expectedGeneration: number;
 	actorPrincipalId: UUID;
+	planDigest: string;
+	status: "active" | "consumed" | "expired" | "revoked";
 	confirmedAt: string;
 	expiresAt: string;
+	consumedAt: string | null;
 }
 
 export interface CommitIdentityMergeRequest {
@@ -246,6 +280,14 @@ export abstract class IdentityResolutionService extends Service {
 		agentId: UUID,
 		principalId: UUID,
 	): Promise<IdentityCanonicalResolution>;
+	abstract resolveForDisplay(
+		agentId: UUID,
+		principalId: UUID,
+	): Promise<IdentityCanonicalResolution>;
+	abstract resolveForDataAccess(
+		agentId: UUID,
+		principalId: UUID,
+	): Promise<IdentityCanonicalResolution>;
 	abstract resolveClaim(
 		scope: IdentityClaimScope,
 	): Promise<IdentityClaim | null>;
@@ -253,6 +295,14 @@ export abstract class IdentityResolutionService extends Service {
 		agentId: UUID,
 		principalId: UUID,
 	): Promise<IdentityCluster | null>;
+	abstract resolveVerifiedDeliveryClaims(
+		agentId: UUID,
+		principalId: UUID,
+		connectorAccountId?: UUID,
+	): Promise<readonly IdentityClaim[]>;
+	abstract evaluateOwnerBinding(
+		request: EvaluateOwnerBindingRequest,
+	): Promise<OwnerBindingEvaluation>;
 	abstract proposeMerge(
 		request: ProposeIdentityMergeRequest,
 	): Promise<IdentityMergePlan>;

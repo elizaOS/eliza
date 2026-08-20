@@ -3,13 +3,14 @@
  * decide whether a connector-originated sender (Discord/Telegram/…) is the app
  * owner. Driven over a deterministic fake runtime (no DB, no live model):
  * configured-owner identity, connector-identity matching against the owner
- * entity's metadata (the owner-pairing bridge), confirmed identity links, the
+ * entity's verified pairing metadata, non-authoritative identity links, the
  * connector-admin whitelist ceiling (ADMIN, never OWNER), and the fail-closed
  * defaults for unlinked strangers and stale world OWNER grants.
  */
 import { describe, expect, it } from "vitest";
 import { type RolesWorldMetadata, resolveEntityRole } from "./roles.ts";
 import type { Entity, IAgentRuntime, Relationship, UUID } from "./types";
+import type { OwnerBindingEvaluation } from "./types/identity";
 
 const OWNER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const SENDER_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
@@ -20,6 +21,7 @@ type FakeRuntimeOptions = {
 	settings?: Record<string, string>;
 	entities?: Record<string, Entity>;
 	relationships?: Relationship[];
+	ownerBindingEvaluation?: OwnerBindingEvaluation;
 };
 
 function makeRuntime(options: FakeRuntimeOptions = {}): IAgentRuntime {
@@ -30,6 +32,13 @@ function makeRuntime(options: FakeRuntimeOptions = {}): IAgentRuntime {
 		getSetting: (key: string) => settings[key],
 		getEntityById: async (id: UUID) => entities[id] ?? null,
 		getRelationships: async () => options.relationships ?? [],
+		getService: () =>
+			options.ownerBindingEvaluation
+				? {
+						evaluateOwnerBinding: async () => options.ownerBindingEvaluation,
+					}
+				: null,
+		reportError: () => undefined,
 	} as unknown as IAgentRuntime;
 }
 
@@ -39,7 +48,12 @@ function ownerEntity(discordId: string): Entity {
 		names: ["Owner"],
 		agentId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" as UUID,
 		metadata: {
-			discord: { id: discordId, userId: discordId, username: "owner" },
+			discord: {
+				id: discordId,
+				userId: discordId,
+				username: "owner",
+				ownerBindVerifiedAt: 1,
+			},
 		},
 	};
 }
@@ -76,6 +90,37 @@ describe("resolveEntityRole — configured canonical owner", () => {
 });
 
 describe("resolveEntityRole — connector identity binding (owner pairing)", () => {
+	it("grants OWNER from a verified canonical identity-service decision", async () => {
+		const runtime = makeRuntime({
+			settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
+			ownerBindingEvaluation: {
+				decision: "bound",
+				actorCanonicalPrincipalId: OWNER_ID as UUID,
+				ownerPrincipalId: OWNER_ID as UUID,
+				claimId: "dddddddd-dddd-dddd-dddd-dddddddddddd" as UUID,
+				ownerBindingId: "binding-1",
+				generation: 1,
+				reason: "verified_owner_binding",
+			},
+		});
+		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("OWNER");
+	});
+
+	it("does not fall back when the identity service is unavailable", async () => {
+		const runtime = makeRuntime({
+			settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
+			entities: {
+				[OWNER_ID]: ownerEntity(OWNER_DISCORD_ID),
+				[SENDER_ID]: senderEntity(OWNER_DISCORD_ID, "owner"),
+			},
+			ownerBindingEvaluation: {
+				decision: "unavailable",
+				reason: "read_failed",
+			},
+		});
+		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("GUEST");
+	});
+
 	it("grants OWNER when the sender entity's stable platform id matches the owner entity's", async () => {
 		// This is exactly the state the OWNER_BIND_VERIFY pairing flow writes:
 		// the verified snowflake recorded on the owner entity's metadata.
@@ -129,12 +174,12 @@ describe("resolveEntityRole — confirmed identity links (merge engine)", () => 
 		} as Relationship;
 	}
 
-	it("a confirmed identity link to the owner inherits OWNER", async () => {
+	it("a confirmed identity link to the owner does not confer authority", async () => {
 		const runtime = makeRuntime({
 			settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
 			relationships: [identityLink("confirmed")],
 		});
-		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("OWNER");
+		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("GUEST");
 	});
 
 	it("an unconfirmed identity link grants nothing", async () => {

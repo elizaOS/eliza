@@ -17,7 +17,7 @@ describe("portable identity authority schemas", () => {
 		const active =
 			identityClaimSchema.indexes.identity_claim_active_scope_subject_unique;
 		expect(active?.isUnique).toBe(true);
-		expect(active?.where).toBe("status IN ('active', 'disputed')");
+		expect(active?.where).toBe("status = 'active'");
 		expect(identityClaimSchema.columns.connector_account_id?.type).toBe("uuid");
 		expect(
 			identityClaimSchema.foreignKeys.fk_identity_claim_owner_binding?.onDelete,
@@ -46,9 +46,9 @@ describe("portable identity authority schemas", () => {
 			identityMergeConfirmationSchema.columns.expected_generation?.notNull,
 		).toBe(true);
 		expect(
-			identityMergeConfirmationSchema.indexes
-				.identity_merge_confirmation_active_unique?.where,
-		).toBe("status = 'active'");
+			identityMergeConfirmationSchema.uniqueConstraints
+				.identity_merge_confirmation_journal_unique?.columns,
+		).toEqual(["agent_id", "journal_id"]);
 	});
 
 	it("retains versioned, journal-backed redirects without deleting principals", () => {
