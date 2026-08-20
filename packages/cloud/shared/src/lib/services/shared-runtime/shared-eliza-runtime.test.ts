@@ -1218,8 +1218,8 @@ describe("Shared Eliza Workerd runtime", () => {
         assistant: "0ba49b19-1d86-471f-9fbe-f4a67e6f07ec",
       },
       execution: {
-        engine: "eliza-runtime",
         agentKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
+        channel: { type: "DM", source: "shared-runtime" },
       },
     });
 
@@ -1308,8 +1308,8 @@ describe("Shared Eliza Workerd runtime", () => {
       ],
       message: "How does the corrected Tessera project work?",
       execution: {
-        engine: "eliza-runtime",
         agentKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
+        channel: { type: "DM", source: "shared-runtime" },
       },
     });
 

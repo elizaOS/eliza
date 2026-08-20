@@ -30,6 +30,7 @@ import {
 } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
+import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import { hasLanguageModelProviderConfigured } from "../../providers/language-model";
@@ -66,6 +67,8 @@ export interface SharedTurnMessage {
    * stream. Model history keeps the text but annotates it as incomplete.
    */
   interrupted?: boolean;
+  /** Bounded public-read authority retained for relevant follow-up turns. */
+  grounding?: SharedRuntimePublicGrounding;
 }
 
 export interface SharedAgentCharacter {
@@ -356,12 +359,19 @@ export function appendSharedTurn(
   reply: string,
   messageIds?: RunSharedAgentTurnInput["messageIds"],
   messageRole: "system" | "user" = "user",
+  grounding?: SharedRuntimePublicGrounding,
 ): SharedTurnMessage[] {
   const sentAt = Date.now();
   return [
     ...history,
     { id: messageIds?.user, role: messageRole, content: userMessage, createdAt: sentAt },
-    { id: messageIds?.assistant, role: "assistant", content: reply, createdAt: sentAt + 1 },
+    {
+      id: messageIds?.assistant,
+      role: "assistant",
+      content: reply,
+      createdAt: sentAt + 1,
+      ...(grounding ? { grounding } : {}),
+    },
   ];
 }
 
