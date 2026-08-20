@@ -538,10 +538,6 @@
       "status": "exempt",
       "reason": "No boundary-specific executable synthetic-world artifact exists yet; implementation is assigned to the row's dependency workstream."
     },
-    "@elizaos/app-core:model-handler:text_large:packages/app-core/scripts/streaming-pipeline-bench.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
-    },
     "@elizaos/app-core:model-handler:transcription:packages/app-core/scripts/local-stt-bench.ts": {
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
@@ -4238,10 +4234,6 @@
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
     },
-    "@elizaos/plugin-anthropic:model-handler:text_large:plugins/plugin-anthropic/index.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
-    },
     "@elizaos/plugin-anthropic:model-handler:text_medium_model_type:plugins/plugin-anthropic/index.ts": {
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
@@ -4710,10 +4702,6 @@
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
     },
-    "@elizaos/plugin-capacitor-bridge:model-handler:text_large:plugins/plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
-    },
     "@elizaos/plugin-capacitor-bridge:model-handler:text_small:plugins/plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts": {
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
@@ -4721,10 +4709,6 @@
     "@elizaos/plugin-capacitor-bridge:service:capacitormobiledevicebridgeservice:plugins/plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts": {
       "status": "exempt",
       "reason": "No boundary-specific executable synthetic-world artifact exists yet; implementation is assigned to the row's dependency workstream."
-    },
-    "@elizaos/plugin-cli-inference:model-handler:models:plugins/plugin-cli-inference/index.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
     },
     "@elizaos/plugin-cloud-apps:action:backup_app:plugins/plugin-cloud-apps/src/actions/backup-app.ts": {
       "status": "exempt",
@@ -4819,14 +4803,6 @@
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
     },
     "@elizaos/plugin-codex-cli:model-handler:response_handler_model_type:plugins/plugin-codex-cli/index.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
-    },
-    "@elizaos/plugin-codex-cli:model-handler:text_large:plugins/plugin-codex-cli/index.browser.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
-    },
-    "@elizaos/plugin-codex-cli:model-handler:text_large:plugins/plugin-codex-cli/index.ts": {
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
     },
@@ -5666,14 +5642,6 @@
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
     },
-    "@elizaos/plugin-local-inference:model-handler:text_large:plugins/plugin-local-inference/src/adapters/capacitor-llama/index.browser.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
-    },
-    "@elizaos/plugin-local-inference:model-handler:text_large:plugins/plugin-local-inference/src/adapters/capacitor-llama/index.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
-    },
     "@elizaos/plugin-local-inference:model-handler:text_small:plugins/plugin-local-inference/src/adapters/capacitor-llama/index.browser.ts": {
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
@@ -5862,10 +5830,6 @@
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
     },
-    "@elizaos/plugin-openai:model-handler:text_large:plugins/plugin-openai/index.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
-    },
     "@elizaos/plugin-openai:model-handler:text_medium_model_type:plugins/plugin-openai/index.ts": {
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
@@ -5895,14 +5859,6 @@
       "reason": "No boundary-specific executable synthetic-world artifact exists yet; implementation is assigned to the row's dependency workstream."
     },
     "@elizaos/plugin-personal-assistant:action:block:plugins/plugin-personal-assistant/src/actions/block.ts": {
-      "status": "exempt",
-      "reason": "No boundary-specific executable synthetic-world artifact exists yet; implementation is assigned to the row's dependency workstream."
-    },
-    "@elizaos/plugin-personal-assistant:action:brief:plugins/plugin-personal-assistant/src/actions/brief.ts": {
-      "status": "exempt",
-      "reason": "No boundary-specific executable synthetic-world artifact exists yet; implementation is assigned to the row's dependency workstream."
-    },
-    "@elizaos/plugin-personal-assistant:action:calendar:plugins/plugin-personal-assistant/src/actions/calendar.ts": {
       "status": "exempt",
       "reason": "No boundary-specific executable synthetic-world artifact exists yet; implementation is assigned to the row's dependency workstream."
     },
@@ -7318,10 +7274,6 @@
       "status": "exempt",
       "reason": "No boundary-specific executable synthetic-world artifact exists yet; implementation is assigned to the row's dependency workstream."
     },
-    "@elizaos/plugin-zai:model-handler:text_large:plugins/plugin-zai/index.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
-    },
     "@elizaos/plugin-zai:model-handler:text_small:plugins/plugin-zai/index.ts": {
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
@@ -7335,10 +7287,6 @@
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
     },
     "@elizaos/plugin-zerollama:model-handler:text_embedding:plugins/plugin-zerollama/plugin.ts": {
-      "status": "provider-qualified-only",
-      "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
-    },
-    "@elizaos/plugin-zerollama:model-handler:text_large:plugins/plugin-zerollama/plugin.ts": {
       "status": "provider-qualified-only",
       "reason": "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901."
     },

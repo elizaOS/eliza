@@ -55,6 +55,12 @@ describe("provider conformance mandatory scenarios", () => {
     [["http-read"] as const, "read-policy" as const],
     [["http-write"] as const, "write-policy-receipt" as const],
     [["irreversible-write"] as const, "irreversible-policy-receipt" as const],
+    [["streaming"] as const, "streaming-protocol" as const],
+    [["media-multimodal"] as const, "media-multimodal" as const],
+    [["cancellation"] as const, "request-cancellation" as const],
+    [["concurrency"] as const, "concurrent-isolation" as const],
+    [["idempotency"] as const, "idempotent-retry" as const],
+    [["message-lifecycle"] as const, "message-lifecycle" as const],
   ])("does not allow %s to omit %s", async (capabilities, scenario) => {
     await expectMandatoryScenario(capabilities, scenario);
   });

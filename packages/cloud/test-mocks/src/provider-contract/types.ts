@@ -27,6 +27,12 @@ export const PROVIDER_CONTRACT_SCENARIOS = [
   "read-policy",
   "write-policy-receipt",
   "irreversible-policy-receipt",
+  "streaming-protocol",
+  "media-multimodal",
+  "request-cancellation",
+  "concurrent-isolation",
+  "idempotent-retry",
+  "message-lifecycle",
 ] as const;
 
 export type ProviderContractScenario =
@@ -39,6 +45,12 @@ export type ProviderContractCapability =
   | "http-write"
   | "irreversible-write"
   | "pagination"
+  | "streaming"
+  | "media-multimodal"
+  | "cancellation"
+  | "concurrency"
+  | "idempotency"
+  | "message-lifecycle"
   | "tenant-isolation"
   | "webhooks";
 

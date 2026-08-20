@@ -1,7 +1,15 @@
 /** Hosts a protocol-faithful OAuth, HTTP, and webhook provider for adapter tests. */
 
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
+import { payloadHash, type SyntheticWorld } from "@elizaos/synthetic-world";
 import { startFetchServer } from "../fetch-server.js";
+import {
+  assertProviderProtocolFixtures,
+  createProviderMockControl,
+  PROVIDER_MOCK_CONTROL_PREFIX,
+  ProviderMockControlClient,
+  providerMockCoordinatorFor,
+} from "./control.js";
 import type {
   FakeProviderAccount,
   FakeProviderOAuthClient,
@@ -48,6 +56,8 @@ interface CompletedAction {
 }
 
 export interface FakeProviderOptions {
+  providerId?: string;
+  world?: SyntheticWorld;
   fixtures?: readonly ProviderProtocolFixture[];
   clientId?: string;
   accounts?: readonly FakeProviderAccount[];
@@ -71,6 +81,8 @@ export interface RunningFakeProvider {
   url: string;
   oauthAuthorizeUrl: string;
   oauthTokenUrl: string;
+  controlUrl: string;
+  control: ProviderMockControlClient;
   requests: RecordedProviderRequest[];
   readonly receipts: readonly ProviderActionReceipt[];
   readonly effects: readonly ProviderExecutedEffect[];
@@ -95,14 +107,24 @@ export interface RunningFakeProvider {
 export async function startFakeProvider(
   options: FakeProviderOptions = {},
 ): Promise<RunningFakeProvider> {
+  const initialFixtures = [...(options.fixtures ?? [])];
+  assertProviderProtocolFixtures(initialFixtures, { allowEmpty: true });
   const fixtures = new Map(
-    (options.fixtures ?? []).map((fixture) => [
+    initialFixtures.map((fixture) => [
       `${fixture.method} ${fixture.path}`,
       fixture,
     ]),
   );
   const clientId = options.clientId ?? "contract-client";
-  const now = options.now ?? Date.now;
+  if (options.world && options.now) {
+    throw new Error(
+      "fake provider accepts either a synthetic world or now(), not both",
+    );
+  }
+  const now = options.world
+    ? () => options.world?.clock.now().getTime() ?? 0
+    : (options.now ?? Date.now);
+  const providerId = options.providerId ?? "generic-provider-contract";
   const tokenLifetimeMs = options.tokenLifetimeMs ?? 3_600_000;
   const seed = options.seed ?? "eliza-provider-contract-v1";
   const authorizationCodes = new Map<string, AuthorizationCode>();
@@ -159,20 +181,97 @@ export async function startFakeProvider(
     }
   }
   const apiCredentials = new Map<string, ActionPrincipal>();
-  for (const account of accountSeeds) {
-    if (!account.apiCredential) continue;
-    if (apiCredentials.has(account.apiCredential)) {
-      throw new Error("fake provider API credentials must be unique");
+  const restoreInitialState = (): void => {
+    fixtures.clear();
+    for (const fixture of initialFixtures) {
+      fixtures.set(`${fixture.method} ${fixture.path}`, fixture);
     }
-    apiCredentials.set(account.apiCredential, {
-      accountId: account.accountId,
-      tenantId: account.tenantId,
-      connectionId: opaque("conn", seed, ++sequence),
-      capabilities: account.capabilities,
-    });
-  }
+    authorizationCodes.clear();
+    credentialsByAccess.clear();
+    credentialsByRefresh.clear();
+    faults.clear();
+    requests.length = 0;
+    receipts.length = 0;
+    effects.length = 0;
+    completedActions.clear();
+    apiCredentials.clear();
+    sequence = 0;
+    for (const account of accountSeeds) {
+      if (!account.apiCredential) continue;
+      if (apiCredentials.has(account.apiCredential)) {
+        throw new Error("fake provider API credentials must be unique");
+      }
+      apiCredentials.set(account.apiCredential, {
+        accountId: account.accountId,
+        tenantId: account.tenantId,
+        connectionId: opaque("conn", seed, ++sequence),
+        capabilities: account.capabilities,
+      });
+    }
+  };
+  restoreInitialState();
+
+  const enqueueFault = (
+    method: string,
+    path: string,
+    fault: ProviderProtocolFault,
+  ): void => {
+    const key = `${method.toUpperCase()} ${path}`;
+    faults.set(key, [...(faults.get(key) ?? []), fault]);
+  };
+  const controlToken = `control_${randomBytes(32).toString("base64url")}`;
+  const controlHandler = createProviderMockControl({
+    providerId,
+    token: controlToken,
+    now,
+    coordinator: options.world
+      ? providerMockCoordinatorFor(options.world)
+      : undefined,
+    adapter: {
+      inspect: () => ({
+        fixtureIds: [...fixtures.values()].map((fixture) => fixture.id).sort(),
+        pendingFaults: [...faults.entries()]
+          .map(([target, queue]) => ({ target, count: queue.length }))
+          .sort((left, right) => left.target.localeCompare(right.target)),
+        credentials: {
+          authorizationCodes: authorizationCodes.size,
+          accessTokens: credentialsByAccess.size,
+          refreshTokens: credentialsByRefresh.size,
+        },
+        ledger: {
+          requests: structuredClone(requests),
+          receipts: structuredClone(receipts),
+          effects: structuredClone(effects),
+        },
+      }),
+      executionState: () => ({
+        fixtureIds: [...fixtures.values()].map((fixture) => fixture.id).sort(),
+        pendingFaults: [...faults.entries()]
+          .map(([target, queue]) => ({
+            target,
+            faults: structuredClone(queue),
+          }))
+          .sort((left, right) => left.target.localeCompare(right.target)),
+        credentials: {
+          authorizationCodes: authorizationCodes.size,
+          accessTokens: credentialsByAccess.size,
+          refreshTokens: credentialsByRefresh.size,
+        },
+        completedActionCount: completedActions.size,
+      }),
+      reset: restoreInitialState,
+      seed: (nextFixtures) => {
+        for (const fixture of nextFixtures) {
+          fixtures.set(`${fixture.method} ${fixture.path}`, fixture);
+        }
+      },
+      enqueueFault,
+    },
+  });
 
   const server = await startFetchServer(async (request) => {
+    const controlResponse = await controlHandler.handle(request);
+    if (controlResponse) return controlResponse;
     const url = new URL(request.url);
     const body =
       request.method === "GET" || request.method === "HEAD"
@@ -185,11 +284,25 @@ export async function startFakeProvider(
       headers: redactHeaders(request.headers),
       body: redactText(body),
     });
+    const observation = {
+      method: request.method,
+      path: url.pathname,
+      query: redactEntries(url.searchParams),
+    };
+    options.world?.ledger.append({
+      kind: "request",
+      status: "observed",
+      target: `provider.${providerId}.http`,
+      input: observation,
+      payloadHash: payloadHash(observation),
+      idempotencyKey: request.headers.get("idempotency-key") ?? undefined,
+      attempt: requests.length,
+    });
 
     const faultKey = `${request.method} ${url.pathname}`;
     const queued = faults.get(faultKey);
     const fault = queued?.shift();
-    if (fault) return applyFault(fault);
+    if (fault) return applyFault(fault, options.world);
 
     if (url.pathname === "/oauth/authorize" && request.method === "GET") {
       const responseType = url.searchParams.get("response_type");
@@ -360,10 +473,17 @@ export async function startFakeProvider(
   });
 
   const url = `http://${server.hostname}:${server.port}`;
+  const controlUrl = `${url}${PROVIDER_MOCK_CONTROL_PREFIX}`;
+  const stop = async (): Promise<void> => {
+    controlHandler.dispose();
+    await server.stop();
+  };
   return {
     url,
     oauthAuthorizeUrl: `${url}/oauth/authorize`,
     oauthTokenUrl: `${url}/oauth/token`,
+    controlUrl,
+    control: new ProviderMockControlClient(controlUrl, controlToken),
     requests,
     get receipts() {
       return receipts.map((receipt) => structuredClone(receipt));
@@ -375,8 +495,7 @@ export async function startFakeProvider(
       return opaque("conn", seed, ++sequence);
     },
     enqueueFault(method, path, fault) {
-      const key = `${method.toUpperCase()} ${path}`;
-      faults.set(key, [...(faults.get(key) ?? []), fault]);
+      enqueueFault(method, path, fault);
     },
     expireAccessToken(accessToken) {
       const credential = credentialsByAccess.get(accessToken);
@@ -409,8 +528,8 @@ export async function startFakeProvider(
       }
       return responses;
     },
-    resetConnections: server.stop,
-    stop: server.stop,
+    resetConnections: stop,
+    stop,
   };
 }
 
@@ -857,9 +976,13 @@ function oauthClientAuthenticated(
   return form.get("client_secret") === registration.clientSecret;
 }
 
-async function applyFault(fault: ProviderProtocolFault): Promise<Response> {
+async function applyFault(
+  fault: ProviderProtocolFault,
+  world?: SyntheticWorld,
+): Promise<Response> {
   if (fault.type === "delay") {
-    await new Promise((resolve) => setTimeout(resolve, fault.durationMs));
+    if (world) await world.clock.advanceBy(fault.durationMs);
+    else await new Promise((resolve) => setTimeout(resolve, fault.durationMs));
     return json({ ok: true });
   }
   if (fault.type === "malformed-json") {

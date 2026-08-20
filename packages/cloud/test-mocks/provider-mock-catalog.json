@@ -1,0 +1,725 @@
+{
+  "schemaVersion": 1,
+  "controlContract": "provider-mock-control-v1",
+  "certificationPolicy": "Mock observations are diagnostic-only and never provider-qualified certification.",
+  "inventorySources": [
+    "packages/scripts/e2e-coverage/runtime-surface-inventory.ts#eliza.synthetic-world-surfaces/v1",
+    "packages/scenario-runner/test/mocks/scripts/start-mocks.ts#MOCK_PROVIDER_ENVIRONMENTS",
+    "packages/scenario-runner/test/mocks/helpers/provider-coverage.ts#LIFEOPS_PROVIDER_MOCK_COVERAGE",
+    "packages/scenario-runner/test/mocks/environments/*.json",
+    "packages/scenario-runner/test/mocks/mockoon/*.json"
+  ],
+  "runtimeSurfaceOwners": {
+    "@elizaos/agent": "model-runtime-family",
+    "@elizaos/app-core": "model-runtime-family",
+    "@elizaos/core": "model-runtime-family",
+    "@elizaos/plugin-agent-orchestrator": "framework-provider-family",
+    "@elizaos/plugin-agent-skills": "framework-provider-family",
+    "@elizaos/plugin-anthropic": "anthropic",
+    "@elizaos/plugin-bluebubbles": "messaging-webhook-family",
+    "@elizaos/plugin-app-control": "framework-provider-family",
+    "@elizaos/plugin-blocker": "framework-provider-family",
+    "@elizaos/plugin-browser": "framework-provider-family",
+    "@elizaos/plugin-calendar": "framework-provider-family",
+    "@elizaos/plugin-capacitor-bridge": "model-runtime-family",
+    "@elizaos/plugin-cli-inference": "model-runtime-family",
+    "@elizaos/plugin-cloud-apps": "framework-provider-family",
+    "@elizaos/plugin-codex-cli": "model-runtime-family",
+    "@elizaos/plugin-coding-tools": "framework-provider-family",
+    "@elizaos/plugin-commands": "framework-provider-family",
+    "@elizaos/plugin-companion": "framework-provider-family",
+    "@elizaos/plugin-computeruse": "framework-provider-family",
+    "@elizaos/plugin-contacts": "framework-provider-family",
+    "@elizaos/plugin-discord": "messaging-webhook-family",
+    "@elizaos/plugin-elizacloud": "eliza-cloud-managed",
+    "@elizaos/plugin-embeddings": "model-runtime-family",
+    "@elizaos/plugin-fish-audio": "model-runtime-family",
+    "@elizaos/plugin-google-genai": "model-runtime-family",
+    "@elizaos/plugin-google-workspace": "google-workspace",
+    "@elizaos/plugin-imessage": "messaging-webhook-family",
+    "@elizaos/plugin-inbox": "framework-provider-family",
+    "@elizaos/plugin-instagram": "messaging-webhook-family",
+    "@elizaos/plugin-local-inference": "model-runtime-family",
+    "@elizaos/plugin-matrix": "messaging-webhook-family",
+    "@elizaos/plugin-mcp": "framework-provider-family",
+    "@elizaos/plugin-meetings": "framework-provider-family",
+    "@elizaos/plugin-messages": "messaging-webhook-family",
+    "@elizaos/plugin-native-inference": "model-runtime-family",
+    "@elizaos/plugin-notes": "framework-provider-family",
+    "@elizaos/plugin-openai": "openai",
+    "@elizaos/plugin-personal-assistant": "framework-provider-family",
+    "@elizaos/plugin-phone": "framework-provider-family",
+    "@elizaos/plugin-relationships": "framework-provider-family",
+    "@elizaos/plugin-signal": "messaging-webhook-family",
+    "@elizaos/plugin-slack": "messaging-webhook-family",
+    "@elizaos/plugin-telegram": "messaging-webhook-family",
+    "@elizaos/plugin-todos": "framework-provider-family",
+    "@elizaos/plugin-vision": "vision-analysis",
+    "@elizaos/plugin-wallet": "framework-provider-family",
+    "@elizaos/plugin-wechat": "messaging-webhook-family",
+    "@elizaos/plugin-whatsapp": "messaging-webhook-family",
+    "@elizaos/plugin-wifi": "framework-provider-family",
+    "@elizaos/plugin-workflow": "framework-provider-family",
+    "@elizaos/plugin-x": "x-twitter",
+    "@elizaos/plugin-zai": "model-runtime-family",
+    "@elizaos/plugin-zerollama": "model-runtime-family"
+  },
+  "environmentOwners": {
+    "google": "google-workspace",
+    "twilio": "messaging-webhook-family",
+    "whatsapp": "messaging-webhook-family",
+    "x-twitter": "x-twitter",
+    "calendly": "calendly",
+    "cloud-managed": "eliza-cloud-managed",
+    "signal": "messaging-webhook-family",
+    "browser-workspace": "messaging-webhook-family",
+    "bluebubbles": "messaging-webhook-family",
+    "imessage": "messaging-webhook-family",
+    "github": "github",
+    "discord": "messaging-webhook-family",
+    "slack": "messaging-webhook-family",
+    "telegram": "messaging-webhook-family",
+    "linear": "linear",
+    "shopify": "shopify",
+    "payments": "payments",
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "vision": "vision-analysis"
+  },
+  "mockoonOwners": {
+    "anthropic": "anthropic",
+    "apple-reminders": "legacy-readonly-mockoon-family",
+    "bluebubbles": "messaging-webhook-family",
+    "calendar": "google-workspace",
+    "cerebras": "openai",
+    "discord": "messaging-webhook-family",
+    "duffel": "legacy-readonly-mockoon-family",
+    "eliza-cloud": "eliza-cloud-managed",
+    "github": "github",
+    "gmail": "google-workspace",
+    "notion": "legacy-readonly-mockoon-family",
+    "ntfy": "legacy-readonly-mockoon-family",
+    "plaid": "payments",
+    "signal": "messaging-webhook-family",
+    "slack": "messaging-webhook-family",
+    "spotify": "legacy-readonly-mockoon-family",
+    "telegram": "messaging-webhook-family",
+    "twilio": "messaging-webhook-family"
+  },
+  "contractEvidence": {
+    "generic-provider-contract": [
+      "packages/cloud/test-mocks/test/provider-contract/control-contract.test.ts#provider mock control contract"
+    ],
+    "openai": [
+      "packages/scenario-runner/test/mocks/__tests__/provider-wire-mock.test.ts#OpenAI",
+      "packages/cloud/e2e/src/fixtures/mock-llm.test.ts#drives the production OpenAI SDK"
+    ],
+    "anthropic": [
+      "packages/scenario-runner/test/mocks/__tests__/provider-wire-mock.test.ts#Anthropic"
+    ],
+    "vision-analysis": [
+      "packages/scenario-runner/test/mocks/__tests__/provider-coverage-contract.test.ts#provider coverage contract"
+    ],
+    "google-workspace": [
+      "packages/scenario-runner/test/mocks/__tests__/google-gmail-fault.test.ts#Gmail"
+    ],
+    "github": [
+      "packages/cloud/test-mocks/test/provider-contract/github-connector-oauth.contract.test.ts#GitHub connector OAuth production contract"
+    ],
+    "x-twitter": [
+      "packages/scenario-runner/test/mocks/__tests__/provider-coverage-contract.test.ts#provider coverage contract"
+    ],
+    "calendly": [
+      "packages/scenario-runner/test/mocks/__tests__/provider-coverage-contract.test.ts#provider coverage contract"
+    ],
+    "shopify": [
+      "packages/scenario-runner/test/mocks/__tests__/provider-coverage-contract.test.ts#provider coverage contract"
+    ],
+    "linear": [
+      "packages/scenario-runner/test/mocks/__tests__/provider-coverage-contract.test.ts#provider coverage contract"
+    ],
+    "payments": [
+      "packages/scenario-runner/test/mocks/__tests__/payment-provider-mock.test.ts#payments mock provider"
+    ],
+    "hetzner-cloud": [
+      "packages/cloud/test-mocks/test/provider-contract/hetzner-cloud-client.contract.test.ts#HetznerCloudClient provider contract"
+    ],
+    "eliza-cloud-managed": [
+      "packages/cloud/test-mocks/test/provider-contract/cloud-api-client.contract.test.ts#CloudApiClient provider contract"
+    ],
+    "container-control-plane": [
+      "packages/cloud/test-mocks/test/control-plane-extended.test.ts#control-plane mock"
+    ],
+    "legacy-readonly-mockoon-family": [
+      "packages/scenario-runner/test/mocks/__tests__/provider-coverage-contract.test.ts#provider coverage contract"
+    ],
+    "messaging-webhook-family": [
+      "packages/cloud/test-mocks/test/provider-contract/whatsapp-cloud-webhook.contract.test.ts#WhatsApp production webhook contract"
+    ],
+    "model-runtime-family": [
+      "packages/scripts/e2e-coverage/runtime-surface-inventory.test.ts#runtime-surface production inventory"
+    ],
+    "framework-provider-family": [
+      "packages/scripts/e2e-coverage/runtime-surface-inventory.test.ts#runtime-surface production inventory"
+    ]
+  },
+  "entries": [
+    {
+      "id": "generic-provider-contract",
+      "family": "generic-http-oauth",
+      "ownerShard": "provider-foundation",
+      "productionClients": [
+        "CloudApiClient",
+        "HetznerCloudClient",
+        "GitHubConnectorAccountProvider"
+      ],
+      "apiVersions": [
+        "OAuth 2.0 Authorization Code + PKCE",
+        "provider-specific HTTP"
+      ],
+      "endpoints": [
+        "/oauth/authorize",
+        "/oauth/token",
+        "/oauth/revoke",
+        "fixture-declared HTTP routes"
+      ],
+      "events": ["signed generic webhook delivery"],
+      "fidelity": "Stateful real-HTTP auth, tenant, fault, idempotency, receipt, and effect boundary.",
+      "gaps": ["Provider-specific response schemas remain adapter-owned."],
+      "control": "provider-mock-control-v1",
+      "scenarios": [
+        "success",
+        "empty",
+        "invalid",
+        "pagination",
+        "expiry-refresh-revocation",
+        "429",
+        "malformed",
+        "4xx-5xx",
+        "timeout-cancel",
+        "idempotency",
+        "concurrency",
+        "teardown"
+      ],
+      "canary": "Separate opt-in provider-specific live lane; never inferred from mock receipts.",
+      "mockSource": "packages/cloud/test-mocks/src/provider-contract/fake-provider.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "openai",
+      "family": "model",
+      "ownerShard": "model-media",
+      "productionClients": ["@ai-sdk/openai via @elizaos/plugin-openai"],
+      "apiVersions": ["OpenAI v1"],
+      "endpoints": [
+        "POST /v1/chat/completions",
+        "POST /v1/embeddings",
+        "POST /v1/images/generations",
+        "GET /v1/models"
+      ],
+      "events": [
+        "chat completion chunks when strict wire adapter #23150 is stacked"
+      ],
+      "fidelity": "Production SDK base-URL seam and protocol-shaped JSON; strict streaming/tool/usage adapter is isolated in #23150.",
+      "gaps": ["Responses API", "audio", "moderation", "files", "fine-tuning"],
+      "control": "request-ledger-only; migrate to provider-mock-control-v1 after #23150 lands",
+      "scenarios": [
+        "text",
+        "embeddings",
+        "image-generation",
+        "tool-calls",
+        "streaming",
+        "usage",
+        "errors",
+        "cancellation"
+      ],
+      "canary": "external-api-live-drift OpenAI lane",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "anthropic",
+      "family": "model",
+      "ownerShard": "model-media",
+      "productionClients": ["@ai-sdk/anthropic via @elizaos/plugin-anthropic"],
+      "apiVersions": ["Anthropic Messages v1"],
+      "endpoints": ["POST /v1/messages", "GET /v1/models"],
+      "events": [
+        "message content blocks; SSE when strict wire adapter #23150 is stacked"
+      ],
+      "fidelity": "Production SDK base-URL seam with text/tool/computer-use JSON fixtures.",
+      "gaps": ["message batches", "files", "prompt caching"],
+      "control": "request-ledger-only; migrate to provider-mock-control-v1 after #23150 lands",
+      "scenarios": [
+        "text",
+        "tool-use",
+        "computer-use",
+        "streaming",
+        "429",
+        "401-failover",
+        "errors",
+        "cancellation"
+      ],
+      "canary": "external-api-live-drift Anthropic lane",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "vision-analysis",
+      "family": "media",
+      "ownerShard": "model-media",
+      "productionClients": ["plugin-computeruse vision HTTP provider"],
+      "apiVersions": ["Eliza vision analysis v1"],
+      "endpoints": [
+        "POST /v1/vision/analyze",
+        "POST /v1/analyze",
+        "POST /v1/describe",
+        "POST /v1/objects",
+        "POST /v1/text"
+      ],
+      "events": [],
+      "fidelity": "Image-byte SHA-256 and hint keyed caption, object, and OCR fixtures.",
+      "gaps": ["real CV", "word-level OCR boxes", "batch", "async polling"],
+      "control": "request-ledger-only",
+      "scenarios": ["known-image", "unknown-image", "invalid", "provider-down"],
+      "canary": "Real vision provider qualification remains plugin-owned.",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "google-workspace",
+      "family": "productivity",
+      "ownerShard": "generic-http-oauth",
+      "productionClients": [
+        "@elizaos/plugin-google-workspace Gmail and Calendar clients"
+      ],
+      "apiVersions": ["Google OAuth 2.0", "Gmail v1", "Calendar v3"],
+      "endpoints": [
+        "OAuth token/userinfo",
+        "Gmail messages/threads/drafts/labels/history/watch/filters",
+        "Calendar lists/events"
+      ],
+      "events": ["watch registration metadata"],
+      "fidelity": "Stateful account fixtures, query matching, pagination-shaped lists, attachments, and write ledger.",
+      "gaps": [
+        "full Gmail query grammar",
+        "multipart upload",
+        "delegated mailbox",
+        "push delivery",
+        "recurrence expansion"
+      ],
+      "control": "provider-specific fault and request ledger; migrate to provider-mock-control-v1",
+      "scenarios": [
+        "oauth",
+        "list-get-search",
+        "pagination",
+        "attachments",
+        "writes",
+        "faults",
+        "multi-account"
+      ],
+      "canary": "Google connector certification scenarios and separate live lane",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "github",
+      "family": "productivity",
+      "ownerShard": "generic-http-oauth",
+      "productionClients": [
+        "Octokit via @elizaos/plugin-github",
+        "GitHubConnectorAccountProvider"
+      ],
+      "apiVersions": ["GitHub REST API", "OAuth web flow"],
+      "endpoints": [
+        "pull requests/reviews",
+        "issues/create/assign",
+        "search",
+        "notifications",
+        "OAuth callback contract"
+      ],
+      "events": [],
+      "fidelity": "Octokit-shaped REST fixtures plus promoted OAuth boundary contract.",
+      "gaps": [
+        "GraphQL",
+        "checks/statuses",
+        "contents",
+        "branch protection",
+        "workflow endpoints"
+      ],
+      "control": "request-ledger-only plus generic provider contract for OAuth",
+      "scenarios": [
+        "oauth-state-pkce",
+        "list",
+        "search",
+        "writes",
+        "invalid",
+        "errors"
+      ],
+      "canary": "Provider-qualified GitHub connector lane is separate.",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "x-twitter",
+      "family": "generic-http-oauth",
+      "ownerShard": "generic-http-oauth",
+      "productionClients": ["X API client used by LifeOps connectors"],
+      "apiVersions": ["X API v2"],
+      "endpoints": [
+        "/2/users/:id/timelines/reverse_chronological",
+        "/2/users/:id/mentions",
+        "/2/tweets/search/recent",
+        "/2/tweets",
+        "/2/dm_events"
+      ],
+      "events": [],
+      "fidelity": "Stateful timeline/search/DM read-write fixtures with request metadata.",
+      "gaps": [
+        "OAuth handshake",
+        "streaming",
+        "media upload",
+        "delete/like/repost",
+        "protected accounts"
+      ],
+      "control": "request-ledger-only",
+      "scenarios": [
+        "timeline",
+        "mentions",
+        "search",
+        "tweet-create",
+        "dm-send"
+      ],
+      "canary": "Separate X sandbox/live connector lane.",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "calendly",
+      "family": "generic-http-oauth",
+      "ownerShard": "generic-http-oauth",
+      "productionClients": ["Calendly connector HTTP client"],
+      "apiVersions": ["Calendly API v2"],
+      "endpoints": [
+        "current user",
+        "event types",
+        "available times",
+        "scheduling links",
+        "scheduled events"
+      ],
+      "events": [],
+      "fidelity": "Protocol-shaped read and scheduling-link responses.",
+      "gaps": ["webhooks", "cancel/reschedule", "team scope", "OAuth refresh"],
+      "control": "request-ledger-only",
+      "scenarios": ["success", "empty", "scheduling-link", "invalid"],
+      "canary": "Separate Calendly sandbox lane.",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "shopify",
+      "family": "commerce",
+      "ownerShard": "generic-http-oauth",
+      "productionClients": ["Shopify Admin API client"],
+      "apiVersions": ["Admin API 2024-10"],
+      "endpoints": [
+        "products",
+        "orders",
+        "customers",
+        "inventory_levels",
+        "shop"
+      ],
+      "events": [],
+      "fidelity": "Stateful product creation and protocol-shaped Admin REST reads.",
+      "gaps": [
+        "cursor pagination",
+        "filters",
+        "fulfillment",
+        "metafields",
+        "discounts"
+      ],
+      "control": "request-ledger-only",
+      "scenarios": ["success", "empty", "create", "get", "invalid"],
+      "canary": "Separate Shopify development-store lane.",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "linear",
+      "family": "productivity",
+      "ownerShard": "generic-http-oauth",
+      "productionClients": ["Linear GraphQL client"],
+      "apiVersions": ["Linear GraphQL"],
+      "endpoints": [
+        "viewer",
+        "issues",
+        "teams",
+        "users",
+        "projects",
+        "issue create/update/delete"
+      ],
+      "events": [],
+      "fidelity": "Operation-keyed GraphQL responses with a stateful issue store.",
+      "gaps": [
+        "full GraphQL grammar",
+        "cursor pagination",
+        "comments",
+        "cycles",
+        "attachments"
+      ],
+      "control": "request-ledger-only",
+      "scenarios": ["queries", "mutations", "empty", "invalid"],
+      "canary": "Separate Linear sandbox lane.",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "payments",
+      "family": "commerce",
+      "ownerShard": "generic-http-oauth",
+      "productionClients": [
+        "Cloud app-charge client",
+        "payment request client"
+      ],
+      "apiVersions": ["Eliza payment request v1", "Cloud app charges v1"],
+      "endpoints": [
+        "payment request create/status/pay/fail",
+        "app charge create/status/checkout",
+        "/__mock/payments/requests"
+      ],
+      "events": ["signed paid and failed callbacks"],
+      "fidelity": "Stateful payment and charge lifecycles with synchronous callback ledger.",
+      "gaps": [
+        "real settlement",
+        "refund/dispute",
+        "exchange rates",
+        "delayed callback retry"
+      ],
+      "control": "provider-specific reset and ledger; migrate to provider-mock-control-v1",
+      "scenarios": [
+        "create",
+        "status",
+        "pay",
+        "fail",
+        "checkout",
+        "reset",
+        "callback"
+      ],
+      "canary": "Real payment provider qualification is separate and monetized.",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "hetzner-cloud",
+      "family": "infrastructure",
+      "ownerShard": "generic-http-oauth",
+      "productionClients": ["HetznerCloudClient"],
+      "apiVersions": ["Hetzner Cloud v1"],
+      "endpoints": [
+        "servers",
+        "server power actions",
+        "actions polling",
+        "volumes"
+      ],
+      "events": ["pollable action progression"],
+      "fidelity": "Stateful production-client HTTP mock with action timing and idempotency contract suite.",
+      "gaps": ["complete Hetzner catalog and every infrastructure resource"],
+      "control": "direct store today; provider-mock-control-v1 adapter pending",
+      "scenarios": [
+        "create",
+        "list",
+        "poll",
+        "power",
+        "volume",
+        "failure",
+        "idempotency"
+      ],
+      "canary": "Provider-qualified Hetzner fleet canary remains operationally separate.",
+      "mockSource": "packages/cloud/test-mocks/src/hetzner/index.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "eliza-cloud-managed",
+      "family": "infrastructure",
+      "ownerShard": "generic-http-oauth",
+      "productionClients": ["Eliza Cloud managed connector client"],
+      "apiVersions": ["Eliza Cloud API v1"],
+      "endpoints": ["managed Google status", "managed Google accounts"],
+      "events": [],
+      "fidelity": "Authenticated protocol-shaped managed connector reads.",
+      "gaps": ["mutations", "billing limits", "relink", "auth failure matrix"],
+      "control": "request-ledger-only",
+      "scenarios": ["status", "account-list", "empty", "auth-error"],
+      "canary": "Provider-qualified Cloud canary is separate.",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "container-control-plane",
+      "family": "infrastructure",
+      "ownerShard": "generic-http-oauth",
+      "productionClients": ["container control-plane and autoscaler clients"],
+      "apiVersions": ["Eliza control-plane API v1"],
+      "endpoints": [
+        "warm pool",
+        "docker nodes",
+        "cron jobs",
+        "compat agents",
+        "jobs",
+        "sandboxes"
+      ],
+      "events": ["tickable job progression"],
+      "fidelity": "Stateful Hono API with explicit job ticking and stuck-job cleanup.",
+      "gaps": [
+        "external container runtime and real infrastructure side effects"
+      ],
+      "control": "direct store/tick API; provider-mock-control-v1 adapter pending",
+      "scenarios": [
+        "create",
+        "tick",
+        "complete",
+        "stuck-cleanup",
+        "concurrency",
+        "teardown"
+      ],
+      "canary": "Real control-plane fleet checks remain operationally separate.",
+      "mockSource": "packages/cloud/test-mocks/src/control-plane/index.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "framework-provider-family",
+      "family": "framework-provider",
+      "ownerShard": "provider-foundation",
+      "productionClients": [
+        "production Plugin.providers registrations across agent, core, application, device, workspace, wallet, and domain plugins"
+      ],
+      "apiVersions": ["elizaOS Plugin provider contract"],
+      "endpoints": [
+        "provider registrations derived from eliza.synthetic-world-surfaces/v1"
+      ],
+      "events": [],
+      "fidelity": "Production registration census and ownership only; runtime context providers are not misrepresented as external HTTP APIs.",
+      "gaps": [
+        "provider-by-provider deterministic scenario coverage and reset evidence are reported by the canonical runtime inventory",
+        "external wallet, browser, MCP, calendar, device, and app boundaries need dedicated protocol rows as promoted"
+      ],
+      "control": "inventory-bound migration debt; stateful external boundaries adopt provider-mock-control-v1 when promoted",
+      "scenarios": [
+        "canonical runtime-surface inventory and package ownership ratchet"
+      ],
+      "canary": "External dependencies retain separate provider/platform qualification; pure context providers require no provider certification.",
+      "mockSource": "packages/scripts/e2e-coverage/runtime-surface-inventory.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "model-runtime-family",
+      "family": "model-media",
+      "ownerShard": "model-media",
+      "productionClients": [
+        "@elizaos/agent and @elizaos/core model dispatch",
+        "@elizaos/app-core transcription",
+        "Capacitor and native inference",
+        "CLI inference and Codex CLI",
+        "embeddings and local inference",
+        "Fish Audio",
+        "Google GenAI",
+        "Z.AI",
+        "ZeroLlama"
+      ],
+      "apiVersions": [
+        "provider-specific SDK, CLI, native, and local-runtime contracts"
+      ],
+      "endpoints": [
+        "model-handler registrations derived from eliza.synthetic-world-surfaces/v1"
+      ],
+      "events": [
+        "streaming/tool/media events where implemented by each runtime"
+      ],
+      "fidelity": "Production registration census only; this row makes no claim that one generic mock simulates distinct model protocols.",
+      "gaps": [
+        "provider-specific wire adapters",
+        "shared reset/fault/ledger adoption",
+        "streaming and cancellation parity by client",
+        "media payload and usage parity by client"
+      ],
+      "control": "inventory-bound migration debt; no generic success fallback",
+      "scenarios": [
+        "canonical runtime-surface inventory and package ownership ratchet"
+      ],
+      "canary": "Each remote model provider keeps a separately qualified live lane; local/native runtimes keep platform-specific verification.",
+      "mockSource": "packages/scripts/e2e-coverage/runtime-surface-inventory.ts",
+      "certification": "mock-only"
+    },
+    {
+      "id": "legacy-readonly-mockoon-family",
+      "family": "generic-http-oauth",
+      "ownerShard": "catalog-migration",
+      "productionClients": [
+        "Spotify",
+        "Duffel",
+        "Plaid",
+        "Notion",
+        "ntfy",
+        "Apple Reminders",
+        "Cerebras legacy consumers"
+      ],
+      "apiVersions": [
+        "provider-specific versions pinned in Mockoon environment files"
+      ],
+      "endpoints": [
+        "read-only routes enumerated in packages/scenario-runner/test/mocks/mockoon/*.json"
+      ],
+      "events": [],
+      "fidelity": "Stateless legacy protocol-shaped examples retained for existing consumers.",
+      "gaps": [
+        "stateful writes",
+        "shared reset/fault/ledger control",
+        "production-client conformance promotion"
+      ],
+      "control": "none; explicit catalog migration debt",
+      "scenarios": ["existing Mockoon smoke coverage only"],
+      "canary": "Provider-specific live drift must remain separate.",
+      "mockSource": "packages/scenario-runner/test/mocks/mockoon/INVENTORY.md",
+      "certification": "mock-only"
+    },
+    {
+      "id": "messaging-webhook-family",
+      "family": "messaging-webhook",
+      "ownerShard": "reserved-later-messaging-webhook-shard",
+      "productionClients": [
+        "WhatsApp Cloud",
+        "Telegram Bot HTTP",
+        "Slack Web API",
+        "Discord REST",
+        "Signal HTTP",
+        "BlueBubbles",
+        "Twilio"
+      ],
+      "apiVersions": [
+        "provider-specific current versions documented in scenario-runner mock coverage"
+      ],
+      "endpoints": [
+        "inbound/outbound text",
+        "provider-specific message reads and mutations",
+        "selected media routes"
+      ],
+      "events": [
+        "inbound webhook/update injection",
+        "selected acknowledgment routes"
+      ],
+      "fidelity": "Existing stateful central mocks are cataloged but intentionally unchanged by this shard.",
+      "gaps": [
+        "signature/retry/order parity",
+        "full status lifecycle",
+        "media parity",
+        "delivery ambiguity",
+        "gateway streaming"
+      ],
+      "control": "provider-specific ledgers; provider-mock-control-v1 migration reserved",
+      "scenarios": ["existing provider-specific suites; expansion reserved"],
+      "canary": "Each connector requires separate real-provider certification.",
+      "mockSource": "packages/scenario-runner/test/mocks/scripts/start-mocks.ts",
+      "certification": "mock-only"
+    }
+  ]
+}

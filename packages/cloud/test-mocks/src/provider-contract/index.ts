@@ -12,6 +12,19 @@ export {
   runProviderAdapterConformance,
 } from "./conformance.js";
 export type {
+  ProviderMockControlAdapter,
+  ProviderMockControlHandler,
+  ProviderMockControlLedgerEntry,
+  ProviderMockControlSnapshot,
+  ProviderMockMutationOptions,
+} from "./control.js";
+export {
+  assertProviderProtocolFixtures,
+  createProviderMockControl,
+  PROVIDER_MOCK_CONTROL_PREFIX,
+  ProviderMockControlClient,
+} from "./control.js";
+export type {
   FakeProviderOptions,
   FakeWebhookEvent,
   RunningFakeProvider,

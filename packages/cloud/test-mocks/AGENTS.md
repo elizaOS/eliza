@@ -33,6 +33,12 @@ exits.
   capability-aware adapter conformance runner. OAuth clients, redirect URIs,
   accounts, tenant grants, and API credentials are provider-owned seeds;
   callers cannot select a tenant or mint a receipt after an effect.
+- `provider-mock-catalog.json` (export `./provider-mock-catalog`) — ownership
+  and fidelity map for maintained central mocks, production clients, API
+  versions, endpoints/events, controls, scenarios, gaps, and separate canaries.
+- `src/provider-contract/control.ts` — authenticated
+  `provider-mock-control-v1` reset/seed/fault/state/ledger protocol. Production
+  clients continue to use provider routes; only harness code calls control.
 - `fixtures/provider-contract/` — synthetic, commit-safe fixture convention.
 - `provider-contract-inventory.json` — promoted managed-integration ratchet;
   audited by `bun run audit:provider-contracts` and the cloud CI workflow.
@@ -100,6 +106,16 @@ reusable harness itself covers the full
 scenario catalog, including OAuth state/PKCE and credential rotation, response
 and transport faults, webhook ordering/idempotency, tenant denial, redaction,
 and policy receipts.
+
+`startFakeProvider()` also returns a `control` client. Use its optimistic
+generation for concurrent reset, seed, and fault mutations, then inspect its
+sanitized state and production ledger. Reset restores the initial fixtures and
+provider-owned accounts and clears per-attempt control/request observations.
+Pass the worker's `SyntheticWorld` so namespace, virtual time, reset, state
+hash, and the canonical observation ledger stay owned by that one world.
+Provider-local reset must not rewind the shared world; use the coordinated
+world reset to restore every registered provider and the world atomically.
+Never pass the control token to a production client.
 
 Choose `outbound-http` for adapters that initiate provider requests and
 `inbound-webhook` for provider-authenticated delivery routes. Profiles are
