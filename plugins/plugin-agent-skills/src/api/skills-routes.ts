@@ -555,19 +555,6 @@ async function loadSkillAcknowledgments(
   return acks ?? {};
 }
 
-async function saveSkillAcknowledgments(
-  runtime: AgentRuntime,
-  acks: SkillAcknowledgmentMap,
-): Promise<void> {
-  try {
-    await runtime.setCache(SKILL_ACK_CACHE_KEY, acks);
-  } catch (err) {
-    logger.debug(
-      `[eliza-api] Failed to save skill acknowledgments: ${err instanceof Error ? err.message : err}`,
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Scan report loading
 // ---------------------------------------------------------------------------
@@ -1066,7 +1053,14 @@ export async function handleSkillsRoutes(
     );
     const acks = await loadSkillAcknowledgments(state.runtime);
     const ack = acks[skillId] ?? null;
-    json(res, { ok: true, report, acknowledged: !!ack, acknowledgment: ack });
+		const acknowledged =
+			!!report && !!ack && ack.reportDigest === skillScanReportDigest(report);
+		json(res, {
+			ok: true,
+			report,
+			acknowledged,
+			acknowledgment: acknowledged ? ack : null,
+		});
     return true;
   }
 
@@ -1692,6 +1686,9 @@ export async function handleSkillsRoutes(
     let deleted = false;
     let source = "";
 		let externallyCommitted = false;
+		const previousSkills = state.skills;
+		let previousPrefs: SkillPreferencesMap | undefined;
+		let previousAcks: SkillAcknowledgmentMap | undefined;
 		let workspaceRemoval:
 			| { rollback(): void; finalize(): void }
 			| undefined;
@@ -1711,7 +1708,6 @@ export async function handleSkillsRoutes(
 				});
         deleted = true;
 				externallyCommitted = true;
-				requestLifecycle.markCompleted();
         source = "marketplace";
 			} else if (state.runtime) {
         const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
@@ -1728,7 +1724,6 @@ export async function handleSkillsRoutes(
 					});
 					if (deleted) {
 						externallyCommitted = true;
-						requestLifecycle.markCompleted();
 					}
           source = "catalog";
         }
@@ -1761,25 +1756,67 @@ export async function handleSkillsRoutes(
 			);
 			requestLifecycle.signal.throwIfAborted();
 		}
-    if (state.runtime) {
-      const prefs = await loadSkillPreferences(state.runtime);
-      delete prefs[skillId];
-      await saveSkillPreferences(state.runtime, prefs);
-      const acks = await loadSkillAcknowledgments(state.runtime);
-      delete acks[skillId];
-      await saveSkillAcknowledgments(state.runtime, acks);
-    }
-    json(res, { ok: true, skillId, source });
-			workspaceRemoval?.finalize();
-			requestLifecycle.markCompleted();
+		if (state.runtime) {
+			try {
+				previousPrefs = await loadSkillPreferences(state.runtime);
+				previousAcks = await loadSkillAcknowledgments(state.runtime);
+				const nextPrefs = { ...previousPrefs };
+				const nextAcks = { ...previousAcks };
+				delete nextPrefs[skillId];
+				delete nextAcks[skillId];
+				await Promise.all([
+					state.runtime.setCache(SKILL_PREFS_CACHE_KEY, nextPrefs),
+					state.runtime.setCache(SKILL_ACK_CACHE_KEY, nextAcks),
+				]);
+			} catch (cleanupError) {
+				if (!externallyCommitted) throw cleanupError;
+				state.runtime.reportError("SkillsRoute.deletePreferences", cleanupError, {
+					skillId,
+				});
+			}
+		}
+		if (externallyCommitted && requestLifecycle.signal.aborted) return true;
+		requestLifecycle.signal.throwIfAborted();
+		if (workspaceRemoval) {
+			const committedRemoval = workspaceRemoval;
+			workspaceRemoval = undefined;
+			try {
+				committedRemoval.finalize();
+			} catch (cleanupError) {
+				logger.warn(
+					`[skills-api] Workspace removal cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+				);
+			}
+		}
+		requestLifecycle.markCompleted();
+		json(res, { ok: true, skillId, source });
     return true;
 		} catch (err) {
+			const rollbackFailures: unknown[] = [];
 			try {
 				workspaceRemoval?.rollback();
 			} catch (rollbackError) {
-				state.runtime?.reportError("SkillsRoute.workspaceRemoval", rollbackError, {
-					skillId,
-				});
+				rollbackFailures.push(rollbackError);
+			}
+			if (workspaceRemoval) {
+				state.skills = previousSkills;
+				try {
+					if (state.runtime && previousPrefs && previousAcks) {
+						await Promise.all([
+							state.runtime.setCache(SKILL_PREFS_CACHE_KEY, previousPrefs),
+							state.runtime.setCache(SKILL_ACK_CACHE_KEY, previousAcks),
+						]);
+					}
+				} catch (rollbackError) {
+					rollbackFailures.push(rollbackError);
+				}
+			}
+			if (rollbackFailures.length > 0) {
+				state.runtime?.reportError(
+					"SkillsRoute.workspaceRemoval",
+					new AggregateError([err, ...rollbackFailures]),
+					{ skillId },
+				);
 			}
 			if (requestLifecycle.signal.aborted) return true;
 			respondToSkillInstallError(ctx, "Failed to uninstall skill", err);

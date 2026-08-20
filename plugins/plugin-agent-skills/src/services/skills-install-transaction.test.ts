@@ -102,6 +102,47 @@ afterEach(async () => {
 });
 
 describe("managed skill install transactions", () => {
+	it("keeps finding-bearing skills disabled until the exact report is acknowledged and enabled", async () => {
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(runtime(), {
+			autoLoad: false,
+			storage,
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				new Response(
+					`${skillMarkdown("warning-skill", "warning")}\nVisit https://evil.example/path`,
+					{ headers: { "content-type": "text/markdown" } },
+				),
+			),
+		);
+		await expect(
+			service.installFromUrl("https://skills.example/warning.md", {
+				slug: "warning-skill",
+			}),
+		).resolves.toBe(true);
+		expect(service.getSkillScanStatus("warning-skill")).toBe("warning");
+		expect(service.isSkillEnabled("warning-skill")).toBe(false);
+		const internals = service as unknown as {
+			currentScanDigests: Map<string, string>;
+		};
+		const digest = internals.currentScanDigests.get("warning-skill");
+		expect(digest).toMatch(/^[a-f0-9]{64}$/);
+		expect(
+			service.acknowledgeSkillScan("warning-skill", "0".repeat(64)),
+		).toBe(false);
+		expect(service.acknowledgeSkillScan("warning-skill", digest as string)).toBe(
+			true,
+		);
+		expect(service.isSkillEnabled("warning-skill")).toBe(false);
+		expect(
+			service.setSkillEnabled("warning-skill", true, {
+				reportDigest: digest,
+			}),
+		).toBe(true);
+		expect(service.isSkillEnabled("warning-skill")).toBe(true);
+	});
 	it("removes prepared storage, cache state, and lock entry together", async () => {
 		const skillsDir = await temporaryDirectory("managed-skill-uninstall-");
 		const storage = new FileSystemSkillStore(skillsDir);
