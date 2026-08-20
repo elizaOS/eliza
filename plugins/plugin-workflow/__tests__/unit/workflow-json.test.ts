@@ -191,4 +191,29 @@ describe('cloneJson', () => {
       array: [null, null, 0],
     });
   });
+
+  test('enforces the exact serialized UTF-8 byte ceiling', () => {
+    const exact = 'x'.repeat(MAX_WORKFLOW_JSON_BYTES - 2);
+    expect(cloneJson(exact)).toBe(exact);
+    expect(new TextEncoder().encode(JSON.stringify(cloneJson(exact))).byteLength).toBe(
+      MAX_WORKFLOW_JSON_BYTES
+    );
+    expectUnbounded(() => cloneJson(`${exact}x`));
+
+    const utf8 = '😀'.repeat(Math.floor(MAX_WORKFLOW_JSON_BYTES / 4));
+    expectUnbounded(() => cloneJson(utf8));
+
+    const exactKey = 'k'.repeat(MAX_WORKFLOW_JSON_BYTES - 9);
+    const exactKeySnapshot = cloneJson({ [exactKey]: null });
+    expect(new TextEncoder().encode(JSON.stringify(exactKeySnapshot)).byteLength).toBe(
+      MAX_WORKFLOW_JSON_BYTES
+    );
+    expectUnbounded(() => cloneJson({ [`${exactKey}k`]: null }));
+
+    const exactEscaped = '"'.repeat((MAX_WORKFLOW_JSON_BYTES - 2) / 2);
+    expect(new TextEncoder().encode(JSON.stringify(cloneJson(exactEscaped))).byteLength).toBe(
+      MAX_WORKFLOW_JSON_BYTES
+    );
+    expectUnbounded(() => cloneJson(`${exactEscaped}"`));
+  });
 });

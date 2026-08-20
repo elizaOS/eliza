@@ -9,6 +9,7 @@ import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
 } from '../services/embedded-workflow-service';
+import { MAX_WORKFLOW_JSON_BYTES } from '../services/workflow-json';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
 import type { WorkflowDefinition } from '../types/index';
 import { WorkflowApiError } from '../types/index';
@@ -73,7 +74,7 @@ function decodePathSegment(raw: string): string {
 
 async function readBody(
   req: http.IncomingMessage,
-  limit = 2_000_000
+  limit = MAX_WORKFLOW_JSON_BYTES
 ): Promise<Record<string, unknown>> {
   const attached = (req as http.IncomingMessage & { body?: unknown }).body;
   if (isRecord(attached)) return attached;
