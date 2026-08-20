@@ -133,111 +133,173 @@ export type LandingDemoStep =
       card: LandingDemoCard;
     };
 
-export const LANDING_DEMO_INTRO: readonly LandingDemoStep[] = [
-  { kind: "member", name: "Maya", text: "Friday or Saturday?" },
-  { kind: "user", text: "Saturday works after 7" },
-  { kind: "member", name: "Leo", text: "same for me" },
-  { kind: "member", name: "Priya", text: "I can do Friday, maybe Saturday" },
-  {
-    capability: "conversation-memory",
-    kind: "eliza",
-    text: "Saturday after 7 is the overlap so far. Jamie still needs to answer.",
-  },
-  {
-    capability: "conversation-memory",
-    kind: "card",
-    card: {
-      capability: "conversation-memory",
-      label: "Working plan",
-      title: "Saturday evening",
-      rows: ["3 can make it", "Waiting on Jamie", "Open: where?"],
-      status: "Kept with this group",
-      statusKind: "open",
-    },
-  },
-  { kind: "member", name: "Jamie", text: "Saturday works. 7:30?" },
-  { kind: "user", text: "yes. somewhere quiet" },
-  { kind: "member", name: "Maya", text: "outdoors if it's nice?" },
-  {
-    capability: "conversation-memory",
-    kind: "eliza",
-    text: "Saturday at 7:30 works for everyone.",
-  },
-  {
-    capability: "conversation-memory",
-    continuation: true,
-    kind: "eliza",
-    text: "Quiet, with outdoor seating if the weather's good.",
-  },
-  {
-    capability: "conversation-memory",
-    kind: "card",
-    card: {
-      capability: "conversation-memory",
-      label: "Group plan",
-      title: "Saturday at 7:30 PM",
-      rows: [
-        "Everyone can make it",
-        "Quiet + outdoor option",
-        "Open: neighborhood",
-      ],
-      status: "Updated from this group",
-      statusKind: "open",
-    },
-  },
-  { kind: "member", name: "Leo", text: "Mission or Noe Valley" },
-  { kind: "user", text: "what's settled?" },
-  {
-    capability: "conversation-memory",
-    kind: "eliza",
-    text: "Saturday at 7:30, somewhere quiet with an outdoor option.",
-  },
-  {
-    capability: "conversation-memory",
-    continuation: true,
-    kind: "eliza",
-    text: "The neighborhood is still between Mission and Noe Valley.",
-  },
-  {
-    capability: "conversation-memory",
-    kind: "card",
-    card: {
-      capability: "conversation-memory",
-      label: "Open decision",
-      title: "Pick the neighborhood",
-      rows: ["Mission", "Noe Valley"],
-      status: "Waiting on the group",
-      statusKind: "open",
-    },
-  },
-];
+export type LandingDemoScenarioId =
+  | "friends"
+  | "co-parenting"
+  | "household"
+  | "trip"
+  | "community";
 
-export const LANDING_DEMO_FOLLOWUP: readonly LandingDemoStep[] = [
-  { kind: "member", name: "Priya", text: "Noe has my vote" },
-  { kind: "user", text: "same here" },
+export interface LandingDemoScenario {
+  id: LandingDemoScenarioId;
+  label: string;
+  roomName: string;
+  members: readonly string[];
+  steps: readonly LandingDemoStep[];
+}
+
+/**
+ * Five finite rooms show the same social-agent skill in situations people
+ * recognize. Each recap is derived only from messages already visible in that
+ * room; changing rooms never implies memory leaking between conversations.
+ */
+export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
   {
-    capability: "conversation-memory",
-    kind: "eliza",
-    text: "That's two votes for Noe. Waiting on Jamie and Maya.",
+    id: "friends",
+    label: "Friends",
+    roomName: "Friday people",
+    members: ["Maya", "Leo", "Priya", "Jamie"],
+    steps: [
+      { kind: "member", name: "Maya", text: "Friday or Saturday?" },
+      { kind: "user", text: "Saturday after 7" },
+      { kind: "member", name: "Leo", text: "same for me" },
+      { kind: "member", name: "Priya", text: "quiet place?" },
+      {
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "Saturday after 7 works so far. Jamie still needs to answer.",
+      },
+      { kind: "member", name: "Jamie", text: "7:30 works" },
+      { kind: "user", text: "great, somewhere quiet" },
+      {
+        capability: "conversation-memory",
+        kind: "card",
+        card: {
+          capability: "conversation-memory",
+          label: "Group plan",
+          title: "Saturday · 7:30 PM",
+          rows: ["Everyone can make it", "Somewhere quiet", "Open: where?"],
+          status: "Updated from this group",
+          statusKind: "open",
+        },
+      },
+    ],
   },
-  { kind: "member", name: "Jamie", text: "I'm good with that" },
-  { kind: "member", name: "Maya", text: "works for me" },
   {
-    capability: "conversation-memory",
-    kind: "eliza",
-    text: "Neighborhood settled. The restaurant is the last open choice.",
+    id: "co-parenting",
+    label: "Co-parenting",
+    roomName: "School week",
+    members: ["Maya", "Jamie"],
+    steps: [
+      { kind: "member", name: "Maya", text: "I can get Ava Thursday at 5" },
+      { kind: "user", text: "I'll handle Friday pickup" },
+      { kind: "member", name: "Jamie", text: "her blue backpack is packed" },
+      { kind: "member", name: "Maya", text: "who has soccer Saturday?" },
+      {
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "Thursday is Maya. Friday is you. Saturday soccer is still open.",
+      },
+      { kind: "member", name: "Jamie", text: "I can take soccer" },
+      {
+        capability: "conversation-memory",
+        kind: "card",
+        card: {
+          capability: "conversation-memory",
+          label: "This week",
+          title: "Pickups covered",
+          rows: ["Thu · Maya", "Fri · You", "Sat soccer · Jamie"],
+          status: "Updated from this group",
+        },
+      },
+    ],
   },
   {
-    capability: "conversation-memory",
-    kind: "card",
-    card: {
-      capability: "conversation-memory",
-      label: "Current plan",
-      title: "Saturday · 7:30 PM",
-      rows: ["Noe Valley", "Everyone can make it", "Quiet + outdoor option"],
-      status: "Updated from this group",
-      statusKind: "open",
-    },
+    id: "household",
+    label: "Household",
+    roomName: "Home team",
+    members: ["Priya", "Leo", "Maya"],
+    steps: [
+      { kind: "member", name: "Priya", text: "we're low on coffee" },
+      { kind: "user", text: "I'll get coffee" },
+      { kind: "member", name: "Leo", text: "recycling is out" },
+      { kind: "member", name: "Maya", text: "laundry is still running" },
+      {
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "Coffee is yours. Leo did recycling. Laundry still needs finishing.",
+      },
+      { kind: "user", text: "I can finish it tonight" },
+      {
+        capability: "conversation-memory",
+        kind: "card",
+        card: {
+          capability: "conversation-memory",
+          label: "Home list",
+          title: "All covered",
+          rows: ["Coffee · You", "Recycling · Leo", "Laundry · You"],
+          status: "Updated from this group",
+        },
+      },
+    ],
+  },
+  {
+    id: "trip",
+    label: "Trip",
+    roomName: "Lisbon trip",
+    members: ["Jamie", "Maya", "Priya"],
+    steps: [
+      { kind: "member", name: "Jamie", text: "I land at 9:40" },
+      { kind: "member", name: "Maya", text: "mine gets in at 10:15" },
+      { kind: "user", text: "I'll wait and we can leave together" },
+      { kind: "member", name: "Priya", text: "I arrive the night before" },
+      {
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "Priya arrives first. Jamie lands at 9:40, Maya at 10:15, and you're waiting.",
+      },
+      { kind: "member", name: "Jamie", text: "perfect, meet by arrivals" },
+      {
+        capability: "conversation-memory",
+        kind: "card",
+        card: {
+          capability: "conversation-memory",
+          label: "Arrival plan",
+          title: "Meet by arrivals",
+          rows: ["Jamie · 9:40", "Maya · 10:15", "You · waiting"],
+          status: "Kept with this group",
+        },
+      },
+    ],
+  },
+  {
+    id: "community",
+    label: "Community",
+    roomName: "Garden block",
+    members: ["Priya", "Leo", "Maya"],
+    steps: [
+      { kind: "member", name: "Priya", text: "I can water Tuesday" },
+      { kind: "member", name: "Leo", text: "Thursday works for me" },
+      { kind: "user", text: "I'll do Saturday" },
+      { kind: "member", name: "Maya", text: "north bed still needs someone" },
+      {
+        capability: "conversation-memory",
+        kind: "eliza",
+        text: "Tuesday, Thursday, and Saturday are covered. The north bed is still open.",
+      },
+      { kind: "member", name: "Priya", text: "I can cover that Tuesday too" },
+      {
+        capability: "conversation-memory",
+        kind: "card",
+        card: {
+          capability: "conversation-memory",
+          label: "Garden week",
+          title: "Coverage set",
+          rows: ["Tue · Priya + north bed", "Thu · Leo", "Sat · You"],
+          status: "Updated from this group",
+        },
+      },
+    ],
   },
 ];
 

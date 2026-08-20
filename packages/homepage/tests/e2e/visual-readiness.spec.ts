@@ -50,29 +50,31 @@ for (const viewport of [
   });
 }
 
-test("reduced motion renders the settled intro conversation", async ({
+test("reduced motion renders the settled friends room and all room labels", async ({
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
-  // This spec runs with reducedMotion: "reduce", so the demo must skip
-  // playback and render the whole intro at once: a stable snapshot for
-  // screenshot determinism.
+  // Reduced motion skips playback but keeps every scenario discoverable in the
+  // room strip and renders one complete, stable friends-room snapshot.
   const demo = page.locator(".landing-iphone");
   await expect(demo).toHaveAttribute("data-demo-phase", "settled");
-  await expect(demo).toHaveAttribute("data-demo-messages", "17");
-  await expect(page.locator(".landing-demo-card")).toHaveCount(3);
+  await expect(demo).toHaveAttribute("data-demo-scenario", "friends");
+  await expect(demo).toHaveAttribute("data-demo-scenarios", "5");
+  await expect(demo).toHaveAttribute(
+    "data-demo-visited",
+    "friends,co-parenting,household,trip,community",
+  );
+  await expect(demo).toHaveAttribute("data-demo-messages", "8");
+  await expect(page.locator(".landing-scenario-strip li")).toHaveCount(5);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(1);
 
   const assistantMessages = await page
     .locator(".landing-bubble--eliza")
     .allTextContents();
   expect(assistantMessages).toContain(
-    "Saturday after 7 is the overlap so far. Jamie still needs to answer.",
-  );
-  expect(assistantMessages).toContain("Saturday at 7:30 works for everyone.");
-  expect(assistantMessages).toContain(
-    "The neighborhood is still between Mission and Noe Valley.",
+    "Saturday after 7 works so far. Jamie still needs to answer.",
   );
   const messageAuthors = await page
     .locator(".landing-message-author")

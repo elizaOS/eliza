@@ -70,7 +70,7 @@ for (const viewport of VIEWPORTS) {
       ).toBeLessThanOrEqual(64);
       if (viewport.height >= 1000) {
         expect(layout.mobileThreadGap ?? Number.POSITIVE_INFINITY).toBeLessThan(
-          16,
+          32,
         );
       }
     } else {
@@ -84,7 +84,7 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test("the completed follow-up keeps a tall mobile thread filled", async ({
+test("all five rooms play once and the final room starts at the top", async ({
   page,
 }) => {
   test.setTimeout(75_000);
@@ -96,7 +96,14 @@ test("the completed follow-up keeps a tall mobile thread filled", async ({
   await expect(phone).toHaveAttribute("data-demo-phase", "settled", {
     timeout: 60_000,
   });
-  await expect(phone).toHaveAttribute("data-demo-messages", "24");
+  await expect(phone).toHaveAttribute("data-demo-scenario", "community");
+  await expect(phone).toHaveAttribute("data-demo-scenario-index", "5");
+  await expect(phone).toHaveAttribute("data-demo-scenarios", "5");
+  await expect(phone).toHaveAttribute(
+    "data-demo-visited",
+    "friends,co-parenting,household,trip,community",
+  );
+  await expect(phone).toHaveAttribute("data-demo-messages", "7");
 
   await expect
     .poll(
@@ -104,13 +111,15 @@ test("the completed follow-up keeps a tall mobile thread filled", async ({
         page.locator(".landing-phone-thread").evaluate((thread) => {
           const messages =
             thread.querySelectorAll<HTMLElement>("[data-demo-item]");
+          const firstMessage = messages.item(0);
           const lastMessage = messages.item(messages.length - 1);
-          if (!lastMessage) return false;
+          if (!firstMessage || !lastMessage) return false;
           const threadRect = thread.getBoundingClientRect();
+          const firstRect = firstMessage.getBoundingClientRect();
           const messageRect = lastMessage.getBoundingClientRect();
           return (
-            thread.scrollHeight > thread.clientHeight &&
-            threadRect.bottom - messageRect.bottom <= 18
+            firstRect.top - threadRect.top <= 70 &&
+            messageRect.bottom <= threadRect.bottom
           );
         }),
       { timeout: 20_000 },

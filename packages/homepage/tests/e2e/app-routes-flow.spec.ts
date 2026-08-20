@@ -344,6 +344,11 @@ test("landing leads with iMessage and keeps secondary channels available", async
     page.getByText("Friends · Co-parenting · Households · Trips · Communities"),
   ).toBeVisible();
   await expect(page.getByText("Friday people", { exact: true })).toBeVisible();
+  await expect(page.locator(".landing-scenario-strip li")).toHaveCount(5);
+  await expect(page.locator(".landing-iphone")).toHaveAttribute(
+    "data-demo-scenarios",
+    "5",
+  );
 
   const textCta = page.getByRole("button", { name: "Text Eliza" });
   await expect(textCta).toBeVisible();

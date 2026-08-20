@@ -7,7 +7,7 @@
  * group conversation while staying within the immediately available product:
  * bounded context from that conversation, without implied external actions.
  * It is decorative and intentionally English-only. Reduced motion shows its
- * settled intro, which keeps screenshots deterministic.
+ * settled friends room while keeping all five room labels visible.
  */
 
 import {
@@ -30,9 +30,10 @@ import {
   openOrCopyElizaMessage,
 } from "@/lib/contact";
 import {
-  LANDING_DEMO_FOLLOWUP,
-  LANDING_DEMO_INTRO,
+  LANDING_DEMO_SCENARIOS,
   type LandingDemoCard,
+  type LandingDemoScenario,
+  type LandingDemoScenarioId,
   type LandingDemoStep,
 } from "@/lib/landing-demo";
 import { resolveHomepageProductNavigation } from "@/lib/product-navigation";
@@ -69,16 +70,15 @@ function DeferredShaderBackground(): React.JSX.Element | null {
 type DemoCard = LandingDemoCard;
 type DemoStep = LandingDemoStep;
 
-type DemoItemInput =
+type DemoItem =
   | {
       from: "eliza" | "member" | "user";
+      id: number;
       kind: "text";
       name?: string;
       text: string;
     }
-  | { from: "eliza"; kind: "card"; card: DemoCard };
-
-type DemoItem = DemoItemInput & { id: number };
+  | { from: "eliza"; id: number; kind: "card"; card: DemoCard };
 
 interface DemoSender {
   avatar: string;
@@ -96,25 +96,17 @@ const DEMO_SENDERS: Record<string, DemoSender> = {
   Priya: { avatar: "/brand/people/demo-priya.webp", name: "Priya" },
 };
 
-const DEMO_INTRO: readonly DemoStep[] = LANDING_DEMO_INTRO;
-const DEMO_FOLLOWUP: readonly DemoStep[] = LANDING_DEMO_FOLLOWUP;
-
-// Retain at least the opening conversation, then prune only when the rendered
-// transcript exceeds two real thread viewports. A count cap leaves tall phones
-// visibly under-filled because cards and text rows have very different heights.
-const MIN_RENDERED_ITEMS = 10;
-const MAX_BUFFERED_THREAD_VIEWPORTS = 2;
-// The phone should read as an ongoing relationship on first paint, especially
-// in a tall mobile viewport. Playback continues from this truthful context
-// instead of leaving either end of the thread visibly empty.
-const INITIAL_RENDERED_ITEMS = 10;
-const USER_KEYSTROKE_MS = 62;
-const ELIZA_TYPING_MS = 2275;
-const BEAT_PAUSE_MS = 1465;
-const PRE_USER_MS = 815;
-const PRE_ELIZA_MS = 815;
-const PRE_CARD_MS = 975;
-const SEND_HOLD_MS = 650;
+const DEMO_SCENARIOS: readonly LandingDemoScenario[] = LANDING_DEMO_SCENARIOS;
+const INITIAL_RENDERED_ITEMS = 4;
+const USER_KEYSTROKE_MS = 24;
+const ELIZA_TYPING_MS = 640;
+const BEAT_PAUSE_MS = 360;
+const PRE_USER_MS = 220;
+const PRE_ELIZA_MS = 300;
+const PRE_CARD_MS = 420;
+const SEND_HOLD_MS = 220;
+const SCENARIO_SETTLE_MS = 1_150;
+const SCENARIO_SWITCH_MS = 320;
 
 const LOCAL_CLOCK_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
@@ -130,12 +122,20 @@ function localClock(date: Date, includeDayPeriod: boolean): string {
     .trim();
 }
 
-function settledIntroItems(): DemoItem[] {
-  return DEMO_INTRO.map((step, index) =>
+function scenarioItems(
+  scenario: LandingDemoScenario,
+  scenarioIndex: number,
+): DemoItem[] {
+  return scenario.steps.map((step, index) =>
     step.kind === "card"
-      ? { id: index, from: "eliza", kind: "card", card: step.card }
+      ? {
+          id: scenarioIndex * 100 + index,
+          from: "eliza",
+          kind: "card",
+          card: step.card,
+        }
       : {
-          id: index,
+          id: scenarioIndex * 100 + index,
           from: step.kind,
           kind: "text",
           name: step.kind === "member" ? step.name : undefined,
@@ -221,14 +221,20 @@ function DemoCardBubble({ card }: { card: DemoCard }) {
 function PhoneMockup() {
   const t = useT();
   const [clock, setClock] = useState(() => new Date());
+  const [scenarioIndex, setScenarioIndex] = useState(0);
   const [items, setItems] = useState<DemoItem[]>(() =>
-    settledIntroItems().slice(0, INITIAL_RENDERED_ITEMS),
+    scenarioItems(DEMO_SCENARIOS[0], 0).slice(0, INITIAL_RENDERED_ITEMS),
   );
-  const [phase, setPhase] = useState<"followup" | "intro" | "settled">("intro");
+  const [phase, setPhase] = useState<"playing" | "settled" | "switching">(
+    "playing",
+  );
+  const [visitedScenarioIds, setVisitedScenarioIds] = useState<
+    LandingDemoScenarioId[]
+  >([DEMO_SCENARIOS[0].id]);
   const [elizaTyping, setElizaTyping] = useState(false);
   const [composerText, setComposerText] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
-  const nextIdRef = useRef(DEMO_INTRO.length);
+  const scenario = DEMO_SCENARIOS[scenarioIndex];
 
   useEffect(() => {
     const interval = window.setInterval(() => setClock(new Date()), 30_000);
@@ -237,7 +243,8 @@ function PhoneMockup() {
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setItems(settledIntroItems());
+      setItems(scenarioItems(DEMO_SCENARIOS[0], 0));
+      setVisitedScenarioIds(DEMO_SCENARIOS.map(({ id }) => id));
       setPhase("settled");
       return;
     }
@@ -245,15 +252,13 @@ function PhoneMockup() {
     let cancelled = false;
     const sleep = (ms: number) =>
       new Promise<void>((resolve) => setTimeout(resolve, ms));
-    const append = (item: DemoItemInput) => {
-      const id = nextIdRef.current;
-      nextIdRef.current += 1;
-      setItems((prev) => [...prev, { ...item, id }]);
-    };
-
-    const play = async (steps: readonly DemoStep[]) => {
+    const play = async (
+      steps: readonly DemoStep[],
+      activeScenarioIndex: number,
+    ) => {
       for (const [index, step] of steps.entries()) {
         if (cancelled) return;
+        const id = activeScenarioIndex * 100 + INITIAL_RENDERED_ITEMS + index;
         if (step.kind === "user") {
           await sleep(PRE_USER_MS);
           for (let i = 1; i <= step.text.length; i++) {
@@ -264,16 +269,23 @@ function PhoneMockup() {
           await sleep(SEND_HOLD_MS);
           if (cancelled) return;
           setComposerText("");
-          append({ from: "user", kind: "text", text: step.text });
+          setItems((previous) => [
+            ...previous,
+            { id, from: "user", kind: "text", text: step.text },
+          ]);
         } else if (step.kind === "member") {
           await sleep(PRE_ELIZA_MS);
           if (cancelled) return;
-          append({
-            from: "member",
-            kind: "text",
-            name: step.name,
-            text: step.text,
-          });
+          setItems((previous) => [
+            ...previous,
+            {
+              id,
+              from: "member",
+              kind: "text",
+              name: step.name,
+              text: step.text,
+            },
+          ]);
         } else if (step.kind === "eliza") {
           await sleep(step.continuation ? 360 : PRE_ELIZA_MS);
           if (cancelled) return;
@@ -283,11 +295,17 @@ function PhoneMockup() {
             if (cancelled) return;
             setElizaTyping(false);
           }
-          append({ from: "eliza", kind: "text", text: step.text });
+          setItems((previous) => [
+            ...previous,
+            { id, from: "eliza", kind: "text", text: step.text },
+          ]);
         } else {
           await sleep(PRE_CARD_MS);
           if (cancelled) return;
-          append({ from: "eliza", kind: "card", card: step.card });
+          setItems((previous) => [
+            ...previous,
+            { id, from: "eliza", kind: "card", card: step.card },
+          ]);
         }
         const nextStep = steps[index + 1];
         await sleep(
@@ -299,11 +317,30 @@ function PhoneMockup() {
     };
 
     (async () => {
-      await play(DEMO_INTRO.slice(INITIAL_RENDERED_ITEMS));
-      if (cancelled) return;
-      setPhase("followup");
-      await play(DEMO_FOLLOWUP);
-      if (cancelled) return;
+      for (const [index, nextScenario] of DEMO_SCENARIOS.entries()) {
+        if (index > 0) {
+          setPhase("switching");
+          setElizaTyping(false);
+          setComposerText("");
+          await sleep(SCENARIO_SWITCH_MS);
+          if (cancelled) return;
+          setScenarioIndex(index);
+          setItems(
+            scenarioItems(nextScenario, index).slice(0, INITIAL_RENDERED_ITEMS),
+          );
+          setVisitedScenarioIds((previous) =>
+            previous.includes(nextScenario.id)
+              ? previous
+              : [...previous, nextScenario.id],
+          );
+          setPhase("playing");
+        }
+        await play(nextScenario.steps.slice(INITIAL_RENDERED_ITEMS), index);
+        if (cancelled) return;
+        if (index < DEMO_SCENARIOS.length - 1) {
+          await sleep(SCENARIO_SETTLE_MS);
+        }
+      }
       setPhase("settled");
     })();
 
@@ -311,25 +348,6 @@ function PhoneMockup() {
       cancelled = true;
     };
   }, []);
-
-  // Bound the animated transcript by rendered height rather than row count. Keeping
-  // roughly two viewports preserves enough history to fill tall phones while
-  // preventing the endless loop from growing the DOM without limit.
-  useLayoutEffect(() => {
-    const thread = threadRef.current;
-    if (
-      !thread ||
-      phase !== "followup" ||
-      items.length <= MIN_RENDERED_ITEMS ||
-      thread.clientHeight <= 0 ||
-      thread.scrollHeight <= thread.clientHeight * MAX_BUFFERED_THREAD_VIEWPORTS
-    ) {
-      return;
-    }
-    setItems((previous) =>
-      previous.length > MIN_RENDERED_ITEMS ? previous.slice(1) : previous,
-    );
-  }, [items, phase]);
 
   // Keep the thread pinned to the newest message.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll reacts to content growth, not to values read inside.
@@ -346,6 +364,10 @@ function PhoneMockup() {
       className="landing-iphone"
       data-demo-phase={phase}
       data-demo-messages={items.length}
+      data-demo-scenario={scenario.id}
+      data-demo-scenario-index={scenarioIndex + 1}
+      data-demo-scenarios={DEMO_SCENARIOS.length}
+      data-demo-visited={visitedScenarioIds.join(",")}
     >
       <div className="landing-iphone-screen">
         <div className="landing-phone-top">
@@ -383,8 +405,7 @@ function PhoneMockup() {
           </div>
           <div className="landing-phone-header landing-phone-header--group">
             <span className="sr-only">
-              Illustrative group conversation with Maya, Leo, Priya, Jamie, and
-              Eliza
+              {`Illustrative ${scenario.label.toLowerCase()} group conversation in ${scenario.roomName} with ${scenario.members.join(", ")}, and Eliza`}
             </span>
             <span className="landing-phone-back" aria-hidden="true">
               <svg
@@ -401,21 +422,14 @@ function PhoneMockup() {
             </span>
             <span className="landing-phone-contact landing-phone-contact--group">
               <span className="landing-group-avatars" aria-hidden="true">
-                <img
-                  className="landing-group-avatar"
-                  src={DEMO_SENDERS.Maya.avatar}
-                  alt=""
-                />
-                <img
-                  className="landing-group-avatar"
-                  src={DEMO_SENDERS.Leo.avatar}
-                  alt=""
-                />
-                <img
-                  className="landing-group-avatar"
-                  src={DEMO_SENDERS.Priya.avatar}
-                  alt=""
-                />
+                {scenario.members.slice(0, 3).map((member) => (
+                  <img
+                    key={member}
+                    className="landing-group-avatar"
+                    src={DEMO_SENDERS[member].avatar}
+                    alt=""
+                  />
+                ))}
                 <img
                   className="landing-group-avatar"
                   src={DEMO_SENDERS.Eliza.avatar}
@@ -426,8 +440,8 @@ function PhoneMockup() {
               </span>
               <span className="landing-phone-name landing-phone-name--group">
                 <span>
-                  <strong>Friday people</strong>
-                  <small>5 people</small>
+                  <strong>{scenario.roomName}</strong>
+                  <small>{`${scenario.members.length + 2} people · ${scenarioIndex + 1} of ${DEMO_SCENARIOS.length}`}</small>
                 </span>
                 <svg
                   viewBox="0 0 24 24"
@@ -457,6 +471,20 @@ function PhoneMockup() {
               </svg>
             </span>
           </div>
+          <ul
+            className="landing-scenario-strip"
+            aria-label={`Demo rooms: ${DEMO_SCENARIOS.map(({ label }) => label).join(", ")}`}
+          >
+            {DEMO_SCENARIOS.map((item, index) => (
+              <li
+                key={item.id}
+                data-active={index === scenarioIndex}
+                data-visited={visitedScenarioIds.includes(item.id)}
+              >
+                {item.label}
+              </li>
+            ))}
+          </ul>
         </div>
         <div
           className="landing-phone-thread scroll-fade scroll-fade-[1.6rem] [--scroll-fade-reveal:96px]"

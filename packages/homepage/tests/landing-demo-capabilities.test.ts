@@ -7,12 +7,13 @@ import { describe, expect, test } from "bun:test";
 import {
   findUnsupportedLandingDemoClaims,
   LANDING_DEMO_CAPABILITIES,
-  LANDING_DEMO_FOLLOWUP,
-  LANDING_DEMO_INTRO,
+  LANDING_DEMO_SCENARIOS,
   landingDemoStepText,
 } from "../src/lib/landing-demo";
 
-const LANDING_DEMO = [...LANDING_DEMO_INTRO, ...LANDING_DEMO_FOLLOWUP];
+const LANDING_DEMO = LANDING_DEMO_SCENARIOS.flatMap(
+  (scenario) => scenario.steps,
+);
 
 describe("landing Shared-agent capability contract", () => {
   test("portrays only bounded conversation memory", () => {
@@ -44,56 +45,48 @@ describe("landing Shared-agent capability contract", () => {
     ).toEqual([]);
   });
 
-  test("keeps the deterministic reduced-motion composition stable", () => {
-    expect(LANDING_DEMO_INTRO).toHaveLength(17);
+  test("defines all five finite rooms in the promised order", () => {
+    expect(LANDING_DEMO_SCENARIOS.map(({ id }) => id)).toEqual([
+      "friends",
+      "co-parenting",
+      "household",
+      "trip",
+      "community",
+    ]);
     expect(
-      LANDING_DEMO_INTRO.filter((step) => step.kind === "card"),
-    ).toHaveLength(3);
+      new Set(LANDING_DEMO_SCENARIOS.map(({ roomName }) => roomName)).size,
+    ).toBe(LANDING_DEMO_SCENARIOS.length);
   });
 
-  test("paces distinct context cards between conversational beats", () => {
-    const cardIndexes = LANDING_DEMO_INTRO.flatMap((step, index) =>
-      step.kind === "card" ? [index] : [],
-    );
-    const cards = LANDING_DEMO_INTRO.flatMap((step) =>
-      step.kind === "card" ? [step.card] : [],
-    );
-
-    expect(cardIndexes).toEqual([5, 11, 16]);
-    expect(new Set(cards.map((card) => card.label)).size).toBe(cards.length);
-    expect(
-      cards.every((card) =>
-        [
-          "Kept with this group",
-          "Updated from this group",
-          "Waiting on the group",
-        ].includes(card.status ?? ""),
-      ),
-    ).toBe(true);
+  test("gives every room a concise conversation and one closing recap", () => {
+    for (const scenario of LANDING_DEMO_SCENARIOS) {
+      expect(scenario.steps.length).toBeGreaterThanOrEqual(7);
+      expect(scenario.steps.length).toBeLessThanOrEqual(8);
+      expect(scenario.steps.at(-1)?.kind).toBe("card");
+      expect(
+        scenario.steps.filter((step) => step.kind === "card"),
+      ).toHaveLength(1);
+      expect(scenario.steps.some((step) => step.kind === "eliza")).toBe(true);
+    }
   });
 
-  test("shows a real multi-person room with attributable messages", () => {
-    const members = LANDING_DEMO_INTRO.flatMap((step) =>
-      step.kind === "member" ? [step.name] : [],
-    );
-
-    expect(new Set(members)).toEqual(
-      new Set(["Maya", "Leo", "Priya", "Jamie"]),
-    );
-    expect(
-      LANDING_DEMO_INTRO.some(
-        (step) => step.kind === "eliza" && step.text.includes("Jamie"),
-      ),
-    ).toBe(true);
+  test("keeps every attributed speaker inside that room's member list", () => {
+    for (const scenario of LANDING_DEMO_SCENARIOS) {
+      const speakers = scenario.steps.flatMap((step) =>
+        step.kind === "member" ? [step.name] : [],
+      );
+      expect(
+        speakers.every((speaker) => scenario.members.includes(speaker)),
+      ).toBe(true);
+      expect(new Set(speakers).size).toBeGreaterThanOrEqual(2);
+    }
   });
 
-  test("ends with one finite follow-up instead of repeating the neighborhood vote", () => {
-    const followupText = LANDING_DEMO_FOLLOWUP.map(landingDemoStepText);
-    const neighborhoodMentions = followupText.join(" ").match(/Noe Valley/gi);
+  test("does not repeat a scenario or a scripted message", () => {
+    const allText = LANDING_DEMO.map(landingDemoStepText);
 
-    expect(LANDING_DEMO_FOLLOWUP).toHaveLength(7);
-    expect(new Set(followupText).size).toBe(followupText.length);
-    expect(neighborhoodMentions).toHaveLength(1);
+    expect(new Set(LANDING_DEMO_SCENARIOS.map(({ id }) => id)).size).toBe(5);
+    expect(new Set(allText).size).toBe(allText.length);
   });
 
   test.each([
