@@ -20,6 +20,9 @@ export const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;
 /** A manifest is metadata, so bound it independently of its asset payloads. */
 export const CONTENT_PACK_MANIFEST_MAX_BYTES = 1024 * 1024;
 
+/** Teardown must not turn an untrusted stream's cancel hook into a new stall. */
+const CONTENT_PACK_READER_CANCEL_TIMEOUT_MS = 250;
+
 class ContentPackManifestTooLargeError extends Error {
   constructor(maxBytes: number) {
     super(`Content pack manifest exceeds ${maxBytes} bytes`);
@@ -35,6 +38,23 @@ function cancelManifestBody(
   // error-policy:J5 allSettled observes a best-effort cancellation rejection;
   // the original transport/validation failure remains the caller-visible one.
   void Promise.allSettled([body.cancel(reason)]);
+}
+
+async function cancelManifestReader(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  reason: unknown,
+): Promise<void> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timeoutId = setTimeout(resolve, CONTENT_PACK_READER_CANCEL_TIMEOUT_MS);
+  });
+  // error-policy:J5 allSettled observes a hostile or failed cancel hook; the
+  // bounded race ensures teardown cannot replace the original body failure.
+  await Promise.race([
+    Promise.allSettled([reader.cancel(reason)]).then(() => undefined),
+    timeout,
+  ]);
+  if (timeoutId !== undefined) clearTimeout(timeoutId);
 }
 
 async function readBoundedManifestJson<T>(
@@ -67,6 +87,7 @@ async function readBoundedManifestJson<T>(
   let receivedBytes = 0;
   let json = "";
   let bodyComplete = false;
+  let bodyFailed = false;
   let rejectOnAbort: ((reason: unknown) => void) | undefined;
   const aborted = new Promise<never>((_resolve, reject) => {
     rejectOnAbort = reject;
@@ -93,10 +114,20 @@ async function readBoundedManifestJson<T>(
     json += decoder.decode();
     return JSON.parse(json) as T;
   } catch (error) {
-    if (!bodyComplete) cancelManifestBody(reader, error);
+    bodyFailed = true;
+    if (!bodyComplete) await cancelManifestReader(reader, error);
     throw error;
   } finally {
     signal.removeEventListener("abort", onAbort);
+    if (!bodyFailed) {
+      reader.releaseLock();
+    } else {
+      // error-policy:J5 a timed-out cancel can leave a read pending, so observe
+      // releaseLock rejection without masking the original caller-visible error.
+      await Promise.allSettled([
+        Promise.resolve().then(() => reader.releaseLock()),
+      ]);
+    }
   }
 }
 

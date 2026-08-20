@@ -141,8 +141,8 @@ describe("loadContentPackFromUrl", () => {
 
   it("cancels a body that ignores the request signal when the deadline expires", async () => {
     const cancel = vi.fn();
-    const fetchImpl: typeof fetch = async () =>
-      new Response(new ReadableStream({ pull() {}, cancel }));
+    const body = new ReadableStream({ pull() {}, cancel });
+    const fetchImpl: typeof fetch = async () => new Response(body);
 
     await expect(
       getContentPackManifestJsonWithFetch(
@@ -152,22 +152,22 @@ describe("loadContentPackFromUrl", () => {
       ),
     ).rejects.toMatchObject({ name: "TimeoutError" });
     expect(cancel).toHaveBeenCalledOnce();
+    expect(body.locked).toBe(false);
   });
 
   it("rejects and cancels a chunked body as soon as it crosses the byte cap", async () => {
     let requestSignal: AbortSignal | undefined;
     const cancel = vi.fn();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(8));
+        controller.enqueue(new Uint8Array(8));
+      },
+      cancel,
+    });
     const fetchImpl: typeof fetch = async (_input, init) => {
       requestSignal = init?.signal ?? undefined;
-      return new Response(
-        new ReadableStream({
-          start(controller) {
-            controller.enqueue(new Uint8Array(8));
-            controller.enqueue(new Uint8Array(8));
-          },
-          cancel,
-        }),
-      );
+      return new Response(body);
     };
 
     await expect(
@@ -180,6 +180,28 @@ describe("loadContentPackFromUrl", () => {
     ).rejects.toMatchObject({ name: "ContentPackManifestTooLargeError" });
     expect(requestSignal?.aborted).toBe(true);
     expect(cancel).toHaveBeenCalledOnce();
+    expect(body.locked).toBe(false);
+  });
+
+  it("releases the reader when cancellation rejects", async () => {
+    const cancellationFailure = new Error("cancel failed");
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(11));
+      },
+      cancel: () => Promise.reject(cancellationFailure),
+    });
+    const fetchImpl: typeof fetch = async () => new Response(body);
+
+    await expect(
+      getContentPackManifestJsonWithFetch(
+        "https://example.com/pack.json",
+        fetchImpl,
+        1_000,
+        10,
+      ),
+    ).rejects.toMatchObject({ name: "ContentPackManifestTooLargeError" });
+    expect(body.locked).toBe(false);
   });
 
   it("bounds decompressed bytes despite a smaller declared wire size", async () => {
@@ -233,16 +255,14 @@ describe("loadContentPackFromUrl", () => {
 
   it("accepts valid multi-byte JSON split across chunks at the exact cap", async () => {
     const bytes = new TextEncoder().encode('{"value":"€"}');
-    const fetchImpl: typeof fetch = async () =>
-      new Response(
-        new ReadableStream({
-          start(controller) {
-            controller.enqueue(bytes.subarray(0, bytes.length - 2));
-            controller.enqueue(bytes.subarray(bytes.length - 2));
-            controller.close();
-          },
-        }),
-      );
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.subarray(0, bytes.length - 2));
+        controller.enqueue(bytes.subarray(bytes.length - 2));
+        controller.close();
+      },
+    });
+    const fetchImpl: typeof fetch = async () => new Response(body);
 
     await expect(
       getContentPackManifestJsonWithFetch(
@@ -252,6 +272,7 @@ describe("loadContentPackFromUrl", () => {
         bytes.length,
       ),
     ).resolves.toEqual({ value: "€" });
+    expect(body.locked).toBe(false);
   });
 
   it("rejects malformed UTF-8 instead of repairing manifest text", async () => {
