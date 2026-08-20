@@ -89,9 +89,10 @@
  {
   "file": "packages/scripts/ensure-plugin-test-conventions.mjs",
   "tokens": [
+   "plugins/plugin-workflow",
    "plugins/plugin-workflow"
   ],
-  "reason": "systemic coupling: plugin-workflow's package test delegates recursive native-test discovery to run-isolated-tests.mjs, so the reachability guard records its audited __tests__ discovery root"
+  "reason": "systemic coupling: plugin-workflow's package test delegates recursive native-test discovery to run-isolated-tests.mjs, so the reachability guard records its audited __tests__ discovery root; plugins/plugin-workflow token is upstream's own dedicated-runner registration (#20298)"
  },
  {
   "file": "packages/scripts/ensure-workspace-symlinks.mjs",
@@ -273,8 +274,9 @@
  {
   "file": "packages/scripts/ensure-plugin-test-conventions.mjs",
   "tokens": [
-   "plugins/plugin-local-inference"
+   "plugins/plugin-local-inference",
+   "plugins/plugin-workflow"
   ],
-  "reason": "2026-08-20: triaged ORPHANED_PLUGIN_TEST_EXCEPTIONS entries for the vendored upstream llama.cpp webui test tree; the exception list is definitionally per-path"
+  "reason": "2026-08-20: triaged ORPHANED_PLUGIN_TEST_EXCEPTIONS entries for the vendored upstream llama.cpp webui test tree; the exception list is definitionally per-path; plugins/plugin-workflow token is upstream's own dedicated-runner registration (#20298)"
  }
 ]
