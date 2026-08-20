@@ -54,9 +54,9 @@ Calls `registerTaskCoordinatorSlots` from `@elizaos/ui` with:
 The three GUI views (`task-coordinator`, `orchestrator`, `cockpit`) keep the
 standard **view manifest** in `src/index.ts` (`bundlePath` +
 `componentExport`) for web/desktop hosts. `register.ts` also contributes lazy
-`registerAppShellPage` loaders so signed native clients can mount the same
-components without executing agent-served JavaScript, which native policy
-rejects.
+`registerAppShellPage` loaders only on signed native clients, so they can mount
+the same components without executing agent-served JavaScript. Web and desktop
+continue to use only the plugin view manifest.
 
 ## Layout
 

@@ -170,10 +170,19 @@ describe("Android device-e2e host-agent contract", () => {
     );
   });
 
-  it("pre-grants feature permissions so native prompts cannot mask route results", () => {
-    expect(androidGlobalSetup).toContain("android.permission.READ_CALL_LOG");
-    expect(androidGlobalSetup).toContain("android.permission.READ_CONTACTS");
-    expect(androidGlobalSetup).toContain("android.permission.READ_SMS");
+  it("keeps unrelated sensitive permissions denied in the shared fixture", () => {
+    expect(androidGlobalSetup).toContain(
+      "android.permission.POST_NOTIFICATIONS",
+    );
+    expect(androidGlobalSetup).toContain("android.permission.RECORD_AUDIO");
+    expect(androidGlobalSetup).toContain("android.permission.CAMERA");
+    expect(androidGlobalSetup).not.toContain(
+      "android.permission.READ_CALL_LOG",
+    );
+    expect(androidGlobalSetup).not.toContain(
+      "android.permission.READ_CONTACTS",
+    );
+    expect(androidGlobalSetup).not.toContain("android.permission.READ_SMS");
   });
 
   it("waits for the deterministic reply instead of accepting a late greeting", () => {
@@ -196,7 +205,12 @@ describe("Android device-e2e host-agent contract", () => {
   });
 
   it("bundles the developer route locally under the native executable-code policy", () => {
-    expect(taskCoordinatorRegistration).toContain("registerAppShellPage({");
+    expect(taskCoordinatorRegistration).toContain(
+      "registerNativeTaskCoordinatorPages(Capacitor.isNativePlatform())",
+    );
+    expect(taskCoordinatorRegistration).toContain(
+      "if (!nativePlatform) return",
+    );
     expect(taskCoordinatorRegistration).toContain('id: "orchestrator"');
     expect(taskCoordinatorRegistration).toContain('path: "/orchestrator"');
     expect(taskCoordinatorRegistration).toContain('viewKind: "developer"');

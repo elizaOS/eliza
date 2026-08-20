@@ -1,17 +1,28 @@
-/** Verifies signed native clients receive all task-coordinator GUI routes. */
+/** Verifies only signed native clients receive bundled coordinator routes. */
 
-import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./register-slots.js", () => ({}));
+vi.mock("@elizaos/ui/app-shell-registry", () => ({
+  registerAppShellPage: vi.fn(),
+}));
+vi.mock("@capacitor/core", () => ({
+  Capacitor: { isNativePlatform: () => false },
+}));
 
-import "./register.ts";
+import { registerNativeTaskCoordinatorPages } from "./register.ts";
 
 describe("Task coordinator app registration", () => {
-  it("matches the runtime manifests and grants the signed surface contract", () => {
-    const pages = listAppShellPages().filter(
-      (page) => page.pluginId === "@elizaos/plugin-task-coordinator",
-    );
+  it("does not register bundled pages for web or desktop", () => {
+    const register = vi.fn();
+    registerNativeTaskCoordinatorPages(false, register);
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it("matches manifests for the signed native surface", () => {
+    const register = vi.fn();
+    registerNativeTaskCoordinatorPages(true, register);
+    const pages = register.mock.calls.map(([page]) => page);
 
     expect(
       pages.map(({ id, label, path, viewKind }) => ({
