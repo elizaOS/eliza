@@ -40,8 +40,8 @@ export function getNumericSetting(
   if (value === undefined || value.trim() === "") {
     return defaultValue;
   }
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) {
     throw new Error(`Setting '${key}' must be a valid integer, got: ${value}`);
   }
   return parsed;
