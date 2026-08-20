@@ -6,7 +6,10 @@
 
 import { PROVIDER_CANARY_SCENARIO_IDS } from "./canary-catalog.ts";
 import { canonicalJsonValue, canonicalSha256 } from "./manifest.ts";
-import { validateProviderQualificationArtifact } from "./qualification-artifact.ts";
+import {
+  reverifyProviderQualificationArtifact,
+  validateProviderQualificationArtifact,
+} from "./qualification-artifact.ts";
 
 export const PROVIDER_QUALIFICATION_CATALOG_SCHEMA =
   "eliza.provider-qualification-catalog.v1" as const;
@@ -33,7 +36,11 @@ export function assembleProviderQualificationCatalog(input: {
   createdAtIso: string;
 }): ProviderQualificationCatalog {
   const expected = PROVIDER_CANARY_SCENARIO_IDS;
-  const artifacts = input.artifacts.map(validateProviderQualificationArtifact);
+  const artifacts = input.artifacts.map((value) => {
+    const artifact = validateProviderQualificationArtifact(value);
+    reverifyProviderQualificationArtifact(artifact);
+    return artifact;
+  });
   const actual = artifacts.map((artifact) => artifact.scenarioId);
   if (actual.join("\n") !== expected.join("\n")) {
     throw new Error(

@@ -1,16 +1,20 @@
 /** Verifies release catalogs fail closed on missing, extra, stale, or mixed-deployment provider evidence. */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROVIDER_CANARY_SCENARIO_IDS } from "./canary-catalog.ts";
 import { canonicalSha256 } from "./manifest.ts";
+import * as qualificationArtifact from "./qualification-artifact.ts";
 import {
   PROVIDER_QUALIFICATION_ARTIFACT_SCHEMA,
   type ProviderQualificationArtifact,
+  validateProviderQualificationArtifact,
 } from "./qualification-artifact.ts";
 import {
   assembleProviderQualificationCatalog,
   renderProviderQualificationCatalogMarkdown,
 } from "./qualification-catalog.ts";
+
+let reverifyArtifact: ReturnType<typeof vi.spyOn>;
 
 const REPOSITORY_SHA = "a".repeat(40);
 const DEPLOYMENT_SHA = "b".repeat(64);
@@ -90,6 +94,20 @@ function canonicalArtifacts(): ProviderQualificationArtifact[] {
 }
 
 describe("provider qualification catalog", () => {
+  beforeEach(() => {
+    reverifyArtifact = vi.spyOn(
+      qualificationArtifact,
+      "reverifyProviderQualificationArtifact",
+    );
+    reverifyArtifact.mockImplementation((value: unknown) => {
+      return validateProviderQualificationArtifact(value).decision;
+    });
+  });
+
+  afterEach(() => {
+    reverifyArtifact.mockRestore();
+  });
+
   it("renders the repository-owned 13-scenario catalog", () => {
     const catalog = assembleProviderQualificationCatalog({
       artifacts: canonicalArtifacts(),
@@ -102,6 +120,7 @@ describe("provider qualification catalog", () => {
     expect(renderProviderQualificationCatalogMarkdown(catalog)).toContain(
       "All **13** provider canaries qualified",
     );
+    expect(reverifyArtifact).toHaveBeenCalledTimes(13);
   });
 
   it("rejects missing, extra, reordered, and substituted inventory", () => {
@@ -160,5 +179,65 @@ describe("provider qualification catalog", () => {
         createdAtIso: "2026-08-19T00:01:00.000Z",
       }),
     ).toThrow(/digest does not match/);
+  });
+
+  it("rejects a capsule whose observer signature fails offline reverification", () => {
+    const artifacts = canonicalArtifacts();
+    const tampered = artifacts[0];
+    if (!tampered) throw new Error("canonical provider inventory is empty");
+    tampered.reverification.signedObserverEvidence.signature = "tampered";
+    const { artifactSha256: _digest, ...core } = tampered;
+    tampered.artifactSha256 = canonicalSha256(
+      core,
+      "providerQualificationArtifact",
+    );
+    reverifyArtifact.mockImplementation((value: unknown) => {
+      const candidate = validateProviderQualificationArtifact(value);
+      if (
+        candidate.reverification.signedObserverEvidence.signature === "tampered"
+      ) {
+        throw new Error(
+          "provider qualification artifact decision does not reverify",
+        );
+      }
+      return candidate.decision;
+    });
+
+    expect(() =>
+      assembleProviderQualificationCatalog({
+        artifacts,
+        expectedRepositorySha: REPOSITORY_SHA,
+        createdAtIso: "2026-08-19T00:01:00.000Z",
+      }),
+    ).toThrow(/decision does not reverify/);
+  });
+
+  it("rejects a recomputed artifact digest with a forged qualification decision", () => {
+    const artifacts = canonicalArtifacts();
+    const tampered = artifacts[0];
+    if (!tampered) throw new Error("canonical provider inventory is empty");
+    tampered.decision.guarantees.providerReadbackVerified = false;
+    const { artifactSha256: _digest, ...core } = tampered;
+    tampered.artifactSha256 = canonicalSha256(
+      core,
+      "providerQualificationArtifact",
+    );
+    reverifyArtifact.mockImplementation((value: unknown) => {
+      const candidate = validateProviderQualificationArtifact(value);
+      if (!candidate.decision.guarantees.providerReadbackVerified) {
+        throw new Error(
+          "provider qualification artifact decision does not reverify",
+        );
+      }
+      return candidate.decision;
+    });
+
+    expect(() =>
+      assembleProviderQualificationCatalog({
+        artifacts,
+        expectedRepositorySha: REPOSITORY_SHA,
+        createdAtIso: "2026-08-19T00:01:00.000Z",
+      }),
+    ).toThrow(/decision does not reverify/);
   });
 });
