@@ -16,6 +16,7 @@ export * from "./messaging-operator-controller.ts";
 export * from "./operation-binding.ts";
 export * from "./operator-authoring.ts";
 export * from "./operator-authorization.ts";
+export * from "./provider-service-host.ts";
 export * from "./publication-capsule.ts";
 export * from "./qualification.ts";
 export * from "./qualification-artifact.ts";
