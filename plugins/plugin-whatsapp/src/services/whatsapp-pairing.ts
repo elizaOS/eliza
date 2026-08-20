@@ -58,18 +58,24 @@ export class WhatsAppPairingSession {
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private lifecycleEpoch = 0;
+  private qrSequence = 0;
+  private credentialSaveTail: Promise<void> = Promise.resolve();
+  private teardownTail: Promise<void> = Promise.resolve();
 
   constructor(options: WhatsAppPairingOptions) {
     this.options = options;
   }
 
   async start(): Promise<void> {
+    await this.stop();
     this.stopped = false;
     const epoch = ++this.lifecycleEpoch;
     await this.startAttempt(epoch);
   }
 
   private async startAttempt(epoch: number): Promise<void> {
+    await Promise.all([this.credentialSaveTail, this.teardownTail]);
+    if (!this.isActiveEpoch(epoch)) return;
     this.setStatus("initializing");
 
     const baileys = await import("@whiskeysockets/baileys");
@@ -105,9 +111,15 @@ export class WhatsAppPairingSession {
     });
     this.socket = socket;
 
-    socket.ev.on("creds.update", async () => {
+    socket.ev.on("creds.update", () => {
       if (!this.isActiveSocket(epoch, socket)) return;
-      await saveCreds();
+      const save = this.credentialSaveTail.then(async () => {
+        await saveCreds();
+      });
+      this.credentialSaveTail = save.catch((error) => {
+        // error-policy:J1 The Baileys event boundary observes asynchronous credential-save failure.
+        coreLogger.error(`${LOG_PREFIX} Credential save failed: ${String(error)}`);
+      });
     });
 
     socket.ev.on("connection.update", async (update) => {
@@ -115,13 +127,14 @@ export class WhatsAppPairingSession {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
+        const qrSequence = ++this.qrSequence;
         this.qrAttempts++;
         coreLogger.info(
           `${LOG_PREFIX} QR code received (attempt ${this.qrAttempts}/${this.MAX_QR_ATTEMPTS})`
         );
         if (this.qrAttempts > this.MAX_QR_ATTEMPTS) {
           this.setStatus("timeout");
-          this.stop();
+          void this.stop();
           return;
         }
 
@@ -131,7 +144,7 @@ export class WhatsAppPairingSession {
             margin: 2,
             color: { dark: "#000000", light: "#ffffff" },
           });
-          if (!this.isActiveSocket(epoch, socket)) return;
+          if (!this.isActiveSocket(epoch, socket) || this.qrSequence !== qrSequence) return;
 
           this.setStatus("waiting_for_qr");
           this.options.onEvent({
@@ -190,20 +203,34 @@ export class WhatsAppPairingSession {
     });
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopped = true;
     this.lifecycleEpoch++;
+    this.qrSequence++;
     if (this.restartTimer) {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
     }
     const socket = this.socket;
     this.socket = null;
+    let socketTeardown: Promise<void> = Promise.resolve();
     try {
-      socket?.end(undefined);
-    } catch {
-      // Ignore cleanup errors.
+      socketTeardown = Promise.resolve(socket?.end(undefined)).catch((error) => {
+        // error-policy:J6 Pairing socket teardown is best-effort but must be observed.
+        coreLogger.warn(`${LOG_PREFIX} Socket teardown failed: ${String(error)}`);
+      });
+    } catch (error) {
+      // error-policy:J6 Pairing socket teardown is best-effort but must be observed.
+      coreLogger.warn(`${LOG_PREFIX} Socket teardown failed: ${String(error)}`);
     }
+
+    const previousTeardown = this.teardownTail;
+    this.teardownTail = Promise.all([
+      previousTeardown,
+      this.credentialSaveTail,
+      socketTeardown,
+    ]).then(() => undefined);
+    await this.teardownTail;
   }
 
   getStatus(): WhatsAppPairingStatus {
@@ -260,39 +287,43 @@ export async function whatsappLogout(workspaceDir: string, accountId = "default"
 
       await new Promise<void>((resolve) => {
         let settled = false;
-        const finish = () => {
+        const finish = async () => {
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
           try {
             sock.ev.removeAllListeners("connection.update");
-          } catch {
-            /* */
+          } catch (error) {
+            // error-policy:J6 Listener removal is best-effort during logout teardown.
+            coreLogger.warn(`${LOG_PREFIX} Logout listener cleanup failed: ${String(error)}`);
           }
           try {
-            sock.end(undefined);
-          } catch {
-            /* */
+            await sock.end(undefined);
+          } catch (error) {
+            // error-policy:J6 Socket closure is best-effort after the logout result is known.
+            coreLogger.warn(`${LOG_PREFIX} Logout socket teardown failed: ${String(error)}`);
           }
           resolve();
         };
 
-        const timeout = setTimeout(finish, 10_000);
+        const timeout = setTimeout(() => void finish(), 10_000);
 
         sock.ev.on("connection.update", async (update) => {
           if (update.connection === "open") {
             try {
               await sock.logout();
             } catch {
+              // error-policy:J6 The remote session may already be logged out.
               // May fail if already logged out remotely.
             }
-            finish();
+            await finish();
           } else if (update.connection === "close") {
-            finish();
+            await finish();
           }
         });
       });
     } catch {
+      // error-policy:J6 Local auth deletion remains valid if the remote logout cannot connect.
       // If Baileys can't connect, just delete files anyway.
     }
   }

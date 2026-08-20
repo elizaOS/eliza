@@ -15,7 +15,7 @@ export type WhatsAppPairingEventLike = WhatsAppPairingEvent;
 
 export interface WhatsAppPairingSessionLike {
   start(): Promise<void>;
-  stop(): void;
+  stop(): Promise<void>;
   getStatus(): string;
 }
 
@@ -68,6 +68,36 @@ type WhatsAppAuthScope = "platform" | "lifeops";
 
 const MAX_BODY_BYTES = 1_048_576;
 export const MAX_PAIRING_SESSIONS = 10;
+const pairingTransitions = new WeakMap<WhatsAppRouteState, Promise<void>>();
+
+async function acquirePairingTransition(state: WhatsAppRouteState): Promise<() => void> {
+  const previous = pairingTransitions.get(state) ?? Promise.resolve();
+  let releaseTransition: (() => void) | undefined;
+  const current = new Promise<void>((resolve) => {
+    releaseTransition = resolve;
+  });
+  pairingTransitions.set(state, current);
+  await previous;
+  return () => {
+    releaseTransition?.();
+    if (pairingTransitions.get(state) === current) pairingTransitions.delete(state);
+  };
+}
+
+async function stopPairingSession(
+  sessions: Map<string, WhatsAppPairingSessionLike>,
+  sessionKey: string
+): Promise<void> {
+  for (;;) {
+    const session = sessions.get(sessionKey);
+    if (!session) return;
+    await session.stop();
+    if (sessions.get(sessionKey) === session) {
+      sessions.delete(sessionKey);
+      return;
+    }
+  }
+}
 
 async function readJsonBody<T = Record<string, unknown>>(
   req: IncomingMessage,
@@ -294,74 +324,80 @@ export async function handleWhatsAppRoute(
       return true;
     }
     const sessionKey = resolveSessionKey(authScope, accountId);
-
-    const isReplacing = state.whatsappPairingSessions.has(sessionKey);
-    if (!isReplacing && state.whatsappPairingSessions.size >= MAX_PAIRING_SESSIONS) {
-      json(
-        res,
-        {
-          error: `Too many concurrent pairing sessions (max ${MAX_PAIRING_SESSIONS})`,
-        },
-        429
-      );
-      return true;
-    }
-
-    const authDir = resolveAuthDir(state.workspaceDir, accountId, authScope);
-    state.whatsappPairingSessions.get(sessionKey)?.stop();
-
-    const session = deps.createWhatsAppPairingSession({
-      authDir,
-      accountId,
-      onEvent: (event) => {
-        state.broadcastWs?.({ ...event, authScope });
-
-        if (event.status === "connected") {
-          let configChanged = false;
-          if (configurePlugin) {
-            if (!state.config.connectors) state.config.connectors = {};
-            state.config.connectors.whatsapp = {
-              ...((state.config.connectors.whatsapp as Record<string, unknown> | undefined) ?? {}),
-              authDir,
-              enabled: true,
-            };
-            configChanged = true;
-          }
-
-          const phoneNumber = event.phoneNumber;
-          configChanged =
-            setOwnerContact(state.config as Parameters<typeof setOwnerContact>[0], {
-              source: "whatsapp",
-              channelId: phoneNumber ?? undefined,
-            }) || configChanged;
-
-          if (!configChanged) {
-            return;
-          }
-
-          try {
-            state.saveConfig();
-          } catch {
-            /* test envs */
-          }
-        }
-      },
-    });
-
-    state.whatsappPairingSessions.set(sessionKey, session);
+    const releaseTransition = await acquirePairingTransition(state);
 
     try {
-      await session.start();
-      json(res, {
-        ok: true,
+      const isReplacing = state.whatsappPairingSessions.has(sessionKey);
+      if (!isReplacing && state.whatsappPairingSessions.size >= MAX_PAIRING_SESSIONS) {
+        json(
+          res,
+          {
+            error: `Too many concurrent pairing sessions (max ${MAX_PAIRING_SESSIONS})`,
+          },
+          429
+        );
+        return true;
+      }
+
+      const authDir = resolveAuthDir(state.workspaceDir, accountId, authScope);
+      await stopPairingSession(state.whatsappPairingSessions, sessionKey);
+
+      const session = deps.createWhatsAppPairingSession({
+        authDir,
         accountId,
-        authScope,
-        status: session.getStatus(),
+        onEvent: (event) => {
+          state.broadcastWs?.({ ...event, authScope });
+
+          if (event.status === "connected") {
+            let configChanged = false;
+            if (configurePlugin) {
+              if (!state.config.connectors) state.config.connectors = {};
+              state.config.connectors.whatsapp = {
+                ...((state.config.connectors.whatsapp as Record<string, unknown> | undefined) ??
+                  {}),
+                authDir,
+                enabled: true,
+              };
+              configChanged = true;
+            }
+
+            const phoneNumber = event.phoneNumber;
+            configChanged =
+              setOwnerContact(state.config as Parameters<typeof setOwnerContact>[0], {
+                source: "whatsapp",
+                channelId: phoneNumber ?? undefined,
+              }) || configChanged;
+
+            if (!configChanged) {
+              return;
+            }
+
+            try {
+              state.saveConfig();
+            } catch {
+              /* test envs */
+            }
+          }
+        },
       });
-    } catch (err) {
-      json(res, { ok: false, error: String(err) }, 500);
+
+      state.whatsappPairingSessions.set(sessionKey, session);
+
+      try {
+        await session.start();
+        json(res, {
+          ok: true,
+          accountId,
+          authScope,
+          status: session.getStatus(),
+        });
+      } catch (err) {
+        json(res, { ok: false, error: String(err) }, 500);
+      }
+      return true;
+    } finally {
+      releaseTransition();
     }
-    return true;
   }
 
   if (method === "GET" && pathname === "/api/whatsapp/status") {
@@ -429,11 +465,11 @@ export async function handleWhatsAppRoute(
       return true;
     }
     const sessionKey = resolveSessionKey(authScope, accountId);
-
-    const session = state.whatsappPairingSessions.get(sessionKey);
-    if (session) {
-      session.stop();
-      state.whatsappPairingSessions.delete(sessionKey);
+    const releaseTransition = await acquirePairingTransition(state);
+    try {
+      await stopPairingSession(state.whatsappPairingSessions, sessionKey);
+    } finally {
+      releaseTransition();
     }
 
     json(res, { ok: true, accountId, authScope, status: "idle" });
@@ -459,42 +495,43 @@ export async function handleWhatsAppRoute(
       return true;
     }
     const sessionKey = resolveSessionKey(authScope, accountId);
+    const releaseTransition = await acquirePairingTransition(state);
 
-    const session = state.whatsappPairingSessions.get(sessionKey);
-    if (session) {
-      session.stop();
-      state.whatsappPairingSessions.delete(sessionKey);
-    }
-
-    const authDir = resolveAuthDir(state.workspaceDir, accountId, authScope);
     try {
-      if (authScope === "platform") {
-        await deps.whatsappLogout(state.workspaceDir, accountId);
-      } else {
-        fs.rmSync(authDir, { recursive: true, force: true });
-      }
-    } catch (logoutErr) {
-      logger.warn(
-        {
-          accountId,
-          error: logoutErr instanceof Error ? logoutErr.message : String(logoutErr),
-        },
-        "[whatsapp] Logout failed, deleting auth files directly"
-      );
-      try {
-        fs.rmSync(authDir, { recursive: true, force: true });
-      } catch {
-        /* may not exist */
-      }
-    }
+      await stopPairingSession(state.whatsappPairingSessions, sessionKey);
 
-    if (configurePlugin && state.config.connectors) {
-      delete state.config.connectors.whatsapp;
+      const authDir = resolveAuthDir(state.workspaceDir, accountId, authScope);
       try {
-        state.saveConfig();
-      } catch {
-        /* test envs */
+        if (authScope === "platform") {
+          await deps.whatsappLogout(state.workspaceDir, accountId);
+        } else {
+          fs.rmSync(authDir, { recursive: true, force: true });
+        }
+      } catch (logoutErr) {
+        logger.warn(
+          {
+            accountId,
+            error: logoutErr instanceof Error ? logoutErr.message : String(logoutErr),
+          },
+          "[whatsapp] Logout failed, deleting auth files directly"
+        );
+        try {
+          fs.rmSync(authDir, { recursive: true, force: true });
+        } catch {
+          /* may not exist */
+        }
       }
+
+      if (configurePlugin && state.config.connectors) {
+        delete state.config.connectors.whatsapp;
+        try {
+          state.saveConfig();
+        } catch {
+          /* test envs */
+        }
+      }
+    } finally {
+      releaseTransition();
     }
 
     json(res, { ok: true, accountId, authScope });
