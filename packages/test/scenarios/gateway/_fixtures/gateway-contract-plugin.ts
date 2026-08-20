@@ -266,6 +266,10 @@ export interface GatewayContractHarness {
   reset(): void;
 }
 
+// The corpus runner reuses one runtime, so later scenarios cannot replace a
+// plugin that is already registered under this fixture's stable name. Reusing
+// the same harness ensures each seed resets the state owned by the registered
+// action closures instead of clearing an unregistered replacement instance.
 let singleton: GatewayContractHarness | undefined;
 
 export function createGatewayContractHarness(): GatewayContractHarness {
@@ -747,7 +751,6 @@ export function createGatewayContractHarness(): GatewayContractHarness {
                 credentials: TWILIO_CREDENTIALS,
                 to: String(draft.to),
                 body: String(draft.body),
-                idempotencyKey: draftId,
               }),
             );
           } else if (channel === "voice") {
@@ -756,7 +759,6 @@ export function createGatewayContractHarness(): GatewayContractHarness {
                 credentials: TWILIO_CREDENTIALS,
                 to: String(draft.to),
                 message: String(draft.body),
-                idempotencyKey: draftId,
               }),
             );
           } else {

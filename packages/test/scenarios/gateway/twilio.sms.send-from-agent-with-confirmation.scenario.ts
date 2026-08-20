@@ -9,6 +9,65 @@ import { createGatewayContractHarness } from "./_fixtures/gateway-contract-plugi
 const harness = createGatewayContractHarness();
 const data = (turn: ScenarioTurnExecution) =>
   (turn.responseBody as { data?: Record<string, unknown> })?.data ?? {};
+
+function assertExactSmsDispatch(
+  value: Record<string, unknown>,
+): string | undefined {
+  const receipt = value.receipt as Record<string, unknown> | undefined;
+  const request = receipt?.request as
+    | { url?: unknown; init?: Record<string, unknown> }
+    | undefined;
+  const headers = request?.init?.headers as Record<string, unknown> | undefined;
+  const result = receipt?.result as Record<string, unknown> | undefined;
+  const billing = result?.billing as Record<string, unknown> | undefined;
+  const draft = value.draft as Record<string, unknown> | undefined;
+  const url = typeof request?.url === "string" ? new URL(request.url) : null;
+  const body =
+    typeof request?.init?.body === "string"
+      ? new URLSearchParams(request.init.body)
+      : null;
+  const headerEntries = headers ? Object.entries(headers).sort() : [];
+  const expectedAuthorization = `Basic ${Buffer.from(
+    "AC_scenario:scenario_auth_token",
+  ).toString("base64")}`;
+
+  const exact =
+    value.duplicate === false &&
+    value.dispatchCount === 1 &&
+    draft?.draftId === "draft-sms-91" &&
+    draft.channel === "sms" &&
+    draft.to === "+15551112222" &&
+    draft.body === "Running 10 minutes late." &&
+    draft.ownerId === "owner-1" &&
+    draft.status === "sent" &&
+    receipt?.channel === "sms" &&
+    receipt.ownerId === "owner-1" &&
+    receipt.draftId === "draft-sms-91" &&
+    url?.pathname === "/2010-04-01/Accounts/AC_scenario/Messages.json" &&
+    request?.init?.method === "POST" &&
+    JSON.stringify(headerEntries) ===
+      JSON.stringify([
+        ["Authorization", expectedAuthorization],
+        ["Content-Type", "application/x-www-form-urlencoded"],
+      ]) &&
+    body?.size === 3 &&
+    body.get("To") === "+15551112222" &&
+    body.get("From") === "+15555550000" &&
+    body.get("Body") === "Running 10 minutes late." &&
+    result?.ok === true &&
+    result.status === 201 &&
+    result.sid === "SM_scenario" &&
+    result.retryCount === 0 &&
+    billing?.segments === 1 &&
+    billing.rawCost === 0.01 &&
+    billing.markup === 0 &&
+    billing.billedCost === 0.01 &&
+    billing.markupRate === 0.2 &&
+    billing.costPerSegment === 0.0075;
+
+  return exact ? undefined : `unexpected SMS dispatch ${JSON.stringify(value)}`;
+}
+
 export default scenario({
   lane: "pr-deterministic",
   executionProfile: "simulated",
@@ -25,7 +84,7 @@ export default scenario({
     "deterministic-contract",
   ],
   description:
-    "Runs the production Twilio SMS helper against a deterministic HTTP boundary and proves exact request, Basic auth, idempotency key, confirmation ordering, and replay suppression. It does not claim provider delivery.",
+    "Runs the production Twilio SMS helper against a deterministic HTTP boundary and proves exact request, Basic auth, application-level confirmation ordering, and replay suppression. It does not claim provider delivery.",
   isolation: "per-scenario",
   rooms: [
     {
@@ -69,18 +128,7 @@ export default scenario({
       room: "main",
       actionName: "GATEWAY_CONFIRM_DISPATCH",
       options: { draftId: "draft-sms-91", ownerId: "owner-1" },
-      assertTurn: (turn) => {
-        const d = data(turn);
-        const blob = JSON.stringify(d);
-        return d.duplicate === false &&
-          d.dispatchCount === 1 &&
-          blob.includes("/Messages.json") &&
-          blob.includes("I-Twilio-Idempotency-Token") &&
-          blob.includes("draft-sms-91") &&
-          blob.includes("10+minutes+late")
-          ? undefined
-          : `unexpected SMS dispatch ${blob}`;
-      },
+      assertTurn: (turn) => assertExactSmsDispatch(data(turn)),
     },
     {
       kind: "action",
