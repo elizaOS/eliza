@@ -2,7 +2,7 @@
  * Bounds the Gmail MIME `parts` tree before ingest walks it. Gmail API
  * payloads carry untrusted nested multipart from hostile mail; the previous
  * recursive collect/extract RangeError'd a 20k nest on Node 24.15.0.
- * Depth, node, and cycle limits are all load-bearing.
+ * Depth, node, cycle, and own-data-descriptor limits are all load-bearing.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -22,6 +22,8 @@ type WalkContext = {
   visiting: WeakSet<object>;
 };
 
+type OwnData = { found: false } | { found: true; value: unknown };
+
 function failUnbounded(context: Record<string, unknown>): never {
   throw new ElizaError("Gmail MIME part tree exceeds the ingest walk budget", {
     code: GMAIL_MIME_PART_UNBOUNDED,
@@ -40,9 +42,65 @@ function reserve(ctx: WalkContext, count: number): void {
   ctx.visits += count;
 }
 
+function ownData(object: object, key: PropertyKey, field: string): OwnData {
+  const descriptor = Object.getOwnPropertyDescriptor(object, key);
+  if (!descriptor) return { found: false };
+  if (!Object.hasOwn(descriptor, "value")) {
+    failUnbounded({ accessor: field });
+  }
+  return { found: true, value: descriptor.value };
+}
+
+function snapshotMimePart(part: object): GmailMimePartLike {
+  const mime = ownData(part, "mimeType", "mimeType");
+  const bodyOwn = ownData(part, "body", "body");
+  const snapshot: GmailMimePartLike = {};
+  if (mime.found) {
+    snapshot.mimeType = mime.value as string | null | undefined;
+  }
+  if (!bodyOwn.found) return snapshot;
+  if (bodyOwn.value == null) {
+    snapshot.body = bodyOwn.value as null | undefined;
+    return snapshot;
+  }
+  if (typeof bodyOwn.value !== "object") {
+    snapshot.body = undefined;
+    return snapshot;
+  }
+  const data = ownData(bodyOwn.value, "data", "body.data");
+  snapshot.body = {
+    data:
+      !data.found || data.value == null || typeof data.value === "string"
+        ? ((data.found ? data.value : undefined) as string | null | undefined)
+        : undefined,
+  };
+  return snapshot;
+}
+
+function childParts(part: object, ctx: WalkContext): object[] {
+  const partsOwn = ownData(part, "parts", "parts");
+  if (!partsOwn.found) return [];
+  const children = partsOwn.value;
+  if (!Array.isArray(children)) return [];
+  const lengthOwn = ownData(children, "length", "parts.length");
+  const length = lengthOwn.found ? lengthOwn.value : 0;
+  if (typeof length !== "number" || !Number.isInteger(length) || length < 0) {
+    failUnbounded({ field: "parts.length", length });
+  }
+  reserve(ctx, length);
+  const out: object[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const slot = ownData(children, index, "parts[]");
+    if (!slot.found || !slot.value || typeof slot.value !== "object") continue;
+    out.push(slot.value);
+  }
+  return out;
+}
+
 /**
  * Depth-first visit of a Gmail MIME part tree. `visit` returning true aborts
- * the remaining walk (used when extract has already found a body).
+ * the remaining walk (used when extract has already found a body). Visitors
+ * receive an own-data snapshot so they never read accessors on the raw part.
  */
 export function walkGmailMimeParts(
   part: GmailMimePartLike | undefined,
@@ -53,7 +111,7 @@ export function walkGmailMimeParts(
 }
 
 function walkGmailMimePartsInner(
-  part: GmailMimePartLike,
+  part: object,
   depth: number,
   ctx: WalkContext,
   visit: (part: GmailMimePartLike) => boolean | undefined,
@@ -68,16 +126,9 @@ function walkGmailMimePartsInner(
   }
   ctx.visiting.add(part);
   try {
-    if (visit(part) === true) return true;
-    const partsDescriptor = Object.getOwnPropertyDescriptor(part, "parts");
-    if (!partsDescriptor || !("value" in partsDescriptor)) return false;
-    const children = partsDescriptor.value;
-    if (!Array.isArray(children)) return false;
-    reserve(ctx, children.length);
-    for (let index = 0; index < children.length; index += 1) {
-      if (!(index in children)) continue;
-      const child = children[index];
-      if (!child || typeof child !== "object") continue;
+    const snapshot = snapshotMimePart(part);
+    if (visit(snapshot) === true) return true;
+    for (const child of childParts(part, ctx)) {
       if (walkGmailMimePartsInner(child, depth + 1, ctx, visit, true)) {
         return true;
       }
@@ -106,7 +157,7 @@ export function extractGmailMimeBody(
 }
 
 function extractGmailMimeBodyInner(
-  part: GmailMimePartLike,
+  part: object,
   mimeType: string,
   readBody: (part: GmailMimePartLike) => string,
   depth: number,
@@ -122,28 +173,11 @@ function extractGmailMimeBodyInner(
   }
   ctx.visiting.add(part);
   try {
-    const directBody = Object.getOwnPropertyDescriptor(part, "body");
-    const mimeDescriptor = Object.getOwnPropertyDescriptor(part, "mimeType");
-    const mime = mimeDescriptor && "value" in mimeDescriptor ? mimeDescriptor.value : part.mimeType;
-    if (
-      mime === mimeType &&
-      directBody &&
-      "value" in directBody &&
-      directBody.value &&
-      typeof (directBody.value as { data?: unknown }).data === "string"
-    ) {
-      return readBody(part);
+    const snapshot = snapshotMimePart(part);
+    if (snapshot.mimeType === mimeType && typeof snapshot.body?.data === "string") {
+      return readBody(snapshot);
     }
-
-    const partsDescriptor = Object.getOwnPropertyDescriptor(part, "parts");
-    if (!partsDescriptor || !("value" in partsDescriptor)) return "";
-    const children = partsDescriptor.value;
-    if (!Array.isArray(children)) return "";
-    reserve(ctx, children.length);
-    for (let index = 0; index < children.length; index += 1) {
-      if (!(index in children)) continue;
-      const child = children[index];
-      if (!child || typeof child !== "object") continue;
+    for (const child of childParts(part, ctx)) {
       const nested = extractGmailMimeBodyInner(child, mimeType, readBody, depth + 1, ctx, true);
       if (nested) return nested;
     }
