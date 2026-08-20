@@ -6941,7 +6941,7 @@
   "cloud.elizaAgentsTable.agentProvisioning": "에이전트 프로비저닝",
   "cloud.elizaAgentsTable.agentSuspend": "에이전트 일시 중단",
   "cloud.elizaAgentsTable.noAgentsYet": "아직 에이전트 없음",
-  "cloud.elizaAgentsTable.noAgentsYetDesc": "첫 번째 에이전트를 배포하여 시작하세요.",
+  "cloud.elizaAgentsTable.noAgentsYetDesc": "공유 에이전트 또는 전용 에이전트를 사용할 수 있게 되면 여기에 표시됩니다.",
   "cloud.elizaAgentsTable.searchAgents": "에이전트 검색…",
   "cloud.elizaAgentsTable.allStatuses": "전체 상태",
   "cloud.elizaAgentsTable.running": "실행 중",
