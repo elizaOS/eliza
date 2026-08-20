@@ -101,9 +101,6 @@ export default scenario({
   description:
     "Registers a trivial ECHO_TEST plugin and verifies the scripted runner captures the action call with success=true.",
 
-  requires: {
-    plugins: ["echo-test"],
-  },
   isolation: "per-scenario",
 
   seed: [
