@@ -26,7 +26,7 @@ describe("local runtime conversation fetch", () => {
     }) as typeof fetch;
     const signal = new AbortController().signal;
     const bridge = createLocalRuntimeConversationFetch(
-      "http://127.0.0.1:31337",
+      "http://127.0.0.1:31337/path?ignored=1",
       downstream,
     );
 

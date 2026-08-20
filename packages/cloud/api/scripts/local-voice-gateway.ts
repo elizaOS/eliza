@@ -4,8 +4,6 @@
  * the already-running local elizaOS API rather than a second model runtime.
  */
 
-import { resolveLoopbackOrigin } from "../v1/voice/session/lib/loopback-origin";
-
 const DEFAULT_RUNTIME_ORIGIN = "http://127.0.0.1:31337";
 const DEFAULT_GATEWAY_PORT = 31_338;
 const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
@@ -14,10 +12,9 @@ const LOCAL_USER_ID = "20000000-0000-4000-8000-000000000002";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type LocalVoiceFetch = (
-  input: RequestInfo | URL,
-  init?: RequestInit,
-) => Promise<Response>;
+process.env.MOCK_REDIS ??= "1";
+process.env.ENVIRONMENT ??= "local-voice-gateway";
+process.env.VOICE_REALTIME_WS_ENABLED = "1";
 
 function writeLog(
   level: "info" | "warn" | "error",
@@ -53,26 +50,14 @@ function readPort(name: string, fallback: number): number {
 
 function assertUuid(label: string, value: string): string {
   if (!UUID_PATTERN.test(value)) throw new Error(`${label} must be a UUID`);
-  return value.toLowerCase();
+  return value;
 }
 
-export async function readLocalIdentity(
-  runtimeOrigin: string,
-  options: {
-    fetchImpl?: LocalVoiceFetch;
-    environment?: {
-      ELIZA_LOCAL_VOICE_AGENT_ID?: string;
-      ELIZA_LOCAL_VOICE_CONVERSATION_ID?: string;
-    };
-  } = {},
-): Promise<{
+async function readLocalIdentity(runtimeOrigin: string): Promise<{
   agentId: string;
   conversationId: string;
 }> {
-  const fetchImpl = options.fetchImpl ?? fetch;
-  const environment = options.environment ?? process.env;
-  const origin = resolveLoopbackOrigin(runtimeOrigin);
-  const healthResponse = await fetchImpl(new URL("/api/health", origin));
+  const healthResponse = await fetch(new URL("/api/health", runtimeOrigin));
   if (!healthResponse.ok) {
     throw new Error(
       `local runtime health returned HTTP ${healthResponse.status}`,
@@ -86,84 +71,59 @@ export async function readLocalIdentity(
     throw new Error("local runtime is not ready to respond");
   }
 
-  const agentResponse = await fetchImpl(new URL("/api/agents", origin));
-  if (!agentResponse.ok) {
-    throw new Error(`local agents route returned HTTP ${agentResponse.status}`);
+  const configuredAgentId = process.env.ELIZA_LOCAL_VOICE_AGENT_ID?.trim();
+  let discoveredAgentId: string | undefined;
+  if (!configuredAgentId) {
+    const agentResponse = await fetch(new URL("/api/agents", runtimeOrigin));
+    if (!agentResponse.ok) {
+      throw new Error(
+        `local agents route returned HTTP ${agentResponse.status}`,
+      );
+    }
+    const agentsBody = (await agentResponse.json()) as {
+      agents?: Array<{ id?: unknown; status?: unknown }>;
+    };
+    discoveredAgentId = agentsBody.agents?.find(
+      (agent) => agent.status === "running" && typeof agent.id === "string",
+    )?.id as string | undefined;
   }
-  const agentsBody = (await agentResponse.json()) as {
-    agents?: Array<{ id?: unknown; status?: unknown }>;
-  };
-  const agents = Array.isArray(agentsBody.agents) ? agentsBody.agents : [];
-  const configuredAgentId = environment.ELIZA_LOCAL_VOICE_AGENT_ID?.trim();
-  const runningAgent = agents.find(
-    (agent) => agent.status === "running" && typeof agent.id === "string",
+  const agentId = assertUuid(
+    "local agent id",
+    configuredAgentId || discoveredAgentId || "",
   );
-  const discoveredAgentId =
-    typeof runningAgent?.id === "string" ? runningAgent.id : "";
-  const agentId = configuredAgentId
-    ? assertUuid("local agent id", configuredAgentId)
-    : assertUuid("local agent id", discoveredAgentId);
-  if (
-    !agents.some(
-      (agent) =>
-        typeof agent.id === "string" &&
-        agent.id.toLowerCase() === agentId &&
-        agent.status === "running",
-    )
-  ) {
-    throw new Error("configured local agent id does not match a running agent");
-  }
 
   const configuredConversationId =
-    environment.ELIZA_LOCAL_VOICE_CONVERSATION_ID?.trim();
-  const conversationResponse = await fetchImpl(
-    new URL("/api/conversations", origin),
-  );
-  if (!conversationResponse.ok) {
-    throw new Error(
-      `local conversations route returned HTTP ${conversationResponse.status}`,
+    process.env.ELIZA_LOCAL_VOICE_CONVERSATION_ID?.trim();
+  let discoveredConversationId: string | undefined;
+  if (!configuredConversationId) {
+    const conversationResponse = await fetch(
+      new URL("/api/conversations", runtimeOrigin),
     );
-  }
-  const conversationsBody = (await conversationResponse.json()) as {
-    conversations?: Array<{ id?: unknown; updatedAt?: unknown }>;
-  };
-  const conversations = Array.isArray(conversationsBody.conversations)
-    ? conversationsBody.conversations
-    : [];
-  const discoveredConversationId =
-    conversations
-      .filter(
-        (conversation): conversation is { id: string; updatedAt?: unknown } =>
-          typeof conversation.id === "string",
-      )
+    if (!conversationResponse.ok) {
+      throw new Error(
+        `local conversations route returned HTTP ${conversationResponse.status}`,
+      );
+    }
+    const conversationsBody = (await conversationResponse.json()) as {
+      conversations?: Array<{ id?: unknown; updatedAt?: unknown }>;
+    };
+    discoveredConversationId = conversationsBody.conversations
+      ?.filter((conversation) => typeof conversation.id === "string")
       .sort((left, right) =>
         String(right.updatedAt ?? "").localeCompare(
           String(left.updatedAt ?? ""),
         ),
-      )[0]?.id ?? "";
-  const conversationId = configuredConversationId
-    ? assertUuid("local conversation id", configuredConversationId)
-    : assertUuid("local conversation id", discoveredConversationId);
-  if (
-    !conversations.some(
-      (conversation) =>
-        typeof conversation.id === "string" &&
-        conversation.id.toLowerCase() === conversationId,
-    )
-  ) {
-    throw new Error(
-      "configured local conversation id does not match a live conversation",
-    );
+      )[0]?.id as string | undefined;
   }
+  const conversationId = assertUuid(
+    "local conversation id",
+    configuredConversationId || discoveredConversationId || "",
+  );
 
   return { agentId, conversationId };
 }
 
 async function main(): Promise<void> {
-  process.env.MOCK_REDIS ??= "1";
-  process.env.ENVIRONMENT ??= "local-voice-gateway";
-  process.env.VOICE_REALTIME_WS_ENABLED = "1";
-
   const cartesiaApiKey = requiredSecret("CARTESIA_API_KEY");
   const runtimeOrigin =
     process.env.ELIZA_LOCAL_API_ORIGIN?.trim() || DEFAULT_RUNTIME_ORIGIN;
@@ -220,13 +180,11 @@ async function main(): Promise<void> {
   process.once("SIGTERM", () => void stop("SIGTERM"));
 }
 
-if (import.meta.main) {
-  void main().catch((error) => {
-    // error-policy:J1 The CLI process boundary emits one structured failure and
-    // exits non-zero; it never starts a partially configured voice gateway.
-    writeLog("error", "local voice gateway failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    process.exit(1);
+void main().catch((error) => {
+  // error-policy:J1 The CLI process boundary emits one structured failure and
+  // exits non-zero; it never starts a partially configured voice gateway.
+  writeLog("error", "local voice gateway failed", {
+    error: error instanceof Error ? error.message : String(error),
   });
-}
+  process.exit(1);
+});
