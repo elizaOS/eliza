@@ -88,6 +88,12 @@ digests, request digest, opaque account, capability, operation, input digest,
 and post-authorization chronology. Provider payloads and secrets never belong
 in requests, decisions, confirmations, errors, or receipts.
 
+Policy denials and execution failures use the exported canonical
+`CAPABILITY_POLICY_DENIAL_CODES` and `CAPABILITY_EXECUTION_ERROR_CODES`
+classifications. Adapters must map provider-specific status, prose, and payloads
+to those values; arbitrary provider error text is rejected at normalization and
+must not be forwarded through public error context.
+
 ### Bounded pairing operator reads
 
 `PairingService` keeps its existing complete-array methods (`listPendingRequests`

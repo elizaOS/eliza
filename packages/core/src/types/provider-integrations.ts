@@ -47,6 +47,30 @@ export const CAPABILITY_UNAVAILABLE_CODES = [
 export type CapabilityUnavailableCode =
 	(typeof CAPABILITY_UNAVAILABLE_CODES)[number];
 
+export const CAPABILITY_POLICY_DENIAL_CODES = [
+	"account_policy_denied",
+	"capability_policy_denied",
+	"organization_policy_denied",
+	"risk_policy_denied",
+	"user_policy_denied",
+] as const;
+export type CapabilityPolicyDenialCode =
+	(typeof CAPABILITY_POLICY_DENIAL_CODES)[number];
+
+export const CAPABILITY_EXECUTION_ERROR_CODES = [
+	"authentication_failed",
+	"authorization_failed",
+	"conflict",
+	"invalid_request",
+	"provider_error",
+	"rate_limited",
+	"schema_drift",
+	"timeout",
+	"unknown_error",
+] as const;
+export type CapabilityExecutionErrorCode =
+	(typeof CAPABILITY_EXECUTION_ERROR_CODES)[number];
+
 export interface ConnectedAccountCapability {
 	capabilityId: string;
 	riskLevel: CapabilityRiskLevel;
@@ -122,7 +146,7 @@ export type CapabilityPolicyDecision =
 	  })
 	| (CapabilityPolicyDecisionBase & {
 			outcome: "denied";
-			reasonCode: string;
+			reasonCode: CapabilityPolicyDenialCode;
 	  })
 	| (CapabilityPolicyDecisionBase & {
 			outcome: "unavailable";
@@ -206,7 +230,7 @@ export type CapabilityExecutionOutcome<T> =
 	| {
 			contractVersion: typeof PROVIDER_INTEGRATION_CONTRACT_VERSION;
 			status: "error";
-			code: string;
+			code: CapabilityExecutionErrorCode;
 			retryable: boolean;
 	  };
 
@@ -773,7 +797,11 @@ export function normalizeCapabilityPolicyDecision(
 			return Object.freeze({
 				...base,
 				outcome: "denied",
-				reasonCode: nonEmptyString(raw.reasonCode, "reasonCode", 128),
+				reasonCode: enumValue(
+					raw.reasonCode,
+					CAPABILITY_POLICY_DENIAL_CODES,
+					"reasonCode",
+				),
 			});
 		case "unavailable":
 			exactKeys(
@@ -1395,7 +1423,7 @@ export function normalizeCapabilityExecutionOutcome<T>(
 			return Object.freeze({
 				contractVersion: PROVIDER_INTEGRATION_CONTRACT_VERSION,
 				status: "error",
-				code: nonEmptyString(raw.code, "code", 128),
+				code: enumValue(raw.code, CAPABILITY_EXECUTION_ERROR_CODES, "code"),
 				retryable: booleanValue(raw.retryable, "retryable"),
 			});
 		default:
