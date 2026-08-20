@@ -2342,7 +2342,10 @@ function AppContent() {
   // Runtime-target adoption can remount the shell on the exact render where
   // first-run completes. Retain that completion edge above the remount and let
   // the next ChatOverlay acknowledge it after applying the FULL detent.
-  const firstRunChatRelease = useFirstRunChatRelease(firstRunComplete);
+  const firstRunChatRelease = useFirstRunChatRelease(
+    firstRunComplete,
+    startupCoordinator.phase,
+  );
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -3338,13 +3341,17 @@ function AppContent() {
         <ChatOverlayMount
           releaseFirstRunToFull={firstRunChatRelease.releasePending}
           onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
-          onFirstRunChatMounted={firstRunChatRelease.recordMountedChat}
+          onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
         />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
             transcript the overlay renders and routes first-run picks to the
             headless finish use case. Renders null. */}
-        <FirstRunConductorMount />
+        <FirstRunConductorMount
+          onFirstRunTranscriptMounted={
+            firstRunChatRelease.recordMountedTranscript
+          }
+        />
         {/* In-chat model-status card (headless) — while the local text model is
             downloading/loading/missing/errored it seeds ONE live status turn
             with cancel / switch-to-cloud / retry controls. Renders null. */}

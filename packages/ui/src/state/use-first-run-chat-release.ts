@@ -9,37 +9,65 @@ import {
   acknowledgeFirstRunChatRelease,
   createFirstRunChatReleaseState,
   observeFirstRunCompletion,
-  recordMountedFirstRunChat,
+  recordMountedFirstRunOverlay,
+  recordMountedFirstRunTranscript,
 } from "./first-run-chat-release";
+import type { StartupPhaseValue } from "./startup-coordinator";
 
 export interface FirstRunChatReleaseController {
   releasePending: boolean;
-  recordMountedChat: () => void;
+  recordMountedOverlay: () => void;
+  recordMountedTranscript: () => void;
   acknowledgeRelease: () => void;
 }
 
 export function useFirstRunChatRelease(
   firstRunComplete: boolean | null,
+  startupPhase: StartupPhaseValue,
 ): FirstRunChatReleaseController {
-  const lifecycleRef = useRef(createFirstRunChatReleaseState(firstRunComplete));
+  const lifecycleRef = useRef(
+    createFirstRunChatReleaseState(firstRunComplete, startupPhase),
+  );
   const [releasePending, setReleasePending] = useState(false);
 
   useLayoutEffect(() => {
     lifecycleRef.current = observeFirstRunCompletion(
       lifecycleRef.current,
       firstRunComplete,
+      startupPhase,
     );
     setReleasePending(lifecycleRef.current.releasePending);
-  }, [firstRunComplete]);
+  }, [firstRunComplete, startupPhase]);
 
-  const recordMountedChat = useCallback(() => {
-    lifecycleRef.current = recordMountedFirstRunChat(lifecycleRef.current);
-  }, []);
+  const recordMountedOverlay = useCallback(() => {
+    lifecycleRef.current = observeFirstRunCompletion(
+      lifecycleRef.current,
+      firstRunComplete,
+      startupPhase,
+    );
+    lifecycleRef.current = recordMountedFirstRunOverlay(lifecycleRef.current);
+  }, [firstRunComplete, startupPhase]);
+
+  const recordMountedTranscript = useCallback(() => {
+    lifecycleRef.current = observeFirstRunCompletion(
+      lifecycleRef.current,
+      firstRunComplete,
+      startupPhase,
+    );
+    lifecycleRef.current = recordMountedFirstRunTranscript(
+      lifecycleRef.current,
+    );
+  }, [firstRunComplete, startupPhase]);
 
   const acknowledgeRelease = useCallback(() => {
     lifecycleRef.current = acknowledgeFirstRunChatRelease(lifecycleRef.current);
     setReleasePending(lifecycleRef.current.releasePending);
   }, []);
 
-  return { releasePending, recordMountedChat, acknowledgeRelease };
+  return {
+    releasePending,
+    recordMountedOverlay,
+    recordMountedTranscript,
+    acknowledgeRelease,
+  };
 }

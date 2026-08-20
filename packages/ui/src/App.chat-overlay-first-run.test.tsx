@@ -23,7 +23,7 @@
  */
 
 import { cleanup, render, waitFor } from "@testing-library/react";
-import type * as React from "react";
+import { type ReactNode, useLayoutEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appState = vi.hoisted(() => ({
@@ -44,6 +44,15 @@ vi.mock("./state/notifications/notification-store", () => ({
 
 const conductorMock = vi.hoisted(() => ({
   mount: vi.fn(),
+  transcriptMounted: true,
+}));
+
+const shellControllerMock = vi.hoisted(() => ({
+  current: null as Record<string, unknown> | null,
+}));
+
+const overlayMock = vi.hoisted(() => ({
+  handledReleases: 0,
 }));
 
 // The key mock: App imports FirstRunConductorMount from this module (its only
@@ -51,8 +60,20 @@ const conductorMock = vi.hoisted(() => ({
 // chat-overlay branch actually returns; the marker div (the real component
 // renders null) lets the tests assert WHERE it mounted.
 vi.mock("./first-run/use-first-run-conductor", () => ({
-  FirstRunConductorMount: () => {
+  FirstRunConductorMount: ({
+    onFirstRunTranscriptMounted,
+  }: {
+    onFirstRunTranscriptMounted?: () => void;
+  }) => {
     conductorMock.mount();
+    useLayoutEffect(() => {
+      if (
+        conductorMock.transcriptMounted &&
+        appState.firstRunComplete === false
+      ) {
+        onFirstRunTranscriptMounted?.();
+      }
+    }, [onFirstRunTranscriptMounted]);
     return <div data-testid="first-run-conductor-mount" />;
   },
   useFirstRunConductor: (): void => {
@@ -113,9 +134,7 @@ vi.mock("./hooks/useActivityEvents", () => ({
 }));
 
 vi.mock("./hooks", () => ({
-  BugReportProvider: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
+  BugReportProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   useBugReportState: () => ({}),
   useContextMenu: () => ({
     closeSaveCommandModal: vi.fn(),
@@ -193,10 +212,35 @@ vi.mock("./config/boot-config-react.hooks", () => ({
 }));
 
 vi.mock("./components/shell/ShellControllerContext", () => ({
-  ShellControllerProvider: ({ children }: { children: React.ReactNode }) => (
+  ShellControllerProvider: ({ children }: { children: ReactNode }) => (
     <div data-testid="shell-controller-provider">{children}</div>
   ),
-  useShellControllerContext: () => null,
+}));
+
+vi.mock("./components/shell/ShellControllerContext.hooks", () => ({
+  useShellControllerContext: () => shellControllerMock.current,
+}));
+
+vi.mock("./components/shell/ChatOverlay", () => ({
+  ChatOverlay: ({
+    releaseFirstRunToFull,
+    onFirstRunReleaseHandled,
+  }: {
+    releaseFirstRunToFull: boolean;
+    onFirstRunReleaseHandled: () => void;
+  }) => {
+    useLayoutEffect(() => {
+      if (!releaseFirstRunToFull) return;
+      overlayMock.handledReleases += 1;
+      onFirstRunReleaseHandled();
+    }, [onFirstRunReleaseHandled, releaseFirstRunToFull]);
+    return (
+      <div
+        data-testid="chat-overlay"
+        data-release-first-run={String(releaseFirstRunToFull)}
+      />
+    );
+  },
 }));
 
 vi.mock("./components/shell/StartupScreen", () => ({
@@ -283,6 +327,9 @@ describe("App chat-overlay first-run composition", () => {
     appState.startupPhase = "first-run-required";
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
     conductorMock.mount.mockClear();
+    conductorMock.transcriptMounted = true;
+    shellControllerMock.current = null;
+    overlayMock.handledReleases = 0;
     notificationMock.init.mockClear();
   });
 
@@ -406,5 +453,79 @@ describe("App chat-overlay first-run composition", () => {
     // (behavioral no-op coverage: first-run/use-first-run-conductor.test.ts).
     expect(conductorMock.mount).toHaveBeenCalled();
     expect(queryByTestId("first-run-conductor-mount")).not.toBeNull();
+  });
+
+  it("does not release FULL when a controller mounts during a false first-run probe", () => {
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = false;
+    appState.startupPhase = "ready";
+    appState.authPhase = "authenticated";
+    shellControllerMock.current = {};
+
+    const shell = render(<App />);
+    expect(shell.getByTestId("chat-overlay").dataset.releaseFirstRun).toBe(
+      "false",
+    );
+
+    appState.firstRunComplete = true;
+    shell.rerender(<App />);
+
+    expect(shell.getByTestId("chat-overlay").dataset.releaseFirstRun).toBe(
+      "false",
+    );
+    expect(overlayMock.handledReleases).toBe(0);
+  });
+
+  it("does not release FULL for a stale transcript from a prior first-run epoch", () => {
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    appState.authPhase = "authenticated";
+    shellControllerMock.current = {};
+    // The production mount snapshots prior first-run ids and emits no mounted
+    // event until this epoch's conductor commits a new synthetic turn.
+    conductorMock.transcriptMounted = false;
+
+    const shell = render(<App />);
+    appState.firstRunComplete = true;
+    appState.startupPhase = "starting-runtime";
+    shell.rerender(<App />);
+
+    expect(shell.getByTestId("chat-overlay").dataset.releaseFirstRun).toBe(
+      "false",
+    );
+    expect(overlayMock.handledReleases).toBe(0);
+  });
+
+  it("releases one genuine conductor transcript to FULL after the overlay remounts", () => {
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    appState.authPhase = "authenticated";
+    shellControllerMock.current = {};
+
+    const shell = render(<App />);
+    expect(shell.getByTestId("chat-overlay").dataset.releaseFirstRun).toBe(
+      "false",
+    );
+
+    // Runtime-target adoption temporarily removes the controller on the same
+    // committed edge that completes onboarding. The release lives above that
+    // remount, so no transient null controller can consume it.
+    shellControllerMock.current = null;
+    appState.firstRunComplete = true;
+    appState.startupPhase = "starting-runtime";
+    shell.rerender(<App />);
+    expect(shell.queryByTestId("chat-overlay")).toBeNull();
+
+    shellControllerMock.current = {};
+    shell.rerender(<App />);
+    expect(shell.getByTestId("chat-overlay").dataset.releaseFirstRun).toBe(
+      "false",
+    );
+    expect(overlayMock.handledReleases).toBe(1);
+
+    shell.rerender(<App />);
+    expect(overlayMock.handledReleases).toBe(1);
   });
 });
