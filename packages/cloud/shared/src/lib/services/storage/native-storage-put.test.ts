@@ -1,8 +1,8 @@
 /**
- * Failure-injects the native PUT orchestrator with a fake strongly consistent
- * R2 binding to prove ambiguous writes reconcile without refund or re-upload.
+ * Failure-injects native storage mutation and quota-reconciliation boundaries
+ * with a fake strongly consistent R2 binding, including pagination ownership.
  */
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, jest, mock, test } from "bun:test";
 import type { OrgStoragePutOperation } from "../../../db/schemas/org-storage-mutations";
 import type { RuntimeR2Bucket, RuntimeR2ObjectMetadata } from "../../storage/r2-runtime-binding";
 
@@ -223,6 +223,8 @@ describe("executeNativeStoragePut", () => {
     });
     // Stopped after the repeat was detected, not after a third page.
     expect(bucket.list).toHaveBeenCalledTimes(2);
+    // The repeated page is rejected before its contents can mutate the catalog.
+    expect(adoptLegacyObjects).toHaveBeenCalledTimes(1);
   });
 
   test("bounds quota reconciliation pagination against a provider that never repeats but never stops", async () => {
@@ -238,6 +240,135 @@ describe("executeNativeStoragePut", () => {
       code: "PROVIDER_INTEGRITY",
     });
     expect(bucket.list).toHaveBeenCalledTimes(1_000);
+    expect(adoptLegacyObjects).toHaveBeenCalledTimes(999);
+    expect(reconcileNativeQuotaFromCatalog).not.toHaveBeenCalled();
+  });
+
+  test("accepts the exact final legal R2 page and replacement terminal state", async () => {
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+    const bucket = fakeR2({ value: false });
+    let page = 0;
+    bucket.list = mock().mockImplementation(async () => {
+      page += 1;
+      return page === 1_000
+        ? { objects: [], truncated: false }
+        : { objects: [], truncated: true, cursor: `cursor-${page}` };
+    });
+
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).resolves.toBeUndefined();
+    expect(bucket.list).toHaveBeenCalledTimes(1_000);
+    expect(adoptLegacyObjects).toHaveBeenCalledTimes(1_000);
+    expect(reconcileNativeQuotaFromCatalog).toHaveBeenCalledWith(ORG);
+  });
+
+  test("rejects an oversized provider page before catalog or quota mutation", async () => {
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+    const bucket = fakeR2({ value: false });
+    bucket.list = mock().mockResolvedValue({
+      objects: Array.from({ length: 1_001 }, (_, index) => ({
+        key: `org/${ORG}/${index}.bin`,
+        size: 1,
+        etag: `etag-${index}`,
+      })),
+      truncated: false,
+    });
+
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).rejects.toMatchObject({
+      code: "PROVIDER_INTEGRITY",
+    });
+    expect(adoptLegacyObjects).not.toHaveBeenCalled();
+    expect(reconcileNativeQuotaFromCatalog).not.toHaveBeenCalled();
+  });
+
+  test("rejects malformed runtime R2 metadata before catalog mutation", async () => {
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+    const bucket = fakeR2({ value: false });
+    bucket.list = mock().mockResolvedValue({
+      objects: [{ key: 7, size: 1, etag: "etag" }],
+      truncated: false,
+    });
+
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).rejects.toMatchObject({
+      code: "PROVIDER_INTEGRITY",
+    });
+    expect(adoptLegacyObjects).not.toHaveBeenCalled();
+    expect(reconcileNativeQuotaFromCatalog).not.toHaveBeenCalled();
+  });
+
+  test("preserves an opaque large cursor while retaining fixed-size cycle state", async () => {
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+    const bucket = fakeR2({ value: false });
+    const opaqueCursor = "x".repeat(64 * 1_024);
+    bucket.list = mock()
+      .mockResolvedValueOnce({ objects: [], truncated: true, cursor: opaqueCursor })
+      .mockResolvedValueOnce({ objects: [], truncated: false });
+
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).resolves.toBeUndefined();
+    expect(bucket.list).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: opaqueCursor }),
+    );
+    expect(reconcileNativeQuotaFromCatalog).toHaveBeenCalledWith(ORG);
+  });
+
+  test("times out a stalled R2 LIST without mutating catalog state", async () => {
+    jest.useFakeTimers();
+    try {
+      quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+      const bucket = fakeR2({ value: false });
+      bucket.list = mock().mockImplementation(
+        async () =>
+          await new Promise<never>(() => {
+            // Intentionally never settles.
+          }),
+      );
+
+      const reconciliation = ensureNativeStorageQuotaReconciled(bucket, ORG);
+      await Promise.resolve();
+      await Promise.resolve();
+      jest.advanceTimersByTime(10_000);
+
+      await expect(reconciliation).rejects.toMatchObject({ code: "PROVIDER_INTEGRITY" });
+      expect(adoptLegacyObjects).not.toHaveBeenCalled();
+      expect(reconcileNativeQuotaFromCatalog).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("coalesces concurrent reconciliation and permits a clean retry after failure", async () => {
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+    const bucket = fakeR2({ value: false });
+    let releaseList: (() => void) | undefined;
+    const listGate = new Promise<void>((resolve) => {
+      releaseList = resolve;
+    });
+    bucket.list = mock().mockImplementation(async () => {
+      await listGate;
+      return { objects: [], truncated: false };
+    });
+
+    const first = ensureNativeStorageQuotaReconciled(bucket, ORG);
+    const joined = ensureNativeStorageQuotaReconciled(bucket, ORG);
+    await Promise.resolve();
+    expect(quotaNeedsNativeCatalogReconciliation).toHaveBeenCalledTimes(1);
+    expect(bucket.list).toHaveBeenCalledTimes(1);
+    releaseList?.();
+    await Promise.all([first, joined]);
+    expect(reconcileNativeQuotaFromCatalog).toHaveBeenCalledTimes(1);
+
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValueOnce(true);
+    bucket.list = mock().mockResolvedValueOnce({
+      objects: [],
+      truncated: true,
+      cursor: "",
+    });
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).rejects.toMatchObject({
+      code: "PROVIDER_INTEGRITY",
+    });
+    bucket.list = mock().mockResolvedValueOnce({ objects: [], truncated: false });
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).resolves.toBeUndefined();
+    expect(quotaNeedsNativeCatalogReconciliation).toHaveBeenCalledTimes(3);
   });
 
   test("adopts a legacy logical key from strong native HEAD without moving bytes", async () => {

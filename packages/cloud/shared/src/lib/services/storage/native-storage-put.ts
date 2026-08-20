@@ -23,11 +23,14 @@ const PROVIDER_LEASE_MS = 5 * 60 * 1000;
 const RECOVERY_GRACE_MS = 10 * 60 * 1000;
 const PROVIDER_ABSENCE_QUARANTINE_MS = 10 * 60 * 1000;
 const MAX_IDEMPOTENCY_KEY_BYTES = 200;
-// Bounds ensureNativeStorageQuotaReconciled's R2 list() loop against a
-// provider/proxy that keeps truncated=true with a never-repeating cursor --
-// 1,000 pages * 1,000 objects/page covers even a very large legacy bucket
-// while keeping worst-case requests/DB writes finite.
+const NATIVE_STORAGE_QUOTA_RECONCILE_PAGE_SIZE = 1_000;
 const MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES = 1_000;
+const NATIVE_STORAGE_QUOTA_RECONCILE_LIST_TIMEOUT_MS = 10_000;
+const utf8Encoder = new TextEncoder();
+const nativeStorageQuotaReconciliations = new WeakMap<
+  RuntimeR2Bucket,
+  Map<string, Promise<void>>
+>();
 
 /** Sums exact server-owned decimal legs, then rounds once to the ledger unit. */
 export function calculateStoragePutPrice(
@@ -119,7 +122,29 @@ function adoptedContentType(observed: RuntimeR2ObjectMetadata): string {
     : "application/octet-stream";
 }
 
-export async function ensureNativeStorageQuotaReconciled(
+function listNativeStorageQuotaPage(
+  operation: Promise<Awaited<ReturnType<NonNullable<RuntimeR2Bucket["list"]>>>>,
+): Promise<Awaited<ReturnType<NonNullable<RuntimeR2Bucket["list"]>>>> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(
+        new NativeStoragePutError("PROVIDER_INTEGRITY", "R2 quota reconciliation LIST timed out"),
+      );
+    }, NATIVE_STORAGE_QUOTA_RECONCILE_LIST_TIMEOUT_MS);
+    operation.then(
+      (page) => {
+        clearTimeout(timeout);
+        resolve(page);
+      },
+      (error: unknown) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function reconcileNativeStorageQuota(
   bucket: RuntimeR2Bucket,
   organizationId: string,
 ): Promise<void> {
@@ -135,7 +160,9 @@ export async function ensureNativeStorageQuotaReconciled(
     );
   }
   const providerPrefix = `org/${organizationId}/`;
-  const seenCursors = new Set<string>();
+  // R2 cursors are opaque and have no documented size limit. Retain only a
+  // fixed-size digest for cycle detection while passing the exact token back.
+  const seenCursorDigests = new Set<string>();
   let cursor: string | undefined;
   let hasMore = true;
   let pageCount = 0;
@@ -147,18 +174,59 @@ export async function ensureNativeStorageQuotaReconciled(
         `R2 quota reconciliation pagination exceeded ${MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES} pages`,
       );
     }
-    const page = await bucket.list({
-      prefix: providerPrefix,
-      cursor,
-      limit: 1000,
-      include: ["httpMetadata"],
-    });
+    const page = await listNativeStorageQuotaPage(
+      bucket.list({
+        prefix: providerPrefix,
+        cursor,
+        limit: NATIVE_STORAGE_QUOTA_RECONCILE_PAGE_SIZE,
+        include: ["httpMetadata"],
+      }),
+    );
+    if (
+      !page ||
+      typeof page.truncated !== "boolean" ||
+      !Array.isArray(page.objects) ||
+      page.objects.length > NATIVE_STORAGE_QUOTA_RECONCILE_PAGE_SIZE
+    ) {
+      throw new NativeStoragePutError(
+        "PROVIDER_INTEGRITY",
+        "R2 quota reconciliation returned an invalid object page",
+      );
+    }
+    let nextCursor: string | undefined;
+    if (page.truncated) {
+      if (pageCount === MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES) {
+        throw new NativeStoragePutError(
+          "PROVIDER_INTEGRITY",
+          `R2 quota reconciliation pagination exceeded ${MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES} pages`,
+        );
+      }
+      const nextPageCursor =
+        typeof page.cursor === "string" && page.cursor.length > 0 ? page.cursor : null;
+      const cursorDigest = nextPageCursor ? await sha256(nextPageCursor) : null;
+      if (!nextPageCursor || !cursorDigest || seenCursorDigests.has(cursorDigest)) {
+        throw new NativeStoragePutError(
+          "PROVIDER_INTEGRITY",
+          "R2 quota reconciliation pagination did not advance",
+        );
+      }
+      seenCursorDigests.add(cursorDigest);
+      nextCursor = nextPageCursor;
+    }
     const candidates = page.objects.map((observed) => {
       if (
-        !observed.key?.startsWith(providerPrefix) ||
+        !observed ||
+        typeof observed.key !== "string" ||
+        !observed.key.startsWith(providerPrefix) ||
         observed.key.length === providerPrefix.length ||
+        utf8Encoder.encode(observed.key).byteLength > 1_024 ||
+        typeof observed.etag !== "string" ||
         !observed.etag ||
-        observed.size <= 0
+        observed.etag.length > 512 ||
+        !Number.isSafeInteger(observed.size) ||
+        observed.size <= 0 ||
+        (observed.uploaded !== undefined &&
+          (!(observed.uploaded instanceof Date) || !Number.isFinite(observed.uploaded.getTime())))
       ) {
         throw new NativeStoragePutError(
           "PROVIDER_INTEGRITY",
@@ -176,18 +244,40 @@ export async function ensureNativeStorageQuotaReconciled(
       };
     });
     await orgStorageMutationsRepository.adoptLegacyObjects(candidates);
-    hasMore = page.truncated;
-    if (!hasMore) continue;
-    if (!page.cursor || seenCursors.has(page.cursor)) {
-      throw new NativeStoragePutError(
-        "PROVIDER_INTEGRITY",
-        "R2 quota reconciliation pagination did not advance",
-      );
+    hasMore = Boolean(nextCursor);
+    if (nextCursor) {
+      cursor = nextCursor;
     }
-    seenCursors.add(page.cursor);
-    cursor = page.cursor;
   }
   await orgStorageMutationsRepository.reconcileNativeQuotaFromCatalog(organizationId);
+}
+
+export async function ensureNativeStorageQuotaReconciled(
+  bucket: RuntimeR2Bucket,
+  organizationId: string,
+): Promise<void> {
+  let byOrganization = nativeStorageQuotaReconciliations.get(bucket);
+  if (!byOrganization) {
+    byOrganization = new Map();
+    nativeStorageQuotaReconciliations.set(bucket, byOrganization);
+  }
+  const existing = byOrganization.get(organizationId);
+  if (existing) {
+    await existing;
+    return;
+  }
+  const reconciliation = reconcileNativeStorageQuota(bucket, organizationId);
+  byOrganization.set(organizationId, reconciliation);
+  try {
+    await reconciliation;
+  } finally {
+    if (byOrganization.get(organizationId) === reconciliation) {
+      byOrganization.delete(organizationId);
+    }
+    if (byOrganization.size === 0) {
+      nativeStorageQuotaReconciliations.delete(bucket);
+    }
+  }
 }
 
 export async function resolveNativeStorageObject(
