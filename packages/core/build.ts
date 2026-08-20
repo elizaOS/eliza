@@ -1321,6 +1321,22 @@ export async function generateTypeScriptDeclarations() {
 		"dist/roles.js",
 		`// Roles subpath entry point (explicit)\nexport * from './node/roles.js';\n`,
 	);
+	await fs.writeFile(
+		"dist/client-public.js",
+		`// Client-public subpath entry point (explicit)\nexport * from './node/client-public.js';\n`,
+	);
+	await fs.writeFile(
+		"dist/atomic-json.js",
+		`// Atomic-json subpath entry point (explicit)\nexport * from './node/utils/atomic-json.js';\n`,
+	);
+	await fs.writeFile(
+		"dist/security/kms.js",
+		`// Security/kms subpath entry point (explicit)\nexport * from './node/security/kms/index.js';\n`,
+	);
+	await fs.writeFile(
+		"dist/security/mcp-server-config.js",
+		`// Security/mcp-server-config subpath entry point (explicit)\nexport * from './node/security/mcp-server-config.js';\n`,
+	);
 	// Create main index.d.ts to re-export all types from node build
 	// This ensures TypeScript resolves all exports when using moduleResolution: bundler
 	// Note: Use .js extension for NodeNext module resolution compatibility
@@ -1331,6 +1347,48 @@ export async function generateTypeScriptDeclarations() {
 
 	// Ensure testing module directory and declarations exist
 	await fs.mkdir("dist/testing", { recursive: true });
+
+	// Verify all flat entrypoints exist — prevents regressions like #22847
+	// where a subpath export in package.json has no corresponding dist/<subpath>.js
+	const pkg = JSON.parse(
+		await fs.readFile("package.json", "utf-8"),
+	) as { exports?: Record<string, unknown> };
+	const missing: string[] = [];
+	for (const [exportPath, config] of Object.entries(pkg.exports ?? {})) {
+		if (
+			!exportPath.startsWith("./") ||
+			exportPath === "./package.json" ||
+			exportPath.includes("*")
+		) {
+			continue;
+		}
+		const subpath = exportPath.slice(2); // strip ./
+		const flatFile = `dist/${subpath}.js`;
+		if (await fs.stat(flatFile).catch(() => null)) {
+			continue; // flat entrypoint already exists
+		}
+		// Check if the default/import target exists in dist/node/ or dist/
+		const defaultPath =
+			typeof config === "object" && config !== null
+				? (config.default ?? config.import ?? "")
+				: "";
+		if (
+			typeof defaultPath === "string" &&
+			defaultPath.endsWith(".js") &&
+			!(await fs
+				.stat(defaultPath.replace(/^\.\//, ""))
+				.catch(() => null))
+		) {
+			missing.push(
+				`${exportPath}: flat entrypoint ${flatFile} missing and default target ${defaultPath} not found`,
+			);
+		}
+	}
+	if (missing.length > 0) {
+		throw new Error(
+			`Missing flat entrypoints for subpath exports:\n${missing.join("\n")}`,
+		);
+	}
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ TypeScript declarations generated in ${duration}s`);
