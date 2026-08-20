@@ -322,7 +322,7 @@ describe("SurfaceWindowManager app windows", () => {
     expect(fixture.created[0]?.focus).toHaveBeenCalledOnce();
   });
 
-  it("serializes concurrent opens for the same app slug", async () => {
+  it("serializes false-true-false concurrent opens and returns the authoritative promoted snapshot", async () => {
     let releaseRendererUrl: ((url: string) => void) | undefined;
     const rendererUrl = new Promise<string>((resolve) => {
       releaseRendererUrl = resolve;
@@ -342,11 +342,21 @@ describe("SurfaceWindowManager app windows", () => {
       path: "/settings",
       alwaysOnTop: true,
     });
+    const third = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Ignored Later Duplicate",
+      path: "/chat",
+      alwaysOnTop: false,
+    });
 
     releaseRendererUrl?.("http://127.0.0.1:5173/?boot=1#old");
-    const [firstWindow, secondWindow] = await Promise.all([first, second]);
+    const snapshots = await Promise.all([first, second, third]);
 
-    expect(secondWindow).toEqual({ ...firstWindow, alwaysOnTop: true });
+    expect(snapshots).toEqual([
+      expect.objectContaining({ id: "app_workspace", alwaysOnTop: true }),
+      expect.objectContaining({ id: "app_workspace", alwaysOnTop: true }),
+      expect.objectContaining({ id: "app_workspace", alwaysOnTop: true }),
+    ]);
     expect(fixture.created).toHaveLength(1);
     expect(fixture.created[0]?.setAlwaysOnTop).toHaveBeenCalledWith(true);
     expect(fixture.created[0]?.options.url).toBe(

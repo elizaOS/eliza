@@ -69,6 +69,11 @@ interface ManagedWindowRecord extends ManagedWindowSnapshot {
   slug?: string;
 }
 
+interface PendingAppWindow {
+  readonly task: Promise<ManagedWindowSnapshot>;
+  alwaysOnTopRequested: boolean;
+}
+
 interface SurfaceWindowManagerOptions {
   createWindow: (options: CreateManagedWindowOptions) => ManagedWindowLike;
   resolveRendererUrl: () => Promise<string>;
@@ -195,10 +200,7 @@ export class SurfaceWindowManager {
     string,
     Promise<ManagedWindowSnapshot>
   >();
-  private readonly pendingAppWindows = new Map<
-    string,
-    Promise<ManagedWindowSnapshot>
-  >();
+  private readonly pendingAppWindows = new Map<string, PendingAppWindow>();
   private counter = 0;
 
   constructor(options: SurfaceWindowManagerOptions) {
@@ -323,32 +325,51 @@ export class SurfaceWindowManager {
 
     const pending = this.pendingAppWindows.get(options.slug);
     if (pending) {
-      const snapshot = await pending;
-      if (options.alwaysOnTop === true && !snapshot.alwaysOnTop) {
-        this.setWindowAlwaysOnTop(snapshot.id, true);
-        return { ...snapshot, alwaysOnTop: true };
-      }
-      return snapshot;
+      pending.alwaysOnTopRequested ||= options.alwaysOnTop === true;
+      await pending.task;
+      return this.finishPendingAppWindow(options.slug, pending);
     }
 
-    const task = this.createManagedWindow(
-      "app",
-      undefined,
-      false,
-      undefined,
-      options.path,
-      options.title,
-      options.alwaysOnTop === true,
-      options.slug,
-    );
-    this.pendingAppWindows.set(options.slug, task);
+    const pendingAppWindow: PendingAppWindow = {
+      task: this.createManagedWindow(
+        "app",
+        undefined,
+        false,
+        undefined,
+        options.path,
+        options.title,
+        options.alwaysOnTop === true,
+        options.slug,
+      ),
+      alwaysOnTopRequested: options.alwaysOnTop === true,
+    };
+    this.pendingAppWindows.set(options.slug, pendingAppWindow);
     try {
-      return await task;
+      await pendingAppWindow.task;
+      return this.finishPendingAppWindow(options.slug, pendingAppWindow);
     } finally {
-      if (this.pendingAppWindows.get(options.slug) === task) {
+      if (this.pendingAppWindows.get(options.slug) === pendingAppWindow) {
         this.pendingAppWindows.delete(options.slug);
       }
     }
+  }
+
+  private finishPendingAppWindow(
+    slug: string,
+    pending: PendingAppWindow,
+  ): ManagedWindowSnapshot {
+    const record = Array.from(this.windows.values()).find(
+      (entry) => entry.slug === slug,
+    );
+    if (!record) {
+      throw new Error(`Managed app window closed during launch: ${slug}`);
+    }
+    if (pending.alwaysOnTopRequested && !record.alwaysOnTop) {
+      record.window.setAlwaysOnTop(true);
+      record.alwaysOnTop = true;
+      this.notifyRegistryChanged();
+    }
+    return this.toSnapshot(record);
   }
 
   findWindowBySlug(slug: string): ManagedWindowSnapshot | undefined {
