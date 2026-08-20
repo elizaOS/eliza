@@ -11,7 +11,11 @@
 import { ElizaError } from "@elizaos/core";
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
-import { extractGmailMimeBody, walkGmailMimeParts } from "./gmail-mime-parts.js";
+import {
+  extractGmailMimeBody,
+  snapshotGmailMimePart,
+  walkGmailMimeParts,
+} from "./gmail-mime-parts.js";
 import type {
   GoogleAccountRef,
   GoogleEmailAddress,
@@ -1006,10 +1010,14 @@ function extractGoogleGmailBody(payload: gmail_v1.Schema$MessagePart | undefined
   if (htmlText) {
     return htmlText;
   }
-  const directBody = payload?.body?.data;
+  if (!payload) {
+    return "";
+  }
+  const snapshot = snapshotGmailMimePart(payload);
+  const directBody = snapshot.body?.data;
   if (typeof directBody === "string") {
     const decoded = decodeBase64Url(directBody);
-    return payload?.mimeType === "text/html" ? htmlToPlainText(decoded) : decoded.trim();
+    return snapshot.mimeType === "text/html" ? htmlToPlainText(decoded) : decoded.trim();
   }
   return "";
 }
