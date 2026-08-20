@@ -1,4 +1,5 @@
 import UIKit
+import AppIntents
 import Capacitor
 import CapacitorBackgroundRunner
 import ObjectiveC
@@ -21,6 +22,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         ElizaHomeIndicator.install()
 
         ElizaBrandTint.install(on: window)
+
+        if #available(iOS 16.0, *) {
+            ElizaAppShortcutsProvider.updateAppShortcutParameters()
+        }
 
         UNUserNotificationCenter.current().delegate = self
         BackgroundRunnerPlugin.registerBackgroundTask()

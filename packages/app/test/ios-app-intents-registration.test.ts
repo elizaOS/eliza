@@ -14,6 +14,10 @@ const appIntentsSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaAppIntents.swift"),
   "utf8",
 );
+const appDelegateSwift = readFileSync(
+  path.join(iosAppRoot, "App/AppDelegate.swift"),
+  "utf8",
+);
 const pbxproj = readFileSync(
   path.join(iosAppRoot, "App.xcodeproj/project.pbxproj"),
   "utf8",
@@ -253,6 +257,16 @@ describe("native assistant entry contracts", () => {
     expect(appIntentsSwift).toContain("AppShortcutsProvider");
     expect(pbxproj).toContain("ElizaAppIntents.swift in Sources");
     expect(pbxproj).toContain("ElizaAppIntents.swift */");
+  });
+
+  it("refreshes App Shortcut parameters during UIKit application launch", () => {
+    expect(appDelegateSwift).toContain("import AppIntents");
+    expect(appDelegateSwift).toContain(
+      "ElizaAppShortcutsProvider.updateAppShortcutParameters()",
+    );
+    expect(appDelegateSwift).toMatch(
+      /if #available\(iOS 16\.0, \*\) \{\s*ElizaAppShortcutsProvider\.updateAppShortcutParameters\(\)\s*\}/,
+    );
   });
 
   it("registers every App-target in-app Capacitor plugin exactly once", () => {
