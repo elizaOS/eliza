@@ -58,7 +58,7 @@ describe("SKILL install with security-enveloped input", () => {
 
 		// The quoted-span in the unwrapped payload wins, not an envelope-crossing
 		// span anchored on the warning's apostrophe.
-		expect(search).toHaveBeenCalledWith("weather", 5);
+		expect(search).toHaveBeenCalledWith("weather", 5, { signal: undefined });
 
 		expect(result.success).toBe(false);
 		const callbackTexts = callback.mock.calls.map((call) => call[0]?.text ?? "");
@@ -103,6 +103,91 @@ describe("SKILL install with security-enveloped input", () => {
 			signal: controller.signal,
 			throwOnDownloadError: true,
 		});
+		expect(service.search).toHaveBeenCalledWith("weather", 5, {
+			signal: controller.signal,
+		});
+	});
+
+	it("does not start registry discovery for a pre-cancelled turn", async () => {
+		const controller = new AbortController();
+		controller.abort(new Error("turn already ended"));
+		const service = {
+			getLoadedSkills: vi.fn(() => []),
+			install: vi.fn(async () => true),
+			search: vi.fn(async () => []),
+		};
+		const runtime = {
+			getService: vi.fn(() => service),
+		} as unknown as IAgentRuntime;
+		const callback = vi.fn();
+
+		const result = await runWithStreamingContext(
+			{ abortSignal: controller.signal },
+			() =>
+				installSkillAction.handler(
+					runtime,
+					envelopeMessage(),
+					undefined,
+					undefined,
+					callback,
+				),
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			error: { code: "SKILL_DOWNLOAD_ABORTED" },
+		});
+		expect(service.search).not.toHaveBeenCalled();
+		expect(service.install).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("cancels an in-flight registry search without a late callback", async () => {
+		const controller = new AbortController();
+		const search = vi.fn(
+			async (
+				_query: string,
+				_limit: number,
+				options?: { signal?: AbortSignal },
+			) =>
+				new Promise<never>((_resolve, reject) => {
+					options?.signal?.addEventListener(
+						"abort",
+						() => reject(options.signal?.reason),
+						{ once: true },
+					);
+				}),
+		);
+		const service = {
+			getLoadedSkills: vi.fn(() => []),
+			install: vi.fn(async () => true),
+			search,
+		};
+		const runtime = {
+			getService: vi.fn(() => service),
+		} as unknown as IAgentRuntime;
+		const callback = vi.fn();
+
+		const pending = runWithStreamingContext(
+			{ abortSignal: controller.signal },
+			() =>
+				installSkillAction.handler(
+					runtime,
+					envelopeMessage(),
+					undefined,
+					undefined,
+					callback,
+				),
+		);
+		await vi.waitFor(() => expect(search).toHaveBeenCalledOnce());
+		controller.abort(new Error("turn disconnected"));
+
+		await expect(pending).resolves.toMatchObject({
+			success: false,
+			error: { code: "SKILL_DOWNLOAD_ABORTED" },
+		});
+		expect(service.install).not.toHaveBeenCalled();
+		expect(callback).toHaveBeenCalledTimes(1);
 	});
 
 	it("returns the original typed deadline in a failed ActionResult", async () => {

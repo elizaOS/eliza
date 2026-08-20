@@ -233,9 +233,13 @@ export async function readCappedSkillPackage(
 			total += value.byteLength;
 			if (total > MAX_SKILL_PACKAGE_BYTES) {
 				try {
-					await reader.cancel();
+					const cancellation = reader.cancel();
+					void Promise.resolve(cancellation).catch(() => {
+						// error-policy:J6 cancellation is teardown-only after the
+						// authoritative byte-cap failure has been established.
+					});
 				} catch {
-					// error-policy:J6 cancel is best-effort after the byte-cap failure.
+					// error-policy:J6 synchronous cancel is teardown-only after overflow.
 				}
 				throw tooLarge(total);
 			}

@@ -49,7 +49,7 @@ function openOverflowStream(
 				controller.enqueue(new Uint8Array(MAX_SKILL_PACKAGE_BYTES + 1));
 			},
 			cancel() {
-				onCancel();
+				return onCancel();
 			},
 		}),
 	);
@@ -142,6 +142,25 @@ describe("readCappedSkillPackage", () => {
 
 		await expect(
 			readCappedSkillPackage(openOverflowStream(cancel)),
+		).rejects.toMatchObject({ code: "SKILL_PACKAGE_TOO_LARGE" });
+		expect(cancel).toHaveBeenCalledOnce();
+	});
+
+	it("does not wait for a transport that never settles overflow cancellation", async () => {
+		const cancel = vi.fn(
+			async () =>
+				new Promise<void>(() => {
+					// Deliberately never settles: teardown cannot own the result deadline.
+				}),
+		);
+
+		await expect(
+			Promise.race([
+				readCappedSkillPackage(openOverflowStream(cancel)),
+				new Promise<never>((_resolve, reject) =>
+					setTimeout(() => reject(new Error("overflow result stalled")), 100),
+				),
+			]),
 		).rejects.toMatchObject({ code: "SKILL_PACKAGE_TOO_LARGE" });
 		expect(cancel).toHaveBeenCalledOnce();
 	});
@@ -391,6 +410,43 @@ describe("readCappedSkillPackage", () => {
 		).rejects.toMatchObject({ code: "SKILL_DOWNLOAD_ABORTED" });
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(storage.getPackage("pre-aborted")).toBeUndefined();
+	});
+
+	it("does not return or cache search results that complete with cancellation", async () => {
+		const caller = new AbortController();
+		const firstResults = [{ slug: "cancelled", displayName: "Cancelled" }];
+		const freshResults = [{ slug: "fresh", displayName: "Fresh" }];
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => {
+					caller.abort(new Error("turn ended with body completion"));
+					return { results: firstResults };
+				},
+			})
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({ results: freshResults }),
+			});
+		vi.stubGlobal("fetch", fetchMock);
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage: new MemorySkillStore(),
+		});
+
+		await expect(
+			service.search("weather", 5, { signal: caller.signal }),
+		).rejects.toMatchObject({ code: "SKILL_DOWNLOAD_ABORTED" });
+		await expect(service.search("weather", 5)).resolves.toEqual(freshResults);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+
+		const preAborted = new AbortController();
+		preAborted.abort(new Error("already ended"));
+		await expect(
+			service.search("weather", 5, { signal: preAborted.signal }),
+		).rejects.toMatchObject({ code: "SKILL_DOWNLOAD_ABORTED" });
+		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
 	it("inherits one service deadline while preserving override and opt-out", async () => {

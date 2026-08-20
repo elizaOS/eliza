@@ -2027,6 +2027,9 @@ export class AgentSkillsService extends Service {
 		limit = 10,
 		options: CacheOptions = {},
 	): Promise<SkillSearchResult[]> {
+		if (options.signal?.aborted) {
+			throw skillDownloadAbortError(options.signal);
+		}
 		const cacheKey = `${query}:${limit}`;
 		const ttl = options.notOlderThan ?? CACHE_TTL.SEARCH;
 
@@ -2050,6 +2053,9 @@ export class AgentSkillsService extends Service {
 			}
 
 			const data = (await response.json()) as { results: SkillSearchResult[] };
+			if (options.signal?.aborted) {
+				throw skillDownloadAbortError(options.signal);
+			}
 			const results = data.results || [];
 
 			this.searchCache.set(cacheKey, { data: results, cachedAt: Date.now() });

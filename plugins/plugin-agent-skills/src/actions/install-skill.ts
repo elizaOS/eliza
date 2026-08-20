@@ -15,6 +15,7 @@ import type {
 	State,
 } from "@elizaos/core";
 import { getStreamingContext, unwrapUserMessageText } from "@elizaos/core";
+import { skillDownloadAbortError } from "../services/skill-package-bytes";
 import type { AgentSkillsService } from "../services/skills";
 import { describeSkillReference, extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
@@ -98,6 +99,27 @@ export const installSkillAction = {
 			};
 		}
 
+		const installSignal = getStreamingContext()?.abortSignal;
+		const cancellationResult = (
+			cause: unknown,
+			skillReference: string,
+		): ActionResult => {
+			const installError =
+				installSignal?.aborted
+					? skillDownloadAbortError(installSignal, cause)
+					: cause instanceof Error
+						? cause
+						: new Error(String(cause));
+			return {
+				success: false,
+				error: installError,
+				text: `Failed to install skill "${skillReference}": ${installError.message}`,
+			};
+		};
+		if (installSignal?.aborted) {
+			return cancellationResult(installSignal.reason, slug);
+		}
+
 		// Try to find the skill in the registry first. Echoes are display-clamped:
 		// only a name-shaped slug is quoted back, never an arbitrary blob.
 		if (callback) {
@@ -105,9 +127,28 @@ export const installSkillAction = {
 				text: `Searching for ${describeSkillReference(slug)} in the skill registry...`,
 			});
 		}
+		if (installSignal?.aborted) {
+			return cancellationResult(installSignal.reason, slug);
+		}
 
 		// Search to find best match
-		const searchResults = await service.search(slug, SKILL_SEARCH_LIMIT);
+		let searchResults: Awaited<ReturnType<AgentSkillsService["search"]>>;
+		try {
+			searchResults = await service.search(slug, SKILL_SEARCH_LIMIT, {
+				signal: installSignal,
+			});
+		} catch (cause) {
+			// error-policy:J1 the action boundary owns cancellation of registry
+			// discovery as well as package download.
+			const result = cancellationResult(cause, slug);
+			if (callback && !installSignal?.aborted) {
+				await callback({ text: result.text });
+			}
+			return result;
+		}
+		if (installSignal?.aborted) {
+			return cancellationResult(installSignal.reason, slug);
+		}
 		const bestMatch =
 			searchResults.find(
 				(r) =>
@@ -127,21 +168,24 @@ export const installSkillAction = {
 				text: `Installing **${bestMatch.displayName}** (\`${installSlug}\`)...`,
 			});
 		}
+		if (installSignal?.aborted) {
+			return cancellationResult(installSignal.reason, installSlug);
+		}
 
 		let success: boolean;
 		try {
 			success = await service.install(installSlug, {
-				signal: getStreamingContext()?.abortSignal,
+				signal: installSignal,
 				throwOnDownloadError: true,
 			});
 		} catch (cause) {
 			// error-policy:J1 the action boundary returns the original typed error in
 			// ActionResult instead of leaking a rejected handler promise.
-			const installError =
-				cause instanceof Error ? cause : new Error(String(cause));
-			const errorText = `Failed to install skill "${installSlug}": ${installError.message}`;
-			if (callback) await callback({ text: errorText });
-			return { success: false, error: installError, text: errorText };
+			const result = cancellationResult(cause, installSlug);
+			if (callback && !installSignal?.aborted) {
+				await callback({ text: result.text });
+			}
+			return result;
 		}
 
 		if (!success) {
