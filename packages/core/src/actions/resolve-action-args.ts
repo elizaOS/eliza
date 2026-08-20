@@ -272,7 +272,9 @@ function parseExtractionEnvelope<TSubaction extends string>(
 	if (typeof confidenceRaw === "number" && Number.isFinite(confidenceRaw)) {
 		confidence = Math.max(0, Math.min(1, confidenceRaw));
 	} else if (typeof confidenceRaw === "string") {
-		const numeric = Number(confidenceRaw);
+		const trimmed = confidenceRaw.trim();
+		const isDecimal = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(trimmed);
+		const numeric = isDecimal ? Number(trimmed) : Number.NaN;
 		if (Number.isFinite(numeric)) {
 			confidence = Math.max(0, Math.min(1, numeric));
 		}
