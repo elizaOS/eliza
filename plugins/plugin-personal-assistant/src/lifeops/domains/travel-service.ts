@@ -451,6 +451,7 @@ export class TravelDomain {
         metadata: {
           eliza_approval_key: args.providerIdempotencyKey,
         },
+        clientCorrelationId: args.providerIdempotencyKey,
       },
       config,
     );

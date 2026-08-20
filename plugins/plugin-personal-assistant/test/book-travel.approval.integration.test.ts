@@ -525,6 +525,14 @@ describe("BOOK_TRAVEL approval execution", () => {
 
     const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(true);
+    const orderCreate = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input).endsWith("/air/orders") && init?.method === "POST",
+    );
+    const correlationId = (
+      orderCreate?.[1]?.headers as Record<string, string> | undefined
+    )?.["x-client-correlation-id"];
+    expect(correlationId).toBe(`approval:${pendingRequest.id}:duffel`);
     expect(
       calledUrls.filter((url) => url.includes("/air/orders/ord_test_123")),
     ).toHaveLength(1);

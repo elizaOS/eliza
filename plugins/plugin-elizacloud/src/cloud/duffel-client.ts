@@ -252,6 +252,8 @@ export interface CreateDuffelOrderRequest {
     currency: string;
   };
   metadata?: Readonly<Record<string, string>>;
+  /** Trace handle echoed by Duffel; this is correlation, not idempotency. */
+  clientCorrelationId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -521,6 +523,7 @@ interface DuffelRequest {
   /** Path on the local cloud relay (e.g. "/api/cloud/travel-providers/duffel/offer-requests"). */
   cloudRelayPath: string;
   body?: unknown;
+  clientCorrelationId?: string;
   operation: string;
   /** Booking/payment endpoints can legitimately take up to two minutes. */
   timeoutMs?: number;
@@ -544,9 +547,18 @@ async function duffelFetch<T>(
     ? `${config.cloudRelayBaseUrl ?? ""}${cloudRelayPath}`
     : `${getDuffelApiBase()}${directPath}`;
 
-  const headers = isCloud
+  const headers: Record<string, string> = isCloud
     ? { "Content-Type": "application/json", Accept: "application/json" }
     : buildHeaders(config.apiKey ?? "");
+  if (args.clientCorrelationId !== undefined) {
+    const correlationId = args.clientCorrelationId.trim();
+    if (correlationId.length === 0 || correlationId.length > 255) {
+      throw new Error(
+        `Duffel ${operation}: client correlation id must contain 1-255 characters`,
+      );
+    }
+    headers["x-client-correlation-id"] = correlationId;
+  }
 
   const span = NOOP_DUFFEL_SPAN;
 
@@ -790,6 +802,7 @@ export async function createOrder(
     directPath: "/air/orders",
     cloudRelayPath: "/api/cloud/travel-providers/duffel/orders",
     body: { data },
+    clientCorrelationId: request.clientCorrelationId,
     operation: "order_create",
     timeoutMs: 135_000,
   });
