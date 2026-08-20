@@ -34,6 +34,7 @@ const SCAN_ROOTS = [
 const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-calendar#register",
   "@elizaos/plugin-contacts#register",
+  "@elizaos/plugin-maps#register",
   "@elizaos/plugin-native-settings#register",
   "@elizaos/plugin-notes#register",
   "@elizaos/plugin-personal-assistant#register",
