@@ -55,8 +55,11 @@ const apiRoot = new URL("../../../src", import.meta.url).href;
 // the DB-free unit lane (matches the sibling mint-consent route test).
 mock.module("@elizaos/core", () => ({
   ...workerCoreStub,
+  ElizaError: workerCoreStub.ElizaError,
+  isElizaError: workerCoreStub.isElizaError,
   isSensitiveKeyName: () => false,
   redactLogArgs: (a: unknown) => a,
+  redactSensitiveText: workerCoreStub.redactSensitiveText,
 }));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
@@ -73,6 +76,10 @@ mock.module(`${sharedRoot}/lib/auth/workers-hono-auth.ts`, () => ({
 // provisioning-jobs-delete-enqueue.test.ts) still resolve them.
 const cloudWorkerErrorsStub = () => ({
   ...realCloudWorkerErrorsExports,
+  ApiError: realCloudWorkerErrors.ApiError,
+  AuthenticationError: realCloudWorkerErrors.AuthenticationError,
+  ForbiddenError: realCloudWorkerErrors.ForbiddenError,
+  ValidationError: realCloudWorkerErrors.ValidationError,
   jsonError: (
     c: { json: (body: unknown, status: number) => Response },
     status: number,

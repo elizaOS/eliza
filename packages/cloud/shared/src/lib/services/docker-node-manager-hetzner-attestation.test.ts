@@ -52,6 +52,7 @@ mock.module("./docker-ssh", () => ({
 
 mock.module("./node-disk-manager", () => ({
   ...realNodeDisk,
+  diskHealthVerdict: realNodeDiskNs.diskHealthVerdict,
   probeNodeDiskUsage: async () => null,
 }));
 

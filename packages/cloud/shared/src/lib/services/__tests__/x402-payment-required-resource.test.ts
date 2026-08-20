@@ -35,6 +35,7 @@ mock.module("../x402-facilitator", () => ({
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
 mock.module("../../runtime/cloud-bindings", () => ({
   ...REAL_CLOUD_BINDINGS,
+  getCloudBinding: realCloudBindings.getCloudBinding,
   getCloudAwareEnv: () => ({
     X402_NETWORK: "base",
     X402_RECIPIENT_ADDRESS: RECIPIENT,

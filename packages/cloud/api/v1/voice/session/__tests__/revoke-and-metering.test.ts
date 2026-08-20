@@ -8,10 +8,14 @@ import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 const fakeLogger = {
   logger: { error: mock(), info: mock(), warn: mock(), debug: mock() },
 };
+class MockElizaError extends Error {}
 mock.module("@/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/core", () => ({
+  ElizaError: MockElizaError,
+  isElizaError: (error: unknown) => error instanceof MockElizaError,
   isSensitiveKeyName: () => false,
   redactLogArgs: (a: unknown) => a,
+  redactSensitiveText: (text: string) => text,
 }));
 
 import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
