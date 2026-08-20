@@ -880,13 +880,14 @@ export class PgApprovalQueue implements ApprovalQueue {
     logger.info(
       `[ApprovalQueue] enqueued ${input.action} for ${input.subjectUserId} as ${request.id}`,
     );
-    // An outbound action now needs the owner's go-ahead. Surface it on the
-    // notification rail so the owner can act without watching the queue
-    // (fire-and-forget; a notify failure must not block the enqueue).
+    // An outbound action now needs the owner's go-ahead. Await the projection
+    // so orchestration layers know whether they must provide the durable
+    // fallback themselves. A failed rail never rolls back the approval row.
     const notifier = getNotifier(this.runtime);
+    let notificationProjected = false;
     if (notifier) {
-      void notifier
-        .notify({
+      try {
+        await notifier.notify({
           title: "Approval needed",
           body: input.reason.slice(0, 200),
           category: "approval",
@@ -895,21 +896,22 @@ export class PgApprovalQueue implements ApprovalQueue {
           deepLink: "/chat",
           groupKey: approvalGroupKey(request.id),
           data: { requestId: request.id, kind: input.action },
-        })
-        .catch((error) => {
-          // error-policy:J7 owner notification is a non-blocking side-channel,
-          // but a failed rail must remain visible to diagnostics.
-          logger.warn(
-            { error, id: request.id, action: input.action },
-            "[ApprovalQueue] failed to notify owner about pending approval",
-          );
-          this.runtime.reportError("ApprovalQueue.notify", error, {
-            requestId: request.id,
-            action: input.action,
-          });
         });
+        notificationProjected = true;
+      } catch (error) {
+        // error-policy:J7 owner notification is a non-blocking side-channel,
+        // but a failed rail must remain visible to diagnostics.
+        logger.warn(
+          { error, id: request.id, action: input.action },
+          "[ApprovalQueue] failed to notify owner about pending approval",
+        );
+        this.runtime.reportError("ApprovalQueue.notify", error, {
+          requestId: request.id,
+          action: input.action,
+        });
+      }
     }
-    return inserted;
+    return { ...inserted, notificationProjected };
   }
 
   async enqueueConfirmed(

@@ -365,7 +365,9 @@ describe("ApprovalService", () => {
     const runtime = createApprovalTableRuntime("agent-notif", notifier);
     const queue = (await ApprovalService.start(runtime)).getQueue();
 
-    const enqueued = await queue.enqueue(messageInput());
+    const outcome = await queue.enqueueWithResult(messageInput());
+    const enqueued = outcome.request;
+    expect(outcome.notificationProjected).toBe(true);
     expect(notifier.notify).toHaveBeenCalledTimes(1);
     const arg = notifier.notify.mock.calls[0][0];
     expect(arg.category).toBe("approval");

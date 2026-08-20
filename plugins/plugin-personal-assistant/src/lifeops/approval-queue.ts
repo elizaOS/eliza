@@ -120,12 +120,13 @@ async function scheduleApprovalTask(
     reason: string;
     requestedBy: string;
     createdAt: Date;
+    notificationProjected: boolean;
   },
 ): Promise<string> {
   const runner = getScheduledTaskRunner(runtime, { agentId: input.agentId });
   const task = await runner.schedule({
     kind: "approval",
-    promptInstructions: `Approval needed: ${input.reason}. Reply "approve ${input.requestId}" or "reject ${input.requestId}".`,
+    promptInstructions: `Ask the owner to approve or reject this pending request: ${input.reason}`,
     trigger: { kind: "once", atIso: input.createdAt.toISOString() },
     priority: "high",
     completionCheck: {
@@ -139,7 +140,7 @@ async function scheduleApprovalTask(
       destination: "in_app_card",
       fallback: {
         title: "Approval needed",
-        body: `${input.reason} Reply "approve ${input.requestId}" or "reject ${input.requestId}".`,
+        body: input.reason,
       },
     },
     subject: { kind: "self", id: input.subjectUserId },
@@ -155,6 +156,7 @@ async function scheduleApprovalTask(
       requestedBy: input.requestedBy,
       pendingPromptRoomId: `approval:${input.requestId}`,
       pendingPromptAction: input.action,
+      approvalNotificationProjected: input.notificationProjected,
     },
   });
   logger.info(
@@ -192,7 +194,9 @@ class LifeOpsApprovalQueue implements ApprovalQueue {
     const enqueued = await this.delegate.enqueueWithResult(input);
     if (enqueued.reused) return enqueued;
     try {
-      await this.surfaceEnqueuedApproval(enqueued.request);
+      await this.surfaceEnqueuedApproval(enqueued.request, {
+        notificationProjected: enqueued.notificationProjected === true,
+      });
     } catch (error) {
       // error-policy:J2 The approval row and ScheduledTask are one owner-visible
       // operation. Remove the still-pending row before adding context.
@@ -227,7 +231,10 @@ class LifeOpsApprovalQueue implements ApprovalQueue {
     return this.delegate.enqueueTransactional(input, tx);
   }
 
-  async surfaceEnqueuedApproval(request: ApprovalRequest): Promise<void> {
+  async surfaceEnqueuedApproval(
+    request: ApprovalRequest,
+    options?: { notificationProjected?: boolean },
+  ): Promise<void> {
     await scheduleApprovalTask(this.runtime, {
       agentId: this.agentId,
       requestId: request.id,
@@ -237,6 +244,7 @@ class LifeOpsApprovalQueue implements ApprovalQueue {
       reason: request.reason,
       requestedBy: request.requestedBy,
       createdAt: request.createdAt,
+      notificationProjected: options?.notificationProjected === true,
     });
     try {
       emitApprovalChoiceEvent(this.runtime, {

@@ -1502,14 +1502,20 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     expect(task?.metadata?.approvalRequestId).toBe(enqueued.id);
     expect(task?.metadata?.approvalAction).toBe("send_message");
     expect(task?.metadata?.pendingPromptRoomId).toBe(`approval:${enqueued.id}`);
+    // This integration runtime intentionally has no notification service; the
+    // scheduled in-app dispatch therefore owns the durable fallback.
+    expect(task?.metadata?.approvalNotificationProjected).toBe(false);
     expect(task?.completionCheck?.kind).toBe("user_acknowledged");
     expect(task?.completionCheck?.params).toEqual({ requestId: enqueued.id });
     expect(task?.escalation?.steps?.map((step) => step.channelKey)).toEqual(
       expect.arrayContaining(["sms", "telegram", "discord", "imessage"]),
     );
     expect(task?.escalation?.steps?.at(-1)?.channelKey).toBe("in_app");
-    expect(task?.promptInstructions).toContain(`approve ${enqueued.id}`);
-    expect(task?.promptInstructions).toContain(`reject ${enqueued.id}`);
+    expect(task?.promptInstructions).toContain("approve or reject");
+    expect(task?.promptInstructions).not.toContain(enqueued.id);
+    expect(task?.output?.fallback?.body).toBe(
+      "agent wants to confirm before sending",
+    );
   }, 60_000);
 
   it("rolls back the approval row when the ScheduledTask cannot be created", async () => {

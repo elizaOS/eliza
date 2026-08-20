@@ -33,6 +33,10 @@ const DEFAULT_CHAT_SOURCE_META: ChatSourceMeta = {
 
 const chatSourceMetaRegistry = new Map<string, ChatSourceMeta>();
 
+const PRODUCT_SOURCE_LABELS: Readonly<Record<string, string>> = {
+  lifeops: "LifeOps",
+};
+
 let chatReactionEmojiRenderer:
   | ((emoji: string) => React.ReactNode | null)
   | null = null;
@@ -75,6 +79,10 @@ export function renderChatReactionEmoji(emoji: string): React.ReactNode | null {
 }
 
 function toTitleCase(source: string): string {
+  const normalized = normalizeChatSourceKey(source);
+  if (normalized && PRODUCT_SOURCE_LABELS[normalized]) {
+    return PRODUCT_SOURCE_LABELS[normalized];
+  }
   return source
     .trim()
     .split(/[\s_-]+/)

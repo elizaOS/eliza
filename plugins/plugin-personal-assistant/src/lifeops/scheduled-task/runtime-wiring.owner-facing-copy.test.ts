@@ -329,6 +329,71 @@ describe("production scheduled-task dispatcher owner-facing copy", () => {
     expect(reportError).not.toHaveBeenCalled();
   });
 
+  it("does not duplicate an approval notification already accepted by the canonical rail", async () => {
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const { runtime } = makeRuntime({ notify });
+    const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
+
+    const result = await dispatcher.dispatch({
+      taskId: "approval-task",
+      kind: "approval",
+      firedAtIso: "2026-07-06T16:00:00.000Z",
+      channelKey: "in_app",
+      intensity: "normal",
+      promptInstructions: "Ask the owner to approve or reject the draft.",
+      ownerVisible: true,
+      output: {
+        destination: "in_app_card",
+        fallback: { title: "Approval needed", body: "Review the draft." },
+      },
+      metadata: {
+        approvalRequestId: "request-123",
+        approvalNotificationProjected: true,
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(agentMocks.eventService.emit).toHaveBeenCalledTimes(1);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("uses the approval identity when the scheduled path must provide the durable fallback", async () => {
+    const notify = vi.fn().mockResolvedValue(undefined);
+    const { runtime } = makeRuntime({ notify, model: null });
+    const dispatcher = createProductionScheduledTaskDispatcher({ runtime });
+
+    const result = await dispatcher.dispatch({
+      taskId: "approval-task",
+      kind: "approval",
+      firedAtIso: "2026-07-06T16:00:00.000Z",
+      channelKey: "in_app",
+      intensity: "normal",
+      promptInstructions: "Ask the owner to approve or reject the draft.",
+      ownerVisible: true,
+      output: {
+        destination: "in_app_card",
+        fallback: { title: "Approval needed", body: "Review the draft." },
+      },
+      metadata: {
+        approvalRequestId: "request-123",
+        approvalAction: "send_message",
+        approvalNotificationProjected: false,
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Approval needed",
+        body: "Review the draft.",
+        category: "approval",
+        priority: "high",
+        groupKey: "approval:request-123",
+        data: expect.objectContaining({ requestId: "request-123", count: 1 }),
+      }),
+    );
+  });
+
   it("degrades honestly when the delegated assembler fails — never the raw instruction", async () => {
     morningBriefMocks.assembleMorningBrief.mockRejectedValueOnce(
       new Error("brief sources unavailable"),

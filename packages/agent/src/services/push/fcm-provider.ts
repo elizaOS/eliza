@@ -153,8 +153,18 @@ export class FcmProvider implements PushProvider {
         token: string;
         notification: { title: string; body?: string };
         data?: Record<string, string>;
+        android?: { priority: "HIGH" | "NORMAL"; collapse_key?: string };
       };
     } = { message: { token, notification } };
+    if (message.priority || message.collapseKey) {
+      body.message.android = {
+        priority:
+          message.priority === "high" || message.priority === "urgent"
+            ? "HIGH"
+            : "NORMAL",
+        ...(message.collapseKey ? { collapse_key: message.collapseKey } : {}),
+      };
+    }
     if (message.data) {
       const data: Record<string, string> = {};
       for (const [key, value] of Object.entries(message.data)) {

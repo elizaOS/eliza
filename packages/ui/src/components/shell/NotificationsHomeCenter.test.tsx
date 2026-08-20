@@ -637,7 +637,7 @@ describe("notification producer grouping", () => {
     });
 
     expect(notificationGroupKey(approval)).toBe("lifeops");
-    expect(notificationGroupLabel(approval)).toBe("Lifeops");
+    expect(notificationGroupLabel(approval)).toBe("LifeOps");
     expect(
       groupDashboardNotifications([approval, reminder, scheduler]).map(
         (group) => ({
@@ -1122,8 +1122,8 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.getByTestId("notification-source-count").textContent).toBe(
       "99+",
     );
-    // Stacks persist through the shade change; fan the group via a peek tap.
-    fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
+    // Stacks persist through the shade change; fan via the front card.
+    fireEvent.click(screen.getByTestId("notification-row"));
     expect(screen.getAllByTestId("notification-row")).toHaveLength(100);
   });
 
@@ -1136,7 +1136,7 @@ describe("NotificationsHomeCenter", () => {
     );
     renderRestedNotifications();
     expandShade();
-    fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
+    fireEvent.click(screen.getByTestId("notification-row"));
     // A notification is its glass card - no leading edge highlight even for
     // urgent rows, no per-row icon chip.
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
@@ -1183,8 +1183,11 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(peeks).toHaveLength(2);
     for (const peek of peeks) {
       expect(peek.className).toContain("eliza-notif-glass");
-      // Peeks are TAPPABLE (tap fans the stack) and remain crisp.
-      expect(peek.tagName).toBe("BUTTON");
+      // Peeks are decorative depth cues. The front card is the stack's one
+      // keyboard/screen-reader control.
+      expect(peek.tagName).toBe("DIV");
+      expect(peek.getAttribute("aria-hidden")).toBe("true");
+      expect(peek.className).toContain("pointer-events-none");
       expect(peek.style.filter).toBe("");
       expect(peek.className).toContain("inset-0");
       expect(peek.closest("[data-notif-row]")).toBe(
@@ -1209,6 +1212,11 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(count.textContent).toBe("3");
     expect(count.className).toContain("min-w-5");
     expect(count.className).toContain("tabular-nums");
+    expect(
+      screen.getAllByRole("button", {
+        name: "Top urgent. Show all 3 Test notifications",
+      }),
+    ).toHaveLength(1);
   });
 
   it("stacks cap their visual depth at two peeks", () => {
@@ -1258,7 +1266,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     ).toBe("expanded");
   });
 
-  it("expanding the shade keeps the stacks; tapping a peek fans the group in place", () => {
+  it("expanding the shade keeps the stacks; activating the front card fans the group in place", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "A", priority: "high" }),
     );
@@ -1275,10 +1283,10 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expandShade();
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
-    // Tapping the peeked card below the top one fans the stack out.
-    const openingPeek = screen.getAllByTestId("notification-stack-peek")[0];
-    openingPeek.focus();
-    fireEvent.click(openingPeek, { detail: 0 });
+    // The front card is the stack's single interactive opener.
+    const openingCard = screen.getByTestId("notification-row");
+    openingCard.focus();
+    fireEvent.click(openingCard, { detail: 0 });
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     const enteringControls = screen.getByTestId("notification-stack-controls");
     expect(enteringControls.className).toContain("px-2");
@@ -1344,8 +1352,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       closingPeeks.every(
         (peek) =>
           peek.getAttribute("aria-hidden") === "true" &&
-          peek.getAttribute("tabindex") === "-1" &&
-          peek.hasAttribute("disabled"),
+          peek.className.includes("pointer-events-none"),
       ),
     ).toBe(true);
     expect(
@@ -1364,7 +1371,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
     expect(screen.queryByTestId("notification-stack-collapse")).toBeNull();
-    expect(document.activeElement).toBe(openingPeek);
+    expect(document.activeElement).toBe(openingCard);
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     expect(
       screen
@@ -1386,18 +1393,18 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     renderRestedNotifications();
     expandShade();
 
-    const peek = screen.getAllByTestId("notification-stack-peek")[0];
-    peek.focus();
-    fireEvent.click(peek);
+    const opener = screen.getByTestId("notification-row");
+    opener.focus();
+    fireEvent.click(opener);
     const showLess = screen.getByTestId("notification-stack-collapse");
     expect(document.activeElement).toBe(showLess);
 
     fireEvent.click(showLess);
     expect(document.activeElement).toBe(showLess);
     finishStackFold();
-    expect(document.activeElement).toBe(peek);
-    expect(peek.getAttribute("aria-hidden")).toBeNull();
-    expect(peek.tabIndex).toBe(0);
+    expect(document.activeElement).toBe(opener);
+    expect(opener.getAttribute("aria-hidden")).toBeNull();
+    expect(opener.tabIndex).toBe(0);
   });
 
   it("fanning an expanded stack keeps the shade open", () => {
@@ -1412,7 +1419,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     );
     renderRestedNotifications();
     expandShade();
-    fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
+    fireEvent.click(screen.getByTestId("notification-row"));
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     const list = screen.getByTestId("home-notification-list");
     expect(list.className).toContain("touch-pan-y");
@@ -1493,7 +1500,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     __ingestNotificationForTests(makeNotification({ title: "C" }));
     renderRestedNotifications();
     expandShade();
-    fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
+    fireEvent.click(screen.getByTestId("notification-row"));
     act(() => vi.advanceTimersByTime(40));
     fireEvent.click(screen.getByTestId("notification-stack-collapse"));
     expect(
@@ -3590,7 +3597,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     seedTriage();
     renderRestedNotifications();
     const list = expandShade();
-    fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
+    fireEvent.click(screen.getByTestId("notification-row"));
     act(() => vi.advanceTimersByTime(40));
     const center = screen.getByTestId("home-notification-center");
     const group = center.querySelector(

@@ -1,8 +1,8 @@
 /**
  * Covers the notification push service: it subscribes to the agent event bus,
  * routes notification-stream events to per-platform providers (ios→apns,
- * android→fcm) only when configured, carries notification id/deepLink/category
- * in the push data, prunes dead tokens on an unregistered error, and
+ * android→fcm) only when configured, carries notification identity, priority,
+ * collapse policy, and deep links, prunes dead tokens on an unregistered error, and
  * subscribes/unsubscribes cleanly. Harness is in-memory — a fake network-free
  * provider, an in-memory event bus, and a Map-backed cache — no real push send.
  */
@@ -171,7 +171,7 @@ describe("NotificationPushService", () => {
     expect(android.sent).toHaveLength(0);
   });
 
-  it("carries the notification id + deepLink in the push custom data", async () => {
+  it("carries notification identity, priority, collapse policy, and deepLink", async () => {
     const ios = new FakeProvider("apns", true);
     const android = new FakeProvider("fcm", true);
     const service = new NotificationPushService(h.runtime, {
@@ -181,15 +181,25 @@ describe("NotificationPushService", () => {
     await service.attach();
     await h.registry.register("ios", "tok-ios");
 
-    h.emit(notification({ id: "abc-123", deepLink: "/calendar" }));
+    h.emit(
+      notification({
+        id: "abc-123",
+        deepLink: "/calendar",
+        groupKey: "approval:req-1",
+        priority: "urgent",
+      }),
+    );
     await flush();
 
     expect(ios.sent[0].message.data).toMatchObject({
       notificationId: "abc-123",
       deepLink: "/calendar",
       category: "workflow",
+      priority: "urgent",
     });
     expect(ios.sent[0].message.title).toBe("Build finished");
+    expect(ios.sent[0].message.priority).toBe("urgent");
+    expect(ios.sent[0].message.collapseKey).toBe("approval:req-1");
   });
 
   it("drops a token from the registry on an unregistered error", async () => {

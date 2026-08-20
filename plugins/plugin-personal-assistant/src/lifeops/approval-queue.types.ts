@@ -322,6 +322,8 @@ export interface ApprovalRequest {
 export interface ApprovalEnqueueResult {
   readonly request: ApprovalRequest;
   readonly reused: boolean;
+  /** True only when the canonical notification rail accepted this new row. */
+  readonly notificationProjected?: boolean;
 }
 
 /** Input to `enqueue` — server fills in id, timestamps, and initial state. */
@@ -520,5 +522,8 @@ export interface ApprovalQueue extends ApprovalExecutionCapability {
    * Raise the owner prompt for a row that is already committed. Separate from
    * enqueue so a transactional caller surfaces only after its commit.
    */
-  surfaceEnqueuedApproval(request: ApprovalRequest): Promise<void>;
+  surfaceEnqueuedApproval(
+    request: ApprovalRequest,
+    options?: { notificationProjected?: boolean },
+  ): Promise<void>;
 }

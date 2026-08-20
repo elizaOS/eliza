@@ -2,7 +2,7 @@
  * Shared types for the remote-push delivery seam (APNs + FCM).
  */
 
-import type { JsonValue } from "@elizaos/core";
+import type { JsonValue, NotificationPriority } from "@elizaos/core";
 
 /** The user-facing content a single push carries. */
 export interface PushMessage {
@@ -10,6 +10,10 @@ export interface PushMessage {
   title: string;
   /** Optional longer body line. */
   body?: string;
+  /** Canonical urgency tier used by APNs/FCM delivery policy. */
+  priority?: NotificationPriority;
+  /** Stable logical identity used to replace an older OS notification. */
+  collapseKey?: string;
   /**
    * Structured custom data delivered alongside the alert so the app can
    * deep-link and dedupe against the in-app notification center. Values are

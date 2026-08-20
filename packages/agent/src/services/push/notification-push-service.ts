@@ -200,12 +200,15 @@ function toPushMessage(notification: AgentNotification): PushMessage {
   const data: PushMessage["data"] = {
     notificationId: notification.id,
     category: notification.category,
+    priority: notification.priority,
   };
   if (notification.deepLink) data.deepLink = notification.deepLink;
   if (notification.groupKey) data.groupKey = notification.groupKey;
   return {
     title: notification.title,
     body: notification.body,
+    priority: notification.priority,
+    collapseKey: notification.groupKey,
     data,
   };
 }
