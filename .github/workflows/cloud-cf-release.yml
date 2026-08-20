@@ -1082,6 +1082,17 @@ jobs:
             ' "${worker_secret_names[@]}"
           }
 
+          verify_webhook_gateway_binding_candidates() {
+            if ! has_nonblank_value "$ELIZA_APP_WEBHOOK_GATEWAY_URL"; then
+              return 0
+            fi
+            local secret_inventory
+            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            printf '%s' "$secret_inventory" | node \
+              "$CHECKOUT_DIR/packages/cloud/scripts/verify-webhook-gateway-binding.mjs" \
+              "${worker_secret_names[@]}"
+          }
+
           # Like queue_secret, but for values that act as ROUTING TOGGLES
           # (code branches on presence, e.g. `env.WHISPER_STT_URL`). An unset
           # source must DELETE any previously published secret. A plain
@@ -1234,6 +1245,12 @@ jobs:
           # same Worker version. A missing value may never deploy as a healthy
           # but permanently unauthorized embeddings path.
           verify_staging_embeddings_secret_candidate || exit 1
+          # The messaging webhook gateway URL is a routing toggle: unset stays
+          # on the honest WEBHOOK_GATEWAY_NOT_CONFIGURED 503 (#18235), but a
+          # configured URL must point at THIS environment's canonical gateway
+          # and carry the paired forwarder secret, or every provider webhook
+          # would fail as a misleading 401/upstream error instead.
+          verify_webhook_gateway_binding_candidates || exit 1
 
           # Wrangler deploy accepts this JSON additively: named values are
           # committed in the same Worker version as the exact source, while
