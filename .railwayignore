@@ -14,6 +14,14 @@
 # build context, so excluding them cannot change any image. This file is
 # about UPLOAD size only; repo-level artifact policy (LFS/releases) is a
 # separate decision.
+**/node_modules/
+**/.next/
+**/.next-build-*/
+**/.turbo/
+**/*.tsbuildinfo
+**/coverage/
+.git/
+.claude/
 packages/native/bun-runtime/artifacts/
 packages/os/
 packages/chip/
