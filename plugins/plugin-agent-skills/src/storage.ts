@@ -62,6 +62,15 @@ export interface PreparedSkillReplacement {
 	finalize(): void;
 }
 
+/** A staged removal whose package remains recoverable until finalization. */
+export interface PreparedSkillRemoval {
+	readonly slug: string;
+	readonly existed: boolean;
+	publish(): void;
+	rollback(): void;
+	finalize(): void;
+}
+
 /**
  * Storage interface for skill management.
  */
@@ -93,14 +102,17 @@ export interface ISkillStorage {
 	/** Save a complete skill package */
 	saveSkill(pkg: SkillPackage): Promise<void>;
 
-	/** Snapshot a complete skill package for validation or transactional rollback. */
-	loadPackage(slug: string): Promise<SkillPackage | null>;
-
 	/** Stage a replacement without exposing it to readers. */
-	prepareReplacement(
+	prepareReplacement?(
 		pkg: SkillPackage,
 		options?: { signal?: AbortSignal },
 	): Promise<PreparedSkillReplacement>;
+
+	/** Stage removal without destroying the package needed for rollback. */
+	prepareRemoval?(
+		slug: string,
+		options?: { signal?: AbortSignal },
+	): Promise<PreparedSkillRemoval>;
 
 	/** Delete a skill */
 	deleteSkill(slug: string): Promise<boolean>;
@@ -194,11 +206,6 @@ export class MemorySkillStore implements ISkillStorage {
 		this.skills.set(pkg.slug, cloneSkillPackage(pkg));
 	}
 
-	async loadPackage(slug: string): Promise<SkillPackage | null> {
-		const pkg = this.skills.get(slug);
-		return pkg ? cloneSkillPackage(pkg) : null;
-	}
-
 	async prepareReplacement(
 		pkg: SkillPackage,
 		options: { signal?: AbortSignal } = {},
@@ -225,6 +232,37 @@ export class MemorySkillStore implements ISkillStorage {
 					} else {
 						this.skills.delete(pkg.slug);
 					}
+				}
+				finished = true;
+			},
+			finalize: () => {
+				finished = true;
+			},
+		};
+	}
+
+	async prepareRemoval(
+		slug: string,
+		options: { signal?: AbortSignal } = {},
+	): Promise<PreparedSkillRemoval> {
+		options.signal?.throwIfAborted();
+		const previous = this.skills.get(slug);
+		const previousSnapshot = previous ? cloneSkillPackage(previous) : null;
+		let published = false;
+		let finished = false;
+		return {
+			slug,
+			existed: previousSnapshot !== null,
+			publish: () => {
+				if (finished) throw new Error("Skill removal is already finalized");
+				options.signal?.throwIfAborted();
+				if (previousSnapshot) this.skills.delete(slug);
+				published = true;
+			},
+			rollback: () => {
+				if (finished) return;
+				if (published && previousSnapshot) {
+					this.skills.set(slug, cloneSkillPackage(previousSnapshot));
 				}
 				finished = true;
 			},
@@ -364,59 +402,6 @@ export class FileSystemSkillStore implements ISkillStorage {
 		} catch {
 			throw new Error("FileSystemSkillStore requires Node.js fs module");
 		}
-	}
-
-	async loadPackage(slug: string): Promise<SkillPackage | null> {
-		if (!this.fs || !this.path) await this.initialize();
-		const { fs, path } = this.requireNodeModules();
-		const resolvedBase = path.resolve(this.basePath);
-		const skillDir = resolveSkillDirectory(path, resolvedBase, slug);
-		if (!fs.existsSync(skillDir)) return null;
-		assertExistingRealPathContained(fs, path, resolvedBase, skillDir, slug);
-
-		const files = new Map<string, SkillFile>();
-		const visit = (directory: string): void => {
-			for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-				const fullPath = resolveContainedPath(
-					path,
-					skillDir,
-					path.join(directory, entry.name),
-					entry.name,
-				);
-				const relativePath = path
-					.relative(skillDir, fullPath)
-					.split(path.sep)
-					.join("/");
-				if (entry.isDirectory()) {
-					visit(fullPath);
-					continue;
-				}
-				if (!entry.isFile()) {
-					throw new ElizaError("Stored skill contains a non-file entry", {
-						code: "SKILL_STORAGE_INVALID_ENTRY",
-						context: { slug, path: relativePath },
-					});
-				}
-				assertSkillTargetRealPathContained(
-					fs,
-					path,
-					resolvedBase,
-					skillDir,
-					fullPath,
-					relativePath,
-				);
-				const isText = isTextFile(relativePath);
-				files.set(relativePath, {
-					path: relativePath,
-					content: isText
-						? fs.readFileSync(fullPath, "utf-8")
-						: new Uint8Array(fs.readFileSync(fullPath)),
-					isText,
-				});
-			}
-		};
-		visit(skillDir);
-		return { slug, files };
 	}
 
 	async listSkills(): Promise<string[]> {
@@ -675,6 +660,65 @@ export class FileSystemSkillStore implements ISkillStorage {
 					// backup cleanup is best-effort and never fabricates install failure.
 					logger.warn(
 						`[FileSystemSkillStore] Failed to remove replaced skill backup: ${cause instanceof Error ? cause.message : String(cause)}`,
+					);
+				}
+			},
+		};
+	}
+
+	async prepareRemoval(
+		slug: string,
+		options: { signal?: AbortSignal } = {},
+	): Promise<PreparedSkillRemoval> {
+		if (!this.fs || !this.path) await this.initialize();
+		options.signal?.throwIfAborted();
+		const { fs, path } = this.requireNodeModules();
+		const resolvedBase = path.resolve(this.basePath);
+		const skillDir = resolveSkillDirectory(path, resolvedBase, slug);
+		const existed = fs.existsSync(skillDir);
+		if (existed) {
+			assertExistingRealPathContained(fs, path, resolvedBase, skillDir, slug);
+		}
+		const stagingDir = fs.mkdtempSync(path.join(resolvedBase, ".skill-remove-"));
+		const retainedDir = path.join(stagingDir, "previous");
+		let published = false;
+		let finished = false;
+		const rollback = (): void => {
+			if (finished) return;
+			try {
+				if (published && fs.existsSync(retainedDir)) {
+					fs.renameSync(retainedDir, skillDir);
+				}
+				fs.rmSync(stagingDir, { recursive: true, force: true });
+				finished = true;
+			} catch (cause) {
+				throw new ElizaError("Failed to restore removed skill", {
+					code: "SKILL_STORAGE_ROLLBACK_FAILED",
+					context: { slug },
+					severity: "fatal",
+					cause,
+				});
+			}
+		};
+		return {
+			slug,
+			existed,
+			publish: () => {
+				if (finished) throw new Error("Skill removal is already finalized");
+				options.signal?.throwIfAborted();
+				if (existed) fs.renameSync(skillDir, retainedDir);
+				published = true;
+			},
+			rollback,
+			finalize: () => {
+				if (finished) return;
+				finished = true;
+				try {
+					fs.rmSync(stagingDir, { recursive: true, force: true });
+				} catch (cause) {
+					// error-policy:J6 Removal is committed; retained backup cleanup is best effort.
+					logger.warn(
+						`[FileSystemSkillStore] Failed to remove uninstalled skill backup: ${cause instanceof Error ? cause.message : String(cause)}`,
 					);
 				}
 			},

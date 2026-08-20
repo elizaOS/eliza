@@ -2272,10 +2272,14 @@ export class AgentSkillsService extends Service {
 
 	private async prepareLockfileUpdate(
 		slug: string,
-		version: string | undefined,
+		version: string | null | undefined,
 		signal?: AbortSignal,
 	): Promise<PreparedLockfileUpdate> {
-		if (!version || !this.lockfilePath || this.storage.type !== "filesystem") {
+		if (
+			version === undefined ||
+			!this.lockfilePath ||
+			this.storage.type !== "filesystem"
+		) {
 			return { publish() {}, rollback() {}, finalize() {} };
 		}
 		signal?.throwIfAborted();
@@ -2319,7 +2323,14 @@ export class AgentSkillsService extends Service {
 				});
 			}
 		}
-		lockfile[slug] = { version, installedAt: new Date().toISOString() };
+		if (version === null) {
+			if (!(slug in lockfile)) {
+				return { publish() {}, rollback() {}, finalize() {} };
+			}
+			delete lockfile[slug];
+		} else {
+			lockfile[slug] = { version, installedAt: new Date().toISOString() };
+		}
 
 		const stagingDir = fs.mkdtempSync(path.join(cacheDir, ".lock-update-"));
 		const candidatePath = path.join(stagingDir, "next.json");
@@ -2444,6 +2455,35 @@ export class AgentSkillsService extends Service {
 		}
 		loadedCandidate.path = this.storage.getSkillPath(candidate.slug);
 
+		if (!this.storage.prepareReplacement) {
+			// Legacy custom stores predate prepared mutations. Preserve their
+			// established save behavior while built-in stores use the strong path.
+			signal?.throwIfAborted();
+			await this.storage.saveSkill(candidate);
+			await this.lockfileMutex.run(signal, async () => {
+				const update = await this.prepareLockfileUpdate(
+					candidate.slug,
+					options.version,
+					signal,
+				);
+				update.publish();
+				update.finalize();
+			});
+			const active = this.loadedSkills.get(candidate.slug);
+			if (active?.source !== "workspace") {
+				this.loadedSkills.set(candidate.slug, loadedCandidate);
+				if (
+					scanReport.status === "critical" ||
+					scanReport.status === "warning"
+				) {
+					this.scanStatusMap.set(candidate.slug, scanReport.status);
+				} else {
+					this.scanStatusMap.delete(candidate.slug);
+				}
+				this.eligibilityCache.delete(candidate.slug);
+			}
+			return scanReport;
+		}
 		const replacement = await this.storage.prepareReplacement(candidate, {
 			signal,
 		});
@@ -2470,21 +2510,22 @@ export class AgentSkillsService extends Service {
 					lockfileUpdate.publish();
 					signal?.throwIfAborted();
 
-					if (previousLoaded?.source !== "workspace") {
+					const managedCandidateIsActive = previousLoaded?.source !== "workspace";
+					if (managedCandidateIsActive) {
 						if (previousLoaded) {
 							loadedCandidate.overrides = `${previousLoaded.source}:${previousLoaded.sourceDir}`;
 						}
 						this.loadedSkills.set(candidate.slug, loadedCandidate);
+						if (
+							scanReport.status === "critical" ||
+							scanReport.status === "warning"
+						) {
+							this.scanStatusMap.set(candidate.slug, scanReport.status);
+						} else {
+							this.scanStatusMap.delete(candidate.slug);
+						}
+						this.eligibilityCache.delete(candidate.slug);
 					}
-					if (
-						scanReport.status === "critical" ||
-						scanReport.status === "warning"
-					) {
-						this.scanStatusMap.set(candidate.slug, scanReport.status);
-					} else {
-						this.scanStatusMap.delete(candidate.slug);
-					}
-					this.eligibilityCache.delete(candidate.slug);
 					signal?.throwIfAborted();
 					committed = true;
 					replacement.finalize();
@@ -2885,27 +2926,76 @@ export class AgentSkillsService extends Service {
 	 */
 	async uninstall(slug: string): Promise<boolean> {
 		const safeSlug = sanitizeSlug(slug);
+		return this.withSkillInstallMutex(safeSlug, undefined, async () => {
+			const active = this.loadedSkills.get(safeSlug);
+			if (!this.storage.prepareRemoval) {
+				const deleted = await this.storage.deleteSkill(safeSlug);
+				if (deleted && (!active || active.source === "managed")) {
+					this.loadedSkills.delete(safeSlug);
+					this.scanStatusMap.delete(safeSlug);
+					this.eligibilityCache.delete(safeSlug);
+				}
+				return deleted;
+			}
 
-		// Check if this is a bundled skill
-		const existing = this.loadedSkills.get(safeSlug);
-		if (existing?.source === "bundled") {
-			this.runtime.logger.warn(
-				`AgentSkills: Cannot uninstall bundled skill ${safeSlug}`,
-			);
-			return false;
-		}
-
-		// Unload from memory
-		this.loadedSkills.delete(safeSlug);
-
-		// Remove from managed storage
-		const deleted = await this.storage.deleteSkill(safeSlug);
-
-		if (deleted) {
+			const removal = await this.storage.prepareRemoval(safeSlug);
+			if (!removal.existed) {
+				removal.rollback();
+				return false;
+			}
+			let committed = false;
+			try {
+				await this.lockfileMutex.run(undefined, async () => {
+					const lockUpdate = await this.prepareLockfileUpdate(safeSlug, null);
+					const previousLoaded = this.loadedSkills.get(safeSlug);
+					const previousScan = this.scanStatusMap.get(safeSlug);
+					const previousEligibility = this.eligibilityCache.get(safeSlug);
+					const hadLoaded = this.loadedSkills.has(safeSlug);
+					const hadScan = this.scanStatusMap.has(safeSlug);
+					const hadEligibility = this.eligibilityCache.has(safeSlug);
+					let storagePublished = false;
+					try {
+						removal.publish();
+						storagePublished = true;
+						lockUpdate.publish();
+						if (!previousLoaded || previousLoaded.source === "managed") {
+							this.loadedSkills.delete(safeSlug);
+							this.scanStatusMap.delete(safeSlug);
+							this.eligibilityCache.delete(safeSlug);
+						}
+						committed = true;
+						removal.finalize();
+						lockUpdate.finalize();
+					} catch (cause) {
+						const failures: unknown[] = [];
+						if (hadLoaded && previousLoaded) this.loadedSkills.set(safeSlug, previousLoaded);
+						else this.loadedSkills.delete(safeSlug);
+						if (hadScan && previousScan) this.scanStatusMap.set(safeSlug, previousScan);
+						else this.scanStatusMap.delete(safeSlug);
+						if (hadEligibility && previousEligibility) this.eligibilityCache.set(safeSlug, previousEligibility);
+						else this.eligibilityCache.delete(safeSlug);
+						try { lockUpdate.rollback(); } catch (error) { failures.push(error); }
+						if (storagePublished) {
+							try { removal.rollback(); } catch (error) { failures.push(error); }
+						}
+						if (failures.length > 0) {
+							throw new ElizaError("Skill uninstall rollback failed", {
+								code: "SKILL_INSTALL_ROLLBACK_FAILED",
+								context: { slug: safeSlug, operation: "uninstall" },
+								severity: "fatal",
+								cause: new AggregateError([cause, ...failures]),
+							});
+						}
+						throw cause;
+					}
+				});
+			} catch (cause) {
+				if (!committed) removal.rollback();
+				throw cause;
+			}
 			this.runtime.logger.info(`AgentSkills: Uninstalled ${safeSlug}`);
-		}
-
-		return deleted;
+			return true;
+		});
 	}
 
 	// ============================================================

@@ -32,6 +32,46 @@ function throwIfMarketplaceAborted(
   if (signal?.aborted) throw skillDownloadAbortError(signal, cause);
 }
 
+async function runMarketplaceGit(
+  args: string[],
+  signal?: AbortSignal,
+): Promise<{ stdout: string; stderr: string }> {
+  try {
+    return await execFileAsync("git", args, {
+      timeout: GIT_TIMEOUT_MS,
+      signal,
+    });
+  } catch (cause) {
+    // error-policy:J2 Normalize child-process cancellation/deadlines at the
+    // repository boundary while preserving ordinary git failures as causes.
+    throwIfMarketplaceAborted(signal, cause);
+    const processError = cause as {
+      killed?: boolean;
+      code?: string | number | null;
+      signal?: string | null;
+    };
+    if (
+      processError.killed === true ||
+      processError.code === "ETIMEDOUT" ||
+      processError.signal === "SIGTERM"
+    ) {
+      throw new ElizaError(
+        `Skill repository operation exceeded its ${GIT_TIMEOUT_MS}ms deadline`,
+        {
+          code: "SKILL_DOWNLOAD_TIMEOUT",
+          context: {
+            boundary: "skill-marketplace-git",
+            timeoutMs: GIT_TIMEOUT_MS,
+          },
+          cause,
+          severity: "ephemeral",
+        },
+      );
+    }
+    throw cause;
+  }
+}
+
 class MarketplaceMutex {
   private tail: Promise<void> = Promise.resolve();
   private users = 0;
@@ -57,6 +97,7 @@ class MarketplaceMutex {
         await new Promise<void>((resolve, reject) => {
           const onAbort = (): void => reject(signal?.reason);
           signal?.addEventListener("abort", onAbort, { once: true });
+          if (signal?.aborted) onAbort();
           prior.then(resolve, reject).finally(() => {
             signal?.removeEventListener("abort", onAbort);
           });
@@ -866,13 +907,12 @@ async function resolveSkillPathInRepo(
       repoUrl,
       cloneDir,
     ];
-    await execFileAsync("git", cloneArgs, { timeout: GIT_TIMEOUT_MS, signal });
+    await runMarketplaceGit(cloneArgs, signal);
     throwIfMarketplaceAborted(signal);
 
-    const { stdout } = await execFileAsync(
-      "git",
+    const { stdout } = await runMarketplaceGit(
       ["-C", cloneDir, "ls-tree", "-r", "--name-only", "HEAD"],
-      { timeout: GIT_TIMEOUT_MS, signal },
+      signal,
     );
     throwIfMarketplaceAborted(signal);
     const allPaths = stdout
@@ -924,12 +964,11 @@ async function withTemporarySparseCheckout<T>(
       repoUrl,
       cloneDir,
     ];
-    await execFileAsync("git", cloneArgs, { timeout: GIT_TIMEOUT_MS, signal });
+    await runMarketplaceGit(cloneArgs, signal);
     throwIfMarketplaceAborted(signal);
-    await execFileAsync(
-      "git",
+    await runMarketplaceGit(
       ["-C", cloneDir, "sparse-checkout", "set", checkoutPath],
-      { timeout: GIT_TIMEOUT_MS, signal },
+      signal,
     );
     throwIfMarketplaceAborted(signal);
 
@@ -1184,11 +1223,31 @@ export async function uninstallMarketplaceSkill(
 
           const expectedRoot = path.resolve(installationRoot(workspaceDir));
           const resolvedPath = path.resolve(record.installPath);
-          if (
-            !resolvedPath.startsWith(`${expectedRoot}${path.sep}`) ||
-            resolvedPath === expectedRoot
-          ) {
+          const canonicalInstallPath = path.join(expectedRoot, id);
+          if (resolvedPath !== canonicalInstallPath) {
             throw new Error(`Refusing to remove skill outside ${expectedRoot}`);
+          }
+          const workspaceRoot = path.resolve(workspaceDir);
+          for (const parentPath of [
+            workspaceRoot,
+            path.join(workspaceRoot, "skills"),
+            expectedRoot,
+          ]) {
+            const parentStat = await fs.lstat(parentPath);
+            if (parentStat.isSymbolicLink() || !parentStat.isDirectory()) {
+              throw new Error(
+                `Refusing to remove skill through unsafe parent ${parentPath}`,
+              );
+            }
+          }
+          const installStat = await fs.lstat(canonicalInstallPath);
+          if (
+            installStat.isSymbolicLink() ||
+            !installStat.isDirectory() ||
+            (await fs.realpath(path.dirname(canonicalInstallPath))) !==
+              (await fs.realpath(expectedRoot))
+          ) {
+            throw new Error(`Refusing to remove unsafe marketplace skill ${id}`);
           }
 
           const directoryStage = await fs.mkdtemp(
