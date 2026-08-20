@@ -9,6 +9,7 @@ import {
   appendCompletionEvidenceSection,
   buildCompletionEvidenceString,
   type CompletionEvidenceBundle,
+  extractChildToolTrace,
 } from "../services/completion-evidence.js";
 
 function bundle(
@@ -98,5 +99,71 @@ describe("appendCompletionEvidenceSection", () => {
     expect(combined.indexOf("base evidence")).toBeLessThan(
       combined.indexOf("## EXTRA"),
     );
+  });
+});
+
+describe("recorded child tool trace evidence", () => {
+  it("renders exact ordered FILE/SHELL operations, command output, and no source payloads", () => {
+    const secret = `sk-or-v1-${"a".repeat(48)}`;
+    const trace = extractChildToolTrace({
+      stages: [
+        {
+          kind: "tool",
+          tool: {
+            name: "FILE",
+            args: {
+              action: "read",
+              file_path: "/repo/src/a.ts",
+              path: "/repo/src/a.ts",
+              content: "private source must not be copied",
+            },
+            result: {
+              success: true,
+              text: "private source must not be copied",
+            },
+          },
+        },
+        {
+          kind: "tool",
+          tool: {
+            name: "SHELL",
+            args: {
+              action: "run",
+              cwd: "/repo",
+              command: `OPENROUTER_API_KEY=${secret} bun test a.test.ts`,
+            },
+            result: {
+              success: true,
+              text: `3 pass\n0 fail\nOPENROUTER_API_KEY=${secret}`,
+            },
+          },
+        },
+      ],
+    });
+
+    expect(trace).toHaveLength(2);
+    expect(trace[0]).toMatchObject({
+      ordinal: 1,
+      tool: "FILE",
+      args: {
+        action: "read",
+        file_path: "/repo/src/a.ts",
+        path: "/repo/src/a.ts",
+      },
+      success: true,
+    });
+    expect(trace[0]?.output).toBeUndefined();
+    expect(JSON.stringify(trace)).not.toContain("private source");
+    expect(JSON.stringify(trace)).not.toContain(secret);
+
+    const rendered = buildCompletionEvidenceString(
+      bundle({ childToolTrace: trace }),
+    );
+    expect(rendered).toContain("## CHILD TOOL TRACE");
+    expect(rendered).toContain('#1 FILE args={"action":"read"');
+    expect(rendered).toContain('"command":"OPENROUTER_API_KEY=');
+    expect(rendered).toContain("3 pass");
+    expect(rendered).toContain("0 fail");
+    expect(rendered).not.toContain(secret);
   });
 });

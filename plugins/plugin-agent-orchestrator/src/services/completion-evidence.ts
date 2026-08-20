@@ -31,6 +31,7 @@
  * @module services/completion-evidence
  */
 
+import { redactSensitiveText } from "@elizaos/core";
 import type { WorkspaceChangeSet } from "./workspace-diff.js";
 
 /** One recorded signal (a durable event or sub-agent message) the assembler
@@ -84,6 +85,23 @@ export interface ToolOutputEvidence {
 }
 
 /**
+ * One bounded, sanitized tool call taken from the coding child's own recorded
+ * trajectory. Unlike the worker's prose summary, this is observation-grade
+ * evidence of which tool ran, with which path/command, and whether it
+ * succeeded. Arguments are deliberately allowlisted so file contents and
+ * arbitrary adapter metadata never enter the verifier prompt.
+ */
+export interface ChildToolTraceEntry {
+  ordinal: number;
+  tool: string;
+  args: Record<string, string | number | boolean>;
+  success?: boolean;
+  /** Bounded result text for command tools; omitted for FILE reads/writes so
+   * source contents are not duplicated into the verifier prompt. */
+  output?: string;
+}
+
+/**
  * The TYPED completion-evidence bundle (issue #8894). This is the formalized,
  * collect-once shape the orchestrator assembles BEFORE verification: every
  * evidence source resolves to a named field instead of being threaded through
@@ -103,6 +121,8 @@ export interface CompletionEvidenceBundle {
   diffSummary?: string;
   /** Captured tool stdout split by class (test/build/lint) plus a raw bucket. */
   toolOutput?: ToolOutputEvidence;
+  /** Exact, sanitized tool-call sequence recorded by the coding child. */
+  childToolTrace?: ChildToolTraceEntry[];
   /** URLs the router probed/verified at completion (loopback-flagged on render). */
   verifiedUrls: string[];
   /** URLs the sub-agent merely MENTIONED in prose (never probed). Rendered in a
@@ -153,6 +173,83 @@ const MAX_URLS = 12;
 const MAX_ARTIFACTS = 20;
 /** Per-tool-output-field cap (test/build/lint/raw each). */
 const MAX_TOOL_OUTPUT_CHARS = 2_000;
+const MAX_CHILD_TOOL_TRACE_ENTRIES = 40;
+const MAX_CHILD_TOOL_OUTPUT_CHARS = 2_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const CHILD_TOOL_ARG_KEYS = [
+  "action",
+  "target",
+  "file_path",
+  "path",
+  "cwd",
+  "command",
+  "description",
+  "glob",
+  "pattern",
+  "type",
+  "timeout",
+  "confirm",
+] as const;
+
+/**
+ * Extract the exact tool-call sequence from a recorded child trajectory while
+ * excluding large/sensitive payload fields (`content`, replacement strings,
+ * model metadata, etc.). The child recorder has already sanitized its JSON,
+ * and the canonical redactor is applied again at this verifier boundary.
+ */
+export function extractChildToolTrace(
+  trajectory: unknown,
+): ChildToolTraceEntry[] {
+  if (!isRecord(trajectory) || !Array.isArray(trajectory.stages)) return [];
+  const entries: ChildToolTraceEntry[] = [];
+  for (const stage of trajectory.stages) {
+    if (!isRecord(stage) || stage.kind !== "tool" || !isRecord(stage.tool)) {
+      continue;
+    }
+    const tool = stage.tool;
+    const name = typeof tool.name === "string" ? tool.name.trim() : "";
+    if (!name) continue;
+    const rawArgs = isRecord(tool.args) ? tool.args : {};
+    const args: Record<string, string | number | boolean> = {};
+    for (const key of CHILD_TOOL_ARG_KEYS) {
+      const value = rawArgs[key];
+      if (typeof value === "string" && value.trim()) {
+        args[key] = redactSensitiveText(value);
+      } else if (typeof value === "number" || typeof value === "boolean") {
+        args[key] = value;
+      }
+    }
+    const rawResult = isRecord(tool.result) ? tool.result : undefined;
+    const success =
+      typeof rawResult?.success === "boolean" ? rawResult.success : undefined;
+    // Shell output is the evidence that a test/build really ran. FILE output
+    // contains source text, which is unnecessary for proving the operation and
+    // can dominate the verifier budget, so only command-like tools contribute
+    // their result body here.
+    const output =
+      /^(?:SHELL|BASH|TERMINAL)$/i.test(name) &&
+      typeof rawResult?.text === "string" &&
+      rawResult.text.trim()
+        ? clamp(
+            redactSensitiveText(rawResult.text),
+            MAX_CHILD_TOOL_OUTPUT_CHARS,
+          )
+        : undefined;
+    entries.push({
+      ordinal: entries.length + 1,
+      tool: name,
+      args,
+      ...(success === undefined ? {} : { success }),
+      ...(output ? { output } : {}),
+    });
+    if (entries.length >= MAX_CHILD_TOOL_TRACE_ENTRIES) break;
+  }
+  return entries;
+}
 
 /**
  * Append a verifier-produced section without replacing the evidence assembled
@@ -413,6 +510,28 @@ function renderToolOutputSection(toolOutput: ToolOutputEvidence): string {
   return lines.join("\n");
 }
 
+function renderChildToolTraceSection(
+  entries: readonly ChildToolTraceEntry[],
+): string {
+  const lines = [
+    "## CHILD TOOL TRACE (recorded by the coding runtime; ordered, sanitized)",
+  ];
+  for (const entry of entries.slice(0, MAX_CHILD_TOOL_TRACE_ENTRIES)) {
+    const args = JSON.stringify(entry.args);
+    const success =
+      entry.success === undefined ? "unknown" : String(entry.success);
+    lines.push(
+      `- #${entry.ordinal} ${entry.tool} args=${args} success=${success}`,
+    );
+    if (entry.output?.trim()) {
+      lines.push(
+        `  output:\n${clamp(entry.output, MAX_CHILD_TOOL_OUTPUT_CHARS)}`,
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
 function hasToolOutput(toolOutput: ToolOutputEvidence | undefined): boolean {
   if (!toolOutput) return false;
   return Boolean(
@@ -510,6 +629,11 @@ export function buildCompletionEvidenceString(
 
   if (bundle.toolOutput && hasToolOutput(bundle.toolOutput)) {
     sections.push(renderToolOutputSection(bundle.toolOutput));
+    hasRicherSection = true;
+  }
+
+  if ((bundle.childToolTrace?.length ?? 0) > 0) {
+    sections.push(renderChildToolTraceSection(bundle.childToolTrace ?? []));
     hasRicherSection = true;
   }
 

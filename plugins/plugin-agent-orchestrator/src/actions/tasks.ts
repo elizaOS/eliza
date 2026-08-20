@@ -26,6 +26,7 @@ import {
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
+  TRACE_ENV,
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
@@ -2029,7 +2030,24 @@ async function runSpawnAgent(
     // tool-call-skipping degradation. See waitForSpawnSlot.
     await waitForSpawnSlot(runtime, service);
 
+    const spawnDurableService = userOriginatedSpawn
+      ? (runtime.getService?.(OrchestratorTaskService.serviceType) as
+          | OrchestratorTaskService
+          | null
+          | undefined)
+      : undefined;
+    // A top-level spawn only receives its durable task id after spawnSession
+    // returns. Give the child a unique managed trajectory directory now and
+    // persist that directory on the session so the later task attachment can
+    // ingest its real FILE/SHELL trace instead of falsely verifying from prose.
+    const detachedTrace =
+      spawnDurableService &&
+      typeof spawnDurableService.prepareDetachedChildTrace === "function"
+        ? spawnDurableService.prepareDetachedChildTrace()
+        : undefined;
+
     const session = await service.spawnSession({
+      ...(detachedTrace ? { env: detachedTrace.env } : {}),
       agentType,
       workdir: effectiveWorkdir,
       isolateWorkdir,
@@ -2039,6 +2057,7 @@ async function runSpawnAgent(
       approvalPreset,
       metadata: {
         ...extraMetadata,
+        ...(detachedTrace?.metadata ?? {}),
         ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
         // Persist the stable root id so SubAgentRouter re-stamps it onto the
         // next synthetic re-spawn inbound (keeping the per-origin spawn cap
@@ -2089,9 +2108,6 @@ async function runSpawnAgent(
     // a silent-loss bug for a loud-loss one) but is reported loudly.
     let durableTaskId: string | null = null;
     if (userOriginatedSpawn) {
-      const spawnDurableService = runtime.getService?.(
-        OrchestratorTaskService.serviceType,
-      ) as OrchestratorTaskService | null | undefined;
       if (
         spawnDurableService &&
         typeof spawnDurableService.createTask === "function" &&
@@ -2119,6 +2135,15 @@ async function runSpawnAgent(
               agentType: session.agentType,
               workdir: session.workdir,
               status: session.status,
+              ...(detachedTrace?.env[TRACE_ENV.TRACE_ID]
+                ? { traceId: detachedTrace.env[TRACE_ENV.TRACE_ID] }
+                : {}),
+              ...(detachedTrace?.env[TRACE_ENV.PARENT_STEP_ID]
+                ? {
+                    parentTrajectoryStepId:
+                      detachedTrace.env[TRACE_ENV.PARENT_STEP_ID],
+                  }
+                : {}),
               ...(session.metadata ? { metadata: session.metadata } : {}),
               label,
               originalTask: taskWithRouteHints,
@@ -5249,6 +5274,13 @@ export const tasksAction: Action & {
       description: "Working directory for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "lockWorkdir",
+      description:
+        "For action=create / action=spawn_agent, set true when the user explicitly requires the exact supplied existing workdir. This makes that directory authoritative and prevents project-route or convention auto-detection from relocating the coding agent.",
+      required: false,
+      schema: { type: "boolean" as const },
     },
     {
       name: "memoryContent",

@@ -53,10 +53,10 @@ describe("TASKS:spawn_agent", () => {
     ).toContain("spawn_agent");
   });
 
-  it("does not expose lockWorkdir to planner-generated tool calls", () => {
-    expect(
-      spawnAgentAction.parameters?.map((param) => param.name),
-    ).not.toContain("lockWorkdir");
+  it("exposes lockWorkdir so planner-generated calls can honor exact user paths", () => {
+    expect(spawnAgentAction.parameters?.map((param) => param.name)).toContain(
+      "lockWorkdir",
+    );
   });
 
   it("does not expose keepAliveAfterComplete to planner-generated tool calls", () => {

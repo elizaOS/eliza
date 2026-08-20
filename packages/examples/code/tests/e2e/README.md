@@ -66,6 +66,35 @@ Set `ELIZA_LIVE_QA_KEEP=1` to retain the temporary workspaces and full JSON plus
 Markdown trajectories for manual review. Never commit those generated evidence
 artifacts or place a credential on a shared command line.
 
+## Live parent-orchestrator acceptance
+
+`owned-parent-orchestrator-live.mjs` starts one real parent `AgentRuntime` and
+proves the complete owned delegation path:
+
+```text
+parent planner -> TASKS_SPAWN_AGENT -> OrchestratorTaskService -> AcpService
+  -> native ACP -> packaged eliza-code -> coding AgentRuntime
+  -> plugin-coding-tools FILE/SHELL
+```
+
+The matrix requires one natural model-selected delegation and two concurrent
+parent-side action dispatches. A passing run also requires exact workdir
+preservation, durable task/session ownership, parent/child trace correlation,
+unchanged read-only fixtures, independent passing tests, overlap between both
+concurrent child sessions, and successful validate/archive/reopen transitions.
+
+```bash
+ELIZA_LIVE_QA_OPENROUTER_KEY=... \
+  ELIZA_LIVE_QA_REPORT_DIR=/private/safe/report/directory \
+  bun run --cwd packages/examples/code e2e:owned-parent-orchestrator-live
+```
+
+The optional report directory receives a redacted `report.json`, sanitized
+copies of both parent and child native trajectories, and each task's persisted
+completion-evidence bundle. Set
+`ELIZA_LIVE_QA_KEEP=1` only when the unsanitized temporary runtime is needed for
+local debugging; do not publish that temporary directory.
+
 ## Why the fixed workspace
 
 Record and replay use a **fixed** workspace path (reset clean each run), not a

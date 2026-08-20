@@ -106,7 +106,7 @@ describe("resolveWorkdirRoute", () => {
     );
 
     expect(result?.id).toBe("static-apps");
-    expect(result?.workdir).toBe(appsDir);
+    expect(result?.workdir).toBe(fs.realpathSync(appsDir));
     expect(result?.instructions).toContain("data/apps");
   });
 
@@ -257,7 +257,7 @@ describe("resolveSpawnWorkdir", () => {
     );
 
     // route wins even though `guessed` exists on disk
-    expect(result.workdir).toBe(appsDir);
+    expect(result.workdir).toBe(fs.realpathSync(appsDir));
     expect(result.route?.id).toBe("static-apps");
   });
 
@@ -293,7 +293,7 @@ describe("resolveSpawnWorkdir", () => {
       { lockWorkdir: true },
     );
 
-    expect(result.workdir).toBe(appsDir);
+    expect(result.workdir).toBe(fs.realpathSync(appsDir));
     expect(result.route?.id).toBe("static-apps");
   });
 
@@ -327,7 +327,7 @@ describe("resolveSpawnWorkdir", () => {
       undefined,
     );
 
-    expect(result.workdir).toBe(appsDir);
+    expect(result.workdir).toBe(fs.realpathSync(appsDir));
     expect(result.route?.id).toBe("static-apps");
   });
 

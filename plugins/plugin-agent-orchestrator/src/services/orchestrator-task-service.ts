@@ -27,7 +27,15 @@ import {
   stat,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import {
   ElizaError,
   getTrajectoryContext,
@@ -78,10 +86,12 @@ import {
 import {
   appendCompletionEvidenceSection,
   buildCompletionEvidenceString,
+  type ChildToolTraceEntry,
   type CompletionEvidenceBundle,
   classifyToolOutput,
   type EvidenceArtifactRef,
   type EvidenceSignal,
+  extractChildToolTrace,
   renderChangeSetBody,
 } from "./completion-evidence.js";
 import {
@@ -324,6 +334,8 @@ const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
 /** Cap on child trajectories ingested per task_complete (#13775) so a runaway
  *  sub-agent can't flood the task doc; the store's MAX_ARTIFACTS also clamps. */
 const MAX_CHILD_TRAJECTORY_ARTIFACTS = 20;
+/** Max JSON bytes read back from one child trajectory for verifier evidence. */
+const MAX_CHILD_TRAJECTORY_READ_BYTES = 4 * 1024 * 1024;
 
 /** Default retention window for per-task child-trajectory dirs under the state
  *  dir (#14109). A per-task `<stateDir>/orchestrator/child-trajectories/<taskId>`
@@ -421,6 +433,8 @@ export interface AttachSessionInput {
   agentType: string;
   workdir: string;
   status: string;
+  traceId?: string;
+  parentTrajectoryStepId?: string;
   metadata?: Record<string, unknown>;
   label?: string;
   originalTask?: string;
@@ -2022,6 +2036,28 @@ export class OrchestratorTaskService extends Service {
   }
 
   /**
+   * Prepare trajectory correlation for a top-level fire-and-forget spawn that
+   * does not have a durable task id until after `spawnSession` returns. The
+   * unique pending directory stays under the same managed root as normal task
+   * trajectories; its path is persisted in session metadata so
+   * {@link ingestChildTrajectories} can find it after the durable task is
+   * attached. This closes the parent-action gap where the broad parent
+   * ELIZA_TRAJECTORY_DIR leaked into the child and the verifier saw no tools.
+   */
+  prepareDetachedChildTrace(): {
+    env: Record<string, string>;
+    metadata: Record<string, string>;
+  } {
+    const pendingId = `pending-${randomUUID()}`;
+    const env = this.buildChildTraceEnv(pendingId);
+    const directory = env.ELIZA_TRAJECTORY_DIR;
+    return {
+      env,
+      metadata: directory ? { orchestratorChildTrajectoryDir: directory } : {},
+    };
+  }
+
+  /**
    * Bounded retention for the child-trajectory state dir (#14109). A per-task
    * `<stateDir>/orchestrator/child-trajectories/<taskId>` dir is written by a
    * sub-agent's recorder and attached by reference on task_complete — the files
@@ -2201,20 +2237,43 @@ export class OrchestratorTaskService extends Service {
     taskId: string,
     sessionId: string,
   ): Promise<string[]> {
-    const dir = this.childTrajectoryDir(taskId);
-    let files: string[];
-    try {
-      // Recursive string listing (the recorder nests trajectories under an
-      // <agentId>/ subdir); resolve each to an absolute path.
-      const relPaths = await readdir(dir, { recursive: true });
-      files = relPaths
-        .filter((p) => p.endsWith(".json"))
-        .map((p) => join(dir, p));
-    } catch (err) {
-      // error-policy:J4 a missing child-trajectory dir is the designed empty
-      // result (non-eliza backend or gate off); only ENOENT degrades silently.
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw err;
+    const session = (await this.store.findSession(sessionId, taskId))?.session;
+    const root = resolve(this.childTrajectoriesRoot());
+    const dirs = [this.childTrajectoryDir(taskId)];
+    const detachedDir = str(session?.metadata?.orchestratorChildTrajectoryDir);
+    if (detachedDir) {
+      const candidate = resolve(detachedDir);
+      const rel = relative(root, candidate);
+      // Only accept the direct child directory minted by
+      // prepareDetachedChildTrace. Session metadata is durable input; never
+      // turn an arbitrary path there into a recursive filesystem read.
+      if (
+        rel &&
+        rel !== ".." &&
+        !rel.startsWith(`..${sep}`) &&
+        !isAbsolute(rel) &&
+        !rel.includes(sep)
+      ) {
+        dirs.push(candidate);
+      }
+    }
+
+    const files: string[] = [];
+    for (const dir of [...new Set(dirs)]) {
+      try {
+        // Recursive string listing (the recorder nests trajectories under an
+        // <agentId>/ subdir); resolve each to an absolute path.
+        const relPaths = await readdir(dir, { recursive: true });
+        files.push(
+          ...relPaths
+            .filter((p) => p.endsWith(".json"))
+            .map((p) => join(dir, p)),
+        );
+      } catch (err) {
+        // error-policy:J4 a missing child-trajectory dir is the designed empty
+        // result (non-eliza backend or gate off); other read failures surface.
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
     }
     if (files.length === 0) return [];
 
@@ -2249,7 +2308,6 @@ export class OrchestratorTaskService extends Service {
     withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs);
     const capped = withMtime.slice(0, MAX_CHILD_TRAJECTORY_ARTIFACTS);
 
-    const session = (await this.store.findSession(sessionId, taskId))?.session;
     const ingested: string[] = [];
     for (const { path } of capped) {
       // The recorder names files `<trajectoryId>.json`.
@@ -2435,6 +2493,8 @@ export class OrchestratorTaskService extends Service {
       .map((message) => message.content.trim())
       .filter((content) => content.length > 0);
 
+    const childToolTrace = await this.collectChildToolTrace(doc, sessionId);
+
     // Only worker-originated text may become command evidence. The task event
     // log also contains verifier verdicts and corrective prompts; mining those
     // would feed a prior failed verdict back into the next attempt as if it were
@@ -2447,6 +2507,16 @@ export class OrchestratorTaskService extends Service {
         text,
         source: "sub_agent",
       })),
+      ...childToolTrace.flatMap((entry) =>
+        entry.output
+          ? [
+              {
+                text: entry.output,
+                source: `child_${entry.tool.toLowerCase()}`,
+              },
+            ]
+          : [],
+      ),
     ];
     const toolOutput = classifyToolOutput(toolSignals);
 
@@ -2538,6 +2608,7 @@ export class OrchestratorTaskService extends Service {
       summary,
       diffSummary,
       toolOutput,
+      ...(childToolTrace.length > 0 ? { childToolTrace } : {}),
       verifiedUrls,
       mentionedUrls,
       ...(ledgerVerdict.ledgerObserved
@@ -2746,6 +2817,55 @@ export class OrchestratorTaskService extends Service {
       }
     }
     return refs;
+  }
+
+  /**
+   * Read the task's own ingested child-trajectory artifacts and extract their
+   * exact tool sequence for the verifier. Reads are restricted to the managed
+   * child-trajectory root, size-capped, JSON-only, and fail soft: a malformed
+   * or concurrently disappearing trace must never break task completion.
+   */
+  private async collectChildToolTrace(
+    doc: OrchestratorTaskDocument,
+    sessionId: string,
+  ): Promise<ChildToolTraceEntry[]> {
+    const root = resolve(this.childTrajectoriesRoot());
+    const paths = doc.artifacts
+      .filter(
+        (artifact) =>
+          artifact.artifactType === "trajectory" &&
+          artifact.sessionId === sessionId &&
+          typeof artifact.path === "string",
+      )
+      .map((artifact) => artifact.path as string);
+    const entries: ChildToolTraceEntry[] = [];
+    for (const path of [...new Set(paths)]) {
+      const candidate = resolve(path);
+      const rel = relative(root, candidate);
+      if (
+        !rel ||
+        rel === ".." ||
+        rel.startsWith(`..${sep}`) ||
+        isAbsolute(rel)
+      ) {
+        continue;
+      }
+      try {
+        const info = await stat(candidate);
+        if (!info.isFile() || info.size > MAX_CHILD_TRAJECTORY_READ_BYTES) {
+          continue;
+        }
+        const trajectory = JSON.parse(await readFile(candidate, "utf8"));
+        for (const entry of extractChildToolTrace(trajectory)) {
+          entries.push({ ...entry, ordinal: entries.length + 1 });
+          if (entries.length >= 40) return entries;
+        }
+      } catch {
+        // error-policy:J4 trajectory evidence is optional enrichment; the
+        // existing final reply/tool-event evidence remains available.
+      }
+    }
+    return entries;
   }
 
   /**
@@ -5633,6 +5753,10 @@ export class OrchestratorTaskService extends Service {
       cacheTokens: 0,
       costUsd: 0,
       usageState: "unavailable",
+      ...(input.traceId ? { traceId: input.traceId } : {}),
+      ...(input.parentTrajectoryStepId
+        ? { parentTrajectoryStepId: input.parentTrajectoryStepId }
+        : {}),
       metadata: {
         ...(input.metadata ?? {}),
         ...(input.durableRun
