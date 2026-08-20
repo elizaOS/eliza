@@ -1877,8 +1877,10 @@ export class OrchestratorTaskService extends Service {
         // bare event summary. Fire-and-forget so the event-bridge write path
         // stays fast; the verifier gates itself on the flag + criteria presence,
         // and evidence assembly never throws into this path.
-        const { evidence: completionEvidence, bundle: completionBundle } =
-          await this.buildCompletionEvidence(taskId, sessionId, summary ?? "");
+        // Evidence is assembled AFTER the submit settles (below): built here
+        // it froze a pre-push snapshot, and verify attempt 1 judged "no PR,
+        // no diff" against a task whose PR opened seconds later (live
+        // 2026-08-20, SUPPORT.md run).
         // Thread the RAW final message (record.response) through alongside the
         // reworded evidence bundle: the #8895 CompletionEnvelope lives verbatim in
         // the sub-agent's last message, not in the prose evidence, so the structural
@@ -1916,8 +1918,10 @@ export class OrchestratorTaskService extends Service {
             ),
           ),
         ).catch(() => undefined);
-        void submitSettled.then(() =>
-          runWithTrajectoryContext(detachedContext, () =>
+        void submitSettled.then(async () => {
+          const { evidence: completionEvidence, bundle: completionBundle } =
+            await this.buildCompletionEvidence(taskId, sessionId, summary ?? "");
+          return runWithTrajectoryContext(detachedContext, () =>
             withStandaloneTrajectory(
               this.runtime,
               {
@@ -1933,8 +1937,8 @@ export class OrchestratorTaskService extends Service {
                   completionBundle,
                 ),
             ),
-          ),
-        );
+          );
+        });
         // Terminalize the durable Smithers link. The original run path never
         // wrote state:"completed" (only the boot-recovery path did), so every
         // normally-completed task carried a pending/running link forever and
@@ -3496,7 +3500,23 @@ export class OrchestratorTaskService extends Service {
       const workspaceService = getCodingWorkspaceService(this.runtime);
       if (!workspaceService) return;
       const workspace = workspaceService.getWorkspace(workspaceId);
-      if (!workspace) return;
+      if (!workspace) {
+        if (alreadySubmitted) {
+          await this.store
+            .addEvent({
+              id: randomUUID(),
+              taskId,
+              sessionId,
+              eventType: "corrective_push_failed",
+              summary: `Corrective-lap push skipped: workspace ${workspaceId} is no longer registered.`,
+              data: {},
+              timestamp: Date.now(),
+              createdAt: nowIso(),
+            })
+            .catch(() => undefined);
+        }
+        return;
+      }
       if (alreadySubmitted) {
         // Sync leg for corrective laps: each verify-failed round makes the
         // child commit more work, but the full submit is claim-once — the
@@ -3521,18 +3541,36 @@ export class OrchestratorTaskService extends Service {
           );
           if (unpushed) {
             await syncGit(["push"]);
-            this.log("info", "pushed corrective-lap commits to the PR branch", {
+            await this.store.addEvent({
+              id: randomUUID(),
               taskId,
               sessionId,
+              eventType: "corrective_push",
+              summary: "Pushed corrective-lap commits to the PR branch.",
+              data: {},
+              timestamp: Date.now(),
+              createdAt: nowIso(),
             });
           }
         } catch (err) {
           // error-policy:J6 best-effort sync; the residuals gate reports the
-          // still-unpushed truth and the corrective loop continues.
-          this.log("warn", "corrective-lap push failed", {
-            taskId,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          // still-unpushed truth and the corrective loop continues. Recorded
+          // as a task event because plugin logs are not surfaced on this
+          // deployment — a silent bail here cost three debugging laps.
+          await this.store
+            .addEvent({
+              id: randomUUID(),
+              taskId,
+              sessionId,
+              eventType: "corrective_push_failed",
+              summary: `Corrective-lap push failed: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+              data: {},
+              timestamp: Date.now(),
+              createdAt: nowIso(),
+            })
+            .catch(() => undefined);
         }
         return;
       }
