@@ -22,6 +22,7 @@ type FakeRuntimeOptions = {
 	entities?: Record<string, Entity>;
 	relationships?: Relationship[];
 	ownerBindingEvaluation?: OwnerBindingEvaluation;
+	canonicalPrincipalId?: UUID;
 };
 
 function makeRuntime(options: FakeRuntimeOptions = {}): IAgentRuntime {
@@ -35,6 +36,17 @@ function makeRuntime(options: FakeRuntimeOptions = {}): IAgentRuntime {
 		getService: () =>
 			options.ownerBindingEvaluation
 				? {
+						resolveCanonicalPrincipal: async () => ({
+							agentId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" as UUID,
+							requestedPrincipalId: SENDER_ID as UUID,
+							canonicalPrincipalId:
+								options.canonicalPrincipalId ??
+								(options.ownerBindingEvaluation?.decision === "bound"
+									? options.ownerBindingEvaluation.actorCanonicalPrincipalId
+									: (SENDER_ID as UUID)),
+							redirectIds: [],
+							generation: 1,
+						}),
 						evaluateOwnerBinding: async () => options.ownerBindingEvaluation,
 					}
 				: null,
@@ -121,6 +133,23 @@ describe("resolveEntityRole — connector identity binding (owner pairing)", () 
 		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("GUEST");
 	});
 
+	it("rejects a bound result for a different canonical actor", async () => {
+		const runtime = makeRuntime({
+			settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
+			canonicalPrincipalId: SENDER_ID as UUID,
+			ownerBindingEvaluation: {
+				decision: "bound",
+				actorCanonicalPrincipalId: OWNER_ID as UUID,
+				ownerPrincipalId: OWNER_ID as UUID,
+				claimId: "dddddddd-dddd-dddd-dddd-dddddddddddd" as UUID,
+				ownerBindingId: "binding-1",
+				generation: 1,
+				reason: "verified_owner_binding",
+			},
+		});
+		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("GUEST");
+	});
+
 	it("grants OWNER when the sender entity's stable platform id matches the owner entity's", async () => {
 		// This is exactly the state the OWNER_BIND_VERIFY pairing flow writes:
 		// the verified snowflake recorded on the owner entity's metadata.
@@ -174,12 +203,12 @@ describe("resolveEntityRole — confirmed identity links (merge engine)", () => 
 		} as Relationship;
 	}
 
-	it("a confirmed identity link to the owner does not confer authority", async () => {
+	it("preserves confirmed-link authority until the canonical service is installed", async () => {
 		const runtime = makeRuntime({
 			settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
 			relationships: [identityLink("confirmed")],
 		});
-		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("GUEST");
+		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("OWNER");
 	});
 
 	it("an unconfirmed identity link grants nothing", async () => {

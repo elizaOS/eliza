@@ -313,7 +313,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
           eq(identityClaimTable.connectorId, scope.connectorId),
           eq(identityClaimTable.connectorAccountId, scope.connectorAccountId),
           eq(identityClaimTable.externalSubjectId, scope.externalSubjectId),
-          inArray(identityClaimTable.status, ["active", "disputed"])
+          eq(identityClaimTable.status, "active")
         )
       )
       .limit(1);
@@ -555,16 +555,44 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
         (claim) => claim.verification === "owner_bound" && claim.ownerBindingId
       );
       const ownerBindings = new Set(ownerClaims.map((claim) => claim.ownerBindingId));
-      const conflictingClaims: IdentityClaimConflict[] =
-        ownerBindings.size > 1
-          ? [
-              {
-                claimIds: ownerClaims.map((claim) => claim.id as UUID),
-                reason: "owner_binding",
-                details: { ownerBindingIds: [...ownerBindings] },
-              },
-            ]
-          : [];
+      const conflictingClaims: IdentityClaimConflict[] = [];
+      if (ownerBindings.size > 1) {
+        conflictingClaims.push({
+          claimIds: ownerClaims.map((claim) => claim.id as UUID),
+          reason: "owner_binding",
+          details: { ownerBindingIds: [...ownerBindings] },
+        });
+      }
+      const claimsByScope = new Map<string, typeof claims>();
+      for (const claim of claims) {
+        const key = [
+          claim.namespace,
+          claim.connectorId,
+          claim.connectorAccountId,
+          claim.externalSubjectId,
+        ].join("\u0000");
+        const scoped = claimsByScope.get(key) ?? [];
+        scoped.push(claim);
+        claimsByScope.set(key, scoped);
+      }
+      for (const scoped of claimsByScope.values()) {
+        const principals = new Set(scoped.map((claim) => claim.principalEntityId));
+        if (principals.size > 1) {
+          conflictingClaims.push({
+            claimIds: scoped.map((claim) => claim.id as UUID),
+            reason: "scoped_subject",
+            details: { principalEntityIds: [...principals] },
+          });
+        }
+        const disputed = scoped.filter((claim) => claim.status === "disputed");
+        if (disputed.length > 0) {
+          conflictingClaims.push({
+            claimIds: disputed.map((claim) => claim.id as UUID),
+            reason: "verification",
+            details: { status: "disputed" },
+          });
+        }
+      }
       const now = new Date();
       const journalId = newId();
       const plan: IdentityMergePlan = {
@@ -591,36 +619,64 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
             principalId: claim.principalEntityId as UUID,
             resolution: "redirect_safe" as const,
           })),
+          ...PENDING_CONSUMERS.flatMap((consumer) =>
+            [...expanded].map((principalId) => ({
+              consumer,
+              referenceType: "principal_projection",
+              referenceId: principalId,
+              principalId,
+              resolution: "projection_repair_required" as const,
+            }))
+          ),
         ],
         conflictingClaims,
         createdAt: iso(now),
         expiresAt: iso(new Date(now.getTime() + PLAN_TTL_MS)),
       };
       const planDigest = digest("elizaos:identity:merge-plan:v1", plan);
-      await tx.insert(identityMergeJournalTable).values({
-        id: journalId,
-        agentId: request.agentId,
-        operation: "merge",
-        status: "planned",
-        actorPrincipalId: request.actorPrincipalId,
-        canonicalPrincipalId: canonical,
-        idempotencyKey: request.idempotencyKey,
-        requestDigest: request.requestDigest,
-        planDigest,
-        expiresAt: new Date(plan.expiresAt),
-        expectedGeneration: state.generation,
-        sourcePrincipalIds: [...expanded].sort(),
-        plan: toDbObject(plan),
-        beforeState: toDbObject({
-          generation: state.generation,
-          redirects: redirects
-            .filter((row) => clusterIds.includes(row.sourcePrincipalId as UUID))
-            .map(mapRedirect),
-          claims: claims.map(mapClaim),
-        }),
-        reason: request.reason,
-      });
-      return plan;
+      const inserted = await tx
+        .insert(identityMergeJournalTable)
+        .values({
+          id: journalId,
+          agentId: request.agentId,
+          operation: "merge",
+          status: "planned",
+          actorPrincipalId: request.actorPrincipalId,
+          canonicalPrincipalId: canonical,
+          idempotencyKey: request.idempotencyKey,
+          requestDigest: request.requestDigest,
+          planDigest,
+          expiresAt: new Date(plan.expiresAt),
+          expectedGeneration: state.generation,
+          sourcePrincipalIds: [...expanded].sort(),
+          plan: toDbObject(plan),
+          beforeState: toDbObject({
+            generation: state.generation,
+            redirects: redirects
+              .filter((row) => clusterIds.includes(row.sourcePrincipalId as UUID))
+              .map(mapRedirect),
+            claims: claims.map(mapClaim),
+          }),
+          reason: request.reason,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (inserted[0]) return plan;
+      const [winner] = await tx
+        .select()
+        .from(identityMergeJournalTable)
+        .where(
+          and(
+            eq(identityMergeJournalTable.agentId, request.agentId),
+            eq(identityMergeJournalTable.operation, "merge"),
+            eq(identityMergeJournalTable.idempotencyKey, request.idempotencyKey)
+          )
+        )
+        .limit(1);
+      if (!winner || winner.requestDigest !== request.requestDigest) {
+        fail("IDENTITY_IDEMPOTENCY_CONFLICT", "Proposal idempotency key was reused.");
+      }
+      return mapJournal(winner).plan;
     });
   }
 
@@ -700,17 +756,54 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
       }
       const id = newId();
       const expiresAt = new Date(now.getTime() + CONFIRMATION_TTL_MS);
-      await tx.insert(identityMergeConfirmationTable).values({
-        id,
-        agentId: request.agentId,
-        journalId: request.planId,
-        actorPrincipalId: request.actorPrincipalId,
-        planDigest,
-        expectedGeneration: request.expectedGeneration,
-        status: "active",
-        confirmedAt: now,
-        expiresAt,
-      });
+      const inserted = await tx
+        .insert(identityMergeConfirmationTable)
+        .values({
+          id,
+          agentId: request.agentId,
+          journalId: request.planId,
+          actorPrincipalId: request.actorPrincipalId,
+          planDigest,
+          expectedGeneration: request.expectedGeneration,
+          status: "active",
+          confirmedAt: now,
+          expiresAt,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (!inserted[0]) {
+        const [winner] = await tx
+          .select()
+          .from(identityMergeConfirmationTable)
+          .where(
+            and(
+              eq(identityMergeConfirmationTable.agentId, request.agentId),
+              eq(identityMergeConfirmationTable.journalId, request.planId),
+              eq(identityMergeConfirmationTable.status, "active")
+            )
+          )
+          .limit(1);
+        if (
+          !winner ||
+          winner.actorPrincipalId !== request.actorPrincipalId ||
+          winner.expectedGeneration !== request.expectedGeneration ||
+          winner.planDigest !== planDigest
+        ) {
+          fail("IDENTITY_CONFIRMATION_CONFLICT", "Active confirmation does not match.");
+        }
+        return {
+          id: winner.id as UUID,
+          agentId: request.agentId,
+          planId: request.planId,
+          expectedGeneration: winner.expectedGeneration,
+          actorPrincipalId: winner.actorPrincipalId as UUID,
+          planDigest: winner.planDigest,
+          status: "active",
+          confirmedAt: iso(winner.confirmedAt),
+          expiresAt: iso(winner.expiresAt),
+          consumedAt: null,
+        };
+      }
       return {
         id,
         agentId: request.agentId,
@@ -992,27 +1085,48 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
         expiresAt: iso(expiresAt),
       };
       const planDigest = digest("elizaos:identity:merge-plan:v1", plan);
-      await tx.insert(identityMergeJournalTable).values({
-        id: journalId,
-        agentId: request.agentId,
-        operation: "split",
-        status: "planned",
-        parentJournalId: request.parentJournalId,
-        actorPrincipalId: request.actorPrincipalId,
-        canonicalPrincipalId: parent.canonicalPrincipalId,
-        idempotencyKey: request.idempotencyKey,
-        requestDigest: request.requestDigest,
-        planDigest,
-        expiresAt,
-        expectedGeneration: request.expectedGeneration,
-        sourcePrincipalIds: principalIds,
-        plan: toDbObject(plan),
-        beforeState: toDbObject({
-          generation: request.expectedGeneration,
-          redirects: active.map(mapRedirect),
-        }),
-        reason: request.reason,
-      });
+      const inserted = await tx
+        .insert(identityMergeJournalTable)
+        .values({
+          id: journalId,
+          agentId: request.agentId,
+          operation: "split",
+          status: "planned",
+          parentJournalId: request.parentJournalId,
+          actorPrincipalId: request.actorPrincipalId,
+          canonicalPrincipalId: parent.canonicalPrincipalId,
+          idempotencyKey: request.idempotencyKey,
+          requestDigest: request.requestDigest,
+          planDigest,
+          expiresAt,
+          expectedGeneration: request.expectedGeneration,
+          sourcePrincipalIds: principalIds,
+          plan: toDbObject(plan),
+          beforeState: toDbObject({
+            generation: request.expectedGeneration,
+            redirects: active.map(mapRedirect),
+          }),
+          reason: request.reason,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (!inserted[0]) {
+        const [winner] = await tx
+          .select()
+          .from(identityMergeJournalTable)
+          .where(
+            and(
+              eq(identityMergeJournalTable.agentId, request.agentId),
+              eq(identityMergeJournalTable.operation, "split"),
+              eq(identityMergeJournalTable.idempotencyKey, request.idempotencyKey)
+            )
+          )
+          .limit(1);
+        if (!winner || winner.requestDigest !== request.requestDigest) {
+          fail("IDENTITY_IDEMPOTENCY_CONFLICT", "Split key was reused.");
+        }
+        return mapJournal(winner);
+      }
       const bumped = await tx
         .update(identityAuthorityStateTable)
         .set({ generation: sql`${identityAuthorityStateTable.generation} + 1`, updatedAt: now })
