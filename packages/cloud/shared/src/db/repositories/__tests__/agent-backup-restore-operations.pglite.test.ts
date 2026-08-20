@@ -7,7 +7,17 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
-import { AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1 } from "@elizaos/shared";
+import {
+  AGENT_BACKUP_MANIFEST_FORMAT,
+  AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
+  type AgentBackupManifestV3Draft,
+  canonicalizeAgentBackupManifestV3,
+  createAgentBackupManifestV3,
+} from "@elizaos/shared";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -30,6 +40,7 @@ import {
   AGENT_VAULT_KEY_KMS_CONTEXT_DERIVATION,
   agentVaultKeyGenerations,
 } from "../../schemas/agent-vault-key-authority";
+import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
@@ -40,6 +51,7 @@ import {
   failAgentBackupRestoreOperation,
   heartbeatAgentBackupRestoreOperation,
   openAgentBackupRestoreOperation,
+  reserveAgentBackupRestoreTarget,
 } from "../agent-backup-restore-operations";
 
 const TIMEOUT = 60_000;
@@ -58,7 +70,107 @@ const KEY_BUNDLE = Buffer.alloc(AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappedByte
   "base64",
 );
 const VAULT_GENERATION = "00000000-0000-4000-8000-00000000f009";
+const TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f010";
+const TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f011";
+const OTHER_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f012";
+const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f013";
 let schemaFailure = "";
+let manifestFixture: Readonly<{ canonicalDraft: string; digest: string }>;
+
+async function buildManifestFixture(): Promise<typeof manifestFixture> {
+  const emptyComponent = (name: "character" | "database" | "media" | "state-files" | "vault") => ({
+    name,
+    format: "raw-v1",
+    compression: "none" as const,
+    payloadContentHmacSha256: SHA,
+    state: { kind: "full" as const, resultContentHmacSha256: SHA },
+    totals: { plainBytes: 0, compressedBytes: 0, encryptedBytes: 0, chunkCount: 0 },
+    chunks: [],
+  });
+  const draft: AgentBackupManifestV3Draft = {
+    format: AGENT_BACKUP_MANIFEST_FORMAT,
+    schemaVersion: 3,
+    operationId: OPERATION_ID,
+    createdAt: "2026-08-20T00:00:00.000Z",
+    identity: {
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      activationGeneration: ACTIVATION_GENERATION,
+      lifecycleRevision: "7",
+    },
+    source: {
+      kind: "robot",
+      provider: "hetzner",
+      nodeRecordId: "00000000-0000-4000-8000-00000000f00a",
+      nodeIncarnation: "00000000-0000-4000-8000-00000000f00b",
+      nodeId: "restore-source-node",
+      containerId: "c".repeat(64),
+    },
+    runtime: {
+      imageDigest: `sha256:${SHA}`,
+      agentSchemaVersion: "2.0.0",
+      databaseSchemaVersion: "1",
+      plugins: [],
+    },
+    chain: { kind: "full", baseOperationId: null, parentOperationId: null, depth: 0 },
+    components: [
+      emptyComponent("character"),
+      emptyComponent("database"),
+      emptyComponent("media"),
+      emptyComponent("state-files"),
+      emptyComponent("vault"),
+    ],
+    watermarks: [{ namespace: "database.lsn", value: "0/1" }],
+    totals: { plainBytes: 0, compressedBytes: 0, encryptedBytes: 0, chunkCount: 0 },
+    vaultKeyAuthority: {
+      format: AGENT_VAULT_KEY_AUTHORITY_FORMAT,
+      generationId: VAULT_GENERATION,
+      receiptDerivation: AGENT_VAULT_KEY_AUTHORITY_RECEIPT_DERIVATION,
+      receiptDigest: RECEIPT_SHA,
+    },
+    encryption: {
+      algorithm: "AES-256-GCM",
+      chunkEnvelope: "aes-256-gcm-v1",
+      nonceBytes: 12,
+      tagBytes: 16,
+      noncePlacement: "prefix",
+      tagPlacement: "suffix",
+      aad: { version: 1, derivation: "elizaos.agent-backup.chunk-aad.v1" },
+      kms: { provider: "steward", keyId: `org:${ORG_ID}/dek/v1`, keyVersion: 1 },
+      operationKeyBundle: {
+        format: AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+        generationId: "00000000-0000-4000-8000-00000000f00c",
+        plaintextBytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.plaintextBytes,
+        dek: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.dek,
+        contentHmac: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.contentHmac,
+        wrapped: {
+          ref: `backup-key-bundle:${OPERATION_ID}`,
+          bytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappedBytes,
+          sha256: SHA,
+          localReceiptDerivation: AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
+          localReceiptDigest: SHA,
+          contextDerivation: AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
+        },
+      },
+    },
+    integrity: {
+      framedContentHmacSha256: SHA,
+      contentAddressing: {
+        algorithm: "HMAC-SHA-256",
+        scope: "operation",
+        derivation: AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION,
+        keyBundleFormat: AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+        keyOffsetBytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.contentHmac.offsetBytes,
+        keyBytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.contentHmac.bytes,
+      },
+    },
+  };
+  const manifest = await createAgentBackupManifestV3(draft);
+  return Object.freeze({
+    canonicalDraft: canonicalizeAgentBackupManifestV3(draft),
+    digest: manifest.integrity.manifestSha256,
+  });
+}
 
 function authorityReceipt(): AgentBackupRestoreLeaseAuthorityReceipt {
   return {
@@ -68,7 +180,7 @@ function authorityReceipt(): AgentBackupRestoreLeaseAuthorityReceipt {
     operationId: OPERATION_ID,
     sourceActivationGeneration: ACTIVATION_GENERATION,
     sourceLifecycleRevision: "7",
-    expectedManifestSha256: SHA,
+    expectedManifestSha256: manifestFixture.digest,
     restoreAttemptId: ATTEMPT_ID,
     leaseId: LEASE_ID,
     ownerId: "restore-worker",
@@ -89,7 +201,7 @@ async function seedLease(expiresInMs = 600_000): Promise<void> {
     operation_id: OPERATION_ID,
     activation_generation: ACTIVATION_GENERATION,
     lifecycle_revision: 7n,
-    expected_manifest_sha256: SHA,
+    expected_manifest_sha256: manifestFixture.digest,
     copy_role: "primary",
     restore_attempt_id: ATTEMPT_ID,
     owner_id: "restore-worker",
@@ -97,6 +209,54 @@ async function seedLease(expiresInMs = 600_000): Promise<void> {
     catalog_epoch: 3n,
     expires_at: new Date(Date.now() + expiresInMs),
   });
+}
+
+async function seedTargetNode(
+  input: {
+    id?: string;
+    nodeId?: string;
+    incarnation?: string | null;
+    capacity?: number;
+    allocatedCount?: number;
+    enabled?: boolean;
+    status?: "healthy" | "degraded" | "offline" | "unknown";
+    placementState?: "open" | "cordoned" | "evacuating" | "drained";
+    capacityProvisional?: boolean;
+  } = {},
+): Promise<void> {
+  await dbWrite.insert(dockerNodes).values({
+    id: input.id ?? TARGET_NODE_RECORD_ID,
+    node_id: input.nodeId ?? "restore-target-a",
+    hostname: "restore-target.invalid",
+    capacity: input.capacity ?? 2,
+    allocated_count: input.allocatedCount ?? 0,
+    enabled: input.enabled ?? true,
+    status: input.status ?? "healthy",
+    placement_state: input.placementState ?? "open",
+    host_key_fingerprint: "SHA256:test-only-host-key",
+    fleet_kind: "robot",
+    infrastructure_provider: "hetzner",
+    provider_server_id: null,
+    node_incarnation: input.incarnation === undefined ? TARGET_NODE_INCARNATION : input.incarnation,
+    metadata: input.capacityProvisional ? { capacityProvisional: true } : {},
+  });
+}
+
+async function openAndClaim(): Promise<{
+  operationId: string;
+  claimGeneration: string;
+}> {
+  await seedLease();
+  const { operation } = await openAgentBackupRestoreOperation({
+    authority: authorityReceipt(),
+    leaseId: LEASE_ID,
+  });
+  const claim = await claimAgentBackupRestoreOperation({
+    operationId: operation.id,
+    ownerId: "restore-worker",
+    claimMs: 60_000,
+  });
+  return { operationId: operation.id, claimGeneration: claim.claimGeneration };
 }
 
 /** Walks the machine one adjacent step at a time, re-claiming per phase. */
@@ -111,12 +271,27 @@ async function walkTo(operationId: string, target: AgentBackupRestorePhase): Pro
     "probed",
     "published",
   ];
+  await seedTargetNode();
+  let claim = await claimAgentBackupRestoreOperation({
+    operationId,
+    ownerId: "restore-worker",
+    claimMs: 60_000,
+  });
+  await reserveAgentBackupRestoreTarget({
+    operationId,
+    ownerId: "restore-worker",
+    claimGeneration: claim.claimGeneration,
+    targetNodeRecordId: TARGET_NODE_RECORD_ID,
+    targetNodeIncarnation: TARGET_NODE_INCARNATION,
+  });
   for (let index = 0; order[index] !== target; index += 1) {
-    const claim = await claimAgentBackupRestoreOperation({
-      operationId,
-      ownerId: "restore-worker",
-      claimMs: 60_000,
-    });
+    if (index > 0) {
+      claim = await claimAgentBackupRestoreOperation({
+        operationId,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+    }
     await advanceAgentBackupRestoreOperation({
       operationId,
       ownerId: "restore-worker",
@@ -129,6 +304,7 @@ async function walkTo(operationId: string, target: AgentBackupRestorePhase): Pro
 
 beforeAll(async () => {
   try {
+    manifestFixture = await buildManifestFixture();
     const { apply } = await pushSchema(
       {
         organizations,
@@ -140,6 +316,7 @@ beforeAll(async () => {
         agentBackupRestoreLeases,
         agentBackupRestoreOperations,
         agentVaultKeyGenerations,
+        dockerNodes,
       } as never,
       dbWrite as never,
     );
@@ -153,6 +330,7 @@ beforeEach(async () => {
   expect(schemaFailure).toBe("");
   await dbWrite.delete(agentBackupRestoreOperations);
   await dbWrite.delete(agentBackupRestoreLeases);
+  await dbWrite.delete(dockerNodes);
   await dbWrite.delete(agentSandboxBackups);
   await dbWrite.delete(agentVaultKeyGenerations);
   await dbWrite.delete(agentBackupCatalogAuthorities);
@@ -211,8 +389,8 @@ beforeEach(async () => {
     retention_until: new Date("2026-12-01T00:00:00.000Z"),
     manifest_format: "elizaos.agent-backup",
     manifest_version: 3,
-    manifest_digest: SHA,
-    manifest_canonical_draft: "{}",
+    manifest_digest: manifestFixture.digest,
+    manifest_canonical_draft: manifestFixture.canonicalDraft,
     manifest_object_count: 1,
     object_inventory_digest: SHA,
     image_digest: `sha256:${SHA}`,
@@ -245,6 +423,233 @@ afterAll(async () => {
 });
 
 describe("restore operation spine", () => {
+  test(
+    "reserves exact existing capacity and replays without consuming a second slot",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const request = {
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      } as const;
+      const results = await Promise.all([
+        reserveAgentBackupRestoreTarget(request),
+        reserveAgentBackupRestoreTarget(request),
+      ]);
+      const reserved = results.find((result) => !result.replayed);
+      const replay = results.find((result) => result.replayed);
+      expect(reserved).toBeDefined();
+      expect(replay).toBeDefined();
+      expect(reserved.target).toEqual({
+        nodeRecordId: TARGET_NODE_RECORD_ID,
+        nodeId: "restore-target-a",
+        nodeIncarnation: TARGET_NODE_INCARNATION,
+        imageDigest: `sha256:${SHA}`,
+      });
+      expect(reserved.operation.expected_node_record_id).toBe(TARGET_NODE_RECORD_ID);
+      expect(reserved.operation.expected_node_incarnation).toBe(TARGET_NODE_INCARNATION);
+      expect(reserved.operation.expected_image_digest).toBe(`sha256:${SHA}`);
+      const [node] = await dbWrite.select().from(dockerNodes);
+      expect(node?.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "rejects expired lease, stale claim, and wrong incarnation before reserving capacity",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const request = {
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      } as const;
+
+      await expect(
+        reserveAgentBackupRestoreTarget({ ...request, claimGeneration: FENCE }),
+      ).rejects.toThrow("claim is not live");
+      await expect(
+        reserveAgentBackupRestoreTarget({
+          ...request,
+          targetNodeIncarnation: OTHER_NODE_INCARNATION,
+        }),
+      ).rejects.toThrow("node incarnation changed");
+      await dbWrite
+        .update(agentBackupRestoreLeases)
+        .set({ expires_at: new Date(Date.now() - 1_000) })
+        .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+      await expect(reserveAgentBackupRestoreTarget(request)).rejects.toThrow(
+        "lease is expired or released",
+      );
+
+      const [node] = await dbWrite.select().from(dockerNodes);
+      const [operation] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(node?.allocated_count).toBe(0);
+      expect(operation?.expected_node_record_id).toBeNull();
+      expect(operation?.expected_node_incarnation).toBeNull();
+      expect(operation?.expected_image_digest).toBeNull();
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses saturated or provisional capacity without autoscale or target reselection",
+    async () => {
+      await seedTargetNode({ capacity: 1, allocatedCount: 1 });
+      await seedTargetNode({
+        id: OTHER_NODE_RECORD_ID,
+        nodeId: "restore-target-b",
+        incarnation: OTHER_NODE_INCARNATION,
+        capacity: 8,
+      });
+      const authority = await openAndClaim();
+      await expect(
+        reserveAgentBackupRestoreTarget({
+          ...authority,
+          ownerId: "restore-worker",
+          targetNodeRecordId: TARGET_NODE_RECORD_ID,
+          targetNodeIncarnation: TARGET_NODE_INCARNATION,
+        }),
+      ).rejects.toThrow("no existing capacity");
+
+      for (const ineligible of [
+        { enabled: false },
+        { enabled: true, status: "degraded" as const },
+        { status: "healthy" as const, placement_state: "cordoned" as const },
+        { placement_state: "open" as const, metadata: { capacityProvisional: true } },
+      ]) {
+        await dbWrite
+          .update(dockerNodes)
+          .set({
+            allocated_count: 0,
+            enabled: true,
+            status: "healthy",
+            placement_state: "open",
+            metadata: {},
+            ...ineligible,
+          })
+          .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+        await expect(
+          reserveAgentBackupRestoreTarget({
+            ...authority,
+            ownerId: "restore-worker",
+            targetNodeRecordId: TARGET_NODE_RECORD_ID,
+            targetNodeIncarnation: TARGET_NODE_INCARNATION,
+          }),
+        ).rejects.toThrow("not an enabled, healthy, open existing node");
+      }
+
+      const nodes = await dbWrite.select().from(dockerNodes);
+      expect(nodes).toHaveLength(2);
+      expect(nodes.find((node) => node.id === OTHER_NODE_RECORD_ID)?.allocated_count).toBe(0);
+      const [operation] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(operation?.expected_node_record_id).toBeNull();
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "makes divergent replay and node-incarnation ABA conflicts without reselection",
+    async () => {
+      await seedTargetNode();
+      await seedTargetNode({
+        id: OTHER_NODE_RECORD_ID,
+        nodeId: "restore-target-b",
+        incarnation: OTHER_NODE_INCARNATION,
+      });
+      const authority = await openAndClaim();
+      const first = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      expect(first.replayed).toBe(false);
+
+      await expect(
+        reserveAgentBackupRestoreTarget({
+          ...authority,
+          ownerId: "restore-worker",
+          targetNodeRecordId: OTHER_NODE_RECORD_ID,
+          targetNodeIncarnation: OTHER_NODE_INCARNATION,
+        }),
+      ).rejects.toThrow("replay authority mismatch");
+      await dbWrite
+        .update(dockerNodes)
+        .set({ node_incarnation: "00000000-0000-4000-8000-00000000f014" })
+        .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+      await expect(
+        reserveAgentBackupRestoreTarget({
+          ...authority,
+          ownerId: "restore-worker",
+          targetNodeRecordId: TARGET_NODE_RECORD_ID,
+          targetNodeIncarnation: TARGET_NODE_INCARNATION,
+        }),
+      ).rejects.toThrow("node incarnation changed");
+
+      const nodes = await dbWrite.select().from(dockerNodes);
+      expect(nodes.find((node) => node.id === TARGET_NODE_RECORD_ID)?.allocated_count).toBe(1);
+      expect(nodes.find((node) => node.id === OTHER_NODE_RECORD_ID)?.allocated_count).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "rejects a target after catalogue invalidation without consuming capacity",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      await dbWrite
+        .update(agentBackupCatalogAuthorities)
+        .set({ catalog_revision: 4n })
+        .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+
+      await expect(
+        reserveAgentBackupRestoreTarget({
+          ...authority,
+          ownerId: "restore-worker",
+          targetNodeRecordId: TARGET_NODE_RECORD_ID,
+          targetNodeIncarnation: TARGET_NODE_INCARNATION,
+        }),
+      ).rejects.toThrow("invalidated by a catalogue revision");
+      const [node] = await dbWrite.select().from(dockerNodes);
+      const [operation] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(node?.allocated_count).toBe(0);
+      expect(operation?.expected_node_record_id).toBeNull();
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "rejects a catalogue image that differs from the canonical manifest",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      await dbWrite
+        .update(agentSandboxBackups)
+        .set({ image_digest: `sha256:${"e".repeat(64)}` })
+        .where(eq(agentSandboxBackups.id, BACKUP_ID));
+
+      await expect(
+        reserveAgentBackupRestoreTarget({
+          ...authority,
+          ownerId: "restore-worker",
+          targetNodeRecordId: TARGET_NODE_RECORD_ID,
+          targetNodeIncarnation: TARGET_NODE_INCARNATION,
+        }),
+      ).rejects.toThrow("differs from its exact manifest-v3 authority");
+      const [node] = await dbWrite.select().from(dockerNodes);
+      const [operation] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(node?.allocated_count).toBe(0);
+      expect(operation?.expected_image_digest).toBeNull();
+    },
+    TIMEOUT,
+  );
+
   test(
     "opens once under concurrent response-loss replay and DB-refuses divergent authority",
     async () => {
@@ -332,8 +737,9 @@ describe("restore operation spine", () => {
   );
 
   test(
-    "advances forward under a live claim and refuses a stale claim generation",
+    "refuses to leave reserved without target authority, then advances after exact reservation",
     async () => {
+      await seedTargetNode();
       await seedLease();
       const { operation } = await openAgentBackupRestoreOperation({
         authority: authorityReceipt(),
@@ -343,6 +749,29 @@ describe("restore operation spine", () => {
         operationId: operation.id,
         ownerId: "restore-worker",
         claimMs: 60_000,
+      });
+      await expect(
+        advanceAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimGeneration: claim.claimGeneration,
+          fromPhase: "reserved",
+          toPhase: "vault_seeded",
+        }),
+      ).rejects.toThrow("cannot leave target reservation");
+      const [stillReserved] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      expect(stillReserved?.phase).toBe("reserved");
+      expect(stillReserved?.expected_node_record_id).toBeNull();
+
+      await reserveAgentBackupRestoreTarget({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: claim.claimGeneration,
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
       });
       const advanced = await advanceAgentBackupRestoreOperation({
         operationId: operation.id,

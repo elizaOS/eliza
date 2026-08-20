@@ -11,7 +11,7 @@
  */
 
 import { Buffer } from "node:buffer";
-import { and, eq, notInArray } from "drizzle-orm";
+import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
 import { requireBoundedIdentity } from "../../lib/services/agent-backup-catalog-state";
 import { isValidUUID } from "../../lib/utils/validation";
 import { dbWrite } from "../helpers";
@@ -21,10 +21,14 @@ import {
   agentBackupRestoreLeases,
   agentBackupRestoreOperations,
 } from "../schemas/agent-backup-catalog";
+import { agentSandboxBackups } from "../schemas/agent-sandboxes";
+import { dockerNodes, PLACEABLE_NODE_STATE } from "../schemas/docker-nodes";
 import {
   AgentBackupCatalogConflictError,
   lockAgentBackupCatalogAuthority,
 } from "./agent-backup-catalog";
+import { parseAgentBackupManifestV3Authority } from "./agent-backup-restore";
+import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority";
 import type { AgentBackupRestoreLeaseAuthorityReceipt } from "./agent-backup-restore-lease";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
@@ -57,6 +61,19 @@ export interface AgentBackupRestoreOperationClaim {
   operation: Readonly<AgentBackupRestoreOperation>;
   claimGeneration: string;
   databaseNow: Date;
+}
+
+export interface AgentBackupRestoreTargetAuthority {
+  nodeRecordId: string;
+  nodeId: string;
+  nodeIncarnation: string;
+  imageDigest: string;
+}
+
+export interface ReserveAgentBackupRestoreTargetResult {
+  operation: Readonly<AgentBackupRestoreOperation>;
+  target: Readonly<AgentBackupRestoreTargetAuthority>;
+  replayed: boolean;
 }
 
 function requireOwnerId(value: string): string {
@@ -286,6 +303,290 @@ export async function claimAgentBackupRestoreOperation(params: {
 }
 
 /**
+ * Reserve one caller-selected, already-attested Docker target before any remote
+ * restore effect. This repository never discovers, autoscales, or reselects a
+ * node: the exact record/incarnation pair is the request authority.
+ *
+ * Capacity and the operation target commit in the same transaction. A lost
+ * response can therefore replay the exact tuple without consuming a second
+ * slot, while any different tuple is an explicit conflict.
+ *
+ * Definition-only integration guard: no production caller may use this until
+ * shared workload reconciliation counts restore ownership and its
+ * settlement/release path. The API-boundary test enforces that handoff.
+ */
+export async function reserveAgentBackupRestoreTarget(params: {
+  operationId: string;
+  ownerId: string;
+  claimGeneration: string;
+  targetNodeRecordId: string;
+  targetNodeIncarnation: string;
+}): Promise<ReserveAgentBackupRestoreTargetResult> {
+  const operationId = requireUuid(params.operationId, "operationId");
+  const claimGeneration = requireUuid(params.claimGeneration, "claimGeneration");
+  const targetNodeRecordId = requireUuid(params.targetNodeRecordId, "targetNodeRecordId");
+  const targetNodeIncarnation = requireUuid(params.targetNodeIncarnation, "targetNodeIncarnation");
+  requireOwnerId(params.ownerId);
+
+  // This first read supplies immutable keys for the global lock order. The row
+  // is locked and compared again below before any capacity or target write.
+  const [operationAuthority] = await dbWrite
+    .select()
+    .from(agentBackupRestoreOperations)
+    .where(eq(agentBackupRestoreOperations.id, operationId))
+    .limit(1);
+  if (!operationAuthority) {
+    throw new AgentBackupCatalogConflictError("Restore operation is missing");
+  }
+
+  return await dbWrite.transaction(async (tx) => {
+    // Global backup writers lock backup -> catalogue authority before lease.
+    // The operation lock comes before the lease here so an ordinary claimant
+    // (operation -> lease) can finish instead of forming an AB-BA cycle.
+    const [backup] = await tx
+      .select({
+        catalogState: agentSandboxBackups.catalog_state,
+        manifestVersion: agentSandboxBackups.manifest_version,
+        canonicalManifestDraft: agentSandboxBackups.manifest_canonical_draft,
+        imageDigest: agentSandboxBackups.image_digest,
+      })
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.id, operationAuthority.backup_id),
+          eq(agentSandboxBackups.catalog_organization_id, operationAuthority.organization_id),
+          eq(agentSandboxBackups.catalog_agent_id, operationAuthority.agent_id),
+          eq(agentSandboxBackups.backup_operation_id, operationAuthority.expected_operation_id),
+          eq(
+            agentSandboxBackups.lifecycle_generation,
+            operationAuthority.expected_activation_generation,
+          ),
+          eq(
+            agentSandboxBackups.lifecycle_revision,
+            operationAuthority.expected_lifecycle_revision,
+          ),
+          eq(agentSandboxBackups.manifest_digest, operationAuthority.expected_manifest_sha256),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !backup ||
+      !hasAgentBackupRestoreAuthority(backup.catalogState) ||
+      backup.manifestVersion !== 3 ||
+      !backup.canonicalManifestDraft ||
+      !backup.imageDigest
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore target source is absent, non-restorable, or lacks manifest-v3 authority",
+      );
+    }
+    const parsedManifest = await parseAgentBackupManifestV3Authority({
+      canonicalManifestDraft: backup.canonicalManifestDraft,
+      expectedManifestSha256: operationAuthority.expected_manifest_sha256,
+    });
+    const manifest = parsedManifest.manifest;
+    if (
+      manifest.operationId !== operationAuthority.expected_operation_id ||
+      manifest.identity.organizationId !== operationAuthority.organization_id ||
+      manifest.identity.agentId !== operationAuthority.agent_id ||
+      manifest.identity.activationGeneration !==
+        operationAuthority.expected_activation_generation ||
+      manifest.identity.lifecycleRevision !==
+        operationAuthority.expected_lifecycle_revision.toString() ||
+      manifest.runtime.imageDigest !== backup.imageDigest
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore target image differs from its exact manifest-v3 authority",
+      );
+    }
+
+    const catalogAuthority = await lockAgentBackupCatalogAuthority(
+      tx,
+      operationAuthority.organization_id,
+      operationAuthority.agent_id,
+    );
+    const [operation] = await tx
+      .select()
+      .from(agentBackupRestoreOperations)
+      .where(eq(agentBackupRestoreOperations.id, operationId))
+      .for("update")
+      .limit(1);
+    if (!operation) {
+      throw new AgentBackupCatalogConflictError("Restore operation is missing");
+    }
+    if (
+      operation.organization_id !== operationAuthority.organization_id ||
+      operation.agent_id !== operationAuthority.agent_id ||
+      operation.backup_id !== operationAuthority.backup_id ||
+      operation.restore_attempt_id !== operationAuthority.restore_attempt_id ||
+      operation.lease_id !== operationAuthority.lease_id ||
+      operation.lease_generation !== operationAuthority.lease_generation ||
+      operation.lease_owner_id !== operationAuthority.lease_owner_id ||
+      operation.catalog_epoch !== operationAuthority.catalog_epoch ||
+      operation.copy_role !== operationAuthority.copy_role ||
+      operation.expected_operation_id !== operationAuthority.expected_operation_id ||
+      operation.expected_manifest_sha256 !== operationAuthority.expected_manifest_sha256 ||
+      operation.expected_activation_generation !==
+        operationAuthority.expected_activation_generation ||
+      operation.expected_lifecycle_revision !== operationAuthority.expected_lifecycle_revision
+    ) {
+      throw new AgentBackupCatalogConflictError("Restore operation authority changed before lock");
+    }
+    if (catalogAuthority.catalog_revision !== operation.catalog_epoch) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore target authority was invalidated by a catalogue revision",
+      );
+    }
+    if (
+      operation.phase !== "reserved" &&
+      !(operation.phase === "failed_retryable" && operation.resume_phase === "reserved")
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        `Restore target cannot be reserved while operation is in ${operation.phase}`,
+      );
+    }
+
+    const [lease] = await tx
+      .select()
+      .from(agentBackupRestoreLeases)
+      .where(
+        and(
+          eq(agentBackupRestoreLeases.id, operation.lease_id),
+          eq(agentBackupRestoreLeases.organization_id, operation.organization_id),
+          eq(agentBackupRestoreLeases.agent_id, operation.agent_id),
+          eq(agentBackupRestoreLeases.backup_id, operation.backup_id),
+          eq(agentBackupRestoreLeases.operation_id, operation.expected_operation_id),
+          eq(
+            agentBackupRestoreLeases.activation_generation,
+            operation.expected_activation_generation,
+          ),
+          eq(agentBackupRestoreLeases.lifecycle_revision, operation.expected_lifecycle_revision),
+          eq(agentBackupRestoreLeases.expected_manifest_sha256, operation.expected_manifest_sha256),
+          eq(agentBackupRestoreLeases.copy_role, operation.copy_role),
+          eq(agentBackupRestoreLeases.restore_attempt_id, operation.restore_attempt_id),
+          eq(agentBackupRestoreLeases.owner_id, operation.lease_owner_id),
+          eq(agentBackupRestoreLeases.generation, operation.lease_generation),
+          eq(agentBackupRestoreLeases.catalog_epoch, operation.catalog_epoch),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!lease) {
+      throw new AgentBackupCatalogConflictError("Restore lease fence was lost");
+    }
+
+    const [node] = await tx
+      .select()
+      .from(dockerNodes)
+      .where(eq(dockerNodes.id, targetNodeRecordId))
+      .for("update")
+      .limit(1);
+    if (!node) {
+      throw new AgentBackupCatalogConflictError("Restore target node is missing");
+    }
+    if (node.node_incarnation !== targetNodeIncarnation) {
+      throw new AgentBackupCatalogConflictError("Restore target node incarnation changed");
+    }
+
+    // The node lock can wait behind another allocator. Re-read the primary DB
+    // clock only after every authority lock so no expired claim/lease commits.
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (lease.released_at !== null || lease.expires_at <= databaseNow) {
+      throw new AgentBackupCatalogConflictError("Restore lease is expired or released");
+    }
+    if (
+      operation.claim_owner !== params.ownerId ||
+      operation.claim_generation !== claimGeneration ||
+      operation.claim_expires_at === null ||
+      operation.claim_expires_at <= databaseNow
+    ) {
+      throw new AgentBackupCatalogConflictError("Restore operation claim is not live");
+    }
+
+    const target = Object.freeze({
+      nodeRecordId: node.id,
+      nodeId: node.node_id,
+      nodeIncarnation: targetNodeIncarnation,
+      imageDigest: manifest.runtime.imageDigest,
+    });
+    const targetAlreadyRecorded = operation.expected_node_record_id !== null;
+    if (targetAlreadyRecorded) {
+      if (
+        operation.expected_node_record_id !== target.nodeRecordId ||
+        operation.expected_node_incarnation !== target.nodeIncarnation ||
+        operation.expected_image_digest !== target.imageDigest
+      ) {
+        throw new AgentBackupCatalogConflictError("Restore target replay authority mismatch");
+      }
+      return { operation: Object.freeze(operation), target, replayed: true };
+    }
+    if (operation.expected_node_incarnation !== null || operation.expected_image_digest !== null) {
+      throw new AgentBackupCatalogConflictError("Restore target authority is only partially set");
+    }
+    if (
+      !node.enabled ||
+      node.status !== "healthy" ||
+      node.placement_state !== PLACEABLE_NODE_STATE ||
+      node.metadata.capacityProvisional === true
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore target is not an enabled, healthy, open existing node",
+      );
+    }
+    if (node.allocated_count >= node.capacity) {
+      throw new AgentBackupCatalogConflictError("Restore target has no existing capacity");
+    }
+
+    const [reservedNode] = await tx
+      .update(dockerNodes)
+      .set({
+        allocated_count: sql`${dockerNodes.allocated_count} + 1`,
+        updated_at: databaseNow,
+      })
+      .where(
+        and(
+          eq(dockerNodes.id, targetNodeRecordId),
+          eq(dockerNodes.node_incarnation, targetNodeIncarnation),
+          eq(dockerNodes.enabled, true),
+          eq(dockerNodes.status, "healthy"),
+          eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
+          sql`COALESCE(${dockerNodes.metadata}->>'capacityProvisional', 'false') <> 'true'`,
+          sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
+        ),
+      )
+      .returning({ id: dockerNodes.id });
+    if (!reservedNode) {
+      throw new AgentBackupCatalogConflictError("Restore target capacity reservation lost its CAS");
+    }
+
+    const [reservedOperation] = await tx
+      .update(agentBackupRestoreOperations)
+      .set({
+        expected_node_record_id: target.nodeRecordId,
+        expected_node_incarnation: target.nodeIncarnation,
+        expected_image_digest: target.imageDigest,
+        updated_at: databaseNow,
+      })
+      .where(
+        and(
+          eq(agentBackupRestoreOperations.id, operationId),
+          eq(agentBackupRestoreOperations.phase, operation.phase),
+          eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
+          sql`${agentBackupRestoreOperations.expected_node_record_id} IS NULL`,
+          sql`${agentBackupRestoreOperations.expected_node_incarnation} IS NULL`,
+          sql`${agentBackupRestoreOperations.expected_image_digest} IS NULL`,
+        ),
+      )
+      .returning();
+    if (!reservedOperation) {
+      throw new AgentBackupCatalogConflictError("Restore target reservation lost its CAS");
+    }
+    return { operation: Object.freeze(reservedOperation), target, replayed: false };
+  });
+}
+
+/**
  * Advance one phase under a live claim, optionally recording the side effect's
  * identity in the same statement that moves the phase — so the record and the
  * transition cannot disagree.
@@ -297,10 +598,7 @@ export async function advanceAgentBackupRestoreOperation(params: {
   fromPhase: AgentBackupRestorePhase;
   toPhase: AgentBackupRestorePhase;
   recordedIdentity?: {
-    nodeRecordId?: string;
-    nodeIncarnation?: string;
     containerId?: string;
-    imageDigest?: string;
   };
   receiptDigest?: string;
 }): Promise<Readonly<AgentBackupRestoreOperation>> {
@@ -322,19 +620,7 @@ export async function advanceAgentBackupRestoreOperation(params: {
     throw new AgentBackupCatalogConflictError(`${params.toPhase} is not a resumable phase`);
   }
   const identity = params.recordedIdentity ?? {};
-  if ((identity.nodeRecordId === undefined) !== (identity.nodeIncarnation === undefined)) {
-    throw new AgentBackupCatalogConflictError(
-      "Recording a node identity requires both the record id and the incarnation",
-    );
-  }
-  if (identity.nodeRecordId !== undefined) requireUuid(identity.nodeRecordId, "nodeRecordId");
-  if (identity.nodeIncarnation !== undefined) {
-    requireUuid(identity.nodeIncarnation, "nodeIncarnation");
-  }
   if (identity.containerId !== undefined) requireSha256(identity.containerId, "containerId");
-  if (identity.imageDigest !== undefined && !/^sha256:[0-9a-f]{64}$/.test(identity.imageDigest)) {
-    throw new AgentBackupCatalogConflictError("imageDigest must be a canonical sha256 reference");
-  }
   if (params.receiptDigest !== undefined) requireSha256(params.receiptDigest, "receiptDigest");
   if ((params.toPhase === "finalized") !== (params.receiptDigest !== undefined)) {
     throw new AgentBackupCatalogConflictError(
@@ -382,6 +668,18 @@ export async function advanceAgentBackupRestoreOperation(params: {
       throw new AgentBackupCatalogConflictError("Restore operation claim is not live");
     }
 
+    const targetAuthorityRequired = params.toPhase !== "reserved";
+    if (
+      targetAuthorityRequired &&
+      (operation.expected_node_record_id === null ||
+        operation.expected_node_incarnation === null ||
+        operation.expected_image_digest === null)
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore operation cannot leave target reservation without complete target authority",
+      );
+    }
+
     if (resuming && operation.resume_phase !== params.toPhase) {
       throw new AgentBackupCatalogConflictError(
         `Restore operation must resume ${operation.resume_phase}, not ${params.toPhase}`,
@@ -396,17 +694,8 @@ export async function advanceAgentBackupRestoreOperation(params: {
         claim_owner: null,
         claim_generation: null,
         claim_expires_at: null,
-        ...(identity.nodeRecordId !== undefined
-          ? { expected_node_record_id: identity.nodeRecordId }
-          : {}),
-        ...(identity.nodeIncarnation !== undefined
-          ? { expected_node_incarnation: identity.nodeIncarnation }
-          : {}),
         ...(identity.containerId !== undefined
           ? { expected_container_id: identity.containerId }
-          : {}),
-        ...(identity.imageDigest !== undefined
-          ? { expected_image_digest: identity.imageDigest }
           : {}),
         ...(params.receiptDigest !== undefined
           ? { receipt_digest: params.receiptDigest, completed_at: databaseNow }
@@ -417,6 +706,13 @@ export async function advanceAgentBackupRestoreOperation(params: {
           eq(agentBackupRestoreOperations.id, operationId),
           eq(agentBackupRestoreOperations.phase, params.fromPhase),
           eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
+          targetAuthorityRequired
+            ? and(
+                isNotNull(agentBackupRestoreOperations.expected_node_record_id),
+                isNotNull(agentBackupRestoreOperations.expected_node_incarnation),
+                isNotNull(agentBackupRestoreOperations.expected_image_digest),
+              )
+            : undefined,
         ),
       )
       .returning();

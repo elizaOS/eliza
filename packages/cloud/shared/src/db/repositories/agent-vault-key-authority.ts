@@ -24,6 +24,10 @@ import {
   lockAgentBackupCatalogAuthority,
   stampAgentBackupCatalogRevision,
 } from "./agent-backup-catalog";
+import {
+  type AgentBackupRestoreSourceV3Input,
+  loadAgentBackupRestoreSourceV3,
+} from "./agent-backup-restore";
 
 const RAW_KEY_BYTES = 32;
 const PASSPHRASE_BYTES = RAW_KEY_BYTES * 2;
@@ -839,4 +843,69 @@ export async function bindAgentBackupVaultKeyGeneration(
     }
     return Object.freeze({ ...existing });
   });
+}
+
+export interface AgentBackupRestoreVaultPassphraseInput extends AgentBackupRestoreSourceV3Input {
+  vaultKeyGenerationId: string;
+  vaultKeyAuthorityReceiptDigest: string;
+}
+
+export interface AgentBackupRestoreVaultPassphraseOptions {
+  kmsClient?: KmsClient;
+}
+
+async function loadAgentBackupRestoreVaultGeneration(
+  input: Readonly<AgentBackupRestoreVaultPassphraseInput>,
+): Promise<Readonly<AgentVaultKeyGeneration>> {
+  requireCanonicalUuid(input.vaultKeyGenerationId, "vaultKeyGenerationId");
+  requireDigest(input.vaultKeyAuthorityReceiptDigest, "vaultKeyAuthorityReceiptDigest");
+  const source = await loadAgentBackupRestoreSourceV3(input);
+  if (
+    source.vaultKeyAuthority.generationId !== input.vaultKeyGenerationId ||
+    source.vaultKeyAuthority.authorityReceiptDigest !== input.vaultKeyAuthorityReceiptDigest
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      "Restore vault-key authority differs from its exact manifest-v3 source",
+    );
+  }
+
+  const [generation] = await dbWrite
+    .select()
+    .from(agentVaultKeyGenerations)
+    .where(
+      and(
+        eq(agentVaultKeyGenerations.organization_id, input.organizationId),
+        eq(agentVaultKeyGenerations.agent_id, input.agentId),
+        eq(agentVaultKeyGenerations.generation_id, input.vaultKeyGenerationId),
+        eq(agentVaultKeyGenerations.authority_receipt_digest, input.vaultKeyAuthorityReceiptDigest),
+      ),
+    )
+    .limit(1);
+  if (!generation) {
+    throw new AgentBackupCatalogConflictError(
+      "Restore source is missing its exact retained vault-key generation",
+    );
+  }
+  validateGenerationIntegrity(generation);
+  return Object.freeze({ ...generation });
+}
+
+/**
+ * Expose only a callback-scoped byte passphrase after two identical restore
+ * authority proofs around the lock-free KMS unwrap.
+ */
+export async function withAgentBackupRestoreVaultPassphrase<T>(
+  input: Readonly<AgentBackupRestoreVaultPassphraseInput>,
+  use: (passphrase: Uint8Array) => Promise<T> | T,
+  options: Readonly<AgentBackupRestoreVaultPassphraseOptions> = {},
+): Promise<T> {
+  const generation = await loadAgentBackupRestoreVaultGeneration(input);
+  const rawKey = await decryptGeneration(generation, options.kmsClient ?? getKmsClient());
+  const secret = new AgentVaultKeySecretHandle(rawKey);
+  try {
+    await loadAgentBackupRestoreVaultGeneration(input);
+    return await secret.withPassphrase(use);
+  } finally {
+    secret.release();
+  }
 }

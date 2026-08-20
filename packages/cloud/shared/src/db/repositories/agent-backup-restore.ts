@@ -115,6 +115,51 @@ function frozenManifest(manifest: AgentBackupManifestV3): AgentBackupManifestV3 
   return manifest;
 }
 
+/**
+ * Parse one catalogue-stored manifest draft and prove that its supplied digest
+ * is the digest of the same canonical v3 document. Callers still have to bind
+ * the returned manifest to their own locked catalogue row and identity tuple.
+ */
+export async function parseAgentBackupManifestV3Authority(input: {
+  canonicalManifestDraft: string;
+  expectedManifestSha256: string;
+}): Promise<
+  Readonly<{
+    manifest: AgentBackupManifestV3;
+    canonicalManifestDraft: string;
+  }>
+> {
+  const manifestInput = manifestWithDigest(
+    input.canonicalManifestDraft,
+    input.expectedManifestSha256,
+  );
+  let manifest: AgentBackupManifestV3;
+  try {
+    manifest = await parseAgentBackupManifestV3(manifestInput);
+  } catch (cause) {
+    throw new AgentBackupCatalogConflictError("Restore source manifest-v3 validation failed", {
+      cause,
+    });
+  }
+  const { manifestSha256: _manifestSha256, ...draftIntegrity } = manifest.integrity;
+  const canonicalDraft = canonicalizeAgentBackupManifestV3({
+    ...manifest,
+    integrity: draftIntegrity,
+  } as AgentBackupManifestV3Draft);
+  if (
+    canonicalDraft !== input.canonicalManifestDraft ||
+    manifest.integrity.manifestSha256 !== input.expectedManifestSha256
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      "Restore source manifest-v3 differs from its canonical digest authority",
+    );
+  }
+  return Object.freeze({
+    manifest: frozenManifest(manifest),
+    canonicalManifestDraft: canonicalDraft,
+  });
+}
+
 export interface AgentBackupRestoreSourceV3Input {
   organizationId: string;
   agentId: string;
@@ -281,26 +326,12 @@ export async function loadAgentBackupRestoreSourceV3(
         "Restore source lease is absent, expired, released, or fenced",
       );
     }
-    const manifestInput = manifestWithDigest(
-      backup.manifest_canonical_draft,
-      input.expectedManifestSha256,
-    );
-    let manifest: AgentBackupManifestV3;
-    try {
-      manifest = await parseAgentBackupManifestV3(manifestInput);
-    } catch (cause) {
-      throw new AgentBackupCatalogConflictError("Restore source manifest-v3 validation failed", {
-        cause,
-      });
-    }
-    const { manifestSha256: _manifestSha256, ...draftIntegrity } = manifest.integrity;
-    const canonicalDraft = canonicalizeAgentBackupManifestV3({
-      ...manifest,
-      integrity: draftIntegrity,
-    } as AgentBackupManifestV3Draft);
+    const parsedManifest = await parseAgentBackupManifestV3Authority({
+      canonicalManifestDraft: backup.manifest_canonical_draft,
+      expectedManifestSha256: input.expectedManifestSha256,
+    });
+    const { manifest, canonicalManifestDraft: canonicalDraft } = parsedManifest;
     if (
-      canonicalDraft !== backup.manifest_canonical_draft ||
-      manifest.integrity.manifestSha256 !== input.expectedManifestSha256 ||
       manifest.operationId !== input.operationId ||
       manifest.identity.organizationId !== input.organizationId ||
       manifest.identity.agentId !== input.agentId ||

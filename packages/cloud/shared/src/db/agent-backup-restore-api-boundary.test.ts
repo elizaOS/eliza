@@ -55,6 +55,11 @@ describe("dormant restore API boundary", () => {
       "createOrRotateAgentVaultKeyGeneration",
       "loadCurrentAgentVaultKeyAuthority",
       "bindAgentBackupVaultKeyGeneration",
+      "withAgentBackupRestoreVaultPassphrase",
+      "openAgentBackupRestoreOperation",
+      "claimAgentBackupRestoreOperation",
+      "reserveAgentBackupRestoreTarget",
+      "advanceAgentBackupRestoreOperation",
       "recordAgentActivationPublication",
       "authorizeAgentActivationDispatch",
       "recordAgentVaultKeySeedReceipt",
@@ -63,12 +68,72 @@ describe("dormant restore API boundary", () => {
       const occurrences = sources.flatMap(({ path, source }) =>
         source.includes(symbol) ? [path] : [],
       );
-      expect(occurrences, `${symbol} must remain definition-only`).toEqual([
-        expect.stringContaining("/db/repositories/"),
-      ]);
+      const expectedOccurrences = symbol === "loadAgentBackupRestoreSourceV3" ? 2 : 1;
+      expect(occurrences, `${symbol} must remain definition-only`).toHaveLength(
+        expectedOccurrences,
+      );
+      expect(
+        occurrences.every((path) => path.includes("/db/repositories/")),
+        `${symbol} must remain inside the dormant repository layer`,
+      ).toBe(true);
     }
     expect(readFileSync(join(import.meta.dir, "index.ts"), "utf8")).not.toMatch(
       /agent-backup-restore|agent-vault-key-authority/,
+    );
+  });
+
+  test("keeps target reservation free of remote effects and generic identity bypasses", () => {
+    const operationSource = readFileSync(
+      join(import.meta.dir, "repositories/agent-backup-restore-operations.ts"),
+      "utf8",
+    );
+    expect(operationSource).not.toMatch(
+      /DockerNodeManager|getAvailableNode|nodeAutoscaler|parseDockerNodes|process\.env|ensureVolumeVaultPassphrase/,
+    );
+    const genericAdvance = operationSource.slice(
+      operationSource.indexOf("export async function advanceAgentBackupRestoreOperation"),
+      operationSource.indexOf("export async function heartbeatAgentBackupRestoreOperation"),
+    );
+    const advanceMutationStart = genericAdvance.indexOf(".set({");
+    const advanceMutation = genericAdvance.slice(
+      advanceMutationStart,
+      genericAdvance.indexOf(".where(", advanceMutationStart),
+    );
+    expect(advanceMutation).not.toMatch(/expected_node_|expected_image_digest/);
+    expect(genericAdvance).toContain(
+      "Restore operation cannot leave target reservation without complete target authority",
+    );
+
+    const reserveSource = operationSource.slice(
+      operationSource.indexOf("export async function reserveAgentBackupRestoreTarget"),
+      operationSource.indexOf("export async function advanceAgentBackupRestoreOperation"),
+    );
+    const transactionalReserve = reserveSource.slice(
+      reserveSource.indexOf("return await dbWrite.transaction"),
+    );
+    const lockAnchors = [
+      ".from(agentSandboxBackups)",
+      "lockAgentBackupCatalogAuthority(",
+      ".from(agentBackupRestoreOperations)",
+      ".from(agentBackupRestoreLeases)",
+      ".from(dockerNodes)",
+      "readPostLockDatabaseNow(tx)",
+    ];
+    for (let index = 1; index < lockAnchors.length; index += 1) {
+      expect(transactionalReserve.indexOf(lockAnchors[index - 1] as string)).toBeLessThan(
+        transactionalReserve.indexOf(lockAnchors[index] as string),
+      );
+    }
+
+    const vaultSource = readFileSync(
+      join(import.meta.dir, "repositories/agent-vault-key-authority.ts"),
+      "utf8",
+    );
+    const restoreVaultAuthority = vaultSource.slice(
+      vaultSource.indexOf("async function loadAgentBackupRestoreVaultGeneration"),
+    );
+    expect(restoreVaultAuthority).not.toMatch(
+      /agentVaultKeyAuthorities|ensureVolumeVaultPassphrase|buildVolumeVaultPassphraseCommand/,
     );
   });
 

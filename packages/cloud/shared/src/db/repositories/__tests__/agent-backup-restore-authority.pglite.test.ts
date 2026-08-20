@@ -70,6 +70,7 @@ import {
   bindAgentBackupVaultKeyGeneration,
   createOrRotateAgentVaultKeyGeneration,
   loadCurrentAgentVaultKeyAuthority,
+  withAgentBackupRestoreVaultPassphrase,
 } from "../agent-vault-key-authority";
 
 const TIMEOUT = 60_000;
@@ -572,6 +573,46 @@ async function insertExactProtectedSource(vaultAuthority: {
     },
   ]);
   return { exact, binding };
+}
+
+async function acquireVaultPassphraseFixture(entropyByte = 0x43) {
+  const kms = new MemoryKmsAdapter({ seed: () => new Uint8Array(32).fill(0x93) });
+  const generation = await createOrRotateAgentVaultKeyGeneration(
+    {
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      generationId: VAULT_GENERATION,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      expectedCurrentGenerationId: null,
+    },
+    {
+      kmsClient: kms,
+      randomBytes: (size) => new Uint8Array(size).fill(entropyByte),
+    },
+  );
+  generation.secret.release();
+  const { exact } = await insertExactProtectedSource(generation.authority);
+  const acquired = await acquireAgentBackupRestoreLease({
+    organizationId: ORG_ID,
+    backupId: BACKUP_ID,
+    operationId: OPERATION_ID,
+    sourceActivationGeneration: ACTIVATION_GENERATION,
+    sourceLifecycleRevision: "7",
+    expectedManifestSha256: exact.manifest.integrity.manifestSha256,
+    copyRole: "primary",
+    restoreAttemptId: RESTORE_ATTEMPT_ID,
+    ownerId: "vault-restore-worker",
+    leaseMs: 60_000,
+  });
+  return {
+    kms,
+    generation,
+    input: {
+      ...acquired.authority,
+      vaultKeyGenerationId: generation.authority.generationId,
+      vaultKeyAuthorityReceiptDigest: generation.authority.receiptDigest,
+    },
+  } as const;
 }
 
 beforeAll(async () => {
@@ -1366,4 +1407,138 @@ describe("strict restore catalogue authority", () => {
       digestSpy.mockRestore();
     }
   }, 10_000);
+
+  test("unwraps the manifest-retained vault generation after current authority rotates", async () => {
+    const fixture = await acquireVaultPassphraseFixture(0x47);
+    const rotated = await createOrRotateAgentVaultKeyGeneration(
+      {
+        organizationId: ORG_ID,
+        agentId: AGENT_ID,
+        generationId: ROTATED_VAULT_GENERATION,
+        sourceActivationGeneration: ACTIVATION_GENERATION,
+        expectedCurrentGenerationId: VAULT_GENERATION,
+      },
+      {
+        kmsClient: fixture.kms,
+        randomBytes: (size) => new Uint8Array(size).fill(0x48),
+      },
+    );
+    rotated.secret.release();
+    let borrowedPassphrase: Uint8Array | null = null;
+
+    const passphraseText = await withAgentBackupRestoreVaultPassphrase(
+      fixture.input,
+      (passphrase) => {
+        borrowedPassphrase = passphrase;
+        return Buffer.from(passphrase).toString("ascii");
+      },
+      { kmsClient: fixture.kms },
+    );
+
+    expect(passphraseText).toBe("47".repeat(32));
+    expect(isZeroized(borrowedPassphrase)).toBe(true);
+    expect(
+      await loadCurrentAgentVaultKeyAuthority({ organizationId: ORG_ID, agentId: AGENT_ID }),
+    ).toEqual(rotated.authority);
+  });
+
+  test("rejects mismatched source, vault, fence, and released-lease authority before KMS or use", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const decryptSpy = spyOn(fixture.kms, "decrypt");
+    let useCalls = 0;
+    const use = () => {
+      useCalls += 1;
+      return undefined;
+    };
+    const mismatches = [
+      { ...fixture.input, expectedManifestSha256: "f".repeat(64) },
+      { ...fixture.input, vaultKeyGenerationId: ROTATED_VAULT_GENERATION },
+      { ...fixture.input, vaultKeyAuthorityReceiptDigest: "f".repeat(64) },
+      { ...fixture.input, fencingToken: STALE_VAULT_GENERATION },
+    ] as const;
+    try {
+      for (const input of mismatches) {
+        await expect(
+          withAgentBackupRestoreVaultPassphrase(input, use, { kmsClient: fixture.kms }),
+        ).rejects.toBeInstanceOf(Error);
+      }
+      await releaseAgentBackupRestoreLease(fixture.input);
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(fixture.input, use, { kmsClient: fixture.kms }),
+      ).rejects.toThrow("expired, released, or fenced");
+
+      expect(decryptSpy).toHaveBeenCalledTimes(0);
+      expect(useCalls).toBe(0);
+    } finally {
+      decryptSpy.mockRestore();
+    }
+  });
+
+  test("revalidates after KMS and zeroizes plaintext when the lease is lost during decrypt", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const originalDecrypt = fixture.kms.decrypt.bind(fixture.kms);
+    let borrowedPlaintext: Uint8Array | null = null;
+    let useCalls = 0;
+    const decryptSpy = spyOn(fixture.kms, "decrypt").mockImplementation(
+      async (keyId, ciphertext, nonce, authTag, aad, keyVersion) => {
+        const plaintext = await originalDecrypt(keyId, ciphertext, nonce, authTag, aad, keyVersion);
+        borrowedPlaintext = plaintext;
+        await releaseAgentBackupRestoreLease(fixture.input);
+        return plaintext;
+      },
+    );
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("expired, released, or fenced");
+
+      expect(decryptSpy).toHaveBeenCalledTimes(1);
+      expect(useCalls).toBe(0);
+      expect(isZeroized(borrowedPlaintext)).toBe(true);
+    } finally {
+      decryptSpy.mockRestore();
+    }
+  });
+
+  test("zeroizes callback passphrases on success and throw while preserving the callback error", async () => {
+    const fixture = await acquireVaultPassphraseFixture(0x49);
+    let successfulPassphrase: Uint8Array | null = null;
+
+    const result = await withAgentBackupRestoreVaultPassphrase(
+      fixture.input,
+      (passphrase) => {
+        successfulPassphrase = passphrase;
+        return Buffer.from(passphrase).toString("ascii");
+      },
+      { kmsClient: fixture.kms },
+    );
+
+    expect(result).toBe("49".repeat(32));
+    expect(isZeroized(successfulPassphrase)).toBe(true);
+
+    const callbackError = new Error("vault restore callback failed");
+    let failedPassphrase: Uint8Array | null = null;
+    let thrown: unknown;
+    try {
+      await withAgentBackupRestoreVaultPassphrase(
+        fixture.input,
+        (passphrase) => {
+          failedPassphrase = passphrase;
+          throw callbackError;
+        },
+        { kmsClient: fixture.kms },
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBe(callbackError);
+    expect(isZeroized(failedPassphrase)).toBe(true);
+  });
 });
