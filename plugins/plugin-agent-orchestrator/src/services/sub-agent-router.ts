@@ -36,6 +36,7 @@ import { AGENT_VOICED_METADATA } from "../voice/phrase-for-user.js";
 import type { AcpService } from "./acp-service.js";
 import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
 import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
+import { shouldAutoVerifyGoal } from "./goal-llm-verifier.js";
 import {
   collectFsObservedFiles,
   deriveRouteMappedUrls,
@@ -627,6 +628,27 @@ export class SubAgentRouter extends Service {
   // double-post, no early force-stop, no leaked session (#9960, #7967).
   private loopState: RouterLoopState = createRouterLoopState();
 
+  // Completion relays deferred until the auto-verifier's verdict (default ON;
+  // ELIZA_RELAY_AFTER_VERIFY=0 restores immediate relays). Posting the child's
+  // "all set" the moment it reported, then parking two minutes later when
+  // verification failed, whipsawed the user with contradictory messages (live
+  // 2026-08-20, dark-mode edit). Keyed by taskId; a fallback timer releases
+  // the relay if no verdict ever lands (the verify body has silent
+  // stay-validating exits), so this can delay but never swallow a completion.
+  private readonly deferredCompletionRelays = new Map<
+    string,
+    {
+      sessionId: string;
+      data: unknown;
+      turnId?: string;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+
+  /** Sessions currently re-entering handleEvent from a deferral release —
+   *  the defer check must not re-capture them. */
+  private readonly releasingDeferredRelaySessions = new Set<string>();
+
   // Per-root-origin spawn cap. The completion-dedupe slot above only
   // suppresses duplicate POSTS; it does not stop the PLANNER from re-spawning a
   // fresh sub-agent each time a (weak-model) completion comes back truncated or
@@ -943,6 +965,10 @@ export class SubAgentRouter extends Service {
   }
 
   async stop(): Promise<void> {
+    for (const pending of this.deferredCompletionRelays.values()) {
+      clearTimeout(pending.timer);
+    }
+    this.deferredCompletionRelays.clear();
     this.stopped = true;
     if (this.bindRetryTimer) {
       clearTimeout(this.bindRetryTimer);
@@ -1103,6 +1129,44 @@ export class SubAgentRouter extends Service {
         },
       );
       return;
+    }
+    if (
+      event === "task_complete" &&
+      !this.releasingDeferredRelaySessions.has(sessionId)
+    ) {
+      const deferTaskId =
+        await this.completionRelayDeferralTaskId(sessionId);
+      if (deferTaskId) {
+        const existing = this.deferredCompletionRelays.get(deferTaskId);
+        if (existing) clearTimeout(existing.timer);
+        const timer = setTimeout(
+          () => {
+            // Never-silent fallback: a verdict that never lands (silent
+            // stay-validating exits in the verify body) must not swallow the
+            // completion forever.
+            this.log(
+              "warn",
+              "deferred completion relay released by timeout — no verification verdict arrived",
+              { taskId: deferTaskId, sessionId },
+            );
+            this.releaseDeferredCompletionRelay(deferTaskId, "passed");
+          },
+          5 * 60 * 1000,
+        );
+        timer.unref?.();
+        this.deferredCompletionRelays.set(deferTaskId, {
+          sessionId,
+          data,
+          turnId,
+          timer,
+        });
+        this.log(
+          "info",
+          "deferring completion relay until the verification verdict",
+          { taskId: deferTaskId, sessionId },
+        );
+        return;
+      }
     }
     if (event === "error" || event === "stopped") {
       // A user-initiated stop must not narrate as a task failure: the stop
@@ -2089,6 +2153,86 @@ export class SubAgentRouter extends Service {
    * the session. The planner-directed `[sub-agent: …]` header is stripped —
    * it is relay guidance for the task-room turn, not user prose.
    */
+  /** The taskId to defer this session's completion relay on, or null when the
+   *  relay should post immediately (deferral disabled, no durable task, no
+   *  acceptance criteria to verify, or the task already reached a terminal
+   *  state). Mirrors only the STABLE auto-verify gates; anything the verify
+   *  body decides internally is covered by the release fallback timer. */
+  private async completionRelayDeferralTaskId(
+    sessionId: string,
+  ): Promise<string | null> {
+    if (process.env.ELIZA_RELAY_AFTER_VERIFY === "0") return null;
+    if (!shouldAutoVerifyGoal()) return null;
+    const tasks = this.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as {
+      getTaskForSession?: (sessionId: string) => Promise<{
+        id?: string;
+        status?: string;
+        acceptanceCriteria?: string[];
+      } | null>;
+    } | null;
+    if (!tasks?.getTaskForSession) return null;
+    try {
+      const record = await tasks.getTaskForSession(sessionId);
+      if (!record?.id) return null;
+      if (
+        ["done", "parked", "failed", "cancelled", "archived"].includes(
+          String(record.status),
+        )
+      ) {
+        return null;
+      }
+      const criteria = Array.isArray(record.acceptanceCriteria)
+        ? record.acceptanceCriteria
+        : [];
+      return criteria.length > 0 ? record.id : null;
+    } catch {
+      // error-policy:J4 a lookup failure must degrade to the immediate relay,
+      // never to a swallowed completion.
+      return null;
+    }
+  }
+
+  /** Called by OrchestratorTaskService when the auto-verifier's verdict lands.
+   *  `passed` re-enters the deferred task_complete with fresh state; `failed`
+   *  drops it — the verify-retry loop or the park notice owns messaging from
+   *  here. No-op when nothing is deferred for the task. */
+  releaseDeferredCompletionRelay(
+    taskId: string,
+    verdict: "passed" | "failed",
+  ): void {
+    const pending = this.deferredCompletionRelays.get(taskId);
+    if (!pending) return;
+    this.deferredCompletionRelays.delete(taskId);
+    clearTimeout(pending.timer);
+    if (verdict !== "passed") {
+      this.log(
+        "info",
+        "dropping deferred completion relay after failed verification",
+        { taskId, sessionId: pending.sessionId },
+      );
+      return;
+    }
+    this.releasingDeferredRelaySessions.add(pending.sessionId);
+    void this.handleEvent(
+      pending.sessionId,
+      "task_complete",
+      pending.data,
+      undefined,
+      pending.turnId,
+    )
+      .catch((err) => {
+        // error-policy:J7 the released relay is observability-critical; a
+        // failure is reported, not rethrown into the verdict writer.
+        this.log("error", "deferred completion relay release failed", {
+          taskId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      })
+      .finally(() => {
+        this.releasingDeferredRelaySessions.delete(pending.sessionId);
+      });
+  }
+
   private async postQuestionToOriginRoom(
     origin: OriginInfo,
     sessionId: string,

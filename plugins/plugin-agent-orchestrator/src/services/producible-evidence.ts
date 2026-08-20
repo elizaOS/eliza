@@ -90,6 +90,16 @@ const UNCOLLECTABLE_EVIDENCE_RE =
  *  pages have no git pipeline, so "summarized in the diff" can never be
  *  evidenced (live 2026-08-19: quote-generator parked on it), and runtime DOM
  *  behavior is only provable in a browser the verifier does not have. */
+/** Report-shaped criteria demand a NARRATIVE (a summary/description of the
+ *  changes) rather than a property of the deliverable itself. They are
+ *  unsatisfiable as acceptance criteria for EVERY task type — the verifier
+ *  ends up grading the sub-agent's prose, and an under-narrated but working
+ *  build parks ("the diff summarizes the specific style and theme changes",
+ *  live 2026-08-20 dark-mode edit). Checkable diff-content criteria ("the
+ *  diff shows a toggle element added") survive. */
+const REPORT_SHAPED_CRITERION_RE =
+  /\b(?:diff\s+summariz|summar(?:y|ize[sd]?|izing)\s+(?:of|in)?\s*the\s+(?:diff|changes?|work)|provide[sd]?\s+a\s+summary|describe[sd]?\s+the\s+changes?\b)/i;
+
 const APP_BUILD_UNSATISFIABLE_RE =
   /\b(?:diff\s+summar|summar\w*\s+in\s+the\s+diff|the\s+diff\b|git\s+diff|changeset|commit\s+message)/i;
 
@@ -107,6 +117,7 @@ export function stripUncollectableEvidenceCriteria(
   for (const criterion of criteria) {
     const uncollectable =
       UNCOLLECTABLE_EVIDENCE_RE.test(criterion) ||
+      REPORT_SHAPED_CRITERION_RE.test(criterion) ||
       (taskType === "app-build" && APP_BUILD_UNSATISFIABLE_RE.test(criterion));
     (uncollectable ? dropped : kept).push(criterion);
   }

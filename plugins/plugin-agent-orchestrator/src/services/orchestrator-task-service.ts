@@ -4223,6 +4223,14 @@ export class OrchestratorTaskService extends Service {
         },
       });
       this.emitChange(taskId);
+      (
+        this.runtime.getService("ACPX_SUB_AGENT_ROUTER") as {
+          releaseDeferredCompletionRelay?: (
+            taskId: string,
+            verdict: "passed" | "failed",
+          ) => void;
+        } | null
+      )?.releaseDeferredCompletionRelay?.(taskId, "failed");
       throw new ElizaError(
         `Ground-truth verification blocks validation: ${groundTruth.summary}`,
         {
@@ -4251,6 +4259,22 @@ export class OrchestratorTaskService extends Service {
       disclosedRisks.length > 0
         ? `${evidence}\nWorker-disclosed residual risks: ${disclosedRisks.join("; ")}`
         : evidence;
+    // Release (or drop) the router's deferred completion relay the moment the
+    // verdict is durable: passed → the held "it's ready" posts, failed → the
+    // retry loop / park notice owns all further messaging (the whiplash this
+    // kills: "all set" followed two minutes later by a park, live 2026-08-20).
+    const relayRouter = this.runtime.getService(
+      "ACPX_SUB_AGENT_ROUTER",
+    ) as {
+      releaseDeferredCompletionRelay?: (
+        taskId: string,
+        verdict: "passed" | "failed",
+      ) => void;
+    } | null;
+    relayRouter?.releaseDeferredCompletionRelay?.(
+      taskId,
+      result.passed ? "passed" : "failed",
+    );
     await this.store.addEvent({
       id: randomUUID(),
       taskId,
