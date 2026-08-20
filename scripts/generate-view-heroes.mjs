@@ -187,6 +187,13 @@ export const views = [
     icon: VIEW_HERO_ICONS.messages,
   },
   {
+    out: "plugins/plugin-maps/assets/hero.svg",
+    id: "maps",
+    label: "Maps",
+    hue: 24,
+    icon: VIEW_HERO_ICONS.vectorBrowser,
+  },
+  {
     out: "plugins/plugin-native-settings/assets/hero.svg",
     id: "device-settings",
     label: "Device Settings",
@@ -269,7 +276,11 @@ export async function main(args = process.argv.slice(2)) {
           "\n",
         )}\nAdd a curated entry above or commit plugins/<name>/assets/hero.svg.`,
     );
-    return { writtenCount: written.length, missingCount: missing.length, missing };
+    return {
+      writtenCount: written.length,
+      missingCount: missing.length,
+      missing,
+    };
   }
 
   return { writtenCount: written.length, missingCount: 0 };
@@ -297,7 +308,9 @@ if (invokedDirectly) {
     },
     (error) => {
       console.error(
-        error instanceof Error ? error.message : "[generate-view-heroes] failed",
+        error instanceof Error
+          ? error.message
+          : "[generate-view-heroes] failed",
       );
       process.exitCode = 1;
     },

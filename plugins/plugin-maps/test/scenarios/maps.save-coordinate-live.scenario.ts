@@ -1,7 +1,7 @@
 /**
- * Live-model proof for the provider-neutral Maps save path.
+ * Keyless end-to-end proof for the provider-neutral Maps save path.
  *
- * The model must select the promoted receipt-enforced action and extract a
+ * The deterministic model must select the promoted receipt-enforced action and extract a
  * coordinate-defined place without an external maps provider. The final check
  * then verifies both the action receipt and the saved row through the real
  * scenario runtime's PGlite-backed Maps service.
@@ -41,13 +41,13 @@ function record(value: unknown): Record<string, unknown> | null {
 }
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "maps.save-coordinate-live",
   title: "Save a coordinate-defined place with Maps",
   domain: "maps",
-  tags: ["maps", "saved-place", "live-model", "receipt", "pglite"],
+  tags: ["maps", "saved-place", "deterministic", "receipt", "pglite"],
   description:
-    "Asks a live model to save Pike Place Market from explicit coordinates, then verifies selection, extracted tool arguments, the canonical effect receipt, and durable Maps state.",
+    "Asks the deterministic model to save Pike Place Market from explicit coordinates, then verifies selection, extracted tool arguments, the canonical effect receipt, and durable Maps state.",
 
   requires: { plugins: ["@elizaos/plugin-maps"] },
   isolation: "per-scenario",
@@ -164,7 +164,7 @@ export default scenario({
           | null
           | undefined;
         if (!service || typeof service.listSavedPlaces !== "function") {
-          return "the live scenario runtime did not expose the Maps service";
+          return "the scenario runtime did not expose the Maps service";
         }
         const persisted = await service.listSavedPlaces(
           savedPlace.ownerEntityId,
