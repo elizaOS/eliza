@@ -242,7 +242,7 @@ function PhoneMockup() {
     LandingDemoScenarioId[]
   >([DEMO_SCENARIOS[0].id]);
   const [cycle, setCycle] = useState(0);
-  const [typingSender, setTypingSender] = useState<DemoSender | null>(null);
+  const [typingSenders, setTypingSenders] = useState<DemoSender[]>([]);
   const [composerText, setComposerText] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
   const scenario = DEMO_SCENARIOS[scenarioIndex];
@@ -270,6 +270,7 @@ function PhoneMockup() {
       for (const [index, step] of steps.entries()) {
         if (cancelled) return;
         const id = activeScenarioIndex * 100 + INITIAL_RENDERED_ITEMS + index;
+        const nextStep = steps[index + 1];
         if (step.kind === "user") {
           await sleep(PRE_USER_MS);
           for (let i = 1; i <= step.text.length; i++) {
@@ -285,10 +286,20 @@ function PhoneMockup() {
             { id, from: "user", kind: "text", text: step.text },
           ]);
         } else if (step.kind === "member") {
-          setTypingSender(DEMO_SENDERS[step.name] ?? null);
+          const humanTypers: DemoSender[] = [];
+          const currentSender = DEMO_SENDERS[step.name];
+          const nextSender =
+            nextStep?.kind === "member"
+              ? DEMO_SENDERS[nextStep.name]
+              : undefined;
+          if (currentSender) humanTypers.push(currentSender);
+          if (nextSender && nextSender.name !== currentSender?.name) {
+            humanTypers.push(nextSender);
+          }
+          setTypingSenders(humanTypers);
           await sleep(humanReplyDelay(step.text));
           if (cancelled) return;
-          setTypingSender(null);
+          setTypingSenders(nextSender ? [nextSender] : []);
           setItems((previous) => [
             ...previous,
             {
@@ -303,10 +314,10 @@ function PhoneMockup() {
           await sleep(step.continuation ? 360 : PRE_ELIZA_MS);
           if (cancelled) return;
           if (!step.continuation) {
-            setTypingSender(DEMO_SENDERS.Eliza);
+            setTypingSenders([DEMO_SENDERS.Eliza]);
             await sleep(ELIZA_TYPING_MS);
             if (cancelled) return;
-            setTypingSender(null);
+            setTypingSenders([]);
           }
           setItems((previous) => [
             ...previous,
@@ -320,7 +331,6 @@ function PhoneMockup() {
             { id, from: "eliza", kind: "card", card: step.card },
           ]);
         }
-        const nextStep = steps[index + 1];
         await sleep(
           nextStep?.kind === "eliza" && nextStep.continuation
             ? 280
@@ -336,7 +346,7 @@ function PhoneMockup() {
           const firstRoom = completedCycles === 0 && index === 0;
           if (!firstRoom) {
             setPhase("switching");
-            setTypingSender(null);
+            setTypingSenders([]);
             setComposerText("");
             await sleep(SCENARIO_SWITCH_MS);
             if (cancelled) return;
@@ -378,10 +388,15 @@ function PhoneMockup() {
     thread.scrollTo({ top: thread.scrollHeight, behavior: "smooth" });
     // composerText opens/closes the keyboard, which changes the thread's
     // height; re-pin so the newest message stays visible.
-  }, [items, typingSender, composerText]);
+  }, [items, typingSenders, composerText]);
 
   const typingSenderKind =
-    typingSender?.name === DEMO_SENDERS.Eliza.name ? "eliza" : "member";
+    typingSenders.length === 1 &&
+    typingSenders[0]?.name === DEMO_SENDERS.Eliza.name
+      ? "eliza"
+      : "member";
+  const typingSenderNames = typingSenders.map(({ name }) => name).join(" and ");
+  const typingAccessibilityLabel = `${typingSenderNames} ${typingSenders.length === 1 ? "is" : "are"} typing`;
 
   return (
     <div
@@ -393,7 +408,7 @@ function PhoneMockup() {
       data-demo-scenarios={DEMO_SCENARIOS.length}
       data-demo-visited={visitedScenarioIds.join(",")}
       data-demo-cycle={cycle}
-      data-demo-typing={typingSender?.name ?? ""}
+      data-demo-typing={typingSenders.map(({ name }) => name).join(",")}
     >
       <div className="landing-iphone-screen">
         <div className="landing-phone-top">
@@ -545,21 +560,23 @@ function PhoneMockup() {
               </div>
             );
           })}
-          {typingSender ? (
+          {typingSenders.length > 0 ? (
             <div
-              className={`landing-message landing-message--${typingSenderKind} landing-message--typing`}
-              data-demo-typing-indicator={typingSender.name}
+              className={`landing-message landing-message--${typingSenderKind} landing-message--typing${typingSenders.length > 1 ? " landing-message--typing-multiple" : ""}`}
+              data-demo-typing-indicator={typingSenderNames}
             >
               <span className="landing-message-avatar-slot">
-                <DemoProfilePhoto sender={typingSender} />
+                {typingSenders.map((sender) => (
+                  <DemoProfilePhoto key={sender.name} sender={sender} />
+                ))}
               </span>
               <div className="landing-message-body">
                 <span className="landing-message-author">
-                  {typingSender.name}
+                  {typingSenderNames}
                 </span>
                 <div
                   className={`landing-bubble landing-bubble--${typingSenderKind} landing-typing`}
-                  aria-label={`${typingSender.name} is typing`}
+                  aria-label={typingAccessibilityLabel}
                   role="status"
                 >
                   <span aria-hidden="true" />

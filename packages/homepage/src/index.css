@@ -1970,6 +1970,19 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   transform: scale(1.18);
 }
 
+.landing-message--typing-multiple .landing-message-avatar-slot {
+  flex-basis: 2.45rem;
+  width: 2.45rem;
+  overflow: visible;
+}
+
+.landing-message--typing-multiple
+  .landing-message-avatar
+  + .landing-message-avatar {
+  margin-left: -0.62rem;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
 .landing-message-author {
   margin: 0 0 0.16rem 0.7rem;
   color: #76767c;
@@ -2607,6 +2620,11 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   .landing-message-avatar-slot {
     flex-basis: 1.7rem;
     min-height: 1.7rem;
+  }
+
+  .landing-message--typing-multiple .landing-message-avatar-slot {
+    flex-basis: 2.65rem;
+    width: 2.65rem;
   }
 
   .landing-demo-card {

@@ -117,6 +117,40 @@ test("human replies show the participant's iOS typing indicator", async ({
   await expect(page.getByText("7:30 works", { exact: true })).toBeVisible();
 });
 
+test("concurrent human replies share one compact typing row", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForLandingIntro(page);
+
+  const phone = page.locator(".landing-iphone");
+  await expect(phone).toHaveAttribute("data-demo-typing", "Maya,Leo", {
+    timeout: 8_000,
+  });
+
+  const indicator = page.locator('[data-demo-typing-indicator="Maya and Leo"]');
+  await expect(indicator).toBeVisible();
+  await expect(indicator.locator(".landing-message-author")).toHaveText(
+    "Maya and Leo",
+  );
+  await expect(indicator.locator(".landing-message-avatar")).toHaveCount(2);
+  await expect(indicator.locator(".landing-typing")).toHaveAttribute(
+    "aria-label",
+    "Maya and Leo are typing",
+  );
+
+  await expect(phone).toHaveAttribute("data-demo-typing", "Leo", {
+    timeout: 3_000,
+  });
+  await expect(
+    page.getByText("outdoors if it's warm?", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Mission or Noe?", { exact: true })).toBeVisible({
+    timeout: 3_000,
+  });
+});
+
 test("all five longer rooms keep rotating without hiding usable thread space", async ({
   page,
 }) => {
