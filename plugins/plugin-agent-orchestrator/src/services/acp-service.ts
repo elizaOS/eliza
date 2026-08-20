@@ -428,7 +428,17 @@ const path = require("node:path");
 const git = process.env.ACP_REAL_GIT || "git";
 const indexFile = process.env.ACP_GIT_INDEX_FILE;
 const baseline = process.env.ACP_GIT_BASELINE_SHA;
-if (indexFile) process.env.GIT_INDEX_FILE = indexFile;
+if (indexFile) {
+  process.env.GIT_INDEX_FILE = indexFile;
+  // Self-heal the index dir: scratch GC (or a corrective-lap reactivation)
+  // can remove ~/.acpx/git-indexes/<session>/ between turns, after which
+  // every git call exits 128 until someone recreates it — the child burned
+  // three failed steps rediscovering this by hand (live 2026-08-20,
+  // GLOSSARY corrective lap).
+  try {
+    fs.mkdirSync(path.dirname(indexFile), { recursive: true });
+  } catch {}
+}
 delete process.env.ACP_GIT_INDEX_FILE;
 delete process.env.ACP_GIT_BASELINE_SHA;
 delete process.env.ACP_REAL_GIT;
