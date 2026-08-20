@@ -1,7 +1,8 @@
 /**
  * Web/Electrobun bridge surface for the `Agent` Capacitor plugin: implements
  * `AgentPlugin` over HTTP against the API server, used whenever no native
- * iOS/Android implementation is registered (see `index.ts`).
+ * iOS/Android implementation is registered (see `index.ts`). Every hop uses
+ * AbortSignal.timeout so a hung API TCP accept cannot stall chat/start/status.
  */
 import { WebPlugin } from "@capacitor/core";
 import type {
@@ -69,6 +70,18 @@ function assertRequestPath(path: unknown): string {
     }
   }
   return trimmed;
+}
+
+/** Default bound for start/stop/status/conversation-create/request hops. */
+export const AGENT_WEB_FETCH_TIMEOUT_MS = 30_000;
+/** Chat waits on the agent message loop; still fail closed instead of hanging. */
+export const AGENT_WEB_CHAT_TIMEOUT_MS = 120_000;
+
+function abortSignal(timeoutMs: number): AbortSignal {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return AbortSignal.timeout(AGENT_WEB_FETCH_TIMEOUT_MS);
+  }
+  return AbortSignal.timeout(timeoutMs);
 }
 
 function assertRequestMethod(method: unknown): string {
@@ -140,6 +153,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
         ...this.authHeaders(),
       },
       body: JSON.stringify({ title: "Quick Chat" }),
+      signal: abortSignal(AGENT_WEB_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       throw new Error(`Failed to create conversation: ${res.status}`);
@@ -170,6 +184,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
           ...this.authHeaders(),
         },
         body: JSON.stringify({ text, channelType: "DM" }),
+        signal: abortSignal(AGENT_WEB_CHAT_TIMEOUT_MS),
       },
     );
 
@@ -254,6 +269,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     const res = await fetch(`${this.apiBase()}/api/agent/start`, {
       method: "POST",
       headers: this.authHeaders(),
+      signal: abortSignal(AGENT_WEB_FETCH_TIMEOUT_MS),
     });
     const data = await res.json();
     return data.status ?? data;
@@ -266,6 +282,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     const res = await fetch(`${this.apiBase()}/api/agent/stop`, {
       method: "POST",
       headers: this.authHeaders(),
+      signal: abortSignal(AGENT_WEB_FETCH_TIMEOUT_MS),
     });
     return res.json();
   }
@@ -282,6 +299,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     }
     const res = await fetch(`${this.apiBase()}/api/status`, {
       headers: this.authHeaders(),
+      signal: abortSignal(AGENT_WEB_FETCH_TIMEOUT_MS),
     });
     return res.json();
   }
@@ -324,6 +342,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
         ...options.headers,
       },
       body: options.body ?? undefined,
+      signal: abortSignal(options.timeoutMs ?? AGENT_WEB_FETCH_TIMEOUT_MS),
     });
     const headers: Record<string, string> = {};
     res.headers.forEach((value, key) => {

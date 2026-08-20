@@ -1,6 +1,7 @@
 /**
- * Unit tests for the `AgentWeb` HTTP fallback — `window` and `fetch` are
- * fully stubbed; no real API server is involved.
+ * Unit tests for the `AgentWeb` HTTP fallback. `window` and `fetch` are
+ * stubbed; the hang case is a never-settling fetch that rejects when the
+ * production AbortSignal aborts.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -129,6 +130,61 @@ describe("AgentWeb fallback", () => {
           "x-test": "1",
         },
         body: "{}",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("times out a hung Agent.request hop instead of waiting forever", async () => {
+    setWindow({
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
+    } as Partial<Window>);
+    const fetchMock = vi.fn(
+      (_url: string, init?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) return;
+          if (signal.aborted) {
+            reject(signal.reason);
+            return;
+          }
+          signal.addEventListener("abort", () => reject(signal.reason));
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const started = performance.now();
+    try {
+      await new AgentWeb().request({ path: "/api/status", timeoutMs: 50 });
+      expect.unreachable("hung request should fail closed");
+    } catch (error) {
+      expect((error as Error).name).toBe("TimeoutError");
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://agent.example/api/status",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
+  it("attaches AbortSignal to getStatus fetch", async () => {
+    setWindow({
+      __ELIZAOS_APP_BOOT_CONFIG__: { apiBase: "https://agent.example" },
+    } as Partial<Window>);
+    const fetchMock = vi.fn(async () => ({
+      json: async () => ({
+        state: "running",
+        agentName: "eliza",
+        port: 1,
+        startedAt: 1,
+        error: null,
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await new AgentWeb().getStatus();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://agent.example/api/status",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
       }),
     );
   });
