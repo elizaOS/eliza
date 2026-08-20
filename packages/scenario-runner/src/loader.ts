@@ -522,8 +522,10 @@ export async function loadScenarioFile(file: string): Promise<LoadedScenario> {
     validateScenarioDefinition(candidate);
     assertScenarioQuality(candidate, file);
   } catch (err) {
+    // error-policy:J2 Preserve the validation failure beneath file context.
     throw new Error(
       `[scenario-loader] ${file}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
   return { file, scenario: candidate };
