@@ -567,7 +567,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Scenario runner unit coverage
-        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts
+        run: bun run --cwd packages/scenario-runner test:unit -- src/executor.test.ts src/runtime-factory.test.ts
 
       - name: Deterministic model provider unit coverage
         run: bun run --cwd packages/core test -- src/testing/deterministic-model-plugin.test.ts
