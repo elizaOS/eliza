@@ -38,7 +38,7 @@ function StewardLoginSectionFallback() {
 
 function LoginBackground({ children }: { children: React.ReactNode }) {
   return (
-    <div className="theme-cloud relative h-[100dvh] min-h-0 overflow-hidden text-txt">
+    <div className="theme-cloud relative isolate h-[100dvh] min-h-0 overflow-hidden bg-bg text-txt">
       {/* SAFE-AREA FILL (installed iOS PWA): the `bg-bg` fill is a `fixed
           inset-0` underlay, NOT a `min-h-[100dvh]` slab. On the installed
           standalone PWA the body is non-fixed (base.css / styles.css lockdown),
@@ -53,7 +53,7 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
       <div
         aria-hidden="true"
         data-testid="login-safe-area-fill"
-        className="pointer-events-none fixed inset-0 z-[-1] bg-bg"
+        className="pointer-events-none fixed inset-0 z-0 bg-bg"
       />
       <div
         className="flex h-full min-h-0 w-full flex-col px-4 sm:px-6"
