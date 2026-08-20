@@ -1,11 +1,14 @@
 /** Exercises the strict model wire adapter through real loopback HTTP requests. */
 
 import { afterEach, describe, expect, it } from "bun:test";
+import { createOpenAI } from "@ai-sdk/openai";
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import {
   createDeterministicModelFixtureRegistry,
   createDeterministicModelPlugin,
 } from "@elizaos/core/testing";
+import { generateText, streamText, tool } from "ai";
+import { z } from "zod";
 import type { RunningMockLlm } from "./mock-llm";
 import { startMockLlm } from "./mock-llm";
 
@@ -22,6 +25,100 @@ async function start(options: Parameters<typeof startMockLlm>[0]) {
 }
 
 describe("strict Cloud model wire adapter", () => {
+  it("drives the production OpenAI SDK through text, tool, usage, streaming, error, and cancellation wires", async () => {
+    const server = await start({
+      fixtures: [
+        {
+          name: "sdk-text",
+          match: { input: "sdk text" },
+          response: {
+            text: "sdk answer",
+            usage: { promptTokens: 2, completionTokens: 3 },
+          },
+        },
+        {
+          name: "sdk-tool",
+          match: { input: "sdk tool", toolNames: ["CREATE_TASK"] },
+          response: {
+            finishReason: "tool_calls",
+            toolCalls: [
+              {
+                id: "sdk-call-1",
+                name: "CREATE_TASK",
+                arguments: { title: "Synthetic task" },
+              },
+            ],
+          },
+        },
+        {
+          name: "sdk-stream",
+          match: { input: "sdk stream" },
+          response: "streamed answer",
+          behavior: { stream: { chunkSize: 4, intervalMs: 0 } },
+        },
+        {
+          name: "sdk-error",
+          match: { input: "sdk error" },
+          behavior: {
+            error: { message: "throttled", status: 429, code: "rate_limit" },
+          },
+        },
+        {
+          name: "sdk-cancel",
+          match: { input: "sdk cancel" },
+          behavior: { waitForAbort: true },
+        },
+      ],
+    });
+    const openai = createOpenAI({
+      apiKey: "sk-synthetic-example",
+      baseURL: server.url,
+    });
+    const model = openai.chat("gpt-fixture");
+    const text = await generateText({ model, prompt: "sdk text" });
+    expect(text.text).toBe("sdk answer");
+    expect(text.usage).toMatchObject({ inputTokens: 2, outputTokens: 3 });
+
+    const tools = await generateText({
+      model,
+      prompt: "sdk tool",
+      tools: {
+        CREATE_TASK: tool({
+          inputSchema: z.object({ title: z.string() }),
+        }),
+      },
+    });
+    expect(tools.toolCalls[0]).toMatchObject({
+      toolName: "CREATE_TASK",
+      input: { title: "Synthetic task" },
+    });
+
+    const streamed = streamText({ model, prompt: "sdk stream" });
+    let streamedText = "";
+    for await (const chunk of streamed.textStream) streamedText += chunk;
+    expect(streamedText).toBe("streamed answer");
+
+    await expect(
+      generateText({ model, prompt: "sdk error", maxRetries: 0 }),
+    ).rejects.toThrow("throttled");
+    const controller = new AbortController();
+    const pending = generateText({
+      model,
+      prompt: "sdk cancel",
+      abortSignal: controller.signal,
+    });
+    for (let index = 0; index < 100; index += 1) {
+      const consumed = server
+        .diagnostics()
+        .fixtures.find((fixture) => fixture.name === "sdk-cancel")?.consumed;
+      if (consumed === 1) break;
+      await new Promise<void>((resolve) => setTimeout(resolve, 2));
+    }
+    controller.abort();
+    await expect(pending).rejects.toThrow();
+    expect(() => server.assertFixturesConsumed()).not.toThrow();
+  }, 30_000);
+
   it("serves declared text and usage with sanitized registry diagnostics", async () => {
     const server = await start({
       scenarioId: "wire.text",

@@ -509,11 +509,14 @@
         "@elizaos/ui": "workspace:*",
       },
       "devDependencies": {
+        "@ai-sdk/openai": "3.0.58",
         "@playwright/test": "^1.62.1",
         "@types/node": "^22.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
+        "ai": "^6.0.256",
         "bun-types": "^1.3.13",
         "typescript": "^5.5.0",
+        "zod": "^4.4.3",
       },
     },
     "packages/cloud/infra": {
@@ -771,6 +774,7 @@
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/synthetic-world": "workspace:*",
         "hono": "4.13.1",
       },
       "devDependencies": {

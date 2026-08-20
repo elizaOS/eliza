@@ -10,6 +10,41 @@ Code + state + PKCE, rotating refresh credentials, revoked/expired credentials,
 fixture responses, deterministic faults, signed webhook delivery, redacted
 request inspection, and policy receipts.
 
+The package exports `provider-mock-catalog.json` as
+`@elizaos/cloud-test-mocks/provider-mock-catalog`. It maps maintained central
+mocks to production clients, API versions, endpoints/events, known gaps,
+control surfaces, scenario coverage, and separately owned live canaries. Every
+row is mock-only; no catalog receipt is provider-qualified evidence.
+
+### Stateful control contract
+
+`startFakeProvider()` exposes an authenticated `control` client implementing
+`provider-mock-control-v1`:
+
+```ts
+const state = await upstream.control.snapshot();
+await upstream.control.fault(
+  "GET",
+  "/v1/items",
+  { type: "status", status: 429, headers: { "retry-after": "2" } },
+  { expectedGeneration: state.generation },
+);
+await upstream.control.reset();
+```
+
+The separate control secret never enters production-client configuration.
+Mutations are generation-checked, and inspection returns sanitized production
+requests, receipts, effects, fixture IDs, fault counts, an execution-state
+hash, and per-attempt control commands. Pass a `SyntheticWorld` to make its
+namespace, virtual clock, reset, state hash, and observation ledger
+authoritative. A provider-local `reset()` restores only that provider and does
+not erase another service's evidence. `resetWorld()` uses the shared
+coordinator to restore every registered provider and the world atomically, so
+repeated runs begin from the same global execution-state hash; generation
+remains monotonic for concurrent control clients. Production behavior is still exercised only
+through the provider base URL and normal auth path. Snapshots explicitly say
+`mock-only-not-provider-qualified`.
+
 Suites declare an `outbound-http` or `inbound-webhook` profile. The audit binds
 that profile and the capability list to the executed nonce report, so a caller
 cannot omit mandatory scenarios or claim OAuth credential lifecycle behavior

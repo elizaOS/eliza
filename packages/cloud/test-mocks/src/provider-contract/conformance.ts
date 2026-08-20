@@ -55,6 +55,12 @@ const CAPABILITY_SCENARIOS: Record<
   "http-write": ["write-policy-receipt"],
   "irreversible-write": ["irreversible-policy-receipt"],
   pagination: ["pagination-cursors"],
+  streaming: ["streaming-protocol"],
+  "media-multimodal": ["media-multimodal"],
+  cancellation: ["request-cancellation"],
+  concurrency: ["concurrent-isolation"],
+  idempotency: ["idempotent-retry"],
+  "message-lifecycle": ["message-lifecycle"],
   "tenant-isolation": ["cross-tenant-denial"],
   webhooks: [
     "duplicate-webhook",

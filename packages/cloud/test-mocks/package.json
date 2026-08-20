@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./hetzner": "./src/hetzner/index.ts",
     "./control-plane": "./src/control-plane/index.ts",
-    "./provider-contract": "./src/provider-contract/index.ts"
+    "./provider-contract": "./src/provider-contract/index.ts",
+    "./provider-mock-catalog": "./provider-mock-catalog.json"
   },
   "bin": {
     "hetzner-mock": "./bin/hetzner-mock.ts",
@@ -27,6 +28,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/shared": "workspace:*",
+    "@elizaos/synthetic-world": "workspace:*",
     "hono": "4.13.1"
   },
   "devDependencies": {
