@@ -29,6 +29,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
+import { buildElizaCloudServiceRoute } from "@elizaos/shared";
 import { buildFirstRunRuntimeConfig } from "../src/first-run/first-run-config.ts";
 import {
   createLiveRuntimeChildEnv,
@@ -1008,6 +1009,27 @@ async function submitFirstRun(apiBase: string): Promise<void> {
     firstRunLargeModel: LIVE_PROVIDER.largeModel,
   });
 
+  // Live cloud-media lanes (ELIZA_UI_SMOKE_CLOUD_MEDIA_LIVE=1) assert the
+  // "cloud voice, local brain" product configuration: interactive STT/TTS
+  // proxied through Eliza Cloud beside the selected local text provider. That
+  // must be modeled the way a real user selects it — through first-run service
+  // routing — because the runtime deletes an ambient ELIZAOS_CLOUD_API_KEY at
+  // boot when the config selects no cloud service, which turns every
+  // /api/asr/cloud call into a 401 no matter what the child env carried.
+  const ambientCloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim() ?? "";
+  const cloudMediaLive =
+    process.env.ELIZA_UI_SMOKE_CLOUD_MEDIA_LIVE === "1" && ambientCloudApiKey;
+  const serviceRouting = cloudMediaLive
+    ? {
+        ...runtimeConfig.serviceRouting,
+        tts: buildElizaCloudServiceRoute(),
+        media: buildElizaCloudServiceRoute(),
+      }
+    : runtimeConfig.serviceRouting;
+  const credentialInputs = cloudMediaLive
+    ? { ...runtimeConfig.credentialInputs, cloudApiKey: ambientCloudApiKey }
+    : runtimeConfig.credentialInputs;
+
   const response = await fetch(`${apiBase}/api/first-run`, {
     method: "POST",
     headers: {
@@ -1024,12 +1046,8 @@ async function submitFirstRun(apiBase: string): Promise<void> {
       ...(runtimeConfig.linkedAccounts
         ? { linkedAccounts: runtimeConfig.linkedAccounts }
         : {}),
-      ...(runtimeConfig.serviceRouting
-        ? { serviceRouting: runtimeConfig.serviceRouting }
-        : {}),
-      ...(runtimeConfig.credentialInputs
-        ? { credentialInputs: runtimeConfig.credentialInputs }
-        : {}),
+      ...(serviceRouting ? { serviceRouting } : {}),
+      ...(credentialInputs ? { credentialInputs } : {}),
     }),
   });
 
