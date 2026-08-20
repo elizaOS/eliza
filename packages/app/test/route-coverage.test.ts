@@ -51,6 +51,10 @@ const INTERNAL_TOOL_APPS_SOURCE = path.resolve(
   "../../ui/src/components/apps/internal-tool-apps.ts",
 );
 const APP_MAIN_SOURCE = path.resolve(HERE, "../src/main.tsx");
+const UI_STYLES_SOURCE = path.resolve(
+  REPO_ROOT,
+  "packages/ui/src/styles/styles.css",
+);
 
 type PluginViewCase = {
   manifestPath: string;
@@ -442,6 +446,11 @@ function managerVisibleGuiViewPaths(): Map<string, string> {
 }
 
 describe("app route coverage gate", () => {
+  it("includes the routed Maps view in the shared responsive utility scan", () => {
+    const styles = readFileSync(UI_STYLES_SOURCE, "utf8");
+    expect(styles).toContain('@source "../../../../plugins/plugin-maps/src";');
+  });
+
   it("route smoke matrix covers catalog and app-window routes", () => {
     const smokePaths = new Set([
       ...pathsFromSource(ALL_PAGES_SPEC),
