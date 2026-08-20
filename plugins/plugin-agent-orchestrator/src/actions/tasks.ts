@@ -1415,7 +1415,13 @@ async function runCreateLegacy(
       let createAssignedAppDir: string | undefined;
       let createSlugRoute: ResolvedWorkdirRoute | undefined;
       if (!createProvisionedWorkspaceId) {
-        const slugDir = appBuildSlugWorkdir(task, label, sessionWorkdir, runtime);
+        const slugDir = appBuildSlugWorkdir(
+          task,
+          label,
+          sessionWorkdir,
+          runtime,
+          requestText(message),
+        );
         if (slugDir) {
           sessionWorkdir = slugDir;
           isolateWorkdir = false;
@@ -1431,10 +1437,13 @@ async function runCreateLegacy(
           );
         }
       }
+      const groundedCreateTask = createAssignedAppDir
+        ? retargetPlannerAppPaths(task, createAssignedAppDir)
+        : task;
       const createTaskForChild =
         createProvisionedWorkspaceId && createRequestedRepo
-          ? withProvisionedRepoContract(task, createRequestedRepo)
-          : task;
+          ? withProvisionedRepoContract(groundedCreateTask, createRequestedRepo)
+          : groundedCreateTask;
       const taskWithRouteHints = augmentTaskWithDeployGuidance(
         // A provisioned clone is NOT the route's tree: carrying the route's
         // id/instructions onto it would mislabel the workdir class and feed
@@ -2387,11 +2396,27 @@ const PLACEHOLDER_REPO_OWNERS = new Set([
  * workdir is not the checkout that contains the apps dir. Edits keep the
  * route root (the deploy-contract regex requires a build/create verb).
  */
+/** Rewrite planner-invented absolute app paths onto the server-assigned slug
+ * dir. The planner writes concrete path guesses into the task text ("...in
+ * <appsDir>/unit-converter") and the child obeys them over the resolved
+ * workdir — an edit ask then lands in a stale sibling dir while the app the
+ * user meant sits untouched (live 2026-08-20). Only paths under the deploy
+ * apps dir are rewritten; everything else in the prose stays verbatim. */
+function retargetPlannerAppPaths(task: string, assignedDir: string): string {
+  const deploy = resolveAppDeployConfig();
+  if (!deploy.customAppsDir) return task;
+  const appsDir = nodePathResolve(deploy.customAppsDir);
+  const escaped = appsDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`${escaped}/[A-Za-z0-9._-]+`, "g");
+  return task.replace(re, assignedDir);
+}
+
 function appBuildSlugWorkdir(
   task: string,
   label: string,
   resolvedWorkdir: string | undefined,
   runtime?: IAgentRuntime,
+  userText?: string,
 ): string | undefined {
   // Decision logging: a silent undefined here drops the build into scratch
   // with no served URL and the park that follows is undiagnosable from the
@@ -2406,7 +2431,13 @@ function appBuildSlugWorkdir(
     return undefined;
   };
   if (!resolvedWorkdir) return declined("no resolved workdir");
-  if (!isAppBuildTask(task)) return declined("task text is not an app build");
+  // Gate on the USER'S OWN WORDS as well as the composed task: the planner
+  // rewrites verbs freely ("make me a page" became "Implement a fully
+  // working dark mode", live 2026-08-20), and a rewrite must not knock an
+  // app ask off the slug-placement path.
+  if (!isAppBuildTask(task) && !(userText && isAppBuildTask(userText))) {
+    return declined("task text is not an app build");
+  }
   const deploy = resolveAppDeployConfig();
   if (deploy.target !== "custom" || !deploy.customAppsDir) {
     return declined(`deploy target=${deploy.target ?? "unset"}`);
@@ -2445,15 +2476,16 @@ function appBuildSlugWorkdir(
   // `unit-converter-3/`, and verification rightly parked the run (live
   // 2026-08-20). Creation phrasing ("make me a ...") keeps the never-clobber
   // slot scan.
+  const intentText = userText?.trim() ? userText : task;
   const editIntent =
     /\b(?:same\s+(?:link|url)|keep\s+the\s+(?:same\s+)?(?:link|url)|existing)\b/i.test(
-      task,
+      intentText,
     ) ||
     (/\b(?:the|my|our)\s+[\w -]{0,40}\b(?:page|app|site|game|tool)\b/i.test(
-      task,
+      intentText,
     ) &&
       !/\b(?:make|build|create|spin(?:\s+up)?|whip(?:\s+up)?)\s+(?:me|us)\s+a\b/i.test(
-        task,
+        intentText,
       ));
   if (editIntent) {
     // The label rarely matches the app's dir name ("Dark Mode for Unit
@@ -2474,7 +2506,10 @@ function appBuildSlugWorkdir(
       "lil",
     ]);
     const taskTokens = new Set(
-      task.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean),
+      `${intentText} ${task}`
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean),
     );
     let newest: { dir: string; mtimeMs: number } | undefined;
     let entries: string[] = [];
@@ -2993,6 +3028,7 @@ async function runSpawnAgent(
         typeof params.label === "string" && params.label ? params.label : task,
         effectiveWorkdir,
         runtime,
+        requestText(message),
       );
       if (slugDir) {
         effectiveWorkdir = slugDir;
