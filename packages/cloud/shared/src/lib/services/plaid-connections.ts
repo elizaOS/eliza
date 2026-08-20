@@ -19,10 +19,15 @@ import {
   removePlaidItem,
   syncPlaidTransactions,
 } from "./agent-plaid-connector";
+import { EncryptionKeyMismatchError } from "./secrets/encryption";
 
 const PLAID_VENDOR = "plaid";
 
 type PlaidEnvironment = "sandbox" | "development" | "production";
+
+function isPlaidEnvironment(value: unknown): value is PlaidEnvironment {
+  return value === "sandbox" || value === "development" || value === "production";
+}
 
 interface PlaidConnectionStore {
   upsertOrgBoundAccessToken(input: {
@@ -130,7 +135,7 @@ export class PlaidConnectionService {
     count?: number;
   }): Promise<PlaidTransactionDelta> {
     const connection = await this.requireConnection(args.organizationId, args.connectionId);
-    const accessToken = await this.store.getOrgBoundAccessToken(connection);
+    const accessToken = await this.getAccessToken(connection);
     return this.protocol.sync({
       accessToken,
       cursor: args.cursor,
@@ -147,8 +152,8 @@ export class PlaidConnectionService {
     if (!connection) {
       return { revoked: true };
     }
-    const accessToken = await this.store.getOrgBoundAccessToken(connection);
     const storedEnvironment = this.requireStoredEnvironment(connection);
+    const accessToken = await this.getAccessToken(connection);
     try {
       await this.protocol.remove(accessToken, storedEnvironment);
     } catch (error) {
@@ -199,14 +204,30 @@ export class PlaidConnectionService {
     const storedEnvironment = connection.connection_metadata.plaid_environment;
     if (
       connection.connection_metadata.encryption_context !== "org_bound_v1" ||
-      !storedEnvironment
+      !isPlaidEnvironment(storedEnvironment)
     ) {
       throw new PlaidConnectionError(
         409,
-        "This Plaid connection predates Cloud credential storage. Re-link the account.",
+        "This Plaid connection has legacy or invalid Cloud credential metadata. Re-link the account.",
       );
     }
     return storedEnvironment;
+  }
+
+  private async getAccessToken(connection: VendorConnection): Promise<string> {
+    try {
+      return await this.store.getOrgBoundAccessToken(connection);
+    } catch (error) {
+      // error-policy:J1 translate an expected at-rest key transition into the
+      // public recovery contract without exposing key identifiers.
+      if (error instanceof EncryptionKeyMismatchError) {
+        throw new PlaidConnectionError(
+          409,
+          "This Plaid connection requires credential rotation or re-linking.",
+        );
+      }
+      throw error;
+    }
   }
 }
 

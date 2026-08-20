@@ -8,6 +8,7 @@ import { buildOrgBoundAccessTokenAad } from "../../db/repositories/vendor-connec
 import type { VendorConnection } from "../../db/schemas/vendor-connections";
 import { AgentPlaidConnectorError } from "./agent-plaid-connector";
 import { PlaidConnectionError, PlaidConnectionService } from "./plaid-connections";
+import { EncryptionKeyMismatchError } from "./secrets/encryption";
 
 const INSTITUTION = {
   institutionId: "ins_1",
@@ -217,5 +218,47 @@ describe("PlaidConnectionService", () => {
       }),
     ).resolves.toEqual({ revoked: true });
     expect(protocol.remove).toHaveBeenCalledWith("plaid-secret-token", "sandbox");
+  });
+
+  test("rejects legacy or malformed revoke metadata before decrypting", async () => {
+    const invalidMetadata = [
+      { plaid_environment: "sandbox" },
+      { encryption_context: "org_bound_v1", plaid_environment: "invalid" },
+    ];
+
+    for (const connectionMetadata of invalidMetadata) {
+      const { service, store, protocol } = harness(
+        connection({
+          connection_metadata: connectionMetadata as VendorConnection["connection_metadata"],
+        }),
+      );
+
+      await expect(
+        service.revoke({
+          organizationId: "org-a",
+          connectionId: "11111111-1111-4111-8111-111111111111",
+        }),
+      ).rejects.toMatchObject({ status: 409 } satisfies Partial<PlaidConnectionError>);
+      expect(store.getOrgBoundAccessToken).not.toHaveBeenCalled();
+      expect(protocol.remove).not.toHaveBeenCalled();
+      expect(store.deleteActiveByIdForOrganization).not.toHaveBeenCalled();
+    }
+  });
+
+  test("requires rotation or re-linking when the active encryption key changed", async () => {
+    const { service, store, protocol } = harness();
+    store.getOrgBoundAccessToken.mockRejectedValueOnce(new EncryptionKeyMismatchError());
+
+    await expect(
+      service.revoke({
+        organizationId: "org-a",
+        connectionId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      message: "This Plaid connection requires credential rotation or re-linking.",
+    } satisfies Partial<PlaidConnectionError>);
+    expect(protocol.remove).not.toHaveBeenCalled();
+    expect(store.deleteActiveByIdForOrganization).not.toHaveBeenCalled();
   });
 });

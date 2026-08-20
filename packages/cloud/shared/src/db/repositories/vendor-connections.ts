@@ -359,6 +359,7 @@ export const vendorConnectionsRepository = {
       throw new Error("Connection credential is not organization-bound.");
     }
     const encryption = getEncryptionService();
+    encryption.assertCurrentKeyId(connection.encryption_key_id);
     return encryption.decrypt(
       {
         encryptedValue: connection.access_token_encrypted,
@@ -372,6 +373,7 @@ export const vendorConnectionsRepository = {
 
   async getDecryptedTokens(connection: VendorConnection): Promise<DecryptedTokens> {
     const encryption = getEncryptionService();
+    encryption.assertCurrentKeyId(connection.encryption_key_id);
     const accessToken = await encryption.decrypt({
       encryptedValue: connection.access_token_encrypted,
       encryptedDek: connection.encrypted_dek,

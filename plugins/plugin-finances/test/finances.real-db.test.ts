@@ -26,8 +26,10 @@ import {
 } from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import { runPaymentsHandler } from "../src/actions/finances.ts";
 import { FinancesRepository } from "../src/db/finances-repository.ts";
+import { executeRawSql } from "../src/db/sql.ts";
 import { FinancesService } from "../src/finances-service.ts";
 import financesPlugin from "../src/plugin.ts";
+import { scrubLegacyPlaidCredentials } from "../src/services/migration.ts";
 
 function plaidTransaction(
   transactionId: string,
@@ -95,6 +97,69 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
 
     const list = await service.listPaymentSources();
     expect(list.find((s) => s.id === created.id)).toBeTruthy();
+  });
+
+  it("rejects generic Plaid metadata before it can persist a local secret", async () => {
+    await expect(
+      service.addPaymentSource({
+        kind: "plaid",
+        label: "Forbidden local Plaid source",
+        metadata: { plaid: { accessToken: "access-secret-sentinel" } },
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(
+      JSON.stringify(await repository.listPaymentSources(runtime.agentId)),
+    ).not.toContain("access-secret-sentinel");
+  });
+
+  it("startup credential sweep scrubs dormant Plaid tokens in the real database", async () => {
+    const secret = "access-dormant-startup-sentinel";
+    const now = new Date().toISOString();
+    const sourceId = crypto.randomUUID();
+    await repository.upsertPaymentSource({
+      id: sourceId,
+      agentId: runtime.agentId,
+      kind: "plaid",
+      label: "Dormant Plaid source",
+      institution: null,
+      accountMask: null,
+      status: "active",
+      lastSyncedAt: null,
+      transactionCount: 0,
+      metadata: { plaid: { accessToken: secret, cursor: "old" } },
+      createdAt: now,
+      updatedAt: now,
+    });
+    await executeRawSql(runtime, "CREATE SCHEMA IF NOT EXISTS app_lifeops");
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS app_lifeops.life_payment_sources
+       (LIKE app_finances.life_payment_sources INCLUDING ALL)`,
+    );
+    await executeRawSql(
+      runtime,
+      `INSERT INTO app_lifeops.life_payment_sources
+       SELECT * FROM app_finances.life_payment_sources WHERE id = '${sourceId}'`,
+    );
+    await scrubLegacyPlaidCredentials((statement) =>
+      executeRawSql(runtime, statement),
+    );
+    const stored = await repository.getPaymentSource(runtime.agentId, sourceId);
+    expect(stored).toMatchObject({
+      status: "needs_attention",
+      metadata: {
+        plaid: { cursor: "old", migrationStatus: "relink_required" },
+      },
+    });
+    expect(JSON.stringify(stored)).not.toContain(secret);
+    const retainedRows = await executeRawSql(
+      runtime,
+      `SELECT status, metadata_json FROM app_lifeops.life_payment_sources
+       WHERE id = '${sourceId}'`,
+    );
+    expect(retainedRows[0]?.status).toBe("needs_attention");
+    expect(String(retainedRows[0]?.metadata_json)).toContain("relink_required");
+    expect(JSON.stringify(retainedRows)).not.toContain(secret);
   });
 
   it("persists only an opaque Plaid connection and revokes it before deletion", async () => {
@@ -511,6 +576,108 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
     }
   });
 
+  it("serializes concurrent cursor windows and replays the stale caller", async () => {
+    let releaseFirst: ((response: Response) => void) | undefined;
+    let syncRequest = 0;
+    const requestedCursors: string[] = [];
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/exchange")) {
+          return Response.json({
+            connectionId: "66666666-6666-4666-8666-666666666666",
+            environment: "sandbox",
+            institution: {
+              institutionId: "ins-6",
+              institutionName: "Concurrency Bank",
+              primaryAccountMask: null,
+              accounts: [],
+            },
+          });
+        }
+        if (url.endsWith("/sync")) {
+          syncRequest += 1;
+          const cursor = (JSON.parse(String(init?.body)) as { cursor: string })
+            .cursor;
+          requestedCursors.push(cursor);
+          if (syncRequest === 1) {
+            return new Promise<Response>((resolve) => {
+              releaseFirst = resolve;
+            });
+          }
+          if (syncRequest === 2) {
+            return Response.json({
+              added: [plaidTransaction("newer-window", { amount: 22 })],
+              modified: [],
+              removed: [],
+              nextCursor: "cursor-newer",
+              hasMore: false,
+            });
+          }
+          return Response.json({
+            added: [plaidTransaction("replayed-window", { amount: 33 })],
+            modified: [],
+            removed: [],
+            nextCursor: "cursor-final",
+            hasMore: false,
+          });
+        }
+        return Response.json({ error: "unexpected route" }, { status: 500 });
+      });
+
+    try {
+      service.plaidManagedClientCache = new PlaidManagedClient(() => ({
+        configured: true,
+        apiKey: "eliza_test",
+        apiBaseUrl: "https://cloud.example/api/v1",
+        siteUrl: "https://cloud.example",
+      }));
+      const source = await service.completePlaidLink({
+        publicToken: "public-token",
+      });
+      const stale = service.syncPlaidTransactions({ sourceId: source.id });
+      for (let attempt = 0; syncRequest < 1 && attempt < 100; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+      expect(syncRequest).toBe(1);
+      const newer = service.syncPlaidTransactions({ sourceId: source.id });
+      await expect(newer).resolves.toMatchObject({
+        nextCursor: "cursor-newer",
+      });
+      releaseFirst?.(
+        Response.json({
+          added: [plaidTransaction("stale-window", { amount: 44 })],
+          modified: [],
+          removed: [],
+          nextCursor: "cursor-stale",
+          hasMore: false,
+        }),
+      );
+      await expect(stale).resolves.toMatchObject({
+        nextCursor: "cursor-final",
+      });
+      expect(requestedCursors).toEqual(["", "", "cursor-newer"]);
+      const stored = await repository.getPaymentSource(
+        runtime.agentId,
+        source.id,
+      );
+      expect(stored?.metadata.plaid).toMatchObject({ cursor: "cursor-final" });
+      const transactions = await repository.listPaymentTransactions(
+        runtime.agentId,
+        {
+          sourceId: source.id,
+        },
+      );
+      expect(
+        transactions.map((transaction) => transaction.externalId).sort(),
+      ).toEqual(["newer-window", "replayed-window"]);
+    } finally {
+      fetchSpy.mockRestore();
+      service.plaidManagedClientCache = null;
+    }
+  });
+
   it("rolls back every Plaid sync write when a later transaction insert fails", async () => {
     const now = new Date().toISOString();
     const sourceId = crypto.randomUUID();
@@ -549,6 +716,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
 
     await expect(
       repository.applyPlaidSync({
+        expectedCursor: "",
         source: {
           ...source,
           metadata: {

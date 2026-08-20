@@ -17,10 +17,10 @@
  *   3. Otherwise copy every source row that is not already present in the
  *      target (a doubly-safe NOT EXISTS guard on the primary key).
  *
- * The source table is NEVER dropped or altered. The target schema is created
- * defensively (`CREATE SCHEMA IF NOT EXISTS`) in case the migration runner
- * has not yet applied — the drizzle runner also issues this, so it is a no-op
- * in the normal path.
+ * The source table is never dropped. A security sweep does alter Plaid rows in
+ * both schemas after copying: retired plaintext access tokens are removed and
+ * the rows are marked for relinking. Leaving the old schema untouched would
+ * retain a second plaintext credential store indefinitely.
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
@@ -129,6 +129,39 @@ export async function migrateFinanceTables(
   return results;
 }
 
+/**
+ * Remove retired locally stored Plaid access tokens from every finance schema
+ * in one database statement. A `DO` block is transaction-atomic in PostgreSQL;
+ * if either update fails, neither schema is partially scrubbed.
+ */
+export async function scrubLegacyPlaidCredentials(
+  exec: SqlExecutor,
+): Promise<void> {
+  const schemas = [TARGET_SCHEMA, SOURCE_SCHEMA]
+    .map(
+      (schema) => `
+    IF to_regclass('${schema}.life_payment_sources') IS NOT NULL THEN
+      UPDATE ${schema}.life_payment_sources
+         SET status = 'needs_attention',
+             metadata_json = jsonb_set(
+               metadata_json::jsonb #- '{plaid,accessToken}',
+               '{plaid,migrationStatus}',
+               '"relink_required"'::jsonb,
+               true
+             )::text,
+             updated_at = CURRENT_TIMESTAMP::text
+       WHERE kind = 'plaid'
+         AND jsonb_typeof(metadata_json::jsonb -> 'plaid') = 'object'
+         AND (metadata_json::jsonb -> 'plaid') ? 'accessToken';
+    END IF;`,
+    )
+    .join("");
+  await exec(`DO $finances_plaid_scrub$
+  BEGIN${schemas}
+  END
+  $finances_plaid_scrub$`);
+}
+
 type RuntimeDb = {
   execute: (query: unknown) => Promise<unknown>;
 };
@@ -187,6 +220,7 @@ export class FinancesMigrationService extends Service {
       extractRows(await db.execute(sql.raw(statement)));
 
     const results = await migrateFinanceTables(exec);
+    await scrubLegacyPlaidCredentials(exec);
     const copied = results.filter((r) => r.outcome === "copied");
     if (copied.length > 0) {
       logger.info(

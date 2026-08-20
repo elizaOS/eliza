@@ -57,6 +57,19 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
+export class PlaidSyncCursorConflictError extends Error {
+  readonly code = "PLAID_SYNC_CURSOR_CONFLICT";
+
+  constructor(
+    readonly sourceId: string,
+    readonly expectedCursor: string,
+    readonly actualCursor: string,
+  ) {
+    super(`Plaid sync cursor changed while syncing source ${sourceId}.`);
+    this.name = "PlaidSyncCursorConflictError";
+  }
+}
+
 function paymentSourceUpsertSql(source: LifeOpsPaymentSource): string {
   return `INSERT INTO ${FINANCE_TABLES.paymentSources} (
         id, agent_id, kind, label, institution, account_mask, status,
@@ -624,11 +637,42 @@ export class FinancesRepository {
    */
   async applyPlaidSync(args: {
     source: LifeOpsPaymentSource;
+    expectedCursor: string;
     added: LifeOpsPaymentTransaction[];
     modified: LifeOpsPaymentTransaction[];
     removedExternalIds: string[];
   }): Promise<{ inserted: number; skipped: number; transactionCount: number }> {
     return withTransaction(this.runtime, async (tx) => {
+      const sourceRows = await executeRawSqlTx(
+        tx,
+        `SELECT metadata_json
+           FROM ${FINANCE_TABLES.paymentSources}
+          WHERE agent_id = ${sqlQuote(args.source.agentId)}
+            AND id = ${sqlQuote(args.source.id)}
+          FOR UPDATE`,
+      );
+      const current = sourceRows[0];
+      if (!current) {
+        throw new Error(
+          `Plaid source ${args.source.id} disappeared during sync.`,
+        );
+      }
+      const metadata = parseJsonRecord(current.metadata_json);
+      const plaid = metadata.plaid;
+      const actualCursor =
+        plaid &&
+        typeof plaid === "object" &&
+        !Array.isArray(plaid) &&
+        typeof (plaid as Record<string, unknown>).cursor === "string"
+          ? ((plaid as Record<string, unknown>).cursor as string)
+          : "";
+      if (actualCursor !== args.expectedCursor) {
+        throw new PlaidSyncCursorConflictError(
+          args.source.id,
+          args.expectedCursor,
+          actualCursor,
+        );
+      }
       let inserted = 0;
       let skipped = 0;
       // Plaid may replace a transaction with a new id while retaining the

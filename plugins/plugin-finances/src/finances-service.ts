@@ -34,7 +34,10 @@ import {
   type PlaidTransactionDto,
   resolveCloudApiBaseUrl,
 } from "@elizaos/plugin-elizacloud/cloud/managed-payment-clients";
-import { FinancesRepository } from "./db/finances-repository.ts";
+import {
+  FinancesRepository,
+  PlaidSyncCursorConflictError,
+} from "./db/finances-repository.ts";
 import {
   fail,
   normalizeOptionalString,
@@ -465,6 +468,16 @@ export class FinancesService {
       normalizeOptionalString(request.institution)?.slice(0, 120) ?? null;
     const accountMask =
       normalizeOptionalString(request.accountMask)?.slice(0, 16) ?? null;
+    if (
+      kind === "plaid" &&
+      request.metadata &&
+      Object.keys(request.metadata).length > 0
+    ) {
+      fail(
+        400,
+        "Plaid metadata is Cloud-managed; create or relink Plaid sources through the Plaid link flow.",
+      );
+    }
     const now = new Date().toISOString();
     const source: LifeOpsPaymentSource = {
       id: crypto.randomUUID(),
@@ -477,7 +490,9 @@ export class FinancesService {
       lastSyncedAt: null,
       transactionCount: 0,
       metadata:
-        request.metadata && typeof request.metadata === "object"
+        kind !== "plaid" &&
+        request.metadata &&
+        typeof request.metadata === "object"
           ? { ...request.metadata }
           : {},
       createdAt: now,
@@ -1079,6 +1094,13 @@ export class FinancesService {
     sourceId: string;
   }): Promise<{ inserted: number; skipped: number; nextCursor: string }> {
     const sourceId = requireNonEmptyString(args.sourceId, "sourceId");
+    return this.syncPlaidTransactionsFromCurrentCursor(sourceId, 0);
+  }
+
+  private async syncPlaidTransactionsFromCurrentCursor(
+    sourceId: string,
+    cursorConflictAttempt: number,
+  ): Promise<{ inserted: number; skipped: number; nextCursor: string }> {
     const storedSource = await this.repository.getPaymentSource(
       this.agentId(),
       sourceId,
@@ -1171,31 +1193,53 @@ export class FinancesService {
     }
 
     const now = new Date().toISOString();
-    const applied = await this.repository.applyPlaidSync({
-      source: {
-        ...source,
-        status: "active",
-        lastSyncedAt: now,
-        metadata: {
-          ...source.metadata,
-          plaid: {
-            connectionId,
-            environment: plaidMetadata?.environment,
-            institutionId: plaidMetadata?.institutionId,
-            accounts: plaidMetadata?.accounts,
-            cursor: pageCursor,
+    let applied: {
+      inserted: number;
+      skipped: number;
+      transactionCount: number;
+    };
+    try {
+      applied = await this.repository.applyPlaidSync({
+        expectedCursor: cursor,
+        source: {
+          ...source,
+          status: "active",
+          lastSyncedAt: now,
+          metadata: {
+            ...source.metadata,
+            plaid: {
+              connectionId,
+              environment: plaidMetadata?.environment,
+              institutionId: plaidMetadata?.institutionId,
+              accounts: plaidMetadata?.accounts,
+              cursor: pageCursor,
+            },
           },
+          updatedAt: now,
         },
-        updatedAt: now,
-      },
-      added: added.map((transaction) =>
-        this.buildPlaidTransaction({ sourceId, transaction }),
-      ),
-      modified: modified.map((transaction) =>
-        this.buildPlaidTransaction({ sourceId, transaction }),
-      ),
-      removedExternalIds,
-    });
+        added: added.map((transaction) =>
+          this.buildPlaidTransaction({ sourceId, transaction }),
+        ),
+        modified: modified.map((transaction) =>
+          this.buildPlaidTransaction({ sourceId, transaction }),
+        ),
+        removedExternalIds,
+      });
+    } catch (error) {
+      if (
+        error instanceof PlaidSyncCursorConflictError &&
+        cursorConflictAttempt < 2
+      ) {
+        return this.syncPlaidTransactionsFromCurrentCursor(
+          sourceId,
+          cursorConflictAttempt + 1,
+        );
+      }
+      if (error instanceof PlaidSyncCursorConflictError) {
+        fail(409, "Plaid sync cursor changed repeatedly; retry the sync.");
+      }
+      throw error;
+    }
     return {
       inserted: applied.inserted,
       skipped: applied.skipped,

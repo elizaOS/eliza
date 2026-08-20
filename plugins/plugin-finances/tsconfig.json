@@ -43,6 +43,8 @@
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
+      "@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.ts"],
+      "@elizaos/plugin-elizacloud/*": ["../plugin-elizacloud/src/*"],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],

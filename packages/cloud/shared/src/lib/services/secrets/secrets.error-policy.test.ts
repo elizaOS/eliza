@@ -51,6 +51,7 @@ const fakeKms: KMSProvider = {
   async decrypt() {
     return Buffer.alloc(32, 7);
   },
+  currentKeyId: () => "test-key",
   isConfigured: () => true,
 };
 

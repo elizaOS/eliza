@@ -10,6 +10,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   DecryptionError,
+  EncryptionKeyMismatchError,
   type KMSProvider,
   LocalKMSProvider,
   SecretsEncryptionService,
@@ -28,10 +29,27 @@ class FailingDecryptKMS implements KMSProvider {
   async decrypt(): Promise<Buffer> {
     throw new Error("KMS unavailable");
   }
+  currentKeyId = () => "local-kms-key";
   isConfigured = () => true;
 }
 
 describe("#13415 — SecretsEncryptionService.decrypt fails observably, never silently", () => {
+  test("rejects a stored key id that differs from the active encryption key", () => {
+    const svc = new SecretsEncryptionService(new LocalKMSProvider(KEY));
+    expect(() => svc.assertCurrentKeyId("local-kms-key")).not.toThrow();
+
+    const error = (() => {
+      try {
+        svc.assertCurrentKeyId("retired-key");
+      } catch (caught) {
+        return caught;
+      }
+    })();
+    expect(error).toBeInstanceOf(EncryptionKeyMismatchError);
+    expect((error as Error).message).not.toContain("retired-key");
+    expect((error as Error).message).not.toContain("local-kms-key");
+  });
+
   test("designed success: a real round-trip returns the exact plaintext", async () => {
     const svc = new SecretsEncryptionService(new LocalKMSProvider(KEY));
     const enc = await svc.encrypt("real-access-token");

@@ -11,6 +11,7 @@ import {
   migrateFinanceTable,
   migrateFinanceTables,
   type SqlExecutor,
+  scrubLegacyPlaidCredentials,
 } from "./migration.ts";
 
 /**
@@ -107,5 +108,21 @@ describe("migrateFinanceTables", () => {
     const results = await migrateFinanceTables(exec);
     expect(results.every((r) => r.outcome === "source-missing")).toBe(true);
     expect(inserts).toHaveLength(0);
+  });
+});
+
+describe("scrubLegacyPlaidCredentials", () => {
+  it("sweeps active and retained legacy schemas in one atomic statement", async () => {
+    const statements: string[] = [];
+    await scrubLegacyPlaidCredentials(async (statement) => {
+      statements.push(statement);
+      return [];
+    });
+    expect(statements).toHaveLength(1);
+    expect(statements[0]).toContain("DO $finances_plaid_scrub$");
+    expect(statements[0]).toContain("UPDATE app_finances.life_payment_sources");
+    expect(statements[0]).toContain("UPDATE app_lifeops.life_payment_sources");
+    expect(statements[0]).toContain("#- '{plaid,accessToken}'");
+    expect(statements[0]).toContain("'needs_attention'");
   });
 });

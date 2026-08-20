@@ -6186,6 +6186,7 @@ export interface PublicRouteHeaders {
   "POST /api/v1/eliza/paypal/transactions": never;
   "POST /api/v1/eliza/plaid/exchange": never;
   "POST /api/v1/eliza/plaid/link-token": never;
+  "POST /api/v1/eliza/plaid/revoke": never;
   "POST /api/v1/eliza/plaid/sync": never;
   "POST /api/v1/embeddings": never;
   "POST /api/v1/extract": never;
