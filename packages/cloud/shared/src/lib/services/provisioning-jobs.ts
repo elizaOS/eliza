@@ -472,7 +472,6 @@ function jobAuditTimestamp(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-
 function agentDowngradeJobDataToRecord(data: AgentDowngradeJobData): Record<string, unknown> {
   return { ...data };
 }
@@ -3484,10 +3483,7 @@ export class ProvisioningJobService {
               logger.warn("[provisioning-jobs] Detached settlement supervisor stopped", {
                 jobId: job.id,
                 executionGeneration: job.execution_generation,
-                error:
-                  settlementError instanceof Error
-                    ? settlementError.message
-                    : String(settlementError),
+                error: jobErrorText(settlementError),
               });
             });
           continue;
@@ -3506,12 +3502,12 @@ export class ProvisioningJobService {
     err: unknown,
     result?: ProcessingResult,
   ): Promise<void> {
+    // This is the value that reaches the `jobs.error` column, so it is the one
+    // that has to carry a stack — the 16 conversions below it are log lines.
     const errorMsg =
       err instanceof AppCacheInvalidationRetryError
         ? formatAppCacheInvalidationError(err)
-        : err instanceof Error
-          ? err.message
-          : String(err);
+        : jobErrorText(err);
     result?.errors.push({ jobId: job.id, error: errorMsg });
 
     if (
