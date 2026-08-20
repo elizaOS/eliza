@@ -24,7 +24,7 @@ const FALLBACK_TEXT_KEYS = ["title", "summary"] as const;
 
 type WalkContext = {
 	visits: number;
-	visiting: WeakSet<object>;
+	seen: WeakSet<object>;
 };
 
 function failUnbounded(context: Record<string, unknown>): never {
@@ -49,9 +49,38 @@ function reserve(ctx: WalkContext, count: number): void {
 }
 
 function dataValue(value: object, key: string): unknown {
-	const descriptor = Object.getOwnPropertyDescriptor(value, key);
+	let descriptor: PropertyDescriptor | undefined;
+	try {
+		descriptor = Object.getOwnPropertyDescriptor(value, key);
+	} catch (cause) {
+		throw new ElizaError(
+			"Discord structured message text could not be safely inspected",
+			{
+				code: DISCORD_STRUCTURED_TEXT_UNBOUNDED,
+				context: { operation: "getOwnPropertyDescriptor", key },
+				cause,
+				severity: "fatal",
+			},
+		);
+	}
 	if (!descriptor || !("value" in descriptor)) return undefined;
 	return descriptor.value;
+}
+
+function isArray(value: object): boolean {
+	try {
+		return Array.isArray(value);
+	} catch (cause) {
+		throw new ElizaError(
+			"Discord structured message text could not be safely inspected",
+			{
+				code: DISCORD_STRUCTURED_TEXT_UNBOUNDED,
+				context: { operation: "isArray" },
+				cause,
+				severity: "fatal",
+			},
+		);
+	}
 }
 
 function collectStructuredText(
@@ -79,57 +108,56 @@ function collectStructuredText(
 		return [];
 	}
 	if (!visitAlreadyReserved) reserve(ctx, 1);
-	if (ctx.visiting.has(value)) {
+	if (ctx.seen.has(value)) {
 		return [];
 	}
-	ctx.visiting.add(value);
-	try {
-		if (Array.isArray(value)) {
-			reserve(ctx, value.length);
-			const fragments: string[] = [];
-			for (let index = 0; index < value.length; index += 1) {
-				if (!(index in value)) continue;
-				fragments.push(
-					...collectStructuredText(value[index], depth + 1, ctx, true),
-				);
-			}
-			return fragments;
+	ctx.seen.add(value);
+	if (isArray(value)) {
+		const length = dataValue(value, "length");
+		if (!Number.isSafeInteger(length) || (length as number) < 0) {
+			failUnbounded({ operation: "arrayLength", length });
 		}
+		reserve(ctx, length as number);
+		const fragments: string[] = [];
+		for (let index = 0; index < (length as number); index += 1) {
+			const child = dataValue(value, String(index));
+			if (child === undefined) continue;
+			fragments.push(...collectStructuredText(child, depth + 1, ctx, true));
+		}
+		return fragments;
+	}
 
-		for (const key of PRIMARY_TEXT_KEYS) {
-			const child = dataValue(value, key);
-			if (child === undefined) continue;
-			const normalized = collectStructuredText(child, depth + 1, ctx);
-			if (normalized.length > 0) {
-				return normalized;
-			}
+	for (const key of PRIMARY_TEXT_KEYS) {
+		const child = dataValue(value, key);
+		if (child === undefined) continue;
+		const normalized = collectStructuredText(child, depth + 1, ctx);
+		if (normalized.length > 0) {
+			return normalized;
 		}
-		for (const key of COLLECTION_KEYS) {
-			const child = dataValue(value, key);
-			if (child === undefined) continue;
-			const normalized = collectStructuredText(child, depth + 1, ctx);
-			if (normalized.length > 0) {
-				return normalized;
-			}
-		}
-		for (const key of FALLBACK_TEXT_KEYS) {
-			const child = dataValue(value, key);
-			if (child === undefined) continue;
-			const normalized = collectStructuredText(child, depth + 1, ctx);
-			if (normalized.length > 0) {
-				return normalized;
-			}
-		}
-		return [];
-	} finally {
-		ctx.visiting.delete(value);
 	}
+	for (const key of COLLECTION_KEYS) {
+		const child = dataValue(value, key);
+		if (child === undefined) continue;
+		const normalized = collectStructuredText(child, depth + 1, ctx);
+		if (normalized.length > 0) {
+			return normalized;
+		}
+	}
+	for (const key of FALLBACK_TEXT_KEYS) {
+		const child = dataValue(value, key);
+		if (child === undefined) continue;
+		const normalized = collectStructuredText(child, depth + 1, ctx);
+		if (normalized.length > 0) {
+			return normalized;
+		}
+	}
+	return [];
 }
 
 export function normalizeDiscordMessageText(value: unknown): string {
 	const fragments = collectStructuredText(value, 0, {
 		visits: 0,
-		visiting: new WeakSet<object>(),
+		seen: new WeakSet<object>(),
 	})
 		.map((fragment) => fragment.trim())
 		.filter((fragment) => fragment.length > 0);

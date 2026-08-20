@@ -9,8 +9,8 @@ import {
 	DISCORD_STRUCTURED_TEXT_UNBOUNDED,
 	MAX_DISCORD_STRUCTURED_TEXT_DEPTH,
 	MAX_DISCORD_STRUCTURED_TEXT_NODES,
-	normalizeDiscordMessageText,
 } from "../discord-structured-text";
+import { normalizeDiscordMessageText } from "../utils";
 
 function nestArray(depth: number, leaf: unknown = "leaf"): unknown {
 	let value: unknown = leaf;
@@ -108,6 +108,78 @@ describe("normalizeDiscordMessageText", () => {
 		};
 		expect(normalizeDiscordMessageText(hostile)).toBe("");
 		expect(invoked).toBe(0);
+	});
+
+	it("reads array entries by descriptor without invoking own or inherited accessors", () => {
+		let invoked = 0;
+		const ownAccessor = ["safe"];
+		Object.defineProperty(ownAccessor, "0", {
+			get() {
+				invoked += 1;
+				return "unsafe";
+			},
+		});
+
+		const inheritedAccessor = new Array<unknown>(1);
+		Object.setPrototypeOf(inheritedAccessor, {
+			get 0() {
+				invoked += 1;
+				return "unsafe";
+			},
+		});
+
+		expect(normalizeDiscordMessageText(ownAccessor)).toBe("");
+		expect(normalizeDiscordMessageText(inheritedAccessor)).toBe("");
+		expect(invoked).toBe(0);
+	});
+
+	it("does not invoke ordinary Proxy get or has traps", () => {
+		let gets = 0;
+		let hasChecks = 0;
+		const proxied = new Proxy(["safe"], {
+			get() {
+				gets += 1;
+				throw new Error("ordinary get must not run");
+			},
+			has() {
+				hasChecks += 1;
+				throw new Error("ordinary has must not run");
+			},
+		});
+
+		expect(normalizeDiscordMessageText(proxied)).toBe("safe");
+		expect(gets).toBe(0);
+		expect(hasChecks).toBe(0);
+	});
+
+	it("translates hostile reflection and revoked Proxies to the typed error", () => {
+		const hostile = new Proxy(
+			{},
+			{
+				getOwnPropertyDescriptor() {
+					throw new Error("hostile reflection");
+				},
+			},
+		);
+		const revocable = Proxy.revocable([], {});
+		revocable.revoke();
+
+		for (const value of [hostile, revocable.proxy]) {
+			try {
+				normalizeDiscordMessageText(value);
+				expect.unreachable("hostile Proxy should fail closed");
+			} catch (error) {
+				expect(error).toBeInstanceOf(ElizaError);
+				expect((error as ElizaError).code).toBe(
+					DISCORD_STRUCTURED_TEXT_UNBOUNDED,
+				);
+			}
+		}
+	});
+
+	it("preserves duplicate suppression for repeated object references", () => {
+		const shared = { text: "once" };
+		expect(normalizeDiscordMessageText([shared, shared])).toBe("once");
 	});
 
 	it("fails closed on a 20k nest in under 50ms instead of RangeError", () => {
