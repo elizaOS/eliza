@@ -61,6 +61,33 @@ envelope and invariant checks, not proof that a real adapter induced each OS or
 browser behavior. Every adapter package still needs stateful fault-injection
 tests plus real browser or OS E2E evidence.
 
+## Provider integration authorization contract
+
+`types/provider-integrations.ts` is the provider-neutral boundary for opaque
+connected-account projections and capability dispatch. Adapters keep provider
+arguments and credentials private, expose only a provider-owned SHA-256 input
+digest, and bind that digest to the selected account snapshot, capability,
+operation, contextual risk, and binding time before policy evaluation.
+
+`CapabilityAuthorizationConsumer.consume` is a trusted host boundary. It must
+atomically consume one current policy decision and its exact confirmation grant
+when confirmation is required. Allowed decisions are one-shot too: a successful
+dispatch authorization can never be replayed merely because it did not require
+interactive confirmation. Distributed implementations use one durable
+compare-and-delete transaction and verify that the account/capability snapshot
+is still current; a separate read, verify, and delete sequence is unsafe.
+The in-memory `CapabilityAuthorizationCoordinator` therefore requires a
+synchronous `isSnapshotCurrent` reader. A false result burns the registered
+authority before returning a stale-authorization error, so reconnecting the
+account cannot resurrect consent issued before revocation.
+
+The returned `AuthorizedCapabilityRequest` is an in-process immutable value,
+not a wire credential. `normalizeCapabilityActionReceipt` accepts effect proof
+only against that exact authority and binds the complete policy and confirmation
+digests, request digest, opaque account, capability, operation, input digest,
+and post-authorization chronology. Provider payloads and secrets never belong
+in requests, decisions, confirmations, errors, or receipts.
+
 ### Bounded pairing operator reads
 
 `PairingService` keeps its existing complete-array methods (`listPendingRequests`
