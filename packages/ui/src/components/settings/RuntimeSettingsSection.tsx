@@ -2,7 +2,7 @@
  * Settings → Runtime section (the `runtime` section id). Shows where the agent
  * currently runs (local / remote / cloud, from `GET /api/runtime/mode` with a
  * local heuristic fallback) and points runtime switching to the canonical
- * My Runtimes section. Store builds keep the one-time desktop-state import
+ * Devices & Runtimes section. Store builds keep the one-time desktop-state import
  * behind Advanced because that is a migration tool, not a switcher.
  */
 
@@ -55,7 +55,7 @@ export function RuntimeSettingsSection() {
     useAgentElement<HTMLButtonElement>({
       id: "runtime-manage-runtimes",
       role: "button",
-      label: "My Runtimes",
+      label: "Devices & Runtimes",
       description: "Open the canonical runtime list and switcher",
       group: "runtime",
       onActivate: handleOpenMyRuntimes,
@@ -152,7 +152,7 @@ export function RuntimeSettingsSection() {
         <SettingsRow
           icon={Server}
           label={t("settings.runtime.manageRuntimesLabel", {
-            defaultValue: "My Runtimes",
+            defaultValue: "Devices & Runtimes",
           })}
           description={t("settings.runtime.manageRuntimesHelp", {
             defaultValue: "Saved local, cloud, and remote agents.",

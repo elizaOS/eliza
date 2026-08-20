@@ -218,7 +218,7 @@ describe("production device-pairing auth path — real DB + real HTTP (#13692)",
     });
     expect(local.status).toBe(200);
     expect(local.json).toMatchObject({
-      code: expect.stringMatching(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/),
+      code: expect.stringMatching(/^\d{6}$/),
       expiresAt: expect.any(Number),
     });
 

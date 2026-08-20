@@ -1,6 +1,6 @@
 /**
  * Guards the MVP settings declutter: the tabs hidden for MVP (Capabilities,
- * Apps, App Permissions, Runtime, My Runtimes, Wallet & RPC, and the
+ * Apps, App Permissions, Runtime, Wallet & RPC, and the
  * consolidated-away standalone Background) drop out of the nav when Developer
  * Mode is off, but stay REGISTERED (kept, not deleted) so their routes/
  * deep-links still resolve and they reappear when Developer Mode is on.
@@ -18,7 +18,6 @@ const MVP_HIDDEN = [
   "apps",
   "app-permissions",
   "runtime",
-  "my-runtimes",
   "wallet-rpc",
   "background",
 ] as const;
@@ -61,7 +60,13 @@ describe("MVP settings declutter", () => {
   });
 
   it("keeps the everyday sections visible with Developer Mode off", () => {
-    for (const id of ["identity", "ai-model", "permissions", "appearance"]) {
+    for (const id of [
+      "identity",
+      "ai-model",
+      "permissions",
+      "appearance",
+      "my-runtimes",
+    ]) {
       const section = sectionById(id);
       expect(
         section && isViewVisible(section, DEV_OFF),

@@ -306,7 +306,7 @@ describe("auth pairing pair-code route", () => {
 
     expect(res.status()).toBe(200);
     expect(res.body()).toMatchObject({
-      code: "AAAA-AAAA-AAAA",
+      code: "000000",
       expiresAt: expect.any(Number),
     });
   });
@@ -355,7 +355,7 @@ describe("auth pairing pair-code route", () => {
       pathname: "/api/auth/pair",
       ip: "203.0.113.10",
     });
-    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    (remote as unknown as { body: unknown }).body = { code: "000000" };
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(remote, res.res, STATE);
 
@@ -372,7 +372,7 @@ describe("auth pairing pair-code route", () => {
       pathname: "/api/auth/pair",
       ip: "203.0.113.10",
     });
-    (retry as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    (retry as unknown as { body: unknown }).body = { code: "000000" };
     const res2 = fakeRes();
     await handleAuthPairingCompatRoutes(retry, res2.res, STATE_WITH_DB);
     expect(res2.status()).toBe(200);
@@ -401,7 +401,7 @@ describe("auth pairing pair-code route", () => {
         ip: "203.0.113.10",
       });
       (retryDuringBoot as unknown as { body: unknown }).body = {
-        code: "AAAA-AAAA-AAAA",
+        code: "000000",
       };
       const res = fakeRes();
       await handleAuthPairingCompatRoutes(retryDuringBoot, res.res, STATE);
@@ -414,7 +414,7 @@ describe("auth pairing pair-code route", () => {
       ip: "203.0.113.10",
     });
     (retryAfterBoot as unknown as { body: unknown }).body = {
-      code: "AAAA-AAAA-AAAA",
+      code: "000000",
     };
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(retryAfterBoot, res.res, STATE_WITH_DB);
@@ -450,7 +450,7 @@ describe("auth pairing pair-code route", () => {
     });
     // `readCompatJsonBody` honours `req.body` when set (used by the runtime
     // plugin-route adapter), which lets us bypass the streaming path here.
-    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    (remote as unknown as { body: unknown }).body = { code: "000000" };
 
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
@@ -506,7 +506,7 @@ describe("auth pairing pair-code route", () => {
       pathname: "/api/auth/pair",
       ip: "203.0.113.10",
     });
-    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    (remote as unknown as { body: unknown }).body = { code: "000000" };
 
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
@@ -605,7 +605,7 @@ describe("auth pairing pair-code route", () => {
       );
 
       expect(res.status()).toBe(200);
-      expect(res.body()).toMatchObject({ code: "AAAA-AAAA-AAAA" });
+      expect(res.body()).toMatchObject({ code: "000000" });
     } finally {
       setBootConfig(savedConfig);
       delete process.env.ELIZA_PAIRING_DISABLED;

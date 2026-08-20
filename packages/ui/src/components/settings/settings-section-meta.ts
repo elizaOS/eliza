@@ -158,7 +158,8 @@ export const SETTINGS_NON_CATALOG_SECTION_META = [
   },
   {
     id: "my-runtimes",
-    defaultLabel: "My Runtimes",
+    defaultLabel: "Devices & Runtimes",
     group: "system",
+    aliases: ["devices", "runtimes", "remote", "pair"],
   },
 ] as const satisfies readonly SettingsNonCatalogSectionMeta[];

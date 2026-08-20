@@ -44,10 +44,9 @@ import { isCloudProvisioned } from "./server-first-run-helpers";
 // Pairing state & helpers
 // ---------------------------------------------------------------------------
 
-const PAIRING_TTL_MS = 10 * 60 * 1000;
+const PAIRING_TTL_MS = 5 * 60 * 1000;
 const PAIRING_WINDOW_MS = 10 * 60 * 1000;
 const PAIRING_MAX_ATTEMPTS = 5;
-const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 let pairingCode: string | null = null;
 let pairingExpiresAt = 0;
@@ -86,11 +85,7 @@ function normalizePairingCode(code: string): string {
 }
 
 function generatePairingCode(): string {
-  let raw = "";
-  for (let i = 0; i < 12; i += 1) {
-    raw += PAIRING_ALPHABET[crypto.randomInt(0, PAIRING_ALPHABET.length)];
-  }
-  return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
 }
 
 function ensurePairingCode(): string | null {
@@ -103,7 +98,7 @@ function ensurePairingCode(): string | null {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
     logger.warn(
-      `[api] Pairing code for remote devices: ${pairingCode} (valid for 10 minutes)`,
+      `[api] Pairing code for remote devices: ${pairingCode} (valid for 5 minutes)`,
     );
   }
 

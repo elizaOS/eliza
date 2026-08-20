@@ -379,6 +379,7 @@ declare module "./client-base" {
     }>;
     postBootstrapExchange(token: string): Promise<BootstrapExchangeResult>;
     pair(code: string): Promise<{ token: string }>;
+    getPairCode(): Promise<{ code: string; expiresAt: number }>;
     getFirstRunOptions(): Promise<FirstRunOptions>;
     submitFirstRun(data: Record<string, unknown>): Promise<void>;
     startAnthropicLogin(): Promise<{ authUrl: string }>;
@@ -1471,6 +1472,10 @@ ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
     body: JSON.stringify({ code }),
   });
   return res;
+};
+
+ElizaClient.prototype.getPairCode = async function (this: ElizaClient) {
+  return this.fetch<{ code: string; expiresAt: number }>("/api/auth/pair-code");
 };
 
 ElizaClient.prototype.getFirstRunOptions = async function (this: ElizaClient) {

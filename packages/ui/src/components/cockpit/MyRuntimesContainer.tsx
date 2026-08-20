@@ -4,6 +4,7 @@
  */
 import { useCallback, useState } from "react";
 
+import { client } from "../../api";
 import { isStoreBuild } from "../../build-variant";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import {
@@ -122,6 +123,22 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
     [refresh],
   );
 
+  const onCreatePairing = useCallback(async () => {
+    const pairing = await client.getPairCode();
+    const apiBase = client.getBaseUrl().trim();
+    if (!apiBase) {
+      throw new Error("Start the local agent before linking another device.");
+    }
+    const payload = new URL("elizaos://pair");
+    payload.searchParams.set("base", apiBase);
+    payload.searchParams.set("code", pairing.code);
+    return {
+      code: pairing.code,
+      qrPayload: payload.toString(),
+      expiresAt: new Date(pairing.expiresAt).toISOString(),
+    };
+  }, []);
+
   return (
     <SettingsStack className={className}>
       {error ? (
@@ -137,6 +154,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         runtimes={visibleProfiles}
         activeId={registry.activeProfileId}
         onSwitch={onSwitch}
+        onCreatePairing={onCreatePairing}
         onAddRemote={onAddRemote}
         busy={busy}
       />

@@ -549,8 +549,8 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     cloudOnly: true,
     Component: CloudAgentsSection,
   },
-  // "My Runtimes" — manage + switch between local / cloud-dedicated /
-  // VPS-remote runtimes (the cockpit's runtime registry).
+  // "Devices & Runtimes" — the first-party place to link controllers and
+  // manage local / Cloud / private-host runtimes.
   {
     ...nonCatalogMeta("my-runtimes"),
     catalog: false,
@@ -560,8 +560,6 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     labelKey: "settings.sections.myRuntimes.label",
     titleKey: "settings.sections.myRuntimes.title",
     order: 3.5,
-    // Hidden for MVP (kept registered so its route/deep-link still resolves).
-    developerOnly: true,
     Component: MyRuntimesContainer,
   },
 ] as const;

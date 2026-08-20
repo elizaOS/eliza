@@ -151,6 +151,7 @@ afterEach(() => {
   // Search-jump tests seed the AppContext store with spies; clear it so the
   // inert test-fallback proxy backs every other test again.
   __setAppValueForTests(null);
+  localStorage.removeItem("elizaos:agent-profiles");
   (globalThis as { Capacitor?: unknown }).Capacitor = undefined;
   resetGlassBridgeForTests();
   resetNativeBackdropForTests();
@@ -2449,6 +2450,61 @@ describe("ChatOverlay", () => {
     expect(screen.queryByText("Record long-form transcript…")).toBeNull();
     expect(screen.queryByText("Enable camera")).toBeNull();
     expect(screen.queryByText("Stop transcribing")).toBeNull();
+  });
+
+  it("switches among saved runtimes from the chat actions menu", () => {
+    const switchAgentProfile = vi.fn();
+    const active = {
+      id: "mac-1",
+      label: "Studio Mac",
+      kind: "local" as const,
+      createdAt: "2026-08-20T00:00:00.000Z",
+    };
+    localStorage.setItem(
+      "elizaos:agent-profiles",
+      JSON.stringify({
+        version: 1,
+        activeProfileId: active.id,
+        profiles: [
+          active,
+          {
+            id: "vps-1",
+            label: "Production VPS",
+            kind: "remote",
+            apiBase: "http://100.72.1.4:3000",
+            createdAt: "2026-08-20T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    const noop = () => {};
+    __setAppValueForTests(
+      new Proxy({} as never, {
+        get(_target, prop) {
+          if (prop === "activeAgentProfile") return active;
+          if (prop === "switchAgentProfile") return switchAgentProfile;
+          return noop;
+        },
+      }),
+    );
+
+    render(<ChatOverlay controller={makeController()} />);
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(screen.getByText("Run with")).toBeTruthy();
+    expect(screen.getByLabelText("Active runtime")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("chat-runtime-vps-1"));
+    expect(switchAgentProfile).toHaveBeenCalledWith("vps-1");
   });
 
   it("grows only the native input host height while the portaled chat-actions menu is open", () => {

@@ -7,6 +7,7 @@ import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
   AudioLines,
+  Check,
   FileText,
   Film,
   House,
@@ -17,6 +18,7 @@ import {
   Paperclip,
   Search,
   SendHorizontal,
+  Server,
 } from "lucide-react";
 import {
   AnimatePresence,
@@ -86,7 +88,7 @@ import {
   STANDALONE_BOTTOM_RECLAIM_OFFSET,
   shouldInstallStandaloneBottomReclaim,
 } from "../../platform/standalone-bottom-reclaim";
-import { useAppSelectorShallow } from "../../state";
+import { loadAgentProfileRegistry, useAppSelectorShallow } from "../../state";
 import {
   clearChatDraft,
   useChatComposerOrLocal,
@@ -124,6 +126,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
@@ -1311,10 +1315,13 @@ export function ChatOverlay({
   // renderer; this overlay-level selection only needs message-management
   // handlers.
   const {
+    activeAgentProfile,
     handleChatEdit,
     handleSelectConversation,
     loadConversationMessagesAround,
+    switchAgentProfile,
   } = useAppSelectorShallow((s) => ({
+    activeAgentProfile: s.activeAgentProfile,
     // Editing a persisted turn must truncate and replace the original branch;
     // sending the corrected text as a fresh turn leaves the typo in history.
     handleChatEdit: s.handleChatEdit,
@@ -1323,7 +1330,9 @@ export function ChatOverlay({
     // scrolling. Inert no-ops in stories/tests with no AppContext.
     handleSelectConversation: s.handleSelectConversation,
     loadConversationMessagesAround: s.loadConversationMessagesAround,
+    switchAgentProfile: s.switchAgentProfile,
   }));
+  const runtimeProfiles = loadAgentProfileRegistry().profiles;
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
@@ -6561,6 +6570,32 @@ export function ChatOverlay({
                     glass
                     className="min-w-[13rem]"
                   >
+                    {runtimeProfiles.length > 0 ? (
+                      <>
+                        <DropdownMenuLabel className="flex items-center gap-2 text-xs font-medium text-muted">
+                          <Server className="size-3.5" aria-hidden /> Run with
+                        </DropdownMenuLabel>
+                        {runtimeProfiles.map((profile) => (
+                          <DropdownMenuItem
+                            key={profile.id}
+                            data-testid={`chat-runtime-${profile.id}`}
+                            className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                            onSelect={() => switchAgentProfile(profile.id)}
+                          >
+                            <span className="min-w-0 flex-1 truncate">
+                              {profile.label}
+                            </span>
+                            {profile.id === activeAgentProfile?.id ? (
+                              <Check
+                                className="size-4 shrink-0 text-accent"
+                                aria-label="Active runtime"
+                              />
+                            ) : null}
+                          </DropdownMenuItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                      </>
+                    ) : null}
                     {currentTab !== "chat" ? (
                       <DropdownMenuItem
                         className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"

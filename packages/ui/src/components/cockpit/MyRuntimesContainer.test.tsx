@@ -164,6 +164,7 @@ describe("MyRuntimesContainer", () => {
   it("adding a TRUSTED remote: adds it AND switches to it (badge reflects reality)", async () => {
     const user = userEvent.setup();
     render(<MyRuntimesContainer />);
+    await user.click(screen.getByText("Advanced"));
     await user.type(screen.getByTestId("add-remote-label"), "Laptop");
     await user.type(
       screen.getByTestId("add-remote-url"),
@@ -189,6 +190,7 @@ describe("MyRuntimesContainer", () => {
       reason: "persistence-failed",
     });
     render(<MyRuntimesContainer />);
+    await user.click(screen.getByText("Advanced"));
     await user.type(screen.getByTestId("add-remote-label"), "Laptop");
     await user.type(
       screen.getByTestId("add-remote-url"),
@@ -208,6 +210,7 @@ describe("MyRuntimesContainer", () => {
     const user = userEvent.setup();
     mocks.isTrustedRestoreApiBaseUrl.mockReturnValue(false);
     render(<MyRuntimesContainer />);
+    await user.click(screen.getByText("Advanced"));
     await user.type(screen.getByTestId("add-remote-label"), "Public VPS");
     await user.type(
       screen.getByTestId("add-remote-url"),

@@ -1,7 +1,7 @@
 /** Verifies RuntimeSettingsSection IA through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
- * RuntimeSettingsSection is now a status/entry-point surface. My Runtimes owns
+ * RuntimeSettingsSection is now a status/entry-point surface. Devices & Runtimes owns
  * saved local/cloud/remote switching and remote host add, so this section must
  * not keep its own duplicate remote-connect form or coarse switcher.
  */
@@ -85,20 +85,24 @@ describe("RuntimeSettingsSection IA", () => {
     window.history.replaceState(null, "", "#");
   });
 
-  it("shows current runtime status and a single My Runtimes entry point", () => {
+  it("shows current runtime status and a Devices & Runtimes entry point", () => {
     render(<RuntimeSettingsSection />);
 
     expect(screen.getByText("Current mode: Trading bot")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /My Runtimes/ })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Devices & Runtimes/ }),
+    ).toBeTruthy();
   });
 
-  it("opens the canonical My Runtimes section through settings hash navigation", () => {
+  it("opens the canonical Devices & Runtimes section through settings hash navigation", () => {
     const onHashChange = vi.fn();
     window.addEventListener("hashchange", onHashChange);
     try {
       render(<RuntimeSettingsSection />);
 
-      fireEvent.click(screen.getByRole("button", { name: /My Runtimes/ }));
+      fireEvent.click(
+        screen.getByRole("button", { name: /Devices & Runtimes/ }),
+      );
 
       expect(window.location.hash).toBe("#my-runtimes");
       expect(onHashChange).toHaveBeenCalledTimes(1);

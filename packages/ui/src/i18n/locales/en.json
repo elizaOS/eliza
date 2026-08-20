@@ -8225,7 +8225,7 @@
   "settings.cloudOverview.unlockTitle": "Unlock with Cloud",
   "settings.identity.groupTitle": "Identity",
   "settings.runtime.manageRuntimesHelp": "Saved local, cloud, and remote agents.",
-  "settings.runtime.manageRuntimesLabel": "My Runtimes",
+  "settings.runtime.manageRuntimesLabel": "Devices & Runtimes",
   "settings.runtime.modeGroupTitle": "Runtime",
   "settings.runtime.sandboxGroupTitle": "Sandbox build",
   "settings.runtime.sandboxNote": "Local agent is unavailable in this build.",

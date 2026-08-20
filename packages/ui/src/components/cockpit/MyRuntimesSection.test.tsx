@@ -79,7 +79,8 @@ describe("MyRuntimesSection", () => {
     expect(screen.queryByTestId("add-remote-runtime")).toBeNull();
   });
 
-  it("lays the list and add form out with SettingsGroup", () => {
+  it("puts manual endpoints behind Advanced", async () => {
+    const user = userEvent.setup();
     render(
       <MyRuntimesSection
         runtimes={RUNTIMES}
@@ -88,8 +89,11 @@ describe("MyRuntimesSection", () => {
         onAddRemote={vi.fn()}
       />,
     );
-    expect(screen.getByText("My Runtimes")).toBeTruthy();
-    expect(screen.getByText("Add a VPS / remote runtime")).toBeTruthy();
+    expect(screen.getByText("Linked devices")).toBeTruthy();
+    expect(screen.getByText("Agents")).toBeTruthy();
+    expect(screen.queryByTestId("add-remote-runtime")).toBeNull();
+    await user.click(screen.getByText("Advanced"));
+    expect(screen.getByTestId("add-remote-runtime")).toBeTruthy();
     expect(screen.getByLabelText("Label")).toBeTruthy();
     expect(screen.getByLabelText("URL")).toBeTruthy();
     expect(screen.getByLabelText("Access token")).toBeTruthy();
@@ -111,6 +115,7 @@ describe("MyRuntimesSection", () => {
         onAddRemote={onAddRemote}
       />,
     );
+    await user.click(screen.getByText("Advanced"));
     const submit = screen.getByTestId("add-remote-submit") as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     await user.type(screen.getByTestId("add-remote-label"), "Laptop");
@@ -125,5 +130,45 @@ describe("MyRuntimesSection", () => {
       apiBase: "http://100.72.1.9:3000",
       accessToken: undefined,
     });
+  });
+
+  it("shows a scannable challenge and a six-digit fallback", async () => {
+    const user = userEvent.setup();
+    render(
+      <MyRuntimesSection
+        runtimes={RUNTIMES}
+        activeId="local-1"
+        onSwitch={vi.fn()}
+        onCreatePairing={vi.fn(async () => ({
+          code: "482731",
+          qrPayload: "elizaos://pair?session=test&code=482731",
+          expiresAt: "2026-06-01T00:05:00.000Z",
+        }))}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Link device" }));
+    expect((await screen.findByTestId("pairing-code")).textContent).toBe(
+      "482 731",
+    );
+    expect(
+      await screen.findByAltText("Eliza device pairing QR code"),
+    ).toBeTruthy();
+  });
+
+  it("redeems a normalized six-digit code", async () => {
+    const user = userEvent.setup();
+    const onRedeemPairing = vi.fn(async () => {});
+    render(
+      <MyRuntimesSection
+        runtimes={RUNTIMES}
+        activeId="local-1"
+        onSwitch={vi.fn()}
+        onRedeemPairing={onRedeemPairing}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Enter code" }));
+    await user.type(screen.getByTestId("pairing-code-input"), "482731");
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+    expect(onRedeemPairing).toHaveBeenCalledWith("482731");
   });
 });
