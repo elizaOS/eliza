@@ -6,8 +6,8 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { requireStripe } from "@/lib/stripe";
@@ -234,7 +234,7 @@ async function handleTransfer(c: AppContext) {
 }
 
 const honoRouter = new Hono<AppEnv>();
-honoRouter.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
+honoRouter.post("/", moneyRateLimit(RateLimitPresets.CRITICAL), async (c) => {
   try {
     return await handleTransfer(c);
   } catch (error) {

@@ -7,8 +7,8 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   X402PaymentRequestError,
@@ -19,7 +19,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const id = c.req.param("id");
     if (!id) {

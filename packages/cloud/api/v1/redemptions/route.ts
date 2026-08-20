@@ -10,6 +10,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -68,7 +69,7 @@ app.options(
     }),
 );
 
-app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.CRITICAL), async (c) => {
   try {
     if (c.env.REDEMPTION_EMERGENCY_PAUSE === "true") {
       logger.warn(
