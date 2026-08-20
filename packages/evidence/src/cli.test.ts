@@ -79,6 +79,10 @@ function initFixtureRepo(): string {
     path.join(providerQualificationDir, "qualification.md"),
     "# Provider qualification\n",
   );
+  fs.writeFileSync(
+    path.join(providerQualificationDir, "qualification.json"),
+    '{"schema":"eliza.provider-qualification-artifact.v4"}\n',
+  );
   const providerCatalogDir = path.join(
     repo,
     "reports",
@@ -90,6 +94,10 @@ function initFixtureRepo(): string {
   fs.writeFileSync(
     path.join(providerCatalogDir, "catalog.md"),
     "# Provider qualification catalog\n",
+  );
+  fs.writeFileSync(
+    path.join(providerCatalogDir, "catalog.json"),
+    '{"schema":"eliza.provider-qualification-catalog.v1"}\n',
   );
   fs.writeFileSync(path.join(repo, "tracked.txt"), "tracked\n");
   execFileSync("git", ["add", "tracked.txt"], { cwd: repo });
@@ -120,9 +128,9 @@ describe("runCli create", () => {
     expect(rendered).toContain("aesthetic-audit");
     expect(rendered).toMatch(/aesthetic-audit\s+ingested\s+2/);
     expect(rendered).toMatch(/scenario-runner\s+ingested\s+1/);
-    expect(rendered).toMatch(/provider-qualification\s+ingested\s+2/);
+    expect(rendered).toMatch(/provider-qualification\s+ingested\s+4/);
     expect(rendered).toMatch(/e2e-recordings\s+absent\s+-/);
-    expect(rendered).toContain("artifacts: 5");
+    expect(rendered).toContain("artifacts: 7");
 
     const dir = bundleDirFrom(outLines);
     const manifest = parseManifest(
@@ -130,7 +138,9 @@ describe("runCli create", () => {
       "cli test",
     );
     expect(manifest.artifacts.map((entry) => entry.path)).toEqual([
+      "misc/provider-qualification/run-1/catalog/catalog.json",
       "misc/provider-qualification/run-1/catalog/catalog.md",
+      "misc/provider-qualification/run-1/gmail/qualification.json",
       "misc/provider-qualification/run-1/gmail/qualification.md",
       "trajectories/scenario-runner/live/native.jsonl",
       "visual/aesthetic-audit/desktop/home--hover.png",
@@ -154,7 +164,7 @@ describe("runCli create", () => {
 
     const report = await verifyBundle(dir);
     expect(report.ok).toBe(true);
-    expect(report.verifiedCount).toBe(5);
+    expect(report.verifiedCount).toBe(7);
   });
 
   it("emits one stable machine-readable object with --json", async () => {
@@ -179,7 +189,7 @@ describe("runCli create", () => {
     expect(JSON.parse(captured.outLines[0])).toMatchObject({
       schema: 1,
       command: "bundle:create",
-      artifactCount: 5,
+      artifactCount: 7,
     });
   });
 

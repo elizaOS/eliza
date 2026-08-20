@@ -263,23 +263,24 @@ secret manager. Do not publish this private input as provider evidence.
 
 The verifier recomputes trajectory and stage hashes from disk, validates the
 operator signature, derives qualification from the signed observer and judge
-evidence, and writes mode-0600 `qualification.json` plus a hash-only
+evidence, and writes a mode-0600 v4 `qualification.json` capsule plus
 `qualification.md` into a newly created mode-0700 directory. Exit status is
 zero only for a publishable decision with independently verified provider
-acceptance, provider readback, and idempotent replay. The JSON artifact is an
-operator-controlled evidence bundle and can contain the runner transcript;
-publish the generated Markdown or a separately reviewed/redacted attachment,
-not the private JSON verbatim. This command does not execute ingress, collect
-evidence, access provider credentials, or post to GitHub.
+acceptance, provider readback, and idempotent replay. The v4 capsule contains
+the canonical scenario and manifest, public Ed25519 pins, signed hash-only
+observer and judge envelopes, a path-free verified trajectory inventory, the
+hash-only runner-result projection, and the recomputed decision. It contains no
+private target preimages, credentials, private keys, raw trajectory bodies,
+runner transcript, or local run-directory path. This command does not execute
+ingress, collect evidence, access provider credentials, or post to GitHub.
 
-Direct verifier output remains private operator material. For repository
-evidence review, use the coordinated matrix producer described in
-`scripts/evidence-review/README.md`; it stages all private JSON outside the
-repository and publishes hash-only summaries beneath
-`reports/provider-qualification/<operator-run-id>/` only after the exact
-13-canary catalog passes. A verifier output created before the matrix snapshot
-is baseline-excluded, and private JSON must never be copied into `reports/` or
-the bundle.
+Private verifier inputs remain operator material. For repository evidence
+review, use the coordinated matrix producer described in
+`scripts/evidence-review/README.md`; it stages those inputs outside the
+repository and publishes only the validated v4 public capsules, canonical
+catalog, and Markdown beneath `reports/provider-qualification/<operator-run-id>/`
+after the exact 13-canary catalog passes. A verifier output created before the
+matrix snapshot is baseline-excluded.
 
 Once every canary has an independently verified artifact, create the release
 catalog with a closed `eliza.provider-qualification-catalog-config.v2` file:

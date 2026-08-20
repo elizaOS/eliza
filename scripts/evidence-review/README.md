@@ -56,10 +56,12 @@ those configs in a private temporary directory, runs all 13 offline verifiers,
 then runs the catalog over exactly their staged artifacts. Any command refusal,
 missing/extra/duplicate scenario, unqualified decision, repository/deployment
 drift, or missing catalog summary fails without creating the publication
-directory. On complete success it atomically publishes only hash-only Markdown;
-private verifier/catalog JSON and all raw inputs are deleted with the staging
-directory. Because this named step runs after the producer snapshot and before
-bundle ingestion, the summaries enter that exact bundle.
+directory. On complete success it atomically publishes the validated v4
+public-key/hash-only JSON capsules, the canonical catalog JSON, and their
+Markdown renderings. Private targets, credentials, raw trajectories, runner
+transcripts, private keys, and temporary verifier inputs are deleted with the
+staging directory. Because this named step runs after the producer snapshot and
+before bundle ingestion, the capsules enter that exact bundle.
 
 `--source=<dir>` is an explicit compatibility escape hatch for archived or
 ad-hoc material. It may be repeated and may accompany `--bundle`; no producer

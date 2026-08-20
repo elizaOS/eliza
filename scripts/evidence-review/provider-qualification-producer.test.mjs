@@ -1,7 +1,7 @@
 /**
  * Exercises the 13-canary matrix producer against private temporary inputs and
  * a deterministic command seam. The test proves all verifiers precede the
- * catalog and that only hash-only summaries reach the canonical producer root.
+ * catalog and that only portable public capsules reach the producer root.
  */
 
 import assert from "node:assert/strict";
@@ -95,11 +95,22 @@ function successfulCommandSeam({ failAt = null } = {}) {
       }
       fs.mkdirSync(config.outputDir, { mode: 0o700 });
       writeJson(path.join(config.outputDir, "qualification.json"), {
+        schema: "eliza.provider-qualification-artifact.v4",
         scenarioId: EXPECTED_PROVIDER_SCENARIO_IDS[index],
         decision: {
           qualification: { status: "qualified", publishable: true },
         },
-        privateTranscript: "must-never-be-published",
+        reverification: {
+          verifierTranscript: {
+            sourcePrivacy: {
+              privateProviderTargetsRetained: false,
+              privateKeysRetained: false,
+              credentialsRetained: false,
+              rawRunnerTranscriptRetained: false,
+              runDirectoryPathRetained: false,
+            },
+          },
+        },
       });
       fs.writeFileSync(
         path.join(config.outputDir, "qualification.md"),
@@ -111,7 +122,8 @@ function successfulCommandSeam({ failAt = null } = {}) {
     assert.equal(config.artifactFiles.length, 13);
     fs.mkdirSync(config.outputDir, { mode: 0o700 });
     writeJson(path.join(config.outputDir, "catalog.json"), {
-      privateAggregate: "must-never-be-published",
+      schema: "eliza.provider-qualification-catalog.v1",
+      scenarioCount: 13,
     });
     fs.writeFileSync(
       path.join(config.outputDir, "catalog.md"),
@@ -122,7 +134,7 @@ function successfulCommandSeam({ failAt = null } = {}) {
   return { calls, run };
 }
 
-test("runs all 13 verifiers and the catalog before publishing summaries", () => {
+test("runs all 13 verifiers and the catalog before publishing capsules", () => {
   const fixture = makeFixture();
   try {
     const seam = successfulCommandSeam();
@@ -140,19 +152,30 @@ test("runs all 13 verifiers and the catalog before publishing summaries", () => 
       published.filter((entry) => entry.endsWith("qualification.md")).length,
       13,
     );
+    assert.equal(
+      published.filter((entry) => entry.endsWith("qualification.json")).length,
+      13,
+    );
     assert.ok(published.includes(path.join("catalog", "catalog.md")));
-    assert.ok(!published.some((entry) => entry.endsWith(".json")));
-    assert.doesNotMatch(
-      published
-        .filter((entry) => entry.endsWith(".md"))
-        .map((entry) =>
-          fs.readFileSync(
-            path.join(fixture.publicationOutputDir, entry),
-            "utf8",
-          ),
-        )
-        .join("\n"),
-      /must-never-be-published/,
+    assert.ok(published.includes(path.join("catalog", "catalog.json")));
+    const firstCapsule = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          fixture.publicationOutputDir,
+          "bluebubbles-imessage-confirmed-send",
+          "qualification.json",
+        ),
+        "utf8",
+      ),
+    );
+    assert.equal(
+      firstCapsule.schema,
+      "eliza.provider-qualification-artifact.v4",
+    );
+    assert.equal(
+      firstCapsule.reverification.verifierTranscript.sourcePrivacy
+        .privateProviderTargetsRetained,
+      false,
     );
   } finally {
     fs.rmSync(fixture.fixture, { recursive: true, force: true });

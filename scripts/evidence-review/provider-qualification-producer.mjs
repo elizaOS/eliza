@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Produces the public, bundle-ready provider qualification summaries for one
- * complete 13-canary run. Private verifier artifacts are staged outside the
- * repository, cataloged there, and removed; only hash-only Markdown is
- * atomically published beneath the canonical evidence producer root after the
- * entire inventory qualifies.
+ * Produces public, bundle-ready provider qualification capsules for one
+ * complete 13-canary run. Private verifier inputs are staged outside the
+ * repository and removed; only canonical public-key/hash-only JSON capsules
+ * and their Markdown renderings are atomically published after every canary
+ * qualifies and the exact catalog validates.
  */
 
 import { spawnSync } from "node:child_process";
@@ -241,7 +241,35 @@ function safeSlug(scenarioId) {
   return scenarioId.replace(/^provider\./u, "").replaceAll(".", "-");
 }
 
-function publishSummaries(
+function assertPortableArtifact(artifact, scenarioId) {
+  if (artifact.schema !== "eliza.provider-qualification-artifact.v4") {
+    throw new Error(`${scenarioId} did not produce a portable v4 artifact`);
+  }
+  const privacy = artifact.reverification?.verifierTranscript?.sourcePrivacy;
+  const requiredFalse = [
+    "privateProviderTargetsRetained",
+    "privateKeysRetained",
+    "credentialsRetained",
+    "rawRunnerTranscriptRetained",
+    "runDirectoryPathRetained",
+  ];
+  if (
+    !privacy ||
+    requiredFalse.some(
+      (field) => !Object.hasOwn(privacy, field) || privacy[field] !== false,
+    )
+  ) {
+    throw new Error(
+      `${scenarioId} artifact does not prove its public-capsule privacy boundary`,
+    );
+  }
+  const encoded = JSON.stringify(artifact);
+  if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u.test(encoded)) {
+    throw new Error(`${scenarioId} artifact contains private key material`);
+  }
+}
+
+function publishCapsules(
   stagingDir,
   qualificationRecords,
   catalogDir,
@@ -259,21 +287,25 @@ function publishSummaries(
     for (const record of qualificationRecords) {
       const scenarioDir = path.join(temporary, safeSlug(record.scenarioId));
       fs.mkdirSync(scenarioDir, { mode: 0o700 });
-      fs.copyFileSync(
-        path.join(stagingDir, record.stagingLeaf, "qualification.md"),
-        path.join(scenarioDir, "qualification.md"),
-        fs.constants.COPYFILE_EXCL,
-      );
-      fs.chmodSync(path.join(scenarioDir, "qualification.md"), 0o600);
+      for (const name of ["qualification.json", "qualification.md"]) {
+        fs.copyFileSync(
+          path.join(stagingDir, record.stagingLeaf, name),
+          path.join(scenarioDir, name),
+          fs.constants.COPYFILE_EXCL,
+        );
+        fs.chmodSync(path.join(scenarioDir, name), 0o600);
+      }
     }
     const catalogOutput = path.join(temporary, "catalog");
     fs.mkdirSync(catalogOutput, { mode: 0o700 });
-    fs.copyFileSync(
-      path.join(catalogDir, "catalog.md"),
-      path.join(catalogOutput, "catalog.md"),
-      fs.constants.COPYFILE_EXCL,
-    );
-    fs.chmodSync(path.join(catalogOutput, "catalog.md"), 0o600);
+    for (const name of ["catalog.json", "catalog.md"]) {
+      fs.copyFileSync(
+        path.join(catalogDir, name),
+        path.join(catalogOutput, name),
+        fs.constants.COPYFILE_EXCL,
+      );
+      fs.chmodSync(path.join(catalogOutput, name), 0o600);
+    }
     fs.renameSync(temporary, outputDir);
   } catch (error) {
     fs.rmSync(temporary, { recursive: true, force: true });
@@ -315,6 +347,7 @@ export function produceProviderQualificationSummaries(
           `${scenarioId} did not produce a publishable qualified artifact`,
         );
       }
+      assertPortableArtifact(artifact, scenarioId);
       qualificationRecords.push({ scenarioId, artifactFile, stagingLeaf });
     }
 
@@ -347,7 +380,7 @@ export function produceProviderQualificationSummaries(
         "provider qualification catalog did not write catalog.md",
       );
     }
-    publishSummaries(
+    publishCapsules(
       stagingDir,
       qualificationRecords,
       catalogDir,
@@ -379,7 +412,7 @@ function main(argv = process.argv.slice(2)) {
   }
   const result = produceProviderQualificationSummaries(argv[0]);
   process.stdout.write(
-    `[provider-qualification-producer] qualified ${result.scenarioCount} canaries; published hash-only summaries to ${result.publicationOutputDir}\n`,
+    `[provider-qualification-producer] qualified ${result.scenarioCount} canaries; published portable evidence capsules to ${result.publicationOutputDir}\n`,
   );
   return 0;
 }

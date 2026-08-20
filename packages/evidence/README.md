@@ -112,14 +112,16 @@ later producer writes cannot mutate a finalized run and a corrupt copy fails at
 add time.
 
 The coordinated provider-qualification producer runs after the matrix captures
-its baseline. It stages each canary's private `qualification.json` and the
-release catalog outside the repository, refuses a missing, extra, duplicate, or
-unqualified canary, then atomically publishes only the 13 hash-only
-`qualification.md` files and `catalog/catalog.md` beneath
-`reports/provider-qualification/<operator-run-id>/`. The named ingestor copies
-those public summaries into the bundle. Raw authorization, target, operation,
-failure-probe, signed-evidence, runner, key, trajectory, and private JSON files
-are never producer output and must not be committed or placed under `reports/`.
+its baseline. It stages each verifier result and the release catalog outside the
+repository, refuses a missing, extra, duplicate, or unqualified canary, then
+atomically publishes the 13 independently re-verifiable v4 `qualification.json`
+capsules, `catalog/catalog.json`, and their Markdown renderings beneath
+`reports/provider-qualification/<operator-run-id>/`. The v4 JSON is restricted
+to public keys, signatures, hashes, verified trajectory inventory, and result
+projections. Raw authorization inputs, targets, operation preimages,
+failure-probe preimages, credentials, private keys, raw trajectories, and runner
+transcripts are never producer output and must not be committed or placed under
+`reports/`.
 
 ## CLI
 
