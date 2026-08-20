@@ -475,6 +475,7 @@ export const terminalAction: Action = {
           captureOutput: true,
           ...(terminalToken ? { terminalToken } : {}),
         }),
+        signal: AbortSignal.timeout(15_000),
       },
     );
 
