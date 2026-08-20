@@ -10,6 +10,7 @@ import type { IAgentRuntime } from "../types/runtime";
 import { ServiceType } from "../types/service";
 import type { Task, TaskWorker } from "../types/task";
 import { TaskService } from "./task.ts";
+import { startTaskScheduler, stopTaskScheduler } from "./task-scheduler.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000bb" as UUID;
 const T0 = new Date("2026-01-01T00:00:00.000Z").getTime();
@@ -738,5 +739,124 @@ describe("TaskService orphaned-task self-heal (missing worker)", () => {
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(tasks.get("op-paused")?.metadata?.paused).toBe(true);
 		expect(execute).not.toHaveBeenCalled();
+	});
+});
+
+describe("TaskService manual deterministic execution", () => {
+	let service: TaskService | null = null;
+
+	afterEach(async () => {
+		if (service) await service.stop();
+		stopTaskScheduler();
+		service = null;
+		vi.useRealTimers();
+	});
+
+	it("runs the production due-task path only when the injected clock reaches due time", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(T0);
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("VIRTUAL_NOTIFICATION", {
+			name: "VIRTUAL_NOTIFICATION",
+			execute,
+		});
+		tasks.set("virtual-notification", {
+			id: "virtual-notification" as UUID,
+			name: "VIRTUAL_NOTIFICATION",
+			agentId: AGENT_ID,
+			tags: ["queue", "notification"],
+			dueAt: T0 + 60_000,
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+		let virtualNow = T0;
+		await service.enterManualExecution(() => virtualNow);
+
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(execute).not.toHaveBeenCalled();
+		await service.runDueTasks();
+		expect(execute).not.toHaveBeenCalled();
+
+		virtualNow += 60_000;
+		await service.runDueTasks();
+		expect(execute).toHaveBeenCalledOnce();
+		expect(tasks.has("virtual-notification")).toBe(false);
+		expect(service.currentTime().getTime()).toBe(virtualNow);
+	});
+
+	it("fails fast when a manual clock is not finite", async () => {
+		const { runtime } = makeTaskRuntime();
+		service = (await TaskService.start(runtime)) as TaskService;
+		await expect(
+			service.enterManualExecution(() => Number.NaN),
+		).rejects.toThrow(/TASK_CLOCK_INVALID|invalid time/);
+	});
+
+	it("waits for an active production tick before granting manual control", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(T0);
+		const { runtime } = makeTaskRuntime();
+		let resolveQuery!: (tasks: Task[]) => void;
+		const query = new Promise<Task[]>((resolve) => {
+			resolveQuery = resolve;
+		});
+		(runtime as { getTasks: IAgentRuntime["getTasks"] }).getTasks = async () =>
+			query;
+		service = (await TaskService.start(runtime)) as TaskService;
+		await vi.advanceTimersByTimeAsync(1_000);
+
+		let acquired = false;
+		const acquisition = service
+			.enterManualExecution(() => T0 + 10_000)
+			.then(() => {
+				acquired = true;
+			});
+		await Promise.resolve();
+		expect(acquired).toBe(false);
+
+		resolveQuery([]);
+		await acquisition;
+		expect(acquired).toBe(true);
+		expect(service.getSchedulingMode()).toBe("manual");
+	});
+
+	it("restores the exact serverless scheduler mode when manual ownership releases", async () => {
+		const { runtime } = makeTaskRuntime();
+		(runtime as { serverless?: boolean }).serverless = true;
+		service = (await TaskService.start(runtime)) as TaskService;
+		expect(service.getSchedulingMode()).toBe("serverless");
+
+		await service.enterManualExecution(() => T0);
+		expect(service.getSchedulingMode()).toBe("manual");
+		service.exitManualExecution();
+		expect(service.getSchedulingMode()).toBe("serverless");
+	});
+
+	it("restores the exact local scheduler mode when manual ownership releases", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(T0);
+		const { runtime } = makeTaskRuntime();
+		service = (await TaskService.start(runtime)) as TaskService;
+		expect(service.getSchedulingMode()).toBe("local");
+
+		await service.enterManualExecution(() => T0);
+		expect(service.getSchedulingMode()).toBe("manual");
+		service.exitManualExecution();
+		expect(service.getSchedulingMode()).toBe("local");
+	});
+
+	it("restores the exact shared-daemon scheduler mode when manual ownership releases", async () => {
+		const { runtime } = makeTaskRuntime();
+		startTaskScheduler({
+			getTasks: async () => [],
+		} as never);
+		service = (await TaskService.start(runtime)) as TaskService;
+		expect(service.getSchedulingMode()).toBe("shared");
+
+		await service.enterManualExecution(() => T0);
+		expect(service.getSchedulingMode()).toBe("manual");
+		service.exitManualExecution();
+		expect(service.getSchedulingMode()).toBe("shared");
 	});
 });

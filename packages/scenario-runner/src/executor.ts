@@ -44,6 +44,7 @@ import {
   scenarioLane,
 } from "@elizaos/scenario-runner/schema";
 import { actionMatchesScenarioExpectation } from "./action-families.ts";
+import { ScenarioBackgroundRuntime } from "./background-runtime.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";
@@ -1915,6 +1916,75 @@ async function executeTickTurn(args: {
   };
 }
 
+async function executeBackgroundTurn(args: {
+  turn: ScenarioTurn;
+  background: ScenarioBackgroundRuntime | null;
+}): Promise<{
+  statusCode: number;
+  responseBody: unknown;
+  responseText: string;
+  durationMs: number;
+}> {
+  if (!args.background) {
+    throw new Error(
+      `[executor] background turn '${args.turn.name}' requires requires.workers`,
+    );
+  }
+  const operation = args.turn.operation;
+  if (typeof operation !== "string") {
+    throw new Error(
+      `[executor] background turn '${args.turn.name}' is missing operation`,
+    );
+  }
+  const startedAt = Date.now();
+  let result: unknown;
+  switch (operation) {
+    case "start":
+      await args.background.start();
+      result = await args.background.inspect();
+      break;
+    case "pause":
+      args.background.pause();
+      result = await args.background.inspect();
+      break;
+    case "resume":
+      args.background.resume();
+      result = await args.background.inspect();
+      break;
+    case "step":
+      result = await args.background.step(args.turn.advanceMs ?? 0);
+      break;
+    case "drain":
+      result = await args.background.drain(args.turn.maxSteps ?? 100);
+      break;
+    case "crash":
+      await args.background.crash();
+      result = await args.background.inspect();
+      break;
+    case "restart":
+      await args.background.restart();
+      result = await args.background.inspect();
+      break;
+    case "inspect":
+      result = await args.background.inspect();
+      break;
+    case "reset":
+      await args.background.resetSharedRuntime();
+      result = await args.background.inspect();
+      break;
+    default:
+      throw new Error(
+        `[executor] background turn '${args.turn.name}' has unsupported operation '${operation}'`,
+      );
+  }
+  return {
+    statusCode: 200,
+    responseBody: result,
+    responseText: JSON.stringify(result),
+    durationMs: Date.now() - startedAt,
+  };
+}
+
 async function executeWaitTurn(
   turn: ScenarioTurn,
   turnTimeoutMs: number,
@@ -2372,10 +2442,12 @@ export async function runScenario(
   const originalGetService = runtime.getService.bind(runtime);
   const scenarioComputerUseService = createScenarioComputerUseService();
   let apiServer: ScenarioApiServer | null = null;
+  let backgroundRuntime: ScenarioBackgroundRuntime | null = null;
 
   try {
     resetScenarioModelFixtures(runtime);
     await resetSharedSchedulingState(runtime);
+    const requiredWorkers = scenario.requires?.workers ?? [];
 
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", primaryRoom.userId, false);
     (
@@ -2392,6 +2464,49 @@ export async function runScenario(
       }
       return existing;
     }) as AgentRuntime["getService"];
+
+    // Required production plugins must initialize before background baseline
+    // capture. Otherwise teardown can delete their durable TaskService rows and
+    // restore an empty pre-plugin baseline into the shared runtime.
+    const requiredPlugins = resolveRequiredPluginPackages(scenario);
+    const autoLoaded = new Set<string>();
+    const loadRequiredPackagePlugins = async (): Promise<void> => {
+      for (const pkg of requiredPlugins) {
+        if (!pkg.startsWith("@")) continue;
+        if (pluginPackageIsRegistered(runtime, pkg) || autoLoaded.has(pkg)) {
+          continue;
+        }
+        try {
+          const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
+          if (candidate) {
+            await runtime.registerPlugin(candidate);
+            autoLoaded.add(pkg);
+          }
+        } catch (err) {
+          // error-policy:J2 Required-plugin startup failures need package context.
+          throw new ElizaError(`Failed to initialize required plugin ${pkg}`, {
+            code: "SCENARIO_REQUIRED_PLUGIN_INIT_FAILED",
+            context: { packageName: pkg },
+            cause: err,
+          });
+        }
+      }
+    };
+    if (requiredWorkers.length > 0) {
+      await loadRequiredPackagePlugins();
+      await waitForScenarioRequiredServices(
+        runtime,
+        scenario,
+        opts.abortSignal,
+      );
+      backgroundRuntime = new ScenarioBackgroundRuntime(runtime, {
+        namespace: `scenario:${scenario.id}`,
+        epoch: logicalNow,
+        workers: requiredWorkers,
+      });
+      await backgroundRuntime.captureBaseline();
+      await backgroundRuntime.start();
+    }
 
     for (const room of rooms) {
       await runtime.ensureConnection({
@@ -2418,30 +2533,9 @@ export async function runScenario(
 
     // Seeds may register fixture plugins, so check declared plugin requirements
     // after seeding and try to load package-named requirements that are present.
-    const requiredPlugins = resolveRequiredPluginPackages(scenario);
-    // Track packages we successfully auto-loaded: a plugin's internal
-    // `plugin.name` often differs from its package name (e.g. "plugin-health",
-    // "@elizaos/plugin-linear-ts"), so a post-load name check can falsely report
-    // it as missing and skip a scenario whose required plugin is in fact loaded.
-    const autoLoaded = new Set<string>();
-    for (const pkg of requiredPlugins) {
-      if (!pkg.startsWith("@")) continue;
-      if (pluginPackageIsRegistered(runtime, pkg)) continue;
-      try {
-        const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
-        if (candidate) {
-          await runtime.registerPlugin(candidate);
-          autoLoaded.add(pkg);
-        }
-      } catch (err) {
-        // error-policy:J2 Required-plugin startup failures need package context.
-        throw new ElizaError(`Failed to initialize required plugin ${pkg}`, {
-          code: "SCENARIO_REQUIRED_PLUGIN_INIT_FAILED",
-          context: { packageName: pkg },
-          cause: err,
-        });
-      }
-    }
+    // Seeds may register non-package fixture plugins, so missing requirements
+    // are still evaluated after seeding even though package plugins load first.
+    await loadRequiredPackagePlugins();
     const missing = requiredPlugins.filter(
       (p) => !pluginPackageIsRegistered(runtime, p) && !autoLoaded.has(p),
     );
@@ -2450,7 +2544,16 @@ export async function runScenario(
       report.skipReason = `required plugin(s) not registered: ${missing.join(",")}`;
       return report;
     }
-    await waitForScenarioRequiredServices(runtime, scenario, opts.abortSignal);
+    if (requiredWorkers.length === 0) {
+      await waitForScenarioRequiredServices(
+        runtime,
+        scenario,
+        opts.abortSignal,
+      );
+    }
+    if (backgroundRuntime) {
+      await backgroundRuntime.clock.advanceTo(logicalNow);
+    }
 
     // Re-attach interceptor so any actions registered by seed plugins are wrapped.
     interceptor.detach();
@@ -2466,6 +2569,7 @@ export async function runScenario(
         kind !== "action" &&
         kind !== "api" &&
         kind !== "tick" &&
+        kind !== "background" &&
         kind !== "wait" &&
         kind !== "voice"
       ) {
@@ -2513,37 +2617,45 @@ export async function runScenario(
                     runtime,
                   })),
                 }
-              : kind === "action"
+              : kind === "background"
                 ? {
                     actionsCalled: [],
-                    ...(await executeActionTurn(
-                      runtime,
+                    ...(await executeBackgroundTurn({
                       turn,
-                      resolveTurnRoom(turn, rooms),
-                      logicalNow,
-                      opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-                    )),
+                      background: backgroundRuntime,
+                    })),
                   }
-                : kind === "wait"
+                : kind === "action"
                   ? {
                       actionsCalled: [],
-                      ...(await executeWaitTurn(
-                        turn,
-                        opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-                      )),
-                    }
-                  : {
-                      actionsCalled: [],
-                      ...(await executeMessageTurn(
+                      ...(await executeActionTurn(
                         runtime,
                         turn,
                         resolveTurnRoom(turn, rooms),
                         logicalNow,
                         opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-                        scenario.id,
-                        ctx.runId,
                       )),
-                    };
+                    }
+                  : kind === "wait"
+                    ? {
+                        actionsCalled: [],
+                        ...(await executeWaitTurn(
+                          turn,
+                          opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                        )),
+                      }
+                    : {
+                        actionsCalled: [],
+                        ...(await executeMessageTurn(
+                          runtime,
+                          turn,
+                          resolveTurnRoom(turn, rooms),
+                          logicalNow,
+                          opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                          scenario.id,
+                          ctx.runId,
+                        )),
+                      };
       let actionsThisTurn = interceptor.actions.slice(actionsBefore);
       // Synthesize an implicit REPLY capture when the runtime emitted text
       // via the message callback but the LLM failed to select REPLY in its
@@ -2577,6 +2689,16 @@ export async function runScenario(
       }
       execution.actionsCalled = actionsThisTurn;
       ctx.turns.push(execution);
+      if (
+        kind === "background" &&
+        execution.responseBody !== null &&
+        typeof execution.responseBody === "object" &&
+        "now" in execution.responseBody &&
+        typeof execution.responseBody.now === "string"
+      ) {
+        logicalNow = new Date(execution.responseBody.now);
+        ctx.now = logicalNow.toISOString();
+      }
 
       const { failures: failedAssertions, judgeScore: turnJudgeScore } =
         await runTurnAssertions(turn, execution, runtime, opts.minJudgeScore);
@@ -2615,6 +2737,16 @@ export async function runScenario(
     ctx.memoryWrites = interceptor.memoryWrites;
     ctx.stateTransitions = interceptor.stateTransitions;
     ctx.artifacts = interceptor.artifacts;
+    if (backgroundRuntime) {
+      report.background = await backgroundRuntime.inspect();
+      ctx.artifacts.push({
+        source: "scenario-background-runtime",
+        kind: "background-ledger",
+        label: `background:${scenario.id}`,
+        data: report.background,
+        createdAt: report.background.now,
+      });
+    }
     report.actionsCalled = [...interceptor.actions];
 
     const finalChecks = Array.isArray(
@@ -2684,6 +2816,21 @@ export async function runScenario(
       report.status = "failed";
       for (const detail of cleanupFailures) {
         report.failedAssertions.push({ label: "cleanup", detail });
+      }
+    }
+    if (backgroundRuntime) {
+      try {
+        report.background ??= await backgroundRuntime.inspect();
+        await backgroundRuntime.resetSharedRuntime();
+        await backgroundRuntime.stop();
+      } catch (error) {
+        // error-policy:J1 Scenario teardown is the owner boundary: an
+        // unreset worker runtime makes shared-state isolation untrustworthy.
+        report.status = "failed";
+        report.failedAssertions.push({
+          label: "backgroundRuntimeCleanup",
+          detail: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     (

@@ -1,5 +1,6 @@
 /** Public entry point for `@elizaos/scenario-runner`: re-exports the execution, discovery, reporting, and native-export surface. */
 export * from "./cli";
+export * from "./background-runtime.ts";
 export { runScenario } from "./executor.ts";
 export { attachInterceptor } from "./interceptor.ts";
 export { judgeTextWithLlm } from "./judge.ts";

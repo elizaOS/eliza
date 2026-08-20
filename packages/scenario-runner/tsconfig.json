@@ -27,6 +27,7 @@
         "../shared/src/local-inference/index.ts"
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/synthetic-world": ["../synthetic-world/src/index.ts"],
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],

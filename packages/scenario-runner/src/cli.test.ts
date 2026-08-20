@@ -422,7 +422,11 @@ describe("scenario-runner CLI", () => {
   it("forwards declared plugins to a simulated scenario runtime", async () => {
     writeScenario(tempDir, "maps-live", {
       lane: "live-only",
-      requires: { plugins: ["@elizaos/plugin-maps"] },
+      requires: {
+        plugins: ["@elizaos/plugin-maps"],
+        services: ["activity_tracker"],
+        workers: ["PROACTIVE_AGENT", "LIFEOPS_SCHEDULER"],
+      },
     });
     const createScenarioRuntime = vi.fn(async () => ({
       runtime: {} as never,
@@ -447,6 +451,8 @@ describe("scenario-runner CLI", () => {
     expect(createScenarioRuntime).toHaveBeenCalledWith({
       executionProfile: "simulated",
       requiredPlugins: ["@elizaos/plugin-maps"],
+      requiredServices: ["activity_tracker"],
+      backgroundWorkers: ["PROACTIVE_AGENT", "LIFEOPS_SCHEDULER"],
     });
   });
 
@@ -547,6 +553,8 @@ describe("scenario-runner CLI", () => {
     expect(createScenarioRuntime).toHaveBeenCalledWith({
       executionProfile: "provider-qualified",
       requiredPlugins: ["@elizaos/plugin-personal-assistant"],
+      requiredServices: [],
+      backgroundWorkers: [],
     });
     expect(dependencies.runScenario).toHaveBeenCalledWith(
       expect.objectContaining({ id: "qualified-one" }),

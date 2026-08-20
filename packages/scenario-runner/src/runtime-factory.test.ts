@@ -7,6 +7,7 @@ import {
   deterministicScheduledDispatchRenderText,
   isScheduledDispatchRenderPrompt,
   loadScenarioTestMocksForTests,
+  resolveBackgroundServiceFlags,
   resolveScenarioDeterministicModelCall,
   resolveScenarioProviderConfig,
   scenarioLiveProviderPreflightProblems,
@@ -78,6 +79,29 @@ describe("scenario live provider preflight", () => {
     ).toContain(
       "acting provider cerebras cannot also be the independent judge provider",
     );
+  });
+});
+
+describe("scenario background service opt-ins", () => {
+  it("keeps fast lanes disabled unless production services and workers are declared", () => {
+    expect(resolveBackgroundServiceFlags()).toEqual({
+      ELIZA_DISABLE_ACTIVITY_TRACKER: "1",
+      ELIZA_DISABLE_PROACTIVE_AGENT: "1",
+      ELIZA_DISABLE_LIFEOPS_SCHEDULER: "1",
+    });
+  });
+
+  it("enables activity tracking, proactive work, and LifeOps only for exact declarations", () => {
+    expect(
+      resolveBackgroundServiceFlags({
+        requiredServices: ["activity_tracker"],
+        backgroundWorkers: ["PROACTIVE_AGENT", "LIFEOPS_SCHEDULER"],
+      }),
+    ).toEqual({
+      ELIZA_DISABLE_ACTIVITY_TRACKER: "0",
+      ELIZA_DISABLE_PROACTIVE_AGENT: "0",
+      ELIZA_DISABLE_LIFEOPS_SCHEDULER: "0",
+    });
   });
 });
 

@@ -710,10 +710,22 @@ export async function runCli(
       loaded.flatMap(({ scenario }) => resolveRequiredPluginPackages(scenario)),
     ),
   ];
+  const requiredServices = [
+    ...new Set(
+      loaded.flatMap(({ scenario }) => scenario.requires?.services ?? []),
+    ),
+  ];
+  const backgroundWorkers = [
+    ...new Set(
+      loaded.flatMap(({ scenario }) => scenario.requires?.workers ?? []),
+    ),
+  ];
   const runtimeResult = await createScenarioRuntime({
     executionProfile,
     preferredProvider: parsed.provider,
     requiredPlugins,
+    requiredServices,
+    backgroundWorkers,
   });
   const { runtime, providerName, cleanup } = runtimeResult;
   if (runtimeResult.executionProfile !== executionProfile) {

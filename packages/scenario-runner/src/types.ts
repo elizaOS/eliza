@@ -17,6 +17,7 @@ import type {
   ScenarioExecutionProfile,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
+import type { LedgerEntry } from "@elizaos/synthetic-world";
 
 /** A tuple used where empty evidence would make a qualification claim unsound. */
 export type NonEmptyEvidenceList<T> = readonly [T, ...T[]];
@@ -304,6 +305,22 @@ export interface ScenarioReport {
    * rather than relabeling them simulated.
    */
   executionProfile?: ScenarioExecutionProfile;
+  /** Deterministic worker evidence captured before shared-runtime reset. */
+  background?: {
+    state: string;
+    now: string;
+    workers: readonly string[];
+    pending: readonly {
+      id: string;
+      name: string;
+      dueAt: string | null;
+      due: boolean;
+      paused: boolean;
+    }[];
+    pendingTimers: number;
+    errors: readonly { scope: string; code: string; message: string }[];
+    ledger: readonly LedgerEntry[];
+  };
   /**
    * Trusted, hashed evidence captured outside the action-result/model-prose
    * path. The reporter validates profile agreement, provenance references, and

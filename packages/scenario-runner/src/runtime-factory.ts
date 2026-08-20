@@ -212,6 +212,35 @@ export interface CreateScenarioRuntimeOptions {
   useDeterministicModel?: boolean;
   executionProfile?: ScenarioExecutionProfile;
   requiredPlugins?: readonly string[];
+  requiredServices?: readonly string[];
+  backgroundWorkers?: readonly string[];
+}
+
+/** Resolve opt-in worker flags without starting a scenario process. */
+export function resolveBackgroundServiceFlags(
+  options: Pick<
+    CreateScenarioRuntimeOptions,
+    "requiredServices" | "backgroundWorkers"
+  > = {},
+): Record<
+  | "ELIZA_DISABLE_ACTIVITY_TRACKER"
+  | "ELIZA_DISABLE_PROACTIVE_AGENT"
+  | "ELIZA_DISABLE_LIFEOPS_SCHEDULER",
+  "0" | "1"
+> {
+  const requiredServices = new Set(options.requiredServices ?? []);
+  const backgroundWorkers = new Set(options.backgroundWorkers ?? []);
+  return {
+    ELIZA_DISABLE_ACTIVITY_TRACKER: requiredServices.has("activity_tracker")
+      ? "0"
+      : "1",
+    ELIZA_DISABLE_PROACTIVE_AGENT: backgroundWorkers.has("PROACTIVE_AGENT")
+      ? "0"
+      : "1",
+    ELIZA_DISABLE_LIFEOPS_SCHEDULER: backgroundWorkers.has("LIFEOPS_SCHEDULER")
+      ? "0"
+      : "1",
+  };
 }
 
 type LoadedScenarioTestMocks = Awaited<ReturnType<typeof loadTestMocks>>;
@@ -767,10 +796,14 @@ export async function createScenarioRuntime(
       : null;
   let scenarioHostsRoot: string | null = null;
   process.env.PGLITE_DATA_DIR = pgliteDir;
-  process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
-  process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
+  const backgroundFlags = resolveBackgroundServiceFlags(options);
+  process.env.ELIZA_DISABLE_ACTIVITY_TRACKER =
+    backgroundFlags.ELIZA_DISABLE_ACTIVITY_TRACKER;
+  process.env.ELIZA_DISABLE_PROACTIVE_AGENT =
+    backgroundFlags.ELIZA_DISABLE_PROACTIVE_AGENT;
   if (executionProfile === "simulated") {
-    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER =
+      backgroundFlags.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
   }
   if (scenarioSkillsRoot) {
     process.env.SKILLS_DIR = scenarioSkillsRoot;

@@ -42,6 +42,15 @@ function resolveDueTime(task: Task): number | null {
 export class TaskService extends Service {
 	private timer: NodeJS.Timeout | null = null;
 	private activeTick: Promise<void> | null = null;
+	private clock: () => number = Date.now;
+	private manualExecution = false;
+	private schedulingMode:
+		| "local"
+		| "shared"
+		| "serverless"
+		| "manual"
+		| "stopped" = "local";
+	private modeBeforeManual: "local" | "shared" | "serverless" = "local";
 	private readonly TICK_INTERVAL = 1000; // Check every second
 	/** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
 	private executingTasks: Set<string> = new Set();
@@ -72,7 +81,7 @@ export class TaskService extends Service {
 	 * the TASK_WORKER_MISSING diagnostic that painted red system lines into the
 	 * owner's chat view on every boot.
 	 */
-	private readonly startedAt = Date.now();
+	private startedAt: number;
 	/** Set true in stop(). runTick returns immediately when true (daemon may call runTick after unregister). */
 	private stopped = false;
 	/**
@@ -84,6 +93,11 @@ export class TaskService extends Service {
 	private static readonly ORPHAN_GRACE_MS = 60_000;
 	static serviceType = ServiceType.TASK;
 	capabilityDescription = "The agent is able to schedule and execute tasks";
+
+	constructor(runtime?: IAgentRuntime) {
+		super(runtime);
+		this.startedAt = this.clock();
+	}
 
 	/**
 	 * Start the TaskService with the given runtime.
@@ -170,7 +184,7 @@ export class TaskService extends Service {
 				name: "REPEATING_TEST_TASK",
 				description: "A test task that repeats every minute",
 				metadata: {
-					updatedAt: Date.now(), // Use timestamp instead of Date object
+					updatedAt: this.clock(), // Use timestamp instead of Date object
 					updateInterval: 1000 * 60, // 1 minute
 				},
 				tags: ["queue", "repeat", "test"],
@@ -182,7 +196,7 @@ export class TaskService extends Service {
 			name: "ONETIME_TEST_TASK",
 			description: "A test task that runs once",
 			metadata: {
-				updatedAt: Date.now(),
+				updatedAt: this.clock(),
 			},
 			tags: ["queue", "test"],
 		});
@@ -197,13 +211,23 @@ export class TaskService extends Service {
 	 * WHY serverless first: no long-lived process; WHY daemon second: one shared getTasks(agentIds) per tick for all agents.
 	 */
 	startTimer() {
+		if (this.manualExecution) {
+			return;
+		}
 		if (this.runtime.serverless === true) {
+			this.schedulingMode = "serverless";
 			return;
 		}
 		if (getTaskSchedulerAdapter() != null) {
+			this.schedulingMode = "shared";
 			registerTaskSchedulerRuntime(this.runtime, this);
 			return;
 		}
+		this.startLocalTimer();
+	}
+
+	private startLocalTimer(): void {
+		this.schedulingMode = "local";
 		if (this.timer) {
 			clearInterval(this.timer);
 		}
@@ -227,6 +251,82 @@ export class TaskService extends Service {
 				});
 			this.activeTick = tick;
 		}, this.TICK_INTERVAL) as NodeJS.Timeout;
+	}
+
+	/**
+	 * Bind deterministic host-driven execution to an explicit clock and disable
+	 * the local/shared polling timer. The production task query, due evaluation,
+	 * worker execution, retry, and persistence paths remain unchanged; the host
+	 * advances time and calls {@link runDueTasks} explicitly.
+	 */
+	async enterManualExecution(clock: () => number): Promise<void> {
+		if (this.schedulingMode === "stopped") {
+			throw new ElizaError("Cannot acquire a stopped TaskService", {
+				code: "TASK_SERVICE_STOPPED",
+				severity: "fatal",
+			});
+		}
+		const now = clock();
+		if (!Number.isFinite(now)) {
+			throw new ElizaError(
+				"TaskService manual clock returned an invalid time",
+				{
+					code: "TASK_CLOCK_INVALID",
+					context: { now },
+					severity: "fatal",
+				},
+			);
+		}
+		if (!this.manualExecution && this.schedulingMode !== "manual") {
+			this.modeBeforeManual = this.schedulingMode;
+		}
+		this.manualExecution = true;
+		this.schedulingMode = "manual";
+		this.clock = clock;
+		this.startedAt = now;
+		unregisterTaskSchedulerRuntime(this.runtime.agentId);
+		if (this.timer) {
+			clearInterval(this.timer);
+			this.timer = null;
+		}
+		if (this.activeTick) {
+			await this.activeTick;
+		}
+	}
+
+	/** Restore the exact scheduler mode that was active before manual control. */
+	exitManualExecution(): void {
+		if (!this.manualExecution) return;
+		this.manualExecution = false;
+		this.clock = Date.now;
+		this.startedAt = this.clock();
+		switch (this.modeBeforeManual) {
+			case "shared":
+				this.schedulingMode = "shared";
+				registerTaskSchedulerRuntime(this.runtime, this);
+				break;
+			case "serverless":
+				this.schedulingMode = "serverless";
+				break;
+			case "local":
+				this.startLocalTimer();
+				break;
+		}
+	}
+
+	/** Scheduler ownership mode, exposed for deterministic-host readiness and teardown proof. */
+	getSchedulingMode():
+		| "local"
+		| "shared"
+		| "serverless"
+		| "manual"
+		| "stopped" {
+		return this.schedulingMode;
+	}
+
+	/** Current scheduler time, exposed for production workers with injected-time semantics. */
+	currentTime(): Date {
+		return new Date(this.clock());
 	}
 
 	/**
@@ -279,7 +379,7 @@ export class TaskService extends Service {
 				// registered YET" — skip silently (no error, no heal). Quarantining
 				// here wrongly paused/DELETED healthy tasks and emitted the
 				// TASK_WORKER_MISSING noise seen on every staging boot.
-				if (Date.now() - this.startedAt < TaskService.ORPHAN_GRACE_MS) {
+				if (this.clock() - this.startedAt < TaskService.ORPHAN_GRACE_MS) {
 					continue;
 				}
 				// Orphaned task: no worker registered in THIS build. Self-heal instead
@@ -379,7 +479,7 @@ export class TaskService extends Service {
 							// and are never auto-resumed.
 							orphanedNoWorker: true,
 							lastError: `No worker registered for task ${task.name} (orphan auto-paused)`,
-							updatedAt: Date.now(),
+							updatedAt: this.clock(),
 						},
 					});
 				}
@@ -441,7 +541,7 @@ export class TaskService extends Service {
 					paused: false,
 					orphanedNoWorker: false,
 					lastError: undefined,
-					updatedAt: Date.now(),
+					updatedAt: this.clock(),
 				},
 			});
 			this.quarantinedOrphans.delete(task.id);
@@ -582,7 +682,7 @@ export class TaskService extends Service {
 		if (this.stopped) return;
 		const validation = await this.validateTasks(tasks);
 		const failures: ElizaError[] = [...validation.errors];
-		const now = Date.now();
+		const now = this.clock();
 
 		for (const task of validation.tasks) {
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
@@ -766,7 +866,7 @@ export class TaskService extends Service {
 		}
 
 		this.executingTasks.add(task.id);
-		const startTime = Date.now();
+		const startTime = this.clock();
 
 		try {
 			const taskOptions = (task.metadata ?? {}) as Record<
@@ -784,7 +884,7 @@ export class TaskService extends Service {
 				const baseInterval = meta?.baseInterval ?? meta?.updateInterval;
 				const newMeta: TaskMetadata = {
 					...meta,
-					updatedAt: Date.now(),
+					updatedAt: this.clock(),
 					failureCount: 0,
 					lastError: undefined,
 				};
@@ -849,7 +949,7 @@ export class TaskService extends Service {
 					const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
 					const newMeta: TaskMetadata & Record<string, unknown> = {
 						...(meta ?? {}),
-						updatedAt: Date.now(),
+						updatedAt: this.clock(),
 						failureCount,
 						lastError: error instanceof Error ? error.message : String(error),
 					};
@@ -919,7 +1019,7 @@ export class TaskService extends Service {
 			throw failure;
 		} finally {
 			this.executingTasks.delete(task.id);
-			const durationMs = Date.now() - startTime;
+			const durationMs = this.clock() - startTime;
 			this.runtime.logger.debug(
 				{
 					src: "plugin:basic-capabilities:service:task",
@@ -1058,6 +1158,7 @@ export class TaskService extends Service {
 
 	async stop() {
 		this.stopped = true;
+		this.schedulingMode = "stopped";
 		unregisterTaskSchedulerRuntime(this.runtime.agentId);
 		if (this.timer) {
 			clearInterval(this.timer);

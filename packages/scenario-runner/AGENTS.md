@@ -17,7 +17,8 @@ packages/scenario-runner/
   src/
     index.ts                 # Public re-exports
     cli.ts                   # `eliza-scenarios run|list` — arg parsing + orchestration
-    executor.ts              # runScenario() — core execution loop (message/action/api/tick turns)
+    executor.ts              # runScenario() — core execution loop, including deterministic background control
+    background-runtime.ts    # manual virtual-time control over production TaskService workers and queue drivers
     runtime-factory.ts       # createScenarioRuntime() — boots AgentRuntime with PGLite + LLM
     loader.ts                # discoverScenarios / loadAllScenarios / listScenarioMetadata / expandScenarioDefinition / countScenarioCorpus / validateScenarioCorpus
     interceptor.ts           # attachInterceptor() — wraps action handlers to capture CapturedAction[]
@@ -137,7 +138,7 @@ bun run --cwd packages/scenario-runner clean
 | `ELIZA_TRAJECTORY_LOGGING` | Set to `1` by `eliza-scenarios run` when the operator has not already set it, so bare scenario runs record trajectories even when `NODE_ENV=test|production`; explicit `0` and `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` are respected |
 | `ELIZA_LIFEOPS_RUN_ID` | Injected by CLI; tags trajectories with the run ID |
 | `ELIZA_LIFEOPS_SCENARIO_ID` | Injected per scenario so trajectory files are tagged correctly |
-| `ELIZA_DISABLE_ACTIVITY_TRACKER` | Set to `1` by the runtime factory; suppresses activity-tracker background work |
+| `ELIZA_DISABLE_ACTIVITY_TRACKER` | Defaults to `1`; a scenario requiring `activity_tracker` opts in |
 | `ELIZA_DISABLE_PROACTIVE_AGENT` | Set to `1` by the runtime factory |
 | `ELIZA_DISABLE_LIFEOPS_SCHEDULER` | Set to `1` by the runtime factory |
 | `PGLITE_DATA_DIR` | Managed by `createScenarioRuntime`; restored on cleanup |
@@ -158,7 +159,7 @@ export default {
   turns: [
     {
       name: "user asks",
-      kind: "message",    // "message" | "action" | "api" | "tick"
+      kind: "message",    // "message" | "action" | "api" | "tick" | "background"
       text: "Do the thing",
       assertResponse(text) {
         if (!text.includes("done")) return "expected 'done' in response";
@@ -179,6 +180,7 @@ Loader discovers files recursively; entries starting with `_` are ignored. The `
 - `action` — calls a named action's `validate` + `handler` directly (bypasses LLM routing).
 - `api` — sends an HTTP request to the scenario's loopback API server (routes registered on the runtime).
 - `tick` — invokes `executeLifeOpsSchedulerTask` from `@elizaos/plugin-personal-assistant/plugin` (tests scheduler ticks at a logical clock time).
+- `background` — controls declared production TaskService workers with virtual-time `start`, `pause`, `resume`, `step`, `drain`, `crash`, `restart`, `inspect`, and `reset` operations. Use `requires.services` and `requires.workers`; undeclared/missing workers fail readiness.
 
 ## Final check types (from `schema/index.js`)
 

@@ -281,6 +281,21 @@ export type ScenarioTurn = {
   /** Per-turn override of the executor's turn timeout (ms). */
   timeoutMs?: number;
   worker?: string;
+  /** For `background` turns, the deterministic worker-control operation. */
+  operation?:
+    | "start"
+    | "pause"
+    | "resume"
+    | "step"
+    | "drain"
+    | "crash"
+    | "restart"
+    | "inspect"
+    | "reset";
+  /** Virtual milliseconds advanced before a background step. */
+  advanceMs?: number;
+  /** Maximum production TaskService passes allowed by a background drain. */
+  maxSteps?: number;
   now?: string;
   options?: Record<string, unknown>;
   /**
@@ -541,6 +556,8 @@ export type ScenarioRequirements = {
    * Services omitted here are optional even when a required plugin declares them.
    */
   services?: readonly string[];
+  /** Production TaskService worker names required by deterministic background control. */
+  workers?: readonly string[];
   /**
    * Named credential slots (e.g. `1password:eliza-e2e-autofill`) the live lane
    * must provision before this scenario is eligible; corpora-specific runners

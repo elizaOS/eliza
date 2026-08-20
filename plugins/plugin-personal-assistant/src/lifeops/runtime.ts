@@ -3,8 +3,7 @@
  * agent record and the LifeOps scheduler task exist, and re-exports the
  * scheduler-task helpers callers use to bootstrap the plugin at init.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";
 import type { HouseholdGrantExpiryWarningReceipt } from "./household/grant-expiry-warning.js";
 import {
@@ -46,6 +45,19 @@ function resolveSchedulerNowIso(
     }
   }
   return undefined;
+}
+
+function withTaskServiceNow(
+  runtime: IAgentRuntime,
+  options: Record<string, unknown>,
+): Record<string, unknown> {
+  if (resolveSchedulerNowIso(options)) return options;
+  const taskService = runtime.getService(ServiceType.TASK) as
+    | { currentTime?: () => Date }
+    | null
+    | undefined;
+  const now = taskService?.currentTime?.();
+  return now ? { ...options, now } : options;
 }
 
 export async function executeLifeOpsSchedulerTask(
@@ -182,6 +194,9 @@ export function registerLifeOpsTaskWorker(
       }
     },
     execute: async (rt, taskOptions) =>
-      executeLifeOpsSchedulerTask(rt, isRecord(taskOptions) ? taskOptions : {}),
+      executeLifeOpsSchedulerTask(
+        rt,
+        withTaskServiceNow(rt, isRecord(taskOptions) ? taskOptions : {}),
+      ),
   });
 }

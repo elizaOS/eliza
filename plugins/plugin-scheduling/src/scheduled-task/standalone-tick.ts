@@ -33,6 +33,7 @@
 import {
   type IAgentRuntime,
   logger,
+  ServiceType,
   type Task,
   type TaskMetadata,
   type UUID,
@@ -54,6 +55,14 @@ export const STANDALONE_TICK_TASK_TAGS = [
 ] as const;
 
 const STANDALONE_TICK_TASK_KIND = "standalone_scheduled_task_runner";
+
+function taskServiceNow(runtime: IAgentRuntime): Date {
+  const service = runtime.getService(ServiceType.TASK) as
+    | { currentTime?: () => Date }
+    | null
+    | undefined;
+  return service?.currentTime?.() ?? new Date();
+}
 
 /** Process-level kill switch, mirroring PA's ELIZA_DISABLE_LIFEOPS_SCHEDULER. */
 export function isStandaloneTickDisabled(
@@ -142,8 +151,9 @@ function isStandaloneTickTask(task: Task): boolean {
   );
 }
 
-function buildStandaloneTickMetadata(): TaskMetadata {
+function buildStandaloneTickMetadata(nowMs: number): TaskMetadata {
   return {
+    updatedAt: nowMs,
     updateInterval: STANDALONE_TICK_INTERVAL_MS,
     baseInterval: STANDALONE_TICK_INTERVAL_MS,
     blocking: true,
@@ -165,7 +175,9 @@ export function registerStandaloneTickWorker(runtime: IAgentRuntime): void {
       !isStandaloneTickDisabled() &&
       getScheduledTaskRunnerDeps(runtime) === null,
     execute: async () => {
-      await runStandaloneSchedulingTick(runtime);
+      await runStandaloneSchedulingTick(runtime, {
+        now: taskServiceNow(runtime),
+      });
       return { nextInterval: STANDALONE_TICK_INTERVAL_MS };
     },
   });
@@ -193,7 +205,8 @@ export async function ensureStandaloneTickTask(
     if (duplicate.id) await runtime.deleteTask(duplicate.id);
   }
 
-  const metadata = buildStandaloneTickMetadata();
+  const nowMs = taskServiceNow(runtime).getTime();
+  const metadata = buildStandaloneTickMetadata(nowMs);
   if (canonical?.id) {
     await runtime.updateTask(canonical.id, {
       description:
@@ -209,7 +222,7 @@ export async function ensureStandaloneTickTask(
     agentId: runtime.agentId,
     tags: [...STANDALONE_TICK_TASK_TAGS],
     metadata,
-    dueAt: Date.now(),
+    dueAt: nowMs,
   });
 }
 

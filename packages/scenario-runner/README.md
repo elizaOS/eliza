@@ -57,6 +57,35 @@ export default {
 | `action` | Calls a named action's `validate` + `handler` directly (bypasses LLM routing) |
 | `api` | Makes an HTTP request to the agent's registered routes via a loopback server |
 | `tick` | Invokes the lifeops scheduler at a logical clock time |
+| `background` | Controls declared production workers with `start`, `pause`, `resume`, `step`, `drain`, `crash`, `restart`, `inspect`, or `reset` |
+
+### Deterministic background work
+
+Background control is opt-in so ordinary scenarios remain fast. Declare every
+production service and TaskService worker the scenario needs; startup fails if
+a declared worker or driver is unavailable.
+
+```ts
+requires: {
+  services: ["activity_tracker"],
+  workers: ["PROACTIVE_AGENT", "LIFEOPS_SCHEDULER"],
+},
+turns: [
+  { kind: "background", name: "not due", operation: "step", advanceMs: 59_999 },
+  { kind: "background", name: "exactly due", operation: "step", advanceMs: 1 },
+  { kind: "background", name: "prove idle", operation: "drain", maxSteps: 100 },
+  { kind: "background", name: "read evidence", operation: "inspect" },
+]
+```
+
+The controller takes manual ownership of the real core `TaskService`; it does
+not create another scheduler. Virtual time feeds the production due, retry,
+and plugin-scheduling paths. The JSON report retains the typed worker ledger,
+pending work, timer count, and attributable errors before shared state is reset.
+Production processors outside TaskService (for example a Cloud durable queue)
+register a `ScenarioBackgroundDriver` that delegates `step`, `inspect`, reset,
+crash, and restart to that processor; the driver is a control adapter, not a
+replacement implementation.
 
 ### Assertions
 

@@ -16,8 +16,17 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  type IAgentRuntime,
+  ServiceType,
+  type Task,
+  TaskService,
+  type TaskWorker,
+  type UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ScenarioBackgroundRuntime } from "../../../../packages/scenario-runner/src/background-runtime.ts";
 import type { ActivityProfile } from "./types.js";
 
 // 09:00 in the HOST timezone: the worker resolves its timezone via
@@ -96,6 +105,7 @@ import * as workerModule from "./proactive-worker.js";
 import {
   executeProactiveTask,
   PROACTIVE_TASK_NAME,
+  registerProactiveTaskWorker,
 } from "./proactive-worker.js";
 
 const workerSource = readFileSync(
@@ -283,5 +293,93 @@ describe("proactive-worker behavioral tripwire", () => {
       startLocal: "21:00",
       endLocal: "23:00",
     });
+  });
+
+  it("runs the production proactive handler only at exact virtual due time without direct owner dispatch", async () => {
+    const { runtime, sent, emitted, updates } = createTripwireRuntime();
+    const epoch = new Date("2026-08-20T09:00:00.000Z");
+    let proactiveTask: Task = {
+      id: "proactive-controller-task" as UUID,
+      name: PROACTIVE_TASK_NAME,
+      agentId: runtime.agentId,
+      tags: ["queue", "repeat", "proactive"],
+      metadata: {
+        proactiveAgent: { kind: "runtime_runner", version: 1 },
+        activityProfile: gmFavorableProfile,
+        updateInterval: 60_000,
+        updatedAt: epoch.getTime(),
+      },
+    };
+    const workers = new Map<string, TaskWorker>();
+    const controllerRuntime = runtime as IAgentRuntime & {
+      adapter: { getTasks: (params: unknown) => Promise<Task[]> };
+      serverless: boolean;
+      getServiceLoadPromise: (type: string) => Promise<unknown>;
+      getRecentReportedErrors: () => [];
+    };
+    controllerRuntime.serverless = true;
+    controllerRuntime.adapter = { getTasks: async () => [proactiveTask] };
+    controllerRuntime.getTasks = async () => [proactiveTask];
+    controllerRuntime.getTask = async (id) =>
+      id === proactiveTask.id ? proactiveTask : null;
+    controllerRuntime.updateTask = async (id, patch) => {
+      if (id !== proactiveTask.id) throw new Error("unexpected task update");
+      proactiveTask = { ...proactiveTask, ...patch };
+      updates.push({
+        taskId: String(id),
+        patch: patch as { metadata?: Record<string, unknown> },
+      });
+    };
+    controllerRuntime.deleteTask = async () => undefined;
+    controllerRuntime.createTask = async (task) => {
+      proactiveTask = { ...task, id: proactiveTask.id };
+      return proactiveTask.id as UUID;
+    };
+    controllerRuntime.registerTaskWorker = (worker) => {
+      workers.set(worker.name, worker);
+    };
+    controllerRuntime.unregisterTaskWorker = (name) => workers.delete(name);
+    controllerRuntime.getTaskWorker = (name) => workers.get(name);
+    controllerRuntime.reportError = () => undefined;
+    controllerRuntime.getRecentReportedErrors = () => [];
+
+    const taskService = (await TaskService.start(
+      controllerRuntime,
+    )) as TaskService;
+    controllerRuntime.getServiceLoadPromise = async (type) => {
+      if (type !== ServiceType.TASK)
+        throw new Error(`unexpected service ${type}`);
+      return taskService;
+    };
+    registerProactiveTaskWorker(controllerRuntime);
+    const productionWorker = workers.get(PROACTIVE_TASK_NAME);
+    if (!productionWorker)
+      throw new Error("proactive worker was not registered");
+    // The test runtime has no first-run config service. Keep the production
+    // execute handler while satisfying that host-only readiness boundary.
+    workers.set(PROACTIVE_TASK_NAME, {
+      ...productionWorker,
+      shouldRun: undefined,
+    });
+
+    const background = new ScenarioBackgroundRuntime(
+      controllerRuntime as unknown as AgentRuntime,
+      {
+        namespace: "scenario:proactive-controller",
+        epoch,
+        workers: [PROACTIVE_TASK_NAME],
+      },
+    );
+    await background.captureBaseline();
+    await background.start();
+    await background.step(59_999);
+    expect(updates).toHaveLength(0);
+    await background.step(1);
+    expect(updates.length).toBeGreaterThan(0);
+    expect(proactiveTask.metadata?.activityProfile).toBeDefined();
+    expect(sent).toHaveLength(0);
+    expect(emitted).toHaveLength(0);
+    await background.stop();
+    await taskService.stop();
   });
 });

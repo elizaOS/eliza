@@ -16,6 +16,7 @@ const scheduledWorkFixture = vi.hoisted(() => ({
   scheduledTaskCompletionTimeouts: [],
   subsystemFailures: [{ subsystem: "reminders", error: "reminders down" }],
 }));
+const scheduledWorkOptions = vi.hoisted(() => [] as Array<{ now?: string }>);
 const householdFixture = vi.hoisted(() => ({
   reconcileGrantExpiryWarnings: vi.fn(async () => [
     {
@@ -45,7 +46,8 @@ vi.mock("./scheduler-task.js", () => ({
 
 vi.mock("./service.js", () => ({
   LifeOpsService: class {
-    async processScheduledWork() {
+    async processScheduledWork(options: { now?: string }) {
+      scheduledWorkOptions.push(options);
       return scheduledWorkFixture;
     }
   },
@@ -64,6 +66,10 @@ const AGENT_ID = "00000000-0000-0000-0000-0000000000ee" as UUID;
 const runtime = { agentId: AGENT_ID } as unknown as IAgentRuntime;
 
 describe("registerLifeOpsTaskWorker", () => {
+  beforeEach(() => {
+    scheduledWorkOptions.length = 0;
+  });
+
   it("keeps the task identity valid without executing when scheduler is disabled", async () => {
     let registered: TaskWorker | undefined;
     const disabledRuntime = {
@@ -81,6 +87,30 @@ describe("registerLifeOpsTaskWorker", () => {
         name: "LIFEOPS_SCHEDULER",
       }),
     ).resolves.toBe(false);
+  });
+
+  it("uses the production TaskService clock when the task row has no explicit override", async () => {
+    let registered: TaskWorker | undefined;
+    const virtualNow = new Date("2031-04-05T06:07:08.000Z");
+    const clockedRuntime = {
+      agentId: AGENT_ID,
+      getTaskWorker: () => undefined,
+      getService: () => ({ currentTime: () => virtualNow }),
+      registerTaskWorker: (worker: TaskWorker) => {
+        registered = worker;
+      },
+    } as unknown as IAgentRuntime;
+
+    registerLifeOpsTaskWorker(clockedRuntime);
+    await registered?.execute(
+      clockedRuntime,
+      {},
+      { name: "LIFEOPS_SCHEDULER" },
+    );
+
+    expect(scheduledWorkOptions).toContainEqual({
+      now: virtualNow.toISOString(),
+    });
   });
 });
 
