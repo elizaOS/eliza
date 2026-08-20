@@ -401,14 +401,14 @@ export function measureEchoTurnErle(args: {
 	return computeFarActiveErle(args.near, residual, far).erleDb;
 }
 
-/** The minimal streaming-synthesis surface the playback-stop probe drives. */
-export type BargeInPlaybackStopStream = (args: {
+/** The minimal streaming-synthesis surface the native-TTS cancel probe drives. */
+export type BargeInTtsCancelStream = (args: {
 	cancelSignal: { cancelled: boolean };
 	onChunk: (chunk: { pcm: Float32Array; isFinal: boolean }) => undefined;
 }) => Promise<{ cancelled: boolean }>;
 
 /**
- * Measure the real playback-stop latency of a cancellable TTS stream: start
+ * Measure the native synthesis-stop latency of a cancellable TTS stream: start
  * the synthesis, flip the shared cancel signal the moment the first audible
  * chunk arrives (the engine honours it at chunk boundaries), and report the
  * milliseconds from the cancel request until the stream actually returned.
@@ -416,8 +416,8 @@ export type BargeInPlaybackStopStream = (args: {
  * failure, not a null sample — fail fast so the lane cannot silently report
  * zero coverage.
  */
-export async function measureBargeInPlaybackStopMs(
-	synthesizeReply: BargeInPlaybackStopStream,
+export async function measureBargeInTtsCancelMs(
+	synthesizeReply: BargeInTtsCancelStream,
 ): Promise<number> {
 	const cancelSignal = { cancelled: false };
 	let cancelRequestedAtMs: number | null = null;
@@ -794,7 +794,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			if (measured !== null) erleDb = measured;
 		}
 
-		// Barge-in playback stop — when the live gate says an addressed speaker
+		// Barge-in native-TTS cancellation — when the live gate says an addressed speaker
 		// interrupted, hard-stop a real in-flight Kokoro stream and time it; when
 		// the gate holds (echo / bystander), report an explicit non-cancel.
 		let bargeInCancelMs: number | null | undefined;
@@ -972,7 +972,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 
 	private async measureBargeInCancel(): Promise<number> {
 		const replyText = this.lastAgentReply ?? BARGE_IN_PROBE_REPLY;
-		return measureBargeInPlaybackStopMs(({ cancelSignal, onChunk }) =>
+		return measureBargeInTtsCancelMs(({ cancelSignal, onChunk }) =>
 			this.kokoroBackend.synthesizeStream({
 				phrase: {
 					id: 1,

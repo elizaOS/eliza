@@ -1,7 +1,7 @@
 /**
  * Deterministic coverage for the real workbench measurement adapters: stream
  * diarization, streaming ASR selection, ERLE echo replay, and the barge-in
- * playback-stop probe. Native pyannote/WeSpeaker/Kokoro calls are injected so
+ * native-TTS cancellation probe. Native pyannote/WeSpeaker/Kokoro calls are injected so
  * window coverage, stream offsets, blind clustering, canceller replay, and
  * cancel-latency semantics are exercised without model artifacts.
  */
@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { fakeFfi } from "./__test-helpers__/fake-ffi";
 import {
 	diarizeVoiceWorkbenchStream,
-	measureBargeInPlaybackStopMs,
+	measureBargeInTtsCancelMs,
 	measureEchoTurnErle,
 	transcribeVoiceWorkbenchStream,
 } from "./workbench-real-services";
@@ -221,9 +221,9 @@ describe("measureEchoTurnErle", () => {
 	});
 });
 
-describe("measureBargeInPlaybackStopMs", () => {
+describe("measureBargeInTtsCancelMs", () => {
 	it("reports the latency from cancel request to stream return", async () => {
-		const cancelMs = await measureBargeInPlaybackStopMs(
+		const cancelMs = await measureBargeInTtsCancelMs(
 			async ({ cancelSignal, onChunk }) => {
 				for (let i = 0; i < 100; i++) {
 					if (cancelSignal.cancelled) return { cancelled: true };
@@ -240,7 +240,7 @@ describe("measureBargeInPlaybackStopMs", () => {
 
 	it("fails fast when the stream produces no audio to cancel", async () => {
 		await expect(
-			measureBargeInPlaybackStopMs(async ({ onChunk }) => {
+			measureBargeInTtsCancelMs(async ({ onChunk }) => {
 				onChunk({ pcm: new Float32Array(0), isFinal: true });
 				return { cancelled: false };
 			}),
@@ -249,7 +249,7 @@ describe("measureBargeInPlaybackStopMs", () => {
 
 	it("fails fast when the engine ignores the cancel signal", async () => {
 		await expect(
-			measureBargeInPlaybackStopMs(async ({ onChunk }) => {
+			measureBargeInTtsCancelMs(async ({ onChunk }) => {
 				for (let i = 0; i < 3; i++) {
 					onChunk({ pcm: new Float32Array(320).fill(0.1), isFinal: false });
 				}
