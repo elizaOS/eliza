@@ -109,7 +109,7 @@ function SearchControl({ value, invalid, busy, onValue }: SearchControlProps) {
     onFill: onValue,
   });
   return (
-    <label className="relative min-w-0 flex-1">
+    <label className="relative min-w-0 sm:col-span-5">
       <span className="sr-only">Search places or addresses</span>
       <Search
         aria-hidden="true"
@@ -900,7 +900,7 @@ export function MapsView({
       className="h-full min-h-0 w-full overflow-x-hidden overflow-y-auto bg-bg text-text"
     >
       <div className="mx-auto flex min-h-full w-full max-w-[1500px] flex-col gap-4 px-4 pt-4 pb-28 sm:px-6 lg:px-8 lg:pt-6">
-        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <header className="grid gap-4 lg:grid-cols-2 lg:items-end">
           <div>
             <p className="text-xs font-bold tracking-[0.18em] text-[#c54500] uppercase">
               Explore · Provider-neutral map
@@ -919,7 +919,7 @@ export function MapsView({
             </p>
           </div>
           {origin ? (
-            <div className="flex min-h-11 items-center gap-2 rounded-lg bg-[#ff5800]/10 px-3 text-sm">
+            <div className="flex min-h-11 items-center gap-2 rounded-lg bg-[#ff5800]/10 px-3 text-sm lg:justify-self-end">
               <LocateFixed
                 aria-hidden="true"
                 className="size-4 text-[#d94b00]"
@@ -966,7 +966,7 @@ export function MapsView({
           aria-label="Search places"
           aria-hidden={chatSheetOpen ? true : undefined}
           onSubmit={submitSearch}
-          className="flex flex-col gap-2 sm:flex-row"
+          className="grid gap-2 sm:grid-cols-6"
           style={{ visibility: chatSheetOpen ? "hidden" : undefined }}
         >
           <SearchControl
