@@ -37,7 +37,11 @@ const cleanupHelper = path.join(
 );
 
 const APP_ID = "ai.elizaos.app";
-const RUNTIME_VERSION = "24.08";
+export const FLATPAK_RUNTIME = {
+  platform: "org.gnome.Platform",
+  sdk: "org.gnome.Sdk",
+  version: "49",
+};
 export const FLATPAK_FINISH_ARGS = [
   "--command=eliza",
   "--share=network",
@@ -184,9 +188,9 @@ async function main() {
       `--arch=${arch}`,
       appDir,
       APP_ID,
-      "org.freedesktop.Sdk",
-      "org.freedesktop.Platform",
-      RUNTIME_VERSION,
+      FLATPAK_RUNTIME.sdk,
+      FLATPAK_RUNTIME.platform,
+      FLATPAK_RUNTIME.version,
     ]);
     await cp(buildDir, path.join(appDir, "files/opt/eliza"), {
       recursive: true,

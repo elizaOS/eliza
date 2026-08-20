@@ -18,6 +18,7 @@ import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   FLATPAK_FINISH_ARGS,
+  FLATPAK_RUNTIME,
   requireLauncher,
   writeMetadata,
 } from "../package-electrobun-flatpak.mjs";
@@ -37,6 +38,14 @@ afterEach(() => {
 });
 
 describe("Electrobun Flatpak packaging", () => {
+  it("uses the GNOME runtime that supplies WebKitGTK", () => {
+    expect(FLATPAK_RUNTIME).toEqual({
+      platform: "org.gnome.Platform",
+      sdk: "org.gnome.Sdk",
+      version: "49",
+    });
+  });
+
   it("requires the packaged Electrobun launcher", () => {
     const buildDir = tempDir();
     mkdirSync(path.join(buildDir, "bin"), { recursive: true });
