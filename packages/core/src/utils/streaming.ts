@@ -8,9 +8,8 @@
  * For the interface definition, see types/streaming.ts.
  * Implementations can use these or create their own extractors.
  *
- * Think-tag matching is a linear prefix compare. Origin sliced and
- * lowercased the remainder at every index, which is O(n²) on a legal
- * 1 MiB stream chunk with no `<think>` delimiter.
+ * Reasoning-tag filtering compares fixed-length prefixes and accumulates
+ * visible runs without copying the remaining stream suffix at every index.
  */
 
 import type { StreamChunkCallback } from "../types/components";
@@ -1075,32 +1074,44 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 
 		while (index < source.length) {
 			if (filter.mode === "outside") {
-				const open = matchTagAt(source, index, "<think>");
+				const candidate = source.indexOf("<", index);
+				if (candidate === -1) {
+					parts.push(source.slice(index));
+					break;
+				}
+				if (candidate > index) {
+					parts.push(source.slice(index, candidate));
+				}
+				const open = matchTagAt(source, candidate, "<think>");
 				if (open === "full") {
 					filter.mode = "inside";
-					index += "<think>".length;
+					index = candidate + "<think>".length;
 					continue;
 				}
 				if (open === "partial") {
-					filter.pending = source.slice(index);
+					filter.pending = source.slice(candidate);
 					break;
 				}
-				parts.push(source[index] ?? "");
-				index++;
+				parts.push("<");
+				index = candidate + 1;
 				continue;
 			}
 
-			const close = matchTagAt(source, index, "</think>");
+			const candidate = source.indexOf("<", index);
+			if (candidate === -1) {
+				break;
+			}
+			const close = matchTagAt(source, candidate, "</think>");
 			if (close === "full") {
 				filter.mode = "outside";
-				index += "</think>".length;
+				index = candidate + "</think>".length;
 				continue;
 			}
 			if (close === "partial") {
-				filter.pending = source.slice(index);
+				filter.pending = source.slice(candidate);
 				break;
 			}
-			index++;
+			index = candidate + 1;
 		}
 
 		if (final && filter.mode === "outside" && filter.pending) {

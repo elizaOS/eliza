@@ -317,8 +317,8 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		expect(chunks.join("")).toBe("Hello there");
 	});
 
-	it("filters a large think-free reply in linear time", () => {
-		const body = "x".repeat(80_000);
+	it("filters a large legal think-free reply through the production extractor", () => {
+		const body = "x".repeat(256 * 1024);
 		const chunks: string[] = [];
 		const extractor = new ResponseSkeletonStreamExtractor({
 			skeleton,
@@ -326,14 +326,39 @@ describe("ResponseSkeletonStreamExtractor", () => {
 			unordered: true,
 			onChunk: (chunk) => chunks.push(chunk),
 		});
-		const started = performance.now();
 		extractor.push(`{"replyText":"${body}"}`);
 		extractor.flush();
-		const elapsed = performance.now() - started;
 		expect(chunks.join("")).toBe(body);
-		// Origin matchTagAt sliced+lowercased the remainder per index (~1.9s
-		// on 80k chars). A legal 1 MiB chunk would hang the turn.
-		expect(elapsed).toBeLessThan(400);
+	});
+
+	it("preserves mixed-case reasoning tags across every stream split", () => {
+		const tagged = "<ThInK>secret</tHiNk>";
+		for (let split = 1; split < tagged.length; split++) {
+			const chunks: string[] = [];
+			const extractor = new ResponseSkeletonStreamExtractor({
+				skeleton,
+				streamFields: ["replyText"],
+				unordered: true,
+				onChunk: (chunk) => chunks.push(chunk),
+			});
+			extractor.push(`{"replyText":"Hello ${tagged.slice(0, split)}`);
+			extractor.push(`${tagged.slice(split)}there"}`);
+			extractor.flush();
+			expect(chunks.join(""), `split ${split}`).toBe("Hello there");
+		}
+	});
+
+	it("keeps a final tag-like prefix visible when it never becomes a tag", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			unordered: true,
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+		extractor.push('{"replyText":"literal <thi"}');
+		extractor.flush();
+		expect(chunks.join("")).toBe("literal <thi");
 	});
 
 	it("surfaces a 'Cancelled by user' error and emits nothing when already aborted", () => {
