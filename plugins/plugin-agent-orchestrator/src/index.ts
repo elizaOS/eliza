@@ -518,7 +518,24 @@ export function createAgentOrchestratorPlugin(): Plugin {
                   }
                   // Still mid-turn (busy / tool_running / running / blocked /
                   // authenticating) — wait for it to return to `ready`.
-                  if (isSessionBusy(session.status)) {
+                  // A live smithers durable run counts as mid-turn for its
+                  // WHOLE lifetime: between executor steps the session reads
+                  // `ready` for a moment, and a flush prompt fired into that
+                  // gap raced the executor's next step and killed the
+                  // workflow ("status failed" ~10s after a queued follow-up,
+                  // live 2026-08-20 meme-caption run). After the run ends the
+                  // terminal-session branch above redirects the queue to a
+                  // successor create.
+                  const flushRunState = (
+                    (session.metadata ?? {}) as {
+                      smithersDurableRun?: { state?: string };
+                    }
+                  ).smithersDurableRun?.state;
+                  if (
+                    isSessionBusy(session.status) ||
+                    flushRunState === "running" ||
+                    flushRunState === "pending"
+                  ) {
                     if (tries < MAX_FLUSH_POLLS) {
                       scheduleFlush(sessionId, tries + 1);
                     } else {
