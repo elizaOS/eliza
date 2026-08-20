@@ -249,6 +249,63 @@ describe("OpenAI REST handler request shapes", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  // Builds a mocked vision chat-completion whose single message content is
+  // `content`, so the assertions exercise the real title/description parser.
+  function mockVisionResponse(content: string) {
+    return vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl-test",
+            object: "chat.completion",
+            created: 0,
+            model: "gpt-5-mini",
+            choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 5, completion_tokens: 6, total_tokens: 11 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+    );
+  }
+
+  async function runDescribe(content: string) {
+    vi.spyOn(globalThis, "fetch").mockImplementation(mockVisionResponse(content) as typeof fetch);
+    return handleImageDescription(createRuntime(), {
+      imageUrl: "https://example.com/image.png",
+    });
+  }
+
+  it("keeps the full description when the vision text mentions 'title' mid-sentence", async () => {
+    const content =
+      'The image shows a book with the title "War and Peace" on its cover. It is placed on a wooden desk.';
+    await expect(runDescribe(content)).resolves.toEqual({
+      title: "Image Analysis",
+      description: content,
+    });
+  });
+
+  it("treats a single-line response with no title prefix as the full description", async () => {
+    const content = "A movie poster. The title reads Inception in bold letters across the middle.";
+    await expect(runDescribe(content)).resolves.toEqual({
+      title: "Image Analysis",
+      description: content,
+    });
+  });
+
+  it("preserves the content of a single-line 'Title:' response instead of emptying it", async () => {
+    const content = "Title: A serene mountain landscape at dusk with snow-capped peaks.";
+    await expect(runDescribe(content)).resolves.toEqual({
+      title: "Image Analysis",
+      description: "A serene mountain landscape at dusk with snow-capped peaks.",
+    });
+  });
+
+  it("still splits the canonical 'Title: X\\nDescription: Y' contract shape", async () => {
+    await expect(
+      runDescribe("Title: Sunset\nDescription: A beautiful sunset over the ocean.")
+    ).resolves.toEqual({ title: "Sunset", description: "A beautiful sunset over the ocean." });
+  });
+
   it("surfaces image-description provider errors with status and response body", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(
       vi.fn(
