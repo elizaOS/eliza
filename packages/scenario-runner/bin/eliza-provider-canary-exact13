@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+/** Loads and invokes the built exact-13 external provider canary coordinator. */
+
+import { runExact13ProviderCanaryCliAndExit } from "../dist/provider-qualified/exact13-run-coordinator.js";
+
+runExact13ProviderCanaryCliAndExit();
