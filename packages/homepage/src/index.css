@@ -2116,7 +2116,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Eliza's three-dot typing indicator */
+/* iOS-style three-dot indicator shared by Eliza and human participants. */
 .landing-typing {
   display: inline-flex;
   align-items: center;
@@ -2129,6 +2129,8 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   height: 0.45rem;
   border-radius: 50%;
   background: #9a9aa0;
+  transform: scale(0.82);
+  will-change: opacity, transform;
   animation: landing-typing-pulse 1.2s ease-out infinite;
 }
 
@@ -2145,9 +2147,11 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   60%,
   100% {
     opacity: 0.55;
+    transform: scale(0.82);
   }
   30% {
     opacity: 1;
+    transform: scale(1);
   }
 }
 

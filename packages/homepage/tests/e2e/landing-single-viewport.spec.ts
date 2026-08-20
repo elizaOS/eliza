@@ -84,6 +84,39 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
+test("human replies show the participant's iOS typing indicator", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForLandingIntro(page);
+
+  const phone = page.locator(".landing-iphone");
+  await expect(phone).toHaveAttribute("data-demo-typing", "Jamie", {
+    timeout: 5_000,
+  });
+
+  const indicator = page.locator('[data-demo-typing-indicator="Jamie"]');
+  await expect(indicator).toBeVisible();
+  await expect(indicator.locator(".landing-message-author")).toHaveText(
+    "Jamie",
+  );
+  await expect(indicator.locator(".landing-message-avatar")).toHaveAttribute(
+    "src",
+    "/brand/people/demo-jamie.webp",
+  );
+  await expect(indicator.locator(".landing-typing span")).toHaveCount(3);
+  await expect(indicator.locator(".landing-typing")).toHaveAttribute(
+    "aria-label",
+    "Jamie is typing",
+  );
+
+  await expect(phone).toHaveAttribute("data-demo-typing", "", {
+    timeout: 3_000,
+  });
+  await expect(page.getByText("7:30 works", { exact: true })).toBeVisible();
+});
+
 test("all five longer rooms keep rotating without hiding usable thread space", async ({
   page,
 }) => {

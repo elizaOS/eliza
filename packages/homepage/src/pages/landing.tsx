@@ -242,7 +242,7 @@ function PhoneMockup() {
     LandingDemoScenarioId[]
   >([DEMO_SCENARIOS[0].id]);
   const [cycle, setCycle] = useState(0);
-  const [elizaTyping, setElizaTyping] = useState(false);
+  const [typingSender, setTypingSender] = useState<DemoSender | null>(null);
   const [composerText, setComposerText] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
   const scenario = DEMO_SCENARIOS[scenarioIndex];
@@ -285,8 +285,10 @@ function PhoneMockup() {
             { id, from: "user", kind: "text", text: step.text },
           ]);
         } else if (step.kind === "member") {
+          setTypingSender(DEMO_SENDERS[step.name] ?? null);
           await sleep(humanReplyDelay(step.text));
           if (cancelled) return;
+          setTypingSender(null);
           setItems((previous) => [
             ...previous,
             {
@@ -301,10 +303,10 @@ function PhoneMockup() {
           await sleep(step.continuation ? 360 : PRE_ELIZA_MS);
           if (cancelled) return;
           if (!step.continuation) {
-            setElizaTyping(true);
+            setTypingSender(DEMO_SENDERS.Eliza);
             await sleep(ELIZA_TYPING_MS);
             if (cancelled) return;
-            setElizaTyping(false);
+            setTypingSender(null);
           }
           setItems((previous) => [
             ...previous,
@@ -334,7 +336,7 @@ function PhoneMockup() {
           const firstRoom = completedCycles === 0 && index === 0;
           if (!firstRoom) {
             setPhase("switching");
-            setElizaTyping(false);
+            setTypingSender(null);
             setComposerText("");
             await sleep(SCENARIO_SWITCH_MS);
             if (cancelled) return;
@@ -376,7 +378,10 @@ function PhoneMockup() {
     thread.scrollTo({ top: thread.scrollHeight, behavior: "smooth" });
     // composerText opens/closes the keyboard, which changes the thread's
     // height; re-pin so the newest message stays visible.
-  }, [items, elizaTyping, composerText]);
+  }, [items, typingSender, composerText]);
+
+  const typingSenderKind =
+    typingSender?.name === DEMO_SENDERS.Eliza.name ? "eliza" : "member";
 
   return (
     <div
@@ -388,6 +393,7 @@ function PhoneMockup() {
       data-demo-scenarios={DEMO_SCENARIOS.length}
       data-demo-visited={visitedScenarioIds.join(",")}
       data-demo-cycle={cycle}
+      data-demo-typing={typingSender?.name ?? ""}
     >
       <div className="landing-iphone-screen">
         <div className="landing-phone-top">
@@ -539,17 +545,26 @@ function PhoneMockup() {
               </div>
             );
           })}
-          {elizaTyping ? (
-            <div className="landing-message landing-message--eliza">
+          {typingSender ? (
+            <div
+              className={`landing-message landing-message--${typingSenderKind} landing-message--typing`}
+              data-demo-typing-indicator={typingSender.name}
+            >
               <span className="landing-message-avatar-slot">
-                <DemoProfilePhoto sender={DEMO_SENDERS.Eliza} />
+                <DemoProfilePhoto sender={typingSender} />
               </span>
               <div className="landing-message-body">
-                <span className="landing-message-author">Eliza</span>
-                <div className="landing-bubble landing-bubble--eliza landing-typing">
-                  <span />
-                  <span />
-                  <span />
+                <span className="landing-message-author">
+                  {typingSender.name}
+                </span>
+                <div
+                  className={`landing-bubble landing-bubble--${typingSenderKind} landing-typing`}
+                  aria-label={`${typingSender.name} is typing`}
+                  role="status"
+                >
+                  <span aria-hidden="true" />
+                  <span aria-hidden="true" />
+                  <span aria-hidden="true" />
                 </div>
               </div>
             </div>
