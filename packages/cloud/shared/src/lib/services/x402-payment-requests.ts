@@ -183,6 +183,31 @@ export class X402PaymentRequestError extends Error {
   }
 }
 
+function parseStoredPaymentAmount(params: {
+  paymentId: string;
+  field: string;
+  value: unknown;
+  allowZero?: boolean;
+}): number {
+  const parsed =
+    (typeof params.value === "number" || typeof params.value === "string") &&
+    String(params.value).trim() !== ""
+      ? Number(params.value)
+      : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed < 0 || (!params.allowZero && parsed === 0)) {
+    logger.error("[x402-payment-requests] refusing to project corrupt payment amount", {
+      paymentRequestId: params.paymentId,
+      field: params.field,
+    });
+    throw new X402PaymentRequestError(
+      `Payment request ${params.paymentId} has a corrupt ${params.field}`,
+      500,
+      "corrupt_amount",
+    );
+  }
+  return parsed;
+}
+
 function normalizeNetwork(raw?: string): NetworkConfig {
   const env = getCloudAwareEnv();
   const value = raw?.trim() || env.X402_NETWORK || "base";
@@ -381,7 +406,11 @@ async function triggerChannelCallback(
   });
   if (!authorized) return;
 
-  const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add ?? 0);
+  const amountUsd = parseStoredPaymentAmount({
+    paymentId: payment.id,
+    field: "amountUsd",
+    value: metadata.amountUsd ?? payment.credits_to_add,
+  });
   const source = stringValue(channel, "source") ?? "payment";
   const text =
     status === "paid"
@@ -830,14 +859,36 @@ class X402PaymentRequestsService {
 
   toView(payment: CryptoPayment): X402PaymentRequestView {
     const metadata = metadataOf(payment);
+    const amountUsd = parseStoredPaymentAmount({
+      paymentId: payment.id,
+      field: "amountUsd",
+      value: metadata.amountUsd ?? payment.credits_to_add,
+    });
+    const platformFeeUsd = parseStoredPaymentAmount({
+      paymentId: payment.id,
+      field: "platformFeeUsd",
+      value: metadata.platformFeeUsd ?? 0,
+      allowZero: true,
+    });
+    const serviceFeeUsd = parseStoredPaymentAmount({
+      paymentId: payment.id,
+      field: "serviceFeeUsd",
+      value: metadata.serviceFeeUsd ?? 0,
+      allowZero: true,
+    });
+    const totalChargedUsd = parseStoredPaymentAmount({
+      paymentId: payment.id,
+      field: "totalChargedUsd",
+      value: metadata.totalChargedUsd ?? amountUsd + platformFeeUsd + serviceFeeUsd,
+    });
     return {
       id: payment.id,
       status: payment.status,
       paid: payment.status === "confirmed",
-      amountUsd: Number(metadata.amountUsd ?? payment.credits_to_add ?? 0),
-      platformFeeUsd: Number(metadata.platformFeeUsd ?? 0),
-      serviceFeeUsd: Number(metadata.serviceFeeUsd ?? 0),
-      totalChargedUsd: Number(metadata.totalChargedUsd ?? 0),
+      amountUsd,
+      platformFeeUsd,
+      serviceFeeUsd,
+      totalChargedUsd,
       network: payment.network,
       asset: payment.token_address ?? "",
       payTo: payment.payment_address,

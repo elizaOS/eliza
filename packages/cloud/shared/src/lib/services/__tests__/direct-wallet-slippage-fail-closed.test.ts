@@ -5,8 +5,45 @@
 import { describe, expect, test } from "bun:test";
 import {
   CorruptDirectWalletSlippageError,
+  parseDirectWalletMetadataNumber,
   parseDirectWalletSlippageBps,
 } from "../direct-wallet-payments";
+
+describe("parseDirectWalletMetadataNumber", () => {
+  test("refuses corrupt token decimals before confirmation can enqueue a malformed sweep", () => {
+    for (const value of [undefined, "garbage", Number.NaN, -1, 1.5, 256]) {
+      expect(() =>
+        parseDirectWalletMetadataNumber({
+          paymentId: "pay-corrupt",
+          field: "token_decimals",
+          value,
+          integer: true,
+          max: 255,
+        }),
+      ).toThrow("Direct wallet payment has corrupt numeric metadata");
+    }
+  });
+
+  test("accepts canonical token decimals and an explicit missing-field default", () => {
+    expect(
+      parseDirectWalletMetadataNumber({
+        paymentId: "pay-valid",
+        field: "token_decimals",
+        value: 18,
+        integer: true,
+        max: 255,
+      }),
+    ).toBe(18);
+    expect(
+      parseDirectWalletMetadataNumber({
+        paymentId: "pay-valid",
+        field: "bonus_credits",
+        value: undefined,
+        defaultValue: 0,
+      }),
+    ).toBe(0);
+  });
+});
 
 describe("parseDirectWalletSlippageBps (fail-closed boundary)", () => {
   test("missing / undefined / null is the legitimate stable-token default of 0", () => {

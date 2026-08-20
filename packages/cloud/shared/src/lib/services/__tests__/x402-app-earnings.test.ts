@@ -304,3 +304,28 @@ test("settle refuses a zero-amount request instead of settling for nothing", asy
   );
   expect(settle).not.toHaveBeenCalled();
 });
+
+test("public projection refuses corrupt stored amount and fee values", () => {
+  expect(() =>
+    x402PaymentRequestsService.toView(
+      paymentRecord({
+        metadata: {
+          kind: "x402_payment_request",
+          amountUsd: "garbage",
+        },
+      }) as never,
+    ),
+  ).toThrow(/corrupt amountUsd/i);
+
+  expect(() =>
+    x402PaymentRequestsService.toView(
+      paymentRecord({
+        metadata: {
+          kind: "x402_payment_request",
+          amountUsd: 0.05,
+          platformFeeUsd: "garbage",
+        },
+      }) as never,
+    ),
+  ).toThrow(/corrupt platformFeeUsd/i);
+});
