@@ -27,6 +27,7 @@ function verifyConfig(): Record<string, unknown> {
     operationKind: "gmail.email-send",
     providerTargetFile: "provider-target.json",
     operationInputFile: "operation-input.json",
+    failureProbesFile: "failure-probes.json",
     manifestAuthorityPublicKeyFiles: ["authority.pem"],
     runDir: "run",
     observerEvidenceFile: "observer.json",
@@ -131,6 +132,7 @@ describe("provider qualification artifact", () => {
         ],
         guarantees: {
           providerAuthorizationVerified: true,
+          providerFailurePathsVerified: true,
           providerAcceptanceVerified: true,
           providerReadbackVerified: true,
           providerIdempotencyVerified: true,
@@ -141,6 +143,7 @@ describe("provider qualification artifact", () => {
     const markdown = renderProviderQualificationMarkdown(artifact);
     expect(markdown).toContain("**QUALIFIED**");
     expect(markdown).toContain("Provider authorization verified: **yes**");
+    expect(markdown).toContain("Provider failure paths verified: **yes**");
     expect(markdown).toContain("Idempotent replay verified: **yes**");
     expect(markdown).not.toContain("private-observation");
   });

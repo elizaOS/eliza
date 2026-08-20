@@ -21,6 +21,7 @@ import {
   canonicalJson,
   canonicalJsonValue,
   canonicalSha256,
+  type ProviderFailureClass,
   type ProviderObservationContract,
   type ProviderQualificationManifest,
   validateProviderQualificationManifestForScenario,
@@ -35,7 +36,7 @@ import {
 } from "./trajectory-verifier.ts";
 
 export const PROVIDER_OBSERVER_EVIDENCE_SCHEMA =
-  "eliza.provider-qualified-observer-evidence.v2" as const;
+  "eliza.provider-qualified-observer-evidence.v3" as const;
 export const SEMANTIC_JUDGE_EVIDENCE_SCHEMA =
   "eliza.provider-qualified-semantic-evidence.v1" as const;
 
@@ -71,6 +72,30 @@ export interface SignedObservationConnectorBinding {
   operation: ProviderOperationBinding;
 }
 
+export interface ProviderFailureProbeObservation {
+  probeId: string;
+  observedAtIso: string;
+  observerId: string;
+  sourceKind: "provider-api" | "provider-webhook";
+  system: string;
+  environment: string;
+  provider: string;
+  connectorProvider: string;
+  accountRefSha256: string;
+  connectionRefSha256: string;
+  operation: string;
+  failureClass: ProviderFailureClass;
+  requestPayloadSha256: string;
+  responseSha256: string;
+  providerRequestIdSha256: string | null;
+  responseStatusCode: number;
+  errorCodeSha256: string;
+  scopeSha256: string;
+  beforeSnapshotSha256: string;
+  afterSnapshotSha256: string;
+  authorizationGrantSha256: string;
+}
+
 export interface ProviderObserverEvidencePayload {
   schema: typeof PROVIDER_OBSERVER_EVIDENCE_SCHEMA;
   manifestSha256: string;
@@ -86,6 +111,7 @@ export interface ProviderObserverEvidencePayload {
   observerProvenance: readonly ScenarioEvidenceObserverProvenance[];
   observations: readonly ScenarioEvidenceObservation[];
   connectorBindings: readonly SignedObservationConnectorBinding[];
+  failureProbeObservations: readonly ProviderFailureProbeObservation[];
   stageReferences: readonly SignedStageReference[];
   providerEffectAssurances: readonly ProviderEffectAssurance[];
 }
@@ -152,6 +178,7 @@ export interface ProviderQualificationDecision {
   }[];
   guarantees: {
     providerAuthorizationVerified: boolean;
+    providerFailurePathsVerified: boolean;
     providerAcceptanceVerified: boolean;
     providerReadbackVerified: boolean;
     providerIdempotencyVerified: boolean;
@@ -184,6 +211,7 @@ const MAX_PINNED_KEYS = 16;
 const MAX_OBSERVER_PROVENANCE = 64;
 const MAX_OBSERVATIONS = 256;
 const MAX_CONNECTOR_BINDINGS = 256;
+const MAX_FAILURE_PROBE_OBSERVATIONS = 64;
 const MAX_STAGE_REFERENCES = 2_048;
 const MAX_PROVIDER_ASSURANCES = 256;
 const MAX_TRAJECTORY_REFS_PER_OBSERVATION = 64;
@@ -206,6 +234,7 @@ const PAYLOAD_KEYS = [
   "observerProvenance",
   "observations",
   "connectorBindings",
+  "failureProbeObservations",
   "stageReferences",
   "providerEffectAssurances",
 ] as const;
@@ -661,6 +690,107 @@ function parseSignedEvidenceRuntime(
           runtimeString(item[field], `${itemPath}.${field}`);
         }
       }
+    }
+  }
+
+  const failureProbeObservations = runtimeArray(
+    payload.failureProbeObservations,
+    "signedEvidence.payload.failureProbeObservations",
+    MAX_FAILURE_PROBE_OBSERVATIONS,
+  );
+  const probeIds = new Set<string>();
+  for (const [index, value] of failureProbeObservations.entries()) {
+    const itemPath = `signedEvidence.payload.failureProbeObservations[${index}]`;
+    const observation = runtimeRecord(value, itemPath);
+    requireExactKeys(observation, itemPath, [
+      "probeId",
+      "observedAtIso",
+      "observerId",
+      "sourceKind",
+      "system",
+      "environment",
+      "provider",
+      "connectorProvider",
+      "accountRefSha256",
+      "connectionRefSha256",
+      "operation",
+      "failureClass",
+      "requestPayloadSha256",
+      "responseSha256",
+      "providerRequestIdSha256",
+      "responseStatusCode",
+      "errorCodeSha256",
+      "scopeSha256",
+      "beforeSnapshotSha256",
+      "afterSnapshotSha256",
+      "authorizationGrantSha256",
+    ]);
+    const probeId = runtimeString(observation.probeId, `${itemPath}.probeId`);
+    if (probeIds.has(probeId)) {
+      throw new Error(
+        "signedEvidence.payload.failureProbeObservations has duplicate IDs",
+      );
+    }
+    probeIds.add(probeId);
+    runtimeTimestamp(observation.observedAtIso, `${itemPath}.observedAtIso`);
+    for (const field of [
+      "observerId",
+      "system",
+      "environment",
+      "provider",
+      "connectorProvider",
+      "operation",
+    ] as const) {
+      runtimeString(observation[field], `${itemPath}.${field}`);
+    }
+    const sourceKind = runtimeString(
+      observation.sourceKind,
+      `${itemPath}.sourceKind`,
+    );
+    if (sourceKind !== "provider-api" && sourceKind !== "provider-webhook") {
+      throw new Error(`${itemPath}.sourceKind is unsupported`);
+    }
+    const failureClass = runtimeString(
+      observation.failureClass,
+      `${itemPath}.failureClass`,
+    );
+    if (
+      failureClass !== "authorization-denied" &&
+      failureClass !== "provider-rejected"
+    ) {
+      throw new Error(`${itemPath}.failureClass is unsupported`);
+    }
+    for (const field of [
+      "accountRefSha256",
+      "connectionRefSha256",
+      "requestPayloadSha256",
+      "responseSha256",
+      "errorCodeSha256",
+      "scopeSha256",
+      "beforeSnapshotSha256",
+      "afterSnapshotSha256",
+      "authorizationGrantSha256",
+    ] as const) {
+      runtimeHash(observation[field], `${itemPath}.${field}`);
+    }
+    if (failureClass === "authorization-denied") {
+      if (observation.providerRequestIdSha256 !== null) {
+        throw new Error(
+          `${itemPath}.providerRequestIdSha256 must be null for authorization denial`,
+        );
+      }
+    } else {
+      runtimeHash(
+        observation.providerRequestIdSha256,
+        `${itemPath}.providerRequestIdSha256`,
+      );
+    }
+    if (
+      !Number.isInteger(observation.responseStatusCode) ||
+      Number(observation.responseStatusCode) < 400 ||
+      Number(observation.responseStatusCode) > 599
+    ) {
+      throw new Error(`${itemPath}.responseStatusCode must be an HTTP error`);
     }
   }
 
@@ -1276,6 +1406,98 @@ function verifyConnectorBindings(
   return authorizationVerified;
 }
 
+function verifyFailureProbes(
+  manifest: ProviderQualificationManifest,
+  payload: ProviderObserverEvidencePayload,
+  provenanceById: ReadonlyMap<string, ScenarioEvidenceObserverProvenance>,
+  nowMs: number,
+  clockSkewMs: number,
+  reasons: string[],
+): boolean {
+  let verified = true;
+  const observationById = new Map(
+    payload.failureProbeObservations.map((observation) => [
+      observation.probeId,
+      observation,
+    ]),
+  );
+  const expectedIds = new Set(
+    manifest.requiredFailureProbes.map((probe) => probe.probeId),
+  );
+  if (
+    observationById.size !== manifest.requiredFailureProbes.length ||
+    payload.failureProbeObservations.length !== observationById.size ||
+    [...observationById.keys()].some((probeId) => !expectedIds.has(probeId))
+  ) {
+    reasons.push("failure-probe:exact-multiset-mismatch");
+    verified = false;
+  }
+  const scenarioEndedAt = Date.parse(payload.scenarioEndedAtIso);
+  const signedAt = Date.parse(payload.signedAtIso);
+  for (const contract of manifest.requiredFailureProbes) {
+    const observation = observationById.get(contract.probeId);
+    if (!observation) {
+      verified = false;
+      continue;
+    }
+    const observedAt = Date.parse(observation.observedAtIso);
+    if (
+      observedAt < scenarioEndedAt - clockSkewMs ||
+      observedAt > signedAt + clockSkewMs ||
+      observedAt > nowMs + clockSkewMs ||
+      nowMs - observedAt > contract.maxObservationAgeMs + clockSkewMs
+    ) {
+      reasons.push(`failure-probe:${contract.probeId}:timing-invalid`);
+      verified = false;
+    }
+    const provenance = provenanceById.get(observation.observerId);
+    if (
+      !provenance ||
+      observation.observerId !== contract.observerId ||
+      provenance.kind !== observation.sourceKind ||
+      provenance.environment !== observation.environment
+    ) {
+      reasons.push(`failure-probe:${contract.probeId}:observer-mismatch`);
+      verified = false;
+    }
+    if (
+      observation.sourceKind !== contract.sourceKind ||
+      observation.system !== contract.system ||
+      observation.environment !== contract.environment ||
+      observation.provider !== contract.provider ||
+      observation.connectorProvider !== contract.connectorProvider ||
+      observation.accountRefSha256 !== contract.accountRefSha256 ||
+      observation.connectionRefSha256 !== contract.connectionRefSha256 ||
+      observation.operation !== contract.operation ||
+      observation.failureClass !== contract.failureClass ||
+      observation.requestPayloadSha256 !== contract.requestPayloadSha256 ||
+      observation.responseStatusCode !== contract.expectedStatusCode ||
+      observation.errorCodeSha256 !== contract.expectedErrorCodeSha256 ||
+      observation.scopeSha256 !== contract.scopeSha256 ||
+      observation.authorizationGrantSha256 !== contract.authorizationGrantSha256
+    ) {
+      reasons.push(`failure-probe:${contract.probeId}:contract-mismatch`);
+      verified = false;
+    }
+    if (
+      (contract.failureClass === "authorization-denied" &&
+        observation.providerRequestIdSha256 !== null) ||
+      (contract.failureClass === "provider-rejected" &&
+        !isSha256(observation.providerRequestIdSha256))
+    ) {
+      reasons.push(`failure-probe:${contract.probeId}:request-id-invalid`);
+      verified = false;
+    }
+    if (observation.beforeSnapshotSha256 !== observation.afterSnapshotSha256) {
+      reasons.push(
+        `failure-probe:${contract.probeId}:provider-effect-observed`,
+      );
+      verified = false;
+    }
+  }
+  return verified;
+}
+
 function verifyTrajectoryReferences(
   observations: readonly ScenarioEvidenceObservation[],
   signedStageReferences: readonly SignedStageReference[],
@@ -1472,6 +1694,7 @@ function verifyProviderAssurances(
   assignment: readonly ObservationAssignment[],
   assurances: readonly ProviderEffectAssurance[],
   authorizationVerified: boolean,
+  failurePathsVerified: boolean,
   reasons: string[],
 ): ProviderQualificationDecision["guarantees"] {
   const effects = assignment.filter(
@@ -1540,6 +1763,7 @@ function verifyProviderAssurances(
   }
   return {
     providerAuthorizationVerified: authorizationVerified,
+    providerFailurePathsVerified: failurePathsVerified,
     providerAcceptanceVerified: acceptance,
     providerReadbackVerified: readback,
     providerIdempotencyVerified: idempotency,
@@ -1951,6 +2175,14 @@ export function deriveProviderQualification(
     input.manifest,
     reasons,
   );
+  const failurePathsVerified = verifyFailureProbes(
+    input.manifest,
+    payload,
+    provenanceById,
+    nowMs,
+    clockSkewMs,
+    reasons,
+  );
   verifyObservationFreshness(
     effectiveAssignment,
     payload,
@@ -1962,6 +2194,7 @@ export function deriveProviderQualification(
     effectiveAssignment,
     payload.providerEffectAssurances,
     authorizationVerified,
+    failurePathsVerified,
     reasons,
   );
   verifyLocalResults(input, payload, reasons);
@@ -1979,6 +2212,7 @@ export function deriveProviderQualification(
     uniqueReasons.includes("semantic-correlation:mismatch")
   ) {
     guarantees.providerAuthorizationVerified = false;
+    guarantees.providerFailurePathsVerified = false;
     guarantees.providerAcceptanceVerified = false;
     guarantees.providerReadbackVerified = false;
     guarantees.providerIdempotencyVerified = false;

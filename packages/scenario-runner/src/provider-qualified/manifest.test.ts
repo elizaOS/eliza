@@ -141,6 +141,46 @@ function bindings(): ProviderRunBindings {
         idempotencyRequired: true,
       },
     ],
+    failureProbes: [
+      {
+        probeId: "calendar-auth-denied",
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "provider-sandbox",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "authorization-denied",
+        requestPayloadSha256: hash("auth-denied-request"),
+        expectedStatusCode: 403,
+        expectedErrorCodeSha256: hash("insufficient-scope"),
+        scopeSha256: hash("calendar-scope"),
+        authorizationGrantSha256: hash("denied-grant"),
+        maxObservationAgeMs: 60_000,
+      },
+      {
+        probeId: "calendar-provider-rejected",
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "provider-sandbox",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "provider-rejected",
+        requestPayloadSha256: hash("provider-rejected-request"),
+        expectedStatusCode: 400,
+        expectedErrorCodeSha256: hash("invalid-event"),
+        scopeSha256: hash("calendar-scope"),
+        authorizationGrantSha256: hash("grant"),
+        maxObservationAgeMs: 60_000,
+      },
+    ],
   };
 }
 
@@ -483,6 +523,28 @@ describe("createProviderQualificationManifest", () => {
         bindings: noProviderBindings,
       }),
     ).toThrow(/provider-effect or provider-no-effect/);
+  });
+
+  it("requires both exact negative-path probes on the target provider operation", () => {
+    const missingRejection = bindings();
+    missingRejection.failureProbes = [
+      missingRejection.failureProbes[0],
+    ] as never;
+    expect(() =>
+      createProviderQualificationManifest({
+        scenario: scenario(),
+        bindings: missingRejection,
+      }),
+    ).toThrow(/authorization-denied and provider-rejected probes/);
+
+    const wrongOperation = bindings();
+    wrongOperation.failureProbes[1].operation = "event-delete";
+    expect(() =>
+      createProviderQualificationManifest({
+        scenario: scenario(),
+        bindings: wrongOperation,
+      }),
+    ).toThrow(/must exercise the exact target provider, operation/);
   });
 
   it("accepts two bound calendar providers while ingress selects one account", () => {

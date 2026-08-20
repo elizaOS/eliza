@@ -170,6 +170,46 @@ function bindings(
         idempotencyRequired: true,
       },
     ],
+    failureProbes: [
+      {
+        probeId: "calendar-auth-denied",
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "provider-sandbox",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "authorization-denied",
+        requestPayloadSha256: hash("auth-denied-request"),
+        expectedStatusCode: 403,
+        expectedErrorCodeSha256: hash("insufficient-scope"),
+        scopeSha256: hash("calendar-failure-scope"),
+        authorizationGrantSha256: hash("denied-grant"),
+        maxObservationAgeMs: 5 * 60_000,
+      },
+      {
+        probeId: "calendar-provider-rejected",
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "provider-sandbox",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "provider-rejected",
+        requestPayloadSha256: hash("provider-rejected-request"),
+        expectedStatusCode: 400,
+        expectedErrorCodeSha256: hash("invalid-event"),
+        scopeSha256: hash("calendar-failure-scope"),
+        authorizationGrantSha256: hash("grant"),
+        maxObservationAgeMs: 5 * 60_000,
+      },
+    ],
   };
 }
 
@@ -320,6 +360,32 @@ function fixture(): DeriveProviderQualificationInput & {
         operation: manifest.target.operation,
       },
     ],
+    failureProbeObservations: manifest.requiredFailureProbes.map((probe) => ({
+      probeId: probe.probeId,
+      observedAtIso: "2026-05-23T00:01:06.000Z",
+      observerId: probe.observerId,
+      sourceKind: probe.sourceKind,
+      system: probe.system,
+      environment: probe.environment,
+      provider: probe.provider,
+      connectorProvider: probe.connectorProvider,
+      accountRefSha256: probe.accountRefSha256,
+      connectionRefSha256: probe.connectionRefSha256,
+      operation: probe.operation,
+      failureClass: probe.failureClass,
+      requestPayloadSha256: probe.requestPayloadSha256,
+      responseSha256: hash(`response:${probe.probeId}`),
+      providerRequestIdSha256:
+        probe.failureClass === "provider-rejected"
+          ? hash(`provider-request:${probe.probeId}`)
+          : null,
+      responseStatusCode: probe.expectedStatusCode,
+      errorCodeSha256: probe.expectedErrorCodeSha256,
+      scopeSha256: probe.scopeSha256,
+      beforeSnapshotSha256: hash(`unchanged:${probe.probeId}`),
+      afterSnapshotSha256: hash(`unchanged:${probe.probeId}`),
+      authorizationGrantSha256: probe.authorizationGrantSha256,
+    })),
     stageReferences: [
       {
         observationId: observation.observationId,
@@ -569,6 +635,7 @@ describe("deriveProviderQualification", () => {
     ]);
     expect(decision.guarantees).toEqual({
       providerAuthorizationVerified: true,
+      providerFailurePathsVerified: true,
       providerAcceptanceVerified: true,
       providerReadbackVerified: true,
       providerIdempotencyVerified: true,
@@ -1009,6 +1076,62 @@ describe("deriveProviderQualification", () => {
         ]),
       },
     );
+  });
+
+  it("requires exact authorization-denied and provider-rejected no-effect probes", () => {
+    const missing = fixture();
+    missing.signedEvidence.payload.failureProbeObservations =
+      missing.signedEvidence.payload.failureProbeObservations.slice(0, 1);
+    resignProvider(missing);
+    const missingDecision = deriveProviderQualification(missing);
+    expect(missingDecision.qualification).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "failure-probe:exact-multiset-mismatch",
+      ]),
+    });
+    expect(missingDecision.guarantees.providerFailurePathsVerified).toBe(false);
+
+    const substituted = fixture();
+    substituted.signedEvidence.payload.failureProbeObservations[0].responseStatusCode = 401;
+    resignProvider(substituted);
+    expect(
+      deriveProviderQualification(substituted).qualification,
+    ).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "failure-probe:calendar-auth-denied:contract-mismatch",
+      ]),
+    });
+
+    const changedState = fixture();
+    changedState.signedEvidence.payload.failureProbeObservations[1].afterSnapshotSha256 =
+      hash("provider-state-changed");
+    resignProvider(changedState);
+    expect(
+      deriveProviderQualification(changedState).qualification,
+    ).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "failure-probe:calendar-provider-rejected:provider-effect-observed",
+      ]),
+    });
+
+    const deniedReachedProvider = fixture();
+    deniedReachedProvider.signedEvidence.payload.failureProbeObservations[0].providerRequestIdSha256 =
+      hash("unexpected-provider-request");
+    resignProvider(deniedReachedProvider);
+    expect(() => deriveProviderQualification(deniedReachedProvider)).toThrow(
+      /must be null for authorization denial/,
+    );
+
+    const rejectedDidNotReachProvider = fixture();
+    rejectedDidNotReachProvider.signedEvidence.payload.failureProbeObservations[1].providerRequestIdSha256 =
+      null;
+    resignProvider(rejectedDidNotReachProvider);
+    expect(() =>
+      deriveProviderQualification(rejectedDidNotReachProvider),
+    ).toThrow(/providerRequestIdSha256 must be a non-empty string/);
   });
 
   it("rejects whole-trajectory and stage-level reference substitution", () => {

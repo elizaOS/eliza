@@ -17,6 +17,7 @@ import {
 } from "./operation-binding.ts";
 import {
   type ProviderCanaryAuthorization,
+  type ProviderFailureProbeMaterial,
   preflightAuthorizedProviderCanaryExecution,
 } from "./operator-authorization.ts";
 import type {
@@ -35,7 +36,7 @@ import {
 import { verifyScenarioTrajectories } from "./trajectory-verifier.ts";
 
 export const PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA =
-  "eliza.provider-qualification-verify-config.v1" as const;
+  "eliza.provider-qualification-verify-config.v2" as const;
 export const PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA =
   "eliza.provider-qualification-catalog-config.v1" as const;
 
@@ -46,6 +47,7 @@ export interface ProviderQualificationVerifyConfig {
   operationKind: ProviderOperationKind;
   providerTargetFile: string;
   operationInputFile: string;
+  failureProbesFile: string;
   manifestAuthorityPublicKeyFiles: readonly [string, ...string[]];
   runDir: string;
   observerEvidenceFile: string;
@@ -120,6 +122,7 @@ export function parseProviderQualificationVerifyConfig(
     "operationKind",
     "providerTargetFile",
     "operationInputFile",
+    "failureProbesFile",
     "manifestAuthorityPublicKeyFiles",
     "runDir",
     "observerEvidenceFile",
@@ -175,6 +178,10 @@ export function parseProviderQualificationVerifyConfig(
     operationInputFile: requiredString(
       input.operationInputFile,
       "operationInputFile",
+    ),
+    failureProbesFile: requiredString(
+      input.failureProbesFile,
+      "failureProbesFile",
     ),
     manifestAuthorityPublicKeyFiles: stringArray(
       input.manifestAuthorityPublicKeyFiles,
@@ -305,6 +312,7 @@ export function renderProviderQualificationMarkdown(
     `- Trajectory set SHA-256: \`${artifact.trajectorySetSha256}\``,
     `- Artifact SHA-256: \`${artifact.artifactSha256}\``,
     `- Provider authorization verified: **${artifact.decision.guarantees.providerAuthorizationVerified ? "yes" : "no"}**`,
+    `- Provider failure paths verified: **${artifact.decision.guarantees.providerFailurePathsVerified ? "yes" : "no"}**`,
     `- Provider acceptance verified: **${artifact.decision.guarantees.providerAcceptanceVerified ? "yes" : "no"}**`,
     `- Provider readback verified: **${artifact.decision.guarantees.providerReadbackVerified ? "yes" : "no"}**`,
     `- Idempotent replay verified: **${artifact.decision.guarantees.providerIdempotencyVerified ? "yes" : "no"}**`,
@@ -387,6 +395,16 @@ export async function verifyProviderQualificationFromConfig(
     operationInput: readJson(
       resolveFrom(baseDir, config.operationInputFile),
       "provider operation input",
+    ),
+    failureProbes: readJson<
+      readonly [
+        ProviderFailureProbeMaterial,
+        ProviderFailureProbeMaterial,
+        ...ProviderFailureProbeMaterial[],
+      ]
+    >(
+      resolveFrom(baseDir, config.failureProbesFile),
+      "provider failure probes",
     ),
   });
   const signedEvidence = readJson<SignedProviderObserverEvidence>(

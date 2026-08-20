@@ -15,7 +15,9 @@ import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { preflightProviderCanary } from "./canary-controller.ts";
 import {
   canonicalJsonValue,
+  canonicalSha256,
   createProviderQualificationManifest,
+  type ProviderFailureProbeContract,
   type ProviderQualificationManifest,
   type ProviderRunBindings,
 } from "./manifest.ts";
@@ -48,6 +50,23 @@ export interface AuthorizedProviderCanaryPreflight {
 export interface AuthorizedProviderCanaryExecutionPreflight
   extends AuthorizedProviderCanaryPreflight {
   targetBinding: ProviderOperationBinding;
+  failureProbeBindings: readonly ProviderFailureProbeHashBinding[];
+}
+
+export interface ProviderFailureProbeMaterial {
+  probeId: string;
+  requestPayload: unknown;
+  expectedErrorCode: unknown;
+  scope: unknown;
+  authorizationGrant: unknown;
+}
+
+export interface ProviderFailureProbeHashBinding {
+  probeId: string;
+  requestPayloadSha256: string;
+  expectedErrorCodeSha256: string;
+  scopeSha256: string;
+  authorizationGrantSha256: string;
 }
 
 const MAX_PINNED_MANIFEST_AUTHORITIES = 16;
@@ -169,6 +188,57 @@ export function createProviderCanaryTargetBinding(input: {
   operationInput: unknown;
 }): ProviderOperationBinding {
   return createProviderOperationBinding(input);
+}
+
+/** Hash private negative-probe material without retaining its raw values. */
+export function createProviderFailureProbeHashBinding(
+  input: ProviderFailureProbeMaterial,
+): ProviderFailureProbeHashBinding {
+  const material = record(
+    canonicalJsonValue(input, "failureProbeMaterial"),
+    "failureProbeMaterial",
+  );
+  exactKeys(material, "failureProbeMaterial", [
+    "probeId",
+    "requestPayload",
+    "expectedErrorCode",
+    "scope",
+    "authorizationGrant",
+  ]);
+  if (typeof material.probeId !== "string" || material.probeId.length === 0) {
+    fail("failure probe material requires a non-empty probeId");
+  }
+  const hash = (value: unknown, field: string): string =>
+    canonicalSha256(
+      canonicalJsonValue(value, `failureProbe.${material.probeId}.${field}`),
+      `failureProbe:${material.probeId}:${field}`,
+    );
+  return Object.freeze({
+    probeId: material.probeId,
+    requestPayloadSha256: hash(material.requestPayload, "requestPayload"),
+    expectedErrorCodeSha256: hash(
+      material.expectedErrorCode,
+      "expectedErrorCode",
+    ),
+    scopeSha256: hash(material.scope, "scope"),
+    authorizationGrantSha256: hash(
+      material.authorizationGrant,
+      "authorizationGrant",
+    ),
+  });
+}
+
+function failureProbeMatches(
+  actual: ProviderFailureProbeHashBinding,
+  expected: ProviderFailureProbeContract,
+): boolean {
+  return (
+    actual.probeId === expected.probeId &&
+    actual.requestPayloadSha256 === expected.requestPayloadSha256 &&
+    actual.expectedErrorCodeSha256 === expected.expectedErrorCodeSha256 &&
+    actual.scopeSha256 === expected.scopeSha256 &&
+    actual.authorizationGrantSha256 === expected.authorizationGrantSha256
+  );
 }
 
 /**
@@ -308,6 +378,11 @@ export function preflightAuthorizedProviderCanaryExecution(input: {
   operationKind: ProviderOperationKind;
   providerTarget: unknown;
   operationInput: unknown;
+  failureProbes: readonly [
+    ProviderFailureProbeMaterial,
+    ProviderFailureProbeMaterial,
+    ...ProviderFailureProbeMaterial[],
+  ];
 }): AuthorizedProviderCanaryExecutionPreflight {
   const preflight = preflightAuthorizedProviderCanary(input);
   const targetBinding = createProviderCanaryTargetBinding({
@@ -327,5 +402,54 @@ export function preflightAuthorizedProviderCanaryExecution(input: {
       "provider target or operation input does not match the signed manifest",
     );
   }
-  return Object.freeze({ ...preflight, targetBinding });
+  const failureProbeMaterials = canonicalJsonValue(
+    input.failureProbes,
+    "failureProbes",
+  );
+  if (
+    !Array.isArray(failureProbeMaterials) ||
+    failureProbeMaterials.length < 2
+  ) {
+    fail("failureProbes must contain at least two exact probe materials");
+  }
+  const suppliedFailureProbeBindings = failureProbeMaterials.map((material) =>
+    createProviderFailureProbeHashBinding(
+      material as unknown as ProviderFailureProbeMaterial,
+    ),
+  );
+  const failureProbeBindingsById = new Map<
+    string,
+    ProviderFailureProbeHashBinding
+  >();
+  for (const binding of suppliedFailureProbeBindings) {
+    if (failureProbeBindingsById.has(binding.probeId)) {
+      fail(`failureProbes duplicates probeId ${binding.probeId}`);
+    }
+    failureProbeBindingsById.set(binding.probeId, binding);
+  }
+  const failureProbeBindings =
+    preflight.authorization.manifest.requiredFailureProbes.map((expected) =>
+      failureProbeBindingsById.get(expected.probeId),
+    );
+  if (
+    suppliedFailureProbeBindings.length !==
+      preflight.authorization.manifest.requiredFailureProbes.length ||
+    failureProbeBindings.some((binding, index) => {
+      const expected =
+        preflight.authorization.manifest.requiredFailureProbes[index];
+      return !binding || !expected || !failureProbeMatches(binding, expected);
+    })
+  ) {
+    fail("failure probe material does not match the signed manifest");
+  }
+  return Object.freeze({
+    ...preflight,
+    targetBinding,
+    failureProbeBindings: Object.freeze(
+      failureProbeBindings.filter(
+        (binding): binding is ProviderFailureProbeHashBinding =>
+          binding !== undefined,
+      ),
+    ),
+  });
 }

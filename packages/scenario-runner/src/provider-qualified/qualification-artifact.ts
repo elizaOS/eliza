@@ -23,7 +23,7 @@ import {
 import type { VerifiedScenarioTrajectorySet } from "./trajectory-verifier.ts";
 
 export const PROVIDER_QUALIFICATION_ARTIFACT_SCHEMA =
-  "eliza.provider-qualification-artifact.v2" as const;
+  "eliza.provider-qualification-artifact.v3" as const;
 
 export interface ProviderQualificationArtifactInput {
   scenarioDefinition: ScenarioDefinition;
@@ -177,12 +177,13 @@ function qualifiedReport(
   if (!decision.qualification.publishable) return undefined;
   if (
     !decision.guarantees.providerAuthorizationVerified ||
+    !decision.guarantees.providerFailurePathsVerified ||
     !decision.guarantees.providerAcceptanceVerified ||
     !decision.guarantees.providerReadbackVerified ||
     !decision.guarantees.providerIdempotencyVerified
   ) {
     throw new Error(
-      "publishable provider qualification lacks an authorization, acceptance, readback, or idempotency guarantee",
+      "publishable provider qualification lacks an authorization, failure-path, acceptance, readback, or idempotency guarantee",
     );
   }
   const trajectoryHashes = trajectories.trajectories.map(

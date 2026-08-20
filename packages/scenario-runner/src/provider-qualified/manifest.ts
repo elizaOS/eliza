@@ -18,7 +18,7 @@ import {
 } from "./operation-binding.ts";
 
 export const PROVIDER_QUALIFICATION_MANIFEST_SCHEMA =
-  "eliza.provider-qualified-manifest.v1" as const;
+  "eliza.provider-qualified-manifest.v2" as const;
 
 type JsonPrimitive = string | number | boolean | null;
 export type CanonicalJsonValue =
@@ -119,6 +119,28 @@ export interface ProviderObserverSignerBinding {
   keyId: string;
 }
 
+export type ProviderFailureClass = "authorization-denied" | "provider-rejected";
+
+export interface ProviderFailureProbeContract {
+  probeId: string;
+  observerId: string;
+  sourceKind: "provider-api" | "provider-webhook";
+  system: string;
+  environment: string;
+  provider: string;
+  connectorProvider: string;
+  accountRefSha256: string;
+  connectionRefSha256: string;
+  operation: string;
+  failureClass: ProviderFailureClass;
+  requestPayloadSha256: string;
+  expectedStatusCode: number;
+  expectedErrorCodeSha256: string;
+  scopeSha256: string;
+  authorizationGrantSha256: string;
+  maxObservationAgeMs: number;
+}
+
 export interface ProviderRunBindings {
   runId: string;
   runNonce: string;
@@ -179,6 +201,11 @@ export interface ProviderRunBindings {
     ProviderObservationContract,
     ...ProviderObservationContract[],
   ];
+  failureProbes: readonly [
+    ProviderFailureProbeContract,
+    ProviderFailureProbeContract,
+    ...ProviderFailureProbeContract[],
+  ];
 }
 
 export interface ProviderQualificationManifest {
@@ -218,6 +245,7 @@ export interface ProviderQualificationManifest {
   ingress: ProviderRunBindings["ingress"];
   capabilities: ProviderRunBindings["capabilities"];
   requiredObservations: ProviderRunBindings["observationContracts"];
+  requiredFailureProbes: ProviderRunBindings["failureProbes"];
 }
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
@@ -226,6 +254,7 @@ const NONCE_PATTERN = /^[A-Za-z0-9_-]{32,}$/;
 const MAX_CONNECTOR_BINDINGS = 64;
 const MAX_CAPABILITY_BINDINGS = 256;
 const MAX_OBSERVATION_CONTRACTS = 128;
+const MAX_FAILURE_PROBES = 64;
 const MAX_OBSERVATION_SLOTS = 256;
 const MAX_MANIFEST_FINAL_CHECKS = 512;
 const MAX_SEMANTIC_CRITERIA = 128;
@@ -580,6 +609,126 @@ function connectorKey(
   return `${provider}\u0000${accountRefSha256}\u0000${connectionRefSha256}`;
 }
 
+function validateFailureProbes(
+  probes: ProviderRunBindings["failureProbes"],
+  connectors: ReadonlyMap<string, ProviderConnectorBinding>,
+  observerSignerById: ReadonlyMap<string, string>,
+): void {
+  if (!Array.isArray(probes) || probes.length < 2) {
+    fail(
+      "bindings.failureProbes",
+      "must contain authorization-denied and provider-rejected probes",
+    );
+  }
+  if (probes.length > MAX_FAILURE_PROBES) {
+    fail("bindings.failureProbes", `cannot exceed ${MAX_FAILURE_PROBES}`);
+  }
+  const probeIds = new Set<string>();
+  const classes = new Set<ProviderFailureClass>();
+  for (const [index, probe] of probes.entries()) {
+    const path = `bindings.failureProbes[${index}]`;
+    requireExactKeys(probe, path, [
+      "probeId",
+      "observerId",
+      "sourceKind",
+      "system",
+      "environment",
+      "provider",
+      "connectorProvider",
+      "accountRefSha256",
+      "connectionRefSha256",
+      "operation",
+      "failureClass",
+      "requestPayloadSha256",
+      "expectedStatusCode",
+      "expectedErrorCodeSha256",
+      "scopeSha256",
+      "authorizationGrantSha256",
+      "maxObservationAgeMs",
+    ]);
+    const probeId = requireNonEmptyString(probe.probeId, `${path}.probeId`);
+    if (probeIds.has(probeId)) fail(`${path}.probeId`, "is duplicated");
+    probeIds.add(probeId);
+    const observerId = requireNonEmptyString(
+      probe.observerId,
+      `${path}.observerId`,
+    );
+    if (!observerSignerById.has(observerId)) {
+      fail(`${path}.observerId`, "must name a bound observer signer");
+    }
+    if (
+      probe.sourceKind !== "provider-api" &&
+      probe.sourceKind !== "provider-webhook"
+    ) {
+      fail(`${path}.sourceKind`, "must be provider-api or provider-webhook");
+    }
+    for (const field of [
+      "system",
+      "environment",
+      "provider",
+      "connectorProvider",
+      "operation",
+    ] as const) {
+      requireNonEmptyString(probe[field], `${path}.${field}`);
+    }
+    for (const field of [
+      "accountRefSha256",
+      "connectionRefSha256",
+      "requestPayloadSha256",
+      "expectedErrorCodeSha256",
+      "scopeSha256",
+      "authorizationGrantSha256",
+    ] as const) {
+      requireSha256(probe[field], `${path}.${field}`);
+    }
+    if (
+      probe.failureClass !== "authorization-denied" &&
+      probe.failureClass !== "provider-rejected"
+    ) {
+      fail(
+        `${path}.failureClass`,
+        "must be authorization-denied or provider-rejected",
+      );
+    }
+    classes.add(probe.failureClass);
+    if (
+      !Number.isInteger(probe.expectedStatusCode) ||
+      probe.expectedStatusCode < 400 ||
+      probe.expectedStatusCode > 599
+    ) {
+      fail(`${path}.expectedStatusCode`, "must be an HTTP error status");
+    }
+    requirePositiveInteger(
+      probe.maxObservationAgeMs,
+      `${path}.maxObservationAgeMs`,
+    );
+    const connector = connectors.get(
+      connectorKey(
+        probe.connectorProvider,
+        probe.accountRefSha256,
+        probe.connectionRefSha256,
+      ),
+    );
+    if (!connector) {
+      fail(
+        path,
+        "must bind a declared connector provider, account, and connection",
+      );
+    }
+    if (connector.environment !== probe.environment) {
+      fail(`${path}.environment`, "must match the bound connector environment");
+    }
+  }
+  for (const required of [
+    "authorization-denied",
+    "provider-rejected",
+  ] as const) {
+    if (!classes.has(required)) {
+      fail("bindings.failureProbes", `must include ${required} proof`);
+    }
+  }
+}
+
 function validateContractBase(
   contract: ProviderObservationContract,
   index: number,
@@ -840,6 +989,7 @@ function validateBindings(
     "ingress",
     "capabilities",
     "observationContracts",
+    "failureProbes",
   ]);
   requireNonEmptyString(bindings.runId, "bindings.runId");
   if (!NONCE_PATTERN.test(bindings.runNonce)) {
@@ -1217,6 +1367,10 @@ function validateBindings(
       "must match exactly one provider-effect or provider-no-effect observation contract",
     );
   }
+  const matchingTargetContract = matchingTargetContracts[0];
+  if (!matchingTargetContract) {
+    fail("bindings.target.operation", "has no matching observation contract");
+  }
   if (
     contractObserverIds.size !== observerSignerById.size ||
     [...contractObserverIds].some(
@@ -1236,6 +1390,23 @@ function validateBindings(
       fail(
         "bindings.connectors",
         "contains a connector without an observation contract",
+      );
+    }
+  }
+  validateFailureProbes(bindings.failureProbes, connectors, observerSignerById);
+  for (const [index, probe] of bindings.failureProbes.entries()) {
+    if (
+      probe.provider !== targetContract.provider ||
+      probe.connectorProvider !== targetContract.connectorProvider ||
+      probe.operation !== targetContract.operation ||
+      probe.accountRefSha256 !== matchingTargetContract.accountRefSha256 ||
+      probe.connectionRefSha256 !==
+        matchingTargetContract.connectionRefSha256 ||
+      probe.environment !== matchingTargetContract.environment
+    ) {
+      fail(
+        `bindings.failureProbes[${index}]`,
+        "must exercise the exact target provider, operation, connector, and account",
       );
     }
   }
@@ -1507,6 +1678,7 @@ export function validateProviderQualificationManifest(
     "ingress",
     "capabilities",
     "requiredObservations",
+    "requiredFailureProbes",
   ]);
   if (snapshot.schema !== PROVIDER_QUALIFICATION_MANIFEST_SCHEMA) {
     fail("manifest.schema", "is unsupported");
@@ -1545,6 +1717,7 @@ function providerRunBindingsFromManifest(
     ingress: manifest.ingress,
     capabilities: manifest.capabilities,
     observationContracts: manifest.requiredObservations,
+    failureProbes: manifest.requiredFailureProbes,
   } satisfies ProviderRunBindings;
 }
 
@@ -1622,6 +1795,7 @@ export function createProviderQualificationManifest(input: {
     ingress: bindings.ingress,
     capabilities: bindings.capabilities,
     requiredObservations: bindings.observationContracts,
+    requiredFailureProbes: bindings.failureProbes,
   } satisfies Omit<ProviderQualificationManifest, "manifestSha256">;
   const manifestSha256 = canonicalSha256(core, "manifest");
   return validateProviderQualificationManifest({

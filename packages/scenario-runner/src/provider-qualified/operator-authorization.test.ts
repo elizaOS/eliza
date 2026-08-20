@@ -10,6 +10,7 @@ import type { ProviderRunBindings } from "./manifest.ts";
 import {
   authorizeProviderCanary,
   createProviderCanaryTargetBinding,
+  createProviderFailureProbeHashBinding,
   preflightAuthorizedProviderCanary,
   preflightAuthorizedProviderCanaryExecution,
 } from "./operator-authorization.ts";
@@ -17,6 +18,25 @@ import { providerObserverKeyId } from "./qualification.ts";
 
 const hash = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
+
+function failureProbeMaterials() {
+  return [
+    {
+      probeId: "calendar-auth-denied",
+      requestPayload: { title: "Denied canary event" },
+      expectedErrorCode: "insufficient-scope",
+      scope: { calendarId: "operator-canary-calendar" },
+      authorizationGrant: { grant: "denied-calendar-grant" },
+    },
+    {
+      probeId: "calendar-provider-rejected",
+      requestPayload: { title: "Rejected canary event" },
+      expectedErrorCode: "invalid-event",
+      scope: { calendarId: "operator-canary-calendar" },
+      authorizationGrant: { grant: "calendar-write-grant" },
+    },
+  ] as const;
+}
 
 function scenario(): ScenarioDefinition {
   return {
@@ -69,6 +89,9 @@ function bindings(
   const connectionRefSha256 = hash("operator-calendar-connection");
   const principalRefSha256 = hash("operator-principal");
   const roomRefSha256 = hash("operator-room");
+  const [authDeniedProbe, rejectedProbe] = failureProbeMaterials().map(
+    (material) => createProviderFailureProbeHashBinding(material),
+  );
   return {
     runId: "operator-run-001",
     runNonce: "n".repeat(64),
@@ -156,6 +179,46 @@ function bindings(
         idempotencyRequired: true,
       },
     ],
+    failureProbes: [
+      {
+        probeId: authDeniedProbe.probeId,
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "operator-canary",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "authorization-denied",
+        requestPayloadSha256: authDeniedProbe.requestPayloadSha256,
+        expectedStatusCode: 403,
+        expectedErrorCodeSha256: authDeniedProbe.expectedErrorCodeSha256,
+        scopeSha256: authDeniedProbe.scopeSha256,
+        authorizationGrantSha256: authDeniedProbe.authorizationGrantSha256,
+        maxObservationAgeMs: 60_000,
+      },
+      {
+        probeId: rejectedProbe.probeId,
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "operator-canary",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "provider-rejected",
+        requestPayloadSha256: rejectedProbe.requestPayloadSha256,
+        expectedStatusCode: 400,
+        expectedErrorCodeSha256: rejectedProbe.expectedErrorCodeSha256,
+        scopeSha256: rejectedProbe.scopeSha256,
+        authorizationGrantSha256: rejectedProbe.authorizationGrantSha256,
+        maxObservationAgeMs: 60_000,
+      },
+    ],
   };
 }
 
@@ -205,16 +268,33 @@ describe("provider canary operator authorization", () => {
       bindings: bound,
       manifestAuthorityPrivateKey: signer.privateKey,
     });
-    expect(
-      preflightAuthorizedProviderCanaryExecution({
-        scenario: definition,
-        authorization,
-        pinnedManifestAuthorityPublicKeysPem: [signer.publicKeyPem],
-        operationKind: "google-calendar.event-create",
-        providerTarget,
-        operationInput,
-      }).targetBinding,
-    ).toEqual(targetBinding);
+    const executionPreflight = preflightAuthorizedProviderCanaryExecution({
+      scenario: definition,
+      authorization,
+      pinnedManifestAuthorityPublicKeysPem: [signer.publicKeyPem],
+      operationKind: "google-calendar.event-create",
+      providerTarget,
+      operationInput,
+      failureProbes: failureProbeMaterials(),
+    });
+    expect(executionPreflight.targetBinding).toEqual(targetBinding);
+    expect(executionPreflight.failureProbeBindings).toEqual(
+      failureProbeMaterials().map((material) =>
+        createProviderFailureProbeHashBinding(material),
+      ),
+    );
+    const reversedPreflight = preflightAuthorizedProviderCanaryExecution({
+      scenario: definition,
+      authorization,
+      pinnedManifestAuthorityPublicKeysPem: [signer.publicKeyPem],
+      operationKind: "google-calendar.event-create",
+      providerTarget,
+      operationInput,
+      failureProbes: [failureProbeMaterials()[1], failureProbeMaterials()[0]],
+    });
+    expect(reversedPreflight.failureProbeBindings).toEqual(
+      executionPreflight.failureProbeBindings,
+    );
     expect(() =>
       preflightAuthorizedProviderCanaryExecution({
         scenario: definition,
@@ -223,8 +303,43 @@ describe("provider canary operator authorization", () => {
         operationKind: "google-calendar.event-create",
         providerTarget: { calendarId: "wrong-calendar" },
         operationInput,
+        failureProbes: failureProbeMaterials(),
       }),
     ).toThrow(/does not match the signed manifest/);
+    expect(() =>
+      preflightAuthorizedProviderCanaryExecution({
+        scenario: definition,
+        authorization,
+        pinnedManifestAuthorityPublicKeysPem: [signer.publicKeyPem],
+        operationKind: "google-calendar.event-create",
+        providerTarget,
+        operationInput,
+        failureProbes: [
+          {
+            ...failureProbeMaterials()[0],
+            expectedErrorCode: "substituted-error",
+          },
+          failureProbeMaterials()[1],
+        ],
+      }),
+    ).toThrow(/failure probe material does not match the signed manifest/);
+    expect(() =>
+      preflightAuthorizedProviderCanaryExecution({
+        scenario: definition,
+        authorization,
+        pinnedManifestAuthorityPublicKeysPem: [signer.publicKeyPem],
+        operationKind: "google-calendar.event-create",
+        providerTarget,
+        operationInput,
+        failureProbes: [failureProbeMaterials()[0], failureProbeMaterials()[0]],
+      }),
+    ).toThrow(/duplicates probeId/);
+    expect(() =>
+      createProviderFailureProbeHashBinding({
+        ...failureProbeMaterials()[0],
+        bearerToken: "must-not-be-accepted",
+      } as never),
+    ).toThrow(/closed shape/);
   });
 
   it("authorizes and preflights one exact manifest without serializing the private key", () => {

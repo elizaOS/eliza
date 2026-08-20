@@ -200,6 +200,16 @@ the manifest-authorized capability grant hashes in each signed
 connector-binding record. Qualification rejects evidence for a different
 recipient, resource, operation input, or authorization grant even when the
 observer signature and connector account are otherwise valid.
+Every operator manifest must also bind two negative probes for the same
+provider operation: one authorization denial and one provider rejection. Each
+probe fixes the connector/account, canonical request-payload hash, expected
+status and error-code hash, authorization-grant hash, and provider-state scope.
+After the positive scenario ends, the independent observer must execute and
+sign both probes, including exact response hashes and equal before/after
+provider snapshot hashes. Missing, substituted, stale, unexpectedly successful,
+or state-changing probes make the run unpublishable. Authorization denial must
+record no provider request ID; provider rejection must record a hashed provider
+request ID, proving that the rejection reached the provider boundary.
 This preflight proves operator authorization of the exact scenario and binding
 contract only. It does not contact a provider, create observations, run the
 independent semantic judge, or make evidence publishable.
@@ -216,12 +226,13 @@ bun run --cwd packages/scenario-runner provider-qualification -- \
 
 ```json
 {
-  "schema": "eliza.provider-qualification-verify-config.v1",
+  "schema": "eliza.provider-qualification-verify-config.v2",
   "scenarioFile": "provider.gmail.confirmed-send.scenario.ts",
   "authorizationFile": "authorization.json",
   "operationKind": "gmail.email-send",
   "providerTargetFile": "provider-target.json",
   "operationInputFile": "operation-input.json",
+  "failureProbesFile": "failure-probes.json",
   "manifestAuthorityPublicKeyFiles": ["keys/manifest-authority.pub.pem"],
   "runDir": "run",
   "observerEvidenceFile": "observer-evidence.json",
@@ -233,13 +244,22 @@ bun run --cwd packages/scenario-runner provider-qualification -- \
 }
 ```
 
-The closed `eliza.provider-qualification-verify-config.v1` JSON object names
+The closed `eliza.provider-qualification-verify-config.v2` JSON object names
 the authored scenario, operator authorization, isolated run directory, signed
 observer and semantic-judge envelopes, runner report, three independent sets
 of public-key files, and a new output directory. Paths are resolved relative to
 the config file. Optional controls are `expectedTrajectoryRelativePaths`,
 `maxArtifactAgeMs`, `maxSignatureAgeMs`, and `maxClockSkewMs`; unknown fields
 fail validation.
+
+`failure-probes.json` is a private operator input containing the exact raw
+preimages for the signed negative-probe commitments. It is a closed array with
+one `authorization-denied` probe and one `provider-rejected` probe, using the
+manifest probe IDs and non-secret request, expected-error, state-scope, and
+authorization-grant descriptors. The verifier recomputes every domain-separated
+hash before ingress. Never place bearer tokens, OAuth refresh tokens, private
+keys, or other provider credentials in this file; keep those in the operator's
+secret manager. Do not publish this private input as provider evidence.
 
 The verifier recomputes trajectory and stage hashes from disk, validates the
 operator signature, derives qualification from the signed observer and judge
