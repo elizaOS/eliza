@@ -263,7 +263,12 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y pulseaudio pulseaudio-utils ffmpeg
-          pulseaudio --start
+          # exit-idle-time=-1: the daemon must survive the multi-minute
+          # Playwright steps between this install and the recording step —
+          # PulseAudio's default idle timeout (~20s with no clients) otherwise
+          # tears down the daemon and the null sink with it, and the recorder
+          # later fails with "Error opening input eliza_voice_evidence.monitor".
+          pulseaudio --start --exit-idle-time=-1
           pactl load-module module-null-sink sink_name=eliza_voice_evidence sink_properties=device.description=eliza_voice_evidence
           pactl set-default-sink eliza_voice_evidence
 
@@ -301,6 +306,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/voice-web-live"
+          # Re-assert the daemon and evidence sink right before recording: even
+          # with idle-exit disabled a daemon crash between steps would otherwise
+          # surface as an opaque ffmpeg "No such process". Idempotent when the
+          # install step's daemon is still healthy.
+          pulseaudio --check || pulseaudio --start --exit-idle-time=-1
+          if ! pactl list short sinks | grep -q '^[0-9]*[[:space:]]*eliza_voice_evidence'; then
+            pactl load-module module-null-sink sink_name=eliza_voice_evidence sink_properties=device.description=eliza_voice_evidence
+          fi
+          pactl set-default-sink eliza_voice_evidence
           echo "VOICE_LOOPBACK_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
           ffmpeg -y -v error \
             -f pulse -i eliza_voice_evidence.monitor \
