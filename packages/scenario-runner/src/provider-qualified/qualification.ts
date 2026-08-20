@@ -1541,6 +1541,13 @@ function verifyTrajectoryReferences(
       if (!stage) {
         reasons.push(`observation:${observation.observationId}:unknown-stage`);
       } else if (
+        observation.kind === "provider-effect" &&
+        (stage.kind !== "tool" || stage.tool?.success !== true)
+      ) {
+        reasons.push(
+          `observation:${observation.observationId}:provider-effect-without-successful-tool-stage`,
+        );
+      } else if (
         Date.parse(observation.observedAtIso) < Date.parse(stage.endedAtIso)
       ) {
         reasons.push(

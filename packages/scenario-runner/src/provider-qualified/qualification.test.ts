@@ -281,6 +281,12 @@ function fixture(): DeriveProviderQualificationInput & {
             sha256: stageSha256,
             startedAtIso: "2026-05-23T00:00:20.000Z",
             endedAtIso: "2026-05-23T00:00:30.000Z",
+            tool: {
+              name: "CALENDAR",
+              argsSha256: hash("calendar tool args"),
+              resultSha256: hash("calendar tool result"),
+              success: true,
+            },
           },
         ],
       },
@@ -1157,6 +1163,33 @@ describe("deriveProviderQualification", () => {
     ).toMatchObject({
       status: "unqualified",
       reasons: expect.arrayContaining(["signed-stage-reference:hash-mismatch"]),
+    });
+  });
+
+  it("rejects a provider effect referenced only to a failed tool stage", () => {
+    const input = fixture();
+    const stage = input.trajectories.trajectories[0].stages[0];
+    if (!stage.tool) throw new Error("fixture requires a tool stage");
+    stage.tool.success = false;
+    input.trajectories.setSha256 = canonicalSha256(
+      input.trajectories.trajectories.map((trajectory) => ({
+        artifact: trajectory.artifact,
+        stages: trajectory.stages,
+      })),
+      "verifiedTrajectories",
+    );
+    input.signedEvidence.payload.trajectorySetSha256 =
+      input.trajectories.setSha256;
+    input.signedSemanticEvidence.payload.trajectorySetSha256 =
+      input.trajectories.setSha256;
+    resignProvider(input);
+    resignSemantic(input);
+
+    expect(deriveProviderQualification(input).qualification).toMatchObject({
+      status: "unqualified",
+      reasons: expect.arrayContaining([
+        "observation:effect-1:provider-effect-without-successful-tool-stage",
+      ]),
     });
   });
 
