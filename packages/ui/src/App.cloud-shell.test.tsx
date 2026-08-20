@@ -61,7 +61,7 @@ describe("App standalone chat-overlay wiring", () => {
       "releaseFirstRunToFull={firstRunChatRelease.releasePending}",
     );
     expect(APP_TSX).toContain(
-      "onFirstRunChatMounted={firstRunChatRelease.recordMountedChat}",
+      "onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}",
     );
     expect(APP_TSX).toContain(
       "onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}",

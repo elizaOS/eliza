@@ -8,25 +8,30 @@ import {
   acknowledgeFirstRunChatRelease,
   createFirstRunChatReleaseState,
   observeFirstRunCompletion,
-  recordMountedFirstRunChat,
+  recordMountedFirstRunOverlay,
+  recordMountedFirstRunTranscript,
 } from "./first-run-chat-release";
 
 describe("first-run chat release tracking", () => {
   it("ignores a completed-user startup probe transition without a mounted chat", () => {
-    let state = createFirstRunChatReleaseState(false);
-    state = observeFirstRunCompletion(state, true);
+    let state = createFirstRunChatReleaseState(false, "ready");
+    state = recordMountedFirstRunOverlay(state);
+    state = recordMountedFirstRunTranscript(state);
+    state = observeFirstRunCompletion(state, true, "ready");
 
     expect(state).toEqual({
       observedIncomplete: false,
-      mountedWhileIncomplete: false,
+      overlayMountedWhileIncomplete: false,
+      transcriptMountedWhileIncomplete: false,
       releasePending: false,
     });
   });
 
   it("retains a genuine mounted first-run completion across an overlay remount", () => {
-    let state = createFirstRunChatReleaseState(false);
-    state = recordMountedFirstRunChat(state);
-    state = observeFirstRunCompletion(state, true);
+    let state = createFirstRunChatReleaseState(false, "first-run-required");
+    state = recordMountedFirstRunOverlay(state);
+    state = recordMountedFirstRunTranscript(state);
+    state = observeFirstRunCompletion(state, true, "starting-runtime");
 
     expect(state.releasePending).toBe(true);
     state = acknowledgeFirstRunChatRelease(state);
@@ -34,37 +39,61 @@ describe("first-run chat release tracking", () => {
   });
 
   it("does not let a mount outside first run authorize a later release", () => {
-    let state = createFirstRunChatReleaseState(true);
-    state = recordMountedFirstRunChat(state);
-    state = observeFirstRunCompletion(state, false);
-    state = observeFirstRunCompletion(state, true);
+    let state = createFirstRunChatReleaseState(true, "ready");
+    state = recordMountedFirstRunOverlay(state);
+    state = recordMountedFirstRunTranscript(state);
+    state = observeFirstRunCompletion(state, false, "ready");
+    state = observeFirstRunCompletion(state, true, "ready");
 
     expect(state.releasePending).toBe(false);
   });
 
   it("cancels a stale unacknowledged release when first run restarts", () => {
-    let state = createFirstRunChatReleaseState(false);
-    state = recordMountedFirstRunChat(state);
-    state = observeFirstRunCompletion(state, true);
+    let state = createFirstRunChatReleaseState(false, "first-run-required");
+    state = recordMountedFirstRunOverlay(state);
+    state = recordMountedFirstRunTranscript(state);
+    state = observeFirstRunCompletion(state, true, "ready");
     expect(state.releasePending).toBe(true);
 
-    state = observeFirstRunCompletion(state, false);
+    state = observeFirstRunCompletion(state, false, "first-run-required");
     expect(state).toEqual({
       observedIncomplete: true,
-      mountedWhileIncomplete: false,
+      overlayMountedWhileIncomplete: false,
+      transcriptMountedWhileIncomplete: false,
       releasePending: false,
     });
 
-    state = observeFirstRunCompletion(state, true);
+    state = observeFirstRunCompletion(state, true, "ready");
     expect(state.releasePending).toBe(false);
   });
 
   it("retains a mounted epoch across an unresolved probe", () => {
-    let state = createFirstRunChatReleaseState(false);
-    state = recordMountedFirstRunChat(state);
-    state = observeFirstRunCompletion(state, null);
-    state = observeFirstRunCompletion(state, true);
+    let state = createFirstRunChatReleaseState(false, "first-run-required");
+    state = recordMountedFirstRunOverlay(state);
+    state = recordMountedFirstRunTranscript(state);
+    state = observeFirstRunCompletion(state, null, "polling-backend");
+    state = observeFirstRunCompletion(state, true, "ready");
 
     expect(state.releasePending).toBe(true);
+  });
+
+  it("requires both the committed overlay and a real first-run transcript", () => {
+    const overlayOnly = observeFirstRunCompletion(
+      recordMountedFirstRunOverlay(
+        createFirstRunChatReleaseState(false, "first-run-required"),
+      ),
+      true,
+      "ready",
+    );
+    const transcriptOnly = observeFirstRunCompletion(
+      recordMountedFirstRunTranscript(
+        createFirstRunChatReleaseState(false, "first-run-required"),
+      ),
+      true,
+      "ready",
+    );
+
+    expect(overlayOnly.releasePending).toBe(false);
+    expect(transcriptOnly.releasePending).toBe(false);
   });
 });
