@@ -142,4 +142,107 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		);
 		warn.mockRestore();
 	});
+
+	it("rejects repeating pagination cursors when listing pinned documents", async () => {
+		const agentId = "00000000-0000-0000-0000-0000000000a1" as UUID;
+		const queryDocumentsMock = vi.fn(async () => ({
+			status: "ok",
+			totalVisible: 0,
+			totalAvailable: 0,
+			totalMatched: 0,
+			documents: [],
+			availableDocuments: [],
+			hasMore: true,
+			nextCursor: {
+				createdAt: 1000,
+				id: "00000000-0000-0000-0000-0000000000c1" as UUID,
+			},
+		}));
+		const runtime = {
+			agentId,
+			adapter: {
+				documentListQueryCapability: 2,
+				queryDocuments: queryDocumentsMock,
+				queryDocumentFragments: vi.fn(async () => []),
+				getDocument: vi.fn(async () => null),
+				compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
+				deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
+			},
+			getMemories: vi.fn(async () => []),
+			searchMemories: vi.fn(async () => []),
+			getModel: vi.fn(() => null),
+			reportError: vi.fn(),
+			logger: {
+				info: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+				debug: vi.fn(),
+			},
+		};
+		const service = new DocumentService(runtime as never);
+		const message = {
+			...document("query", "test query"),
+			entityId: agentId,
+		};
+
+		await expect(
+			service.composeProviderDocuments(message, { limit: 10 }),
+		).rejects.toMatchObject({
+			code: "DOCUMENT_LIST_CURSOR_LOOP",
+		});
+	});
+
+	it("rejects pagination exceeding the maximum page limit when listing pinned documents", async () => {
+		const agentId = "00000000-0000-0000-0000-0000000000a1" as UUID;
+		let callCount = 0;
+		const queryDocumentsMock = vi.fn(async () => {
+			callCount += 1;
+			return {
+				status: "ok",
+				totalVisible: 0,
+				totalAvailable: 0,
+				totalMatched: 0,
+				documents: [],
+				availableDocuments: [],
+				hasMore: true,
+				nextCursor: {
+					createdAt: 1000 + callCount,
+					id: `00000000-0000-0000-0000-${callCount.toString(16).padStart(12, "0")}` as UUID,
+				},
+			};
+		});
+		const runtime = {
+			agentId,
+			adapter: {
+				documentListQueryCapability: 2,
+				queryDocuments: queryDocumentsMock,
+				queryDocumentFragments: vi.fn(async () => []),
+				getDocument: vi.fn(async () => null),
+				compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
+				deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
+			},
+			getMemories: vi.fn(async () => []),
+			searchMemories: vi.fn(async () => []),
+			getModel: vi.fn(() => null),
+			reportError: vi.fn(),
+			logger: {
+				info: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+				debug: vi.fn(),
+			},
+		};
+		const service = new DocumentService(runtime as never);
+		const message = {
+			...document("query", "test query"),
+			entityId: agentId,
+		};
+
+		await expect(
+			service.composeProviderDocuments(message, { limit: 10 }),
+		).rejects.toMatchObject({
+			code: "DOCUMENT_LIST_PAGE_LIMIT_EXCEEDED",
+		});
+		expect(queryDocumentsMock).toHaveBeenCalledTimes(51); // 1 list + 50 pinned pages
+	});
 });
