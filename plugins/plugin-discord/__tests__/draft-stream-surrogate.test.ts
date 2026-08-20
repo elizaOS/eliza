@@ -6,7 +6,7 @@
  * stub as draft-stream.test.ts; no network.
  */
 import type { TextChannel } from "discord.js";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDraftStreamController } from "../draft-stream";
 
 interface CapturedSend {
@@ -30,6 +30,29 @@ function makeChannel() {
 }
 
 describe("draft-stream surrogate-safe chunking", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("keeps throttled incremental snapshots well formed", async () => {
+		vi.useFakeTimers();
+		const { channel, sends } = makeChannel();
+		const controller = createDraftStreamController({
+			maxChars: 60,
+			minInitialChars: 0,
+			throttleMs: 250,
+		});
+		await controller.start(channel);
+
+		// The 57-code-unit pre-ellipsis budget lands on a high surrogate.
+		controller.update("🙂".repeat(60));
+		await vi.advanceTimersByTimeAsync(250);
+
+		expect(sends).toHaveLength(1);
+		expect(sends[0]?.content?.isWellFormed()).toBe(true);
+		expect(sends[0]?.content?.length).toBeLessThanOrEqual(60);
+	});
+
 	it("keeps surrogate pairs intact across draft chunks", async () => {
 		// An emoji run shifted onto an odd offset lands the raw maxLen fallback
 		// cut between a pair's high and low surrogate instead of on a boundary.
@@ -48,7 +71,7 @@ describe("draft-stream surrogate-safe chunking", () => {
 	});
 
 	it("rejects a draft chunk limit that cannot make UTF-16 progress", async () => {
-		const { channel } = makeChannel();
+		const { channel, sends } = makeChannel();
 		const controller = createDraftStreamController({ maxChars: 1 });
 		await controller.start(channel);
 
@@ -56,6 +79,7 @@ describe("draft-stream surrogate-safe chunking", () => {
 		await expect(controller.finalize(`😀${"x".repeat(10)}`)).rejects.toThrow(
 			RangeError,
 		);
+		expect(sends).toHaveLength(0);
 	});
 
 	it("still chunks long prose at natural break points", async () => {

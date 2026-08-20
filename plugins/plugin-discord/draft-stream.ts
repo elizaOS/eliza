@@ -2,13 +2,13 @@
  * Streams an in-progress agent reply to Discord by editing a single message as
  * draft chunks arrive, using the draft-chunking break logic.
  */
+import { truncateWellFormed } from "@elizaos/core";
 import type {
 	ActionRowBuilder,
 	Message as DiscordMessage,
 	MessageActionRowComponentBuilder,
 	TextChannel,
 } from "discord.js";
-import { truncateWellFormed } from "@elizaos/core";
 import {
 	DEFAULT_DRAFT_CHUNK_CONFIG,
 	type DraftChunkConfig,
@@ -89,7 +89,9 @@ export function createDraftStreamController(
 
 		const displayText =
 			trimmed.length > maxChars
-				? `${trimmed.slice(0, maxChars - 3)}...`
+				? maxChars > 3
+					? `${truncateWellFormed(trimmed, maxChars - 3)}...`
+					: truncateWellFormed(trimmed, maxChars)
 				: trimmed;
 		if (displayText === lastSentText) {
 			if (components && components.length > 0 && lastSentMessage) {
@@ -247,6 +249,9 @@ export function createDraftStreamController(
 		// at the chunk boundary that corrupts the character in the delivered
 		// draft. truncateWellFormed backs the cut off by one unit instead.
 		const firstHead = truncateWellFormed(trimmed, breakPoint);
+		if (firstHead.length === 0) {
+			throw new RangeError("Discord draft chunk limit made no UTF-16 progress");
+		}
 		const firstChunk = firstHead.trimEnd();
 		let remaining = trimmed.slice(firstHead.length).trimStart();
 
