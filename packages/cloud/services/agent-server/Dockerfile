@@ -59,8 +59,9 @@ COPY plugins/plugin-sql/package.json plugins/plugin-sql/
 COPY plugins/plugin-todos/package.json plugins/plugin-todos/
 COPY plugins/plugin-web-search/package.json plugins/plugin-web-search/
 COPY plugins/plugin-workflow/package.json plugins/plugin-workflow/
-RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/cloud/services/agent-server","packages/cloud/services/_common","packages/cloud/routing","packages/cloud/sdk","packages/cloud/shared","packages/core","packages/logger","packages/prompts","packages/registry","packages/shared","packages/ui","plugins/plugin-cloud-apps","plugins/plugin-elizacloud","plugins/plugin-native-agent","plugins/plugin-native-bun-runtime","plugins/plugin-native-camera","plugins/plugin-native-llama","plugins/plugin-openai","plugins/plugin-scheduling","plugins/plugin-sql","plugins/plugin-todos","plugins/plugin-web-search","plugins/plugin-workflow"]}\n' > package.json \
-    && bun install --production
+RUN bun -e 'const workspaces = ["packages/cloud/services/agent-server", "packages/cloud/services/_common", "packages/cloud/routing", "packages/cloud/sdk", "packages/cloud/shared", "packages/core", "packages/logger", "packages/prompts", "packages/registry", "packages/shared", "packages/ui", "plugins/plugin-cloud-apps", "plugins/plugin-elizacloud", "plugins/plugin-native-agent", "plugins/plugin-native-bun-runtime", "plugins/plugin-native-camera", "plugins/plugin-native-llama", "plugins/plugin-openai", "plugins/plugin-scheduling", "plugins/plugin-sql", "plugins/plugin-todos", "plugins/plugin-web-search", "plugins/plugin-workflow"]; await Bun.write("package.json", JSON.stringify({ name: "agent-server-build", private: true, workspaces }));' \
+    && bun install --production \
+    && bun -e 'import { mkdir, symlink } from "node:fs/promises"; import { dirname } from "node:path"; const { workspaces } = await Bun.file("package.json").json(); for (const workspace of workspaces) { const { name } = await Bun.file(`${workspace}/package.json`).json(); const link = `node_modules/${name}`; await mkdir(dirname(link), { recursive: true }); await symlink(`${"../".repeat(name.split("/").length)}${workspace}`, link); }'
 
 # Production stage: run the service straight from TypeScript source, resolving
 # workspace packages through their `eliza-source` export condition.
