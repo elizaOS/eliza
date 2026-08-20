@@ -207,7 +207,6 @@ export interface LandingDemoScenario {
   label: string;
   roomName: string;
   members: readonly string[];
-  participantLabel?: string;
   steps: readonly LandingDemoStep[];
 }
 
@@ -345,7 +344,6 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
     label: "Co-parenting",
     roomName: "Co-parenting",
     members: ["Nina"],
-    participantLabel: "2 parents + Eliza",
     steps: [
       {
         kind: "member",

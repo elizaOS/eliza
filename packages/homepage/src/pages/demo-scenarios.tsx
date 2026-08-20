@@ -153,8 +153,7 @@ export default function DemoScenariosPage() {
                   <p>{scenario.label}</p>
                   <h2>{scenario.roomName}</h2>
                   <span className="demo-review-room-members">
-                    {scenario.participantLabel ??
-                      `${scenario.members.join(", ")} + you + Eliza`}
+                    {`${scenario.members.length + 2} people`}
                   </span>
                 </div>
                 <strong>{scenario.steps.length} beats</strong>
