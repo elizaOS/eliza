@@ -88,6 +88,7 @@ const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
+const ANDROID_LOCAL_AGENT_DEVICE_PORT = 31337;
 const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-2b";
 const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
   "models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf";
@@ -862,6 +863,7 @@ async function launchAndroidEmulatorApp() {
 
   const context = { adb, serial, installed: true };
   if (androidSelectLocal) {
+    removeAndroidReverse(context, ANDROID_LOCAL_AGENT_DEVICE_PORT);
     forceStopConflictingAndroidAgents(context);
     preseedAndroidLocalRuntime(context);
   }
@@ -1239,6 +1241,14 @@ function removeAndroidForward(context, localPort) {
   tryExec(
     context.adb,
     ["-s", context.serial, "forward", "--remove", localPort],
+    { allowFailure: true },
+  );
+}
+
+function removeAndroidReverse(context, devicePort) {
+  tryExec(
+    context.adb,
+    ["-s", context.serial, "reverse", "--remove", `tcp:${devicePort}`],
     { allowFailure: true },
   );
 }
@@ -2845,6 +2855,7 @@ export {
   preseedIosLocalRuntime,
   probeHealth,
   readAndroidLocalAgentToken,
+  removeAndroidReverse,
   readIosFullBunSmokeDiagnostics,
   readLastWakeFiredAtMs,
   readStartupAttempt,
