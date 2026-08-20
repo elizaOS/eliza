@@ -12,6 +12,8 @@
  *     persistent settlement failure and return a success-shaped result
  *     (`adjustmentType: "none"`), making a lost refund indistinguishable from
  *     a clean settle. It must now surface the failure.
+ *  3. Negative/non-finite settlement costs must fail before any ledger read or
+ *     write, so provider sentinel values cannot become unbacked refunds.
  *
  * The actual reconcile/refund/deduct SQL runs against an
  * in-process PGlite DB and balances/transactions are read back and asserted.
@@ -35,6 +37,7 @@ let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let creditsService: typeof import("../credits").creditsService;
 let ReservationNotFoundError: typeof import("../credits").ReservationNotFoundError;
+let assertCreditRefundWithinReservation: typeof import("../credits").assertCreditRefundWithinReservation;
 let pgliteReady = true;
 
 async function getBalance(): Promise<number> {
@@ -65,6 +68,7 @@ beforeAll(async () => {
     const credits = await import("../credits");
     creditsService = credits.creditsService;
     ReservationNotFoundError = credits.ReservationNotFoundError;
+    assertCreditRefundWithinReservation = credits.assertCreditRefundWithinReservation;
 
     // DDL mirrors credits-reconcile.test.ts: the full organizations column set
     // (background hooks SELECT every column via findById) and the verbatim
@@ -149,6 +153,59 @@ describe("reconcile with a reservation id that matches no row", () => {
 });
 
 describe("legacy-lane persistent settlement failure", () => {
+  test("classifies a refund larger than its backing reservation as a fatal invariant failure", () => {
+    let thrown: unknown;
+    try {
+      assertCreditRefundWithinReservation({
+        reservedAmount: 0.000001,
+        refundAmount: 1618.800001,
+        scope: "incident regression",
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({
+      code: "CREDIT_REFUND_EXCEEDS_RESERVATION",
+      severity: "fatal",
+    });
+  });
+
+  test.each([
+    { label: "negative", reservedAmount: -1 },
+    { label: "non-finite", reservedAmount: Number.NaN },
+  ])("rejects a $label backing reservation", ({ reservedAmount }) => {
+    expect(() =>
+      assertCreditRefundWithinReservation({
+        reservedAmount,
+        refundAmount: 0,
+        scope: "incident regression",
+      }),
+    ).toThrow();
+  });
+
+  test.each([
+    { label: "negative actual", reservedAmount: 1, actualCost: -1 },
+    { label: "non-finite actual", reservedAmount: 1, actualCost: Number.NaN },
+    { label: "negative reservation", reservedAmount: -1, actualCost: 0 },
+  ])("rejects $label before minting a refund", async ({ reservedAmount, actualCost }) => {
+    await expect(
+      creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount,
+        actualCost,
+        description: "invalid legacy settlement",
+      }),
+    ).rejects.toMatchObject({
+      code:
+        actualCost < 0 || Number.isNaN(actualCost)
+          ? "INVALID_ACTUAL_CREDIT_COST"
+          : "INVALID_RESERVED_CREDIT_COST",
+    });
+
+    expect(await getBalance()).toBe(100);
+    expect(await countTransactions(ORG_ID)).toBe(0);
+  });
+
   test(
     "surfaces the failure instead of returning a success-shaped result",
     async () => {

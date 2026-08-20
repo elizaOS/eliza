@@ -32,6 +32,8 @@ import {
 import { APP_USAGE_PROJECTION_VERSION } from "./app-usage-projections";
 import {
   APP_CHAT_RESERVATION_SETTLEMENT_MARKER,
+  assertCreditRefundWithinReservation,
+  assertValidCreditSettlementCosts,
   type CreditReconciliationResult,
   type CreditReservation,
   creditsService,
@@ -1194,6 +1196,12 @@ export class AppCreditsService {
       app: providedApp,
     } = params;
 
+    assertValidCreditSettlementCosts({
+      reservedAmount: estimatedBaseCost,
+      actualCost: actualBaseCost,
+      scope: "AppCreditsService.reconcileCredits",
+    });
+
     // Validate metadata size and depth
     const metadata = validateMetadata(rawMetadata, "reconcileCredits");
     if (reservationTransactionId) {
@@ -1345,6 +1353,17 @@ export class AppCreditsService {
       // partial clawback would leave both parties holding the same money.
       const refundAmount = Math.abs(totalCostDifference);
       const creatorEarningsReduction = Math.abs(creatorMarkupDifference);
+      const maximumRefund = computeInferenceCharge(estimatedBaseCost, {
+        monetizationEnabled: monetizationActive,
+        platformOffsetAmount: app.platform_offset_amount,
+        purchaseSharePercentage: app.purchase_share_percentage,
+        inferenceMarkupPercentage: app.inference_markup_percentage,
+      }).totalCost;
+      assertCreditRefundWithinReservation({
+        reservedAmount: maximumRefund,
+        refundAmount,
+        scope: "AppCreditsService.reconcileCredits",
+      });
 
       if (monetizationActive && creatorEarningsReduction > 0) {
         try {
@@ -1710,6 +1729,11 @@ export class AppCreditsService {
 
       if (organizationAdjustment.lt(0)) {
         resultOutcome = "refund";
+        assertCreditRefundWithinReservation({
+          reservedAmount: reservedTotal.toNumber(),
+          refundAmount: organizationAdjustment.abs().toNumber(),
+          scope: "AppCreditsService.settleAppReservation",
+        });
         if (creatorAdjustment.lt(0) && creatorUserId) {
           const reversal = await this.reverseCreatorEarnings(
             params.appId,

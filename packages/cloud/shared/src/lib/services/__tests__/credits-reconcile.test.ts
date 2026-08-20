@@ -1011,6 +1011,30 @@ describe("CreditsService reservation settlement marker (#11169)", () => {
   );
 
   test(
+    "sweep rejects a negative legacy estimate without settling or paying out",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("9");
+      const reservationId = await insertReservation(1.0, 25 * 60 * 1000, true, {
+        estimated_cost: -1,
+      });
+
+      const stats = await creditsService.sweepStaleReservations({
+        graceMs: 20 * 60 * 1000,
+        batchSize: 10,
+      });
+
+      expect(stats.scanned).toBe(1);
+      expect(stats.settled).toBe(0);
+      expect(stats.skipped).toBe(1);
+      expect(await getBalance()).toBeCloseTo(9, 6);
+      expect(await getReservationSettledAt(reservationId)).toBeNull();
+      expect(await settlementRowsForReservation(reservationId)).toEqual([]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "sweep settles fixed-amount reservations to the stored estimate without applying the model buffer",
     async () => {
       if (!pgliteReady) return;
