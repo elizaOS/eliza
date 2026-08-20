@@ -490,7 +490,9 @@ jobs:
             desktop-file-utils \
             file \
             flatpak \
-            rpm
+            rpm \
+            xauth \
+            xvfb
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user --noninteractive -y flathub \
             org.freedesktop.Platform//24.08 \
@@ -926,7 +928,9 @@ jobs:
           test -n "$bundle"
           flatpak install --user --noninteractive -y --reinstall "$bundle"
           set +e
-          timeout 45s flatpak run ai.elizaos.app
+          timeout 45s xvfb-run --auto-servernum \
+            --server-args="-screen 0 1280x900x24 -nolisten tcp" \
+            flatpak run ai.elizaos.app
           status=$?
           set -e
           if [ "$status" -ne 124 ]; then
