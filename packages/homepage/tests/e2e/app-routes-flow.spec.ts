@@ -531,6 +531,19 @@ test("supported-platform messaging keeps a manual copy recovery visible", async 
 
   const copyButton = page.getByRole("button", { name: "Copy phone number" });
   await expect(copyButton).toBeVisible();
+  const desktopRecoverySpacing = await page.evaluate(() => {
+    const notice = document.querySelector(".landing-copy-notice--handoff");
+    const action = notice?.querySelector("button");
+    if (!notice || !action) throw new Error("Desktop recovery UI is missing");
+    const noticeRect = notice.getBoundingClientRect();
+    const actionRect = action.getBoundingClientRect();
+    return {
+      top: actionRect.top - noticeRect.top,
+      bottom: noticeRect.bottom - actionRect.bottom,
+    };
+  });
+  expect(desktopRecoverySpacing.top).toBeGreaterThanOrEqual(5);
+  expect(desktopRecoverySpacing.bottom).toBeGreaterThanOrEqual(5);
   await copyButton.click();
   await expect(landingContactStatus).toHaveText("Copied!");
   await expect

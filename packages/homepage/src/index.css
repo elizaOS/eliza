@@ -1478,9 +1478,9 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   z-index: 40;
   display: inline-flex;
   align-items: center;
-  min-height: 2.25rem;
+  min-height: 2.8rem;
   margin: 0.2rem 0 0;
-  padding: 0 0.75rem;
+  padding: 0.35rem 0.45rem 0.35rem 0.85rem;
   border-radius: 999px;
   background: rgb(255 255 255 / 76%);
   color: #166534;
@@ -1491,7 +1491,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-copy-notice-action {
-  min-height: 2.5rem;
+  min-height: 2.125rem;
   margin-left: 0.6rem;
   padding: 0 0.85rem;
   border: 0;
