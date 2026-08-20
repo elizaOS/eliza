@@ -603,6 +603,12 @@ function validateReferences(manifest: WorldManifest, findings: string[]): void {
   }
   for (const [index, memory] of manifest.data.memories.entries()) {
     requireId(agents, memory.agentId, `$.data.memories[${index}].agentId`);
+    if (memory.ownerIdentityId)
+      requireId(
+        identities,
+        memory.ownerIdentityId,
+        `$.data.memories[${index}].ownerIdentityId`,
+      );
     if (memory.roomId)
       requireId(rooms, memory.roomId, `$.data.memories[${index}].roomId`);
   }
