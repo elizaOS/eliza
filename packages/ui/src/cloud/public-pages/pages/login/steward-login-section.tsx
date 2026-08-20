@@ -495,6 +495,10 @@ export default function StewardLoginSection() {
     useState<StewardEmailLoginChallenge | null>(null);
   const [emailCheckState, setEmailCheckState] =
     useState<EmailCheckState>("pending");
+  // When Steward does not declare which factors the email carried, the code
+  // entry stays behind an opt-in disclosure so the waiting screen never
+  // asserts a six-digit code the email may not contain (#19213).
+  const [showUndeclaredCodeEntry, setShowUndeclaredCodeEntry] = useState(false);
   const [resendRemainingSeconds, setResendRemainingSeconds] = useState(0);
   const [resendAvailableAt, setResendAvailableAt] = useState(0);
   const [step, setStep] = useState<AuthStep>("idle");
@@ -1168,6 +1172,7 @@ export default function StewardLoginSection() {
       );
       setEmailChallenge(challenge);
       setEmailCode("");
+      setShowUndeclaredCodeEntry(false);
       setEmailCheckState("pending");
       setResendAvailableAt(Date.now() + AUTH_CODE_RESEND_COOLDOWN_MS);
       setStep("email-sent");
@@ -1267,6 +1272,7 @@ export default function StewardLoginSection() {
     setStep("idle");
     setEmailChallenge(null);
     setEmailCode("");
+    setShowUndeclaredCodeEntry(false);
     setEmailCheckState("pending");
     setError(null);
     setLoading(null);
@@ -1517,9 +1523,24 @@ export default function StewardLoginSection() {
     );
   }
   if (step === "email-sent") {
-    const hasCompanionCode = Boolean(
+    // challengeId/pollSecret are status-polling credentials, not proof the
+    // email carried a six-digit code — tenant templates may render the magic
+    // link only (#19213). The asserting code UI appears only when Steward
+    // explicitly declared code delivery; when it stayed silent the code entry
+    // hides behind a non-asserting disclosure; an explicit link-only
+    // declaration removes every mention of a code.
+    const canVerifyCode = Boolean(
       emailChallenge?.challengeId && emailChallenge.pollSecret,
     );
+    const codeEntryMode: "asserted" | "undeclared" | "link-only" =
+      !canVerifyCode || emailChallenge?.emailCodeDelivered === false
+        ? "link-only"
+        : emailChallenge?.emailCodeDelivered === true
+          ? "asserted"
+          : "undeclared";
+    const showCodeEntry =
+      codeEntryMode === "asserted" ||
+      (codeEntryMode === "undeclared" && showUndeclaredCodeEntry);
     const resendDisabled = loading !== null || resendRemainingSeconds > 0;
     const checkEmailTitle =
       emailCheckState === "approved"
@@ -1540,7 +1561,7 @@ export default function StewardLoginSection() {
             ? "Too many attempts were made. Request a new email in a moment."
             : emailCheckState === "invalid"
               ? "That sign-in email is no longer valid. Request a new email to continue."
-              : hasCompanionCode
+              : codeEntryMode === "asserted"
                 ? "Open the link on this device or enter the six-digit code we sent."
                 : "Check your inbox and open the magic link to sign in.";
 
@@ -1566,7 +1587,22 @@ export default function StewardLoginSection() {
           </Alert>
         )}
 
-        {hasCompanionCode && (
+        {codeEntryMode === "undeclared" &&
+          !showUndeclaredCodeEntry &&
+          emailCheckState === "pending" && (
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => setShowUndeclaredCodeEntry(true)}
+              className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+            >
+              {t("cloud.login.emailCode.haveCode", {
+                defaultValue: "My email includes a six-digit code",
+              })}
+            </Button>
+          )}
+
+        {showCodeEntry && (
           <div className="space-y-2">
             <label
               htmlFor="email-sign-in-code"
@@ -1607,7 +1643,7 @@ export default function StewardLoginSection() {
           </div>
         )}
 
-        {hasCompanionCode && (
+        {showCodeEntry && (
           <Button
             variant="ghost"
             type="button"
@@ -1626,11 +1662,15 @@ export default function StewardLoginSection() {
           </Button>
         )}
 
-        {hasCompanionCode && emailCheckState === "pending" && (
+        {canVerifyCode && emailCheckState === "pending" && (
           <p className="text-xs text-muted" role="status">
-            {t("cloud.login.emailStatus.pending", {
-              defaultValue: "Waiting for the link or code.",
-            })}
+            {showCodeEntry
+              ? t("cloud.login.emailStatus.pending", {
+                  defaultValue: "Waiting for the link or code.",
+                })
+              : t("cloud.login.emailStatus.pendingLink", {
+                  defaultValue: "Waiting for the link.",
+                })}
           </p>
         )}
 
