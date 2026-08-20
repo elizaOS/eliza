@@ -3,11 +3,13 @@
  * and renders only publication-safe hashes and decision state.
  */
 
+import { generateKeyPairSync } from "node:crypto";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import type { ScenarioReport } from "../types.ts";
 import {
   assembleProviderQualificationArtifact,
+  normalizeProviderQualificationPublicKeyPins,
   PROVIDER_QUALIFICATION_ARTIFACT_SCHEMA,
   type ProviderQualificationArtifact,
 } from "./qualification-artifact.ts";
@@ -106,6 +108,18 @@ describe("provider qualification artifact", () => {
     ).toThrow(/unknown=skipSignatureVerification/);
   });
 
+  it("retains only public SPKI pins", () => {
+    const pair = generateKeyPairSync("ed25519");
+    const publicPem = pair.publicKey.export({ type: "spki", format: "pem" });
+    const privatePem = pair.privateKey.export({ type: "pkcs8", format: "pem" });
+    expect(
+      normalizeProviderQualificationPublicKeyPins([publicPem], "pins"),
+    ).toMatchObject([{ algorithm: "ed25519", spkiPem: publicPem }]);
+    expect(() =>
+      normalizeProviderQualificationPublicKeyPins([privatePem], "pins"),
+    ).toThrow(/public SPKI PEM/);
+  });
+
   it("renders hashes and guarantees without embedding signed evidence", () => {
     const artifact = {
       schema: PROVIDER_QUALIFICATION_ARTIFACT_SCHEMA,
@@ -139,12 +153,28 @@ describe("provider qualification artifact", () => {
           exactlyOnce: false,
         },
       },
-    } satisfies ProviderQualificationArtifact;
+      reverification: {
+        publicKeyPins: {
+          manifestAuthorities: [{ keyId: HASH }],
+          providerObservers: [{ keyId: HASH }],
+          semanticJudges: [{ keyId: HASH }],
+        },
+        verifierTranscript: {
+          inventory: { trajectoryCount: 1, trajectoryStageCount: 2 },
+          proofDigests: {
+            failurePathObservationsSha256: HASH,
+            readbackReplayAssurancesSha256: HASH,
+          },
+        },
+      },
+    } as unknown as ProviderQualificationArtifact;
     const markdown = renderProviderQualificationMarkdown(artifact);
     expect(markdown).toContain("**QUALIFIED**");
     expect(markdown).toContain("Provider authorization verified: **yes**");
     expect(markdown).toContain("Provider failure paths verified: **yes**");
     expect(markdown).toContain("Idempotent replay verified: **yes**");
+    expect(markdown).toContain("Verified trajectory artifacts: **1**");
+    expect(markdown).toContain("public-key/hash-only capsule");
     expect(markdown).not.toContain("private-observation");
   });
 });

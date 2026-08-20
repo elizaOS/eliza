@@ -20,6 +20,11 @@ function artifact(
   scenarioId: string,
   deploymentSha = DEPLOYMENT_SHA,
 ): ProviderQualificationArtifact {
+  const runnerResult = {
+    scenarioStatus: "passed" as const,
+    finalChecks: [],
+    runnerResultSha256: HASH,
+  };
   const core = {
     schema: PROVIDER_QUALIFICATION_ARTIFACT_SCHEMA,
     createdAtIso: "2026-08-19T00:00:00.000Z",
@@ -49,7 +54,30 @@ function artifact(
         exactlyOnce: false as const,
       },
     },
-    qualifiedReport: { id: scenarioId },
+    reverification: {
+      scenarioDefinition: {},
+      manifest: { manifestSha256: HASH },
+      manifestSignature: {},
+      publicKeyPins: {
+        manifestAuthorities: [{}],
+        providerObservers: [{}],
+        semanticJudges: [{}],
+      },
+      signedObserverEvidence: { payload: { runnerResultSha256: HASH } },
+      signedSemanticJudgeEvidence: {},
+      trajectoryInventory: { setSha256: HASH },
+      runnerResult,
+      verifierTranscript: {
+        schema: "eliza.provider-qualification-verifier-transcript.v1",
+        implementation: "@elizaos/scenario-runner/provider-qualification",
+        verifiedAtIso: "2026-08-19T00:00:00.000Z",
+        verificationOptions: {},
+        sourcePrivacy: {},
+        inventory: {},
+        proofDigests: {},
+      },
+    },
+    qualifiedReport: { scenarioId },
   };
   return {
     ...core,

@@ -28,6 +28,8 @@ import type {
 import {
   assembleProviderQualificationArtifact,
   type ProviderQualificationArtifact,
+  reverifyProviderQualificationArtifact,
+  validateProviderQualificationArtifact,
 } from "./qualification-artifact.ts";
 import {
   assembleProviderQualificationCatalog,
@@ -298,6 +300,10 @@ export function renderProviderQualificationMarkdown(
   artifact: ProviderQualificationArtifact,
 ): string {
   const qualified = artifact.decision.qualification.status === "qualified";
+  const capsule = artifact.reverification;
+  const keyIds = (
+    pins: ProviderQualificationArtifact["reverification"]["publicKeyPins"][keyof ProviderQualificationArtifact["reverification"]["publicKeyPins"]],
+  ): string => pins.map((pin) => `\`${pin.keyId}\``).join(", ");
   const reasons =
     artifact.decision.qualification.reasons.length === 0
       ? "None"
@@ -314,6 +320,15 @@ export function renderProviderQualificationMarkdown(
     `- Run ID: \`${artifact.runId}\``,
     `- Manifest SHA-256: \`${artifact.manifestSha256}\``,
     `- Trajectory set SHA-256: \`${artifact.trajectorySetSha256}\``,
+    `- Verified trajectory artifacts: **${capsule.verifierTranscript.inventory.trajectoryCount}**`,
+    `- Verified trajectory stages: **${capsule.verifierTranscript.inventory.trajectoryStageCount}**`,
+    `- Manifest authority key IDs: ${keyIds(capsule.publicKeyPins.manifestAuthorities)}`,
+    `- Provider observer key IDs: ${keyIds(capsule.publicKeyPins.providerObservers)}`,
+    `- Semantic judge key IDs: ${keyIds(capsule.publicKeyPins.semanticJudges)}`,
+    `- Observer envelope SHA-256: \`${artifact.observerEvidenceSha256}\``,
+    `- Semantic envelope SHA-256: \`${artifact.semanticEvidenceSha256}\``,
+    `- Failure-path observations SHA-256: \`${capsule.verifierTranscript.proofDigests.failurePathObservationsSha256}\``,
+    `- Readback/replay assurances SHA-256: \`${capsule.verifierTranscript.proofDigests.readbackReplayAssurancesSha256}\``,
     `- Artifact SHA-256: \`${artifact.artifactSha256}\``,
     `- Provider authorization verified: **${artifact.decision.guarantees.providerAuthorizationVerified ? "yes" : "no"}**`,
     `- Provider failure paths verified: **${artifact.decision.guarantees.providerFailurePathsVerified ? "yes" : "no"}**`,
@@ -322,7 +337,7 @@ export function renderProviderQualificationMarkdown(
     `- Idempotent replay verified: **${artifact.decision.guarantees.providerIdempotencyVerified ? "yes" : "no"}**`,
     `- Reasons: ${reasons}`,
     "",
-    "This summary contains hashes and qualification state only; provider receipts and signed evidence remain in the operator-controlled artifact bundle.",
+    "This summary contains hashes and qualification state only. The corresponding qualification.json is a public-key/hash-only capsule that can be reverified offline; it excludes credentials, private target inputs, private keys, raw run-directory paths, and runner transcripts.",
     "",
   ].join("\n");
 }
@@ -478,7 +493,20 @@ export async function verifyProviderQualificationFromConfig(
       ? {}
       : { maxClockSkewMs: config.maxClockSkewMs }),
   });
+  reverifyProviderQualificationArtifact(artifact);
   writeExclusiveOutput(resolveFrom(baseDir, config.outputDir), artifact);
+  return artifact;
+}
+
+/** Reverify one portable v4 capsule without its original private inputs. */
+export function reverifyProviderQualificationArtifactFile(
+  artifactFile: string,
+): ProviderQualificationArtifact {
+  const absoluteArtifactFile = path.resolve(artifactFile);
+  const artifact = validateProviderQualificationArtifact(
+    readJson(absoluteArtifactFile, "provider qualification artifact"),
+  );
+  reverifyProviderQualificationArtifact(artifact);
   return artifact;
 }
 
@@ -505,9 +533,12 @@ export function verifyProviderQualificationCatalogFromConfig(
 export async function runProviderQualificationCli(
   argv: readonly string[] = process.argv.slice(2),
 ): Promise<number> {
-  if (argv.length !== 2 || (argv[0] !== "verify" && argv[0] !== "catalog")) {
+  if (
+    argv.length !== 2 ||
+    !["verify", "reverify", "catalog"].includes(argv[0] ?? "")
+  ) {
     process.stderr.write(
-      "usage: eliza-provider-qualification <verify|catalog> <config.json>\n",
+      "usage: eliza-provider-qualification <verify|reverify|catalog> <file.json>\n",
     );
     return 2;
   }
@@ -515,6 +546,11 @@ export async function runProviderQualificationCli(
     const catalog = verifyProviderQualificationCatalogFromConfig(argv[1]);
     process.stdout.write(renderProviderQualificationCatalogMarkdown(catalog));
     return 0;
+  }
+  if (argv[0] === "reverify") {
+    const artifact = reverifyProviderQualificationArtifactFile(argv[1]);
+    process.stdout.write(renderProviderQualificationMarkdown(artifact));
+    return artifact.decision.qualification.publishable ? 0 : 1;
   }
   const artifact = await verifyProviderQualificationFromConfig(argv[1]);
   process.stdout.write(renderProviderQualificationMarkdown(artifact));

@@ -17,6 +17,7 @@ import type {
   ProviderEffectObservation,
   ProviderNoEffectObservation,
   ScenarioEvidenceObserverProvenance,
+  ScenarioReport,
 } from "../types.ts";
 import {
   canonicalSha256,
@@ -39,6 +40,10 @@ import {
   type SignedSemanticJudgeEvidence,
   semanticEvidenceSigningBytes,
 } from "./qualification.ts";
+import {
+  assembleProviderQualificationArtifact,
+  reverifyProviderQualificationArtifact,
+} from "./qualification-artifact.ts";
 import type { VerifiedScenarioTrajectorySet } from "./trajectory-verifier.ts";
 
 const hash = (value: string): string =>
@@ -1392,4 +1397,102 @@ describe("deriveProviderQualification", () => {
       expect(() => deriveProviderQualification(input)).toThrow(pattern);
     },
   );
+
+  it("emits a transcript-free capsule that independently reverifies", () => {
+    const input = fixture();
+    const report = {
+      id: input.scenarioDefinition.id,
+      title: input.scenarioDefinition.title,
+      domain: input.scenarioDefinition.domain,
+      tags: [],
+      status: "passed",
+      durationMs: 100,
+      turns: [
+        {
+          name: "private runner turn",
+          kind: "message",
+          text: "private input transcript",
+          responseText: "private output transcript",
+          actionsCalled: [],
+          durationMs: 50,
+          failedAssertions: [],
+        },
+      ],
+      finalChecks: input.manifest.scenario.finalChecks.map((check) => ({
+        label: check.checkId,
+        type: check.type,
+        status: "passed" as const,
+        detail: "private final-check detail",
+      })),
+      actionsCalled: [],
+      failedAssertions: [],
+      providerName: "live-provider",
+      executionProfile: "provider-qualified",
+      evidenceScope: "provider-certification",
+      evidence: {
+        schemaVersion: 1,
+        executionProfile: "provider-qualified",
+        qualification: {
+          status: "unqualified",
+          publishable: false,
+          reasons: ["external-controller-decision:missing"],
+        },
+        observerProvenance: [],
+        trajectoryHashes: [],
+        observations: [],
+      },
+    } satisfies ScenarioReport;
+    const artifact = assembleProviderQualificationArtifact({
+      scenarioDefinition: input.scenarioDefinition,
+      manifest: input.manifest,
+      manifestSignature: input.manifestSignature,
+      pinnedManifestAuthorityPublicKeysPem:
+        input.pinnedManifestAuthorityPublicKeysPem,
+      trajectories: input.trajectories,
+      signedEvidence: input.signedEvidence,
+      pinnedObserverPublicKeysPem: input.pinnedObserverPublicKeysPem,
+      signedSemanticEvidence: input.signedSemanticEvidence,
+      pinnedSemanticJudgePublicKeysPem: input.pinnedSemanticJudgePublicKeysPem,
+      runnerReport: report,
+      nowIso: input.nowIso,
+    });
+
+    expect(reverifyProviderQualificationArtifact(artifact)).toEqual(
+      artifact.decision,
+    );
+    expect(artifact.qualifiedReport).toMatchObject({
+      scenarioId: input.scenarioDefinition.id,
+      status: "passed",
+    });
+    expect(artifact.reverification.verifierTranscript.inventory).toMatchObject({
+      trajectoryCount: 1,
+      trajectoryStageCount: 1,
+      runnerFinalCheckCount: 2,
+      failureProbeObservationCount: 2,
+      providerEffectAssuranceCount: 1,
+    });
+    expect(artifact.reverification.verifierTranscript.sourcePrivacy).toEqual({
+      privateProviderTargetsRetained: false,
+      privateKeysRetained: false,
+      credentialsRetained: false,
+      rawRunnerTranscriptRetained: false,
+      runDirectoryPathRetained: false,
+    });
+    const serialized = JSON.stringify(artifact);
+    expect(serialized).not.toContain("private input transcript");
+    expect(serialized).not.toContain("private output transcript");
+    expect(serialized).not.toContain("private final-check detail");
+    expect(serialized).not.toContain(input.trajectories.runDirectoryRealPath);
+
+    const tampered = structuredClone(artifact);
+    tampered.reverification.signedObserverEvidence.signature = "A".repeat(86);
+    const { artifactSha256: _digest, ...core } = tampered;
+    tampered.artifactSha256 = canonicalSha256(
+      core,
+      "providerQualificationArtifact",
+    );
+    expect(() => reverifyProviderQualificationArtifact(tampered)).toThrow(
+      /decision does not reverify/,
+    );
+  });
 });
