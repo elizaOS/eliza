@@ -1864,7 +1864,13 @@ export default function StewardLoginSection() {
           }}
           disabled={isLoading}
           className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
-          autoComplete={showPasskey ? "email webauthn" : "email"}
+          // Do NOT add the "webauthn" autocomplete token here. It arms browser
+          // conditional-mediation passkey autofill, which prompts for an
+          // EXISTING account's discoverable credential the moment a brand-new
+          // email is typed, hijacking signup. The explicit Passkey button below
+          // still offers email-scoped passkey sign-in via handlePasskey().
+          // Port of Steward PR #690.
+          autoComplete="email"
         />
       </div>
 
