@@ -139,6 +139,9 @@ function dataContainsFilterInner(
             if (!("value" in actualDescriptor)) {
               failUnbounded({ accessor: true, side: "value" });
             }
+            // Containment is a Cartesian search, so input-slot accounting alone
+            // does not bound the number of comparisons.
+            reserve(ctx, 1);
             const actualItem = actualDescriptor.value;
             const matched = isPlainObject(expectedItem)
               ? dataContainsFilterInner(actualItem, expectedItem, depth + 1, ctx, true)

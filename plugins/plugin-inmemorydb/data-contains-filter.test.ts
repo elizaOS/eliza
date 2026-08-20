@@ -133,6 +133,13 @@ describe("dataContainsFilter", () => {
     }
   );
 
+  it("bounds cumulative array-containment comparisons", () => {
+    const actual = Array.from({ length: 1_000 }, (_, index) => index);
+    const expected = Array.from({ length: 1_000 }, (_, index) => index + 2_000);
+
+    expectUnbounded(() => dataContainsFilter({ items: actual }, { items: expected }));
+  });
+
   it("fails closed on an 8k nest in under 50ms instead of RangeError", () => {
     const nest = nestObj(8_000);
     const started = performance.now();

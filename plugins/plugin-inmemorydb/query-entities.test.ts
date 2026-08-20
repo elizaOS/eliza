@@ -141,4 +141,30 @@ describe("plugin-inmemorydb queryEntities", () => {
     ).rejects.toMatchObject({ code: "INMEMORY_FILTER_UNBOUNDED" });
     expect(invoked).toBe(0);
   });
+
+  it("fails closed on an 8k filter at the real query boundary", async () => {
+    const hostile = nestObj(8_000);
+    await adapter.createComponents([
+      component(
+        "40000000-0000-0000-0000-000000000004" as UUID,
+        entityThree,
+        "profile",
+        worldOne,
+        hostile
+      ),
+    ]);
+
+    await expect(
+      adapter.queryEntities({
+        entityIds: [entityThree],
+        componentDataFilter: hostile,
+      })
+    ).rejects.toMatchObject({ code: "INMEMORY_FILTER_UNBOUNDED" });
+  });
 });
+
+function nestObj(depth: number): Record<string, unknown> {
+  let value: Record<string, unknown> = { leaf: true };
+  for (let index = 0; index < depth; index += 1) value = { k: value };
+  return value;
+}
