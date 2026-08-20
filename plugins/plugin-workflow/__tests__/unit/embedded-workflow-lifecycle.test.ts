@@ -6,6 +6,7 @@ import type { IAgentRuntime, Task, UUID } from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
+import { WORKFLOW_JSON_UNBOUNDED } from '../../src/services/workflow-json';
 import type {
   WorkflowDefinition,
   WorkflowDefinitionResponse,
@@ -104,6 +105,27 @@ afterEach(async () => {
 });
 
 describe('embedded native workflow lifecycle', () => {
+  test('rejects unsafe workflow JSON before persistence or accessor execution', async () => {
+    const { service } = await harness();
+    let calls = 0;
+    const inputSchema = Object.defineProperty({}, 'secret', {
+      enumerable: true,
+      get() {
+        calls += 1;
+        return 'value';
+      },
+    });
+
+    await expect(
+      service.createWorkflow({ ...definition('Unsafe'), inputSchema, id: 'unsafe' })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      response: { code: WORKFLOW_JSON_UNBOUNDED },
+    });
+    expect(calls).toBe(0);
+    expect((await service.listWorkflows()).data).toHaveLength(0);
+  });
+
   test('creates, schedules, revises, restores, and deletes a Smithers workflow', async () => {
     const { service, tasks } = await harness();
     const created = await service.createWorkflow({ ...definition('Original'), id: 'review' });
