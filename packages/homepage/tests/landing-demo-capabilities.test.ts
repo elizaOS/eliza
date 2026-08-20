@@ -236,6 +236,24 @@ describe("landing Shared-agent capability contract", () => {
     expect(copy).not.toContain("yes. consensus. unsettling.");
   });
 
+  test("lets Eliza run the household rotation instead of waiting for volunteers", () => {
+    const household = LANDING_DEMO_SCENARIOS.find(
+      (scenario) => scenario.id === "household",
+    );
+    const copy = household?.steps.map(landingDemoStepText).join(" ") ?? "";
+    const humanCopy =
+      household?.steps
+        .flatMap((step) =>
+          step.kind === "member" || step.kind === "user" ? [step.text] : [],
+        )
+        .join(" ") ?? "";
+
+    expect(copy).toContain("I balanced this against the house rotation");
+    expect(copy).toContain("keeps anyone else from getting a third");
+    expect(copy).toContain("Two tasks each");
+    expect(humanCopy).not.toMatch(/I'll get coffee|I'll empty|I'll go if/i);
+  });
+
   test("lets the trip room reconcile schedules before adding live logistics", () => {
     const trip = LANDING_DEMO_SCENARIOS.find(
       (scenario) => scenario.id === "trip",
