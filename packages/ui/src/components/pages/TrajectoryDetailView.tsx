@@ -136,11 +136,15 @@ function formatProviderPayload(value: unknown): string {
     return value;
   }
   try {
-    return JSON.stringify(value, null, 2);
+    return JSON.stringify(value, null, 2) ?? "[Unsupported payload]";
   } catch {
     // error-policy:J4 An unrenderable diagnostic payload remains visibly
     // available through its string representation instead of blanking the view.
-    return String(value);
+    try {
+      return String(value);
+    } catch {
+      return "[Unrenderable payload]";
+    }
   }
 }
 

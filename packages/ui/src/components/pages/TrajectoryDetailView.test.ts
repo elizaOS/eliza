@@ -35,6 +35,18 @@ describe("normalizeTrajectoryCallText", () => {
     ).toContain('"content": "open notes"');
   });
 
+  it("keeps unsupported and hostile payloads visibly degraded", () => {
+    expect(normalizeTrajectoryCallText(() => undefined)).toBe(
+      "[Unsupported payload]",
+    );
+    const hostile: Record<string, unknown> = Object.create(null);
+    hostile.toString = () => {
+      throw new Error("no coercion");
+    };
+    hostile.self = hostile;
+    expect(normalizeTrajectoryCallText(hostile)).toBe("[Unrenderable payload]");
+  });
+
   it("reports zero lines for absent payloads and exact lines for content", () => {
     expect(countTrajectoryCallTextLines()).toBe(0);
     expect(countTrajectoryCallTextLines(undefined, null, "")).toBe(0);
