@@ -10,8 +10,7 @@ import type {
   SpawnOptions,
 } from "node:child_process";
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { truncateWellFormed } from "@elizaos/core";
 import {
@@ -157,39 +156,6 @@ export function coerceEnv(
     }
   }
   return record;
-}
-
-/**
- * Resolve working directory with fallback
- */
-export function resolveWorkdir(workdir: string, warnings: string[]): string {
-  const current = safeCwd();
-  const fallback = current ?? homedir();
-  try {
-    const stats = statSync(workdir);
-    if (stats.isDirectory()) {
-      return workdir;
-    }
-  } catch {
-    // error-policy:J4 designed degrade; an unavailable workdir falls back to the
-    // process cwd/home and the substitution is surfaced to the caller via the
-    // `warnings` array below (never silently swapped).
-  }
-  warnings.push(
-    `Warning: workdir "${workdir}" is unavailable; using "${fallback}".`,
-  );
-  return fallback;
-}
-
-function safeCwd(): string | null {
-  try {
-    const cwd = process.cwd();
-    return existsSync(cwd) ? cwd : null;
-  } catch {
-    // error-policy:J3 cwd probe; process.cwd() throws when the working
-    // directory was deleted out from under the process — null is the miss.
-    return null;
-  }
 }
 
 /**
