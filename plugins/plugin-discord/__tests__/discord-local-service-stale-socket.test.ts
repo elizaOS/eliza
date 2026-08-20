@@ -69,6 +69,10 @@ function makeService(): InstanceType<typeof DiscordLocalService> {
 
 describe("DiscordLocalService stale local-socket events", () => {
 	beforeEach(() => {
+		// The local IPC service intentionally supports macOS only. Exercise that
+		// production path on Linux CI instead of failing before the fake socket is
+		// created; restoreAllMocks() returns the host platform after each test.
+		vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
 		process.env.DISCORD_IPC_DIR = "/tmp";
 	});
 
