@@ -11,6 +11,7 @@ import {
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   androidPlayManifestEvidenceFromAapt,
+  cloudSafeMainActivityJava,
   createAndroidPlayManifestPolicy,
 } from "./run-mobile-build.mjs";
 
@@ -158,5 +159,9 @@ describe("Android Play manifest policy", () => {
     expect(APP_BUILD_GRADLE).toContain(
       'implementation "androidx.work:work-runtime:2.11.0"',
     );
+    const mainActivity = cloudSafeMainActivityJava("ai.elizaos.app");
+    expect(mainActivity).not.toContain("android.os.SystemProperties");
+    expect(mainActivity).not.toContain("java.lang.reflect");
+    expect(mainActivity).not.toContain("GatewayConnectionService");
   });
 });
