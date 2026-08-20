@@ -209,6 +209,37 @@ describe("executeNativeStoragePut", () => {
     expect(reconcileNativeQuotaFromCatalog).toHaveBeenCalledWith(ORG);
   });
 
+  test("throws instead of looping forever when R2 repeats a page cursor", async () => {
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+    const bucket = fakeR2({ value: false });
+    bucket.list = mock().mockResolvedValue({
+      objects: [],
+      truncated: true,
+      cursor: "stuck",
+    });
+
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).rejects.toMatchObject({
+      code: "PROVIDER_INTEGRITY",
+    });
+    // Stopped after the repeat was detected, not after a third page.
+    expect(bucket.list).toHaveBeenCalledTimes(2);
+  });
+
+  test("bounds quota reconciliation pagination against a provider that never repeats but never stops", async () => {
+    quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
+    const bucket = fakeR2({ value: false });
+    let page = 0;
+    bucket.list = mock().mockImplementation(async () => {
+      page += 1;
+      return { objects: [], truncated: true, cursor: `cursor-${page}` };
+    });
+
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).rejects.toMatchObject({
+      code: "PROVIDER_INTEGRITY",
+    });
+    expect(bucket.list).toHaveBeenCalledTimes(1_000);
+  });
+
   test("adopts a legacy logical key from strong native HEAD without moving bytes", async () => {
     const bucket = fakeR2({ value: false });
     const legacyKey = `org/${ORG}/legacy/voice.ogg`;

@@ -23,6 +23,11 @@ const PROVIDER_LEASE_MS = 5 * 60 * 1000;
 const RECOVERY_GRACE_MS = 10 * 60 * 1000;
 const PROVIDER_ABSENCE_QUARANTINE_MS = 10 * 60 * 1000;
 const MAX_IDEMPOTENCY_KEY_BYTES = 200;
+// Bounds ensureNativeStorageQuotaReconciled's R2 list() loop against a
+// provider/proxy that keeps truncated=true with a never-repeating cursor --
+// 1,000 pages * 1,000 objects/page covers even a very large legacy bucket
+// while keeping worst-case requests/DB writes finite.
+const MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES = 1_000;
 
 /** Sums exact server-owned decimal legs, then rounds once to the ledger unit. */
 export function calculateStoragePutPrice(
@@ -133,7 +138,15 @@ export async function ensureNativeStorageQuotaReconciled(
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
   let hasMore = true;
+  let pageCount = 0;
   while (hasMore) {
+    pageCount += 1;
+    if (pageCount > MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES) {
+      throw new NativeStoragePutError(
+        "PROVIDER_INTEGRITY",
+        `R2 quota reconciliation pagination exceeded ${MAX_NATIVE_STORAGE_QUOTA_RECONCILE_PAGES} pages`,
+      );
+    }
     const page = await bucket.list({
       prefix: providerPrefix,
       cursor,
