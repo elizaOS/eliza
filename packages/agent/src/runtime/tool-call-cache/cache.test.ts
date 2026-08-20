@@ -403,6 +403,28 @@ describe("ToolCallCache", () => {
     expect(redacted.key).toContain("<REDACTED:openai-key>");
   });
 
+  it("fail-closes on cyclic tool output instead of stack-overflowing the disk write", () => {
+    const cyclic: Record<string, unknown> = { blob: "sk-AAAAAAAAAAAAAAAAAA" };
+    cyclic.self = cyclic;
+    let redacted: Record<string, unknown>;
+    expect(() => {
+      redacted = defaultPrivacyRedactor(cyclic) as Record<string, unknown>;
+    }).not.toThrow();
+    expect(redacted!.blob).toContain("<REDACTED:openai-key>");
+    expect(redacted!.self).toBe("[REDACTED_BOUNDED]");
+  });
+
+  it("fail-closes on a deep nest instead of overflowing", () => {
+    let deep: unknown = { blob: "Bearer abcdefghijklmnopqr1234" };
+    for (let i = 0; i < 24; i++) deep = { child: deep };
+    let redacted: unknown;
+    expect(() => {
+      redacted = defaultPrivacyRedactor(deep);
+    }).not.toThrow();
+    expect(() => JSON.stringify(redacted)).not.toThrow();
+    expect(JSON.stringify(redacted)).toContain("[REDACTED_BOUNDED]");
+  });
+
   it("registry includes web_search, web_fetch, file_read, rag_search, knowledge_lookup", () => {
     expect(CACHEABLE_TOOL_REGISTRY.web_search?.cacheable).toBe(true);
     expect(CACHEABLE_TOOL_REGISTRY.web_fetch?.cacheable).toBe(true);

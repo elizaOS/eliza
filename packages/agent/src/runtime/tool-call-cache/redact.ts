@@ -209,18 +209,31 @@ function redactString(input: string, envValues: string[]): string {
   return out;
 }
 
-function walk(value: unknown, envValues: string[]): unknown {
+/** Fail-closed bound: cyclic or deeply nested tool outputs must not stack-overflow the disk write. */
+const MAX_REDACT_DEPTH = 8;
+const BOUNDED_SENTINEL = "[REDACTED_BOUNDED]";
+
+function walk(
+  value: unknown,
+  envValues: string[],
+  seen: WeakSet<object> = new WeakSet(),
+  depth = 0,
+): unknown {
   if (typeof value === "string") {
     return redactString(value, envValues);
   }
-  if (Array.isArray(value)) {
-    return value.map((item) => walk(item, envValues));
-  }
   if (value && typeof value === "object") {
+    if (depth > MAX_REDACT_DEPTH || seen.has(value)) {
+      return BOUNDED_SENTINEL;
+    }
+    seen.add(value);
+    if (Array.isArray(value)) {
+      return value.map((item) => walk(item, envValues, seen, depth + 1));
+    }
     const obj = value as Record<string, unknown>;
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(obj)) {
-      out[key] = walk(obj[key], envValues);
+      out[key] = walk(obj[key], envValues, seen, depth + 1);
     }
     return out;
   }
