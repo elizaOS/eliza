@@ -6457,6 +6457,17 @@ export class OrchestratorTaskService extends Service {
       await this.advanceTaskStatus(taskId, "interrupted");
       throw new Error("ACP service unavailable; cannot stop active session");
     }
+    // Stamp BEFORE stopping (same contract as every other administrative
+    // stop): an unstamped teardown defeats the router's and the swarm
+    // coordinator's noise suppression — the killed child then narrates
+    // "stopped before completion" and its dying lane reports "launch failed"
+    // (live 2026-08-20, bmi-calculator follow-up).
+    await markSessionAdministrativelyStopped(
+      acp,
+      sessionId,
+      "task_stop",
+      (msg) => this.log("warn", msg, { taskId, sessionId }),
+    );
     try {
       await acp.stopSession(sessionId);
     } catch (err) {
@@ -7320,6 +7331,12 @@ export class OrchestratorTaskService extends Service {
     const victim = candidates[0];
     if (!victim) return false;
     try {
+      await markSessionAdministrativelyStopped(
+        acp,
+        victim.id,
+        "keepalive_reclaim",
+        (msg) => this.log("warn", msg, { sessionId: victim.id }),
+      );
       await acp.stopSession(victim.id);
       this.log("info", "reclaimed idle keepAlive session for queued task", {
         sessionId: victim.id,

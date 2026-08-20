@@ -225,6 +225,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
   // session next goes idle and they can be flushed without derailing a turn.
   const subAgentInbox = new SubAgentInbox();
 
+
   return {
     name: "@elizaos/plugin-agent-orchestrator",
     description: codeExecutionAllowed
@@ -333,6 +334,15 @@ export function createAgentOrchestratorPlugin(): Plugin {
       // Forward mid-task user messages to the live sub-agent for this roomId.
       // Bind is on (source, roomId) — no Discord-thread dependency, so plain
       // SMS/WhatsApp follow-ups work too.
+      // Runtime-scoped handle so the TASKS send action can QUEUE for a busy
+      // session instead of erroring: the bare "ACP session is already busy"
+      // failure sent the planner escalating to a stop of the running build
+      // (live 2026-08-20, bmi-calculator follow-up).
+      (
+        runtime as IAgentRuntime & {
+          __orchestratorSubAgentInbox?: SubAgentInbox;
+        }
+      ).__orchestratorSubAgentInbox = subAgentInbox;
       activeSessionForwardHandler = createActiveSessionForwardHandler(
         runtime,
         subAgentInbox,

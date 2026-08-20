@@ -43,6 +43,7 @@ import {
   ADMIN_STOP_META_KEY,
   markSessionAdministrativelyStopped,
 } from "../services/admin-stop-marker.js";
+import { isSessionBusyError } from "../services/parent-agent-dispatch.js";
 import {
   augmentTaskWithDeployGuidance,
   isAppBuildTask,
@@ -3654,7 +3655,36 @@ async function runSend(
       ? buildSubAgentCompletionFollowUp(routedCompletion, plannerInput)
       : plannerInput;
     if (textInput) {
-      await service.sendToSession(target.session.id, textInput);
+      try {
+        await service.sendToSession(target.session.id, textInput);
+      } catch (error) {
+        // A busy session is not a failure — it is exactly what the
+        // sub-agent inbox exists for. The bare "ACP session is already
+        // busy" error sent the planner escalating to STOPPING the running
+        // build (live 2026-08-20, bmi-calculator follow-up); queue instead
+        // and let the idle-flush deliver it between turns.
+        const inbox = (
+          runtime as IAgentRuntime & {
+            __orchestratorSubAgentInbox?: {
+              enqueue: (sessionId: string, text: string) => void;
+            };
+          }
+        ).__orchestratorSubAgentInbox;
+        if (isSessionBusyError(error) && inbox) {
+          inbox.enqueue(target.session.id, textInput);
+          return {
+            success: true,
+            text: "The agent is mid-step; the instruction is queued and will be delivered the moment the current step settles. Do NOT stop or respawn the agent for this.",
+            data: {
+              sessionId: target.session.id,
+              queued: true,
+              ...(task ? { task } : {}),
+            },
+            continueChain: false,
+          };
+        }
+        throw error;
+      }
       const text = task ? "Assigned new task to agent" : "Sent input to agent";
       return {
         success: true,
