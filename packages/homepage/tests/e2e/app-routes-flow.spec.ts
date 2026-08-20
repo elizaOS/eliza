@@ -335,6 +335,11 @@ test("landing leads with iMessage and keeps secondary channels available", async
   await expect(
     page.getByRole("heading", { name: /Four hours of your time back/ }),
   ).toBeVisible({ timeout: 20_000 });
+  await expect(
+    page.getByText(
+      "Text Eliza what you're planning. She keeps the details together in one conversation.",
+    ),
+  ).toBeVisible();
 
   const textCta = page.getByRole("button", { name: "Text Eliza" });
   await expect(textCta).toBeVisible();
@@ -352,6 +357,8 @@ test("landing leads with iMessage and keeps secondary channels available", async
   );
   const channels = page.locator(".landing-secondary-channels");
   await expect(channels.locator(".landing-channel")).toHaveCount(2);
+  await expect(channels.getByText("Telegram", { exact: true })).toBeVisible();
+  await expect(channels.getByText("Discord", { exact: true })).toBeVisible();
   await expect(
     channels.getByRole("link", { name: /Telegram/ }),
   ).toHaveAttribute("href", /^https:\/\/t\.me\//);

@@ -167,7 +167,7 @@
   "homepage_eliza.phoneInput.phoneAria": "電話番号",
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "毎週4時間を、あなたの手に取り戻す。",
-  "homepage_eliza.landing.heroLede": "こんにちは、Elizaです — あなたのパーソナルアシスタント。時間を節約して、あなたの負担を引き受けます。",
+  "homepage_eliza.landing.heroLede": "計画していることをElizaにメッセージしてください。会話の中で詳細をまとめて覚えてくれます。",
   "homepage_eliza.landing.ctaText": "メッセージ",
   "homepage_eliza.landing.copyPhone": "Elizaの電話番号をコピー",
   "homepage_eliza.landing.phoneCopied": "コピーしました！",

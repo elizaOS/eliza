@@ -661,6 +661,9 @@ export default function LandingPage() {
     {
       key: "telegram",
       href: buildElizaTelegramHref(),
+      shortLabel: t("homepage_eliza.getStarted.btnTelegram", {
+        defaultValue: "Telegram",
+      }),
       label: t("homepage_eliza.landing.channelTelegram", {
         defaultValue: "Message Eliza on Telegram",
       }),
@@ -669,6 +672,9 @@ export default function LandingPage() {
     {
       key: "discord",
       href: buildElizaDiscordHref(),
+      shortLabel: t("homepage_eliza.getStarted.btnDiscord", {
+        defaultValue: "Discord",
+      }),
       label: t("homepage_eliza.landing.channelDiscord", {
         defaultValue: "Message Eliza on Discord",
       }),
@@ -756,6 +762,12 @@ export default function LandingPage() {
               defaultValue: "Four hours of your time back every week.",
             })}
           </h1>
+          <p className="landing-hero-lede">
+            {t("homepage_eliza.landing.heroLede", {
+              defaultValue:
+                "Text Eliza what you're planning. She keeps the details together in one conversation.",
+            })}
+          </p>
           <div className="landing-hero-actions">
             <button
               type="button"
@@ -796,6 +808,7 @@ export default function LandingPage() {
                 rel="noreferrer"
               >
                 {channel.icon}
+                <span>{channel.shortLabel}</span>
               </a>
             ))}
           </div>

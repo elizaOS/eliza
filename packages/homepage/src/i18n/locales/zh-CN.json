@@ -167,7 +167,7 @@
   "homepage_eliza.phoneInput.phoneAria": "电话号码",
   "homepage_eliza.phoneInput.optionFormat": "{{name}}（+{{dial}}）",
   "homepage_eliza.landing.heroTitle": "每周省回四个小时。",
-  "homepage_eliza.landing.heroLede": "嗨，我是 Eliza — 你的个人助理。我在这里为你节省时间，替你分担事务。",
+  "homepage_eliza.landing.heroLede": "把你正在计划的事情发给 Eliza。她会在同一段对话中整理好所有细节。",
   "homepage_eliza.landing.ctaText": "发消息",
   "homepage_eliza.landing.copyPhone": "复制 Eliza 的电话号码",
   "homepage_eliza.landing.phoneCopied": "已复制！",

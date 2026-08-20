@@ -1435,26 +1435,28 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
 .landing-hero-heading {
   margin: 0;
-  max-width: 18ch;
-  font-size: clamp(1.9rem, 3.4vw, 2.9rem);
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: -0.02em;
+  max-width: 14ch;
+  font-size: clamp(2.25rem, 4.2vw, 4.15rem);
+  font-weight: 720;
+  line-height: 0.98;
+  letter-spacing: -0.035em;
   text-wrap: balance;
   color: var(--brand-black);
 }
 
 .landing-hero-lede {
-  margin: 1.5rem 0 0;
-  max-width: 30rem;
-  font-size: clamp(1.15rem, 1.8vw, 1.45rem);
-  font-weight: 400;
-  line-height: 1.35;
+  margin: 1.15rem 0 0;
+  max-width: 32rem;
+  color: rgb(17 17 17 / 70%);
+  font-size: clamp(1rem, 1.45vw, 1.2rem);
+  font-weight: 450;
+  line-height: 1.45;
   text-wrap: pretty;
 }
 
@@ -1466,7 +1468,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   min-width: 0;
   width: 100%;
   gap: 0.65rem;
-  margin-top: 1.65rem;
+  margin-top: 1.4rem;
 }
 
 .landing-copy-notice {
@@ -1510,9 +1512,11 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
 .landing-secondary-channels {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  margin-top: 0.5rem;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
 }
 
 .landing-channel {
@@ -1520,11 +1524,17 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 76%);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 9%);
+  gap: 0.4rem;
+  min-height: 2.55rem;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 82%);
+  color: rgb(17 17 17 / 72%);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 8%);
+  font-size: 0.82rem;
+  font-weight: 620;
+  line-height: 1;
+  text-decoration: none;
   cursor: pointer;
   transition:
     transform 160ms ease-out,
@@ -1535,6 +1545,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 .landing-channel:hover {
   transform: translateY(-2px);
   background: #ffffff;
+  color: #111111;
   box-shadow: 0 8px 20px rgb(0 0 0 / 14%);
 }
 
@@ -1564,17 +1575,21 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   transition:
     background 0.15s ease,
     color 0.15s ease,
-    border-color 0.15s ease;
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .landing-cta--black {
-  background: var(--brand-black);
+  background: var(--landing-orange);
   color: var(--brand-white);
+  box-shadow: 0 12px 28px rgb(255 88 0 / 24%);
 }
 
 .landing-cta--black:hover {
-  background: rgb(0 0 0 / 82%);
+  background: #d94b00;
   color: var(--brand-white);
+  box-shadow: 0 14px 32px rgb(217 75 0 / 30%);
+  transform: translateY(-1px);
 }
 
 .landing-cta--white {
@@ -1584,8 +1599,19 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-cta--white:hover {
-  background: var(--brand-black);
-  color: var(--brand-white);
+  background: #f7f7f8;
+  color: var(--brand-black);
+  transform: translateY(-1px);
+}
+
+.landing-cta:active,
+.landing-channel:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.landing-cta:focus-visible {
+  outline: 3px solid #111111;
+  outline-offset: 3px;
 }
 
 /* iPhone-styled iMessage preview */
@@ -1610,7 +1636,8 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   -webkit-user-select: none;
   user-select: none;
   box-shadow:
-    0 40px 90px rgb(0 0 0 / 30%),
+    0 42px 88px rgb(31 24 43 / 28%),
+    0 12px 30px rgb(31 24 43 / 16%),
     inset 0 0 0 2px rgb(255 255 255 / 14%);
 }
 
@@ -2208,6 +2235,12 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 .landing-sheet-row:hover,
 .landing-sheet-row:focus-visible {
   background: rgb(0 0 0 / 4%);
+}
+
+.landing-sheet-row:focus-visible,
+.landing-sheet-close:focus-visible {
+  outline: 3px solid var(--landing-orange);
+  outline-offset: 2px;
 }
 
 .landing-sheet-row--account {
