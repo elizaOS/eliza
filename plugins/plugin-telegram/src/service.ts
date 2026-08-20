@@ -506,7 +506,23 @@ export class TelegramService extends Service {
       (target as AccountScopedTargetInfo | null | undefined)?.accountId ??
       fallback?.accountId;
     if (direct) {
-      return normalizeTelegramAccountId(direct);
+      const normalized = normalizeTelegramAccountId(direct);
+      // Only enforce this in real multi-account mode. In legacy single-bot
+      // mode accountStates is empty and getAccountState() always falls back
+      // to the one configured bot regardless of accountId -- there is no
+      // second account an unrecognized id could be confused with, so an
+      // explicit id that isn't the exact defaultAccountId string is not an
+      // error there (existing single-bot callers may pass any identifier).
+      if (
+        this.accountStates instanceof Map &&
+        this.accountStates.size > 0 &&
+        this.getAccountState(normalized) === null
+      ) {
+        throw new Error(
+          `Telegram account ${normalized} is not configured or active`,
+        );
+      }
+      return normalized;
     }
     const roomId = target?.roomId ?? fallback?.roomId;
     if (roomId && typeof runtime.getRoom === "function") {
