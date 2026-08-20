@@ -66,6 +66,28 @@ describe("toActionParameterValue", () => {
 		}
 	});
 
+	it("preserves within-budget sparse holes and length", () => {
+		const value: unknown[] = [];
+		value[2] = "x";
+		const result = toActionParameterValue(value) as unknown[];
+		expect(result).toHaveLength(3);
+		expect(0 in result).toBe(false);
+		expect(1 in result).toBe(false);
+		expect(Object.hasOwn(result, "2")).toBe(true);
+		expect(result[2]).toBe("x");
+	});
+
+	it("converts explicit undefined slots to null without collapsing length", () => {
+		const value: unknown[] = [undefined, undefined, "x"];
+		const result = toActionParameterValue(value) as unknown[];
+		expect(result).toHaveLength(3);
+		expect(0 in result).toBe(true);
+		expect(1 in result).toBe(true);
+		expect(result[0]).toBe(null);
+		expect(result[1]).toBe(null);
+		expect(result[2]).toBe("x");
+	});
+
 	it("throws on a cyclic record without hanging", () => {
 		const cyclic: { self?: unknown } = {};
 		cyclic.self = cyclic;
@@ -281,6 +303,18 @@ describe("parseActionParams", () => {
 			expect((error as Error).name).not.toBe("RangeError");
 		}
 		expect(performance.now() - started).toBeLessThan(50);
+	});
+
+	it("preserves sparse holes through parseActionParams", () => {
+		const payload: unknown[] = [];
+		payload[2] = "x";
+		const result = parseActionParams({
+			params: { ACT: { payload } },
+		}).get("ACT")?.payload as unknown[];
+		expect(result).toHaveLength(3);
+		expect(0 in result).toBe(false);
+		expect(1 in result).toBe(false);
+		expect(result[2]).toBe("x");
 	});
 
 	it("shares the node budget across the whole params graph", () => {

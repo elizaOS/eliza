@@ -257,15 +257,18 @@ function toActionParameterValueInner(
 				failUnbounded({ invalidArrayLength: true });
 			}
 			reserve(ctx, length);
-			const out: ActionParameters[string][] = [];
+			const out = new Array<ActionParameters[string]>(length);
 			for (let index = 0; index < length; index += 1) {
 				const descriptor = ownDescriptor(value, String(index));
 				if (!descriptor) continue;
 				if (!("value" in descriptor)) {
 					failUnbounded({ accessor: true, side: "array", index });
 				}
-				out.push(
-					toActionParameterValueInner(descriptor.value, depth + 1, ctx, true),
+				out[index] = toActionParameterValueInner(
+					descriptor.value,
+					depth + 1,
+					ctx,
+					true,
 				);
 			}
 			return out as ActionParameters[string];
