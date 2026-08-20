@@ -56,7 +56,7 @@ interface MockRuntimeHandle {
   setTasks: (tasks: Task[]) => void;
   setDispatchResult: (
     result:
-      | { ok: true; executionId?: string }
+      | { ok: true; executionId?: string; dedup?: boolean }
       | { ok: false; error: string; code?: string },
   ) => void;
   setWorkflowServicePresent: (present: boolean) => void;
@@ -108,6 +108,7 @@ function makeRuntime(): MockRuntimeHandle {
   let dispatchResult: {
     ok: boolean;
     executionId?: string;
+    dedup?: boolean;
     error?: string;
     code?: string;
   } = { ok: true, executionId: "exec-1" };
@@ -456,6 +457,7 @@ describe("executeTriggerTask", () => {
       triggerType: "event",
       eventKind: "MESSAGE_RECEIVED",
     });
+    handle.setTasks([task]);
 
     const result = await executeTriggerTask(handle.runtime, task, {
       source: "event",
@@ -500,6 +502,7 @@ describe("executeTriggerTask", () => {
         },
       },
     });
+    handle.setTasks([task]);
 
     const matching = await executeTriggerTask(handle.runtime, task, {
       source: "event",
@@ -1046,8 +1049,65 @@ describe("runtime event trigger bridge", () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
-  it("coalesces concurrent task lookups and reuses them for a bounded window", async () => {
-    const now = vi.spyOn(Date, "now").mockReturnValue(10_000);
+  it("preserves a disable saved while an event run is in flight", async () => {
+    const target = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+    });
+    handle.setTasks([target]);
+    let releaseFirst: (() => void) | undefined;
+    const execute = vi.fn(
+      () =>
+        new Promise<{ ok: true; executionId: string }>((resolve) => {
+          releaseFirst = () => resolve({ ok: true, executionId: "first" });
+        }),
+    );
+    const workflowService = handle.runtime.getService(
+      "WORKFLOW_DISPATCH",
+    ) as unknown as { execute: typeof execute };
+    workflowService.execute = execute;
+    registerTriggerTaskWorker(handle.runtime);
+
+    await handle.runtime.emitEvent("workflow_run_event", {
+      runtime: handle.runtime,
+      event: { id: "event-1", type: "NodeFinished" },
+    } as never);
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+
+    await handle.runtime.emitEvent("workflow_run_event", {
+      runtime: handle.runtime,
+      event: { id: "event-2", type: "NodeFinished" },
+    } as never);
+    await vi.waitFor(() =>
+      expect(handle.runtime.getTasks).toHaveBeenCalledTimes(4),
+    );
+
+    const metadata = target.metadata as {
+      trigger: Record<string, unknown>;
+    };
+    handle.setTasks([
+      {
+        ...target,
+        metadata: {
+          ...metadata,
+          trigger: { ...metadata.trigger, enabled: false },
+        },
+      } as Task,
+    ]);
+    releaseFirst?.();
+
+    await vi.waitFor(() => expect(handle.updatedTasks).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(execute).toHaveBeenCalledOnce();
+    expect(
+      readTriggerConfig({
+        ...target,
+        metadata: handle.updatedTasks[0]?.patch.metadata,
+      } as Task),
+    ).toMatchObject({ enabled: false, runCount: 1 });
+  });
+
+  it("coalesces only concurrent task lookups and sees newly saved triggers immediately", async () => {
     const target = makeTriggerTask({
       triggerType: "event",
       eventKind: "workflow_run_event",
@@ -1068,18 +1128,14 @@ describe("runtime event trigger bridge", () => {
     await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(2));
     expect(handle.runtime.getTasks).toHaveBeenCalledTimes(2);
 
-    now.mockReturnValue(10_400);
+    const newlySaved = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+    });
+    handle.setTasks([target, newlySaved]);
     await handle.runtime.emitEvent("workflow_run_event", {
       runtime: handle.runtime,
       event: { id: "event-3", type: "NodeFinished" },
-    } as never);
-    await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(3));
-    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(2);
-
-    now.mockReturnValue(10_501);
-    await handle.runtime.emitEvent("workflow_run_event", {
-      runtime: handle.runtime,
-      event: { id: "event-4", type: "NodeFinished" },
     } as never);
     await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(4));
     expect(handle.runtime.getTasks).toHaveBeenCalledTimes(4);
@@ -1105,6 +1161,39 @@ describe("runtime event trigger bridge", () => {
     expect(handle.dispatchCalls[0]?.options?.idempotencyKey).toBe(
       handle.dispatchCalls[1]?.options?.idempotencyKey,
     );
+  });
+
+  it("does not count an idempotently deduplicated Smithers replay as a new run", async () => {
+    const target = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+      maxRuns: 2,
+    });
+    handle.setTasks([target]);
+    handle.setDispatchResult({
+      ok: true,
+      executionId: "existing-execution",
+      dedup: true,
+    });
+
+    const result = await executeTriggerTask(handle.runtime, target, {
+      source: "event",
+      event: {
+        kind: "workflow_run_event",
+        payload: {
+          event: { id: "smithers-event-42", type: "NodeFinished" },
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "skipped",
+      taskDeleted: false,
+      executionId: "existing-execution",
+    });
+    expect(handle.runtime.updateTask).not.toHaveBeenCalled();
+    expect(handle.runtime.deleteTask).not.toHaveBeenCalled();
+    expect(readTriggerConfig(target)?.runCount).toBe(0);
   });
 });
 

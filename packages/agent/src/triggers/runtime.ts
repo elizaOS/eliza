@@ -50,19 +50,15 @@ export const TRIGGER_TASK_TAGS = ["queue", "repeat", "trigger"] as const;
 const HEARTBEAT_TASK_TAGS = ["queue", "repeat", "heartbeat"] as const;
 const WORKFLOW_RUN_EVENT = "workflow_run_event" as const;
 const RUNTIME_TRIGGER_EVENT_KINDS = [WORKFLOW_RUN_EVENT] as const;
-const RUNTIME_EVENT_TASK_CACHE_TTL_MS = 500;
-
 const eventBridgeRegistrations = new WeakSet<IAgentRuntime>();
 const eventDispatchQueues = new WeakMap<
   IAgentRuntime,
   Map<UUID, Promise<void>>
 >();
-interface RuntimeEventTaskCache {
+interface RuntimeEventTaskLookup {
   pending?: Promise<Task[]>;
-  refreshedAt: number;
-  tasks?: Task[];
 }
-const eventTaskCaches = new WeakMap<IAgentRuntime, RuntimeEventTaskCache>();
+const eventTaskLookups = new WeakMap<IAgentRuntime, RuntimeEventTaskLookup>();
 
 const DEFAULT_MAX_ACTIVE_TRIGGERS = 100;
 
@@ -369,7 +365,7 @@ async function dispatchWorkflow(
   trigger: WorkflowTriggerConfig,
   event?: TriggerExecutionOptions["event"],
 ): Promise<
-  | { ok: true; executionId?: string }
+  | { ok: true; executionId?: string; dedup?: boolean }
   | { ok: false; error: string; code?: string }
 > {
   if (!trigger.workflowId) {
@@ -402,7 +398,11 @@ async function dispatchWorkflow(
     idempotencyKey,
   });
   return result.ok
-    ? { ok: true, executionId: result.executionId }
+    ? {
+        ok: true,
+        executionId: result.executionId,
+        ...(result.dedup === true ? { dedup: true } : {}),
+      }
     : {
         ok: false,
         error: result.error ?? "workflow execution failed",
@@ -673,6 +673,19 @@ export async function executeTriggerTask(
     trigger.kind === "workflow"
       ? await dispatchWorkflow(runtime, task, trigger, options.event)
       : await dispatchPrompt(runtime, trigger, task.roomId);
+  if (result.ok === true && "dedup" in result && result.dedup === true) {
+    // The workflow dispatcher has already accepted this native event identity.
+    // A replay is not a new trigger run: recording it would inflate runCount,
+    // emit a duplicate success notification, and could prematurely exhaust
+    // maxRuns even though no second workflow execution was started.
+    recordExecutionMetric(runtime.agentId, "skipped", Date.now());
+    return {
+      status: "skipped",
+      taskDeleted: false,
+      trigger: taskToTriggerSummary(task),
+      executionId: result.executionId,
+    };
+  }
   if (result.ok === true) {
     // Only workflow dispatch carries an execution id; prompt dispatch types it
     // as `undefined`, so this reads `string | undefined` without a cast.
@@ -775,10 +788,39 @@ export async function executeTriggerTask(
     }
   }
 
+  let taskToPersist = task;
+  let triggerToPersist = trigger;
+  if (options.source === "event") {
+    const currentTask = await runtime.getTask(task.id);
+    if (!currentTask) {
+      const finishedAt = Date.now();
+      recordExecutionMetric(runtime.agentId, status, finishedAt);
+      return {
+        status,
+        error: errorMessage || undefined,
+        taskDeleted: true,
+        executionId: workflowExecutionId,
+      };
+    }
+    const currentTrigger = readTriggerConfig(currentTask);
+    if (!currentTrigger) {
+      const finishedAt = Date.now();
+      recordExecutionMetric(runtime.agentId, status, finishedAt);
+      return {
+        status,
+        error: errorMessage || undefined,
+        taskDeleted: false,
+        executionId: workflowExecutionId,
+      };
+    }
+    taskToPersist = currentTask;
+    triggerToPersist = currentTrigger;
+  }
+
   const finishedAt = Date.now();
   const runRecord: TriggerRunRecord = {
     triggerRunId: stringToUuid(crypto.randomUUID()),
-    triggerId: trigger.triggerId,
+    triggerId: triggerToPersist.triggerId,
     taskId: task.id,
     startedAt,
     finishedAt,
@@ -790,21 +832,25 @@ export async function executeTriggerTask(
   };
 
   const updatedTrigger: TriggerConfig = {
-    ...trigger,
-    runCount: trigger.runCount + 1,
+    ...triggerToPersist,
+    runCount: triggerToPersist.runCount + 1,
     lastRunAtIso: new Date(finishedAt).toISOString(),
     lastStatus: status,
     lastError: errorMessage || undefined,
   };
 
+  const workflowStillGone =
+    workflowGone &&
+    triggerToPersist.kind === "workflow" &&
+    triggerToPersist.workflowId === trigger.workflowId;
   const shouldDeleteTask =
-    workflowGone ||
+    workflowStillGone ||
     updatedTrigger.triggerType === "once" ||
     (typeof updatedTrigger.maxRuns === "number" &&
       updatedTrigger.maxRuns > 0 &&
       updatedTrigger.runCount >= updatedTrigger.maxRuns);
 
-  const existingMetadata = taskMetadata(task);
+  const existingMetadata = taskMetadata(taskToPersist);
   const nextMetadata = buildTriggerMetadata({
     existingMetadata,
     trigger: updatedTrigger,
@@ -861,13 +907,15 @@ export async function executeTriggerTask(
   }
 
   await runtime.updateTask(task.id, {
-    description: metadataToPersist.trigger?.displayName ?? task.description,
+    description:
+      metadataToPersist.trigger?.displayName ?? taskToPersist.description,
     metadata: metadataToPersist,
   });
 
   const updatedTask: Task = {
-    ...task,
-    description: metadataToPersist.trigger?.displayName ?? task.description,
+    ...taskToPersist,
+    description:
+      metadataToPersist.trigger?.displayName ?? taskToPersist.description,
     metadata: metadataToPersist,
   };
   const triggerSummary = taskToTriggerSummary(updatedTask);
@@ -913,32 +961,21 @@ function serializableEventPayload(
   return payload;
 }
 
-async function listCachedRuntimeEventTasks(
-  runtime: IAgentRuntime,
-): Promise<Task[]> {
-  const now = Date.now();
-  const cache = eventTaskCaches.get(runtime) ?? { refreshedAt: 0 };
-  eventTaskCaches.set(runtime, cache);
-  if (
-    cache.tasks &&
-    now - cache.refreshedAt >= 0 &&
-    now - cache.refreshedAt < RUNTIME_EVENT_TASK_CACHE_TTL_MS
-  ) {
-    return cache.tasks;
-  }
-  let pending = cache.pending;
+async function listRuntimeEventTasks(runtime: IAgentRuntime): Promise<Task[]> {
+  const lookup = eventTaskLookups.get(runtime) ?? {};
+  eventTaskLookups.set(runtime, lookup);
+  let pending = lookup.pending;
   if (!pending) {
-    pending = listTriggerTasks(runtime).then((tasks) => {
-      cache.tasks = tasks;
-      cache.refreshedAt = Date.now();
-      return tasks;
-    });
-    cache.pending = pending;
+    pending = listTriggerTasks(runtime);
+    lookup.pending = pending;
   }
   try {
     return await pending;
   } finally {
-    if (cache.pending === pending) cache.pending = undefined;
+    // Share only a lookup that is currently in flight. Retaining the result,
+    // even briefly, can lose a native event for a trigger saved or enabled
+    // between two Smithers steps because that trigger would never be queued.
+    if (lookup.pending === pending) lookup.pending = undefined;
   }
 }
 
@@ -952,7 +989,7 @@ export async function dispatchRuntimeEventTriggers(
   eventKind: string,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  const tasks = await listCachedRuntimeEventTasks(runtime);
+  const tasks = await listRuntimeEventTasks(runtime);
   const matchingTasks = tasks.filter((task) => {
     const trigger = readTriggerConfig(task);
     return (
