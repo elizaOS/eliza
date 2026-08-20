@@ -19,6 +19,7 @@ plugins
 !plugins/plugin-openai
 !plugins/plugin-scheduling
 !plugins/plugin-sql
+!plugins/plugin-todos
 !plugins/plugin-web-search
 !plugins/plugin-workflow
 packages/app

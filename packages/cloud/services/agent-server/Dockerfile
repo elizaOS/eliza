@@ -56,9 +56,10 @@ COPY plugins/plugin-native-llama/package.json plugins/plugin-native-llama/
 COPY plugins/plugin-openai/package.json plugins/plugin-openai/
 COPY plugins/plugin-scheduling/package.json plugins/plugin-scheduling/
 COPY plugins/plugin-sql/package.json plugins/plugin-sql/
+COPY plugins/plugin-todos/package.json plugins/plugin-todos/
 COPY plugins/plugin-web-search/package.json plugins/plugin-web-search/
 COPY plugins/plugin-workflow/package.json plugins/plugin-workflow/
-RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/cloud/services/agent-server","packages/cloud/services/_common","packages/cloud/routing","packages/cloud/sdk","packages/cloud/shared","packages/core","packages/logger","packages/prompts","packages/registry","packages/shared","packages/ui","plugins/plugin-cloud-apps","plugins/plugin-elizacloud","plugins/plugin-native-agent","plugins/plugin-native-bun-runtime","plugins/plugin-native-camera","plugins/plugin-native-llama","plugins/plugin-openai","plugins/plugin-scheduling","plugins/plugin-sql","plugins/plugin-web-search","plugins/plugin-workflow"]}\n' > package.json \
+RUN printf '{"name":"agent-server-build","private":true,"workspaces":["packages/cloud/services/agent-server","packages/cloud/services/_common","packages/cloud/routing","packages/cloud/sdk","packages/cloud/shared","packages/core","packages/logger","packages/prompts","packages/registry","packages/shared","packages/ui","plugins/plugin-cloud-apps","plugins/plugin-elizacloud","plugins/plugin-native-agent","plugins/plugin-native-bun-runtime","plugins/plugin-native-camera","plugins/plugin-native-llama","plugins/plugin-openai","plugins/plugin-scheduling","plugins/plugin-sql","plugins/plugin-todos","plugins/plugin-web-search","plugins/plugin-workflow"]}\n' > package.json \
     && bun install --production
 
 # Production stage: run the service straight from TypeScript source, resolving
@@ -95,6 +96,7 @@ COPY plugins/plugin-native-llama plugins/plugin-native-llama
 COPY plugins/plugin-openai plugins/plugin-openai
 COPY plugins/plugin-scheduling plugins/plugin-scheduling
 COPY plugins/plugin-sql plugins/plugin-sql
+COPY plugins/plugin-todos plugins/plugin-todos
 COPY plugins/plugin-web-search plugins/plugin-web-search
 COPY plugins/plugin-workflow plugins/plugin-workflow
 COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/

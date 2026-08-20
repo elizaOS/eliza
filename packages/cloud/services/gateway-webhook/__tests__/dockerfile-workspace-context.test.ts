@@ -138,6 +138,51 @@ describe("service Dockerfiles can resolve their workspace dependencies", () => {
     }
   });
 
+  test("agent-server's pruned workspace is transitively closed", () => {
+    const agentServer = services.find(
+      (service) => service.name === "agent-server",
+    );
+    expect(agentServer).toBeDefined();
+
+    const missing: string[] = [];
+    for (const root of [
+      "packages",
+      "plugins",
+      "packages/cloud",
+      "packages/cloud/services",
+    ]) {
+      const rootPath = `${REPO_ROOT}/${root}`;
+      if (!existsSync(rootPath)) continue;
+      for (const name of readdirSync(rootPath)) {
+        const manifestPath = `${rootPath}/${name}/package.json`;
+        if (!existsSync(manifestPath)) continue;
+        const directory = `${root}/${name}`;
+        if (!agentServer?.dockerfile.includes(`COPY ${directory}/package.json`))
+          continue;
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+          name?: string;
+          dependencies?: Record<string, string>;
+        };
+        for (const [dependency, range] of Object.entries(
+          manifest.dependencies ?? {},
+        )) {
+          if (!range.startsWith("workspace:")) continue;
+          const dependencyDirectory = directoryOf(dependency);
+          if (
+            !dependencyDirectory ||
+            !agentServer?.dockerfile.includes(
+              `COPY ${dependencyDirectory}/package.json`,
+            )
+          ) {
+            missing.push(`${manifest.name ?? directory} -> ${dependency}`);
+          }
+        }
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+
   test("gateway-webhook prunes build-only workspace links before production install", () => {
     const gateway = services.find(
       (service) => service.name === "gateway-webhook",
