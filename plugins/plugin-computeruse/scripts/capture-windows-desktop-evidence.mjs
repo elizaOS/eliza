@@ -8,6 +8,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -255,9 +256,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // (its `id` IS the process id on Windows) and terminate THAT, not the launcher.
 async function runNotepadInputCheck(service, displays) {
   const token = `eliza-win-cua-${Date.now()}`;
-  const originalClipboard = await readClipboard().catch(() => "");
+  const originalClipboard = await readClipboard();
   let previousWindow = null;
   let notepadWindow = null;
+  let result = null;
+  const cleanupErrors = [];
 
   try {
     const activeBefore = await service.executeWindowAction({
@@ -364,7 +367,7 @@ async function runNotepadInputCheck(service, displays) {
       );
     }
 
-    return {
+    result = {
       status: "passed",
       requiredEvidence: [
         `launched controlled Notepad (pid ${launched.data?.pid ?? "?"}); resolved window [${notepadWindow.id}] "${notepadWindow.title}"`,
@@ -372,7 +375,6 @@ async function runNotepadInputCheck(service, displays) {
         "click succeeded inside the controlled Notepad text area",
         "key_combo ctrl+a succeeded in the controlled text field",
         `type wrote and verified marker ${token} (read back via select-all/copy)`,
-        "post-action screenshots were requested by service configuration",
       ],
       details: {
         notepadWindow,
@@ -388,74 +390,138 @@ async function runNotepadInputCheck(service, displays) {
     // window-close fallback. This avoids the "Save changes?" dialog and leaves
     // the user's session untouched.
     if (notepadWindow?.id) {
-      const killed = await service
-        .executeCommand("kill_app", { target: String(notepadWindow.id) })
-        .catch(() => ({ success: false }));
+      let killed;
+      try {
+        killed = await service.executeCommand("kill_app", {
+          target: String(notepadWindow.id),
+        });
+      } catch (error) {
+        // error-policy:J6 continue to the controlled-window close fallback.
+        cleanupErrors.push(`kill_app rejected: ${String(error)}`);
+        killed = { success: false };
+      }
       if (!killed.success) {
-        await service
-          .executeCommand("close_window", { windowId: notepadWindow.id })
-          .catch(() => {});
+        try {
+          const closed = await service.executeCommand("close_window", {
+            windowId: notepadWindow.id,
+          });
+          if (!closed.success) {
+            cleanupErrors.push(`close_window failed: ${closed.error}`);
+          }
+        } catch (error) {
+          // error-policy:J6 record controlled-window teardown failure below.
+          cleanupErrors.push(`close_window rejected: ${String(error)}`);
+        }
       }
     }
-    await writeClipboard(originalClipboard).catch(() => {});
+    try {
+      await writeClipboard(originalClipboard);
+    } catch (error) {
+      // error-policy:J6 the evidence check fails after all teardown is tried.
+      cleanupErrors.push(`clipboard restore failed: ${String(error)}`);
+    }
     if (previousWindow?.id) {
-      await service
-        .executeCommand("switch_to_window", { windowId: previousWindow.id })
-        .catch(() => {});
+      try {
+        const restored = await service.executeCommand("switch_to_window", {
+          windowId: previousWindow.id,
+        });
+        if (!restored.success) {
+          cleanupErrors.push(`focus restore failed: ${restored.error}`);
+        }
+      } catch (error) {
+        // error-policy:J6 report focus restoration after other teardown.
+        cleanupErrors.push(`focus restore rejected: ${String(error)}`);
+      }
     }
   }
+  if (cleanupErrors.length > 0) {
+    throw new Error(
+      `controlled Notepad cleanup failed: ${cleanupErrors.join("; ")}`,
+    );
+  }
+  if (!result) throw new Error("controlled Notepad check produced no result");
+  return result;
 }
 
 async function runBrowserCheck(service, outDir, artifacts) {
-  const pageUrl =
-    "data:text/html,<html><head><title>Windows CUA Evidence</title></head><body><main><h1>Windows CUA Evidence</h1><button id='go'>Ready</button><input id='field' value=''></main></body></html>";
-
-  const open = await service.executeCommand("browser_open", { url: pageUrl });
-  if (!open.success)
-    throw new Error(`browser_open failed: ${open.error ?? "unknown"}`);
-  const dom = await service.executeCommand("browser_get_dom");
-  if (
-    !dom.success ||
-    !String(dom.content ?? "").includes("Windows CUA Evidence")
-  ) {
-    throw new Error(
-      `browser_get_dom did not return the evidence page: ${dom.error ?? "unknown"}`,
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(
+      "<!doctype html><html><head><title>Windows CUA Evidence</title></head><body><main><h1>Windows CUA Evidence</h1><button id='go'>Ready</button><input id='field'></main></body></html>",
     );
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("local browser evidence server did not expose a TCP port");
   }
-  const clickables = await service.executeCommand("browser_get_clickables");
-  if (!clickables.success) {
-    throw new Error(
-      `browser_get_clickables failed: ${clickables.error ?? "unknown"}`,
-    );
+  const pageUrl = `http://127.0.0.1:${address.port}/evidence`;
+  let closed = false;
+  try {
+    const open = await service.executeCommand("browser_open", { url: pageUrl });
+    if (!open.success) {
+      throw new Error(`browser_open failed: ${open.error ?? "unknown"}`);
+    }
+    const dom = await service.executeCommand("browser_get_dom");
+    if (
+      !dom.success ||
+      !String(dom.content ?? "").includes("Windows CUA Evidence")
+    ) {
+      throw new Error(
+        `browser_get_dom did not return the evidence page: ${dom.error ?? "unknown"}`,
+      );
+    }
+    const clickables = await service.executeCommand("browser_get_clickables");
+    if (!clickables.success) {
+      throw new Error(
+        `browser_get_clickables failed: ${clickables.error ?? "unknown"}`,
+      );
+    }
+    const screenshot = await service.executeCommand("browser_screenshot");
+    if (!screenshot.success) {
+      throw new Error(
+        `browser_screenshot failed: ${screenshot.error ?? "unknown"}`,
+      );
+    }
+
+    const browserPng = pngBufferFromBase64(screenshot.screenshot);
+    const browserQuality = describePng(browserPng, "browser screenshot");
+    const browserArtifact = path.join(outDir, "browser-evidence.png");
+    await writeFile(browserArtifact, browserPng);
+    artifacts.push(relativeToRepo(browserArtifact));
+
+    const close = await service.executeCommand("browser_close");
+    if (!close.success) {
+      throw new Error(`browser_close failed: ${close.error ?? "unknown"}`);
+    }
+    closed = true;
+
+    return {
+      status: "passed",
+      requiredEvidence: [
+        "browser target opened the ephemeral loopback HTTP evidence page",
+        "browser_get_dom returned the local evidence page",
+        `browser_get_clickables returned ${clickables.count ?? clickables.elements?.length ?? "some"} element(s)`,
+        `browser screenshot artifact ${relativeToRepo(browserArtifact)} (${browserQuality.width}x${browserQuality.height})`,
+        "browser cleanup closed the test browser",
+      ],
+      details: { open: { url: open.url, title: open.title }, browserQuality },
+    };
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+      server.closeAllConnections?.();
+    });
+    if (!closed) {
+      // error-policy:J5 cleanup is intentionally detached so a non-cooperative
+      // browser driver cannot keep the loopback server or evidence job alive.
+      void service.executeCommand("browser_close").catch(() => undefined);
+    }
   }
-  const screenshot = await service.executeCommand("browser_screenshot");
-  if (!screenshot.success) {
-    throw new Error(
-      `browser_screenshot failed: ${screenshot.error ?? "unknown"}`,
-    );
-  }
-
-  const browserPng = pngBufferFromBase64(screenshot.screenshot);
-  const browserQuality = describePng(browserPng, "browser screenshot");
-  const browserArtifact = path.join(outDir, "browser-evidence.png");
-  await writeFile(browserArtifact, browserPng);
-  artifacts.push(relativeToRepo(browserArtifact));
-
-  const close = await service.executeCommand("browser_close");
-  if (!close.success)
-    throw new Error(`browser_close failed: ${close.error ?? "unknown"}`);
-
-  return {
-    status: "passed",
-    requiredEvidence: [
-      `browser target opened ${open.url ? "the evidence data URL" : "data URL"}`,
-      "browser_get_dom returned the local evidence page",
-      `browser_get_clickables returned ${clickables.count ?? clickables.elements?.length ?? "some"} element(s)`,
-      `browser screenshot artifact ${relativeToRepo(browserArtifact)} (${browserQuality.width}x${browserQuality.height})`,
-      "browser cleanup closed the test browser",
-    ],
-    details: { open: { url: open.url, title: open.title }, browserQuality },
-  };
 }
 
 async function runTerminalSafetyCheck(service) {
@@ -716,15 +782,15 @@ function readHostInfo() {
 }
 
 function gitHead() {
-  try {
-    return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-      encoding: "utf8",
-      timeout: 10_000,
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    return "unknown";
+  const head = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+    timeout: 10_000,
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+  if (!/^[0-9a-f]{40}$/.test(head)) {
+    throw new Error("could not resolve the exact 40-character Git head SHA");
   }
+  return head;
 }
 
 async function main() {
@@ -893,7 +959,6 @@ async function main() {
         requiredEvidence: [
           `listWindows returned ${list.windows.length} visible window(s) with id + title metadata (finding #2 resolved — not 0)`,
           `${usableWindows.length} window(s) had a usable id + title; focusWindow/switchWindow succeeded for [${target.id}] "${target.title}"`,
-          "window operation failures surface actionable diagnostics through the service result",
         ],
         details: {
           windowCount: list.windows.length,
@@ -931,6 +996,13 @@ async function main() {
       const token = `windows-clipboard-${Date.now()}`;
       let read = "";
       try {
+        await writeClipboard("");
+        const emptyRead = await readClipboard();
+        if (emptyRead.replace(/[\r\n]+$/, "") !== "") {
+          throw new Error(
+            `empty Windows clipboard read back as ${JSON.stringify(emptyRead.slice(0, 80))}`,
+          );
+        }
         await writeClipboard(token);
         read = await readClipboard();
         // `Get-Clipboard -Raw` returns the clipboard text with a trailing line
@@ -948,6 +1020,7 @@ async function main() {
       return {
         status: "passed",
         requiredEvidence: [
+          "WinForms Clipboard.Clear produced a verified empty clipboard",
           `Set-Clipboard wrote test marker ${token}`,
           "Get-Clipboard -Raw read the same test marker (trailing newline normalized)",
           "large payload cap and command failures remain covered by unit tests",
