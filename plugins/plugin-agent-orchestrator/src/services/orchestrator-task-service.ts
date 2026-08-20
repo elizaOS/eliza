@@ -3540,7 +3540,12 @@ export class OrchestratorTaskService extends Service {
             () => "",
           );
           if (unpushed) {
-            await syncGit(["push"]);
+            // The naked `git push` here failed "Repository not found" — the
+            // service process has no ambient git credentials; the workspace
+            // service's push injects the GitHub token (same leg the original
+            // submit used). The registered branch was already pointed at the
+            // child's exec branch by that first submit.
+            await workspaceService.push(workspaceId);
             await this.store.addEvent({
               id: randomUUID(),
               taskId,
