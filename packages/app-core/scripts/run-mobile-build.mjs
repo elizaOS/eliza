@@ -6339,6 +6339,7 @@ function stripAndroidNativePlugins(strippedPlugins, label) {
           "\n",
         );
     }
+    patched = `${patched.trimEnd()}\n`;
     if (patched !== current) {
       fs.writeFileSync(settingsPath, patched, "utf8");
       console.log(
@@ -6362,6 +6363,7 @@ function stripAndroidNativePlugins(strippedPlugins, label) {
         "\n",
       );
     }
+    patched = `${patched.trimEnd()}\n`;
     if (patched !== current) {
       fs.writeFileSync(capacitorBuildPath, patched, "utf8");
       console.log(
