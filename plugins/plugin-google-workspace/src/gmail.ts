@@ -5,10 +5,13 @@
  * mutation, subscription-header extraction, and sender-filter/unsubscribe
  * helpers. Maps Gmail API payloads into the plugin's `GoogleGmail*` DTOs. Each
  * method acquires a scoped googleapis client from `GoogleApiClientFactory`.
+ * MIME `parts` trees are bounded in `gmail-mime-parts.ts` so a hostile nest
+ * cannot RangeError ingest.
  */
 import { ElizaError } from "@elizaos/core";
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
+import { extractGmailMimeBody, walkGmailMimeParts } from "./gmail-mime-parts.js";
 import type {
   GoogleAccountRef,
   GoogleEmailAddress,
@@ -734,18 +737,16 @@ function collectMessagePart(
   part: gmail_v1.Schema$MessagePart,
   body: Pick<GoogleMessageSummary, "bodyHtml" | "bodyText">
 ): void {
-  const data = part.body?.data ? decodeBase64Url(part.body.data) : undefined;
+  walkGmailMimeParts(part, (node) => {
+    const data = node.body?.data ? decodeBase64Url(node.body.data) : undefined;
 
-  if (data && part.mimeType === "text/plain" && !body.bodyText) {
-    body.bodyText = data;
-  }
-  if (data && part.mimeType === "text/html" && !body.bodyHtml) {
-    body.bodyHtml = data;
-  }
-
-  for (const child of part.parts ?? []) {
-    collectMessagePart(child, body);
-  }
+    if (data && node.mimeType === "text/plain" && !body.bodyText) {
+      body.bodyText = data;
+    }
+    if (data && node.mimeType === "text/html" && !body.bodyHtml) {
+      body.bodyHtml = data;
+    }
+  });
 }
 
 function encodeMessage(input: GoogleSendEmailInput): string {
@@ -1017,21 +1018,12 @@ function extractGoogleGmailBodyByMime(
   payload: gmail_v1.Schema$MessagePart | undefined,
   mimeType: "text/plain" | "text/html"
 ): string {
-  if (!payload) {
-    return "";
-  }
-  const directBody = payload.body?.data;
-  if (payload.mimeType === mimeType && typeof directBody === "string") {
+  return extractGmailMimeBody(payload, mimeType, (node) => {
+    const directBody = node.body?.data;
+    if (typeof directBody !== "string") return "";
     const decoded = decodeBase64Url(directBody);
     return mimeType === "text/html" ? htmlToPlainText(decoded) : decoded.trim();
-  }
-  for (const part of payload.parts ?? []) {
-    const nested = extractGoogleGmailBodyByMime(part, mimeType);
-    if (nested) {
-      return nested;
-    }
-  }
-  return "";
+  });
 }
 
 function htmlToPlainText(value: string): string {
