@@ -13,17 +13,8 @@ String resolveNodePackageDir(String packageName) {
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File(resolveNodePackageDir('@capacitor/android'), 'capacitor')
 
-include ':capacitor-community-bluetooth-le'
-project(':capacitor-community-bluetooth-le').projectDir = new File(resolveNodePackageDir('@capacitor-community/bluetooth-le'), 'android')
-
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File(resolveNodePackageDir('@capacitor/app'), 'android')
-
-include ':capacitor-background-runner'
-project(':capacitor-background-runner').projectDir = new File(resolveNodePackageDir('@capacitor/background-runner'), 'android')
-
-include ':capacitor-barcode-scanner'
-project(':capacitor-barcode-scanner').projectDir = new File(resolveNodePackageDir('@capacitor/barcode-scanner'), 'android')
 
 include ':capacitor-browser'
 project(':capacitor-browser').projectDir = new File(resolveNodePackageDir('@capacitor/browser'), 'android')
@@ -34,14 +25,8 @@ project(':capacitor-device').projectDir = new File(resolveNodePackageDir('@capac
 include ':capacitor-filesystem'
 project(':capacitor-filesystem').projectDir = new File(resolveNodePackageDir('@capacitor/filesystem'), 'android')
 
-include ':capacitor-haptics'
-project(':capacitor-haptics').projectDir = new File(resolveNodePackageDir('@capacitor/haptics'), 'android')
-
 include ':capacitor-keyboard'
 project(':capacitor-keyboard').projectDir = new File(resolveNodePackageDir('@capacitor/keyboard'), 'android')
-
-include ':capacitor-local-notifications'
-project(':capacitor-local-notifications').projectDir = new File(resolveNodePackageDir('@capacitor/local-notifications'), 'android')
 
 include ':capacitor-network'
 project(':capacitor-network').projectDir = new File(resolveNodePackageDir('@capacitor/network'), 'android')
@@ -49,71 +34,12 @@ project(':capacitor-network').projectDir = new File(resolveNodePackageDir('@capa
 include ':capacitor-preferences'
 project(':capacitor-preferences').projectDir = new File(resolveNodePackageDir('@capacitor/preferences'), 'android')
 
-include ':capacitor-push-notifications'
-project(':capacitor-push-notifications').projectDir = new File(resolveNodePackageDir('@capacitor/push-notifications'), 'android')
-
 include ':capacitor-share'
 project(':capacitor-share').projectDir = new File(resolveNodePackageDir('@capacitor/share'), 'android')
 
 include ':capacitor-status-bar'
 project(':capacitor-status-bar').projectDir = new File(resolveNodePackageDir('@capacitor/status-bar'), 'android')
 
-include ':elizaos-capacitor-agent'
-project(':elizaos-capacitor-agent').projectDir = new File('../../../../plugins/plugin-native-agent/android')
-
-include ':elizaos-capacitor-appblocker'
-project(':elizaos-capacitor-appblocker').projectDir = new File('../../../../plugins/plugin-native-appblocker/android')
-
-include ':elizaos-capacitor-browser-surface'
-project(':elizaos-capacitor-browser-surface').projectDir = new File('../../../../plugins/plugin-native-browser-surface/android')
-
-include ':elizaos-capacitor-bun-runtime'
-project(':elizaos-capacitor-bun-runtime').projectDir = new File('../../../../plugins/plugin-native-bun-runtime/android')
-
-include ':elizaos-capacitor-camera'
-project(':elizaos-capacitor-camera').projectDir = new File('../../../../plugins/plugin-native-camera/android')
-
-include ':elizaos-capacitor-canvas'
-project(':elizaos-capacitor-canvas').projectDir = new File('../../../../plugins/plugin-native-canvas/android')
-
-include ':elizaos-capacitor-contacts'
-project(':elizaos-capacitor-contacts').projectDir = new File('../../../../plugins/plugin-native-contacts/android')
-
-include ':elizaos-capacitor-gateway'
-project(':elizaos-capacitor-gateway').projectDir = new File('../../../../plugins/plugin-native-gateway/android')
-
-include ':elizaos-capacitor-location'
-project(':elizaos-capacitor-location').projectDir = new File('../../../../plugins/plugin-native-location/android')
-
-include ':elizaos-capacitor-messages'
-project(':elizaos-capacitor-messages').projectDir = new File('../../../../plugins/plugin-native-messages/android')
-
-include ':elizaos-capacitor-mlkit-text'
-project(':elizaos-capacitor-mlkit-text').projectDir = new File('../../../../plugins/plugin-native-mlkit-text/android')
-
-include ':elizaos-capacitor-mobile-agent-bridge'
-project(':elizaos-capacitor-mobile-agent-bridge').projectDir = new File('../../../../plugins/plugin-native-mobile-agent-bridge/android')
-
-include ':elizaos-capacitor-mobile-signals'
-project(':elizaos-capacitor-mobile-signals').projectDir = new File('../../../../plugins/plugin-native-mobile-signals/android')
-
-include ':elizaos-capacitor-phone'
-project(':elizaos-capacitor-phone').projectDir = new File('../../../../plugins/plugin-native-phone/android')
-
-include ':elizaos-capacitor-screencapture'
-project(':elizaos-capacitor-screencapture').projectDir = new File('../../../../plugins/plugin-native-screencapture/android')
-
-include ':elizaos-capacitor-swabble'
-project(':elizaos-capacitor-swabble').projectDir = new File('../../../../plugins/plugin-native-swabble/android')
-
-include ':elizaos-capacitor-system'
-project(':elizaos-capacitor-system').projectDir = new File('../../../../plugins/plugin-native-system/android')
-
 include ':elizaos-capacitor-talkmode'
 project(':elizaos-capacitor-talkmode').projectDir = new File('../../../../plugins/plugin-native-talkmode/android')
 
-include ':elizaos-capacitor-websiteblocker'
-project(':elizaos-capacitor-websiteblocker').projectDir = new File('../../../../plugins/plugin-native-websiteblocker/android')
-
-include ':elizaos-capacitor-wifi'
-project(':elizaos-capacitor-wifi').projectDir = new File('../../../../plugins/plugin-native-wifi/android')
