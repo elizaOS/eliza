@@ -186,6 +186,12 @@ import {
   useChatInputRef,
 } from "./state/ChatComposerContext.hooks";
 import {
+  acknowledgeFirstRunChatRelease,
+  createFirstRunChatReleaseState,
+  observeFirstRunCompletion,
+  recordMountedFirstRunChat,
+} from "./state/first-run-chat-release";
+import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
   shouldShowRemoteAgentPairingGate,
@@ -2141,6 +2147,7 @@ function ChatOverlayMount({
   fillHostAtHalf = false,
   releaseFirstRunToFull,
   onFirstRunReleaseHandled,
+  onFirstRunChatMounted,
   onPilledChange,
   onDetentChange,
   onStateChange,
@@ -2149,6 +2156,7 @@ function ChatOverlayMount({
   fillHostAtHalf?: boolean;
   releaseFirstRunToFull: boolean;
   onFirstRunReleaseHandled: () => void;
+  onFirstRunChatMounted?: () => void;
   onPilledChange?: (pilled: boolean) => void;
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
@@ -2169,6 +2177,11 @@ function ChatOverlayMount({
     isElevated: isOwner,
     isAuthorized: atLeast("USER"),
   });
+  useEffect(() => {
+    if (controller && firstRunComplete === false) {
+      onFirstRunChatMounted?.();
+    }
+  }, [controller, firstRunComplete, onFirstRunChatMounted]);
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
   // Character name wins (what the user configured), then the running agent's
@@ -2331,16 +2344,22 @@ function AppContent() {
   // Runtime-target adoption can remount the shell on the exact render where
   // first-run completes. Retain that completion edge above the remount and let
   // the next ChatOverlay acknowledge it after applying the FULL detent.
-  const firstRunWasIncompleteRef = useRef(firstRunComplete === false);
-  const firstRunReleasePendingRef = useRef(false);
-  if (firstRunComplete === false) {
-    firstRunWasIncompleteRef.current = true;
-  } else if (firstRunComplete === true && firstRunWasIncompleteRef.current) {
-    firstRunWasIncompleteRef.current = false;
-    firstRunReleasePendingRef.current = true;
-  }
+  const firstRunChatReleaseRef = useRef(
+    createFirstRunChatReleaseState(firstRunComplete),
+  );
+  firstRunChatReleaseRef.current = observeFirstRunCompletion(
+    firstRunChatReleaseRef.current,
+    firstRunComplete,
+  );
+  const handleFirstRunChatMounted = useCallback(() => {
+    firstRunChatReleaseRef.current = recordMountedFirstRunChat(
+      firstRunChatReleaseRef.current,
+    );
+  }, []);
   const handleFirstRunReleaseHandled = useCallback(() => {
-    firstRunReleasePendingRef.current = false;
+    firstRunChatReleaseRef.current = acknowledgeFirstRunChatRelease(
+      firstRunChatReleaseRef.current,
+    );
   }, []);
 
   useEffect(() => {
@@ -3335,8 +3354,9 @@ function AppContent() {
           behind stays live.
         */}
         <ChatOverlayMount
-          releaseFirstRunToFull={firstRunReleasePendingRef.current}
+          releaseFirstRunToFull={firstRunChatReleaseRef.current.releasePending}
           onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
+          onFirstRunChatMounted={handleFirstRunChatMounted}
         />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
