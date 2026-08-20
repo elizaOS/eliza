@@ -6,7 +6,7 @@
  * "no servers" / "success". This suite drives the real exported client (fetch
  * stubbed at `globalThis.fetch`) and proves two things stay distinguishable:
  *   - an internal failure (5xx, transport reject, non-JSON body) PROPAGATES;
- *   - a legitimately-empty 200 (`{servers: []}`) and the designed not_found→null
+ *   - a legitimately-empty paginated 200 and the designed not_found→null
  *     degrade do NOT get conflated with that failure.
  *
  * `mock.module` neutralises the logger + env dependencies so the module under
