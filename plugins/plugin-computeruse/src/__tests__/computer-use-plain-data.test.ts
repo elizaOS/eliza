@@ -7,6 +7,7 @@ import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   COMPUTER_USE_PLAIN_DATA_UNBOUNDED,
+  MAX_COMPUTER_USE_PLAIN_DATA_CHARS,
   MAX_COMPUTER_USE_PLAIN_DATA_DEPTH,
   MAX_COMPUTER_USE_PLAIN_DATA_NODES,
   renderPlainData,
@@ -115,6 +116,55 @@ describe("stringifyData / renderPlainData", () => {
     expect(renderPlainData(proxy)).toContain("x");
     expect(gets).toBe(0);
     expect(hasCalls).toBe(0);
+  });
+
+  it("preserves sparse list positions while distinguishing explicit undefined", () => {
+    const sparse = new Array(3) as unknown[];
+    sparse[2] = "x";
+
+    expect(renderPlainData(sparse)).toBe("items[3]:\n\n\n- x");
+    expect(renderPlainData([undefined, undefined, "x"])).toBe(
+      "items[3]:\n- none\n- none\n- x",
+    );
+  });
+
+  it("rejects callable proxies without invoking conversion traps", () => {
+    let invoked = 0;
+    const hostile = new Proxy(() => undefined, {
+      get(_target, key) {
+        if (key === Symbol.toPrimitive) invoked += 1;
+        return undefined;
+      },
+    });
+
+    try {
+      renderPlainData(hostile);
+      expect.unreachable("print should fail closed on hostile conversion");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(
+        COMPUTER_USE_PLAIN_DATA_UNBOUNDED,
+      );
+      expect(invoked).toBe(0);
+    }
+  });
+
+  it("accepts the exact output boundary and rejects larger content", () => {
+    expect(
+      stringifyData("x".repeat(MAX_COMPUTER_USE_PLAIN_DATA_CHARS)),
+    ).toHaveLength(MAX_COMPUTER_USE_PLAIN_DATA_CHARS);
+    expect(() =>
+      stringifyData("x".repeat(MAX_COMPUTER_USE_PLAIN_DATA_CHARS + 1)),
+    ).toThrowError(
+      expect.objectContaining({ code: COMPUTER_USE_PLAIN_DATA_UNBOUNDED }),
+    );
+    expect(() =>
+      renderPlainData({
+        snapshot: "x".repeat(MAX_COMPUTER_USE_PLAIN_DATA_CHARS),
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: COMPUTER_USE_PLAIN_DATA_UNBOUNDED }),
+    );
   });
 
   it(`throws ${COMPUTER_USE_PLAIN_DATA_UNBOUNDED} on a revoked Proxy instead of TypeError`, () => {
