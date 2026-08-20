@@ -182,6 +182,29 @@ describe("StructuredFieldStreamExtractor emits the clean text-field delta (#9174
 		const accumulated = chunks.map(([, , acc]) => acc);
 		expect(accumulated.at(-1)).toBe("Hey! Good to see you again.");
 	});
+
+	it("marks emissions from a retried extractor with a new revision", () => {
+		const revisions: Array<number | undefined> = [];
+		const extractor = new StructuredFieldStreamExtractor({
+			level: 0,
+			schema: replySchema,
+			streamFields: ["text"],
+			onChunk: (_chunk, _field, _accumulated, revision) =>
+				revisions.push(revision),
+		});
+
+		feed(extractor, "text: first attempt\n");
+		extractor.signalRetry(1);
+		extractor.reset();
+		feed(extractor, "text: second attempt\n");
+		extractor.flush();
+
+		expect(revisions).toHaveLength(2);
+		expect(revisions.every((revision) => typeof revision === "number")).toBe(
+			true,
+		);
+		expect(revisions[1]).not.toBe(revisions[0]);
+	});
 });
 
 describe("ResponseSkeletonStreamExtractor", () => {
@@ -249,6 +272,27 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		// Streamed incrementally (one emission per pushed token), not once at the end.
 		expect(chunks.length).toBeGreaterThan(1);
 		expect(accumulated.at(-1)).toBe("Hello there, friend.");
+	});
+
+	it("marks passthrough emissions after retry with a new revision", () => {
+		const revisions: Array<number | undefined> = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (_chunk, _field, _accumulated, revision) =>
+				revisions.push(revision),
+		});
+
+		extractor.push("first attempt");
+		extractor.signalRetry(1);
+		extractor.push("second attempt");
+		extractor.flush();
+
+		expect(revisions).toHaveLength(2);
+		expect(revisions.every((revision) => typeof revision === "number")).toBe(
+			true,
+		);
+		expect(revisions[1]).not.toBe(revisions[0]);
 	});
 
 	it("keeps envelope-shaped output on the structured path (no control-field leak)", () => {

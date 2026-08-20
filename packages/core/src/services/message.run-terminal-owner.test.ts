@@ -76,6 +76,11 @@ function makeRuntime(options: {
 	factsGate?: Promise<void>;
 	onFactsStarted?: () => void;
 	streamText?: string;
+	streamEvents?: Array<{
+		chunk: string;
+		accumulated: string;
+		streamRevision?: number;
+	}>;
 	ttsGate?: Promise<void>;
 	onTtsStarted?: () => void;
 }): {
@@ -88,10 +93,19 @@ function makeRuntime(options: {
 		responseHandlerFieldRegistry.register(evaluator);
 	}
 	const terminalPayloads: Array<Record<string, unknown>> = [];
-	const useModel = vi.fn(async (modelType: string) => {
+	const useModel = vi.fn(async (modelType: string, _params?: unknown) => {
 		if (modelType === ModelType.TEXT_EMBEDDING) return [0.1, 0.2, 0.3];
 		if (modelType === ModelType.RESPONSE_HANDLER) {
-			if (options.streamText) {
+			if (options.streamEvents) {
+				for (const event of options.streamEvents) {
+					await getStreamingContext()?.onStreamChunk(
+						event.chunk,
+						undefined,
+						event.accumulated,
+						event.streamRevision,
+					);
+				}
+			} else if (options.streamText) {
 				await getStreamingContext()?.onStreamChunk(
 					options.streamText,
 					undefined,
@@ -99,7 +113,9 @@ function makeRuntime(options: {
 				);
 			}
 			return stage1Reply(
-				options.streamText ?? "Delivery is ready.",
+				options.streamText ??
+					options.streamEvents?.at(-1)?.accumulated ??
+					"Delivery is ready.",
 				options.facts,
 			);
 		}
@@ -243,5 +259,35 @@ describe("DefaultMessageService run-terminal owner", () => {
 			useModel.mock.calls.filter(([type]) => type === ModelType.TEXT_TO_SPEECH),
 		).toHaveLength(2);
 		expect(terminalPayloads).toHaveLength(1);
+	});
+
+	it("replays authoritative first-sentence state after a structured retry", async () => {
+		const { runtime, useModel } = makeRuntime({
+			streamEvents: [
+				{ chunk: "Prof", accumulated: "Prof" },
+				{
+					chunk: ".) arrived.",
+					accumulated: "Okay.) arrived.",
+					streamRevision: 1,
+				},
+			],
+		});
+		const service = new DefaultMessageService();
+
+		await service.handleMessage(
+			runtime,
+			inputMessage("speak the retried result"),
+			async () => [],
+			{ onStreamChunk: async () => undefined },
+		);
+		await drainPostDeliveryTasks(runtime);
+
+		const speechParams = useModel.mock.calls
+			.filter(([type]) => type === ModelType.TEXT_TO_SPEECH)
+			.map(([, params]) => params);
+		expect(speechParams).toMatchObject([
+			{ text: "Okay.)" },
+			{ text: "arrived." },
+		]);
 	});
 });

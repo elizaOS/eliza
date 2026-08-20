@@ -191,6 +191,16 @@ export type FieldState =
 	| "complete" // Field content extracted
 	| "invalid"; // Validation codes didn't match
 
+let streamRevisionSequence = 0;
+
+function allocateStreamRevision(): number {
+	streamRevisionSequence =
+		streamRevisionSequence === Number.MAX_SAFE_INTEGER
+			? 1
+			: streamRevisionSequence + 1;
+	return streamRevisionSequence;
+}
+
 /**
  * Configuration for StructuredFieldStreamExtractor.
  */
@@ -207,7 +217,12 @@ export interface StructuredFieldStreamExtractorConfig
 	 * WHY accumulated: consumers (voice detection, client-side merge) need the
 	 * full field text to avoid re-deriving it from deltas.
 	 */
-	onChunk: (chunk: string, field?: string, accumulated?: string) => void;
+	onChunk: (
+		chunk: string,
+		field?: string,
+		accumulated?: string,
+		streamRevision?: number,
+	) => void;
 	/** Rich event callback for sophisticated consumers */
 	onEvent?: (event: StreamEvent) => void;
 	/** Abort signal for cancellation */
@@ -249,6 +264,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	private validatedFields: Set<string> = new Set();
 	private fieldStates: Map<string, FieldState> = new Map();
 	private state: ExtractorState = "streaming";
+	private streamRevision = allocateStreamRevision();
 	private readonly streamFieldSet: Set<string>;
 	/**
 	 * The top-level field whose value bytes are currently arriving — tracked for
@@ -318,6 +334,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	}
 
 	reset(): void {
+		this.streamRevision = allocateStreamRevision();
 		this.lineBuffer = "";
 		this.currentField = null;
 		this.currentTrackedField = null;
@@ -543,7 +560,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 		if (content.length < previouslyEmitted.length) {
 			this.emittedContent.set(field, content);
 			if (content) {
-				this.config.onChunk(content, field, content);
+				this.config.onChunk(content, field, content, this.streamRevision);
 				this.emitEvent({
 					eventType: "chunk",
 					field,
@@ -556,7 +573,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 
 		const newContent = content.substring(previouslyEmitted.length);
 		if (newContent) {
-			this.config.onChunk(newContent, field, content);
+			this.config.onChunk(newContent, field, content, this.streamRevision);
 			this.emitEvent({
 				eventType: "chunk",
 				field,
@@ -602,6 +619,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	private formatDecided = false;
 	private passthrough = false;
 	private passthroughEmitted = "";
+	private streamRevision = allocateStreamRevision();
 	private readonly streamFieldSet: Set<string>;
 	private readonly maxKeyPatternLength: number;
 
@@ -609,7 +627,12 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		private readonly config: {
 			skeleton: ResponseSkeleton;
 			streamFields: string[];
-			onChunk: (chunk: string, field?: string, accumulated?: string) => void;
+			onChunk: (
+				chunk: string,
+				field?: string,
+				accumulated?: string,
+				streamRevision?: number,
+			) => void;
 			onEvent?: (event: StreamEvent) => void;
 			abortSignal?: AbortSignal;
 			unordered?: boolean;
@@ -677,6 +700,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	}
 
 	reset(): void {
+		this.streamRevision = allocateStreamRevision();
 		this.buffer = "";
 		this.spanIndex = 0;
 		this.activeStringField = null;
@@ -720,7 +744,12 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		const chunk = this.buffer;
 		this.buffer = "";
 		this.passthroughEmitted += chunk;
-		this.config.onChunk(chunk, undefined, this.passthroughEmitted);
+		this.config.onChunk(
+			chunk,
+			undefined,
+			this.passthroughEmitted,
+			this.streamRevision,
+		);
 	}
 
 	signalRetry(retryCount: number): { validatedFields: string[] } {
@@ -1047,7 +1076,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			return;
 		}
 		this.emittedContent.set(field, next);
-		this.config.onChunk(chunk, field, next);
+		this.config.onChunk(chunk, field, next, this.streamRevision);
 		this.emitEvent({
 			eventType: "chunk",
 			field,
@@ -1326,12 +1355,13 @@ export function createStreamingContext(
 			chunk: string,
 			msgId?: string,
 			accumulated?: string,
+			streamRevision?: number,
 		) => {
 			if (extractor.done) return;
 			const textToStream = extractor.push(chunk);
 			if (textToStream) {
 				retryState.appendText(textToStream);
-				await onStreamChunk(textToStream, msgId, accumulated);
+				await onStreamChunk(textToStream, msgId, accumulated, streamRevision);
 			}
 		},
 		messageId,

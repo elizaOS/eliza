@@ -335,8 +335,8 @@ import {
 import { modelProviderErrorDetail } from "../utils/model-errors";
 import { readEnv } from "../utils/read-env";
 import {
+	createFirstSentenceStreamTracker,
 	extractFirstSentence,
-	hasFirstSentence,
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 import { truncateWellFormed } from "../utils/well-formed";
@@ -12251,9 +12251,39 @@ export class DefaultMessageService implements IMessageService {
 				// The `streamTextFallback` path exists for action handlers or other
 				// call sites that don't provide `accumulated` (raw token streams).
 				let firstSentenceSent = false;
+				let firstSentenceChecked = false;
 				let firstSentenceText = "";
+				const firstSentenceTracker = createFirstSentenceStreamTracker();
 				let streamTextFallback = "";
 				let runTerminalOwner: MessageRunTerminalOwner | undefined;
+				const acceptFirstSentence = (first: string): void => {
+					firstSentenceChecked = true;
+					if (first.length <= 5) return;
+					firstSentenceSent = true;
+					firstSentenceText = first;
+					// Audio does not stall the text stream, but its model capture
+					// remains owned by the run-terminal barrier.
+					const deliverVoice = () =>
+						deliverFirstSentenceVoice(
+							runtime,
+							first,
+							callback,
+							options?.abortSignal,
+						);
+					if (!runTerminalOwner) {
+						throw new ElizaError(
+							"Voice streaming requires a live run terminal owner",
+							{
+								code: "RUN_TERMINAL_OWNER_REQUIRED",
+								context: {
+									messageId: message.id,
+									roomId: message.roomId,
+								},
+							},
+						);
+					}
+					runTerminalOwner.track("first-sentence-voice", deliverVoice);
+				};
 				// Envelope-echo latch for this turn's stream: once the accumulated
 				// text reads as envelope material, every downstream chunk consumer
 				// (model_stream_chunk hook re-emission, first-sentence TTS, the
@@ -12267,7 +12297,7 @@ export class DefaultMessageService implements IMessageService {
 				const userOnStreamChunk = options?.onStreamChunk;
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
 					userOnStreamChunk
-						? async (chunk, messageId, accumulated) => {
+						? async (chunk, messageId, accumulated, streamRevision) => {
 								// Sensitive turns deliver once through the final callback,
 								// where the audience is re-read. Streaming bytes cannot be
 								// recalled if room membership changes mid-generation.
@@ -12310,46 +12340,27 @@ export class DefaultMessageService implements IMessageService {
 								// the local-inference voice loop is a separate layer, see its
 								// JSDoc). Only run detection when `accumulated` is present:
 								// raw-token streams (no accumulated) may contain partial
-								// structured output that would garble hasFirstSentence() and
+								// structured output that would garble sentence detection and
 								// TTS.
 								if (
-									!firstSentenceSent &&
+									!firstSentenceChecked &&
 									accumulated !== undefined &&
-									hasFirstSentence(streamText)
+									firstSentenceTracker.push(
+										chunk,
+										accumulated,
+										streamRevision,
+									) !== undefined
 								) {
 									const { first } = extractFirstSentence(streamText);
-									if (first.length > 5) {
-										firstSentenceSent = true;
-										firstSentenceText = first;
-										// Audio does not stall the text stream, but its model capture
-										// remains owned by the run-terminal barrier.
-										const deliverVoice = () =>
-											deliverFirstSentenceVoice(
-												runtime,
-												first,
-												callback,
-												opts.abortSignal,
-											);
-										if (!runTerminalOwner) {
-											throw new ElizaError(
-												"Voice streaming requires a live run terminal owner",
-												{
-													code: "RUN_TERMINAL_OWNER_REQUIRED",
-													context: {
-														messageId: message.id,
-														roomId: message.roomId,
-													},
-												},
-											);
-										}
-										runTerminalOwner.track(
-											"first-sentence-voice",
-											deliverVoice,
-										);
-									}
+									acceptFirstSentence(first);
 								}
 
-								await userOnStreamChunk(chunk, messageId, accumulated);
+								await userOnStreamChunk(
+									chunk,
+									messageId,
+									accumulated,
+									streamRevision,
+								);
 							}
 						: undefined;
 
@@ -12589,6 +12600,15 @@ export class DefaultMessageService implements IMessageService {
 					);
 
 					const result = await processingPromise;
+					if (
+						!firstSentenceChecked &&
+						firstSentenceTracker.finish() !== undefined &&
+						result.responseContent?.text
+					) {
+						acceptFirstSentence(
+							extractFirstSentence(result.responseContent.text).first,
+						);
+					}
 
 					// Voice: Handle the rest of the message
 					if (firstSentenceSent && result.responseContent?.text) {
