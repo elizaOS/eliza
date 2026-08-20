@@ -65,6 +65,7 @@ import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
+import { isPathWithinRoot, resolveRealPath } from "./realpath-confinement.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
@@ -79,40 +80,6 @@ import {
 import { viewSearchIndex } from "./views-search-index.ts";
 
 const VIEW_TYPE_ERROR = "viewType must be one of: gui, tui, xr";
-
-async function resolveRealPath(p: string): Promise<string> {
-  const absolute = path.resolve(p);
-  try {
-    return await fs.realpath(absolute);
-  } catch {
-    // missing leaf — ancestor walk so symlink dir cannot hide behind tail
-  }
-  const tail: string[] = [];
-  let current = absolute;
-  while (true) {
-    const parent = path.dirname(current);
-    if (parent === current) return absolute;
-    tail.unshift(path.basename(current));
-    try {
-      return path.join(await fs.realpath(parent), ...tail);
-    } catch {
-      current = parent;
-    }
-  }
-}
-
-function isWithin(child: string, parent: string): boolean {
-  const resolvedChild = path.resolve(child);
-  const resolvedParent = path.resolve(parent);
-  if (resolvedChild === resolvedParent) return true;
-  const rel = path.relative(resolvedParent, resolvedChild);
-  return (
-    rel.length > 0 &&
-    rel !== ".." &&
-    !rel.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(rel)
-  );
-}
 
 /**
  * Parse the view-catalog `viewType` query. Omitted/empty keeps the historical
@@ -977,8 +944,9 @@ export async function handleViewsRoutes(
     // Confinement via canonical paths — lexical relative is bypassable through a
     // directory symlink inside the bundle dir.
     if (
-      realAssetPath !== realBundleDir &&
-      !isWithin(realAssetPath, realBundleDir)
+      !realAssetPath ||
+      !realBundleDir ||
+      !isPathWithinRoot(realAssetPath, realBundleDir)
     ) {
       error(res, "Malformed view asset path", 400);
       return true;

@@ -33,6 +33,7 @@ import {
   generateViewHeroSvg,
   getBundleDiskPath,
   getFrameDiskPath,
+  getHeroDiskPath,
   getView,
   listViews,
   registerPluginViews,
@@ -559,6 +560,38 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
     expect(diskPath).toBe(
       path.resolve("/some/plugin/dir", "dist/views/bundle.js"),
     );
+  });
+
+  it("rejects bundle, frame, and hero declarations equal to the plugin root", async () => {
+    const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-view-root-"));
+    try {
+      await registerPluginViews(
+        {
+          name: SMOKE_PLUGIN,
+          description: "plugin-root confinement fixture",
+          actions: [],
+          views: [
+            {
+              ...SMOKE_VIEW,
+              bundlePath: ".",
+              framePath: ".",
+              heroImagePath: ".",
+            },
+          ],
+        },
+        pluginDir,
+      );
+
+      const entry = getView("smoke.main");
+      expect(entry).toBeDefined();
+      if (!entry) throw new Error("Expected smoke.main to be registered");
+      expect(entry.available).toBe(false);
+      expect(getBundleDiskPath(entry)).toBeNull();
+      expect(getFrameDiskPath(entry)).toBeNull();
+      expect(getHeroDiskPath(entry)).toBeNull();
+    } finally {
+      await rm(pluginDir, { recursive: true, force: true });
+    }
   });
 
   const itSymlink = process.platform === "win32" ? it.skip : it;

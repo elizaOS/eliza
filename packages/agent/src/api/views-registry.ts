@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, promises as fs, realpathSync } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -25,6 +25,10 @@ import type { AgentPlatform } from "./platform-detect.ts";
 export type { ViewRegistryEntry } from "./view-registry-types.ts";
 
 import { BUILTIN_VIEWS } from "./builtin-views.ts";
+import {
+  isPathWithinRoot,
+  resolveRealPathSync,
+} from "./realpath-confinement.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import { viewSearchIndex } from "./views-search-index.ts";
 
@@ -45,42 +49,6 @@ const DEFAULT_VIEW_TYPE: ViewType = "gui";
 const AGENT_PACKAGE_DIR = resolveNearestPackageDirSync(
   path.dirname(fileURLToPath(import.meta.url)),
 );
-
-function resolveRealPathSync(p: string): string {
-  const absolute = path.resolve(p);
-  try {
-    return realpathSync(absolute);
-  } catch {
-    // error-policy:J3 missing leaf — walk to longest existing parent,
-    // realpath that, rejoin tail. Prevents symlink-dir escape via
-    // not-yet-created descendants.
-  }
-  const tail: string[] = [];
-  let current = absolute;
-  while (true) {
-    const parent = path.dirname(current);
-    if (parent === current) return absolute;
-    tail.unshift(path.basename(current));
-    try {
-      return path.join(realpathSync(parent), ...tail);
-    } catch {
-      current = parent;
-    }
-  }
-}
-
-function isWithin(child: string, parent: string): boolean {
-  const resolvedChild = path.resolve(child);
-  const resolvedParent = path.resolve(parent);
-  if (resolvedChild === resolvedParent) return true;
-  const rel = path.relative(resolvedParent, resolvedChild);
-  return (
-    rel.length > 0 &&
-    rel !== ".." &&
-    !rel.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(rel)
-  );
-}
 
 function normalizeViewType(viewType: ViewDeclaration["viewType"]): ViewType {
   return viewType ?? DEFAULT_VIEW_TYPE;
@@ -244,7 +212,7 @@ export function getBundleDiskPath(entry: ViewRegistryEntry): string | null {
   // longest existing parent so a directory symlink cannot smuggle access.
   const realResolved = resolveRealPathSync(resolved);
   const realRoot = resolveRealPathSync(path.resolve(entry.pluginDir));
-  if (realResolved !== realRoot && !isWithin(realResolved, realRoot))
+  if (!realResolved || !realRoot || !isPathWithinRoot(realResolved, realRoot))
     return null;
   return realResolved;
 }
@@ -258,7 +226,7 @@ export function getFrameDiskPath(entry: ViewRegistryEntry): string | null {
   const resolved = path.resolve(entry.pluginDir, entry.framePath);
   const realResolved = resolveRealPathSync(resolved);
   const realRoot = resolveRealPathSync(path.resolve(entry.pluginDir));
-  if (realResolved !== realRoot && !isWithin(realResolved, realRoot))
+  if (!realResolved || !realRoot || !isPathWithinRoot(realResolved, realRoot))
     return null;
   return realResolved;
 }
@@ -275,7 +243,7 @@ export function getHeroDiskPath(entry: HeroLookup): string | null {
   const resolved = path.resolve(entry.pluginDir, entry.heroImagePath);
   const realResolved = resolveRealPathSync(resolved);
   const realRoot = resolveRealPathSync(path.resolve(entry.pluginDir));
-  if (realResolved !== realRoot && !isWithin(realResolved, realRoot))
+  if (!realResolved || !realRoot || !isPathWithinRoot(realResolved, realRoot))
     return null;
   return realResolved;
 }
@@ -310,12 +278,13 @@ export async function findHeroOnDisk(
   // Fall back to probing `assets/hero.<ext>` in the plugin dir.
   const packageRoot = path.resolve(entry.pluginDir);
   const realPackageRoot = resolveRealPathSync(packageRoot);
+  if (!realPackageRoot) return null;
   for (const ext of HERO_EXTENSIONS) {
     const candidate = path.join(packageRoot, "assets", `hero${ext}`);
     const realCandidate = resolveRealPathSync(candidate);
     if (
-      (realCandidate === realPackageRoot ||
-        isWithin(realCandidate, realPackageRoot)) &&
+      realCandidate &&
+      isPathWithinRoot(realCandidate, realPackageRoot) &&
       (await fileExists(realCandidate))
     ) {
       return {
@@ -631,8 +600,9 @@ async function buildEntry(
     const realBundleAbs = resolveRealPathSync(bundleAbs);
     const realPackageRoot = resolveRealPathSync(path.resolve(pluginDir));
     if (
-      realBundleAbs === realPackageRoot ||
-      isWithin(realBundleAbs, realPackageRoot)
+      realBundleAbs &&
+      realPackageRoot &&
+      isPathWithinRoot(realBundleAbs, realPackageRoot)
     ) {
       const bundleAvailable = await fileExists(realBundleAbs);
       if (bundleAvailable && !requiresFrameDocument) {
@@ -679,8 +649,9 @@ async function buildEntry(
     const realFrameAbs = resolveRealPathSync(frameAbs);
     const realPackageRoot = resolveRealPathSync(path.resolve(pluginDir));
     if (
-      realFrameAbs === realPackageRoot ||
-      isWithin(realFrameAbs, realPackageRoot)
+      realFrameAbs &&
+      realPackageRoot &&
+      isPathWithinRoot(realFrameAbs, realPackageRoot)
     ) {
       const frameAvailable = await fileExists(realFrameAbs);
       if (frameAvailable) {
