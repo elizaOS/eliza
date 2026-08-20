@@ -85,6 +85,12 @@ describe("TalkModeWeb fallback", () => {
       microphone: "prompt",
       speechRecognition: "not_supported",
     });
+    await expect(
+      new TalkModeWeb().requestMicrophonePermission(),
+    ).resolves.toEqual({
+      microphone: "prompt",
+      speechRecognition: "not_supported",
+    });
   });
 
   it("rolls back state when the recognizer fails to start and recovers on a later start", async () => {

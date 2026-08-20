@@ -135,6 +135,41 @@ function pushNotificationsPlugin(
 }
 
 describe("createMobileSignalsPermissionsRegistry", () => {
+  it("requests microphone without prompting for native speech recognition", async () => {
+    const permissionStatus = {
+      microphone: "prompt" as const,
+      speechRecognition: "prompt" as const,
+    };
+    const talkMode = {
+      checkPermissions: vi.fn(async () => permissionStatus),
+      requestMicrophonePermission: vi.fn(async () => ({
+        microphone: "granted" as const,
+        speechRecognition: "prompt" as const,
+      })),
+      requestPermissions: vi.fn(),
+    } as unknown as TalkModePluginLike;
+    const registry = createMobileSignalsPermissionsRegistry(
+      plugin(),
+      undefined,
+      appleCalendarPlugin(),
+      pushNotificationsPlugin(),
+      { talkMode },
+    );
+
+    const next = await registry.request("microphone", {
+      reason: "Speak to Eliza.",
+      feature: { app: "onboarding", action: "permission-priming" },
+    });
+
+    expect(next).toMatchObject({
+      id: "microphone",
+      status: "granted",
+      canRequest: false,
+    });
+    expect(talkMode.requestMicrophonePermission).toHaveBeenCalledTimes(1);
+    expect(talkMode.requestPermissions).not.toHaveBeenCalled();
+  });
+
   it("returns an already-granted speech permission without opening Settings", async () => {
     const talkMode = {
       checkPermissions: vi.fn(async () => ({

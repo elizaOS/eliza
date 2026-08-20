@@ -849,6 +849,7 @@ export interface TalkModePluginLike extends NativePlugin {
   /** Query whether raw PCM frame capture is currently active. */
   isCapturingAudioFrames?(): Promise<{ capturing: boolean }>;
   checkPermissions(): Promise<TalkModePermissionStatus>;
+  requestMicrophonePermission?(): Promise<TalkModePermissionStatus>;
   requestPermissions(): Promise<TalkModePermissionStatus>;
   start(options?: {
     config?: {

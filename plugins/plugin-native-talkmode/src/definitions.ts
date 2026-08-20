@@ -409,6 +409,13 @@ export interface TalkModePlugin {
   checkPermissions(): Promise<TalkModePermissionStatus>;
 
   /**
+   * Request microphone access without prompting for native speech recognition.
+   * Realtime providers that transcribe captured audio remotely use this narrow
+   * permission path; the legacy native STT fallback uses requestPermissions().
+   */
+  requestMicrophonePermission(): Promise<TalkModePermissionStatus>;
+
+  /**
    * Request permissions
    *
    * @returns Promise resolving to permission status after request

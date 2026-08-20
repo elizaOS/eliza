@@ -19,6 +19,7 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "stopSpeaking", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isSpeaking", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestMicrophonePermission", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
     ]
 
@@ -204,9 +205,16 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(buildPermissionResult())
     }
 
+    @objc func requestMicrophonePermission(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            _ = await self.requestRecordPermission()
+            call.resolve(self.buildPermissionResult())
+        }
+    }
+
     @objc public override func requestPermissions(_ call: CAPPluginCall) {
         Task { @MainActor in
-            _ = await self.requestMicrophonePermission()
+            _ = await self.requestRecordPermission()
             _ = await self.requestSpeechPermission()
             call.resolve(self.buildPermissionResult())
         }
@@ -1130,7 +1138,7 @@ public class TalkModePlugin: CAPPlugin, CAPBridgedPlugin {
 
     // MARK: - Permissions
 
-    private func requestMicrophonePermission() async -> Bool {
+    private func requestRecordPermission() async -> Bool {
         await withCheckedContinuation { continuation in
             if #available(iOS 17.0, *) {
                 AVAudioApplication.requestRecordPermission { granted in

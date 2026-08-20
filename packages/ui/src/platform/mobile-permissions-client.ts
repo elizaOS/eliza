@@ -793,6 +793,14 @@ export function createMobileSignalsPermissionsRegistry(
         const current = await checkMobilePermission(id);
         if (
           current.canRequest &&
+          typeof native.talkMode.requestMicrophonePermission === "function"
+        ) {
+          requestedState = stateFromTalkMode(
+            "microphone",
+            await native.talkMode.requestMicrophonePermission(),
+          );
+        } else if (
+          current.canRequest &&
           typeof native.talkMode.requestPermissions === "function"
         ) {
           requestedState = stateFromTalkMode(

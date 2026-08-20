@@ -87,6 +87,7 @@ await TalkMode.stop();
 | `stopSpeaking()` | Interrupt TTS playback |
 | `isSpeaking()` | Whether TTS is currently playing |
 | `checkPermissions()` | Read microphone + speech recognition permission status |
+| `requestMicrophonePermission()` | Prompt only for microphone access |
 | `requestPermissions()` | Prompt for required permissions |
 
 ## Events

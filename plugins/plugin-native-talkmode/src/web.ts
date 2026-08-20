@@ -285,7 +285,7 @@ export class TalkModeWeb extends WebPlugin {
     return { microphone, speechRecognition };
   }
 
-  async requestPermissions(): Promise<TalkModePermissionStatus> {
+  async requestMicrophonePermission(): Promise<TalkModePermissionStatus> {
     // Request microphone permission by attempting to get user media
     try {
       const stream = await navigator.mediaDevices?.getUserMedia?.({
@@ -301,6 +301,10 @@ export class TalkModeWeb extends WebPlugin {
     }
 
     return this.checkPermissions();
+  }
+
+  async requestPermissions(): Promise<TalkModePermissionStatus> {
+    return this.requestMicrophonePermission();
   }
 
   private setState(state: TalkModeState, statusText: string): void {
