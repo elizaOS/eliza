@@ -5,6 +5,7 @@
  * but returns only caller-declared responses. Unmatched or ambiguous calls fail so
  * deterministic tests cannot pass by inventing a plausible model decision.
  */
+import { createHash } from "node:crypto";
 import type {
 	GenerateTextParams,
 	GenerateTextResult,
@@ -60,15 +61,31 @@ export interface DeterministicModelFixture {
 	) => DeterministicModelResponse | null | undefined;
 	required?: boolean;
 	times?: number | "any" | { min?: number; max?: number };
+	behavior?: DeterministicModelFixtureBehavior;
+}
+
+export interface DeterministicModelFixtureBehavior {
+	/** Delay before returning or failing. The delay is abort-aware. */
+	latencyMs?: number;
+	/** Stream this fixture with its own cadence instead of the plugin default. */
+	stream?: { chunkSize: number; intervalMs: number };
+	/** Throw the declared provider-shaped failure after matching the fixture. */
+	error?: { message: string; code?: string; status?: number; type?: string };
+	/** Keep the request pending until its AbortSignal is cancelled. */
+	waitForAbort?: boolean;
 }
 
 export interface DeterministicModelCallDiagnostic {
 	modelType: ModelTypeName;
-	latestUserText: string;
-	prompt: string;
+	latestUserTextFingerprint: string;
+	promptFingerprint: string;
+	latestUserTextLength: number;
+	promptLength: number;
 	toolNames: string[];
 	matchedFixtureName?: string;
 	responseSchemaFingerprint?: string;
+	matchingReason?: string;
+	availableFixtureNames: string[];
 }
 
 export interface DeterministicModelFixtureDiagnostic {
@@ -80,17 +97,38 @@ export interface DeterministicModelFixtureDiagnostic {
 }
 
 export interface DeterministicModelDiagnostics {
+	scope?: DeterministicModelFixtureScope;
 	calls: DeterministicModelCallDiagnostic[];
 	fixtures: DeterministicModelFixtureDiagnostic[];
 	unexpectedCalls: DeterministicModelCallDiagnostic[];
 }
 
+/** Correlates one isolated fixture registry with a scenario attempt/world. */
+export interface DeterministicModelFixtureScope {
+	scenarioId: string;
+	attemptId: string;
+	/** Reserved adapter seam for the canonical synthetic-world contract (#22898). */
+	worldId?: string;
+}
+
+export interface DeterministicModelFixtureResolution {
+	fixtureName: string;
+	response: string;
+	rawResponse: DeterministicModelResponse;
+	behavior?: DeterministicModelFixtureBehavior;
+}
+
 export interface DeterministicModelFixtureRegistry {
 	register(...fixtures: DeterministicModelFixture[]): void;
+	resolve(call: DeterministicModelCall): DeterministicModelFixtureResolution;
 	assertConsumed(): void;
 	clear(): void;
 	diagnostics(): DeterministicModelDiagnostics;
 	resetConsumption(): void;
+	beginAttempt(
+		scope: DeterministicModelFixtureScope,
+		fixtures?: DeterministicModelFixture[],
+	): void;
 }
 
 export interface DeterministicModelPlugin extends Plugin {
@@ -121,7 +159,7 @@ interface RegisteredFixture extends DeterministicModelFixture {
 
 class DeterministicModelMatchError extends Error {
 	constructor(
-		readonly kind: "unmatched" | "ambiguous",
+		readonly kind: "unmatched" | "ambiguous" | "over-consumed",
 		message: string,
 	) {
 		super(message);
@@ -148,10 +186,14 @@ export function createDeterministicModelFixtureRegistry(
 	const entries: RegisteredFixture[] = [];
 	const calls: DeterministicModelCallDiagnostic[] = [];
 	const unexpectedCalls: DeterministicModelCallDiagnostic[] = [];
+	let scope: DeterministicModelFixtureScope | undefined;
 
 	const registry: DeterministicModelFixtureRegistry = {
 		register(...next): void {
 			for (const fixture of next) entries.push(registerFixture(fixture));
+		},
+		resolve(call): DeterministicModelFixtureResolution {
+			return resolveRegisteredFixture(entries, calls, unexpectedCalls, call);
 		},
 		assertConsumed(): void {
 			const unused = entries.filter(
@@ -166,8 +208,10 @@ export function createDeterministicModelFixtureRegistry(
 			entries.length = 0;
 			calls.length = 0;
 			unexpectedCalls.length = 0;
+			scope = undefined;
 		},
 		diagnostics: () => ({
+			...(scope ? { scope: { ...scope } } : {}),
 			calls: [...calls],
 			fixtures: entries.map(fixtureDiagnostic),
 			unexpectedCalls: [...unexpectedCalls],
@@ -177,49 +221,20 @@ export function createDeterministicModelFixtureRegistry(
 			unexpectedCalls.length = 0;
 			for (const fixture of entries) fixture.consumed = 0;
 		},
+		beginAttempt(nextScope, nextFixtures = []): void {
+			registry.clear();
+			scope = { ...nextScope };
+			registry.register(...nextFixtures);
+		},
 	};
 
 	registry.register(...fixtures);
-	registryResolvers.set(registry, (call) => {
-		const diagnostic = callDiagnostic(call);
-		calls.push(diagnostic);
-		const matching = entries.filter(
-			(fixture) =>
-				matchesFixture(fixture, call) && fixture.consumed < fixture.max,
-		);
-		if (matching.length !== 1) {
-			unexpectedCalls.push(diagnostic);
-			const reason =
-				matching.length === 0
-					? "no fixture matched"
-					: "multiple fixtures matched";
-			throw new DeterministicModelMatchError(
-				matching.length === 0 ? "unmatched" : "ambiguous",
-				`deterministic model call failed: ${reason}: ${JSON.stringify({ call: diagnostic, fixtures: matching.map((fixture) => fixture.name) })}`,
-			);
-		}
-		const fixture = matching[0];
-		const response = resolveFixtureResponse(fixture, call);
-		if (response === null || response === undefined) {
-			unexpectedCalls.push(diagnostic);
-			throw new Error(
-				`deterministic model fixture "${fixture.name}" did not return a response`,
-			);
-		}
-		fixture.consumed += 1;
-		diagnostic.matchedFixtureName = fixture.name;
-		return normalizeResponse(response);
-	});
 	registryUnmatchedRollbacks.set(registry, () => {
 		unexpectedCalls.pop();
 	});
 	return registry;
 }
 
-const registryResolvers = new WeakMap<
-	DeterministicModelFixtureRegistry,
-	(call: DeterministicModelCall) => string
->();
 const registryUnmatchedRollbacks = new WeakMap<
 	DeterministicModelFixtureRegistry,
 	() => void
@@ -242,15 +257,9 @@ export function createDeterministicModelPlugin(
 			params: GenerateTextParams,
 		) => {
 			const call = buildCall(modelType, params);
-			const resolveFixture = registryResolvers.get(fixtures);
-			if (!resolveFixture) {
-				throw new Error(
-					"deterministic model fixture registry was not created by createDeterministicModelFixtureRegistry",
-				);
-			}
-			let response: string;
+			let resolved: DeterministicModelFixtureResolution;
 			try {
-				response = resolveFixture(call);
+				resolved = fixtures.resolve(call);
 			} catch (error) {
 				if (
 					!(error instanceof DeterministicModelMatchError) ||
@@ -258,13 +267,23 @@ export function createDeterministicModelPlugin(
 					!options.resolve
 				)
 					throw error;
-				const resolved = options.resolve(call);
-				if (resolved === null || resolved === undefined) throw error;
+				const fallbackResponse = options.resolve(call);
+				if (fallbackResponse === null || fallbackResponse === undefined)
+					throw error;
 				registryUnmatchedRollbacks.get(fixtures)?.();
-				response = normalizeResponse(resolved);
+				resolved = {
+					fixtureName: "explicit-fallback-resolver",
+					response: normalizeResponse(fallbackResponse),
+					rawResponse: fallbackResponse,
+				};
 			}
-			await streamResponse(params, response, options.stream, modelType);
-			return response;
+			await applyDeterministicModelFixtureBehavior(
+				resolved.behavior,
+				params.signal,
+			);
+			const stream = resolved.behavior?.stream ?? options.stream;
+			await streamResponse(params, resolved.response, stream, modelType);
+			return resolved.response;
 		}) as never;
 	}
 
@@ -290,16 +309,71 @@ export function createDeterministicModelPlugin(
 	};
 }
 
+function resolveRegisteredFixture(
+	entries: RegisteredFixture[],
+	calls: DeterministicModelCallDiagnostic[],
+	unexpectedCalls: DeterministicModelCallDiagnostic[],
+	call: DeterministicModelCall,
+): DeterministicModelFixtureResolution {
+	const diagnostic = callDiagnostic(call);
+	diagnostic.availableFixtureNames = entries.map((fixture) => fixture.name);
+	calls.push(diagnostic);
+	const allMatching = entries.filter((fixture) =>
+		matchesFixture(fixture, call),
+	);
+	const matching = allMatching.filter(
+		(fixture) => fixture.consumed < fixture.max,
+	);
+	if (matching.length !== 1) {
+		unexpectedCalls.push(diagnostic);
+		const reason =
+			matching.length === 0 && allMatching.length > 0
+				? "all matching fixtures were over-consumed"
+				: matching.length === 0
+					? "no fixture matched"
+					: "multiple fixtures matched";
+		diagnostic.matchingReason = reason;
+		throw new DeterministicModelMatchError(
+			matching.length === 0
+				? allMatching.length > 0
+					? "over-consumed"
+					: "unmatched"
+				: "ambiguous",
+			`deterministic model call failed: ${reason}: ${JSON.stringify({ call: diagnostic, fixtures: (matching.length > 0 ? matching : allMatching).map((fixture) => fixture.name) })}`,
+		);
+	}
+	const fixture = matching[0];
+	const rawResponse = resolveFixtureResponse(fixture, call);
+	if (rawResponse === null || rawResponse === undefined) {
+		unexpectedCalls.push(diagnostic);
+		throw new Error(
+			`deterministic model fixture "${fixture.name}" did not return a response`,
+		);
+	}
+	fixture.consumed += 1;
+	diagnostic.matchedFixtureName = fixture.name;
+	diagnostic.matchingReason = "exactly one eligible fixture matched";
+	return {
+		fixtureName: fixture.name,
+		response: normalizeResponse(rawResponse),
+		rawResponse,
+		behavior: fixture.behavior,
+	};
+}
+
 function registerFixture(
 	fixture: DeterministicModelFixture,
 ): RegisteredFixture {
 	if (!fixture.name.trim())
 		throw new Error("deterministic model fixture name is required");
 	if (fixture.response === undefined && fixture.resolve === undefined) {
-		throw new Error(
-			`deterministic model fixture "${fixture.name}" must define response or resolve`,
-		);
+		if (!fixture.behavior?.error && !fixture.behavior?.waitForAbort) {
+			throw new Error(
+				`deterministic model fixture "${fixture.name}" must define response, resolve, error, or waitForAbort`,
+			);
+		}
 	}
+	validateBehavior(fixture);
 	const bounds = fixtureBounds(fixture);
 	return { ...fixture, ...bounds, consumed: 0 };
 }
@@ -370,7 +444,8 @@ function matchesFixture(
 		return false;
 	if (
 		match.toolNames &&
-		!match.toolNames.every((name) => call.toolNames.includes(name))
+		stableStringify([...match.toolNames].sort()) !==
+			stableStringify([...call.toolNames].sort())
 	)
 		return false;
 	if (
@@ -402,7 +477,14 @@ function matchesText(
 	call: DeterministicModelCall,
 ): boolean {
 	if (typeof matcher === "string") return matcher === value;
-	if (matcher instanceof RegExp) return matcher.test(value);
+	if (matcher instanceof RegExp) {
+		// Global/sticky regexes mutate lastIndex on test(); reset on both sides so
+		// repeated attempts and parallel registries observe identical matching.
+		matcher.lastIndex = 0;
+		const matched = matcher.test(value);
+		matcher.lastIndex = 0;
+		return matched;
+	}
 	return matcher(value, call);
 }
 
@@ -422,7 +504,7 @@ function resolveFixtureResponse(
 	if (fixture.resolve) return fixture.resolve(call);
 	return typeof fixture.response === "function"
 		? fixture.response(call)
-		: fixture.response;
+		: (fixture.response ?? "");
 }
 
 function normalizeResponse(response: DeterministicModelResponse): string {
@@ -446,14 +528,21 @@ function callDiagnostic(
 ): DeterministicModelCallDiagnostic {
 	return {
 		modelType: call.modelType,
-		latestUserText: call.latestUserText,
-		prompt: truncate(call.params.prompt ?? ""),
+		latestUserTextFingerprint: fingerprint(call.latestUserText),
+		promptFingerprint: fingerprint(call.params.prompt ?? ""),
+		latestUserTextLength: call.latestUserText.length,
+		promptLength: (call.params.prompt ?? "").length,
 		toolNames: call.toolNames,
 		responseSchemaFingerprint:
 			call.params.responseSchema === undefined
 				? undefined
-				: stableStringify(call.params.responseSchema),
+				: fingerprint(stableStringify(call.params.responseSchema)),
+		availableFixtureNames: [],
 	};
+}
+
+function fingerprint(value: string): string {
+	return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function latestUserText(params: GenerateTextParams): string {
@@ -503,8 +592,86 @@ function stableStringify(value: unknown): string {
 	return JSON.stringify(value) ?? String(value);
 }
 
-function truncate(value: string): string {
-	return value.length > 500 ? `${value.slice(0, 497)}...` : value;
+function validateBehavior(fixture: DeterministicModelFixture): void {
+	const behavior = fixture.behavior;
+	if (!behavior) return;
+	if (
+		behavior.latencyMs !== undefined &&
+		(!Number.isSafeInteger(behavior.latencyMs) || behavior.latencyMs < 0)
+	) {
+		throw new Error(`fixture "${fixture.name}" has invalid latencyMs`);
+	}
+	if (behavior.stream) {
+		if (
+			!Number.isSafeInteger(behavior.stream.chunkSize) ||
+			behavior.stream.chunkSize <= 0 ||
+			!Number.isSafeInteger(behavior.stream.intervalMs) ||
+			behavior.stream.intervalMs < 0
+		) {
+			throw new Error(`fixture "${fixture.name}" has invalid stream behavior`);
+		}
+	}
+}
+
+export async function applyDeterministicModelFixtureBehavior(
+	behavior: DeterministicModelFixtureBehavior | undefined,
+	signal?: AbortSignal,
+): Promise<void> {
+	if (!behavior) return;
+	if (behavior.waitForAbort) {
+		await waitForAbort(signal);
+	}
+	if ((behavior.latencyMs ?? 0) > 0) {
+		await abortableDelay(behavior.latencyMs ?? 0, signal);
+	}
+	if (behavior.error) {
+		const error = new Error(behavior.error.message) as Error & {
+			code?: string;
+			status?: number;
+			type?: string;
+		};
+		error.name = "DeterministicModelFixtureError";
+		error.code = behavior.error.code;
+		error.status = behavior.error.status;
+		error.type = behavior.error.type;
+		throw error;
+	}
+}
+
+async function waitForAbort(signal: AbortSignal | undefined): Promise<never> {
+	if (!signal) {
+		throw new Error(
+			"deterministic model waitForAbort fixture requires params.signal",
+		);
+	}
+	if (signal.aborted)
+		throw signal.reason ?? new DOMException("Aborted", "AbortError");
+	return new Promise<never>((_resolve, reject) => {
+		signal.addEventListener(
+			"abort",
+			() => reject(signal.reason ?? new DOMException("Aborted", "AbortError")),
+			{ once: true },
+		);
+	});
+}
+
+async function abortableDelay(
+	ms: number,
+	signal: AbortSignal | undefined,
+): Promise<void> {
+	if (signal?.aborted)
+		throw signal.reason ?? new DOMException("Aborted", "AbortError");
+	await new Promise<void>((resolve, reject) => {
+		const timeout = setTimeout(resolve, ms);
+		signal?.addEventListener(
+			"abort",
+			() => {
+				clearTimeout(timeout);
+				reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+			},
+			{ once: true },
+		);
+	});
 }
 
 async function streamResponse(

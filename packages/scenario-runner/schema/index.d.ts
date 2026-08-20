@@ -551,6 +551,67 @@ export type ScenarioRequirements = {
   os?: string;
 };
 
+/** Serializable text matcher shared by in-process and wire model fixtures. */
+export type ScenarioModelTextMatcher =
+  | { exact: string }
+  | { includes: string }
+  | { pattern: string; flags?: string };
+
+export type ScenarioModelToolCall = {
+  id?: string;
+  name: string;
+  arguments: Record<string, unknown>;
+};
+
+export type ScenarioTextModelType =
+  | "TEXT_NANO"
+  | "TEXT_SMALL"
+  | "TEXT_MEDIUM"
+  | "TEXT_LARGE"
+  | "TEXT_MEGA"
+  | "RESPONSE_HANDLER"
+  | "ACTION_PLANNER"
+  | "REASONING_SMALL"
+  | "REASONING_LARGE"
+  | "TEXT_COMPLETION";
+
+export type ScenarioModelFixture = {
+  name: string;
+  match: {
+    modelType: ScenarioTextModelType | readonly ScenarioTextModelType[];
+    input?: ScenarioModelTextMatcher;
+    prompt?: ScenarioModelTextMatcher;
+    toolNames?: readonly string[];
+    responseSchema?: unknown;
+  };
+  response?: {
+    text?: string;
+    json?: unknown;
+    toolCalls?: readonly ScenarioModelToolCall[];
+    finishReason?: string;
+    usage?: { promptTokens: number; completionTokens: number };
+  };
+  /** Defaults to exactly once for scenario manifests. */
+  cardinality?: number | "any" | { min?: number; max?: number };
+  behavior?: {
+    latencyMs?: number;
+    stream?: { chunkSize: number; intervalMs: number };
+    error?: { message: string; code?: string; status?: number; type?: string };
+    waitForAbort?: boolean;
+  };
+};
+
+export type ScenarioModelFixtureDeclaration =
+  | {
+      mode: "fixtures";
+      fixtures: readonly ScenarioModelFixture[];
+    }
+  | {
+      mode: "model-free";
+      /** Why the scenario intentionally never enters a model-backed path. */
+      reason: string;
+    };
+
 export type ScenarioDefinition = {
   id: string;
   title: string;
@@ -598,6 +659,8 @@ export type ScenarioDefinition = {
   isolation?: "per-scenario" | "shared-runtime" | "worker";
   /** Plugins and service capabilities required before the scenario runs. */
   requires?: ScenarioRequirements;
+  /** Strict model contract. There is no default/fallback completion. */
+  modelFixtures?: ScenarioModelFixtureDeclaration;
   rooms?: ScenarioRoomSpec[];
   /** Personality corpus metadata (live-only judge bridge). */
   scope?: "user" | "mixed";
