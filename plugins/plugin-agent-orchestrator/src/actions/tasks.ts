@@ -166,7 +166,8 @@ type ControlAction =
   | "resume"
   | "continue"
   | "archive"
-  | "reopen";
+  | "reopen"
+  | "approve";
 
 type HistoryMetric = "list" | "count" | "detail";
 type HistoryWindow =
@@ -4968,10 +4969,16 @@ function normalizeControlAction(value?: string): ControlAction | null {
     normalized === "resume" ||
     normalized === "continue" ||
     normalized === "archive" ||
-    normalized === "reopen"
+    normalized === "reopen" ||
+    normalized === "approve"
   ) {
     return normalized;
   }
+  // The park notice literally tells the user "tell me to accept it" — accept
+  // must resolve to the human-override approval, not improvise into resume
+  // (live 2026-08-20: "accept it" produced a false "Resumed the coding
+  // task." while the task stayed waiting_on_user).
+  if (normalized === "accept") return "approve";
   return null;
 }
 
@@ -5031,6 +5038,77 @@ async function runControl(
   // runTaskLifecycleControl), which supports all three.
   if (action === "archive" || action === "reopen" || action === "pause") {
     return runTaskLifecycleControl(runtime, params, content, callback, action);
+  }
+  if (action === "approve") {
+    const taskService = runtime.getService?.(
+      OrchestratorTaskService.serviceType,
+    ) as OrchestratorTaskService | null | undefined;
+    if (!taskService) {
+      return failureResult(
+        "TASKS:control",
+        "SERVICE_UNAVAILABLE",
+        "The durable task service is not available.",
+        { reason: "task_service_unavailable" },
+      );
+    }
+    let approveTaskId =
+      pickString(params, content, "taskId") ??
+      pickString(params, content, "threadId");
+    let approveTitle: string | undefined;
+    if (!approveTaskId) {
+      // "accept it" — the referent is the newest parked/validating task.
+      const candidates = await taskService.listTasks({});
+      const target = candidates.find((task) =>
+        ["waiting_on_user", "validating"].includes(String(task.status)),
+      );
+      approveTaskId = target?.id;
+      approveTitle = target?.title;
+    }
+    if (!approveTaskId) {
+      return failureResult(
+        "TASKS:control",
+        "NO_APPROVABLE_TASK",
+        "No parked or validating task found to accept; ask the user which task they mean.",
+        { reason: "no_approvable_task" },
+      );
+    }
+    try {
+      const detail = await taskService.validateTask(approveTaskId, {
+        passed: true,
+        humanOverride: true,
+        verifier: "human",
+        summary: "Accepted by the user.",
+      });
+      const title = approveTitle ?? detail?.title ?? "the task";
+      const { text: out } = await phraseForUser(
+        runtime,
+        {
+          intent: "confirm",
+          facts: { accepted: true, title, nowMarkedDone: true },
+          mustNotClaim: ["any additional work was performed"],
+        },
+        `Accepted — marked "${title}" done.`,
+      );
+      await callbackText(callback, out, { voiced: true });
+      return {
+        success: true,
+        text: out,
+        userFacingText: out,
+        verifiedUserFacing: true,
+        turnComplete: true,
+        data: { taskId: approveTaskId, approved: true },
+      };
+    } catch (err) {
+      // error-policy:J1 control boundary — a failed override surfaces as a
+      // structured failure the evaluator phrases; never a false confirmation.
+      const errMsg = err instanceof Error ? err.message : String(err);
+      return failureResult(
+        "TASKS:control",
+        "APPROVE_FAILED",
+        `Could not accept task ${approveTaskId}: ${errMsg}`,
+        { reason: "approve_failed", taskId: approveTaskId },
+      );
+    }
   }
 
   const instruction =
@@ -7337,7 +7415,7 @@ export const tasksAction: Action & {
     {
       name: "controlAction",
       description:
-        "Child action for action=control: pause | resume | stop | continue | archive | reopen.",
+        "Child action for action=control: pause | resume | stop | continue | archive | reopen | approve (aka accept — the user approves a parked/validating task's result; marks it done).",
       required: false,
       schema: { type: "string" as const },
     },
