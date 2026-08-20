@@ -146,6 +146,34 @@ describe("validateElizaGenUiSpec unbounded nests", () => {
     expect(validateElizaGenUiSpec(specWithData(data)).ok).toBe(true);
   });
 
+  it("rejects non-JSON primitives without retaining or executing callables", () => {
+    let calls = 0;
+    const callback = () => {
+      calls += 1;
+      return "executed";
+    };
+    for (const value of [
+      callback,
+      undefined,
+      Symbol("hidden"),
+      1n,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      const result = validateElizaGenUiSpec(specWithData({ value }));
+      expect(result.ok).toBe(false);
+    }
+    expect(calls).toBe(0);
+  });
+
+  it("returns an honest spec equivalent to its JSON round trip", () => {
+    const input = specWithData({ title: "Sleep", values: [1, true, null] });
+    const result = validateElizaGenUiSpec(input);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.spec).toEqual(JSON.parse(JSON.stringify(input)));
+    }
+  });
+
   it("translates hostile reflection traps instead of throwing", () => {
     const data = new Proxy(
       {},

@@ -137,6 +137,22 @@ function snapshotUnsafeFields(
     ctx.halted = true;
     return undefined;
   }
+  if (
+    value === undefined ||
+    typeof value === "function" ||
+    typeof value === "symbol" ||
+    typeof value === "bigint" ||
+    (typeof value === "number" && !Number.isFinite(value))
+  ) {
+    addIssue(issues, {
+      code: "invalid_spec",
+      message: "Generated UI values must use serializable JSON primitives.",
+      componentId,
+      path,
+    });
+    ctx.halted = true;
+    return undefined;
+  }
   if (!value || typeof value !== "object") {
     return value;
   }
