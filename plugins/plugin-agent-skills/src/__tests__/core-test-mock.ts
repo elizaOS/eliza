@@ -4,15 +4,13 @@
  * and a minimal Service base class — so unit tests run without the full runtime.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { vi } from "vitest";
 
-vi.mock("@elizaos/core", async () => {
-	// The REAL spawn-env policy, not a double. Tests that assert injection
-	// primitives are stripped would prove nothing against a stub, so this one
-	// export is passed through from source rather than faked.
-	const { sanitizeSpawnEnv } = await import(
-		"../../../../packages/core/src/security/spawn-env-policy"
-	);
+vi.mock("@elizaos/core", () => {
+	const streamingContext = new AsyncLocalStorage<
+		{ abortSignal?: AbortSignal } | undefined
+	>();
 	const logger = {
 		debug: vi.fn(),
 		error: vi.fn(),
@@ -146,6 +144,11 @@ vi.mock("@elizaos/core", async () => {
 		// immediate "confirmed" so handlers run to completion in one call.
 		requireConfirmation: vi.fn(async () => ({ status: "confirmed" })),
 		getTrajectoryContext: vi.fn(() => undefined),
+		getStreamingContext: () => streamingContext.getStore(),
+		runWithStreamingContext: <T>(
+			context: { abortSignal?: AbortSignal } | undefined,
+			fn: () => T,
+		): T => streamingContext.run(context, fn),
 		captureSkillInvocationIO,
 		promoteSubactionsToActions: (action: unknown) => [action],
 		unwrapUserMessageText,
@@ -158,7 +161,6 @@ vi.mock("@elizaos/core", async () => {
 			}
 			async stop() {}
 		},
-		sanitizeSpawnEnv,
 		resolveStateDir: vi.fn(() => "/tmp/elizaos-test-state"),
 		formatError: vi.fn((err: unknown) =>
 			err instanceof Error ? err.message : String(err),

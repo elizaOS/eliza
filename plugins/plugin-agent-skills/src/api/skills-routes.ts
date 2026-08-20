@@ -180,6 +180,68 @@ export interface SkillsServerState {
   skills: SkillEntry[];
 }
 
+interface InstallRequestLifecycle {
+  readonly signal: AbortSignal;
+  markCompleted(): void;
+  dispose(): void;
+}
+
+type AbortEventSource = {
+  on?: (event: string, listener: () => void) => unknown;
+  off?: (event: string, listener: () => void) => unknown;
+};
+
+function createInstallRequestLifecycle(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): InstallRequestLifecycle {
+  const controller = new AbortController();
+  const registrations: Array<{
+    source: AbortEventSource;
+    event: string;
+    listener: () => void;
+  }> = [];
+  let completed = false;
+  const abort = (): void => {
+    if (!completed && !controller.signal.aborted) {
+      controller.abort(new Error("Skill install client disconnected"));
+    }
+  };
+  const register = (
+    source: AbortEventSource | null | undefined,
+    event: string,
+    listener: () => void,
+  ): void => {
+    if (typeof source?.on !== "function") return;
+    source.on(event, listener);
+    registrations.push({ source, event, listener });
+  };
+  const onResponseClose = (): void => {
+    if (!res.writableEnded) abort();
+  };
+
+  register(req, "aborted", abort);
+  register(req, "error", abort);
+  register(res, "close", onResponseClose);
+  register(res, "error", abort);
+  register(req.socket, "close", abort);
+  register(req.socket, "error", abort);
+  if (req.aborted || req.destroyed || res.destroyed) abort();
+
+  return {
+    signal: controller.signal,
+    markCompleted(): void {
+      completed = true;
+    },
+    dispose(): void {
+      for (const { source, event, listener } of registrations) {
+        source.off?.(event, listener);
+      }
+      registrations.length = 0;
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Skill ID validation
 // ---------------------------------------------------------------------------
@@ -658,7 +720,12 @@ export async function handleSkillsRoutes(
         | {
             install?: (
               slug: string,
-              opts?: { version?: string; force?: boolean },
+              opts?: {
+                version?: string;
+                force?: boolean;
+                signal?: AbortSignal;
+                throwOnDownloadError?: boolean;
+              },
             ) => Promise<boolean>;
             isInstalled?: (slug: string) => Promise<boolean>;
           }
@@ -673,45 +740,65 @@ export async function handleSkillsRoutes(
         return true;
       }
 
-      const alreadyInstalled =
-        typeof service.isInstalled === "function"
-          ? await service.isInstalled(body.slug)
-          : false;
+      const requestLifecycle = createInstallRequestLifecycle(req, res);
+      try {
+        const alreadyInstalled =
+          typeof service.isInstalled === "function"
+            ? await service.isInstalled(body.slug)
+            : false;
+        requestLifecycle.signal.throwIfAborted();
 
-      if (alreadyInstalled) {
-        json(res, {
-          ok: true,
-          slug: body.slug,
-          message: `Skill "${body.slug}" is already installed`,
-          alreadyInstalled: true,
+        if (alreadyInstalled) {
+          json(res, {
+            ok: true,
+            slug: body.slug,
+            message: `Skill "${body.slug}" is already installed`,
+            alreadyInstalled: true,
+          });
+          requestLifecycle.markCompleted();
+          return true;
+        }
+
+        const success = await service.install(body.slug, {
+          version: body.version,
+          signal: requestLifecycle.signal,
+          throwOnDownloadError: true,
         });
-        return true;
-      }
+        requestLifecycle.signal.throwIfAborted();
 
-      const success = await service.install(body.slug, {
-        version: body.version,
-      });
+        if (success) {
+          // Refresh the skills list so the UI picks up the new skill
+          const workspaceDir =
+            state.config.agents?.defaults?.workspace ??
+            resolveDefaultAgentWorkspaceDir();
+          const discoveredSkills = await discoverSkills(
+            workspaceDir,
+            state.config,
+            state.runtime,
+          );
+          requestLifecycle.signal.throwIfAborted();
+          state.skills = discoveredSkills;
 
-      if (success) {
-        // Refresh the skills list so the UI picks up the new skill
-        const workspaceDir =
-          state.config.agents?.defaults?.workspace ??
-          resolveDefaultAgentWorkspaceDir();
-        state.skills = await discoverSkills(
-          workspaceDir,
-          state.config,
-          state.runtime,
-        );
-
-        json(res, {
-          ok: true,
-          slug: body.slug,
-          message: `Skill "${body.slug}" installed successfully`,
-        });
-      } else {
-        error(res, `Failed to install skill "${body.slug}"`, 500);
+          json(res, {
+            ok: true,
+            slug: body.slug,
+            message: `Skill "${body.slug}" installed successfully`,
+          });
+        } else {
+          error(res, `Failed to install skill "${body.slug}"`, 500);
+        }
+        requestLifecycle.markCompleted();
+      } catch (cause) {
+        // error-policy:J1 a disconnected HTTP request owns cancellation and
+        // must not receive a late response from the completed install path.
+        if (requestLifecycle.signal.aborted) return true;
+        throw cause;
+      } finally {
+        requestLifecycle.dispose();
       }
     } catch (err) {
+      // error-policy:J1 the HTTP boundary translates typed install failures to
+      // the established structured error response.
       error(
         res,
         `Skill install failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -1535,7 +1622,12 @@ export async function handleSkillsRoutes(
           | {
               install?: (
                 skillSlug: string,
-                opts?: { version?: string; force?: boolean },
+                opts?: {
+                  version?: string;
+                  force?: boolean;
+                  signal?: AbortSignal;
+                  throwOnDownloadError?: boolean;
+                },
               ) => Promise<boolean>;
               isInstalled?: (skillSlug: string) => Promise<boolean>;
             }
@@ -1550,46 +1642,66 @@ export async function handleSkillsRoutes(
           return true;
         }
 
-        const alreadyInstalled =
-          typeof service.isInstalled === "function"
-            ? await service.isInstalled(slug)
-            : false;
+        const requestLifecycle = createInstallRequestLifecycle(req, res);
+        try {
+          const alreadyInstalled =
+            typeof service.isInstalled === "function"
+              ? await service.isInstalled(slug)
+              : false;
+          requestLifecycle.signal.throwIfAborted();
 
-        if (alreadyInstalled) {
+          if (alreadyInstalled) {
+            json(res, {
+              ok: true,
+              skill: {
+                id: slug,
+                name: body.name ?? slug,
+                source: "clawhub",
+                installedAt: new Date().toISOString(),
+              },
+              alreadyInstalled: true,
+            });
+            requestLifecycle.markCompleted();
+            return true;
+          }
+
+          const success = await service.install(slug, {
+            signal: requestLifecycle.signal,
+            throwOnDownloadError: true,
+          });
+          requestLifecycle.signal.throwIfAborted();
+          if (!success) {
+            error(res, `Failed to install skill "${slug}"`, 500);
+            requestLifecycle.markCompleted();
+            return true;
+          }
+
+          const discoveredSkills = await discoverSkills(
+            workspaceDir,
+            state.config,
+            state.runtime,
+          );
+          requestLifecycle.signal.throwIfAborted();
+          state.skills = discoveredSkills;
+
           json(res, {
             ok: true,
             skill: {
               id: slug,
-              name: body.name ?? slug,
+              name: body.name?.trim() || slug,
               source: "clawhub",
               installedAt: new Date().toISOString(),
             },
-            alreadyInstalled: true,
           });
-          return true;
+          requestLifecycle.markCompleted();
+        } catch (cause) {
+          // error-policy:J1 a disconnected HTTP request owns cancellation and
+          // must not receive a late response from the completed install path.
+          if (requestLifecycle.signal.aborted) return true;
+          throw cause;
+        } finally {
+          requestLifecycle.dispose();
         }
-
-        const success = await service.install(slug);
-        if (!success) {
-          error(res, `Failed to install skill "${slug}"`, 500);
-          return true;
-        }
-
-        state.skills = await discoverSkills(
-          workspaceDir,
-          state.config,
-          state.runtime,
-        );
-
-        json(res, {
-          ok: true,
-          skill: {
-            id: slug,
-            name: body.name?.trim() || slug,
-            source: "clawhub",
-            installedAt: new Date().toISOString(),
-          },
-        });
       } else {
         const result = await installMarketplaceSkill(workspaceDir, {
           githubUrl: body.githubUrl,

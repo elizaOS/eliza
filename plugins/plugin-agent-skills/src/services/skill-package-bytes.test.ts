@@ -105,6 +105,7 @@ function createRuntime(): IAgentRuntime {
 
 afterEach(() => {
 	vi.unstubAllGlobals();
+	vi.useRealTimers();
 });
 
 describe("readCappedSkillPackage", () => {
@@ -163,25 +164,78 @@ describe("readCappedSkillPackage", () => {
 		expect(overridden.timeoutMs).toBe(123);
 		overridden.dispose();
 
+		const fractional = createSkillDownloadLifecycle({ downloadTimeoutMs: 0.5 });
+		expect(fractional.timeoutMs).toBe(0.5);
+		fractional.dispose();
+
 		const optedOut = createSkillDownloadLifecycle({ downloadTimeoutMs: null });
 		expect(optedOut.timeoutMs).toBeNull();
 		expect(optedOut.signal.aborted).toBe(false);
 		optedOut.dispose();
 	});
 
-	it.each([
-		0,
-		-1,
-		0.5,
-		Number.NaN,
-		Number.POSITIVE_INFINITY,
-		MAX_SKILL_DOWNLOAD_TIMEOUT_MS + 1,
-	])("rejects invalid deadline override %s", (downloadTimeoutMs) => {
+	it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+		"rejects invalid deadline override %s",
+		(downloadTimeoutMs) => {
 		expect(() =>
 			createSkillDownloadLifecycle({ downloadTimeoutMs }),
 		).toThrow(
 			expect.objectContaining({ code: "SKILL_DOWNLOAD_INVALID_TIMEOUT" }),
 		);
+		},
+	);
+
+	it("segments deadlines above the native timer limit without expiring early", () => {
+		const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+		const lifecycle = createSkillDownloadLifecycle({
+			downloadTimeoutMs: Number.MAX_VALUE,
+		});
+
+		expect(setTimeoutSpy).toHaveBeenCalledWith(
+			expect.any(Function),
+			MAX_SKILL_DOWNLOAD_TIMEOUT_MS,
+		);
+		expect(lifecycle.signal.aborted).toBe(false);
+
+		lifecycle.dispose();
+		setTimeoutSpy.mockRestore();
+	});
+
+	it("keeps the first abort reason and disarms caller and timer hooks", async () => {
+		vi.useFakeTimers();
+		const callerFirst = new AbortController();
+		const callerFirstLifecycle = createSkillDownloadLifecycle({
+			signal: callerFirst.signal,
+			downloadTimeoutMs: 20,
+		});
+		callerFirst.abort(new Error("caller won"));
+		await vi.advanceTimersByTimeAsync(20);
+		expect(callerFirstLifecycle.signal.reason).toMatchObject({
+			code: "SKILL_DOWNLOAD_ABORTED",
+		});
+		callerFirstLifecycle.dispose();
+
+		const deadlineFirst = new AbortController();
+		const deadlineFirstLifecycle = createSkillDownloadLifecycle({
+			signal: deadlineFirst.signal,
+			downloadTimeoutMs: 20,
+		});
+		await vi.advanceTimersByTimeAsync(20);
+		deadlineFirst.abort(new Error("caller lost"));
+		expect(deadlineFirstLifecycle.signal.reason).toMatchObject({
+			code: "SKILL_DOWNLOAD_TIMEOUT",
+		});
+		deadlineFirstLifecycle.dispose();
+
+		const disposedCaller = new AbortController();
+		const disposedLifecycle = createSkillDownloadLifecycle({
+			signal: disposedCaller.signal,
+			downloadTimeoutMs: 20,
+		});
+		disposedLifecycle.dispose();
+		disposedCaller.abort(new Error("late caller"));
+		await vi.advanceTimersByTimeAsync(25);
+		expect(disposedLifecycle.signal.aborted).toBe(false);
 	});
 
 	it("cancels a stalled body with the typed deadline error", async () => {
@@ -315,6 +369,62 @@ describe("readCappedSkillPackage", () => {
 		});
 		expect(installSignal?.aborted).toBe(true);
 		expect(storage.getPackage("cancelled")).toBeUndefined();
+	});
+
+	it("rejects a pre-aborted caller before fetch or persistence", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+		const caller = new AbortController();
+		caller.abort(new Error("already disconnected"));
+
+		await expect(
+			service.installFromUrl("https://skills.example/pre-aborted.md", {
+				signal: caller.signal,
+				slug: "pre-aborted",
+				throwOnDownloadError: true,
+			}),
+		).rejects.toMatchObject({ code: "SKILL_DOWNLOAD_ABORTED" });
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(storage.getPackage("pre-aborted")).toBeUndefined();
+	});
+
+	it("inherits one service deadline while preserving override and opt-out", async () => {
+		const fetchMock = vi.fn(async () => new Response("missing", { status: 404 }));
+		vi.stubGlobal("fetch", fetchMock);
+		const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+		const perRequestTimeoutSpy = vi.spyOn(AbortSignal, "timeout");
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			fetchTimeoutMs: 1_234,
+			storage: new MemorySkillStore(),
+		});
+
+		await expect(
+			service.installFromUrl("https://skills.example/inherited.md"),
+		).resolves.toBe(false);
+		expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1_234);
+		expect(perRequestTimeoutSpy).not.toHaveBeenCalled();
+
+		setTimeoutSpy.mockClear();
+		await expect(
+			service.installFromUrl("https://skills.example/override.md", {
+				downloadTimeoutMs: 567,
+			}),
+		).resolves.toBe(false);
+		expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 567);
+
+		setTimeoutSpy.mockClear();
+		await expect(
+			service.installFromUrl("https://skills.example/opt-out.md", {
+				downloadTimeoutMs: null,
+			}),
+		).resolves.toBe(false);
+		expect(setTimeoutSpy).not.toHaveBeenCalled();
 	});
 
 	it("keeps caller cancellation boolean-compatible unless typed errors are requested", async () => {
@@ -659,10 +769,62 @@ describe("readCappedSkillPackage", () => {
 		expect(storage.getPackage("catalog-stall")).toBeUndefined();
 	});
 
+	it("closes a real catalog package peer when its body exceeds the deadline", async () => {
+		let markPackageClosed: (() => void) | undefined;
+		const packageClosed = new Promise<void>((resolve) => {
+			markPackageClosed = resolve;
+		});
+		const server = createServer((request, response) => {
+			if (request.url?.startsWith("/api/v1/skills/catalog-peer-stall")) {
+				response.writeHead(200, { "content-type": "application/json" });
+				response.end(JSON.stringify({ latestVersion: { version: "1.0.0" } }));
+				return;
+			}
+			if (request.url?.startsWith("/api/v1/download")) {
+				response.once("close", () => markPackageClosed?.());
+				response.writeHead(200, { "content-type": "application/zip" });
+				response.write(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+				return;
+			}
+			response.writeHead(404).end();
+		});
+		await new Promise<void>((resolve) =>
+			server.listen(0, "127.0.0.1", resolve),
+		);
+		const { port } = server.address() as AddressInfo;
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			registryUrl: `http://127.0.0.1:${port}`,
+			storage,
+		});
+
+		try {
+			await expect(
+				service.install("catalog-peer-stall", {
+					downloadTimeoutMs: 120,
+					throwOnDownloadError: true,
+				}),
+			).rejects.toMatchObject({ code: "SKILL_DOWNLOAD_TIMEOUT" });
+			await expect(packageClosed).resolves.toBeUndefined();
+			expect(storage.getPackage("catalog-peer-stall")).toBeUndefined();
+		} finally {
+			server.closeAllConnections();
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve())),
+			);
+		}
+	});
+
 	it("bounds a stalled catalog-details body before package fetch or persistence", async () => {
 		let requestCount = 0;
+		let markDetailsClosed: (() => void) | undefined;
+		const detailsClosed = new Promise<void>((resolve) => {
+			markDetailsClosed = resolve;
+		});
 		const server = createServer((_request, response) => {
 			requestCount += 1;
+			response.once("close", () => markDetailsClosed?.());
 			response.writeHead(200, { "content-type": "application/json" });
 			response.write('{"latestVersion":');
 		});
@@ -689,8 +851,61 @@ describe("readCappedSkillPackage", () => {
 				context: { timeoutMs: 500 },
 			});
 			expect(Date.now() - startedAt).toBeLessThan(2_500);
+			await expect(detailsClosed).resolves.toBeUndefined();
 			expect(requestCount).toBe(1);
 			expect(storage.getPackage("metadata-stall")).toBeUndefined();
+		} finally {
+			server.closeAllConnections();
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve())),
+			);
+		}
+	});
+
+	it("closes a real GitHub SKILL.md peer when its body exceeds the deadline", async () => {
+		const nativeFetch = globalThis.fetch;
+		let markSkillClosed: (() => void) | undefined;
+		const skillClosed = new Promise<void>((resolve) => {
+			markSkillClosed = resolve;
+		});
+		const server = createServer((request, response) => {
+			if (request.url === "/SKILL.md") {
+				response.once("close", () => markSkillClosed?.());
+				response.writeHead(200, { "content-type": "text/markdown" });
+				response.write("---\nname: github-skill-peer-stall\n");
+				return;
+			}
+			response.writeHead(404).end();
+		});
+		await new Promise<void>((resolve) =>
+			server.listen(0, "127.0.0.1", resolve),
+		);
+		const { port } = server.address() as AddressInfo;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((input: string | URL | Request, init?: RequestInit) => {
+				const url = String(input);
+				if (url.endsWith("/SKILL.md")) {
+					return nativeFetch(`http://127.0.0.1:${port}/SKILL.md`, init);
+				}
+				return nativeFetch(input, init);
+			}),
+		);
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+
+		try {
+			await expect(
+				service.installFromGitHub("owner/github-skill-peer-stall", {
+					downloadTimeoutMs: 120,
+					throwOnDownloadError: true,
+				}),
+			).rejects.toMatchObject({ code: "SKILL_DOWNLOAD_TIMEOUT" });
+			await expect(skillClosed).resolves.toBeUndefined();
+			expect(storage.getPackage("github-skill-peer-stall")).toBeUndefined();
 		} finally {
 			server.closeAllConnections();
 			await new Promise<void>((resolve, reject) =>
@@ -729,6 +944,68 @@ describe("readCappedSkillPackage", () => {
 		expect(signals).toHaveLength(2);
 		expect(signals[0]).toBe(signals[1]);
 		expect(storage.getPackage("github-stall")).toBeUndefined();
+	});
+
+	it("closes a real GitHub README peer when its body exceeds the deadline", async () => {
+		const nativeFetch = globalThis.fetch;
+		let markReadmeClosed: (() => void) | undefined;
+		const readmeClosed = new Promise<void>((resolve) => {
+			markReadmeClosed = resolve;
+		});
+		const server = createServer((request, response) => {
+			if (request.url === "/SKILL.md") {
+				response.writeHead(200, { "content-type": "text/markdown" });
+				response.end(
+					"---\nname: github-peer-stall\ndescription: test\n---\n# Test\n",
+				);
+				return;
+			}
+			if (request.url === "/README.md") {
+				response.once("close", () => markReadmeClosed?.());
+				response.writeHead(200, { "content-type": "text/markdown" });
+				response.write("# partial README");
+				return;
+			}
+			response.writeHead(404).end();
+		});
+		await new Promise<void>((resolve) =>
+			server.listen(0, "127.0.0.1", resolve),
+		);
+		const { port } = server.address() as AddressInfo;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((input: string | URL | Request, init?: RequestInit) => {
+				const url = String(input);
+				if (url.endsWith("/SKILL.md")) {
+					return nativeFetch(`http://127.0.0.1:${port}/SKILL.md`, init);
+				}
+				if (url.endsWith("/README.md")) {
+					return nativeFetch(`http://127.0.0.1:${port}/README.md`, init);
+				}
+				return nativeFetch(input, init);
+			}),
+		);
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+
+		try {
+			await expect(
+				service.installFromGitHub("owner/github-peer-stall", {
+					downloadTimeoutMs: 120,
+					throwOnDownloadError: true,
+				}),
+			).rejects.toMatchObject({ code: "SKILL_DOWNLOAD_TIMEOUT" });
+			await expect(readmeClosed).resolves.toBeUndefined();
+			expect(storage.getPackage("github-peer-stall")).toBeUndefined();
+		} finally {
+			server.closeAllConnections();
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve())),
+			);
+		}
 	});
 
 	it("bounds a real loopback response that sends headers and then stalls", async () => {

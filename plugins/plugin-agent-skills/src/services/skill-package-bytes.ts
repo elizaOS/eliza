@@ -13,7 +13,7 @@ export const MAX_SKILL_PACKAGE_BYTES = 10 * 1024 * 1024;
 /** Default wall-clock deadline shared by every request in one install. */
 export const DEFAULT_SKILL_DOWNLOAD_TIMEOUT_MS = 30_000;
 
-/** Largest delay Node can schedule without overflowing its timer implementation. */
+/** Largest single delay Node can schedule without clamping it to one millisecond. */
 export const MAX_SKILL_DOWNLOAD_TIMEOUT_MS = 2_147_483_647;
 
 /** Per-install controls for the shared download lifecycle. */
@@ -107,12 +107,10 @@ export function createSkillDownloadLifecycle(
 			: options.downloadTimeoutMs;
 	if (
 		timeoutMs !== null &&
-		(!Number.isInteger(timeoutMs) ||
-			timeoutMs <= 0 ||
-			timeoutMs > MAX_SKILL_DOWNLOAD_TIMEOUT_MS)
+		(!Number.isFinite(timeoutMs) || timeoutMs <= 0)
 	) {
 		throw new ElizaError(
-			"Skill download timeout must be a positive bounded integer or null",
+			"Skill download timeout must be a positive finite number or null",
 			{
 				code: "SKILL_DOWNLOAD_INVALID_TIMEOUT",
 				context: { downloadTimeoutMs: timeoutMs },
@@ -134,24 +132,34 @@ export function createSkillDownloadLifecycle(
 		if (options.signal?.aborted) abortFromCaller();
 	}
 
-	const timeoutSignal =
-		timeoutMs === null ? undefined : AbortSignal.timeout(timeoutMs);
-	const abortFromTimeout = (): void => {
-		if (!controller.signal.aborted && timeoutMs !== null) {
-			controller.abort(timeoutError(timeoutMs));
-		}
-	};
-	if (timeoutSignal?.aborted) {
-		abortFromTimeout();
-	} else {
-		timeoutSignal?.addEventListener("abort", abortFromTimeout, { once: true });
+	let disposed = false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	if (timeoutMs !== null && !controller.signal.aborted) {
+		const startedAt = performance.now();
+		const armDeadline = (remainingMs: number): void => {
+			timer = setTimeout(
+				() => {
+					if (disposed || controller.signal.aborted) return;
+					const nextRemaining = timeoutMs - (performance.now() - startedAt);
+					if (nextRemaining > 0) {
+						armDeadline(nextRemaining);
+						return;
+					}
+					controller.abort(timeoutError(timeoutMs));
+				},
+				Math.min(remainingMs, MAX_SKILL_DOWNLOAD_TIMEOUT_MS),
+			);
+		};
+		armDeadline(timeoutMs);
 	}
 
 	return {
 		signal: controller.signal,
 		timeoutMs,
 		dispose() {
-			timeoutSignal?.removeEventListener("abort", abortFromTimeout);
+			if (disposed) return;
+			disposed = true;
+			if (timer !== undefined) clearTimeout(timer);
 			options.signal?.removeEventListener("abort", abortFromCaller);
 		},
 		throwIfAborted(cause?: unknown) {

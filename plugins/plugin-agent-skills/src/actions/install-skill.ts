@@ -14,7 +14,7 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
+import { getStreamingContext, unwrapUserMessageText } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 import { describeSkillReference, extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
@@ -128,11 +128,26 @@ export const installSkillAction = {
 			});
 		}
 
-		const success = await service.install(installSlug);
+		let success: boolean;
+		try {
+			success = await service.install(installSlug, {
+				signal: getStreamingContext()?.abortSignal,
+				throwOnDownloadError: true,
+			});
+		} catch (cause) {
+			// error-policy:J1 the action boundary returns the original typed error in
+			// ActionResult instead of leaking a rejected handler promise.
+			const installError =
+				cause instanceof Error ? cause : new Error(String(cause));
+			const errorText = `Failed to install skill "${installSlug}": ${installError.message}`;
+			if (callback) await callback({ text: errorText });
+			return { success: false, error: installError, text: errorText };
+		}
 
 		if (!success) {
-			// install() returns false for any failure: network errors, blocked
-			// by security scan (skill is auto-deleted), or other issues.
+			// install() returns false for non-lifecycle failures: ordinary network
+			// errors, security-scan blocks (auto-deleted), or other issues. Typed
+			// caller cancellation and deadline failures reject to the action boundary.
 			// The service logs the specific reason; we give a general message
 			// since a blocked skill is already removed and its report is gone.
 			const errorText =

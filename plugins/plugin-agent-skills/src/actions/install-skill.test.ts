@@ -6,6 +6,7 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { ElizaError, runWithStreamingContext } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { installSkillAction } from "./install-skill";
 
@@ -68,5 +69,75 @@ describe("SKILL install with security-enveloped input", () => {
 			expect(echoed.length).toBeLessThan(300);
 		}
 		expect(callbackTexts.at(-1)).toContain('"weather"');
+	});
+
+	it("forwards active turn cancellation to the typed install boundary", async () => {
+		const controller = new AbortController();
+		const install = vi.fn(async () => true);
+		const service = {
+			getLoadedSkills: vi.fn(() => []),
+			getSkillScanStatus: vi.fn(() => null),
+			install,
+			search: vi.fn(async () => [
+				{ slug: "weather", displayName: "Weather" },
+			]),
+		};
+		const runtime = {
+			getService: vi.fn(() => service),
+		} as unknown as IAgentRuntime;
+
+		const result = await runWithStreamingContext(
+			{ abortSignal: controller.signal },
+			() =>
+				installSkillAction.handler(
+					runtime,
+					envelopeMessage(),
+					undefined,
+					undefined,
+					vi.fn(),
+				),
+		);
+
+		expect(result.success).toBe(true);
+		expect(install).toHaveBeenCalledWith("weather", {
+			signal: controller.signal,
+			throwOnDownloadError: true,
+		});
+	});
+
+	it("returns the original typed deadline in a failed ActionResult", async () => {
+		const deadlineError = new ElizaError("download deadline elapsed", {
+			code: "SKILL_DOWNLOAD_TIMEOUT",
+		});
+		const service = {
+			getLoadedSkills: vi.fn(() => []),
+			install: vi.fn(async () => {
+				throw deadlineError;
+			}),
+			search: vi.fn(async () => [
+				{ slug: "weather", displayName: "Weather" },
+			]),
+		};
+		const runtime = {
+			getService: vi.fn(() => service),
+		} as unknown as IAgentRuntime;
+		const callback = vi.fn();
+
+		const result = await installSkillAction.handler(
+			runtime,
+			envelopeMessage(),
+			undefined,
+			undefined,
+			callback,
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			error: deadlineError,
+			text: expect.stringContaining("download deadline elapsed"),
+		});
+		expect(callback).toHaveBeenCalledWith({
+			text: expect.stringContaining("download deadline elapsed"),
+		});
 	});
 });
