@@ -11,6 +11,7 @@ import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as browser from "../platform/browser.js";
+import { MAX_COMPUTER_USE_PLAIN_DATA_CHARS } from "../services/computer-use-plain-data.js";
 
 vi.mock("../platform/browser.js", () => {
   const state = (url = "about:blank") => ({
@@ -129,6 +130,23 @@ describe("ComputerUseService browser command dispatch", () => {
       InstanceType<typeof ComputerUseService>["executeBrowserAction"]
     >[0]);
     expect(result.success).toBe(false);
+  });
+
+  it("fails closed before publishing an over-budget browser state", async () => {
+    vi.mocked(browser.getBrowserState).mockResolvedValueOnce({
+      url: "about:blank",
+      title: "x".repeat(MAX_COMPUTER_USE_PLAIN_DATA_CHARS),
+      isOpen: true,
+      is_open: true,
+    });
+
+    const result = await service.executeBrowserAction({ action: "state" });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Computer-use snapshot exceeds the plain-data walk budget",
+    });
+    expect(result).not.toHaveProperty("content");
   });
 
   it.each(["file:///etc/passwd", "https://user:password@example.com/private"])(

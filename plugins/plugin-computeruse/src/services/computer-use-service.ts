@@ -6,7 +6,8 @@
  *
  * This is the single seam between the agent-facing action surface and the platform
  * drivers: it resolves the active driver, enforces the approval gate before
- * executing input, and caches per-turn scene state.
+ * executing input, and caches per-turn scene state. Snapshot pretty-print for
+ * action `content` is bounded in `computer-use-plain-data.ts`.
  */
 import os from "node:os";
 import path from "node:path";
@@ -157,6 +158,7 @@ import type {
   WindowActionParams,
   WindowActionResult,
 } from "../types.js";
+import { stringifyData } from "./computer-use-plain-data.js";
 
 const MAX_RECENT_ACTIONS = 10;
 const BROWSER_NOT_OPEN_ERROR = "Browser not open";
@@ -283,40 +285,6 @@ function commandParameters<TParams extends object>(
   parameters: Record<string, unknown>,
 ): Omit<TParams, "action"> {
   return parameters as Omit<TParams, "action">;
-}
-
-function stringifyData(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  return renderPlainData(value);
-}
-
-function renderPlainData(value: unknown, indent = 0): string {
-  const prefix = "  ".repeat(indent);
-  if (value === null || value === undefined) {
-    return "none";
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return "items[0]:";
-    }
-    return [
-      `items[${value.length}]:`,
-      ...value.map((item) => `${prefix}- ${renderPlainData(item, indent + 1)}`),
-    ].join("\n");
-  }
-  if (typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([key, nestedValue]) => {
-        if (nestedValue && typeof nestedValue === "object") {
-          return `${key}:\n${renderPlainData(nestedValue, indent + 1)}`;
-        }
-        return `${key}: ${renderPlainData(nestedValue, indent + 1)}`;
-      })
-      .join("\n");
-  }
-  return String(value);
 }
 
 /**
