@@ -88,7 +88,7 @@ const imessagePlugin: Plugin = {
   connectorSources: [
     {
       source: "imessage",
-      aliases: ["imessage", "messages", "sms"],
+      aliases: ["imessage", "messages"],
       sourceKind: "passive",
       isPassive: true,
     },
