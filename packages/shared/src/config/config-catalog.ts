@@ -45,6 +45,8 @@ export const MAX_LOGIC_EXPRESSION_NODES = 2048;
 export const MAX_LOGIC_EXPRESSION_PATH_LENGTH = 2_048;
 /** Bounds nested state reads even when every segment is one character. */
 export const MAX_LOGIC_EXPRESSION_PATH_SEGMENTS = 64;
+/** Bounds literal comparison work independently of path traversal. */
+export const MAX_LOGIC_EXPRESSION_LITERAL_LENGTH = 2_048;
 export const LOGIC_EXPRESSION_UNBOUNDED = "LOGIC_EXPRESSION_UNBOUNDED";
 export const LOGIC_EXPRESSION_INVALID = "LOGIC_EXPRESSION_INVALID";
 
@@ -218,19 +220,27 @@ type LogicWalkContext = {
 };
 
 function failLogicUnbounded(
-  axis: "depth" | "visits" | "cycle" | "path-length" | "path-segments",
+  axis:
+    | "depth"
+    | "visits"
+    | "cycle"
+    | "path-length"
+    | "path-segments"
+    | "literal-length",
   context: Record<string, unknown>,
 ): never {
   const message =
-    axis === "path-length"
-      ? `logic expression path exceeds ${MAX_LOGIC_EXPRESSION_PATH_LENGTH} characters`
-      : axis === "path-segments"
-        ? `logic expression path exceeds ${MAX_LOGIC_EXPRESSION_PATH_SEGMENTS} segments`
-        : axis === "depth"
-          ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_DEPTH} nesting depth`
-          : axis === "visits"
-            ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_NODES} nodes`
-            : "logic expression contains a cycle";
+    axis === "literal-length"
+      ? `logic expression literal exceeds ${MAX_LOGIC_EXPRESSION_LITERAL_LENGTH} characters`
+      : axis === "path-length"
+        ? `logic expression path exceeds ${MAX_LOGIC_EXPRESSION_PATH_LENGTH} characters`
+        : axis === "path-segments"
+          ? `logic expression path exceeds ${MAX_LOGIC_EXPRESSION_PATH_SEGMENTS} segments`
+          : axis === "depth"
+            ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_DEPTH} nesting depth`
+            : axis === "visits"
+              ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_NODES} nodes`
+              : "logic expression contains a cycle";
   throw new ElizaError(message, {
     code: LOGIC_EXPRESSION_UNBOUNDED,
     context,
@@ -261,6 +271,24 @@ const LOGIC_OPERATORS = [
   "lt",
   "lte",
 ] as const;
+
+function readOwnLogicData(
+  object: object,
+  key: PropertyKey,
+  context: Record<string, unknown>,
+): unknown {
+  let descriptor: PropertyDescriptor | undefined;
+  try {
+    descriptor = Object.getOwnPropertyDescriptor(object, key);
+  } catch {
+    // error-policy:J3 hostile descriptor traps are invalid config metadata.
+    failLogicInvalid("a property descriptor could not be inspected", context);
+  }
+  if (!descriptor || !("value" in descriptor)) {
+    failLogicInvalid("accessor properties are not allowed", context);
+  }
+  return descriptor.value;
+}
 
 function requireLogicPath(path: unknown): string {
   if (typeof path !== "string") {
@@ -293,8 +321,19 @@ function resolveLogicDynamic(
   ) {
     return getByPath(
       state,
-      requireLogicPath((value as { path?: unknown }).path),
+      requireLogicPath(
+        readOwnLogicData(value, "path", { operand: "dynamic-path" }),
+      ),
     );
+  }
+  if (
+    typeof value === "string" &&
+    value.length > MAX_LOGIC_EXPRESSION_LITERAL_LENGTH
+  ) {
+    failLogicUnbounded("literal-length", {
+      actual: value.length,
+      max: MAX_LOGIC_EXPRESSION_LITERAL_LENGTH,
+    });
   }
   return value;
 }
@@ -303,15 +342,13 @@ function requireLogicTuple(
   value: unknown,
   operator: string,
 ): [DynamicValue, DynamicValue] {
-  if (
-    !Array.isArray(value) ||
-    value.length !== 2 ||
-    !Object.hasOwn(value, 0) ||
-    !Object.hasOwn(value, 1)
-  ) {
+  if (!Array.isArray(value) || value.length !== 2) {
     failLogicInvalid(`${operator} requires exactly two operands`, { operator });
   }
-  return value as [DynamicValue, DynamicValue];
+  return [
+    readOwnLogicData(value, 0, { operator, index: 0 }) as DynamicValue,
+    readOwnLogicData(value, 1, { operator, index: 1 }) as DynamicValue,
+  ];
 }
 
 function requireLogicChildren(
@@ -330,15 +367,13 @@ function requireLogicChildren(
       max: MAX_LOGIC_EXPRESSION_NODES,
     });
   }
+  const children: LogicExpression[] = [];
   for (let index = 0; index < value.length; index += 1) {
-    if (!Object.hasOwn(value, index)) {
-      failLogicInvalid(`${operator} requires a dense child array`, {
-        operator,
-        index,
-      });
-    }
+    children.push(
+      readOwnLogicData(value, index, { operator, index }) as LogicExpression,
+    );
   }
-  return value as LogicExpression[];
+  return children;
 }
 
 /**
@@ -396,27 +431,28 @@ function evalLogic(
   const operator = operators[0];
   const node = expr as unknown as Record<string, unknown>;
   try {
+    const operand = readOwnLogicData(node, operator, { depth, operator });
     switch (operator) {
       case "and":
-        return requireLogicChildren(node.and, "and", ctx).every((child) =>
+        return requireLogicChildren(operand, "and", ctx).every((child) =>
           evalLogic(child, state, depth + 1, ctx),
         );
       case "or":
-        return requireLogicChildren(node.or, "or", ctx).some((child) =>
+        return requireLogicChildren(operand, "or", ctx).some((child) =>
           evalLogic(child, state, depth + 1, ctx),
         );
       case "not":
-        return !evalLogic(node.not as LogicExpression, state, depth + 1, ctx);
+        return !evalLogic(operand as LogicExpression, state, depth + 1, ctx);
       case "path":
-        return Boolean(getByPath(state, requireLogicPath(node.path)));
+        return Boolean(getByPath(state, requireLogicPath(operand)));
       case "eq": {
-        const [left, right] = requireLogicTuple(node.eq, "eq");
+        const [left, right] = requireLogicTuple(operand, "eq");
         return (
           resolveLogicDynamic(left, state) === resolveLogicDynamic(right, state)
         );
       }
       case "neq": {
-        const [left, right] = requireLogicTuple(node.neq, "neq");
+        const [left, right] = requireLogicTuple(operand, "neq");
         return (
           resolveLogicDynamic(left, state) !== resolveLogicDynamic(right, state)
         );
@@ -425,7 +461,7 @@ function evalLogic(
       case "gte":
       case "lt":
       case "lte": {
-        const [left, right] = requireLogicTuple(node[operator], operator);
+        const [left, right] = requireLogicTuple(operand, operator);
         const leftValue = resolveLogicDynamic(left, state);
         const rightValue = resolveLogicDynamic(right, state);
         if (typeof leftValue !== "number" || typeof rightValue !== "number") {

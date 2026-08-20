@@ -14,6 +14,7 @@ import {
   LOGIC_EXPRESSION_INVALID,
   LOGIC_EXPRESSION_UNBOUNDED,
   MAX_LOGIC_EXPRESSION_DEPTH,
+  MAX_LOGIC_EXPRESSION_LITERAL_LENGTH,
   MAX_LOGIC_EXPRESSION_NODES,
   MAX_LOGIC_EXPRESSION_PATH_LENGTH,
   MAX_LOGIC_EXPRESSION_PATH_SEGMENTS,
@@ -284,6 +285,88 @@ describe("evaluateLogicExpression budget", () => {
         ownTrue: true,
       }),
     ).toBe(true);
+  });
+
+  it("rejects an operator accessor without invoking it", () => {
+    let calls = 0;
+    const expression = {} as Record<string, unknown>;
+    Object.defineProperty(expression, "path", {
+      enumerable: true,
+      get: () => {
+        calls += 1;
+        return "/ready";
+      },
+    });
+
+    expect(() =>
+      evaluateLogicExpression(expression as never, { ready: true }),
+    ).toThrowError(ElizaError);
+    expect(calls).toBe(0);
+  });
+
+  it("rejects a child-slot accessor without invoking it", () => {
+    let calls = 0;
+    const children: unknown[] = [];
+    Object.defineProperty(children, 0, {
+      enumerable: true,
+      get: () => {
+        calls += 1;
+        return { path: "/ready" };
+      },
+    });
+
+    expect(() =>
+      evaluateLogicExpression({ and: children } as never, { ready: true }),
+    ).toThrowError(ElizaError);
+    expect(calls).toBe(0);
+  });
+
+  it("rejects a tuple-slot accessor without invoking it", () => {
+    let calls = 0;
+    const operands: unknown[] = [undefined, true];
+    Object.defineProperty(operands, 0, {
+      enumerable: true,
+      get: () => {
+        calls += 1;
+        return true;
+      },
+    });
+
+    expect(() =>
+      evaluateLogicExpression({ eq: operands } as never, {}),
+    ).toThrowError(ElizaError);
+    expect(calls).toBe(0);
+  });
+
+  it("rejects a dynamic-path accessor without invoking it", () => {
+    let calls = 0;
+    const dynamicPath = {} as Record<string, unknown>;
+    Object.defineProperty(dynamicPath, "path", {
+      enumerable: true,
+      get: () => {
+        calls += 1;
+        return "/ready";
+      },
+    });
+
+    expect(() =>
+      evaluateLogicExpression({ eq: [dynamicPath, true] }, { ready: true }),
+    ).toThrowError(ElizaError);
+    expect(calls).toBe(0);
+  });
+
+  it("bounds primitive string literals before equality comparison", () => {
+    expect(() =>
+      evaluateLogicExpression(
+        {
+          eq: [
+            "x".repeat(MAX_LOGIC_EXPRESSION_LITERAL_LENGTH + 1),
+            "x".repeat(MAX_LOGIC_EXPRESSION_LITERAL_LENGTH + 1),
+          ],
+        },
+        {},
+      ),
+    ).toThrowError(ElizaError);
   });
 
   it("bounds direct path character work at the exact limit", () => {
