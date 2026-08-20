@@ -445,6 +445,13 @@ describe("SandboxRegistry (native TCP transport)", () => {
     });
   });
 
+  it("rejects non-RESP numeric bulk lengths", async () => {
+    fake = await startFakeRedis({ hostileReply: "$1e2\r\n" });
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+
+    await expect(reg.register()).rejects.toThrow("exceeds TCP budget");
+  });
+
   it("rejects a payload flood through the real TCP path", async () => {
     fake = await startFakeRedis({
       hostileReply: Buffer.alloc(1_048_577, 0x78),

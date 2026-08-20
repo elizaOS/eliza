@@ -113,6 +113,12 @@ describe("token-tree-codec", () => {
     expect(() => deserializeTokenTree(bomb)).toThrow(/multiple parents/);
     expect(performance.now() - started).toBeLessThan(50);
   });
+
+  it("rejects nodes that are not connected to the root", () => {
+    expect(() => deserializeTokenTree(buildDisconnectedTree())).toThrow(
+      /not connected to root/,
+    );
+  });
 });
 
 /** Hostile RTKT v1 buffer: node i children = i+1..n-1. */
@@ -151,5 +157,21 @@ function buildCompleteForwardDag(n: number): Uint8Array {
       offset += 4;
     }
   }
+  return bytes;
+}
+
+function buildDisconnectedTree(): Uint8Array {
+  const bytes = new Uint8Array(12 + 1 + 4 + 9 * 2);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, 0x544b5452, true);
+  view.setUint32(4, 1, true);
+  view.setUint32(8, 1, true);
+  bytes[12] = 0x78;
+  view.setUint32(13, 2, true);
+  view.setInt32(17, -1, true);
+  view.setUint32(22, 0, true);
+  view.setInt32(26, 7, true);
+  view.setUint8(30, 1);
+  view.setUint32(31, 0, true);
   return bytes;
 }

@@ -1262,7 +1262,11 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
     });
     await rewriteAbsoluteStagingSymlinks(sourceRoot, targetPath, targetPath);
     await options?.afterCopyBeforeAudit?.();
-    await removeEscapingStagedSymlinks(targetPath, targetPath);
+    const canonicalTargetRoot = await fs.realpath(targetPath);
+    await removeEscapingStagedSymlinks(
+      canonicalTargetRoot,
+      canonicalTargetRoot,
+    );
   } catch (error) {
     try {
       await fs.rm(targetPath, { recursive: true, force: true });
@@ -1280,6 +1284,7 @@ async function stageNodeModulesEntries(params: {
   sourceNodeModulesDir: string;
   targetNodeModulesDir: string;
 }): Promise<void> {
+  const canonicalSourceRoot = await fs.realpath(params.sourceNodeModulesDir);
   const entries = await fs.readdir(params.sourceNodeModulesDir, {
     withFileTypes: true,
   });
@@ -1307,10 +1312,10 @@ async function stageNodeModulesEntries(params: {
           continue;
         }
         if (scopedEntry.isSymbolicLink()) {
-          await copySymlinkedPackageForStaging(
+          await stageConfinedNodeModulesSymlink(
             scopedSourcePath,
             scopedTargetPath,
-            `${entry.name}/${scopedEntry.name}`,
+            canonicalSourceRoot,
           );
           continue;
         }
@@ -1329,7 +1334,11 @@ async function stageNodeModulesEntries(params: {
       continue;
     }
     if (entry.isSymbolicLink()) {
-      await copySymlinkedPackageForStaging(sourcePath, targetPath, entry.name);
+      await stageConfinedNodeModulesSymlink(
+        sourcePath,
+        targetPath,
+        canonicalSourceRoot,
+      );
       continue;
     }
     if (!entry.isDirectory()) {
@@ -1337,6 +1346,20 @@ async function stageNodeModulesEntries(params: {
     }
     await copyPluginTreeWithoutEscapingSymlinks(sourcePath, targetPath);
   }
+}
+
+async function stageConfinedNodeModulesSymlink(
+  sourcePath: string,
+  targetPath: string,
+  canonicalRoot: string,
+): Promise<void> {
+  const rawTarget = await fs.readlink(sourcePath);
+  if (path.isAbsolute(rawTarget)) return;
+  const canonicalTarget = await resolveSymlinkTargetIfPresent(sourcePath);
+  if (!canonicalTarget || !isPathInsideRoot(canonicalTarget, canonicalRoot)) {
+    return;
+  }
+  await fs.symlink(rawTarget, targetPath);
 }
 
 function stageAllHoistedNodeModulesEnabled(): boolean {

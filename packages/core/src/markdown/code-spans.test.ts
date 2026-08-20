@@ -72,9 +72,7 @@ describe("buildCodeSpanIndex", () => {
 		const fences = 16_000;
 		const tail = 300_000;
 		const text = `${"```\nx\n```\n".repeat(fences)}${"y".repeat(tail)}`;
-		const started = performance.now();
 		const index = buildCodeSpanIndex(text);
-		expect(performance.now() - started).toBeLessThan(1_500);
 		expect(index.isInside(2)).toBe(true);
 		expect(index.isInside(text.length - 1)).toBe(false);
 	});

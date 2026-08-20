@@ -16,6 +16,7 @@
  *   `reconstructAbsoluteCoords`). This is what lets the planner click the
  *   thing the model just read.
  */
+import { ElizaError } from "@elizaos/core";
 import { getSharp } from "./image/sharp-compat";
 
 /**
@@ -71,12 +72,7 @@ export interface TileScreenshotOptions {
 export const DEFAULT_MAX_EDGE = 1280;
 /** Default seam overlap (12%). */
 export const DEFAULT_OVERLAP_FRACTION = 0.12;
-/**
- * Grid ceiling. Production `tileSize` defaults to 256px, so honest 8K
- * (7680×4320) is ~510 tiles. Hostile 20k×20k at the 64px minimum is ~98k
- * sequential sharp extracts.
- */
-export const MAX_SCREEN_TILES = 1024;
+const MAX_SCREEN_TILES = 512;
 
 /**
  * Tile a captured screenshot into local-VLM-sized PNG patches with
@@ -90,10 +86,6 @@ export const MAX_SCREEN_TILES = 1024;
  * `overlapFraction * tileSize` of overlap between adjacent tiles. The last
  * column/row is anchored to the source's right/bottom edge so we never
  * extend past the screen.
- *
- * `width`/`height` are caller-supplied (often PNG IHDR / capture metadata).
- * A 4k×4k pair with `maxEdge=64` ran 4096 sharp extracts for 105s on
- * origin. Cap the grid so a hostile size cannot pin the vision pipeline.
  */
 export async function tileScreenshot(
   input: TileScreenshotInput,
@@ -106,6 +98,19 @@ export async function tileScreenshot(
   validateInput(width, height, pngBytes);
   const { maxEdge, overlapFraction } = opts;
   validateOptions(maxEdge, overlapFraction);
+
+  const cols = Math.max(1, Math.ceil(width / maxEdge));
+  const rows = Math.max(1, Math.ceil(height / maxEdge));
+  const tileCount = cols * rows;
+  if (!Number.isSafeInteger(tileCount) || tileCount > MAX_SCREEN_TILES) {
+    throw new ElizaError(
+      `Screen tile grid requires ${tileCount} tiles; maximum is ${MAX_SCREEN_TILES}`,
+      {
+        code: "SCREEN_TILE_BUDGET_EXCEEDED",
+        context: { cols, rows, tileCount, maxTiles: MAX_SCREEN_TILES },
+      },
+    );
+  }
 
   if (width <= maxEdge && height <= maxEdge) {
     return [
@@ -123,14 +128,6 @@ export async function tileScreenshot(
     ];
   }
 
-  const cols = Math.max(1, Math.ceil(width / maxEdge));
-  const rows = Math.max(1, Math.ceil(height / maxEdge));
-  const tileCount = cols * rows;
-  if (tileCount > MAX_SCREEN_TILES) {
-    throw new Error(
-      `[ScreenTiler] tile grid ${cols}x${rows} (${tileCount}) exceeds ${MAX_SCREEN_TILES}`,
-    );
-  }
   const tileWidth = Math.min(
     maxEdge,
     Math.ceil(width / cols + maxEdge * overlapFraction),

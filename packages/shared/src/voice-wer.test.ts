@@ -86,12 +86,16 @@ describe("wordErrorRate", () => {
   it("fails closed before a hostile word pair can exhaust the edit budget", () => {
     const ref = Array.from({ length: 15_000 }, (_, i) => `w${i}`).join(" ");
     const hyp = Array.from({ length: 15_000 }, (_, i) => `x${i}`).join(" ");
+    expect(() => wordErrorRate(ref, hyp)).toThrow(RangeError);
     expect(() => wordErrorRate(ref, hyp)).toThrow(
       new RegExp(`exceeds ${MAX_WER_EDIT_CELLS} edit cells`),
     );
   });
 
   it("bounds normalization work even for a single enormous token", () => {
+    expect(() =>
+      wordErrorRate("a".repeat(MAX_WER_INPUT_CHARS + 1), "a"),
+    ).toThrow(RangeError);
     expect(() =>
       wordErrorRate("a".repeat(MAX_WER_INPUT_CHARS + 1), "a"),
     ).toThrow(new RegExp(`exceeds ${MAX_WER_INPUT_CHARS} UTF-16 code units`));

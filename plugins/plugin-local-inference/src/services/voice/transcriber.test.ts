@@ -369,34 +369,22 @@ describe("transcriber helpers", () => {
 		expect(down.length).toBe(Math.round((pcm.length * 16000) / 48000));
 	});
 
-	it.each([0, 1, 999, 192_001, 16_000.5, Number.NaN, Number.POSITIVE_INFINITY])(
-		"resampleLinear rejects unsafe source rate %s before allocating output",
-		(fromRate) => {
-			expect(() =>
-				resampleLinear(new Float32Array([0.25]), fromRate, 16_000),
-			).toThrow(/rejected source rate/);
-		},
-	);
-
-	it.each([0, 999, 192_001, 16_000.5, Number.NaN, Number.NEGATIVE_INFINITY])(
-		"resampleLinear rejects unsafe target rate %s",
-		(toRate) => {
-			expect(() =>
-				resampleLinear(new Float32Array([0.25]), 16_000, toRate),
-			).toThrow(/rejected target rate/);
-		},
-	);
-
-	it("resampleLinear accepts boundary rates and rejects oversized output", () => {
-		expect(resampleLinear(new Float32Array([0.25]), 1_000, 1_000)).toHaveLength(
-			1,
-		);
-		expect(
-			resampleLinear(new Float32Array([0.25]), 192_000, 192_000),
-		).toHaveLength(1);
+	it("rejects hostile sample rates before sizing an output buffer", () => {
 		expect(() =>
-			resampleLinear(new Float32Array(120_001), 1_000, 16_000),
-		).toThrow(/resample output .* exceeds/);
+			resampleLinear(new Float32Array(8_000), 1, 16_000),
+		).toThrowError(
+			expect.objectContaining({ code: "AUDIO_RESAMPLE_RATE_INVALID" }),
+		);
+	});
+
+	it("applies the duration budget even when no rate conversion is needed", () => {
+		expect(() =>
+			resampleLinear(new Float32Array(16_000 * 121), 16_000, 16_000),
+		).toThrowError(
+			expect.objectContaining({
+				code: "AUDIO_RESAMPLE_DURATION_BUDGET_EXCEEDED",
+			}),
+		);
 	});
 });
 

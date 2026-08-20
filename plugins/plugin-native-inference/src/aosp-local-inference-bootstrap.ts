@@ -50,6 +50,7 @@ import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
   createService,
+  ElizaError,
   type GenerateTextParams,
   getInferencePriorityGate,
   type IAgentRuntime,
@@ -63,7 +64,6 @@ import {
   type TextToSpeechParams,
   type TranscriptionParams,
 } from "@elizaos/core";
-import { resampleAospLinear } from "./aosp-audio-resample.js";
 // @elizaos/shared/local-inference is intentionally not imported here: every
 // AOSP TTS path flows through `makeAospFusedKokoroTextToSpeechHandler` below,
 // which dlopens `libelizainference.so` via bun:ffi and synthesizes Kokoro
@@ -2746,6 +2746,53 @@ function decodeMonoPcm16WavBytes(bytes: Uint8Array): {
   return { samples, sampleRate };
 }
 
+function resampleLinear(
+  samples: Float32Array,
+  fromHz: number,
+  toHz: number,
+): Float32Array {
+  const minRateHz = 1_000;
+  const maxRateHz = 192_000;
+  const maxDurationSeconds = 120;
+  const maxOutputSamples = 16_000 * maxDurationSeconds;
+  for (const [label, rate] of [
+    ["source", fromHz],
+    ["target", toHz],
+  ] as const) {
+    if (!Number.isSafeInteger(rate) || rate < minRateHz || rate > maxRateHz) {
+      throw new ElizaError(`Invalid ${label} audio sample rate`, {
+        code: "AUDIO_RESAMPLE_RATE_INVALID",
+        context: { label, rate },
+      });
+    }
+  }
+  const durationSeconds = samples.length / fromHz;
+  if (durationSeconds > maxDurationSeconds) {
+    throw new ElizaError("Audio frame exceeds the resampling duration budget", {
+      code: "AUDIO_RESAMPLE_DURATION_BUDGET_EXCEEDED",
+      context: { durationSeconds, maxDurationSeconds },
+    });
+  }
+  if (fromHz === toHz) return samples;
+  const ratio = toHz / fromHz;
+  const outLen = Math.max(1, Math.round(samples.length * ratio));
+  if (!Number.isSafeInteger(outLen) || outLen > maxOutputSamples) {
+    throw new ElizaError("Audio resample output exceeds the sample budget", {
+      code: "AUDIO_RESAMPLE_OUTPUT_BUDGET_EXCEEDED",
+      context: { outLen, maxOutputSamples },
+    });
+  }
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < out.length; i++) {
+    const src = i / ratio;
+    const i0 = Math.floor(src);
+    const i1 = Math.min(samples.length - 1, i0 + 1);
+    const f = src - i0;
+    out[i] = (samples[i0] ?? 0) * (1 - f) + (samples[i1] ?? 0) * f;
+  }
+  return out;
+}
+
 function bytesFromTranscriptionInput(
   value: Uint8Array | ArrayBuffer | Buffer,
 ): Uint8Array {
@@ -2892,7 +2939,7 @@ async function transcribeWithAospElizaInference(
       );
     }
     assertNotAborted(signal);
-    const pcm16k = resampleAospLinear(audio.samples, audio.sampleRate, 16000);
+    const pcm16k = resampleLinear(audio.samples, audio.sampleRate, 16000);
     const pcmBytes = Buffer.from(
       pcm16k.buffer,
       pcm16k.byteOffset,
