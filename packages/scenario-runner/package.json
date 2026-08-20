@@ -32,6 +32,7 @@
   "bin": {
     "eliza-scenarios": "./bin/eliza-scenarios",
     "eliza-provider-canary": "./bin/eliza-provider-canary",
+    "eliza-provider-operator": "./bin/eliza-provider-operator",
     "eliza-provider-qualification": "./bin/eliza-provider-qualification"
   },
   "exports": {
@@ -78,6 +79,7 @@
     "test:real-service:voice": "node scripts/real-service-voice-e2e.mjs",
     "provider-qualification": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/provider-qualified/qualification-cli.ts",
     "provider-canary": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/provider-qualified/external-canary-cli.ts",
+    "provider-operator": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/provider-qualified/operator-authoring-cli.ts",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsc --noEmit"
