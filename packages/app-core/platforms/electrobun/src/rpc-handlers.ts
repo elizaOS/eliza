@@ -126,6 +126,7 @@ import { resolveRpcAgentPort } from "./rpc-port-resolver";
 import type { ElizaDesktopRPCSchema, StewardRpcStatus } from "./rpc-schema";
 import {
   desktopDeleteRuntimeCredential,
+  desktopGetOrCreateControllerIdentity,
   desktopLoadRuntimeCredential,
   desktopStoreRuntimeCredential,
 } from "./runtime-credential-rpc";
@@ -152,6 +153,10 @@ import {
   updateTradePermissionModeViaHttp,
 } from "./settings-mutations-rpc";
 import type { ShellControllerEndpoint } from "./shell-sync-relay";
+import {
+  desktopStartSshRuntime,
+  desktopStopSshRuntime,
+} from "./ssh-runtime-rpc";
 import {
   composeSubscriptionStatusSnapshot,
   readSubscriptionStatusViaHttp,
@@ -689,6 +694,9 @@ export function buildBunRpcHandlers({
     desktopStoreRuntimeCredential,
     desktopLoadRuntimeCredential,
     desktopDeleteRuntimeCredential,
+    desktopGetOrCreateControllerIdentity,
+    desktopStartSshRuntime,
+    desktopStopSshRuntime,
     nativeTranscriptPublishStream: async (params) =>
       publishNativeTranscriptStream(params),
     nativeTranscriptReadViewModel: async () => ({

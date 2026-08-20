@@ -65,6 +65,7 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
     private static let pairingAgentUrlKey = "com.eliza.companion.pairing.agentUrl"
     private static let runtimeCredentialService = "ai.elizaos.runtime-credentials"
     private static let controllerSigningTagPrefix = "ai.elizaos.remote-controller.signing."
+    private static let controllerEncryptionTagPrefix = "ai.elizaos.remote-controller.encryption."
 
     private static func base64Url(_ data: Data) -> String {
         data.base64EncodedString()
@@ -73,14 +74,15 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             .replacingOccurrences(of: "=", with: "")
     }
 
-    private static func controllerSigningTag(_ deviceId: String) -> Data {
-        Data("\(controllerSigningTagPrefix)\(deviceId)".utf8)
+    private static func controllerKeyTag(_ deviceId: String, purpose: String) -> Data {
+        let prefix = purpose == "encryption" ? controllerEncryptionTagPrefix : controllerSigningTagPrefix
+        return Data("\(prefix)\(deviceId)".utf8)
     }
 
-    private static func loadControllerPrivateKey(_ deviceId: String) -> SecKey? {
+    private static func loadControllerPrivateKey(_ deviceId: String, purpose: String) -> SecKey? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
-            kSecAttrApplicationTag as String: controllerSigningTag(deviceId),
+            kSecAttrApplicationTag as String: controllerKeyTag(deviceId, purpose: purpose),
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecReturnRef as String: true,
         ]
@@ -93,11 +95,12 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private static func createControllerPrivateKey(
         _ deviceId: String,
+        purpose: String,
         secureEnclave: Bool
     ) throws -> SecKey {
         var privateAttributes: [String: Any] = [
             kSecAttrIsPermanent as String: true,
-            kSecAttrApplicationTag as String: controllerSigningTag(deviceId),
+            kSecAttrApplicationTag as String: controllerKeyTag(deviceId, purpose: purpose),
         ]
         if secureEnclave {
             var accessError: Unmanaged<CFError>?
@@ -128,15 +131,15 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         return key
     }
 
-    private static func controllerPrivateKey(_ deviceId: String) throws -> (SecKey, Bool) {
-        if let existing = loadControllerPrivateKey(deviceId) {
+    private static func controllerPrivateKey(_ deviceId: String, purpose: String = "signing") throws -> (SecKey, Bool) {
+        if let existing = loadControllerPrivateKey(deviceId, purpose: purpose) {
             let attributes = SecKeyCopyAttributes(existing) as? [String: Any]
             return (existing, attributes?[kSecAttrTokenID as String] != nil)
         }
         #if targetEnvironment(simulator)
-        return (try createControllerPrivateKey(deviceId, secureEnclave: false), false)
+        return (try createControllerPrivateKey(deviceId, purpose: purpose, secureEnclave: false), false)
         #else
-        return (try createControllerPrivateKey(deviceId, secureEnclave: true), true)
+        return (try createControllerPrivateKey(deviceId, purpose: purpose, secureEnclave: true), true)
         #endif
     }
 
@@ -407,7 +410,12 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         do {
             let (privateKey, hardwareBacked) = try ElizaIntentPlugin.controllerPrivateKey(deviceId)
-            guard let publicKey = SecKeyCopyPublicKey(privateKey) else {
+            let (encryptionPrivateKey, encryptionHardwareBacked) = try ElizaIntentPlugin.controllerPrivateKey(
+                deviceId,
+                purpose: "encryption"
+            )
+            guard let publicKey = SecKeyCopyPublicKey(privateKey),
+                  let encryptionPublicKey = SecKeyCopyPublicKey(encryptionPrivateKey) else {
                 call.reject("Controller public key is unavailable")
                 return
             }
@@ -423,16 +431,36 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             let x = representation.subdata(in: 1..<33)
             let y = representation.subdata(in: 33..<65)
+            var encryptionExportError: Unmanaged<CFError>?
+            guard let encryptionRepresentation = SecKeyCopyExternalRepresentation(
+                encryptionPublicKey,
+                &encryptionExportError
+            ) as Data?, encryptionRepresentation.count == 65,
+              encryptionRepresentation.first == 0x04 else {
+                call.reject("Controller encryption public key export failed")
+                return
+            }
+            let encryptionX = encryptionRepresentation.subdata(in: 1..<33)
+            let encryptionY = encryptionRepresentation.subdata(in: 33..<65)
+            let signingJwk: [String: Any] = [
+                "kty": "EC",
+                "crv": "P-256",
+                "x": ElizaIntentPlugin.base64Url(x),
+                "y": ElizaIntentPlugin.base64Url(y),
+            ]
+            let encryptionJwk: [String: Any] = [
+                "kty": "EC",
+                "crv": "P-256",
+                "x": ElizaIntentPlugin.base64Url(encryptionX),
+                "y": ElizaIntentPlugin.base64Url(encryptionY),
+            ]
             call.resolve([
                 "deviceId": deviceId,
                 "keyId": "p256:\(ElizaIntentPlugin.base64Url(x).prefix(16))",
-                "hardwareBacked": hardwareBacked,
-                "publicKeyJwk": [
-                    "kty": "EC",
-                    "crv": "P-256",
-                    "x": ElizaIntentPlugin.base64Url(x),
-                    "y": ElizaIntentPlugin.base64Url(y),
-                ],
+                "hardwareBacked": hardwareBacked && encryptionHardwareBacked,
+                "publicKeyJwk": signingJwk,
+                "signingPublicKeyJwk": signingJwk,
+                "encryptionPublicKeyJwk": encryptionJwk,
             ])
         } catch {
             call.reject("Controller identity creation failed: \(error.localizedDescription)")

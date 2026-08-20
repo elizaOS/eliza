@@ -18,20 +18,36 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
 
     const agentId = c.req.query("agentId")?.trim() ?? "";
-    if (!agentId) {
+    const hostId = c.req.query("hostId")?.trim() ?? "";
+    if (Boolean(agentId) === Boolean(hostId)) {
       return c.json(
-        { success: false, error: "agentId query parameter is required" },
+        {
+          success: false,
+          error: "Exactly one of agentId or hostId is required",
+        },
         400,
       );
     }
 
-    const sessions = await remoteSessionsRepository.listActiveByOwnedAgent(
-      agentId,
-      user.organization_id,
-      user.id,
-    );
+    const sessions = agentId
+      ? await remoteSessionsRepository.listActiveByOwnedAgent(
+          agentId,
+          user.organization_id,
+          user.id,
+        )
+      : await remoteSessionsRepository.listActiveByOwnedHost(
+          hostId,
+          user.organization_id,
+          user.id,
+        );
     if (!sessions) {
-      return c.json({ success: false, error: "Agent not found" }, 404);
+      return c.json(
+        {
+          success: false,
+          error: agentId ? "Agent not found" : "Host not found",
+        },
+        404,
+      );
     }
 
     return c.json({
@@ -41,6 +57,10 @@ app.get("/", async (c) => {
           id: s.id,
           status: s.status,
           requesterIdentity: s.requester_identity,
+          controllerDeviceId: s.controller_device_id,
+          controllerDisplayName: s.controller_display_name,
+          controllerPlatform: s.controller_platform,
+          lastSeenAt: s.last_seen_at,
           ingressUrl: s.ingress_url,
           ingressReason: s.ingress_reason,
           createdAt: s.created_at,

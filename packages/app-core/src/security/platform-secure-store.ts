@@ -21,6 +21,8 @@ export type SecureStoreSecretKind =
   | "remote.controller_signing_key"
   /** Device-bound P-256 controller key-agreement private key. */
   | "remote.controller_encryption_key"
+  /** Public controller identity paired with the device-bound private keys. */
+  | "remote.controller_identity"
   /** Bearer credential for one saved remote runtime. */
   | "remote.runtime_access_token"
   /** SSH private key or opaque native key reference for one server. */

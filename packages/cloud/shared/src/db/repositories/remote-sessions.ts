@@ -9,6 +9,8 @@ export type {
   RemoteSessionStatus,
 } from "../schemas/remote-sessions";
 export {
+  type ConsumeRemotePairingInput,
+  type ConsumeRemotePairingResult,
   RemoteSessionsRepository,
   type RevokeRemoteSessionResult,
 } from "./remote-sessions-store";

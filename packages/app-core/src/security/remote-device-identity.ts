@@ -87,11 +87,57 @@ export async function createRemoteDeviceIdentity(
     encryptionPublicKeyJwk: encryption.publicKey,
     createdAt: Date.now(),
   };
+  const identityResult = await store.set(
+    vaultId,
+    "remote.controller_identity",
+    JSON.stringify(publicIdentity),
+  );
+  if (!identityResult.ok) {
+    await Promise.all([
+      store.delete(vaultId, "remote.controller_signing_key"),
+      store.delete(vaultId, "remote.controller_encryption_key"),
+    ]);
+    throw new Error(
+      `Could not store controller identity: ${identityResult.message ?? identityResult.reason}`,
+    );
+  }
   return {
     publicIdentity,
     signingPrivateKeyJwk: signing.privateKey,
     encryptionPrivateKeyJwk: encryption.privateKey,
   };
+}
+
+/** Loads the stable public identity or creates it with device-bound keys. */
+export async function getOrCreateRemoteDeviceIdentity(
+  store: PlatformSecureStore,
+  input: CreateRemoteDeviceIdentityInput,
+): Promise<RemoteControllerPublicIdentity> {
+  if (!input.deviceId) {
+    return (await createRemoteDeviceIdentity(store, input)).publicIdentity;
+  }
+  const stored = await store.get(
+    identityVaultId(input.deviceId),
+    "remote.controller_identity",
+  );
+  if (stored.ok) {
+    try {
+      const identity = JSON.parse(
+        stored.value,
+      ) as RemoteControllerPublicIdentity;
+      if (
+        identity.deviceId === input.deviceId &&
+        identity.signingPublicKeyJwk &&
+        identity.encryptionPublicKeyJwk
+      ) {
+        return identity;
+      }
+    } catch {
+      // error-policy:J4 malformed secure-store metadata cannot be trusted
+    }
+    throw new Error("Stored controller identity is invalid");
+  }
+  return (await createRemoteDeviceIdentity(store, input)).publicIdentity;
 }
 
 export async function loadRemoteDevicePrivateKeys(
@@ -126,6 +172,7 @@ export async function deleteRemoteDeviceIdentity(
   await Promise.all([
     store.delete(vaultId, "remote.controller_signing_key"),
     store.delete(vaultId, "remote.controller_encryption_key"),
+    store.delete(vaultId, "remote.controller_identity"),
   ]);
 }
 

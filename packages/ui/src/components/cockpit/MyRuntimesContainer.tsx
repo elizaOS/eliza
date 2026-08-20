@@ -2,15 +2,17 @@
  * Connects the runtime switcher to the persisted agent-profile registry and
  * enforces trust gates before adding or activating remote runtimes.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { client } from "../../api";
 import { isStoreBuild } from "../../build-variant";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
+import { getOrCreateControllerPublicIdentity } from "../../platform/remote-controller-identity";
 import {
   loadRuntimeCredential,
   storeRuntimeCredential,
 } from "../../platform/runtime-credential-store";
+import { startSshRuntime } from "../../platform/ssh-runtime";
 import {
   addAgentProfile,
   loadAgentProfileRegistry,
@@ -19,7 +21,17 @@ import {
 } from "../../state";
 import { isTrustedRestoreApiBaseUrl } from "../../state/runtime-url-trust";
 import { SettingsStack } from "../settings/settings-layout";
+import type { LinkedElizaDevice } from "./MyRuntimesSection";
 import { MyRuntimesSection } from "./MyRuntimesSection";
+
+const CLOUD_HOST_ID_KEY = "eliza.remote-host.id.v1";
+
+function localHostPlatform(): "macos" | "linux" | "windows" {
+  const platform = navigator.platform.toLowerCase();
+  if (platform.includes("win")) return "windows";
+  if (platform.includes("linux")) return "linux";
+  return "macos";
+}
 
 export interface MyRuntimesContainerProps {
   className?: string;
@@ -49,6 +61,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
   const [registry, setRegistry] = useState(() => loadAgentProfileRegistry());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [devices, setDevices] = useState<LinkedElizaDevice[]>([]);
 
   // On a store / android-cloud build the on-device local runtime isn't a real
   // option (no local code execution) — hide it and refuse switching to it, so
@@ -141,21 +154,146 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
     [refresh],
   );
 
+  const refreshLinkedDevices = useCallback(async (hostId: string) => {
+    const sessions = await client.listCloudRemoteSessions({ hostId });
+    setDevices(
+      sessions
+        .filter(
+          (
+            session,
+          ): session is typeof session & {
+            controllerDeviceId: string;
+          } => Boolean(session.controllerDeviceId),
+        )
+        .map((session) => ({
+          id: session.id,
+          name: session.controllerDisplayName ?? "Linked device",
+          platform:
+            session.controllerPlatform === "ios"
+              ? "iphone"
+              : session.controllerPlatform === "macos"
+                ? "mac"
+                : session.controllerPlatform === "windows"
+                  ? "windows"
+                  : session.controllerPlatform === "linux"
+                    ? "linux"
+                    : "other",
+          role: "controller" as const,
+          status: session.status === "active" ? "online" : "pending",
+          lastSeenLabel: session.lastSeenAt
+            ? `Last active ${new Date(session.lastSeenAt).toLocaleString()}`
+            : undefined,
+        })),
+    );
+  }, []);
+
+  useEffect(() => {
+    const hostId = globalThis.localStorage?.getItem(CLOUD_HOST_ID_KEY)?.trim();
+    if (hostId) void refreshLinkedDevices(hostId).catch(() => {});
+  }, [refreshLinkedDevices]);
+
   const onCreatePairing = useCallback(async () => {
-    const pairing = await client.getPairCode();
-    const apiBase = client.getBaseUrl().trim();
-    if (!apiBase) {
-      throw new Error("Start the local agent before linking another device.");
+    let hostId = globalThis.localStorage?.getItem(CLOUD_HOST_ID_KEY)?.trim();
+    const hosts = await client.listCloudRemoteHosts();
+    if (!hostId || !hosts.some((host) => host.id === hostId)) {
+      const platform = localHostPlatform();
+      const hostIdentity = await getOrCreateControllerPublicIdentity();
+      const enrolled = await client.enrollCloudRemoteHost({
+        displayName:
+          platform === "macos"
+            ? "My Mac"
+            : platform === "windows"
+              ? "My Windows PC"
+              : "My Linux computer",
+        platform,
+        hostIdentity: {
+          keyId: hostIdentity.keyId,
+          signingPublicKeyJwk: hostIdentity.signingPublicKeyJwk,
+          encryptionPublicKeyJwk: hostIdentity.encryptionPublicKeyJwk,
+        },
+      });
+      hostId = enrolled.host.id;
+      await storeRuntimeCredential(
+        `managed-host:${hostId}`,
+        JSON.stringify(enrolled.enrollment),
+      );
+      globalThis.localStorage?.setItem(CLOUD_HOST_ID_KEY, hostId);
     }
+    const pairing = await client.createCloudRemotePairing({ hostId });
     const payload = new URL("elizaos://pair");
-    payload.searchParams.set("base", apiBase);
+    payload.searchParams.set("session", pairing.sessionId);
     payload.searchParams.set("code", pairing.code);
+    void refreshLinkedDevices(hostId).catch(() => {});
     return {
       code: pairing.code,
       qrPayload: payload.toString(),
-      expiresAt: new Date(pairing.expiresAt).toISOString(),
+      expiresAt: pairing.expiresAt,
     };
+  }, [refreshLinkedDevices]);
+
+  const onRedeemPairing = useCallback(async (code: string) => {
+    const identity = await getOrCreateControllerPublicIdentity();
+    const result = await client.consumeCloudRemotePairing(code, identity);
+    if (result.ingressUrl) {
+      addAgentProfile(
+        {
+          kind: "remote",
+          label: "Linked Mac",
+          apiBase: result.ingressUrl,
+        },
+        { activate: false },
+      );
+    }
   }, []);
+
+  const onRevokeDevice = useCallback(
+    async (sessionId: string) => {
+      await client.revokeCloudRemoteSession(sessionId);
+      const hostId = globalThis.localStorage
+        ?.getItem(CLOUD_HOST_ID_KEY)
+        ?.trim();
+      if (hostId) await refreshLinkedDevices(hostId);
+    },
+    [refreshLinkedDevices],
+  );
+
+  const onAddSshHost = useCallback(
+    async (entry: {
+      label: string;
+      target: string;
+      sshPort: number;
+      remoteApiPort: number;
+      identityFile?: string;
+      accessToken?: string;
+    }) => {
+      const runtimeId = crypto.randomUUID();
+      const tunnel = await startSshRuntime({
+        runtimeId,
+        target: entry.target,
+        sshPort: entry.sshPort,
+        remoteApiPort: entry.remoteApiPort,
+        identityFile: entry.identityFile,
+      });
+      const profile = addAgentProfile(
+        {
+          kind: "remote",
+          label: entry.label,
+          apiBase: tunnel.apiBase,
+        },
+        { activate: false },
+      );
+      if (entry.accessToken) {
+        await storeRuntimeCredential(profile.id, entry.accessToken);
+        updateAgentProfile(profile.id, { credentialRef: profile.id });
+      }
+      const switched = entry.accessToken
+        ? switchRuntimeNonDestructive(profile.id, entry.accessToken)
+        : switchRuntimeNonDestructive(profile.id);
+      if (!switched.ok) throw new Error(switchFailureMessage(switched.reason));
+      refresh();
+    },
+    [refresh],
+  );
 
   return (
     <SettingsStack className={className}>
@@ -171,8 +309,12 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
       <MyRuntimesSection
         runtimes={visibleProfiles}
         activeId={registry.activeProfileId}
+        devices={devices}
         onSwitch={onSwitch}
-        onCreatePairing={onCreatePairing}
+        onCreatePairing={hideLocal ? undefined : onCreatePairing}
+        onRedeemPairing={onRedeemPairing}
+        onRevokeDevice={onRevokeDevice}
+        onAddSshHost={hideLocal ? undefined : onAddSshHost}
         onAddRemote={onAddRemote}
         busy={busy}
       />

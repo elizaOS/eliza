@@ -171,4 +171,34 @@ describe("MyRuntimesSection", () => {
     await user.click(screen.getByRole("button", { name: "Connect" }));
     expect(onRedeemPairing).toHaveBeenCalledWith("482731");
   });
+
+  it("keeps SSH enrollment under Advanced and submits an agent-based tunnel", async () => {
+    const user = userEvent.setup();
+    const onAddSshHost = vi.fn(async () => {});
+    render(
+      <MyRuntimesSection
+        runtimes={RUNTIMES}
+        activeId="local-1"
+        onSwitch={vi.fn()}
+        onAddSshHost={onAddSshHost}
+      />,
+    );
+    expect(screen.queryByText("Add server with SSH")).toBeNull();
+    await user.click(screen.getByText("Advanced"));
+    await user.click(screen.getByRole("button", { name: "Set up" }));
+    await user.type(screen.getByTestId("ssh-runtime-label"), "Production VPS");
+    await user.type(
+      screen.getByTestId("ssh-runtime-target"),
+      "eliza@vps.example.com",
+    );
+    await user.click(screen.getByTestId("ssh-runtime-submit"));
+    expect(onAddSshHost).toHaveBeenCalledWith({
+      label: "Production VPS",
+      target: "eliza@vps.example.com",
+      sshPort: 22,
+      remoteApiPort: 2138,
+      identityFile: undefined,
+      accessToken: undefined,
+    });
+  });
 });

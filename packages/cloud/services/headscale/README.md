@@ -18,6 +18,7 @@ deploys to `/etc/headscale/acl.hujson`.
 |---|---|---|
 | `tag:agent` | Internal agent containers (set in [`headscale-integration.ts`](../../shared/src/lib/services/headscale-integration.ts:57)) | Internal services only — must NOT reach customer tunnels. |
 | `tag:eliza-tunnel` | Customer tunnel sessions minted by [`auth-key/route.ts`](../../api/v1/apis/tunnels/tailscale/auth-key/route.ts) | The reverse proxy and the customer's own node. Cross-customer routing is enforced by the proxy lookup layer. |
+| `tag:eliza-remote-host` | User-owned Mac/VPS runtime hosts enrolled from Eliza Settings | The Cloud relay on API/TLS ports only; no host-to-host or agent-fleet access. |
 | `tag:eliza-proxy` | The public reverse proxy node and the control plane's own `cp-<env>-router` | Customer tunnel HTTPS endpoints, plus the agent fleet on the container port only (`tag:agent:2138`) for bridge and health traffic. |
 
 The exact ACL policy lives in `acl.hujson` next to this README. **Edit there, not in the headscale admin UI** — the file is committed and deployed.

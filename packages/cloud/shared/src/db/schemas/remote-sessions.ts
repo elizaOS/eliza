@@ -8,9 +8,10 @@
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agentSandboxes } from "./agent-sandboxes";
 import { organizations } from "./organizations";
+import { remoteHosts } from "./remote-hosts";
 import { users } from "./users";
 
 export const REMOTE_SESSION_STATUSES = ["pending", "active", "denied", "revoked"] as const;
@@ -27,12 +28,21 @@ export const remoteSessions = pgTable(
     user_id: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    agent_id: uuid("agent_id")
-      .notNull()
-      .references(() => agentSandboxes.id, { onDelete: "cascade" }),
+    agent_id: uuid("agent_id").references(() => agentSandboxes.id, { onDelete: "cascade" }),
+    host_id: uuid("host_id").references(() => remoteHosts.id, {
+      onDelete: "cascade",
+    }),
     status: text("status").notNull().$type<RemoteSessionStatus>(),
     requester_identity: text("requester_identity").notNull(),
     pairing_token_hash: text("pairing_token_hash"),
+    controller_device_id: text("controller_device_id"),
+    controller_key_id: text("controller_key_id"),
+    controller_display_name: text("controller_display_name"),
+    controller_platform: text("controller_platform"),
+    controller_signing_public_jwk: jsonb("controller_signing_public_jwk").$type<JsonWebKey>(),
+    controller_encryption_public_jwk: jsonb("controller_encryption_public_jwk").$type<JsonWebKey>(),
+    last_sequence: bigint("last_sequence", { mode: "number" }).notNull().default(0),
+    last_seen_at: timestamp("last_seen_at", { withTimezone: true }),
     ingress_url: text("ingress_url"),
     ingress_reason: text("ingress_reason"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -41,8 +51,10 @@ export const remoteSessions = pgTable(
   },
   (table) => ({
     agentIdx: index("remote_sessions_agent_id_idx").on(table.agent_id),
+    hostIdx: index("remote_sessions_host_id_idx").on(table.host_id),
     orgIdx: index("remote_sessions_organization_id_idx").on(table.organization_id),
     statusIdx: index("remote_sessions_status_idx").on(table.status),
+    controllerIdx: index("remote_sessions_controller_device_id_idx").on(table.controller_device_id),
   }),
 );
 

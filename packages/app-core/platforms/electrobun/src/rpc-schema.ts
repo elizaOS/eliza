@@ -13,6 +13,7 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import type { RemoteControllerPublicIdentity } from "@elizaos/shared";
 import type { ExistingElizaInstallInfo } from "@elizaos/shared/types";
 import type { RPCSchema } from "electrobun/bun";
 import type {
@@ -1589,6 +1590,28 @@ export type ElizaDesktopRPCSchema = {
         params: { runtimeId: string };
         response: { deleted: true };
       };
+      desktopGetOrCreateControllerIdentity: {
+        params: {
+          deviceId: string;
+          displayName: string;
+          platform: "macos" | "windows" | "linux";
+        };
+        response: RemoteControllerPublicIdentity;
+      };
+      desktopStartSshRuntime: {
+        params: {
+          runtimeId: string;
+          target: string;
+          sshPort: number;
+          remoteApiPort: number;
+          identityFile?: string;
+        };
+        response: { apiBase: string; localPort: number };
+      };
+      desktopStopSshRuntime: {
+        params: { runtimeId: string };
+        response: { stopped: boolean };
+      };
       nativeTranscriptPublishStream: {
         params: { schema: string; events: unknown[] };
         response: { view: unknown; rejectedIndexes: number[] };
@@ -2537,6 +2560,10 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:storeRuntimeCredential": "desktopStoreRuntimeCredential",
   "desktop:loadRuntimeCredential": "desktopLoadRuntimeCredential",
   "desktop:deleteRuntimeCredential": "desktopDeleteRuntimeCredential",
+  "desktop:getOrCreateControllerIdentity":
+    "desktopGetOrCreateControllerIdentity",
+  "desktop:startSshRuntime": "desktopStartSshRuntime",
+  "desktop:stopSshRuntime": "desktopStopSshRuntime",
   "desktop:openLogsFolder": "desktopOpenLogsFolder",
   "desktop:createBugReportBundle": "desktopCreateBugReportBundle",
   "desktop:beep": "desktopBeep",

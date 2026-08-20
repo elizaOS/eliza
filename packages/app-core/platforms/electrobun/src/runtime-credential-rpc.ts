@@ -2,9 +2,11 @@
 import { createNodePlatformSecureStore } from "@elizaos/app-core/security/platform-secure-store-node";
 import {
   deleteRemoteRuntimeAccessToken,
+  getOrCreateRemoteDeviceIdentity,
   loadRemoteRuntimeAccessToken,
   storeRemoteRuntimeAccessToken,
 } from "@elizaos/app-core/security/remote-device-identity";
+import type { RemoteControllerPublicIdentity } from "@elizaos/shared";
 
 function readRuntimeId(params: unknown): string {
   if (!params || typeof params !== "object") {
@@ -19,6 +21,33 @@ function readRuntimeId(params: unknown): string {
     throw new Error("runtimeId must be a non-empty string");
   }
   return runtimeId.trim();
+}
+
+export async function desktopGetOrCreateControllerIdentity(
+  params: unknown,
+): Promise<RemoteControllerPublicIdentity> {
+  if (!params || typeof params !== "object") {
+    throw new Error("controller identity params must be an object");
+  }
+  const deviceId = Reflect.get(params, "deviceId");
+  const displayName = Reflect.get(params, "displayName");
+  const platform = Reflect.get(params, "platform");
+  if (
+    typeof deviceId !== "string" ||
+    !deviceId.trim() ||
+    deviceId.length > 256 ||
+    typeof displayName !== "string" ||
+    !displayName.trim() ||
+    displayName.length > 120 ||
+    !["macos", "windows", "linux"].includes(String(platform))
+  ) {
+    throw new Error("controller identity fields are invalid");
+  }
+  return getOrCreateRemoteDeviceIdentity(createNodePlatformSecureStore(), {
+    deviceId: deviceId.trim(),
+    displayName: displayName.trim(),
+    platform: platform as "macos" | "windows" | "linux",
+  });
 }
 
 export async function desktopStoreRuntimeCredential(

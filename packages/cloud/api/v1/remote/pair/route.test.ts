@@ -18,13 +18,23 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   organization_id: organizationId,
 }));
 const createPendingForOwnedAgent = mock();
+const createPendingForOwnedHost = mock();
+const consumePendingForOwner = mock();
+const getOwnedHost = mock();
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
 
 mock.module("@/db/repositories/remote-sessions", () => ({
-  remoteSessionsRepository: { createPendingForOwnedAgent },
+  remoteSessionsRepository: {
+    createPendingForOwnedAgent,
+    createPendingForOwnedHost,
+    consumePendingForOwner,
+  },
+}));
+mock.module("@/db/repositories/remote-hosts", () => ({
+  remoteHostsRepository: { getOwned: getOwnedHost },
 }));
 
 const { default: pairingRoute } = await import("./route");
@@ -36,6 +46,7 @@ const secret = "a-dedicated-remote-pairing-secret-with-32-bytes";
 const userId = "11111111-1111-4111-8111-111111111111";
 const organizationId = "22222222-2222-4222-8222-222222222222";
 const agentId = "33333333-3333-4333-8333-333333333333";
+const hostId = "55555555-5555-4555-8555-555555555555";
 
 function verifierContext(sessionId: string) {
   return { organizationId, userId, agentId, sessionId };
@@ -61,6 +72,9 @@ describe("remote pairing route", () => {
   beforeEach(() => {
     requireUserOrApiKeyWithOrg.mockClear();
     createPendingForOwnedAgent.mockReset();
+    createPendingForOwnedHost.mockReset();
+    consumePendingForOwner.mockReset();
+    getOwnedHost.mockReset();
     createPendingForOwnedAgent.mockImplementation(async (data) => ({
       ...data,
       created_at: new Date(),
@@ -69,6 +83,114 @@ describe("remote pairing route", () => {
       ingress_url: null,
       ingress_reason: null,
     }));
+    createPendingForOwnedHost.mockImplementation(async (data) => ({
+      ...data,
+      created_at: new Date(),
+      updated_at: new Date(),
+      ended_at: null,
+      ingress_url: null,
+      ingress_reason: null,
+    }));
+  });
+
+  test("creates a pairing challenge for an owned workstation host", async () => {
+    const response = await postPair(JSON.stringify({ hostId }));
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { data: { code: string } };
+    expect(body.data.code).toMatch(/^\d{6}$/);
+    expect(createPendingForOwnedHost).toHaveBeenCalledWith(
+      expect.objectContaining({ host_id: hostId }),
+    );
+    expect(createPendingForOwnedAgent).not.toHaveBeenCalled();
+  });
+
+  test("rejects ambiguous pairing targets", async () => {
+    const response = await postPair(JSON.stringify({ agentId, hostId }));
+    expect(response.status).toBe(400);
+    expect(createPendingForOwnedAgent).not.toHaveBeenCalled();
+    expect(createPendingForOwnedHost).not.toHaveBeenCalled();
+  });
+
+  test("consumes an owner-bound code with public controller keys", async () => {
+    consumePendingForOwner.mockResolvedValue({
+      kind: "consumed",
+      session: {
+        id: "44444444-4444-4444-8444-444444444444",
+        agent_id: agentId,
+        status: "active",
+        ingress_url: null,
+      },
+    });
+    const publicKey = {
+      kty: "EC",
+      crv: "P-256",
+      x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      y: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    };
+    const response = await app.fetch(
+      new Request("https://api.example.test/api/v1/remote/pair/consume", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          code: "123456",
+          controller: {
+            deviceId: "phone-1",
+            keyId: "phone-key-1",
+            displayName: "Phone",
+            platform: "ios",
+            signingPublicKeyJwk: publicKey,
+            encryptionPublicKeyJwk: publicKey,
+          },
+        }),
+      }),
+      {
+        REMOTE_PAIRING_HMAC_SECRET: secret,
+      } as AppEnv["Bindings"],
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(consumePendingForOwner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId,
+        userId,
+        code: "123456",
+        controller: expect.objectContaining({ deviceId: "phone-1" }),
+      }),
+    );
+  });
+
+  test("does not accept private controller key material", async () => {
+    const response = await app.fetch(
+      new Request("https://api.example.test/api/v1/remote/pair/consume", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          code: "123456",
+          controller: {
+            deviceId: "phone-1",
+            keyId: "key-1",
+            displayName: "Phone",
+            platform: "ios",
+            signingPublicKeyJwk: {
+              kty: "EC",
+              crv: "P-256",
+              x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              y: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+              d: "PRIVATE",
+            },
+            encryptionPublicKeyJwk: {
+              kty: "EC",
+              crv: "P-256",
+              x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              y: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            },
+          },
+        }),
+      }),
+      { REMOTE_PAIRING_HMAC_SECRET: secret } as AppEnv["Bindings"],
+    );
+    expect(response.status).toBe(400);
+    expect(consumePendingForOwner).not.toHaveBeenCalled();
   });
 
   test("binds a short-lived keyed verifier to the authenticated owner and session", async () => {

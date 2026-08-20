@@ -86,7 +86,15 @@ export interface MyRuntimesSectionProps {
   devices?: LinkedElizaDevice[];
   onCreatePairing?: () => Promise<RuntimePairingChallenge>;
   onRedeemPairing?: (code: string) => Promise<void>;
-  onAddSshHost?: () => void;
+  onRevokeDevice?: (deviceId: string) => void | Promise<void>;
+  onAddSshHost?: (entry: {
+    label: string;
+    target: string;
+    sshPort: number;
+    remoteApiPort: number;
+    identityFile?: string;
+    accessToken?: string;
+  }) => void | Promise<void>;
   onAddRemote?: (entry: {
     label: string;
     apiBase: string;
@@ -121,6 +129,7 @@ export function MyRuntimesSection({
   onSwitch,
   onCreatePairing,
   onRedeemPairing,
+  onRevokeDevice,
   onAddSshHost,
   onAddRemote,
   busy = false,
@@ -136,6 +145,15 @@ export function MyRuntimesSection({
   const [pairBusy, setPairBusy] = useState(false);
   const [enteredCode, setEnteredCode] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [sshOpen, setSshOpen] = useState(false);
+  const [sshLabel, setSshLabel] = useState("");
+  const [sshTarget, setSshTarget] = useState("");
+  const [sshPort, setSshPort] = useState("22");
+  const [sshApiPort, setSshApiPort] = useState("2138");
+  const [sshIdentityFile, setSshIdentityFile] = useState("");
+  const [sshAccessToken, setSshAccessToken] = useState("");
+  const [sshBusy, setSshBusy] = useState(false);
+  const [sshError, setSshError] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
@@ -149,6 +167,15 @@ export function MyRuntimesSection({
   );
   const canAdd = !busy && label.trim().length > 0 && url.trim().length > 0;
   const canRedeem = !pairBusy && /^\d{6}$/.test(enteredCode.replace(/\D/g, ""));
+  const canAddSsh =
+    !busy &&
+    !sshBusy &&
+    sshLabel.trim().length > 0 &&
+    /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/.test(sshTarget.trim()) &&
+    Number(sshPort) >= 1 &&
+    Number(sshPort) <= 65_535 &&
+    Number(sshApiPort) >= 1 &&
+    Number(sshApiPort) <= 65_535;
 
   useEffect(() => {
     let canceled = false;
@@ -275,20 +302,33 @@ export function MyRuntimesSection({
                   (device.status === "online" ? "Online now" : "Offline")
                 }
                 control={
-                  <span
-                    className={cn(
-                      "text-xs font-medium",
-                      device.status === "online" ? "text-ok" : "text-muted",
-                    )}
-                  >
-                    {device.role === "this-device"
-                      ? "This device"
-                      : device.status === "pending"
-                        ? "Waiting"
-                        : device.status === "online"
-                          ? "Online"
-                          : "Offline"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "text-xs font-medium",
+                        device.status === "online" ? "text-ok" : "text-muted",
+                      )}
+                    >
+                      {device.role === "this-device"
+                        ? "This device"
+                        : device.status === "pending"
+                          ? "Waiting"
+                          : device.status === "online"
+                            ? "Online"
+                            : "Offline"}
+                    </span>
+                    {onRevokeDevice && device.role !== "this-device" ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="min-h-11 text-destructive"
+                        onClick={() => onRevokeDevice(device.id)}
+                      >
+                        Remove
+                      </Button>
+                    ) : null}
+                  </div>
                 }
               />
             );
@@ -388,7 +428,7 @@ export function MyRuntimesSection({
                     variant="outline"
                     size="sm"
                     className="min-h-11"
-                    onClick={onAddSshHost}
+                    onClick={() => setSshOpen(true)}
                   >
                     Set up
                   </Button>
@@ -573,6 +613,176 @@ export function MyRuntimesSection({
               </Button>
             ) : null}
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={sshOpen} onOpenChange={setSshOpen}>
+        <DialogContent
+          data-testid="ssh-runtime-dialog"
+          className="overflow-y-auto"
+        >
+          <DialogHeader>
+            <DialogTitle>Add server with SSH</DialogTitle>
+            <DialogDescription>
+              Eliza opens a private tunnel using your Mac&apos;s SSH agent. New
+              host keys are remembered and changed keys are rejected. SSH keys
+              never leave this computer.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!canAddSsh || !onAddSshHost) return;
+              setSshBusy(true);
+              setSshError(null);
+              void Promise.resolve(
+                onAddSshHost({
+                  label: sshLabel.trim(),
+                  target: sshTarget.trim(),
+                  sshPort: Number(sshPort),
+                  remoteApiPort: Number(sshApiPort),
+                  identityFile: sshIdentityFile.trim() || undefined,
+                  accessToken: sshAccessToken.trim() || undefined,
+                }),
+              )
+                .then(() => setSshOpen(false))
+                .catch((error: unknown) => {
+                  setSshError(
+                    error instanceof Error
+                      ? error.message
+                      : "The SSH server could not be connected.",
+                  );
+                })
+                .finally(() => setSshBusy(false));
+            }}
+          >
+            <div className="space-y-1">
+              <label
+                htmlFor="ssh-runtime-label"
+                className="text-xs font-medium text-muted"
+              >
+                Name
+              </label>
+              <Input
+                id="ssh-runtime-label"
+                data-testid="ssh-runtime-label"
+                value={sshLabel}
+                onChange={(event) => setSshLabel(event.target.value)}
+                placeholder="Production VPS"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1">
+              <label
+                htmlFor="ssh-runtime-target"
+                className="text-xs font-medium text-muted"
+              >
+                SSH address
+              </label>
+              <Input
+                id="ssh-runtime-target"
+                data-testid="ssh-runtime-target"
+                value={sshTarget}
+                onChange={(event) => setSshTarget(event.target.value)}
+                placeholder="user@server.example.com"
+                autoCapitalize="none"
+                autoComplete="off"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label
+                  htmlFor="ssh-runtime-port"
+                  className="text-xs font-medium text-muted"
+                >
+                  SSH port
+                </label>
+                <Input
+                  id="ssh-runtime-port"
+                  data-testid="ssh-runtime-port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={sshPort}
+                  onChange={(event) => setSshPort(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label
+                  htmlFor="ssh-runtime-api-port"
+                  className="text-xs font-medium text-muted"
+                >
+                  Eliza port
+                </label>
+                <Input
+                  id="ssh-runtime-api-port"
+                  data-testid="ssh-runtime-api-port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={sshApiPort}
+                  onChange={(event) => setSshApiPort(event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label
+                htmlFor="ssh-runtime-identity"
+                className="text-xs font-medium text-muted"
+              >
+                Identity file <span className="font-normal">(optional)</span>
+              </label>
+              <Input
+                id="ssh-runtime-identity"
+                data-testid="ssh-runtime-identity"
+                value={sshIdentityFile}
+                onChange={(event) => setSshIdentityFile(event.target.value)}
+                placeholder="Uses SSH agent by default"
+                autoCapitalize="none"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1">
+              <label
+                htmlFor="ssh-runtime-token"
+                className="text-xs font-medium text-muted"
+              >
+                Eliza access token{" "}
+                <span className="font-normal">(optional)</span>
+              </label>
+              <Input
+                id="ssh-runtime-token"
+                data-testid="ssh-runtime-token"
+                type="password"
+                value={sshAccessToken}
+                onChange={(event) => setSshAccessToken(event.target.value)}
+                placeholder="Stored in your device secure store"
+                autoComplete="new-password"
+              />
+            </div>
+            {sshError ? (
+              <p role="alert" className="text-xs text-destructive">
+                {sshError}
+              </p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setSshOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!canAddSsh}
+                data-testid="ssh-runtime-submit"
+              >
+                {sshBusy ? "Connecting…" : "Connect server"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </SettingsStack>

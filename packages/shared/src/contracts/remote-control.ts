@@ -11,7 +11,13 @@ export const REMOTE_CONTROL_PROTOCOL_VERSION = 1 as const;
 export const REMOTE_COMMAND_MAX_TTL_MS = 60_000;
 export const REMOTE_COMMAND_CLOCK_SKEW_MS = 30_000;
 
-export type RemoteControllerPlatform = "ios" | "macos" | "android" | "web";
+export type RemoteControllerPlatform =
+  | "ios"
+  | "macos"
+  | "windows"
+  | "linux"
+  | "android"
+  | "web";
 
 export type RemoteCommandAction =
   | "agent.message"

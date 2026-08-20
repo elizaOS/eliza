@@ -14,7 +14,8 @@
     "tag:eliza-proxy": ["tunnel@"],
     // User-owned Mac/iPhone iMessage bridges use a dedicated tag so they can
     // reach only the tunnel proxy, never agent containers directly.
-    "tag:imessage-gateway": ["tunnel@"]
+    "tag:imessage-gateway": ["tunnel@"],
+    "tag:eliza-remote-host": ["tunnel@"]
   },
 
   "groups": {},
@@ -61,6 +62,18 @@
     {
       "action": "accept",
       "src": ["tag:imessage-gateway"],
+      "dst": ["tag:eliza-proxy:443"]
+    },
+    // User-owned runtime hosts are reachable only from the Cloud relay on the
+    // Eliza API/TLS ports. They cannot reach agents or one another.
+    {
+      "action": "accept",
+      "src": ["tag:eliza-proxy"],
+      "dst": ["tag:eliza-remote-host:2138", "tag:eliza-remote-host:443"]
+    },
+    {
+      "action": "accept",
+      "src": ["tag:eliza-remote-host"],
       "dst": ["tag:eliza-proxy:443"]
     }
     // NO rule grants tag:eliza-tunnel or tag:imessage-gateway access to tag:agent.

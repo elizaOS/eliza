@@ -251,4 +251,70 @@ describe("direct-cloud prototype methods (Steward session bound)", () => {
     expect(result.success).toBe(true);
     expect(result.data?.agentId).toBe("agent-1");
   });
+
+  it("creates and consumes account-bound remote host pairing challenges", async () => {
+    const issue = vi.fn((_url: string, _init?: RequestInit) =>
+      jsonResponse(200, {
+        success: true,
+        data: {
+          sessionId: "session-1",
+          code: "482731",
+          expiresAt: "2026-08-20T12:05:00.000Z",
+          ttlSeconds: 300,
+          status: "pending",
+        },
+      }),
+    );
+    const consume = vi.fn((_url: string, _init?: RequestInit) =>
+      jsonResponse(200, {
+        success: true,
+        data: {
+          sessionId: "session-1",
+          agentId: null,
+          hostId: "host-1",
+          status: "active",
+          ingressUrl: null,
+        },
+      }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      routeFetch({
+        "/api/v1/remote/pair": issue,
+        "/api/v1/remote/pair/consume": consume,
+      }),
+    );
+
+    await expect(
+      client.createCloudRemotePairing({ hostId: "host-1" }),
+    ).resolves.toMatchObject({ code: "482731", sessionId: "session-1" });
+    await expect(
+      client.consumeCloudRemotePairing("482731", {
+        version: 1,
+        deviceId: "phone-1",
+        keyId: "key-1",
+        displayName: "My iPhone",
+        platform: "ios",
+        signingPublicKeyJwk: { kty: "EC", crv: "P-256", x: "x", y: "y" },
+        encryptionPublicKeyJwk: {
+          kty: "EC",
+          crv: "P-256",
+          x: "x",
+          y: "y",
+        },
+        createdAt: 1,
+      }),
+    ).resolves.toMatchObject({ hostId: "host-1", status: "active" });
+    expect(issue).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ hostId: "host-1" }),
+      }),
+    );
+    expect(consume).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
 });

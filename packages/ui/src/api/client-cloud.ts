@@ -5,6 +5,7 @@
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { ElizaError } from "@elizaos/core";
+import type { RemoteControllerPublicIdentity } from "@elizaos/shared";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
@@ -161,6 +162,39 @@ type CloudAgentExecutionTier =
   | "dedicated-lazy"
   | "dedicated-always"
   | "custom";
+
+export interface CloudRemoteHost {
+  id: string;
+  displayName: string;
+  platform: "macos" | "linux" | "windows";
+  connectionMode: "managed_headscale" | "ssh" | "direct";
+  hostname: string | null;
+  runtimeKeyId: string;
+  signingPublicKeyJwk: JsonWebKey;
+  encryptionPublicKeyJwk: JsonWebKey;
+  status: "pending" | "online" | "offline" | "revoked";
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+
+export interface CloudRemotePairingChallenge {
+  sessionId: string;
+  code: string;
+  expiresAt: string;
+  ttlSeconds: number;
+  status: "pending";
+}
+
+export interface CloudRemoteSession {
+  id: string;
+  status: "pending" | "active";
+  controllerDeviceId: string | null;
+  controllerDisplayName: string | null;
+  controllerPlatform: string | null;
+  lastSeenAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 interface CloudAgentDeleteCondition {
   expectedAgentName: string;
@@ -1488,6 +1522,49 @@ declare module "./client-base" {
     revokeCloudBlueBubblesGateway(gatewayId: string): Promise<{
       success: true;
     }>;
+    listCloudRemoteHosts(): Promise<CloudRemoteHost[]>;
+    enrollCloudRemoteHost(input: {
+      displayName: string;
+      platform: "macos" | "linux" | "windows";
+      hostIdentity: {
+        keyId: string;
+        signingPublicKeyJwk: JsonWebKey;
+        encryptionPublicKeyJwk: JsonWebKey;
+      };
+    }): Promise<{
+      host: CloudRemoteHost;
+      enrollment: {
+        authKey: string;
+        loginServer: string;
+        hostname: string;
+        expiresAt: string;
+      };
+    }>;
+    revokeCloudRemoteHost(hostId: string): Promise<void>;
+    createCloudRemotePairing(target: {
+      agentId?: string;
+      hostId?: string;
+    }): Promise<CloudRemotePairingChallenge>;
+    consumeCloudRemotePairing(
+      code: string,
+      controller: RemoteControllerPublicIdentity,
+    ): Promise<{
+      sessionId: string;
+      agentId: string | null;
+      hostId: string | null;
+      status: "active";
+      ingressUrl: string | null;
+      targetIdentity: {
+        keyId: string;
+        signingPublicKeyJwk: JsonWebKey;
+        encryptionPublicKeyJwk: JsonWebKey;
+      } | null;
+    }>;
+    listCloudRemoteSessions(target: {
+      agentId?: string;
+      hostId?: string;
+    }): Promise<CloudRemoteSession[]>;
+    revokeCloudRemoteSession(sessionId: string): Promise<void>;
     createCloudCompatAgent(opts: {
       agentName: string;
       agentConfig?: Record<string, unknown>;
@@ -2297,6 +2374,153 @@ ElizaClient.prototype.revokeCloudBlueBubblesGateway = async function (
       this,
       `/api/v1/phone-gateways/bluebubbles/${encodeURIComponent(gatewayId)}`,
       { method: "DELETE" },
+    ),
+  );
+};
+
+function requireRemoteControlCloudResponse<T>(response: T | null): T {
+  if (response) return response;
+  throw new Error("Sign in to Eliza Cloud before linking or managing devices.");
+}
+
+ElizaClient.prototype.listCloudRemoteHosts = async function (
+  this: ElizaClient,
+) {
+  const response = requireRemoteControlCloudResponse(
+    await directCloudRequest<{
+      success: true;
+      data: { hosts: CloudRemoteHost[] };
+    }>(this, "/api/v1/remote/hosts"),
+  );
+  return response.data.hosts;
+};
+
+ElizaClient.prototype.enrollCloudRemoteHost = async function (
+  this: ElizaClient,
+  input,
+) {
+  const response = requireRemoteControlCloudResponse(
+    await directCloudRequest<{
+      success: true;
+      data: {
+        hostId: string;
+        displayName: string;
+        loginServer: string;
+        authKey: string;
+        hostname: string;
+        expiresAt: string;
+        status: "pending";
+      };
+    }>(this, "/api/v1/remote/hosts", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  );
+  return {
+    host: {
+      id: response.data.hostId,
+      displayName: response.data.displayName,
+      platform: input.platform,
+      connectionMode: "managed_headscale" as const,
+      hostname: response.data.hostname,
+      runtimeKeyId: input.hostIdentity.keyId,
+      signingPublicKeyJwk: input.hostIdentity.signingPublicKeyJwk,
+      encryptionPublicKeyJwk: input.hostIdentity.encryptionPublicKeyJwk,
+      status: response.data.status,
+      lastSeenAt: null,
+      createdAt: new Date().toISOString(),
+    },
+    enrollment: {
+      authKey: response.data.authKey,
+      loginServer: response.data.loginServer,
+      hostname: response.data.hostname,
+      expiresAt: response.data.expiresAt,
+    },
+  };
+};
+
+ElizaClient.prototype.revokeCloudRemoteHost = async function (
+  this: ElizaClient,
+  hostId,
+) {
+  requireRemoteControlCloudResponse(
+    await directCloudRequest<{ success: true }>(
+      this,
+      `/api/v1/remote/hosts/${encodeURIComponent(hostId)}/revoke`,
+      { method: "POST" },
+    ),
+  );
+};
+
+ElizaClient.prototype.createCloudRemotePairing = async function (
+  this: ElizaClient,
+  target,
+) {
+  const response = requireRemoteControlCloudResponse(
+    await directCloudRequest<{
+      success: true;
+      data: CloudRemotePairingChallenge;
+    }>(this, "/api/v1/remote/pair", {
+      method: "POST",
+      body: JSON.stringify(target),
+    }),
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.consumeCloudRemotePairing = async function (
+  this: ElizaClient,
+  code,
+  controller,
+) {
+  const response = requireRemoteControlCloudResponse(
+    await directCloudRequest<{
+      success: true;
+      data: {
+        sessionId: string;
+        agentId: string | null;
+        hostId: string | null;
+        status: "active";
+        ingressUrl: string | null;
+        targetIdentity: {
+          keyId: string;
+          signingPublicKeyJwk: JsonWebKey;
+          encryptionPublicKeyJwk: JsonWebKey;
+        } | null;
+      };
+    }>(this, "/api/v1/remote/pair/consume", {
+      method: "POST",
+      body: JSON.stringify({ code, controller }),
+    }),
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.listCloudRemoteSessions = async function (
+  this: ElizaClient,
+  target,
+) {
+  const params = new URLSearchParams();
+  if (target.agentId) params.set("agentId", target.agentId);
+  if (target.hostId) params.set("hostId", target.hostId);
+  const response = requireRemoteControlCloudResponse(
+    await directCloudRequest<{
+      success: true;
+      data: { sessions: CloudRemoteSession[] };
+    }>(this, `/api/v1/remote/sessions?${params.toString()}`),
+  );
+  return response.data.sessions;
+};
+
+ElizaClient.prototype.revokeCloudRemoteSession = async function (
+  this: ElizaClient,
+  sessionId,
+) {
+  requireRemoteControlCloudResponse(
+    await directCloudRequest<{ success: true }>(
+      this,
+      `/api/v1/remote/sessions/${encodeURIComponent(sessionId)}/revoke`,
+      { method: "POST" },
     ),
   );
 };

@@ -103,6 +103,7 @@ export * from "./provider-health";
 export * from "./redeemable-earnings";
 export * from "./referrals";
 export * from "./relations";
+export * from "./remote-hosts";
 export * from "./remote-sessions";
 export * from "./retention-cohorts";
 export * from "./secrets";
