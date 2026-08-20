@@ -7,6 +7,7 @@ import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent-transport";
+import { getShaderPreset } from "../backgrounds/shader-presets";
 import {
   isPlausibleFragmentSource,
   normalizeUniforms,
@@ -207,23 +208,23 @@ export function normalizeBackgroundConfig(value: unknown): BackgroundConfig {
   if (record.mode === "image" && imageUrl) {
     return { mode: "image", color, imageUrl };
   }
-  // GLSL mode requires a plausible fragment source; a malformed/oversized/absent
-  // source (or a hostile persisted value) falls back to the color field so a bad
-  // shader can never wedge the background on load.
+  // Persisted GLSL is a preset capability, not an arbitrary source channel.
+  // Resolve the id back to the compiled-in corpus so a hand-edited localStorage
+  // source cannot reach WebGL and an older saved preset self-heals after updates.
   if (record.mode === "glsl") {
     const shaderRecord = asRecord(record.shader);
-    const source = shaderRecord?.source;
-    if (isPlausibleFragmentSource(source)) {
-      const presetId =
-        typeof shaderRecord?.presetId === "string"
-          ? shaderRecord.presetId
-          : undefined;
+    const preset = getShaderPreset(
+      typeof shaderRecord?.presetId === "string"
+        ? shaderRecord.presetId
+        : undefined,
+    );
+    if (preset && isPlausibleFragmentSource(preset.source)) {
       return {
         mode: "glsl",
         color,
         shader: {
-          presetId,
-          source,
+          presetId: preset.id,
+          source: preset.source,
           uniforms: normalizeUniforms(shaderRecord?.uniforms),
         },
       };

@@ -5,11 +5,10 @@
  * Arbitrary GLSL is untrusted GPU code and the uniform values arrive from
  * untrusted places (the agent, persisted localStorage, chat). Uniforms are
  * clamped to a finite schema. Fragment source is size-bounded and scanned
- * for hang-prone loops (`while`/`do`, empty-condition `for`, huge numeric
- * literals in a `for` init or condition). Named constants, uniforms, and
- * nested loops can still compile; the renderer's 5-slow-frame watchdog is
- * the backstop. This module is three.js-free so it unit-tests without a
- * WebGL context.
+ * for hang-prone loops (`while`/`do` and every `for` except the single
+ * literal-bounded form used by compiled-in presets). The renderer's
+ * 5-slow-frame watchdog remains the backstop. This module is three.js-free so
+ * it unit-tests without a WebGL context.
  */
 
 /** The tunable uniforms the user/agent can drive. Standard `u_time` /
@@ -124,39 +123,35 @@ export const MAX_SHADER_SOURCE_BYTES = 16 * 1024;
  * long before the renderer's 5-slow-frame watchdog. */
 export const MAX_SHADER_LOOP_ITERS = 64;
 
-/** True when a clause carries a decimal literal above {@link MAX_SHADER_LOOP_ITERS}. */
-function clauseHasHugeLiteral(clause: string): boolean {
-  for (const digits of clause.match(/\d+/g) ?? []) {
-    if (Number(digits) > MAX_SHADER_LOOP_ITERS) return true;
-  }
-  return false;
-}
+/**
+ * The only loop form used by the compiled-in preset corpus. Accepting a
+ * general GLSL expression here would make a regex-based gate fail open on
+ * aliases, scientific notation, macros, or multiplicative nested loops.
+ */
+const SAFE_PRESET_FOR_LOOP =
+  /\bfor\s*\(\s*int\s+([A-Za-z_]\w*)\s*=\s*0\s*;\s*\1\s*<\s*(\d+)\s*;\s*\1\s*\+\+\s*\)/g;
 
-/** True when a `for` header has an empty/`true`/`1` condition or a numeric
- * literal above {@link MAX_SHADER_LOOP_ITERS} in the init or condition. */
-function hasUnboundedForLoop(source: string): boolean {
-  const header = /\bfor\s*\(([^;]*);([^;]*);/g;
-  let match = header.exec(source);
-  while (match !== null) {
-    const init = match[1];
-    const condition = match[2].replace(/\s+/g, "");
-    if (condition === "" || condition === "true" || condition === "1") {
-      return true;
-    }
-    if (clauseHasHugeLiteral(init) || clauseHasHugeLiteral(match[2])) {
-      return true;
-    }
-    match = header.exec(source);
-  }
-  return false;
+/** True unless every `for` token is the single literal-bounded preset form. */
+function hasUnsupportedForLoop(source: string): boolean {
+  let safeLoopCount = 0;
+  const withoutSafeLoops = source.replace(
+    SAFE_PRESET_FOR_LOOP,
+    (_header, _variable: string, literal: string) => {
+      safeLoopCount += 1;
+      return Number(literal) <= MAX_SHADER_LOOP_ITERS ? "" : "for";
+    },
+  );
+  // The shipped corpus has one five-iteration noise loop. Rejecting multiple
+  // loops also prevents individually-small bounds from multiplying GPU work.
+  return safeLoopCount > 1 || /\bfor\b/.test(withoutSafeLoops);
 }
 
 /**
  * Cheap static safety gate applied BEFORE the authoritative GL compile-validate
  * in the renderer. Defence in depth ahead of the 5-slow-frame watchdog: size
- * bound, no `while`/`do`, no empty-condition `for`, no huge decimal literal in
- * a `for` init or condition. Named constants, uniforms, and nested loops are
- * not closed by this regex. Presets use `for(int i=0;i<5;i++)` only.
+ * bound, no `while`/`do`, and at most one literal-bounded preset-style `for`.
+ * General expressions, macros, comments between tokens, and nested loops fail
+ * closed because a regex cannot prove their total GPU work.
  * Persistence (`normalizeBackgroundConfig`) is the product sink.
  */
 export function isPlausibleFragmentSource(source: unknown): source is string {
@@ -173,6 +168,6 @@ export function isPlausibleFragmentSource(source: unknown): source is string {
   }
   // Unbounded GPU loops hang a frame; presets use a 5-iter `for` only.
   if (/\bwhile\b/.test(source) || /\bdo\b/.test(source)) return false;
-  if (hasUnboundedForLoop(source)) return false;
+  if (hasUnsupportedForLoop(source)) return false;
   return true;
 }

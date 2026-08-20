@@ -172,4 +172,23 @@ describe("shader-schema — isPlausibleFragmentSource (static safety gate)", () 
       ),
     ).toBe(true);
   });
+
+  it("fails closed on alternate and multiplicative for-loop spellings", () => {
+    const wrap = (loop: string) =>
+      `void main(){ ${loop} gl_FragColor = vec4(1.0); }`;
+    expect(isPlausibleFragmentSource(wrap("for(int i=0;i<1e9;i++){}"))).toBe(
+      false,
+    );
+    expect(
+      isPlausibleFragmentSource(
+        wrap("const int N=200000; for(int i=0;i<N;i++){}"),
+      ),
+    ).toBe(false);
+    expect(isPlausibleFragmentSource(wrap("for/**/(;;){}"))).toBe(false);
+    expect(
+      isPlausibleFragmentSource(
+        wrap("for(int i=0;i<64;i++){ for(int j=0;j<64;j++){} }"),
+      ),
+    ).toBe(false);
+  });
 });
