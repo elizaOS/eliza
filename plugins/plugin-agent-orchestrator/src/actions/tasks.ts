@@ -2505,8 +2505,15 @@ function appBuildSlugWorkdir(
       "my",
       "lil",
     ]);
+    // Anchor on the NAMED app when the ask has one ("the <name> page/app"):
+    // matching against the whole text let descriptive words win — "make the
+    // unit converter page dark mode" matched a stale `dark-mode/` dir minted
+    // by an earlier failed run and the edit landed there (live 2026-08-20).
+    const anchorMatch = intentText.match(
+      /\b(?:the|my|our)\s+([a-z0-9][\w -]{1,40}?)\s+(?:page|app|site|game|tool)\b/i,
+    );
     const taskTokens = new Set(
-      `${intentText} ${task}`
+      (anchorMatch ? anchorMatch[1] : `${intentText} ${task}`)
         .toLowerCase()
         .split(/[^a-z0-9]+/)
         .filter(Boolean),
