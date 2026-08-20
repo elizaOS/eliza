@@ -220,7 +220,11 @@ describe("clipboard — Windows", () => {
 
     const [cmd, args, options] = spawnSyncMock.mock.calls[0] ?? [];
     expect(cmd).toBe("powershell");
-    expect(args).toEqual(["-NoProfile", "-Command", "Clear-Clipboard"]);
+    expect(args).toEqual([
+      "-NoProfile",
+      "-Command",
+      "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear()",
+    ]);
     expect(options).not.toHaveProperty("input");
   });
 });

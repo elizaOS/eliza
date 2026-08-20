@@ -167,24 +167,23 @@ export async function writeClipboard(text: string): Promise<void> {
   // the command (no stdin pipe needed), then decoded host-side, so it round-trips
   // any UTF-8 text safely. Falls back to the one-shot stdin-piped spawn.
   //
-  // PowerShell rejects `Set-Clipboard -Value` when an empty stdin stream is
-  // materialized as null. Clearing is the exact Windows representation of an
-  // empty text clipboard, so use the same command in warm and one-shot paths.
+  // Windows PowerShell rejects binding an empty string to `Set-Clipboard
+  // -Value`. Clearing is the exact Windows representation of an empty text
+  // clipboard. Windows PowerShell 5.1 has no Clear-Clipboard cmdlet, so use the
+  // WinForms API in both the warm and one-shot paths.
   if (currentPlatform() === "win32" && text.length === 0) {
+    const clearCommand =
+      "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear()";
     if (psHostAvailable()) {
       try {
-        await runPsHost("Clear-Clipboard", clipboardTimeoutMs());
+        await runPsHost(clearCommand, clipboardTimeoutMs());
         return;
       } catch {
         // error-policy:J4 designed two-tier execution — the one-shot command
         // below performs the same clear, and its failure throws to the caller.
       }
     }
-    runClipboardWrite("powershell", [
-      "-NoProfile",
-      "-Command",
-      "Clear-Clipboard",
-    ]);
+    runClipboardWrite("powershell", ["-NoProfile", "-Command", clearCommand]);
     return;
   }
 
