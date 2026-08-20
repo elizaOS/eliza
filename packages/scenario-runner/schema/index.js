@@ -332,6 +332,297 @@ function validateScenarioRequirements(value) {
   }
 }
 
+const SCENARIO_MODEL_FIXTURE_TYPES = new Set([
+  "TEXT_NANO",
+  "TEXT_SMALL",
+  "TEXT_MEDIUM",
+  "TEXT_LARGE",
+  "TEXT_MEGA",
+  "RESPONSE_HANDLER",
+  "ACTION_PLANNER",
+  "REASONING_SMALL",
+  "REASONING_LARGE",
+  "TEXT_COMPLETION",
+]);
+
+function validateScenarioModelFixtures(value) {
+  const declaration = value?.modelFixtures;
+  if (declaration === undefined) return;
+  if (
+    !declaration ||
+    typeof declaration !== "object" ||
+    Array.isArray(declaration)
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid modelFixtures`,
+    );
+  }
+  if (declaration.mode === "model-free") {
+    const unknownKeys = Object.keys(declaration).filter(
+      (key) => !["mode", "reason"].includes(key),
+    );
+    if (unknownKeys.length > 0) {
+      throw new Error(
+        `scenario "${value?.id ?? "<unknown>"}" model-free declaration has unknown field(s): ${unknownKeys.join(", ")}`,
+      );
+    }
+    if (
+      typeof declaration.reason !== "string" ||
+      declaration.reason.trim().length === 0
+    ) {
+      throw new Error(
+        `scenario "${value?.id ?? "<unknown>"}" model-free declaration requires a reason`,
+      );
+    }
+    const modelBackedTurns = Array.isArray(value?.turns)
+      ? value.turns
+          .filter((turn) =>
+            ["message", "voice", "tick"].includes(turn?.kind ?? "message"),
+          )
+          .map(
+            (turn) => `${turn?.name ?? "<unnamed>"}:${turn?.kind ?? "message"}`,
+          )
+      : [];
+    const modelBackedChecks = Array.isArray(value?.finalChecks)
+      ? value.finalChecks
+          .filter((check) => check?.type === "judgeRubric")
+          .map((check) => check?.name ?? check?.type)
+      : [];
+    if (modelBackedTurns.length > 0 || modelBackedChecks.length > 0) {
+      throw new Error(
+        `scenario "${value?.id ?? "<unknown>"}" declares model-free but contains model-backed work: ${[...modelBackedTurns, ...modelBackedChecks].join(", ")}`,
+      );
+    }
+    return;
+  }
+  const declarationUnknownKeys = Object.keys(declaration).filter(
+    (key) => !["mode", "fixtures"].includes(key),
+  );
+  if (declarationUnknownKeys.length > 0) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" fixture declaration has unknown field(s): ${declarationUnknownKeys.join(", ")}`,
+    );
+  }
+  if (declaration.mode !== "fixtures" || !Array.isArray(declaration.fixtures)) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" modelFixtures must declare mode fixtures or model-free`,
+    );
+  }
+  const names = new Set();
+  for (const [index, fixture] of declaration.fixtures.entries()) {
+    if (
+      !fixture ||
+      typeof fixture !== "object" ||
+      typeof fixture.name !== "string" ||
+      !fixture.name.trim()
+    ) {
+      throw new Error(
+        `scenario "${value?.id ?? "<unknown>"}" modelFixtures.fixtures[${index}] requires a name`,
+      );
+    }
+    if (names.has(fixture.name)) {
+      throw new Error(
+        `scenario "${value?.id ?? "<unknown>"}" has duplicate model fixture "${fixture.name}"`,
+      );
+    }
+    names.add(fixture.name);
+    const unknownFixtureKeys = Object.keys(fixture).filter(
+      (key) =>
+        !["name", "match", "response", "cardinality", "behavior"].includes(key),
+    );
+    if (unknownFixtureKeys.length > 0) {
+      throw new Error(
+        `scenario model fixture "${fixture.name}" has unknown field(s): ${unknownFixtureKeys.join(", ")}`,
+      );
+    }
+    if (
+      !fixture.match ||
+      typeof fixture.match !== "object" ||
+      fixture.match.modelType === undefined
+    ) {
+      throw new Error(
+        `scenario model fixture "${fixture.name}" requires an exact modelType matcher`,
+      );
+    }
+    const modelTypes = Array.isArray(fixture.match.modelType)
+      ? fixture.match.modelType
+      : [fixture.match.modelType];
+    if (
+      modelTypes.length === 0 ||
+      modelTypes.some(
+        (modelType) => typeof modelType !== "string" || !modelType.trim(),
+      )
+    ) {
+      throw new Error(
+        `scenario model fixture "${fixture.name}" requires non-empty modelType strings`,
+      );
+    }
+    const unsupportedModelTypes = modelTypes.filter(
+      (modelType) => !SCENARIO_MODEL_FIXTURE_TYPES.has(modelType),
+    );
+    if (unsupportedModelTypes.length > 0) {
+      throw new Error(
+        `scenario model fixture "${fixture.name}" has unsupported modelType value(s): ${unsupportedModelTypes.join(", ")}`,
+      );
+    }
+    for (const key of ["input", "prompt"]) {
+      const matcher = fixture.match[key];
+      if (matcher === undefined) continue;
+      if (!matcher || typeof matcher !== "object" || Array.isArray(matcher)) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" has invalid ${key} matcher`,
+        );
+      }
+      const matcherKeys = Object.keys(matcher);
+      if (
+        matcherKeys.filter((candidate) =>
+          ["exact", "includes", "pattern"].includes(candidate),
+        ).length !== 1
+      ) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" ${key} matcher must declare exactly one of exact, includes, or pattern`,
+        );
+      }
+      if ("flags" in matcher && !("pattern" in matcher)) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" ${key}.flags requires pattern`,
+        );
+      }
+      try {
+        if ("pattern" in matcher) new RegExp(matcher.pattern, matcher.flags);
+      } catch (error) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" has invalid ${key} pattern: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    if (
+      fixture.match.toolNames !== undefined &&
+      (!Array.isArray(fixture.match.toolNames) ||
+        fixture.match.toolNames.some(
+          (name) => typeof name !== "string" || !name.trim(),
+        ))
+    ) {
+      throw new Error(
+        `scenario model fixture "${fixture.name}" has invalid toolNames`,
+      );
+    }
+    const cardinality = fixture.cardinality;
+    if (cardinality !== undefined && cardinality !== "any") {
+      if (typeof cardinality === "number") {
+        if (!Number.isSafeInteger(cardinality) || cardinality < 0) {
+          throw new Error(
+            `scenario model fixture "${fixture.name}" has invalid cardinality`,
+          );
+        }
+      } else if (
+        !cardinality ||
+        typeof cardinality !== "object" ||
+        Array.isArray(cardinality)
+      ) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" has invalid cardinality`,
+        );
+      } else {
+        const min = cardinality.min ?? 1;
+        const max = cardinality.max ?? Number.POSITIVE_INFINITY;
+        if (
+          !Number.isSafeInteger(min) ||
+          min < 0 ||
+          !(
+            max === Number.POSITIVE_INFINITY ||
+            (Number.isSafeInteger(max) && max >= min)
+          )
+        ) {
+          throw new Error(
+            `scenario model fixture "${fixture.name}" has invalid cardinality bounds`,
+          );
+        }
+      }
+    }
+    if (
+      fixture.response === undefined &&
+      !fixture.behavior?.error &&
+      !fixture.behavior?.waitForAbort
+    ) {
+      throw new Error(
+        `scenario model fixture "${fixture.name}" requires response, error, or waitForAbort`,
+      );
+    }
+    if (fixture.response !== undefined) {
+      if (
+        !fixture.response ||
+        typeof fixture.response !== "object" ||
+        Array.isArray(fixture.response)
+      ) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" has invalid response`,
+        );
+      }
+      if (
+        fixture.response.json !== undefined &&
+        ["text", "toolCalls", "finishReason", "usage"].some(
+          (key) => fixture.response[key] !== undefined,
+        )
+      ) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" response.json is exclusive`,
+        );
+      }
+      if (
+        fixture.response.toolCalls !== undefined &&
+        (!Array.isArray(fixture.response.toolCalls) ||
+          fixture.response.toolCalls.some(
+            (toolCall) =>
+              !toolCall ||
+              typeof toolCall !== "object" ||
+              typeof toolCall.name !== "string" ||
+              !toolCall.name.trim() ||
+              !toolCall.arguments ||
+              typeof toolCall.arguments !== "object" ||
+              Array.isArray(toolCall.arguments),
+          ))
+      ) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" has invalid toolCalls`,
+        );
+      }
+    }
+    if (fixture.behavior !== undefined) {
+      const behavior = fixture.behavior;
+      if (
+        !behavior ||
+        typeof behavior !== "object" ||
+        Array.isArray(behavior)
+      ) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" has invalid behavior`,
+        );
+      }
+      if (
+        behavior.latencyMs !== undefined &&
+        (!Number.isSafeInteger(behavior.latencyMs) || behavior.latencyMs < 0)
+      ) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" has invalid latencyMs`,
+        );
+      }
+      if (
+        behavior.stream !== undefined &&
+        (!behavior.stream ||
+          !Number.isSafeInteger(behavior.stream.chunkSize) ||
+          behavior.stream.chunkSize <= 0 ||
+          !Number.isSafeInteger(behavior.stream.intervalMs) ||
+          behavior.stream.intervalMs < 0)
+      ) {
+        throw new Error(
+          `scenario model fixture "${fixture.name}" has invalid stream behavior`,
+        );
+      }
+    }
+  }
+}
+
 /**
  * Resolve a scenario's platform-gated deferral, if any. A deferred scenario is
  * a live-only scenario that additionally cannot run in any current lane because
@@ -384,6 +675,7 @@ export function scenario(value) {
     // Required services are a runtime preflight contract, not an implicit
     // consequence of whichever plugin happened to register them first.
     validateScenarioRequirements(value);
+    validateScenarioModelFixtures(value);
     // Validate the deferral shape (and lane compatibility) eagerly too.
     scenarioDeferral(value);
   }
