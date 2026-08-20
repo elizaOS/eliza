@@ -1,10 +1,10 @@
 /**
  * Exercises managed X broker authentication with deterministic HTTP responses,
- * including the agent-role route and credential caching contract.
+ * including the agent-role route, request timeout, and credential caching contract.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BrokerAuthProvider } from "./broker";
+import { BROKER_REQUEST_TIMEOUT_MS, BrokerAuthProvider } from "./broker";
 
 function runtime(settings: Record<string, string>): IAgentRuntime {
   return {
@@ -17,6 +17,10 @@ afterEach(() => {
 });
 
 describe("BrokerAuthProvider", () => {
+  it("exports BROKER_REQUEST_TIMEOUT_MS with 15-second bound", () => {
+    expect(BROKER_REQUEST_TIMEOUT_MS).toBe(15_000);
+  });
+
   it("vends and caches the connected agent-role OAuth2 token", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({
@@ -46,6 +50,7 @@ describe("BrokerAuthProvider", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer agent-cloud-key",
         }),
+        signal: expect.any(AbortSignal),
       }),
     );
   });
@@ -82,7 +87,9 @@ describe("BrokerAuthProvider", () => {
     await expect(provider.getAccessToken()).resolves.toBe("owner-oauth-token");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://cloud.eliza.app/api/v1/twitter/token?connectionRole=owner",
-      expect.any(Object),
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 

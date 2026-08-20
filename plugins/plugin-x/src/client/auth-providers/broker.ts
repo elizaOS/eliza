@@ -29,6 +29,7 @@ type BrokerToken = BrokerOAuth1Token | BrokerOAuth2Token;
 
 const BROKER_CACHE_MS = 5 * 60 * 1000;
 const OAUTH2_REFRESH_MARGIN_MS = 60 * 1000;
+export const BROKER_REQUEST_TIMEOUT_MS = 15_000;
 
 function isBrokerToken(value: unknown): value is BrokerToken {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -145,6 +146,7 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
           Accept: "application/json",
           Authorization: `Bearer ${this.brokerToken()}`,
         },
+        signal: AbortSignal.timeout(BROKER_REQUEST_TIMEOUT_MS),
       },
     );
     if (response.status === 401 || response.status === 403) {
