@@ -3468,10 +3468,6 @@ export function ChatOverlay({
     [threadHeight, fullBleedT] as MotionValue<number>[],
     ([h, t]: number[]) => sheetBlackoutProgress(h, halfH, t),
   );
-  const surfaceBackgroundColor = useTransform(surfaceBlackout, (t: number) => {
-    const percent = (clamp01(t) * 100).toFixed(3);
-    return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
-  });
   const surfaceEdgeShadow = useTransform(fullBleedT, (t: number) =>
     liquidGlassEdgeShadow(1 - t),
   );
@@ -6247,7 +6243,12 @@ export function ChatOverlay({
                   ? "transparent"
                   : nativeInsetSheet
                     ? "var(--bg)"
-                    : surfaceBackgroundColor,
+                    : GLASS_SHEET_FILL,
+              // Keep the large backdrop-filter layer's paint identity stable
+              // throughout browser drag frames. The compositor child below
+              // owns the glass-to-opaque blend. The detached native host stays
+              // glass at every detent and intentionally has no blackout child.
+              overflow: "hidden",
               backdropFilter:
                 cssSheetBackdropActive && !desktopOverlayHost
                   ? GLASS_SHEET_BACKDROP_FILTER
@@ -6281,7 +6282,19 @@ export function ChatOverlay({
               // commit. Harmless when the inset is 0.
               top: glassTopExtension,
             }}
-          />
+          >
+            {!desktopOverlayHost && !firstRunOpen && !nativeInsetSheet ? (
+              <motion.div
+                data-testid="chat-sheet-blackout"
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  opacity: surfaceBlackout,
+                  backgroundColor: "var(--bg)",
+                  borderRadius: "inherit",
+                }}
+              />
+            ) : null}
+          </motion.div>
           {/* AX-tree mirror of data-detent: the native gesture e2e suites
               (XCUITest) can only observe web state through the accessibility
               tree, and data attributes never surface there. sr-only text does.
@@ -6412,7 +6425,17 @@ export function ChatOverlay({
                 style={{
                   height: `calc(env(safe-area-inset-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
                 }}
-              />
+              >
+                <span
+                  aria-hidden="true"
+                  data-testid="chat-maximize-restore-handle"
+                  className="pointer-events-none absolute left-1/2 h-1 w-9 -translate-x-1/2 rounded-full"
+                  style={{
+                    top: "calc(var(--safe-area-top, 0px) + 0.875rem)",
+                    backgroundColor: HANDLE_BAR_COLOR,
+                  }}
+                />
+              </button>
             ) : null}
 
             {/* Sheet header — shown at the HALF detent and up (not just FULL).

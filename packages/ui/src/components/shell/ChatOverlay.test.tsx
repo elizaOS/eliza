@@ -1802,6 +1802,7 @@ describe("ChatOverlay", () => {
     const fade = screen.getByTestId("chat-thread-top-fade");
     const rim = screen.getByTestId("chat-sheet-rim");
     const surface = screen.getByTestId("chat-sheet-surface");
+    const blackout = screen.getByTestId("chat-sheet-blackout");
     const viewport = screen.getByTestId("chat-thread-scroll");
     expect(fade.className).toContain("pointer-events-none");
     expect(fade.className).toContain("absolute");
@@ -1814,6 +1815,9 @@ describe("ChatOverlay", () => {
     expect(rim.className).toContain("z-40");
     expect(rim.className).toContain("border-border-strong");
     expect(surface.className.split(/\s+/)).not.toContain("border");
+    expect(blackout.style.opacity).not.toBe("");
+    expect(blackout.style.backgroundColor).toBe("var(--bg)");
+    expect(blackout.style.borderRadius).toBe("inherit");
     const content = screen.getByTestId("chat-content");
     expect(content.style.clipPath).toContain("inset(1px round");
     expect(viewport.style.maskImage).toBe("");
@@ -4415,6 +4419,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     const surface = screen.getByTestId("chat-sheet-surface");
     expect(surface.style.backgroundColor).toBe("rgba(10, 10, 12, 0.64)");
     expect(surface.style.backdropFilter).toBe("");
+    expect(screen.queryByTestId("chat-sheet-blackout")).toBeNull();
     fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
     expect(surface.style.backgroundColor).toBe("rgba(10, 10, 12, 0.64)");
     expect(surface.style.backdropFilter).toBe("");
@@ -4679,8 +4684,15 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
     // Appears once maximized.
     bigPullUp();
-    expect(screen.getByTestId("chat-maximize-restore-zone")).toBeTruthy();
-    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    const handle = screen.getByTestId("chat-maximize-restore-handle");
+    expect(zone.contains(handle)).toBe(true);
+    expect(handle.getAttribute("aria-hidden")).toBe("true");
+    expect(handle.className).toContain("h-1");
+    expect(handle.className).toContain("w-9");
+    expect(handle.className).toContain("rounded-full");
+    expect(handle.style.backgroundColor).not.toBe("");
+    expect(handle.style.top).toContain("var(--safe-area-top");
   });
 
   it("a downward pull in the top-20% restore zone exits full-bleed back to the overlay (not a full collapse)", () => {
@@ -4725,7 +4737,9 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       pointerId: 81,
     });
     expect(sheet.getAttribute("data-maximized")).toBe("true");
-    expect(screen.queryByTestId("chat-maximize-restore-handle")).toBeNull();
+    expect(
+      zone.contains(screen.getByTestId("chat-maximize-restore-handle")),
+    ).toBe(true);
     expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     expect(sheet.style.height).toBe("auto");
     fireEvent.pointerUp(zone, {
