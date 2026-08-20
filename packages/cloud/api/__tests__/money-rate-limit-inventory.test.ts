@@ -39,6 +39,9 @@ const MONEY_MUTATION_ROUTES = [
   "v1/earnings/payout/stripe-connect/transfer/route.ts",
   "v1/earnings/payout/stripe-connect/webhook/route.ts",
   "v1/oxapay/webhook/route.ts",
+  "v1/payment-requests/[id]/cancel/route.ts",
+  "v1/payment-requests/[id]/expire/route.ts",
+  "v1/payment-requests/route.ts",
   "v1/redemptions/route.ts",
   "v1/stripe/checkout/route.ts",
   "v1/stripe/webhook/route.ts",
@@ -73,9 +76,17 @@ const MONEY_PATH_MARKERS = [
   `${path.sep}credits${path.sep}checkout${path.sep}`,
   `${path.sep}credits${path.sep}verify${path.sep}`,
   `${path.sep}app-credits${path.sep}`,
+  `${path.sep}payment-requests${path.sep}`,
 ];
 
-const SKIP_DIRS = new Set(["node_modules", "dist", "coverage", ".turbo"]);
+const SKIP_DIRS = new Set([
+  "node_modules",
+  "dist",
+  "coverage",
+  ".turbo",
+  "test",
+  ".wrangler-dry-run",
+]);
 
 function walkRouteFiles(dir: string): string[] {
   const out: string[] = [];
@@ -126,4 +137,19 @@ describe("money mutation rate-limit inventory (#22982)", () => {
       expect(listed.has(relative), relative).toBe(true);
     }
   });
+
+  test("payment-request mutations cannot stay unmarked or fall-open", () => {
+    const listed = new Set<string>(MONEY_MUTATION_ROUTES);
+
+    for (const file of walkRouteFiles(apiRoot)) {
+      const relative = posixFromApi(file);
+      if (relative === "cron" || relative.startsWith("cron/")) continue;
+      const source = readFileSync(file, "utf8");
+      if (!source.includes("getPaymentRequestsService")) continue;
+      const mutates = /\.(post|put|patch|delete)\(/.test(source);
+      if (!mutates) continue;
+      expect(listed.has(relative), relative).toBe(true);
+      expect(source, relative).toContain("moneyRateLimit(");
+    }
+  }, 30_000);
 });
