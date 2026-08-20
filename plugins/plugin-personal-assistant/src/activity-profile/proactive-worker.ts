@@ -13,11 +13,6 @@
  *   1. **Activity-profile maintenance** — build/refresh the owner
  *      `ActivityProfile` and persist it on the task's metadata, where the
  *      `activityProfileProvider` reads it for prompt context.
- *   2. **WS5 background-planner observability** — route the tick through
- *      {@link planJob} so planner decisions are observable and sensitive
- *      actions land in the WS6 approval queue (which itself executes through
- *      the scheduled-task spine).
- *
  * The pure planning content this worker used to fire directly lives on in
  * `./proactive-planner.ts` as the content library for spine consumers (e.g.
  * goal check-ins on the scheduling spine); it is intentionally not invoked
@@ -28,12 +23,6 @@ import { loadElizaConfig } from "@elizaos/agent";
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import { logger, ModelType, stringToUuid } from "@elizaos/core";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
-import {
-  type BackgroundJobContext,
-  BackgroundPlannerError,
-  planJob,
-} from "../lifeops/background-planner.js";
-import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { learnScheduleStyleFacts } from "../lifeops/owner/schedule-style-writer.js";
 import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
@@ -123,32 +112,6 @@ export async function executeProactiveTask(
   const ownerEntityId = await resolveOwnerEntityId(runtime);
   if (!ownerEntityId) {
     return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
-  }
-
-  // WS5: Route this tick through the shared LLM planner so every tick is
-  // observable via `planJob` and sensitive actions are always enqueued into
-  // the WS6 approval queue (which executes through the scheduled-task spine).
-  const plannerContext: BackgroundJobContext = {
-    jobKind: "daily_brief",
-    subjectUserId: ownerEntityId,
-    snapshot: {
-      now: now.toISOString(),
-      timezone,
-    },
-    availableChannels: ["internal"],
-    trigger: "proactive_tick",
-  };
-  try {
-    const plan = await planJob(runtime, plannerContext);
-    await enqueueIfSensitive(runtime, plannerContext, plan);
-  } catch (error) {
-    if (error instanceof BackgroundPlannerError) {
-      logger.warn(
-        `[proactive] background planner unavailable — ${error.message}`,
-      );
-    } else {
-      throw error;
-    }
   }
 
   const tasks = await runtime.getTasks({
