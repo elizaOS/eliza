@@ -271,6 +271,13 @@ export async function phraseForUser(
           prompt: "Write the message now.",
           maxTokens: 128,
           temperature: 0.7,
+          // Formatting call: suppress hidden reasoning. A reasoning-effort pin
+          // (e.g. ELIZAOS_CLOUD_REASONING_EFFORT=high) burns the whole
+          // 128-token cap on hidden reasoning and returns EMPTY content on
+          // gemma-4-31b — every ack shipped the canned fallback for two days
+          // (live 2026-08-20). thinking:"off" maps to the model's suppression
+          // value in both the cloud and direct-Cerebras handlers.
+          providerOptions: { eliza: { thinking: "off" } },
         }),
       ).catch((err) => {
         callError = err instanceof Error ? err.message : String(err);
