@@ -232,6 +232,7 @@ export interface ProviderCleanupProofPayload {
   manifestSha256: string;
   cleanupScopeSha256: string;
   rawControllerMaterialSha256: string;
+  qualificationArtifactSha256?: string;
   disposition: "cleaned" | "no-resources-created";
   completedAtIso: string;
 }
@@ -251,6 +252,7 @@ export interface RemoteProviderCleanupClient {
     correlation: ProviderBridgeCorrelation;
     cleanupScopeSha256: string;
     rawControllerMaterialSha256: string;
+    qualificationArtifactSha256?: string;
     completedStages: readonly ExternalProviderCanaryStage[];
     failed: boolean;
   }): Promise<SignedProviderCleanupProof>;
@@ -278,6 +280,8 @@ export type ProviderControllerOperatorCapabilities = Omit<
 
 export interface ProviderControllerOrchestratorBridge {
   capabilities: ProviderControllerOperatorCapabilities;
+  /** Public-only cleanup signer pin already checked against bridge trust input. */
+  cleanupPublicKeyPem: string;
   /** Consume the verified proof exactly once for atomic adjacent publication. */
   takeVerifiedCleanupProof(): SignedProviderCleanupProof;
 }
@@ -773,6 +777,7 @@ export interface VerifyProviderCleanupProofInput {
     manifestSha256: string;
     cleanupScopeSha256: string;
     rawControllerMaterialSha256: string;
+    qualificationArtifactSha256?: string;
     scenarioEndedAtIso: string;
     keyId?: string;
   };
@@ -784,7 +789,18 @@ export function verifyProviderCleanupProof(
   input: VerifyProviderCleanupProofInput,
 ): SignedProviderCleanupProof {
   const { proof, expected, now } = input;
-  const payload = proof.payload as unknown as Record<string, unknown>;
+  assertClosedObject({
+    value: proof,
+    label: "cleanup proof",
+    dataKeys: ["keyId", "payload", "signature"],
+    functionKeys: [],
+  });
+  const proofDescriptors = Object.getOwnPropertyDescriptors(proof);
+  const payloadDescriptor = proofDescriptors.payload;
+  if (!payloadDescriptor || !("value" in payloadDescriptor)) {
+    fail("cleanup proof payload must be a data property");
+  }
+  const payload = payloadDescriptor.value as unknown as Record<string, unknown>;
   const payloadKeys = [
     "schema",
     "scenarioId",
@@ -796,14 +812,38 @@ export function verifyProviderCleanupProof(
     "disposition",
     "completedAtIso",
   ] as const;
+  const allowedPayloadKeys = new Set([
+    ...payloadKeys,
+    "qualificationArtifactSha256",
+  ]);
+  const payloadDescriptors =
+    payload === null || typeof payload !== "object"
+      ? {}
+      : Object.getOwnPropertyDescriptors(payload);
   if (
     payload === null ||
     typeof payload !== "object" ||
     Array.isArray(payload) ||
-    Object.keys(payload).length !== payloadKeys.length ||
-    payloadKeys.some((key) => !Object.hasOwn(payload, key))
+    Object.keys(payloadDescriptors).some(
+      (key) => !allowedPayloadKeys.has(key),
+    ) ||
+    payloadKeys.some((key) => !Object.hasOwn(payloadDescriptors, key)) ||
+    Object.values(payloadDescriptors).some(
+      (descriptor) => !("value" in descriptor),
+    )
   ) {
     fail("cleanup service returned a proof with a non-canonical shape");
+  }
+  requireHash(proof.payload.cleanupScopeSha256, "cleanupScopeSha256");
+  requireHash(
+    proof.payload.rawControllerMaterialSha256,
+    "rawControllerMaterialSha256",
+  );
+  if (proof.payload.qualificationArtifactSha256 !== undefined) {
+    requireHash(
+      proof.payload.qualificationArtifactSha256,
+      "qualificationArtifactSha256",
+    );
   }
   const completedAt = Date.parse(proof.payload.completedAtIso);
   if (
@@ -816,6 +856,8 @@ export function verifyProviderCleanupProof(
     proof.payload.cleanupScopeSha256 !== expected.cleanupScopeSha256 ||
     proof.payload.rawControllerMaterialSha256 !==
       expected.rawControllerMaterialSha256 ||
+    proof.payload.qualificationArtifactSha256 !==
+      expected.qualificationArtifactSha256 ||
     !["cleaned", "no-resources-created"].includes(proof.payload.disposition) ||
     !Number.isFinite(completedAt) ||
     new Date(completedAt).toISOString() !== proof.payload.completedAtIso ||
@@ -956,6 +998,9 @@ export function createProviderControllerOrchestratorBridge(
     input.pinnedCleanupPublicKeysPem,
     "cleanup",
   );
+  if (input.cleanup.keyId !== independentSigners.observer.keyId) {
+    fail("cleanup signer must equal the manifest-authorized observer signer");
+  }
 
   let correlation: ProviderBridgeCorrelation | undefined;
   let session: ProviderObserverSigningSession | undefined;
@@ -1132,7 +1177,7 @@ export function createProviderControllerOrchestratorBridge(
       },
     },
     cleanup: {
-      async cleanup({ context, completedStages, failure }) {
+      async cleanup({ context, completedStages, artifact, failure }) {
         validateContext(context, contract);
         if (correlation === undefined || run === undefined) {
           fail(
@@ -1143,6 +1188,9 @@ export function createProviderControllerOrchestratorBridge(
           correlation,
           cleanupScopeSha256: run.cleanupScopeSha256,
           rawControllerMaterialSha256: run.rawControllerMaterialSha256,
+          ...(artifact === undefined
+            ? {}
+            : { qualificationArtifactSha256: artifact.artifactSha256 }),
           completedStages,
           failed: failure !== undefined,
         });
@@ -1156,6 +1204,9 @@ export function createProviderControllerOrchestratorBridge(
             manifestSha256: correlation.manifestSha256,
             cleanupScopeSha256: run.cleanupScopeSha256,
             rawControllerMaterialSha256: run.rawControllerMaterialSha256,
+            ...(artifact === undefined
+              ? {}
+              : { qualificationArtifactSha256: artifact.artifactSha256 }),
             scenarioEndedAtIso: run.trajectories.scenarioEndedAtIso,
             keyId: input.cleanup.keyId,
           },
@@ -1166,6 +1217,7 @@ export function createProviderControllerOrchestratorBridge(
   };
   return Object.freeze({
     capabilities: Object.freeze(capabilities),
+    cleanupPublicKeyPem: input.cleanup.publicKeyPem,
     takeVerifiedCleanupProof(): SignedProviderCleanupProof {
       if (
         cleanupProof === undefined ||
@@ -1176,6 +1228,9 @@ export function createProviderControllerOrchestratorBridge(
       }
       if (cleanupProofTaken)
         fail("verified cleanup proof was already consumed");
+      if (cleanupProof.payload.qualificationArtifactSha256 === undefined) {
+        fail("verified cleanup proof is not bound to a qualification artifact");
+      }
       cleanupProofTaken = true;
       return cleanupProof;
     },

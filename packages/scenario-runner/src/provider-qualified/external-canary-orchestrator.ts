@@ -89,6 +89,7 @@ export interface ExternalProviderCanaryCapabilities {
     cleanup(input: {
       context: ExternalProviderCanaryContext;
       completedStages: readonly ExternalProviderCanaryStage[];
+      artifact?: ProviderQualificationArtifact;
       failure?: unknown;
     }): Promise<void>;
   };
@@ -275,6 +276,7 @@ export async function executeExternalProviderCanary(
     await input.capabilities.cleanup.cleanup({
       context,
       completedStages: [...completedStages],
+      ...(artifact === undefined ? {} : { artifact }),
       ...(failure === undefined ? {} : { failure }),
     });
     completedStages.push("cleanup-completed");

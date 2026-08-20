@@ -8,27 +8,27 @@ import {
 } from "./qualification-cli.ts";
 
 const REPOSITORY_SHA = "a".repeat(40);
-const ARTIFACT_FILES = PROVIDER_CANARY_SCENARIO_IDS.map(
-  (scenarioId) => `${scenarioId}/qualification.json`,
+const PUBLICATION_FILES = PROVIDER_CANARY_SCENARIO_IDS.map(
+  (scenarioId) => `${scenarioId}/publication.json`,
 );
 
 function config(overrides: Record<string, unknown> = {}): unknown {
   return {
     schema: PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA,
     expectedRepositorySha: REPOSITORY_SHA,
-    artifactFiles: ARTIFACT_FILES,
+    publicationFiles: PUBLICATION_FILES,
     outputDir: "catalog-output",
     ...overrides,
   };
 }
 
 describe("provider qualification catalog config", () => {
-  it("accepts exactly 13 unique artifact files without caller-owned IDs", () => {
+  it("accepts exactly 13 unique publication capsules without caller-owned IDs", () => {
     const parsed = parseProviderQualificationCatalogConfig(config());
     expect(parsed.schema).toBe(
-      "eliza.provider-qualification-catalog-config.v2",
+      "eliza.provider-qualification-catalog-config.v3",
     );
-    expect(parsed.artifactFiles).toEqual(ARTIFACT_FILES);
+    expect(parsed.publicationFiles).toEqual(PUBLICATION_FILES);
     expect(parsed).not.toHaveProperty("expectedScenarioIds");
   });
 
@@ -45,21 +45,33 @@ describe("provider qualification catalog config", () => {
     ).toThrow(/schema is unsupported/);
   });
 
-  it("rejects partial, extra, and duplicate artifact-file inventories", () => {
+  it("rejects raw artifacts and partial, extra, or duplicate publication inventories", () => {
+    expect(() =>
+      parseProviderQualificationCatalogConfig({
+        ...(config() as Record<string, unknown>),
+        publicationFiles: undefined,
+        artifactFiles: PUBLICATION_FILES.map((file) =>
+          file.replace("publication.json", "qualification.json"),
+        ),
+      }),
+    ).toThrow(/closed shape/);
     expect(() =>
       parseProviderQualificationCatalogConfig(
-        config({ artifactFiles: ARTIFACT_FILES.slice(0, -1) }),
+        config({ publicationFiles: PUBLICATION_FILES.slice(0, -1) }),
       ),
     ).toThrow(/exactly 13 unique/);
     expect(() =>
       parseProviderQualificationCatalogConfig(
-        config({ artifactFiles: [...ARTIFACT_FILES, "extra.json"] }),
+        config({ publicationFiles: [...PUBLICATION_FILES, "extra.json"] }),
       ),
     ).toThrow(/exactly 13 unique/);
     expect(() =>
       parseProviderQualificationCatalogConfig(
         config({
-          artifactFiles: [...ARTIFACT_FILES.slice(0, -1), ARTIFACT_FILES[0]],
+          publicationFiles: [
+            ...PUBLICATION_FILES.slice(0, -1),
+            PUBLICATION_FILES[0],
+          ],
         }),
       ),
     ).toThrow(/exactly 13 unique/);

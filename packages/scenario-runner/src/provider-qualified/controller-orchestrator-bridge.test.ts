@@ -311,13 +311,11 @@ describe("provider controller-orchestrator bridge", () => {
     const authority = generateKeyPairSync("ed25519");
     const observer = generateKeyPairSync("ed25519");
     const judge = generateKeyPairSync("ed25519");
-    const cleanup = generateKeyPairSync("ed25519");
     const publicPem = (pair: { publicKey: KeyObject }) =>
       pair.publicKey.export({ type: "spki", format: "pem" });
     const authorityPem = publicPem(authority);
     const observerPem = publicPem(observer);
     const judgePem = publicPem(judge);
-    const cleanupPem = publicPem(cleanup);
     const authorization = authorizeProviderCanary({
       scenario: definition,
       bindings: bindings(
@@ -619,12 +617,13 @@ describe("provider controller-orchestrator bridge", () => {
       cleanup: {
         endpointOrigin: "https://cleanup.example.test",
         administrativeDomain: "operator-cleanup.example",
-        keyId: providerObserverKeyId(cleanupPem),
-        publicKeyPem: cleanupPem,
+        keyId: providerObserverKeyId(observerPem),
+        publicKeyPem: observerPem,
         async cleanupAndSign({
           correlation,
           cleanupScopeSha256,
           rawControllerMaterialSha256,
+          qualificationArtifactSha256,
         }) {
           const payload: ProviderCleanupProofPayload = {
             schema: PROVIDER_CLEANUP_PROOF_SCHEMA,
@@ -634,11 +633,14 @@ describe("provider controller-orchestrator bridge", () => {
             manifestSha256: correlation.manifestSha256,
             cleanupScopeSha256,
             rawControllerMaterialSha256,
+            ...(qualificationArtifactSha256 === undefined
+              ? {}
+              : { qualificationArtifactSha256 }),
             disposition: "cleaned",
             completedAtIso: iso(15_000),
           };
           return {
-            keyId: providerObserverKeyId(cleanupPem),
+            keyId: providerObserverKeyId(observerPem),
             payload,
             signature: signPayload(
               null,
@@ -646,14 +648,14 @@ describe("provider controller-orchestrator bridge", () => {
                 canonicalJson(canonicalJsonValue(payload, "cleanupProof")),
                 "utf8",
               ),
-              cleanup.privateKey,
+              observer.privateKey,
             ).toString("base64url"),
           };
         },
       },
       pinnedObserverPublicKeysPem: [observerPem],
       pinnedSemanticJudgePublicKeysPem: [judgePem],
-      pinnedCleanupPublicKeysPem: [cleanupPem],
+      pinnedCleanupPublicKeysPem: [observerPem],
       now: () => fixedNow,
     });
     const result = await executeExternalProviderCanary({

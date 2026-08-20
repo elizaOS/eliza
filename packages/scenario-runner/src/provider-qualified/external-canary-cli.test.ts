@@ -35,6 +35,7 @@ import {
   runExternalProviderCanaryCli,
   stageExternalCanaryDirectory,
   transitionExternalCanaryRun,
+  validateExternalProviderCapabilityBundle,
   validateOperatorOwnedProviderCapabilities,
   validateProtectedOperatorStateDirectory,
 } from "./external-canary-cli.ts";
@@ -324,6 +325,44 @@ describe("external provider-canary CLI", () => {
         publisher: { publish() {} },
       }),
     ).toThrow(/unknown=publisher/);
+  });
+
+  it("requires the cleanup-proof bridge wrapper without invoking accessors", () => {
+    const capabilities = {
+      observer: { begin() {} },
+      ingress: { execute() {} },
+      trajectories: { verify() {} },
+      semanticJudge: { judge() {} },
+      cleanup: { cleanup() {} },
+    };
+    const takeVerifiedCleanupProof = vi.fn();
+    expect(
+      validateExternalProviderCapabilityBundle({
+        capabilities,
+        cleanupPublicKeyPem:
+          "-----BEGIN PUBLIC KEY-----\nunused\n-----END PUBLIC KEY-----\n",
+        takeVerifiedCleanupProof,
+      }),
+    ).toMatchObject({ capabilities });
+    expect(takeVerifiedCleanupProof).not.toHaveBeenCalled();
+
+    const accessor = vi.fn(() => capabilities);
+    expect(() =>
+      validateExternalProviderCapabilityBundle({
+        get capabilities() {
+          return accessor();
+        },
+        cleanupPublicKeyPem:
+          "-----BEGIN PUBLIC KEY-----\nunused\n-----END PUBLIC KEY-----\n",
+        takeVerifiedCleanupProof() {},
+      }),
+    ).toThrow(/capabilities must be an enumerable data property/);
+    expect(accessor).not.toHaveBeenCalled();
+    expect(() =>
+      validateExternalProviderCapabilityBundle(capabilities),
+    ).toThrow(
+      /missing=capabilities,cleanupPublicKeyPem,takeVerifiedCleanupProof/,
+    );
   });
 
   it("never reflects operator secrets in fatal output", () => {

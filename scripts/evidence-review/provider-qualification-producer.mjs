@@ -22,9 +22,8 @@ const CANONICAL_OUTPUT_ROOT = path.join(
   "reports",
   "provider-qualification",
 );
-const CONFIG_SCHEMA = "eliza.provider-qualification-matrix-producer-config.v1";
-const VERIFY_SCHEMA = "eliza.provider-qualification-verify-config.v2";
-const CATALOG_SCHEMA = "eliza.provider-qualification-catalog-config.v2";
+const CONFIG_SCHEMA = "eliza.provider-qualification-matrix-producer-config.v2";
+const CATALOG_SCHEMA = "eliza.provider-qualification-catalog-config.v3";
 
 export const EXPECTED_PROVIDER_SCENARIO_IDS = Object.freeze([
   "provider.bluebubbles-imessage.confirmed-send",
@@ -102,12 +101,7 @@ export function parseProviderQualificationProducerConfig(configFile) {
   );
   exactKeys(
     config,
-    [
-      "schema",
-      "verifyConfigFiles",
-      "catalogConfigFile",
-      "publicationOutputDir",
-    ],
+    ["schema", "publicationFiles", "catalogConfigFile", "publicationOutputDir"],
     "provider qualification producer config",
   );
   if (config.schema !== CONFIG_SCHEMA) {
@@ -116,21 +110,21 @@ export function parseProviderQualificationProducerConfig(configFile) {
     );
   }
   if (
-    !Array.isArray(config.verifyConfigFiles) ||
-    config.verifyConfigFiles.length !== EXPECTED_PROVIDER_SCENARIO_IDS.length ||
-    config.verifyConfigFiles.some(
+    !Array.isArray(config.publicationFiles) ||
+    config.publicationFiles.length !== EXPECTED_PROVIDER_SCENARIO_IDS.length ||
+    config.publicationFiles.some(
       (entry) => typeof entry !== "string" || entry.trim() === "",
     )
   ) {
     throw new Error(
-      `verifyConfigFiles must contain exactly ${EXPECTED_PROVIDER_SCENARIO_IDS.length} non-empty paths`,
+      `publicationFiles must contain exactly ${EXPECTED_PROVIDER_SCENARIO_IDS.length} non-empty paths`,
     );
   }
-  const verifyConfigFiles = config.verifyConfigFiles.map((entry, index) =>
-    resolveFrom(baseDir, entry, `verifyConfigFiles[${index}]`),
+  const publicationFiles = config.publicationFiles.map((entry, index) =>
+    resolveFrom(baseDir, entry, `publicationFiles[${index}]`),
   );
-  if (new Set(verifyConfigFiles).size !== verifyConfigFiles.length) {
-    throw new Error("verifyConfigFiles must be unique");
+  if (new Set(publicationFiles).size !== publicationFiles.length) {
+    throw new Error("publicationFiles must be unique");
   }
   const publicationOutputDir = resolveFrom(
     baseDir,
@@ -148,7 +142,7 @@ export function parseProviderQualificationProducerConfig(configFile) {
     );
   }
   return {
-    verifyConfigFiles,
+    publicationFiles,
     catalogConfigFile: resolveFrom(
       baseDir,
       config.catalogConfigFile,
@@ -158,53 +152,12 @@ export function parseProviderQualificationProducerConfig(configFile) {
   };
 }
 
-function absoluteVerifyConfig(sourceFile, outputDir) {
-  const baseDir = path.dirname(sourceFile);
-  const config = readJson(sourceFile, "provider qualification verify config");
-  if (config.schema !== VERIFY_SCHEMA) {
-    throw new Error(`unsupported verify config schema in ${sourceFile}`);
-  }
-  const scalarPaths = [
-    "scenarioFile",
-    "authorizationFile",
-    "providerTargetFile",
-    "operationInputFile",
-    "failureProbesFile",
-    "runDir",
-    "observerEvidenceFile",
-    "semanticEvidenceFile",
-    "runnerReportFile",
-  ];
-  const listPaths = [
-    "manifestAuthorityPublicKeyFiles",
-    "observerPublicKeyFiles",
-    "semanticJudgePublicKeyFiles",
-  ];
-  const materialized = { ...config, outputDir };
-  for (const key of scalarPaths) {
-    materialized[key] = resolveFrom(
-      baseDir,
-      config[key],
-      `${sourceFile}:${key}`,
-    );
-  }
-  for (const key of listPaths) {
-    if (!Array.isArray(config[key]) || config[key].length === 0) {
-      throw new Error(`${sourceFile}:${key} must be a non-empty path array`);
-    }
-    materialized[key] = config[key].map((entry, index) =>
-      resolveFrom(baseDir, entry, `${sourceFile}:${key}[${index}]`),
-    );
-  }
-  return materialized;
-}
-
-function absoluteCatalogConfig(sourceFile, artifactFiles, outputDir) {
+function absoluteCatalogConfig(sourceFile, publicationFiles, outputDir) {
   const config = readJson(sourceFile, "provider qualification catalog config");
   if (config.schema !== CATALOG_SCHEMA) {
     throw new Error(`unsupported catalog config schema in ${sourceFile}`);
   }
-  return { ...config, artifactFiles, outputDir };
+  return { ...config, publicationFiles, outputDir };
 }
 
 function writePrivateJson(file, value) {
@@ -235,13 +188,32 @@ function runQualificationCommand(mode, configFile, run) {
       result.error ? { cause: result.error } : undefined,
     );
   }
+  return result;
 }
 
 function safeSlug(scenarioId) {
   return scenarioId.replace(/^provider\./u, "").replaceAll(".", "-");
 }
 
-function assertPortableArtifact(artifact, scenarioId) {
+function assertPortablePublication(publication) {
+  if (publication.schema !== "eliza.provider-qualification-publication.v1") {
+    throw new Error(
+      "input did not contain a portable cleanup publication capsule",
+    );
+  }
+  const artifact = plainRecord(
+    publication.qualificationArtifact,
+    "publication qualificationArtifact",
+  );
+  const scenarioId = requiredString(
+    publication.scenarioId,
+    "publication scenarioId",
+  );
+  if (artifact.scenarioId !== scenarioId) {
+    throw new Error(
+      `${scenarioId} publication does not match its qualification artifact`,
+    );
+  }
   if (artifact.schema !== "eliza.provider-qualification-artifact.v4") {
     throw new Error(`${scenarioId} did not produce a portable v4 artifact`);
   }
@@ -263,10 +235,11 @@ function assertPortableArtifact(artifact, scenarioId) {
       `${scenarioId} artifact does not prove its public-capsule privacy boundary`,
     );
   }
-  const encoded = JSON.stringify(artifact);
+  const encoded = JSON.stringify(publication);
   if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u.test(encoded)) {
-    throw new Error(`${scenarioId} artifact contains private key material`);
+    throw new Error(`${scenarioId} publication contains private key material`);
   }
+  return { artifact, scenarioId };
 }
 
 function publishCapsules(
@@ -287,7 +260,7 @@ function publishCapsules(
     for (const record of qualificationRecords) {
       const scenarioDir = path.join(temporary, safeSlug(record.scenarioId));
       fs.mkdirSync(scenarioDir, { mode: 0o700 });
-      for (const name of ["qualification.json", "qualification.md"]) {
+      for (const name of ["publication.json", "publication.md"]) {
         fs.copyFileSync(
           path.join(stagingDir, record.stagingLeaf, name),
           path.join(scenarioDir, name),
@@ -324,21 +297,15 @@ export function produceProviderQualificationSummaries(
   fs.chmodSync(stagingDir, 0o700);
   try {
     const qualificationRecords = [];
-    for (const [index, sourceConfig] of config.verifyConfigFiles.entries()) {
-      const stagingLeaf = `verify-${String(index + 1).padStart(2, "0")}`;
+    for (const [index, publicationFile] of config.publicationFiles.entries()) {
+      const stagingLeaf = `publication-${String(index + 1).padStart(2, "0")}`;
       const outputDir = path.join(stagingDir, stagingLeaf);
-      const generatedConfig = path.join(stagingDir, `${stagingLeaf}.json`);
-      writePrivateJson(
-        generatedConfig,
-        absoluteVerifyConfig(sourceConfig, outputDir),
+      fs.mkdirSync(outputDir, { mode: 0o700 });
+      const publication = readJson(
+        publicationFile,
+        "provider qualification publication",
       );
-      runQualificationCommand("verify", generatedConfig, run);
-      const artifactFile = path.join(outputDir, "qualification.json");
-      const artifact = readJson(artifactFile, "qualification artifact");
-      const scenarioId = requiredString(
-        artifact.scenarioId,
-        "qualification artifact scenarioId",
-      );
+      const { artifact, scenarioId } = assertPortablePublication(publication);
       if (
         artifact.decision?.qualification?.status !== "qualified" ||
         artifact.decision?.qualification?.publishable !== true
@@ -347,8 +314,27 @@ export function produceProviderQualificationSummaries(
           `${scenarioId} did not produce a publishable qualified artifact`,
         );
       }
-      assertPortableArtifact(artifact, scenarioId);
-      qualificationRecords.push({ scenarioId, artifactFile, stagingLeaf });
+      const verified = runQualificationCommand(
+        "reverify-publication",
+        publicationFile,
+        run,
+      );
+      fs.copyFileSync(
+        publicationFile,
+        path.join(outputDir, "publication.json"),
+        fs.constants.COPYFILE_EXCL,
+      );
+      fs.chmodSync(path.join(outputDir, "publication.json"), 0o600);
+      fs.writeFileSync(
+        path.join(outputDir, "publication.md"),
+        requiredString(verified.stdout, `${scenarioId} reverified markdown`),
+        { flag: "wx", mode: 0o600 },
+      );
+      qualificationRecords.push({
+        scenarioId,
+        publicationFile,
+        stagingLeaf,
+      });
     }
 
     const actualIds = qualificationRecords
@@ -370,7 +356,7 @@ export function produceProviderQualificationSummaries(
       generatedCatalogConfig,
       absoluteCatalogConfig(
         config.catalogConfigFile,
-        qualificationRecords.map((record) => record.artifactFile),
+        qualificationRecords.map((record) => record.publicationFile),
         catalogDir,
       ),
     );

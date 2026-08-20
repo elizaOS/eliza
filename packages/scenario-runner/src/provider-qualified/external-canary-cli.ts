@@ -24,6 +24,10 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
+import type {
+  ProviderControllerOrchestratorBridge,
+  SignedProviderCleanupProof,
+} from "./controller-orchestrator-bridge.ts";
 import {
   type ExternalProviderCanaryCapabilities,
   executeExternalProviderCanary,
@@ -37,10 +41,14 @@ import {
   type ProviderFailureProbeMaterial,
   preflightAuthorizedProviderCanaryExecution,
 } from "./operator-authorization.ts";
+import {
+  assembleProviderQualificationPublication,
+  type ProviderQualificationPublicationCapsule,
+} from "./publication-capsule.ts";
 import { normalizeProviderQualificationPublicKeyPins } from "./qualification-artifact.ts";
 import {
-  renderProviderQualificationMarkdown,
-  writeProviderQualificationOutputIntoReservedDirectory,
+  renderProviderQualificationPublicationMarkdown,
+  writeProviderQualificationPublicationIntoReservedDirectory,
 } from "./qualification-cli.ts";
 import { parseProviderCanaryScenarioSnapshot } from "./scenario-snapshot.ts";
 
@@ -92,8 +100,8 @@ export interface ExternalProviderCapabilityModule {
   createExternalProviderCanaryCapabilities(
     input: ExternalProviderCapabilityFactoryInput,
   ):
-    | OperatorOwnedProviderCapabilities
-    | Promise<OperatorOwnedProviderCapabilities>;
+    | ProviderControllerOrchestratorBridge
+    | Promise<ProviderControllerOrchestratorBridge>;
 }
 type ModuleLoader = (
   absoluteModuleFile: string,
@@ -198,6 +206,56 @@ export function validateOperatorOwnedProviderCapabilities(
     );
   }
   return capabilities as unknown as OperatorOwnedProviderCapabilities;
+}
+
+/** Require the bridge wrapper that carries one consumable signed cleanup proof. */
+export function validateExternalProviderCapabilityBundle(
+  value: unknown,
+): ProviderControllerOrchestratorBridge {
+  const bundle = record(value, "operator capability bundle");
+  const descriptors = Object.getOwnPropertyDescriptors(bundle);
+  const expected = [
+    "capabilities",
+    "cleanupPublicKeyPem",
+    "takeVerifiedCleanupProof",
+  ] as const;
+  const missing = expected.filter((key) => !Object.hasOwn(descriptors, key));
+  const unknown = Object.keys(descriptors).filter(
+    (key) => !expected.includes(key as (typeof expected)[number]),
+  );
+  if (missing.length > 0 || unknown.length > 0) {
+    fail(
+      `operator capability bundle violates the closed shape (missing=${missing.join(",") || "none"}; unknown=${unknown.join(",") || "none"})`,
+    );
+  }
+  for (const key of expected) {
+    const descriptor = descriptors[key];
+    if (!("value" in descriptor) || descriptor.enumerable !== true) {
+      fail(
+        `operator capability bundle.${key} must be an enumerable data property`,
+      );
+    }
+  }
+  if (
+    typeof descriptors.cleanupPublicKeyPem.value !== "string" ||
+    descriptors.cleanupPublicKeyPem.value.includes("PRIVATE KEY")
+  ) {
+    fail("operator capability bundle.cleanupPublicKeyPem must be a public PEM");
+  }
+  if (typeof descriptors.takeVerifiedCleanupProof.value !== "function") {
+    fail(
+      "operator capability bundle.takeVerifiedCleanupProof must be a data function",
+    );
+  }
+  return {
+    capabilities: validateOperatorOwnedProviderCapabilities(
+      descriptors.capabilities.value,
+    ),
+    cleanupPublicKeyPem: descriptors.cleanupPublicKeyPem.value,
+    takeVerifiedCleanupProof: descriptors.takeVerifiedCleanupProof.value.bind(
+      bundle,
+    ) as () => SignedProviderCleanupProof,
+  };
 }
 
 function string(value: unknown, label: string): string {
@@ -555,13 +613,19 @@ export function consumeThenPublishExternalCanary(
 function stageProviderQualificationOutput(
   outputDir: string,
   manifestSha256: string,
-  artifact: Parameters<
-    typeof writeProviderQualificationOutputIntoReservedDirectory
-  >[1],
+  publication: ProviderQualificationPublicationCapsule,
 ): ExternalCanaryPublicationReservation {
   return stageExternalCanaryDirectory(outputDir, manifestSha256, (staging) => {
-    writeProviderQualificationOutputIntoReservedDirectory(staging, artifact);
-    for (const name of ["qualification.json", "qualification.md"]) {
+    writeProviderQualificationPublicationIntoReservedDirectory(
+      staging,
+      publication,
+    );
+    for (const name of [
+      "qualification.json",
+      "qualification.md",
+      "publication.json",
+      "publication.md",
+    ]) {
       const descriptor = openSync(path.join(staging, name), "r");
       try {
         fsyncSync(descriptor);
@@ -694,13 +758,13 @@ export async function executeExternalProviderCanaryFromConfig(
   });
   let publication: ExternalCanaryPublicationReservation | undefined;
   let consumed = false;
-  let rendered: string;
+  let rendered: string | undefined;
   try {
     const module = await (
       dependencies.loadOperatorModule ??
       loadPinnedExternalProviderCapabilityModule
     )(resolve(baseDir, config.operatorModuleFile), config.operatorModuleSha256);
-    const capabilities = validateOperatorOwnedProviderCapabilities(
+    const bundle = validateExternalProviderCapabilityBundle(
       await module.createExternalProviderCanaryCapabilities({
         scenarioId: scenario.id,
         operationKind: config.operationKind,
@@ -708,7 +772,7 @@ export async function executeExternalProviderCanaryFromConfig(
         manifestSha256: preflight.authorization.manifest.manifestSha256,
       }),
     );
-    const result = await executeExternalProviderCanary({
+    await executeExternalProviderCanary({
       scenario,
       authorization,
       pinnedManifestAuthorityPublicKeysPem: authority,
@@ -719,14 +783,26 @@ export async function executeExternalProviderCanaryFromConfig(
       pinnedObserverPublicKeysPem: observers,
       pinnedSemanticJudgePublicKeysPem: semantic,
       capabilities: {
-        ...capabilities,
+        ...bundle.capabilities,
         publisher: {
           async publish(artifact) {
+            const publicationCapsule = assembleProviderQualificationPublication(
+              {
+                artifact,
+                cleanupProof: bundle.takeVerifiedCleanupProof(),
+                cleanupPublicKeyPem: bundle.cleanupPublicKeyPem,
+                createdAtIso: new Date().toISOString(),
+              },
+            );
             publication = stageProviderQualificationOutput(
               resolve(baseDir, config.outputDir),
               preflight.authorization.manifest.manifestSha256,
-              artifact,
+              publicationCapsule,
             );
+            rendered =
+              renderProviderQualificationPublicationMarkdown(
+                publicationCapsule,
+              );
           },
         },
       },
@@ -750,7 +826,6 @@ export async function executeExternalProviderCanaryFromConfig(
     consumed = true;
     commitExternalCanaryPublication(publication);
     publication = undefined;
-    rendered = renderProviderQualificationMarkdown(result.artifact);
   } catch (error) {
     if (consumed) throw error;
     if (publication) {
@@ -767,6 +842,9 @@ export async function executeExternalProviderCanaryFromConfig(
       );
     }
     throw error;
+  }
+  if (rendered === undefined) {
+    throw new Error("external provider-canary publication summary is missing");
   }
   // The security transaction is complete. A stdout failure cannot mutate it.
   process.stdout.write(rendered);

@@ -29,39 +29,38 @@ The closed producer config contains paths, not credentials or evidence:
 
 ```json
 {
-  "schema": "eliza.provider-qualification-matrix-producer-config.v1",
-  "verifyConfigFiles": [
-    "bluebubbles/verify.json",
-    "discord/verify.json",
-    "duffel/verify.json",
-    "gmail/verify.json",
-    "google-calendar/verify.json",
-    "google-sheets/verify.json",
-    "signal/verify.json",
-    "slack/verify.json",
-    "telegram/verify.json",
-    "twilio-sms/verify.json",
-    "twilio-voice/verify.json",
-    "whatsapp/verify.json",
-    "x-dm/verify.json"
+  "schema": "eliza.provider-qualification-matrix-producer-config.v2",
+  "publicationFiles": [
+    "bluebubbles/publication.json",
+    "discord/publication.json",
+    "duffel/publication.json",
+    "gmail/publication.json",
+    "google-calendar/publication.json",
+    "google-sheets/publication.json",
+    "signal/publication.json",
+    "slack/publication.json",
+    "telegram/publication.json",
+    "twilio-sms/publication.json",
+    "twilio-voice/publication.json",
+    "whatsapp/publication.json",
+    "x-dm/publication.json"
   ],
   "catalogConfigFile": "catalog.json",
   "publicationOutputDir": "/absolute/repo/reports/provider-qualification/operator-run-001"
 }
 ```
 
-The producer requires exactly 13 unique verifier configs and the repository's
-exact production-canary inventory. It materializes absolute-path copies of
-those configs in a private temporary directory, runs all 13 offline verifiers,
-then runs the catalog over exactly their staged artifacts. Any command refusal,
+The producer requires exactly 13 unique cleanup publication capsules and the
+repository's exact production-canary inventory. It independently reverifies
+each existing capsule, then runs the catalog over those exact publications. It
+never reconstructs cleanup evidence from private verifier inputs. Any command refusal,
 missing/extra/duplicate scenario, unqualified decision, repository/deployment
 drift, or missing catalog summary fails without creating the publication
-directory. On complete success it atomically publishes the validated v4
-public-key/hash-only JSON capsules, the canonical catalog JSON, and their
-Markdown renderings. Private targets, credentials, raw trajectories, runner
-transcripts, private keys, and temporary verifier inputs are deleted with the
-staging directory. Because this named step runs after the producer snapshot and
-before bundle ingestion, the capsules enter that exact bundle.
+directory. On complete success it atomically publishes the validated
+artifact-plus-cleanup publication capsules, capsule-derived Markdown, and the
+canonical v2 catalog. Raw v4 qualification artifacts are embedded proof input,
+not release authority. Because this named step runs after the producer snapshot
+and before bundle ingestion, the capsules enter that exact bundle.
 
 `--source=<dir>` is an explicit compatibility escape hatch for archived or
 ad-hoc material. It may be repeated and may accompany `--bundle`; no producer

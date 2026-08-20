@@ -21,6 +21,10 @@ import {
   type ProviderFailureProbeMaterial,
   preflightAuthorizedProviderCanaryExecution,
 } from "./operator-authorization.ts";
+import {
+  type ProviderQualificationPublicationCapsule,
+  reverifyProviderQualificationPublication,
+} from "./publication-capsule.ts";
 import type {
   SignedProviderObserverEvidence,
   SignedSemanticJudgeEvidence,
@@ -41,7 +45,7 @@ import { verifyScenarioTrajectories } from "./trajectory-verifier.ts";
 export const PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA =
   "eliza.provider-qualification-verify-config.v2" as const;
 export const PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA =
-  "eliza.provider-qualification-catalog-config.v2" as const;
+  "eliza.provider-qualification-catalog-config.v3" as const;
 
 export interface ProviderQualificationVerifyConfig {
   schema: typeof PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA;
@@ -68,7 +72,7 @@ export interface ProviderQualificationVerifyConfig {
 export interface ProviderQualificationCatalogConfig {
   schema: typeof PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA;
   expectedRepositorySha: string;
-  artifactFiles: readonly [string, ...string[]];
+  publicationFiles: readonly [string, ...string[]];
   outputDir: string;
 }
 
@@ -235,7 +239,7 @@ export function parseProviderQualificationCatalogConfig(
   const expected = [
     "schema",
     "expectedRepositorySha",
-    "artifactFiles",
+    "publicationFiles",
     "outputDir",
   ];
   const missing = expected.filter((key) => !Object.hasOwn(input, key));
@@ -257,19 +261,22 @@ export function parseProviderQualificationCatalogConfig(
       "expectedRepositorySha must be a lowercase 40-character Git SHA",
     );
   }
-  const artifactFiles = stringArray(input.artifactFiles, "artifactFiles");
+  const publicationFiles = stringArray(
+    input.publicationFiles,
+    "publicationFiles",
+  );
   if (
-    artifactFiles.length !== PROVIDER_CANARY_SCENARIO_IDS.length ||
-    new Set(artifactFiles).size !== artifactFiles.length
+    publicationFiles.length !== PROVIDER_CANARY_SCENARIO_IDS.length ||
+    new Set(publicationFiles).size !== publicationFiles.length
   ) {
     throw new Error(
-      `artifactFiles must contain exactly ${PROVIDER_CANARY_SCENARIO_IDS.length} unique provider qualification files`,
+      `publicationFiles must contain exactly ${PROVIDER_CANARY_SCENARIO_IDS.length} unique provider publication capsules`,
     );
   }
   return {
     schema: PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA,
     expectedRepositorySha: repositorySha,
-    artifactFiles,
+    publicationFiles,
     outputDir: requiredString(input.outputDir, "outputDir"),
   };
 }
@@ -342,6 +349,28 @@ export function renderProviderQualificationMarkdown(
   ].join("\n");
 }
 
+/** Render release-facing cleanup state only from a reverified publication. */
+export function renderProviderQualificationPublicationMarkdown(
+  value: unknown,
+): string {
+  const publication = reverifyProviderQualificationPublication(value);
+  return [
+    renderProviderQualificationMarkdown(
+      publication.qualificationArtifact,
+    ).trimEnd(),
+    "",
+    "### Cleanup publication proof",
+    "",
+    `- Cleanup disposition: **${publication.cleanupProof.payload.disposition}**`,
+    `- Cleanup signer key ID: \`${publication.cleanupSignerPin.keyId}\``,
+    `- Cleanup scope SHA-256: \`${publication.cleanupScopeSha256}\``,
+    `- Raw controller material SHA-256: \`${publication.rawControllerMaterialSha256}\``,
+    `- Cleanup proof SHA-256: \`${publication.cleanupProofSha256}\``,
+    `- Publication SHA-256: \`${publication.publicationSha256}\``,
+    "",
+  ].join("\n");
+}
+
 export function writeProviderQualificationOutputExclusive(
   outputDir: string,
   artifact: ProviderQualificationArtifact,
@@ -371,6 +400,32 @@ export function writeProviderQualificationOutputIntoReservedDirectory(
   );
   renameSync(jsonTemporary, path.join(outputDir, "qualification.json"));
   renameSync(markdownTemporary, path.join(outputDir, "qualification.md"));
+}
+
+/** Atomically write the artifact and its required cleanup publication capsule. */
+export function writeProviderQualificationPublicationIntoReservedDirectory(
+  outputDir: string,
+  value: unknown,
+): ProviderQualificationPublicationCapsule {
+  const publication = reverifyProviderQualificationPublication(value);
+  writeProviderQualificationOutputIntoReservedDirectory(
+    outputDir,
+    publication.qualificationArtifact,
+  );
+  const jsonTemporary = path.join(outputDir, ".publication.json.tmp");
+  const markdownTemporary = path.join(outputDir, ".publication.md.tmp");
+  writeFileSync(jsonTemporary, `${JSON.stringify(publication, null, 2)}\n`, {
+    flag: "wx",
+    mode: 0o600,
+  });
+  writeFileSync(
+    markdownTemporary,
+    renderProviderQualificationPublicationMarkdown(publication),
+    { flag: "wx", mode: 0o600 },
+  );
+  renameSync(jsonTemporary, path.join(outputDir, "publication.json"));
+  renameSync(markdownTemporary, path.join(outputDir, "publication.md"));
+  return publication;
 }
 
 function writeExclusiveCatalogOutput(
@@ -521,6 +576,18 @@ export function reverifyProviderQualificationArtifactFile(
   return artifact;
 }
 
+/** Reverify the release-facing artifact-plus-cleanup capsule from one file. */
+export function reverifyProviderQualificationPublicationFile(
+  publicationFile: string,
+): ProviderQualificationPublicationCapsule {
+  return reverifyProviderQualificationPublication(
+    readJson(
+      path.resolve(publicationFile),
+      "provider qualification publication",
+    ),
+  );
+}
+
 export function verifyProviderQualificationCatalogFromConfig(
   configFile: string,
   now = new Date(),
@@ -531,8 +598,8 @@ export function verifyProviderQualificationCatalogFromConfig(
     readJson(absoluteConfigFile, "catalog config"),
   );
   const catalog = assembleProviderQualificationCatalog({
-    artifacts: config.artifactFiles.map((file) =>
-      readJson(resolveFrom(baseDir, file), "qualification artifact"),
+    publications: config.publicationFiles.map((file) =>
+      readJson(resolveFrom(baseDir, file), "qualification publication"),
     ),
     expectedRepositorySha: config.expectedRepositorySha,
     createdAtIso: now.toISOString(),
@@ -546,10 +613,12 @@ export async function runProviderQualificationCli(
 ): Promise<number> {
   if (
     argv.length !== 2 ||
-    !["verify", "reverify", "catalog"].includes(argv[0] ?? "")
+    !["verify", "reverify", "reverify-publication", "catalog"].includes(
+      argv[0] ?? "",
+    )
   ) {
     process.stderr.write(
-      "usage: eliza-provider-qualification <verify|reverify|catalog> <file.json>\n",
+      "usage: eliza-provider-qualification <verify|reverify|reverify-publication|catalog> <file.json>\n",
     );
     return 2;
   }
@@ -562,6 +631,13 @@ export async function runProviderQualificationCli(
     const artifact = reverifyProviderQualificationArtifactFile(argv[1]);
     process.stdout.write(renderProviderQualificationMarkdown(artifact));
     return artifact.decision.qualification.publishable ? 0 : 1;
+  }
+  if (argv[0] === "reverify-publication") {
+    const publication = reverifyProviderQualificationPublicationFile(argv[1]);
+    process.stdout.write(
+      renderProviderQualificationPublicationMarkdown(publication),
+    );
+    return 0;
   }
   const artifact = await verifyProviderQualificationFromConfig(argv[1]);
   process.stdout.write(renderProviderQualificationMarkdown(artifact));

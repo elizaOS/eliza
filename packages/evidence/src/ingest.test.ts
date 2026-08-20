@@ -104,18 +104,18 @@ function buildFixtureRepo(): string {
   // every private verifier input passes the exact-inventory catalog.
   write(
     repo,
-    "reports/provider-qualification/run-1/gmail/qualification.json",
-    '{"schema":"eliza.provider-qualification-artifact.v4"}\n',
+    "reports/provider-qualification/run-1/gmail/publication.json",
+    '{"schema":"eliza.provider-qualification-publication.v1","scenarioId":"provider.gmail.confirmed-send","artifactSha256":"artifact-1","cleanupProof":{"payload":{}},"qualificationArtifact":{"schema":"eliza.provider-qualification-artifact.v4","scenarioId":"provider.gmail.confirmed-send","artifactSha256":"artifact-1"}}\n',
   );
   write(
     repo,
-    "reports/provider-qualification/run-1/gmail/qualification.md",
-    "# Provider qualification\n",
+    "reports/provider-qualification/run-1/gmail/publication.md",
+    "# Provider cleanup publication\n",
   );
   write(
     repo,
     "reports/provider-qualification/run-1/catalog/catalog.json",
-    '{"schema":"eliza.provider-qualification-catalog.v1"}\n',
+    '{"schema":"eliza.provider-qualification-catalog.v2"}\n',
   );
   write(
     repo,
@@ -474,10 +474,10 @@ describe("ingestAllSilos", () => {
       producedBy: "scripts/evidence-review/provider-qualification-producer.mjs",
     });
     expect(
-      byPath["misc/provider-qualification/run-1/gmail/qualification.json"],
+      byPath["misc/provider-qualification/run-1/gmail/publication.json"],
     ).toMatchObject({ kind: "report", source: "provider-qualification" });
     expect(
-      byPath["misc/provider-qualification/run-1/gmail/qualification.md"],
+      byPath["misc/provider-qualification/run-1/gmail/publication.md"],
     ).toMatchObject({ kind: "report", source: "provider-qualification" });
     expect(
       byPath["lanes/native/android-2026-07-05T01-02-03-004Z/summary.json"],
@@ -550,6 +550,41 @@ describe("ingestAllSilos", () => {
     for (const name of SILO_NAMES) {
       if (name === "aesthetic-audit") continue;
       expect(byName[name].status).toBe("absent");
+    }
+  });
+
+  it("rejects raw artifacts, missing derived Markdown, and retired catalogs", async () => {
+    for (const setup of [
+      (repo: string) =>
+        write(
+          repo,
+          "reports/provider-qualification/run/gmail/qualification.json",
+          '{"schema":"eliza.provider-qualification-artifact.v4"}\n',
+        ),
+      (repo: string) =>
+        write(
+          repo,
+          "reports/provider-qualification/run/gmail/publication.json",
+          '{"schema":"eliza.provider-qualification-publication.v1"}\n',
+        ),
+      (repo: string) => {
+        write(
+          repo,
+          "reports/provider-qualification/run/catalog/catalog.json",
+          '{"schema":"eliza.provider-qualification-catalog.v1"}\n',
+        );
+        write(
+          repo,
+          "reports/provider-qualification/run/catalog/catalog.md",
+          "# retired\n",
+        );
+      },
+    ]) {
+      const repo = tmpDir();
+      setup(repo);
+      await expect(build(repo)).rejects.toMatchObject({
+        code: "PROVIDER_PUBLICATION_INVALID",
+      });
     }
   });
 });

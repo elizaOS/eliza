@@ -561,6 +561,13 @@ function harness() {
 describe("external provider canary orchestration", () => {
   it("publishes one genuinely qualified and reverified artifact after cleanup", async () => {
     const test = harness();
+    let cleanupArtifactSha256: string | undefined;
+    (
+      test.capabilities.cleanup as ExternalProviderCanaryCapabilities["cleanup"]
+    ).cleanup = async ({ artifact }) => {
+      test.events.push("cleanup.cleanup");
+      cleanupArtifactSha256 = artifact?.artifactSha256;
+    };
     const result = await executeExternalProviderCanary(test.input);
 
     expect(result.completedStages).toEqual([
@@ -592,6 +599,7 @@ describe("external provider canary orchestration", () => {
       reasons: [],
     });
     expect(result.artifact.qualifiedReport?.status).toBe("passed");
+    expect(cleanupArtifactSha256).toBe(result.artifact.artifactSha256);
     expect(() =>
       reverifyProviderQualificationArtifact(result.artifact),
     ).not.toThrow();
@@ -621,6 +629,13 @@ describe("external provider canary orchestration", () => {
 
   it("orders observation before ingress and cleans up a partial failure", async () => {
     const test = harness();
+    let receivedArtifact = true;
+    (
+      test.capabilities.cleanup as ExternalProviderCanaryCapabilities["cleanup"]
+    ).cleanup = async ({ artifact }) => {
+      test.events.push("cleanup.cleanup");
+      receivedArtifact = artifact !== undefined;
+    };
     test.capabilities.trajectories.verify = async () => {
       test.events.push("trajectories.verify");
       throw new Error("trajectory export unavailable");
@@ -635,6 +650,7 @@ describe("external provider canary orchestration", () => {
       "cleanup.cleanup",
     ]);
     expect(test.events).not.toContain("publisher.publish");
+    expect(receivedArtifact).toBe(false);
   });
 
   it("rejects cross-run evidence and never publishes it", async () => {

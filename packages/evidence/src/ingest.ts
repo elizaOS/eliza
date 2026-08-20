@@ -41,6 +41,8 @@ interface SiloDefinition {
   roots: SiloRoot[];
   /** Per-silo kind override; receives the root-relative posix path. */
   classify?: (relPath: string, defaultKind: ArtifactKind) => ArtifactKind;
+  validateInventory?: (relativePaths: readonly string[]) => void;
+  validateCaptured?: (relPath: string, stagedPath: string) => void;
 }
 
 export interface SiloSnapshot {
@@ -308,7 +310,9 @@ async function ingestSilo(
         },
       );
     }
-    for (const rel of walkSiloFiles(rootDir)) {
+    const relativePaths = walkSiloFiles(rootDir);
+    definition.validateInventory?.(relativePaths);
+    for (const rel of relativePaths) {
       const sourcePath = path.join(rootDir, ...rel.split("/"));
       assertCanonicalRoot(repoRoot, sourcePath);
       const captured = captureStableFile(sourcePath, stagingDir);
@@ -338,6 +342,7 @@ async function ingestSilo(
           },
         );
       }
+      definition.validateCaptured?.(rel, captured.stagedPath);
       await bundle.addArtifact(captured.stagedPath, {
         kind,
         source: definition.source,
@@ -350,6 +355,102 @@ async function ingestSilo(
     }
   }
   return { silo: definition.silo, status: "ingested", artifactCount };
+}
+
+function validateProviderQualificationInventory(
+  relativePaths: readonly string[],
+): void {
+  const files = new Set(relativePaths);
+  for (const rel of relativePaths) {
+    const name = path.posix.basename(rel);
+    if (
+      ![
+        "publication.json",
+        "publication.md",
+        "catalog.json",
+        "catalog.md",
+      ].includes(name)
+    ) {
+      throw new EvidenceError(
+        `provider qualification release tree contains non-publication authority: ${rel}`,
+        { code: "PROVIDER_PUBLICATION_INVALID", context: { rel } },
+      );
+    }
+    if (name === "publication.json") {
+      const sibling = path.posix.join(
+        path.posix.dirname(rel),
+        "publication.md",
+      );
+      if (!files.has(sibling)) {
+        throw new EvidenceError(
+          `provider publication is missing capsule-derived Markdown: ${rel}`,
+          { code: "PROVIDER_PUBLICATION_INVALID", context: { rel, sibling } },
+        );
+      }
+    }
+    if (name === "catalog.json") {
+      const sibling = path.posix.join(path.posix.dirname(rel), "catalog.md");
+      if (!files.has(sibling)) {
+        throw new EvidenceError(
+          `provider catalog is missing capsule-derived Markdown: ${rel}`,
+          { code: "PROVIDER_PUBLICATION_INVALID", context: { rel, sibling } },
+        );
+      }
+    }
+  }
+}
+
+function validateProviderQualificationCaptured(
+  relPath: string,
+  stagedPath: string,
+): void {
+  if (!relPath.endsWith(".json")) return;
+  let value: unknown;
+  try {
+    value = JSON.parse(fs.readFileSync(stagedPath, "utf8"));
+  } catch (error) {
+    throw new EvidenceError(
+      `provider publication JSON is invalid: ${relPath}`,
+      {
+        code: "PROVIDER_PUBLICATION_INVALID",
+        cause: error,
+        context: { relPath },
+      },
+    );
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new EvidenceError(
+      `provider publication JSON is not an object: ${relPath}`,
+      {
+        code: "PROVIDER_PUBLICATION_INVALID",
+        context: { relPath },
+      },
+    );
+  }
+  const record = value as Record<string, unknown>;
+  if (path.posix.basename(relPath) === "publication.json") {
+    const artifact = record.qualificationArtifact as
+      | Record<string, unknown>
+      | undefined;
+    if (
+      record.schema !== "eliza.provider-qualification-publication.v1" ||
+      artifact?.schema !== "eliza.provider-qualification-artifact.v4" ||
+      record.scenarioId !== artifact.scenarioId ||
+      record.artifactSha256 !== artifact.artifactSha256 ||
+      (record.cleanupProof as Record<string, unknown> | undefined)?.payload ===
+        undefined
+    ) {
+      throw new EvidenceError(
+        `provider release input is not a cleanup-bound publication capsule: ${relPath}`,
+        { code: "PROVIDER_PUBLICATION_INVALID", context: { relPath } },
+      );
+    }
+  } else if (record.schema !== "eliza.provider-qualification-catalog.v2") {
+    throw new EvidenceError(
+      `provider release catalog schema is unsupported: ${relPath}`,
+      { code: "PROVIDER_PUBLICATION_INVALID", context: { relPath } },
+    );
+  }
 }
 
 /**
@@ -424,6 +525,8 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     source: "provider-qualification",
     producedBy: "scripts/evidence-review/provider-qualification-producer.mjs",
     roots: [{ label: "repo", dir: "reports/provider-qualification" }],
+    validateInventory: validateProviderQualificationInventory,
+    validateCaptured: validateProviderQualificationCaptured,
   },
 ];
 

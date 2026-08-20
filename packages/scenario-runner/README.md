@@ -410,35 +410,47 @@ trajectory-set and runner-result projections, the qualification decision, and
 every verifier-transcript digest. It exits nonzero for an unpublishable or
 internally inconsistent capsule.
 
+Release publication additionally requires the signed cleanup capsule emitted
+atomically by `eliza-provider-canary`. Reverify the release authority with:
+
+```bash
+bun run --cwd packages/scenario-runner provider-qualification -- \
+  reverify-publication reports/provider-qualification/<run>/<canary>/publication.json
+```
+
+The cleanup proof signs the exact v4 artifact digest, run, manifest, cleanup
+scope, and raw controller-material digest. Its key must be the exact observer
+signer authorized by the manifest; a self-declared capsule key is rejected.
+
 Private verifier inputs remain operator material. For repository evidence
 review, use the coordinated matrix producer described in
-`scripts/evidence-review/README.md`; it stages those inputs outside the
-repository and publishes only the validated v4 public capsules, canonical
-catalog, and Markdown beneath `reports/provider-qualification/<operator-run-id>/`
-after the exact 13-canary catalog passes. A verifier output created before the
-matrix snapshot is baseline-excluded.
+`scripts/evidence-review/README.md`; it consumes only the 13 externally emitted
+`publication.json` capsules and publishes only reverified cleanup-bound
+capsules, their derived Markdown, and the canonical catalog beneath
+`reports/provider-qualification/<operator-run-id>/` after the exact catalog
+passes. A publication created before the matrix snapshot is baseline-excluded.
 
-Once every canary has an independently verified artifact, create the release
-catalog with a closed `eliza.provider-qualification-catalog-config.v2` file:
+Once every canary has a cleanup-bound publication capsule, create the release
+catalog with a closed `eliza.provider-qualification-catalog-config.v3` file:
 
 ```json
 {
-  "schema": "eliza.provider-qualification-catalog-config.v2",
+  "schema": "eliza.provider-qualification-catalog-config.v3",
   "expectedRepositorySha": "0123456789abcdef0123456789abcdef01234567",
-  "artifactFiles": [
-    "bluebubbles/qualification.json",
-    "discord/qualification.json",
-    "duffel/qualification.json",
-    "gmail/qualification.json",
-    "google-calendar/qualification.json",
-    "google-sheets/qualification.json",
-    "signal/qualification.json",
-    "slack/qualification.json",
-    "telegram/qualification.json",
-    "twilio-sms/qualification.json",
-    "twilio-voice/qualification.json",
-    "whatsapp/qualification.json",
-    "x-dm/qualification.json"
+  "publicationFiles": [
+    "bluebubbles/publication.json",
+    "discord/publication.json",
+    "duffel/publication.json",
+    "gmail/publication.json",
+    "google-calendar/publication.json",
+    "google-sheets/publication.json",
+    "signal/publication.json",
+    "slack/publication.json",
+    "telegram/publication.json",
+    "twilio-sms/publication.json",
+    "twilio-voice/publication.json",
+    "whatsapp/publication.json",
+    "x-dm/publication.json"
   ],
   "outputDir": "catalog-output"
 }

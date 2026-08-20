@@ -76,12 +76,12 @@ function initFixtureRepo(): string {
   );
   fs.mkdirSync(providerQualificationDir, { recursive: true });
   fs.writeFileSync(
-    path.join(providerQualificationDir, "qualification.md"),
-    "# Provider qualification\n",
+    path.join(providerQualificationDir, "publication.md"),
+    "# Provider cleanup publication\n",
   );
   fs.writeFileSync(
-    path.join(providerQualificationDir, "qualification.json"),
-    '{"schema":"eliza.provider-qualification-artifact.v4"}\n',
+    path.join(providerQualificationDir, "publication.json"),
+    '{"schema":"eliza.provider-qualification-publication.v1","scenarioId":"provider.gmail.confirmed-send","artifactSha256":"artifact-1","cleanupProof":{"payload":{}},"qualificationArtifact":{"schema":"eliza.provider-qualification-artifact.v4","scenarioId":"provider.gmail.confirmed-send","artifactSha256":"artifact-1"}}\n',
   );
   const providerCatalogDir = path.join(
     repo,
@@ -97,7 +97,7 @@ function initFixtureRepo(): string {
   );
   fs.writeFileSync(
     path.join(providerCatalogDir, "catalog.json"),
-    '{"schema":"eliza.provider-qualification-catalog.v1"}\n',
+    '{"schema":"eliza.provider-qualification-catalog.v2"}\n',
   );
   fs.writeFileSync(path.join(repo, "tracked.txt"), "tracked\n");
   execFileSync("git", ["add", "tracked.txt"], { cwd: repo });
@@ -140,8 +140,8 @@ describe("runCli create", () => {
     expect(manifest.artifacts.map((entry) => entry.path)).toEqual([
       "misc/provider-qualification/run-1/catalog/catalog.json",
       "misc/provider-qualification/run-1/catalog/catalog.md",
-      "misc/provider-qualification/run-1/gmail/qualification.json",
-      "misc/provider-qualification/run-1/gmail/qualification.md",
+      "misc/provider-qualification/run-1/gmail/publication.json",
+      "misc/provider-qualification/run-1/gmail/publication.md",
       "trajectories/scenario-runner/live/native.jsonl",
       "visual/aesthetic-audit/desktop/home--hover.png",
       "visual/aesthetic-audit/desktop/home.png",
