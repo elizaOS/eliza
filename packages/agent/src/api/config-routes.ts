@@ -248,6 +248,47 @@ async function applyReloadedConfig(params: {
  * Handle configuration routes (GET/PUT /api/config, GET /api/config/schema,
  * POST /api/config/reload). Returns `true` if the request was handled.
  */
+
+/** Honest config patches are a handful of objects deep. */
+export const MAX_CONFIG_PATCH_DEPTH = 32;
+export const MAX_CONFIG_PATCH_NODES = 100_000;
+
+/**
+ * Iterative bound on a PUT /api/config patch. JSON.parse accepts a 16k-deep
+ * nest under the 1 MiB body cap; the origin recursive strip + safeMerge then
+ * RangeError and the route kernel maps that to HTTP 500.
+ */
+export function configPatchExceedsBound(value: unknown): boolean {
+  const stack: Array<{ node: unknown; depth: number }> = [
+    { node: value, depth: 0 },
+  ];
+  let nodes = 0;
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (current === undefined) {
+      break;
+    }
+    const { node, depth } = current;
+    nodes += 1;
+    if (nodes > MAX_CONFIG_PATCH_NODES || depth > MAX_CONFIG_PATCH_DEPTH) {
+      return true;
+    }
+    if (node === null || typeof node !== "object") {
+      continue;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        stack.push({ node: item, depth: depth + 1 });
+      }
+      continue;
+    }
+    for (const child of Object.values(node as Record<string, unknown>)) {
+      stack.push({ node: child, depth: depth + 1 });
+    }
+  }
+  return false;
+}
+
 export async function handleConfigRoutes(
   ctx: ConfigRouteContext,
 ): Promise<boolean> {
@@ -390,6 +431,10 @@ export async function handleConfigRoutes(
       if (CONFIG_WRITE_ALLOWED_TOP_KEYS.has(key) && !isBlockedObjectKey(key)) {
         filtered[key] = (body as Record<string, unknown>)[key];
       }
+    }
+    if (configPatchExceedsBound(filtered)) {
+      error(res, "config patch exceeds the nesting-depth limit", 400);
+      return true;
     }
 
     // Security: keep auth/step-up secrets out of API-driven config writes so
