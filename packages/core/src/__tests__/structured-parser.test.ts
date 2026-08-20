@@ -4,7 +4,9 @@
  * must not inflate close-tag matching. Deterministic parser test.
  */
 import { describe, expect, it } from "vitest";
-import { MAX_XML_CLOSE_VISITS, parseKeyValueXml } from "../utils";
+import { parseKeyValueXml } from "../utils";
+
+const XML_CLOSE_VISIT_LIMIT = 64;
 
 describe("parseKeyValueXml", () => {
 	it("parses XML response blocks", () => {
@@ -40,14 +42,14 @@ describe("parseKeyValueXml", () => {
 		expect(performance.now() - t0).toBeLessThan(50);
 	});
 
-	it("parses MAX_XML_CLOSE_VISITS direct children and rejects one more", () => {
+	it("parses the direct-child visit limit and rejects one more", () => {
 		const fields = Array.from(
-			{ length: MAX_XML_CLOSE_VISITS },
+			{ length: XML_CLOSE_VISIT_LIMIT },
 			(_, i) => `<f${i}>v${i}</f${i}>`,
 		).join("");
 		const parsed = parseKeyValueXml(`<response>${fields}</response>`);
 		expect(parsed).not.toBeNull();
-		expect(Object.keys(parsed ?? {})).toHaveLength(MAX_XML_CLOSE_VISITS);
+		expect(Object.keys(parsed ?? {})).toHaveLength(XML_CLOSE_VISIT_LIMIT);
 
 		const overflow = `${fields}<extra>x</extra>`;
 		expect(parseKeyValueXml(`<response>${overflow}</response>`)).toBeNull();

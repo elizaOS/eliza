@@ -902,7 +902,7 @@ function readXmlStartTag(
  * (`<a>` vs `<aa>`) is O(visits × remaining) and hung the agent loop. */
 /** Direct-child walk and close-tag matching share this visit budget. Hitting
  * it is a parse failure (`null`), never a silently truncated object. */
-export const MAX_XML_CLOSE_VISITS = 64;
+const MAX_XML_CLOSE_VISITS = 64;
 const MAX_XML_NEST_DEPTH = 32;
 
 function findMatchingXmlClose(
