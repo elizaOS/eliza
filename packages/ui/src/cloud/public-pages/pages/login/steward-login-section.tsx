@@ -81,6 +81,7 @@ import {
 } from "../../lib/steward-oauth-url";
 import {
   consumeStewardCodeFromQuery,
+  consumeStewardOAuthStateFromCallback,
   exchangeStewardCodeViaApi,
   hasStewardOAuthCallbackInUrl,
   recoverStewardEmailSessionViaCookie,
@@ -705,7 +706,7 @@ export default function StewardLoginSection() {
       // into the attacker's account. The verifier is consumed ONLY when the
       // state matches, so the user's own in-flight flow survives clicking a
       // foreign link.
-      const returnedState = searchParams.get("state");
+      const returnedState = consumeStewardOAuthStateFromCallback();
       const expectedState = peekStewardOAuthState();
       if (!returnedState || !expectedState || returnedState !== expectedState) {
         stripLegacyTokenParamsFromAddressBar();
