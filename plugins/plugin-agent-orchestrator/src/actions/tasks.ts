@@ -1766,7 +1766,26 @@ async function runCreateLegacy(
   }
 
   setCurrentSessions(state, sessions);
-  const failed = results.filter((result) => result.status === "failed");
+  const allFailed = results.filter((result) => result.status === "failed");
+  // A lane killed mid-flight by an interruption (the user's follow-up
+  // cancelled the running child so a successor could absorb the new
+  // instruction) is a cancellation, not a launch failure — the successor's
+  // own ack covers messaging. Narrating it shipped "stopped before
+  // completion" AND "No task agents could be started — the launch failed"
+  // one second before the merged build's ack (live 2026-08-20). The
+  // cancellation shape is structural: the prompt/workflow terminal carries a
+  // cancelled/stopped status, never a spawn error.
+  const interruptCancelled = allFailed.filter((result) =>
+    /\b(?:cancell?ed|stopped)\b/i.test(String(result.error ?? "")),
+  );
+  if (interruptCancelled.length > 0) {
+    logger(runtime).warn(
+      `[TASKS:create] ${interruptCancelled.length} lane(s) cancelled mid-flight (interrupt/stop); suppressing launch-failed notice (labels=${interruptCancelled.map((f) => f.label).join(",")})`,
+    );
+  }
+  const failed = allFailed.filter(
+    (result) => !interruptCancelled.includes(result),
+  );
   // A launch killed by the user's own cancel is a cancellation, not a
   // failure: without this the cancel produced "No task agents could be
   // started — the launch failed" alongside the stop confirmation (live
