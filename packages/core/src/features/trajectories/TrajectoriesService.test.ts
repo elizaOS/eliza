@@ -656,4 +656,117 @@ describe("TrajectoriesService", () => {
 		expect(persisted[0].done).toBe(false);
 		expect(persisted[0].providerAccesses).toEqual([]);
 	});
+
+	it("persists recorder decision stages onto the step and stays idempotent per stageId", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000060";
+		const stepId = "00000000-0000-4000-8000-000000000061";
+		const row = makeTrajectoryRow(trajectoryId, stepId);
+		const service = new TrajectoriesService(createRuntimeWithoutSql());
+		const serviceInternals = service as unknown as {
+			stepToTrajectory: Map<string, string>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		const updates: string[] = [];
+		serviceInternals.stepToTrajectory.set(stepId, trajectoryId);
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			if (sqlText.includes("SELECT * FROM trajectories")) {
+				return { rows: [row], columns: Object.keys(row) };
+			}
+			if (sqlText.includes("UPDATE trajectories SET")) {
+				updates.push(sqlText);
+				const stepsJson = extractSqlStringAssignment(sqlText, "steps_json");
+				if (stepsJson) row.steps_json = stepsJson;
+			}
+			return { rows: [], columns: [] };
+		};
+
+		const stage = {
+			stageId: "stage-tool-search-60",
+			kind: "toolSearch" as const,
+			iteration: 1,
+			startedAt: 100,
+			endedAt: 112,
+			latencyMs: 12,
+			toolSearch: {
+				query: { candidateActions: ["OWNER_ROUTINES", "VIEWS"] },
+				results: [
+					{ name: "OWNER_ROUTINES", score: 0.4, rank: 1 },
+					{ name: "VIEWS", score: 0.2, rank: 2 },
+				],
+				selectedActions: ["OWNER_ROUTINES"],
+			},
+		};
+
+		service.logSemanticStage({ stepId, stage });
+		service.logSemanticStage({ stepId, stage });
+		await service.flushWriteQueue(trajectoryId);
+
+		expect(updates).toHaveLength(1);
+		const persisted = JSON.parse(row.steps_json);
+		expect(persisted[0].semanticStages).toHaveLength(1);
+		expect(persisted[0].semanticStages[0]).toMatchObject({
+			schemaVersion: 1,
+			stageId: "stage-tool-search-60",
+			kind: "toolSearch",
+			latencyMs: 12,
+			payload: {
+				toolSearch: { selectedActions: ["OWNER_ROUTINES"] },
+			},
+		});
+		// The persisted row must round-trip through the strict step reader.
+		const readBack = await (
+			service as unknown as {
+				getTrajectoryById: (
+					id: string,
+				) => Promise<{ steps: Array<Record<string, unknown>> } | null>;
+			}
+		).getTrajectoryById(trajectoryId);
+		expect(readBack?.steps[0].semanticStages).toHaveLength(1);
+	});
+
+	it("reports an invalid decision stage under J7 instead of persisting garbage", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000062";
+		const stepId = "00000000-0000-4000-8000-000000000063";
+		const row = makeTrajectoryRow(trajectoryId, stepId);
+		const reported: string[] = [];
+		const runtime = {
+			...createRuntimeWithoutSql(),
+			reportError: (scope: string) => {
+				reported.push(scope);
+			},
+		} as IAgentRuntime;
+		const service = new TrajectoriesService(runtime);
+		const serviceInternals = service as unknown as {
+			stepToTrajectory: Map<string, string>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		const updates: string[] = [];
+		serviceInternals.stepToTrajectory.set(stepId, trajectoryId);
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			if (sqlText.includes("SELECT * FROM trajectories")) {
+				return { rows: [row], columns: Object.keys(row) };
+			}
+			if (sqlText.includes("UPDATE trajectories SET")) updates.push(sqlText);
+			return { rows: [], columns: [] };
+		};
+
+		service.logSemanticStage({
+			stepId,
+			stage: {
+				stageId: "bad-stage",
+				kind: "toolSearch",
+				startedAt: 10,
+				endedAt: 5,
+				latencyMs: -5,
+			},
+		});
+		await service.flushWriteQueue(trajectoryId);
+
+		expect(updates).toHaveLength(0);
+		expect(reported).toContain("TrajectoriesService.detachedWrite");
+	});
 });
