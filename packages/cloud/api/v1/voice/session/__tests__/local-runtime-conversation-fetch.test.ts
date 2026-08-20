@@ -11,6 +11,11 @@ import {
   LocalRuntimeConversationFetchError,
 } from "../lib/local-runtime-conversation-fetch";
 
+const SCOPE = {
+  agentId: "agent-a",
+  conversationId: "11111111-1111-4111-8111-111111111111",
+};
+
 describe("local runtime conversation fetch", () => {
   test("rewrites the cloud route to canonical local SSE without cloud credentials", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -23,10 +28,11 @@ describe("local runtime conversation fetch", () => {
         status: 200,
         headers: { "Content-Type": "text/event-stream" },
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     const signal = new AbortController().signal;
     const bridge = createLocalRuntimeConversationFetch(
-      "http://127.0.0.1:31337/path?ignored=1",
+      "http://127.0.0.1:31337",
+      SCOPE,
       downstream,
     );
 
@@ -34,6 +40,7 @@ describe("local runtime conversation fetch", () => {
       "https://cloud.example/api/v1/eliza/agents/agent-a/api/conversations/11111111-1111-4111-8111-111111111111/messages/stream",
       {
         method: "POST",
+        redirect: "follow",
         signal,
         headers: {
           Authorization: "Bearer cloud-secret",
@@ -58,6 +65,7 @@ describe("local runtime conversation fetch", () => {
       "http://127.0.0.1:31337/api/conversations/11111111-1111-4111-8111-111111111111/messages/stream",
     );
     expect(calls[0]?.init?.signal).toBe(signal);
+    expect(calls[0]?.init?.redirect).toBe("error");
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
       text: "hello locally",
       metadata: {
@@ -105,7 +113,7 @@ describe("local runtime conversation fetch", () => {
         ].join(""),
         { headers: { "Content-Type": "text/event-stream" } },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     const deltas: string[] = [];
 
     const result = await streamElizaConversation(
@@ -120,6 +128,7 @@ describe("local runtime conversation fetch", () => {
         signal: new AbortController().signal,
         fetchImpl: createLocalRuntimeConversationFetch(
           "http://127.0.0.1:31337",
+          SCOPE,
           downstream,
         ),
       },
@@ -142,11 +151,12 @@ describe("local runtime conversation fetch", () => {
 
   test("rejects non-loopback origins and unsupported upstream paths", async () => {
     expect(() =>
-      createLocalRuntimeConversationFetch("https://api.example.com"),
+      createLocalRuntimeConversationFetch("https://api.example.com", SCOPE),
     ).toThrow(LocalRuntimeConversationFetchError);
 
     const bridge = createLocalRuntimeConversationFetch(
       "http://localhost:31337",
+      SCOPE,
     );
     await expect(
       bridge("https://cloud.example/not-a-conversation", {
@@ -164,6 +174,7 @@ describe("local runtime conversation fetch", () => {
   test("rejects malformed or empty conversation bodies", async () => {
     const bridge = createLocalRuntimeConversationFetch(
       "http://127.0.0.1:31337",
+      SCOPE,
     );
     const url =
       "https://cloud.example/api/v1/eliza/agents/agent-a/api/conversations/11111111-1111-4111-8111-111111111111/messages/stream";
@@ -201,4 +212,54 @@ describe("local runtime conversation fetch", () => {
       }),
     ).rejects.toThrow(LocalRuntimeConversationFetchError);
   });
+
+  test.each([
+    "https://127.0.0.1:31337",
+    "http://127.0.0.1:31337/path",
+    "http://user@127.0.0.1:31337",
+    "http://127.0.0.1.evil:31337",
+    " http://127.0.0.1:31337",
+  ])(
+    "rejects noncanonical target origin before downstream fetch: %s",
+    (origin) => {
+      let calls = 0;
+      const downstream = (async () => {
+        calls += 1;
+        return new Response();
+      }) as unknown as typeof fetch;
+      expect(() =>
+        createLocalRuntimeConversationFetch(origin, SCOPE, downstream),
+      ).toThrow(LocalRuntimeConversationFetchError);
+      expect(calls).toBe(0);
+    },
+  );
+
+  test.each([
+    "https://cloud.example/api/v1/eliza/agents/other-agent/api/conversations/11111111-1111-4111-8111-111111111111/messages/stream",
+    "https://cloud.example/api/v1/eliza/agents/agent-a/api/conversations/22222222-2222-4222-8222-222222222222/messages/stream",
+  ])(
+    "rejects an upstream identity outside the startup scope: %s",
+    async (url) => {
+      let calls = 0;
+      const bridge = createLocalRuntimeConversationFetch(
+        "http://127.0.0.1:31337",
+        SCOPE,
+        (async () => {
+          calls += 1;
+          return new Response();
+        }) as unknown as typeof fetch,
+      );
+      await expect(
+        bridge(url, {
+          method: "POST",
+          body: JSON.stringify({
+            text: "hello",
+            metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+            streamProtocol: "delta-v2",
+          }),
+        }),
+      ).rejects.toThrow("bound runtime identity");
+      expect(calls).toBe(0);
+    },
+  );
 });

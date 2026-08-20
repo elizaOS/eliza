@@ -1,7 +1,7 @@
 /**
- * Deterministic boundary tests for local voice runtime identity resolution.
- * Injected fetch responses exercise the production resolver without starting
- * Cartesia or a realtime gateway server.
+ * Deterministic and integration-backed boundary tests for local voice runtime
+ * identity resolution. Injected responses cover malformed runtime state while
+ * real loopback servers prove redirects cannot escape the validated origin.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -24,11 +24,14 @@ interface RuntimeFixtureOptions {
 function runtimeFetch(options: RuntimeFixtureOptions = {}): {
   fetchImpl: typeof fetch;
   calls: string[];
+  redirects: Array<RequestRedirect | undefined>;
 } {
   const calls: string[] = [];
-  const fetchImpl = (async (input: RequestInfo | URL) => {
+  const redirects: Array<RequestRedirect | undefined> = [];
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     calls.push(url.href);
+    redirects.push(init?.redirect);
     if (url.pathname === "/api/health") {
       return Response.json(options.health ?? { ready: true, canRespond: true });
     }
@@ -49,12 +52,12 @@ function runtimeFetch(options: RuntimeFixtureOptions = {}): {
     }
     return new Response(null, { status: 404 });
   }) as typeof fetch;
-  return { fetchImpl, calls };
+  return { fetchImpl, calls, redirects };
 }
 
 describe("local voice runtime identity", () => {
   test("binds configured canonical IDs to live running runtime records", async () => {
-    const { fetchImpl, calls } = runtimeFetch({
+    const { fetchImpl, calls, redirects } = runtimeFetch({
       conversations: [
         {
           id: CONVERSATION_ID,
@@ -81,6 +84,7 @@ describe("local voice runtime identity", () => {
       "http://127.0.0.1:31337/api/agents",
       "http://127.0.0.1:31337/api/conversations",
     ]);
+    expect(redirects).toEqual(["error", "error", "error"]);
   });
 
   test("discovers the newest conversation belonging to the singleton running agent", async () => {
@@ -226,5 +230,35 @@ describe("local voice runtime identity", () => {
         fetchImpl,
       }),
     ).rejects.toThrow("canonical lowercase UUID");
+  });
+
+  test("refuses a loopback redirect without contacting its target", async () => {
+    let targetRequests = 0;
+    const target = Bun.serve({
+      port: 0,
+      fetch: () => {
+        targetRequests += 1;
+        return Response.json({ ready: true, canRespond: true });
+      },
+    });
+    const source = Bun.serve({
+      port: 0,
+      fetch: () =>
+        new Response(null, {
+          status: 302,
+          headers: { Location: `http://127.0.0.1:${target.port}/captured` },
+        }),
+    });
+    try {
+      await expect(
+        resolveLocalVoiceRuntimeIdentity({
+          runtimeOrigin: `http://127.0.0.1:${source.port}`,
+        }),
+      ).rejects.toBeInstanceOf(LocalVoiceRuntimeIdentityError);
+      expect(targetRequests).toBe(0);
+    } finally {
+      source.stop(true);
+      target.stop(true);
+    }
   });
 });

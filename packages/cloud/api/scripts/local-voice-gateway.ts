@@ -89,7 +89,10 @@ async function main(): Promise<void> {
     userId: LOCAL_USER_ID,
     agentId,
     conversationId,
-    fetchImpl: createLocalRuntimeConversationFetch(runtimeOrigin),
+    fetchImpl: createLocalRuntimeConversationFetch(runtimeOrigin, {
+      agentId,
+      conversationId,
+    }),
     listenPort: gatewayPort,
     hooks: { log: writeLog },
   });

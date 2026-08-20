@@ -143,7 +143,7 @@ async function fetchJson(
 ): Promise<unknown> {
   let response: Response;
   try {
-    response = await fetchImpl(url);
+    response = await fetchImpl(url, { redirect: "error" });
   } catch (error) {
     // error-policy:J2 The process boundary needs the failed route and original
     // transport cause to diagnose an unavailable local runtime.

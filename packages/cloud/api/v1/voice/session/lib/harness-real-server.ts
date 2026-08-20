@@ -479,6 +479,10 @@ export async function startRealVoiceServer(
       // local agent in its config and scopes only the active conversation here.
       const conversationId = readRequiredUuid(body, "conversationId");
       const consentNonce = readRequiredString(body, "consentNonce");
+      if (conversationId !== config.conversationId) {
+        writeJson(res, 403, { code: "conversation_scope_mismatch" });
+        return;
+      }
       if (body.transport !== "websocket") {
         writeJson(res, 400, { code: "invalid_transport" });
         return;
