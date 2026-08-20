@@ -1163,9 +1163,9 @@ export default function StewardLoginSection() {
     setLoading("email");
     setError(null);
     try {
-      // The magic link can open in a new same-origin tab. Persist the pending
-      // destination before asking Steward to send it so the callback can
-      // resume an onboarding continuation instead of falling back to /join.
+      // Steward sends both a link and a companion code. Persist the pending
+      // destination before sending so code verification can complete in this
+      // tab and the optional callback can resume the same continuation.
       storePendingOAuthReturnTo(searchParams);
       const challenge = await startStewardEmailLogin(
         { baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID },

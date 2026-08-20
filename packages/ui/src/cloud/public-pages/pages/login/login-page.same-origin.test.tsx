@@ -65,6 +65,7 @@ vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => false,
   recoverStewardSessionViaCookie: () => Promise.resolve(null),
   refreshStewardSessionViaCookie: () => Promise.resolve(null),
+  stripLegacyTokenHashFromAddressBar: () => false,
   syncStewardSessionCookie: () => Promise.resolve(),
 }));
 
@@ -136,4 +137,28 @@ it("keeps canonical staging app-host login on the current origin", async () => {
   ).toBeTruthy();
   expect(redirectToSsoBridge).not.toHaveBeenCalled();
   expect(window.location.origin).toBe("https://cloud-staging.eliza.app");
+});
+
+it("renders a local login instead of advertising an unreachable dedicated-host SSO handoff", async () => {
+  setLocation(
+    "agent-1.cloud-staging.eliza.app",
+    "https://agent-1.cloud-staging.eliza.app",
+  );
+
+  render(
+    <MemoryRouter initialEntries={["/login"]}>
+      <LoginPage />
+    </MemoryRouter>,
+  );
+
+  expect(
+    await screen.findByRole("heading", { name: "Sign in to Eliza" }),
+  ).toBeTruthy();
+  expect(
+    await screen.findByRole("button", { name: /Magic Link/i }),
+  ).toBeTruthy();
+  expect(redirectToSsoBridge).not.toHaveBeenCalled();
+  expect(window.location.origin).toBe(
+    "https://agent-1.cloud-staging.eliza.app",
+  );
 });
