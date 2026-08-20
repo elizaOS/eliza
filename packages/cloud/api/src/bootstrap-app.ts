@@ -22,11 +22,18 @@ import {
 import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { httpTelemetryMiddleware } from "@/lib/observability/http-telemetry-hono";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import {
+  getCloudAwareEnv,
+  runWithCloudBindingsAsync,
+} from "@/lib/runtime/cloud-bindings";
 import { runWithRequestContext } from "@/lib/runtime/request-context";
 import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovision-job-service";
 import { configureAppsDeployTrigger } from "@/lib/services/app-deploy-job-service";
 import { getProviderEnvDiagnostics } from "@/lib/services/oauth/provider-registry";
+import {
+  SubscriptionCatalogError,
+  validateSubscriptionCatalogConfiguration,
+} from "@/lib/services/subscription-catalog";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
@@ -243,6 +250,7 @@ export function createApp(): Hono<AppEnv> {
   // bindings — at `createApp()` time only `process.env` is available, which
   // would produce false warnings on deployed Workers.
   let providerEnvVarsLogged = false;
+  let subscriptionCatalogConfigurationChecked = false;
 
   app.use("*", async (c, next) => {
     setRuntimeR2Bucket(c.env.BLOB);
@@ -256,6 +264,22 @@ export function createApp(): Hono<AppEnv> {
     await runWithCloudBindingsAsync(
       c.env as Record<string, unknown>,
       async () => {
+        if (!subscriptionCatalogConfigurationChecked) {
+          subscriptionCatalogConfigurationChecked = true;
+          try {
+            validateSubscriptionCatalogConfiguration(getCloudAwareEnv());
+          } catch (error) {
+            // error-policy:J4 Subscription publication fails closed at its own
+            // route; other Cloud capabilities remain available while startup
+            // diagnostics alert on names-only configuration state.
+            logger.error(
+              "[bootstrap-app] Subscription catalog is unavailable",
+              error instanceof SubscriptionCatalogError
+                ? { code: error.code, context: error.context }
+                : { code: "SUBSCRIPTION_CATALOG_CONFIGURATION_UNAVAILABLE" },
+            );
+          }
+        }
         if (!providerEnvVarsLogged) {
           logProviderEnvDiagnostics();
           providerEnvVarsLogged = true;

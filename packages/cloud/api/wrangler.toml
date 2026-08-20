@@ -358,6 +358,10 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
 #   STRIPE_CONNECT_WEBHOOK_SECRET      Stripe Connect endpoint webhook signing (payouts; distinct secret — the Connect payout webhook fail-closes without it)
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
+#   STRIPE_PLUS_MONTHLY_PRICE_ID       Approved recurring Plus Price binding
+#   STRIPE_PLUS_PRODUCT_ID             Approved Plus Product binding
+#   STRIPE_PRO_MONTHLY_PRICE_ID        Approved recurring Pro Price binding
+#   STRIPE_PRO_PRODUCT_ID              Approved Pro Product binding
 #   OXAPAY_MERCHANT_API_KEY            OxaPay crypto checkout + webhook verification
 #   OXAPAY_WEBHOOK_IPS                 Optional OxaPay webhook source IP allowlist
 #   OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL Payment-request settlement callback override

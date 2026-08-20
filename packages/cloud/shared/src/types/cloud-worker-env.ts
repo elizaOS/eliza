@@ -410,6 +410,14 @@ export interface Bindings {
    */
   STRIPE_CONNECT_WEBHOOK_SECRET?: string;
   STRIPE_CURRENCY?: string;
+  /** Server-only recurring Plus plan Stripe Price binding. */
+  STRIPE_PLUS_MONTHLY_PRICE_ID?: string;
+  /** Server-only approved Stripe Product for the Plus plan. */
+  STRIPE_PLUS_PRODUCT_ID?: string;
+  /** Server-only recurring Pro plan Stripe Price binding. */
+  STRIPE_PRO_MONTHLY_PRICE_ID?: string;
+  /** Server-only approved Stripe Product for the Pro plan. */
+  STRIPE_PRO_PRODUCT_ID?: string;
 
   // ---- Crypto payments ----
   OXAPAY_WEBHOOK_IPS?: string;
