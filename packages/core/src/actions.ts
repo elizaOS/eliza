@@ -12,8 +12,10 @@
  * Sits between the action catalog and the message loop's model call, and also
  * acts as the barrel re-exporting the action sub-modules (extractor pipeline,
  * JSON model output, subaction promotion/dispatch, recent-context,
- * resolve-action-args).
+ * resolve-action-args). Nested model `params` graphs are bounded in
+ * `action-parameter-value.ts`.
  */
+import { toActionParameterValue } from "./action-parameter-value.ts";
 import { testSchemaPattern } from "./actions/validate-tool-args.ts";
 import { allActionDocs } from "./generated/action-docs.ts";
 import type {
@@ -459,33 +461,6 @@ function parseActionParamsJson(input: string): Record<string, unknown> | null {
 		// malformed JSON is an explicit invalid result.
 		return null;
 	}
-}
-
-function toActionParameterValue(value: unknown): ActionParameters[string] {
-	if (value === null || value === undefined) {
-		return null;
-	}
-	if (
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
-		return value as ActionParameterValue;
-	}
-
-	if (Array.isArray(value)) {
-		return value.map((entry) => toActionParameterValue(entry));
-	}
-
-	if (value && typeof value === "object") {
-		const normalized: ActionParameters = {};
-		for (const [key, entry] of Object.entries(value)) {
-			normalized[key] = toActionParameterValue(entry);
-		}
-		return normalized;
-	}
-
-	return value === undefined ? null : String(value);
 }
 
 export function validateActionParams(
