@@ -7,6 +7,10 @@
  *
  * For the interface definition, see types/streaming.ts.
  * Implementations can use these or create their own extractors.
+ *
+ * Think-tag matching is a linear prefix compare. Origin sliced and
+ * lowercased the remainder at every index, which is O(n²) on a legal
+ * 1 MiB stream chunk with no `<think>` delimiter.
  */
 
 import type { StreamChunkCallback } from "../types/components";
@@ -1066,7 +1070,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			});
 		const source = `${filter.pending}${value}`;
 		filter.pending = "";
-		let output = "";
+		const parts: string[] = [];
 		let index = 0;
 
 		while (index < source.length) {
@@ -1081,7 +1085,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 					filter.pending = source.slice(index);
 					break;
 				}
-				output += source[index] ?? "";
+				parts.push(source[index] ?? "");
 				index++;
 				continue;
 			}
@@ -1100,11 +1104,11 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		}
 
 		if (final && filter.mode === "outside" && filter.pending) {
-			output += filter.pending;
+			parts.push(filter.pending);
 			filter.pending = "";
 		}
 		this.reasoningFilters.set(field, filter);
-		return output;
+		return parts.join("");
 	}
 
 	private flushReasoningFilter(field: string): string {
@@ -1131,19 +1135,22 @@ function matchTagAt(
 	index: number,
 	tag: "<think>" | "</think>",
 ): "full" | "partial" | "none" {
-	const remaining = source.slice(index);
-	const lowerRemaining = remaining.toLowerCase();
-	const lowerTag = tag.toLowerCase();
-	if (lowerRemaining.startsWith(lowerTag)) {
+	const remainingLen = source.length - index;
+	if (remainingLen <= 0) {
+		return "none";
+	}
+	const compareLen = remainingLen < tag.length ? remainingLen : tag.length;
+	for (let offset = 0; offset < compareLen; offset++) {
+		const sourceCh = source[index + offset] ?? "";
+		const tagCh = tag[offset] ?? "";
+		if (sourceCh.toLowerCase() !== tagCh.toLowerCase()) {
+			return "none";
+		}
+	}
+	if (remainingLen >= tag.length) {
 		return "full";
 	}
-	if (
-		index + remaining.length === source.length &&
-		lowerTag.startsWith(lowerRemaining)
-	) {
-		return "partial";
-	}
-	return "none";
+	return "partial";
 }
 
 function findJsonStringEnd(value: string): number | null {
