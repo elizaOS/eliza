@@ -7,16 +7,18 @@
 
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 import { VOICE_STREAM_PROTOCOL } from "@/lib/voice-session/eliza-sse-bridge";
+import {
+  LocalRuntimeConversationFetchError,
+  resolveLoopbackOrigin,
+} from "./loopback-origin";
+
+export {
+  LocalRuntimeConversationFetchError,
+  resolveLoopbackOrigin,
+} from "./loopback-origin";
 
 const CLOUD_CONVERSATION_STREAM_PATH =
   /^\/api\/v1\/eliza\/agents\/[^/]+\/api\/conversations\/([^/]+)\/messages\/stream$/;
-
-export class LocalRuntimeConversationFetchError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "LocalRuntimeConversationFetchError";
-  }
-}
 
 /** Decode an untrusted conversation-id path segment into a typed boundary error. */
 function decodeConversationId(raw: string): string {
@@ -75,34 +77,6 @@ export function createLocalRuntimeConversationFetch(
       body: JSON.stringify(body),
     });
   }) as typeof fetch;
-}
-
-function resolveLoopbackOrigin(raw: string): URL {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch (error) {
-    // error-policy:J2 Configuration errors retain their parse cause so the
-    // local gateway fails at startup rather than hiding a broken route.
-    throw new LocalRuntimeConversationFetchError(
-      "local runtime origin is not a valid URL",
-      { cause: error },
-    );
-  }
-  if (
-    (url.protocol !== "http:" && url.protocol !== "https:") ||
-    (url.hostname !== "127.0.0.1" &&
-      url.hostname !== "localhost" &&
-      url.hostname !== "::1")
-  ) {
-    throw new LocalRuntimeConversationFetchError(
-      "local runtime origin must be an HTTP loopback URL",
-    );
-  }
-  url.pathname = "/";
-  url.search = "";
-  url.hash = "";
-  return url;
 }
 
 function resolveRequestUrl(input: RequestInfo | URL): URL {

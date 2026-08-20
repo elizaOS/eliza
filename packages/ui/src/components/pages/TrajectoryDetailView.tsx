@@ -138,6 +138,8 @@ function formatProviderPayload(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
+    // error-policy:J4 An unrenderable diagnostic payload remains visibly
+    // available through its string representation instead of blanking the view.
     return String(value);
   }
 }
@@ -151,10 +153,19 @@ function formatProviderPayload(value: unknown): string {
 export function normalizeTrajectoryCallText(...candidates: unknown[]): string {
   for (const candidate of candidates) {
     if (candidate == null) continue;
-    if (typeof candidate === "string" && candidate.length === 0) continue;
-    return formatProviderPayload(candidate);
+    if (typeof candidate === "string" && candidate.trim().length === 0) {
+      continue;
+    }
+    const formatted = formatProviderPayload(candidate);
+    if (formatted.length > 0) return formatted;
   }
   return "";
+}
+
+/** Counts rendered lines without turning absent trajectory I/O into one line. */
+export function countTrajectoryCallTextLines(...candidates: unknown[]): number {
+  const text = normalizeTrajectoryCallText(...candidates);
+  return text.length === 0 ? 0 : text.split(/\r?\n/).length;
 }
 
 function isNativeToolCallEvent(
@@ -772,18 +783,15 @@ export function TrajectoryDetailView({
                 })}
                 inputLabel={t("trajectorydetailview.InputUser")}
                 outputLabel={t("trajectorydetailview.OutputResponse")}
-                inputLinesLabel={`${
-                  normalizeTrajectoryCallText(
-                    call.userPrompt,
-                    call.prompt,
-                    call.messages,
-                  ).split("\n").length
-                } ${t("trajectorydetailview.lines")}`}
-                outputLinesLabel={`${
-                  normalizeTrajectoryCallText(call.response, call.output).split(
-                    "\n",
-                  ).length
-                } ${t("trajectorydetailview.lines")}`}
+                inputLinesLabel={`${countTrajectoryCallTextLines(
+                  call.userPrompt,
+                  call.prompt,
+                  call.messages,
+                )} ${t("trajectorydetailview.lines")}`}
+                outputLinesLabel={`${countTrajectoryCallTextLines(
+                  call.response,
+                  call.output,
+                )} ${t("trajectorydetailview.lines")}`}
                 tags={(call.tags ?? []).filter((tag) => tag !== "llm")}
                 userPrompt={normalizeTrajectoryCallText(
                   call.userPrompt,
