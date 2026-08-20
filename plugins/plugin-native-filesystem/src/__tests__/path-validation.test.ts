@@ -121,6 +121,22 @@ describe("DeviceFilesystemBridge (Node backend)", () => {
 		).resolves.toBe("ok");
 	});
 
+	it("allows concurrent writers to materialize the same missing parent", async () => {
+		for (let index = 0; index < 25; index += 1) {
+			const parent = `concurrent-${index}/nested`;
+			await Promise.all([
+				bridge.write(`${parent}/left.txt`, "left"),
+				bridge.write(`${parent}/right.txt`, "right"),
+			]);
+			await expect(
+				readFile(path.join(tempRoot, parent, "left.txt"), "utf8"),
+			).resolves.toBe("left");
+			await expect(
+				readFile(path.join(tempRoot, parent, "right.txt"), "utf8"),
+			).resolves.toBe("right");
+		}
+	});
+
 	it("rejects reading a path that contains a NUL byte", async () => {
 		await expect(bridge.read("foo\0bar")).rejects.toThrow(/NUL byte/);
 	});

@@ -303,7 +303,17 @@ export class DeviceFilesystemBridge extends Service {
 			} catch (error) {
 				// error-policy:J3 only an absent component enters the create path.
 				if (!isEnoent(error)) throw error;
-				await mkdir(next);
+				try {
+					await mkdir(next);
+				} catch (mkdirError) {
+					// error-policy:J3 a concurrent writer may create this exact
+					// component first; accept only a revalidated ordinary directory.
+					if (!isCode(mkdirError, "EEXIST")) throw mkdirError;
+					const racedInfo = await lstat(next);
+					if (racedInfo.isSymbolicLink() || !racedInfo.isDirectory()) {
+						throw mkdirError;
+					}
+				}
 			}
 			await this.assertRealPathWithinRoot(next);
 			current = await realpath(next);
