@@ -20,6 +20,16 @@ function nestObj(depth: number): Record<string, unknown> {
   return value;
 }
 
+function expectUnbounded(operation: () => unknown): void {
+  try {
+    operation();
+    expect.unreachable("filter should fail closed");
+  } catch (error) {
+    expect(error).toBeInstanceOf(ElizaError);
+    expect((error as ElizaError).code).toBe(INMEMORY_FILTER_UNBOUNDED);
+  }
+}
+
 describe("dataContainsFilter", () => {
   it("matches an honest nested record", () => {
     expect(dataContainsFilter({ a: { b: 1 }, extra: true }, { a: { b: 1 } })).toBe(true);
@@ -82,6 +92,46 @@ describe("dataContainsFilter", () => {
     expect(dataContainsFilter(hostile, { safe: 1 })).toBe(true);
     expect(invoked).toBe(0);
   });
+
+  it.each(["filter", "value"] as const)(
+    "fails closed without invoking enumerable %s accessors",
+    (side) => {
+      let invoked = 0;
+      const accessor = Object.defineProperty({}, "role", {
+        enumerable: true,
+        get() {
+          invoked += 1;
+          return "admin";
+        },
+      });
+
+      const value = side === "value" ? accessor : { role: "user" };
+      const filter = side === "filter" ? accessor : { role: "admin" };
+      expectUnbounded(() => dataContainsFilter(value, filter));
+      expect(invoked).toBe(0);
+    }
+  );
+
+  it.each(["filter", "value"] as const)(
+    "fails closed without invoking array-element %s accessors",
+    (side) => {
+      let invoked = 0;
+      const accessor: unknown[] = [];
+      Object.defineProperty(accessor, "0", {
+        enumerable: true,
+        get() {
+          invoked += 1;
+          return "admin";
+        },
+      });
+      accessor.length = 1;
+
+      const value = { roles: side === "value" ? accessor : ["admin"] };
+      const filter = { roles: side === "filter" ? accessor : ["admin"] };
+      expectUnbounded(() => dataContainsFilter(value, filter));
+      expect(invoked).toBe(0);
+    }
+  );
 
   it("fails closed on an 8k nest in under 50ms instead of RangeError", () => {
     const nest = nestObj(8_000);

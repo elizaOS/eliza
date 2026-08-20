@@ -44,10 +44,30 @@ function ownEnumerableDataEntries(value: object): Array<[string, unknown]> {
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== "string") continue;
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (!descriptor?.enumerable || !("value" in descriptor)) continue;
+    if (!descriptor?.enumerable) continue;
+    if (!("value" in descriptor)) {
+      failUnbounded({ accessor: true, side: "filter" });
+    }
     entries.push([key, descriptor.value]);
   }
   return entries;
+}
+
+function ownDataValue(value: object, key: string, side: "filter" | "value"): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (!descriptor) return undefined;
+  if (!("value" in descriptor)) {
+    failUnbounded({ accessor: true, side });
+  }
+  return descriptor.value;
+}
+
+function arrayLength(value: unknown[], side: "filter" | "value"): number {
+  const length = ownDataValue(value, "length", side);
+  if (!Number.isSafeInteger(length) || (length as number) < 0) {
+    failUnbounded({ arrayLength: true, side });
+  }
+  return length as number;
 }
 
 function enter(value: object, set: "visitingValues" | "visitingFilters", ctx: WalkContext): void {
@@ -88,9 +108,7 @@ function dataContainsFilterInner(
     const expectedEntries = ownEnumerableDataEntries(filter);
     reserve(ctx, expectedEntries.length);
     for (const [key, expected] of expectedEntries) {
-      const actualDescriptor = Object.getOwnPropertyDescriptor(value, key);
-      const actual =
-        actualDescriptor && "value" in actualDescriptor ? actualDescriptor.value : undefined;
+      const actual = ownDataValue(value, key, "value");
 
       if (isPlainObject(expected)) {
         if (!dataContainsFilterInner(actual, expected, depth + 1, ctx, true)) {
@@ -101,14 +119,27 @@ function dataContainsFilterInner(
 
       if (Array.isArray(expected)) {
         if (!Array.isArray(actual)) return false;
-        reserve(ctx, expected.length + actual.length);
-        for (let expectedIndex = 0; expectedIndex < expected.length; expectedIndex += 1) {
-          if (!(expectedIndex in expected)) continue;
-          const expectedItem = expected[expectedIndex];
+        const expectedLength = arrayLength(expected, "filter");
+        const actualLength = arrayLength(actual, "value");
+        reserve(ctx, expectedLength + actualLength);
+        for (let expectedIndex = 0; expectedIndex < expectedLength; expectedIndex += 1) {
+          const expectedDescriptor = Object.getOwnPropertyDescriptor(
+            expected,
+            String(expectedIndex)
+          );
+          if (!expectedDescriptor) continue;
+          if (!("value" in expectedDescriptor)) {
+            failUnbounded({ accessor: true, side: "filter" });
+          }
+          const expectedItem = expectedDescriptor.value;
           let found = false;
-          for (let actualIndex = 0; actualIndex < actual.length; actualIndex += 1) {
-            if (!(actualIndex in actual)) continue;
-            const actualItem = actual[actualIndex];
+          for (let actualIndex = 0; actualIndex < actualLength; actualIndex += 1) {
+            const actualDescriptor = Object.getOwnPropertyDescriptor(actual, String(actualIndex));
+            if (!actualDescriptor) continue;
+            if (!("value" in actualDescriptor)) {
+              failUnbounded({ accessor: true, side: "value" });
+            }
+            const actualItem = actualDescriptor.value;
             const matched = isPlainObject(expectedItem)
               ? dataContainsFilterInner(actualItem, expectedItem, depth + 1, ctx, true)
               : actualItem === expectedItem;

@@ -122,4 +122,23 @@ describe("plugin-inmemorydb queryEntities", () => {
       })
     ).rejects.toThrow(`queryEntities ${field} must be a non-negative safe integer`);
   });
+
+  it("fails closed on accessor-bearing component filters before returning entities", async () => {
+    let invoked = 0;
+    const filter = Object.defineProperty({}, "role", {
+      enumerable: true,
+      get() {
+        invoked += 1;
+        return "admin";
+      },
+    });
+
+    await expect(
+      adapter.queryEntities({
+        entityIds: [entityOne, entityTwo],
+        componentDataFilter: filter,
+      })
+    ).rejects.toMatchObject({ code: "INMEMORY_FILTER_UNBOUNDED" });
+    expect(invoked).toBe(0);
+  });
 });
