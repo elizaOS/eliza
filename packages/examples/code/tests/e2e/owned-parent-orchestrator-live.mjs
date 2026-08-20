@@ -120,6 +120,7 @@ const scenarios = [
   {
     id: "parallel_action_alpha",
     dispatch: "parent_action",
+    explicitTaskRoom: true,
     expected: "PARALLEL_ALPHA_OK",
     source: 'export const marker = "parallel-alpha";\n',
     test: [
@@ -431,6 +432,9 @@ try {
     let parentError;
     let parentTurnSettled = true;
     let session;
+    const expectedTaskRoomId = scenario.explicitTaskRoom
+      ? room.elizaRoomId
+      : undefined;
 
     if (scenario.dispatch === "parent_planner") {
       const existing = new Set(
@@ -512,6 +516,9 @@ try {
                   lockWorkdir: true,
                   requestedBackend: "elizaos",
                   label: scenario.id,
+                  ...(expectedTaskRoomId
+                    ? { taskRoomId: expectedTaskRoomId }
+                    : {}),
                 },
               },
               async () => [],
@@ -549,6 +556,7 @@ try {
       parentResponse,
       parentError,
       parentTurnSettled,
+      expectedTaskRoomId,
       session,
       sessionId: sessionIdentifier(session),
     };
@@ -563,6 +571,7 @@ try {
       parentResponse,
       parentError,
       parentTurnSettled,
+      expectedTaskRoomId,
       session,
       sessionId,
     } = dispatch;
@@ -673,6 +682,7 @@ try {
         run.exitCode === 0 &&
         Boolean(task?.id) &&
         Boolean(trajectoryArtifact) &&
+        (!expectedTaskRoomId || task.taskRoomId === expectedTaskRoomId) &&
         realpathSync(session.workdir) === workdir,
       parent: {
         dispatchedAt,
@@ -701,6 +711,8 @@ try {
       durableTask: detail,
       verification: {
         workspaceUnchanged: before === after,
+        durableTaskRoomMatched:
+          !expectedTaskRoomId || task.taskRoomId === expectedTaskRoomId,
         independentTestExitCode: run.exitCode,
         independentTestStdout: run.stdout,
         independentTestStderr: run.stderr,
