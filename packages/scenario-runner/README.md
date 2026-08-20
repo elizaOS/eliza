@@ -280,26 +280,11 @@ left elsewhere is useful for private diagnostics but does not satisfy the
 repository's bundle-first issue or PR evidence requirement.
 
 Once every canary has an independently verified artifact, create the release
-catalog with a closed `eliza.provider-qualification-catalog-config.v1` file:
+catalog with a closed `eliza.provider-qualification-catalog-config.v2` file:
 
 ```json
 {
-  "schema": "eliza.provider-qualification-catalog-config.v1",
-  "expectedScenarioIds": [
-    "provider.bluebubbles-imessage.confirmed-send",
-    "provider.discord.confirmed-send",
-    "provider.duffel-travel.booking",
-    "provider.gmail.confirmed-send",
-    "provider.google-calendar.create",
-    "provider.google-sheets.create",
-    "provider.signal.confirmed-send",
-    "provider.slack.confirmed-send",
-    "provider.telegram.confirmed-send",
-    "provider.twilio-sms.confirmed-send",
-    "provider.twilio-voice.confirmed-call",
-    "provider.whatsapp.confirmed-send",
-    "provider.x-dm.confirmed-send"
-  ],
+  "schema": "eliza.provider-qualification-catalog-config.v2",
   "expectedRepositorySha": "0123456789abcdef0123456789abcdef01234567",
   "artifactFiles": [
     "bluebubbles/qualification.json",
@@ -325,10 +310,12 @@ bun run --cwd packages/scenario-runner provider-qualification -- \
   catalog /absolute/path/to/catalog-config.json
 ```
 
-List all 13 authored canary IDs and all 13 artifact files in the real config.
-The catalog command rejects missing or extra IDs, modified artifact digests,
-unqualified decisions, repository drift, and mixed deployments before writing
-`catalog.json` and the PR/issue-ready `catalog.md`.
+List all 13 artifact files in canonical scenario order in the real config. The
+catalog command compares their signed scenario IDs to the repository-owned
+`PROVIDER_CANARY_SCENARIO_IDS` inventory; callers cannot redefine completeness.
+It rejects missing, extra, reordered, or substituted scenarios, modified
+artifact digests, unqualified decisions, repository drift, and mixed
+deployments before writing `catalog.json` and the PR/issue-ready `catalog.md`.
 
 ## Evidence scopes
 

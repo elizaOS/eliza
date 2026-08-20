@@ -1,5 +1,6 @@
 /** Public provider-evidence contracts for out-of-process scenario controllers and release verifiers. */
 
+export * from "./canary-catalog.ts";
 export * from "./canary-controller.ts";
 export * from "./manifest.ts";
 export * from "./operation-binding.ts";

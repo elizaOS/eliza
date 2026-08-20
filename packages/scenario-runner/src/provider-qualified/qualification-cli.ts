@@ -11,6 +11,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadScenarioFile } from "../loader.ts";
 import type { ScenarioReport } from "../types.ts";
+import { PROVIDER_CANARY_SCENARIO_IDS } from "./canary-catalog.ts";
 import {
   PROVIDER_OPERATION_KINDS,
   type ProviderOperationKind,
@@ -38,7 +39,7 @@ import { verifyScenarioTrajectories } from "./trajectory-verifier.ts";
 export const PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA =
   "eliza.provider-qualification-verify-config.v2" as const;
 export const PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA =
-  "eliza.provider-qualification-catalog-config.v1" as const;
+  "eliza.provider-qualification-catalog-config.v2" as const;
 
 export interface ProviderQualificationVerifyConfig {
   schema: typeof PROVIDER_QUALIFICATION_VERIFY_CONFIG_SCHEMA;
@@ -64,7 +65,6 @@ export interface ProviderQualificationVerifyConfig {
 
 export interface ProviderQualificationCatalogConfig {
   schema: typeof PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA;
-  expectedScenarioIds: readonly [string, ...string[]];
   expectedRepositorySha: string;
   artifactFiles: readonly [string, ...string[]];
   outputDir: string;
@@ -232,7 +232,6 @@ export function parseProviderQualificationCatalogConfig(
   const input = record(value, "catalog config");
   const expected = [
     "schema",
-    "expectedScenarioIds",
     "expectedRepositorySha",
     "artifactFiles",
     "outputDir",
@@ -256,14 +255,19 @@ export function parseProviderQualificationCatalogConfig(
       "expectedRepositorySha must be a lowercase 40-character Git SHA",
     );
   }
+  const artifactFiles = stringArray(input.artifactFiles, "artifactFiles");
+  if (
+    artifactFiles.length !== PROVIDER_CANARY_SCENARIO_IDS.length ||
+    new Set(artifactFiles).size !== artifactFiles.length
+  ) {
+    throw new Error(
+      `artifactFiles must contain exactly ${PROVIDER_CANARY_SCENARIO_IDS.length} unique provider qualification files`,
+    );
+  }
   return {
     schema: PROVIDER_QUALIFICATION_CATALOG_CONFIG_SCHEMA,
-    expectedScenarioIds: stringArray(
-      input.expectedScenarioIds,
-      "expectedScenarioIds",
-    ),
     expectedRepositorySha: repositorySha,
-    artifactFiles: stringArray(input.artifactFiles, "artifactFiles"),
+    artifactFiles,
     outputDir: requiredString(input.outputDir, "outputDir"),
   };
 }
@@ -491,7 +495,6 @@ export function verifyProviderQualificationCatalogFromConfig(
     artifacts: config.artifactFiles.map((file) =>
       readJson(resolveFrom(baseDir, file), "qualification artifact"),
     ),
-    expectedScenarioIds: config.expectedScenarioIds,
     expectedRepositorySha: config.expectedRepositorySha,
     createdAtIso: now.toISOString(),
   });

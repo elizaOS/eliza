@@ -1,6 +1,7 @@
 /** Verifies release catalogs fail closed on missing, extra, stale, or mixed-deployment provider evidence. */
 
 import { describe, expect, it } from "vitest";
+import { PROVIDER_CANARY_SCENARIO_IDS } from "./canary-catalog.ts";
 import { canonicalSha256 } from "./manifest.ts";
 import {
   PROVIDER_QUALIFICATION_ARTIFACT_SCHEMA,
@@ -56,39 +57,63 @@ function artifact(
   } as unknown as ProviderQualificationArtifact;
 }
 
+function canonicalArtifacts(): ProviderQualificationArtifact[] {
+  return PROVIDER_CANARY_SCENARIO_IDS.map((scenarioId) => artifact(scenarioId));
+}
+
 describe("provider qualification catalog", () => {
-  it("renders an exact single-revision catalog", () => {
+  it("renders the repository-owned 13-scenario catalog", () => {
     const catalog = assembleProviderQualificationCatalog({
-      artifacts: [artifact("provider.two"), artifact("provider.one")],
-      expectedScenarioIds: ["provider.one", "provider.two"],
+      artifacts: canonicalArtifacts(),
       expectedRepositorySha: REPOSITORY_SHA,
       createdAtIso: "2026-08-19T00:01:00.000Z",
     });
-    expect(catalog.artifacts.map((entry) => entry.scenarioId)).toEqual([
-      "provider.one",
-      "provider.two",
-    ]);
+    expect(catalog.artifacts.map((entry) => entry.scenarioId)).toEqual(
+      PROVIDER_CANARY_SCENARIO_IDS,
+    );
     expect(renderProviderQualificationCatalogMarkdown(catalog)).toContain(
-      "All **2** provider canaries qualified",
+      "All **13** provider canaries qualified",
     );
   });
 
-  it("rejects missing inventory and mixed deployments", () => {
+  it("rejects missing, extra, reordered, and substituted inventory", () => {
+    const canonical = canonicalArtifacts();
     expect(() =>
       assembleProviderQualificationCatalog({
-        artifacts: [artifact("provider.one")],
-        expectedScenarioIds: ["provider.one", "provider.two"],
+        artifacts: canonical.slice(0, -1),
         expectedRepositorySha: REPOSITORY_SHA,
         createdAtIso: "2026-08-19T00:01:00.000Z",
       }),
-    ).toThrow(/inventory mismatch/);
+    ).toThrow(/canonical 13-scenario inventory/);
     expect(() =>
       assembleProviderQualificationCatalog({
-        artifacts: [
-          artifact("provider.one"),
-          artifact("provider.two", "d".repeat(64)),
-        ],
-        expectedScenarioIds: ["provider.one", "provider.two"],
+        artifacts: [...canonical, artifact("provider.extra")],
+        expectedRepositorySha: REPOSITORY_SHA,
+        createdAtIso: "2026-08-19T00:01:00.000Z",
+      }),
+    ).toThrow(/canonical 13-scenario inventory/);
+    expect(() =>
+      assembleProviderQualificationCatalog({
+        artifacts: [canonical[1], canonical[0], ...canonical.slice(2)],
+        expectedRepositorySha: REPOSITORY_SHA,
+        createdAtIso: "2026-08-19T00:01:00.000Z",
+      }),
+    ).toThrow(/canonical 13-scenario inventory/);
+    expect(() =>
+      assembleProviderQualificationCatalog({
+        artifacts: [artifact("provider.substitute"), ...canonical.slice(1)],
+        expectedRepositorySha: REPOSITORY_SHA,
+        createdAtIso: "2026-08-19T00:01:00.000Z",
+      }),
+    ).toThrow(/canonical 13-scenario inventory/);
+  });
+
+  it("rejects mixed deployments", () => {
+    const mixed = canonicalArtifacts();
+    mixed[1] = artifact(mixed[1]?.scenarioId ?? "", "d".repeat(64));
+    expect(() =>
+      assembleProviderQualificationCatalog({
+        artifacts: mixed,
         expectedRepositorySha: REPOSITORY_SHA,
         createdAtIso: "2026-08-19T00:01:00.000Z",
       }),
@@ -96,12 +121,13 @@ describe("provider qualification catalog", () => {
   });
 
   it("rejects a modified artifact digest", () => {
-    const forged = artifact("provider.one");
+    const artifacts = canonicalArtifacts();
+    const forged = artifacts[0];
+    if (!forged) throw new Error("canonical provider inventory is empty");
     forged.runId = "forged-run";
     expect(() =>
       assembleProviderQualificationCatalog({
-        artifacts: [forged],
-        expectedScenarioIds: ["provider.one"],
+        artifacts,
         expectedRepositorySha: REPOSITORY_SHA,
         createdAtIso: "2026-08-19T00:01:00.000Z",
       }),

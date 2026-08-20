@@ -4,6 +4,7 @@
  * revision before producing a publication summary.
  */
 
+import { PROVIDER_CANARY_SCENARIO_IDS } from "./canary-catalog.ts";
 import { canonicalJsonValue, canonicalSha256 } from "./manifest.ts";
 import { validateProviderQualificationArtifact } from "./qualification-artifact.ts";
 
@@ -28,30 +29,15 @@ export interface ProviderQualificationCatalog {
 
 export function assembleProviderQualificationCatalog(input: {
   artifacts: readonly unknown[];
-  expectedScenarioIds: readonly string[];
   expectedRepositorySha: string;
   createdAtIso: string;
 }): ProviderQualificationCatalog {
-  const expected = [...input.expectedScenarioIds].sort();
-  if (
-    expected.length === 0 ||
-    new Set(expected).size !== expected.length ||
-    expected.some((id) => id.trim() === "")
-  ) {
-    throw new Error(
-      "expected provider scenario IDs must be non-empty and unique",
-    );
-  }
-  const artifacts = input.artifacts
-    .map(validateProviderQualificationArtifact)
-    .sort((left, right) => left.scenarioId.localeCompare(right.scenarioId));
+  const expected = PROVIDER_CANARY_SCENARIO_IDS;
+  const artifacts = input.artifacts.map(validateProviderQualificationArtifact);
   const actual = artifacts.map((artifact) => artifact.scenarioId);
-  if (
-    new Set(actual).size !== actual.length ||
-    actual.join("\n") !== expected.join("\n")
-  ) {
+  if (actual.join("\n") !== expected.join("\n")) {
     throw new Error(
-      `provider qualification catalog inventory mismatch (expected=${expected.join(",")}; actual=${actual.join(",")})`,
+      `provider qualification catalog must contain the canonical ${expected.length}-scenario inventory in repository order (expected=${expected.join(",")}; actual=${actual.join(",")})`,
     );
   }
   if (
