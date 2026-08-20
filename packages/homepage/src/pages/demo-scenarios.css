@@ -218,47 +218,9 @@
   color: #0064d9;
 }
 
-.demo-review-plan-card {
-  display: grid;
-  gap: 0.16rem;
+.demo-review-card-preview {
   width: min(100%, 22rem);
   margin-top: 0.35rem;
-  padding: 0.75rem;
-  border-radius: 0.85rem;
-  background: #f2f2f7;
-}
-
-.demo-review-plan-card small {
-  color: #6e6e73;
-  font-size: 0.66rem;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.demo-review-plan-card > strong {
-  font-size: 0.88rem;
-}
-
-.demo-review-plan-card ul {
-  margin: 0.15rem 0;
-  padding: 0;
-  color: #5f5f64;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  list-style: none;
-}
-
-.demo-review-plan-source,
-.demo-review-plan-status {
-  color: #76767c;
-  font-size: 0.7rem;
-  font-style: normal;
-}
-
-.demo-review-plan-status {
-  color: #0064d9;
-  font-weight: 600;
 }
 
 @media (max-width: 850px) {

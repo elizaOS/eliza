@@ -20,6 +20,8 @@ test("shows all five rooms, 24 beats each, with distinct casts", async ({
   for (const room of await rooms.all()) {
     await expect(room.locator("[data-demo-review-step]")).toHaveCount(24);
   }
+  await expect(page.locator(".landing-demo-card")).toHaveCount(20);
+  await expect(page.locator(".demo-review-plan-card")).toHaveCount(0);
 
   const castSources = await page
     .locator(".demo-review-cast img:not([src*='logo_white_orangebg'])")

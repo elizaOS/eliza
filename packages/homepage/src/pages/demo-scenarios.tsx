@@ -1,4 +1,6 @@
 /** Development-only board for reviewing every landing demo room at once. */
+
+import { LandingDemoCardBubble } from "@/components/landing-demo-card";
 import {
   LANDING_DEMO_MEMBER_AVATARS,
   LANDING_DEMO_SCENARIOS,
@@ -69,22 +71,8 @@ function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
           ) : null}
         </div>
         {step.kind === "card" ? (
-          <div className="demo-review-plan-card">
-            <small>{step.card.label}</small>
-            <strong>{step.card.title}</strong>
-            <ul>
-              {step.card.rows.map((row) => (
-                <li key={row}>{row}</li>
-              ))}
-            </ul>
-            {step.card.source ? (
-              <span className="demo-review-plan-source">
-                {step.card.source.label}
-              </span>
-            ) : null}
-            {step.card.status ? (
-              <em className="demo-review-plan-status">{step.card.status}</em>
-            ) : null}
+          <div className="landing-bubble-card demo-review-card-preview">
+            <LandingDemoCardBubble card={step.card} />
           </div>
         ) : (
           <p>{step.text}</p>

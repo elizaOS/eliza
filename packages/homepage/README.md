@@ -82,6 +82,9 @@ example, the Trip room is available at
 
 The board and the animated desktop/mobile homepage both import
 `src/lib/landing-demo.ts`; never duplicate scenario copy in the review page.
+Recap embeds also use the shared `src/components/landing-demo-card.tsx`
+renderer and the production card classes, so UI changes appear one-to-one in
+the board and phone.
 Edit that shared file, then run:
 
 ```bash
