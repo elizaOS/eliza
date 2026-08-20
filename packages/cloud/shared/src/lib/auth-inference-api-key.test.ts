@@ -7,9 +7,9 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
 
 let apiKeyRecord: Record<string, unknown> | null;
+let replicaApiKeyRecord: Record<string, unknown> | null;
 let userRecord: Record<string, unknown> | undefined;
 let repositoryError: Error | null;
-let replicaMiss: boolean;
 const validationCalls: string[] = [];
 const serviceUserLookups: string[] = [];
 const repositoryKeyLookups: string[] = [];
@@ -21,11 +21,11 @@ mock.module("../db/repositories/api-keys", () => ({
   apiKeysRepository: {
     findActiveByHash: async (keyHash: string) => {
       repositoryKeyLookups.push(keyHash);
-      if (repositoryError) throw repositoryError;
-      return replicaMiss ? undefined : apiKeyRecord;
+      return replicaApiKeyRecord;
     },
     findActiveByHashConsistent: async (keyHash: string) => {
       consistentKeyLookups.push(keyHash);
+      if (repositoryError) throw repositoryError;
       return apiKeyRecord;
     },
   },
@@ -81,8 +81,8 @@ beforeEach(() => {
     is_active: true,
     organization: activeOrganization,
   };
+  replicaApiKeyRecord = apiKeyRecord;
   repositoryError = null;
-  replicaMiss = false;
   validationCalls.length = 0;
   serviceUserLookups.length = 0;
   repositoryKeyLookups.length = 0;
@@ -160,26 +160,27 @@ describe("requireInferenceApiKeyWithOrg", () => {
     const keyHash = createHash("sha256").update("eliza_valid").digest("hex");
     expect(validationCalls).toEqual([]);
     expect(serviceUserLookups).toEqual([]);
-    expect(repositoryKeyLookups).toEqual([keyHash]);
-    expect(consistentKeyLookups).toEqual([]);
+    expect(repositoryKeyLookups).toEqual([]);
+    expect(consistentKeyLookups).toEqual([keyHash]);
     expect(repositoryUserLookups).toEqual(["user-1"]);
     expect(keyTimings).toHaveLength(1);
     expect(userTimings).toHaveLength(1);
     expect(usageCalls).toEqual(["key-1"]);
   });
 
-  test("cache bypass confirms a replica miss against the primary", async () => {
-    replicaMiss = true;
-    const result = await requireInferenceApiKeyWithOrg("eliza_valid", {
-      bypassCache: true,
-    });
+  test("cache bypass never trusts a replica-only active key", async () => {
+    apiKeyRecord = null;
+    await expect(
+      requireInferenceApiKeyWithOrg("eliza_valid", {
+        bypassCache: true,
+      }),
+    ).rejects.toMatchObject({ status: 401 });
     const keyHash = createHash("sha256").update("eliza_valid").digest("hex");
 
-    expect(result.user.id).toBe("user-1");
-    expect(repositoryKeyLookups).toEqual([keyHash]);
+    expect(repositoryKeyLookups).toEqual([]);
     expect(consistentKeyLookups).toEqual([keyHash]);
-    expect(repositoryUserLookups).toEqual(["user-1"]);
-    expect(usageCalls).toEqual(["key-1"]);
+    expect(repositoryUserLookups).toEqual([]);
+    expect(usageCalls).toEqual([]);
   });
 
   test("storage outage propagates and is not mislabeled as a credential rejection", async () => {

@@ -37,6 +37,13 @@ export class ApiKeysRepository {
     });
   }
 
+  /** Finds an API key by ID on the primary connection for lifecycle mutations. */
+  async findByIdConsistent(id: string): Promise<ApiKey | undefined> {
+    return await dbWrite.query.apiKeys.findFirst({
+      where: eq(apiKeys.id, id),
+    });
+  }
+
   /**
    * Finds an API key by its hash.
    */
@@ -51,7 +58,11 @@ export class ApiKeysRepository {
    */
   async findActiveByHash(hash: string): Promise<ApiKey | undefined> {
     const apiKey = await dbRead.query.apiKeys.findFirst({
-      where: and(eq(apiKeys.key_hash, hash), eq(apiKeys.is_active, true)),
+      where: and(
+        eq(apiKeys.key_hash, hash),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+      ),
     });
 
     if (!apiKey) {
@@ -69,13 +80,17 @@ export class ApiKeysRepository {
   /**
    * Finds an active API key by hash on the primary connection.
    *
-   * Use this only to confirm a read-intent miss before negative-caching auth.
-   * Newly-created keys must not be rejected just because a prior read path
-   * returned stale data.
+   * Credential validation uses this before caching a positive result. A
+   * read-intent replica can lag either creation or revocation, while the
+   * primary is the lifecycle authority for both transitions.
    */
   async findActiveByHashConsistent(hash: string): Promise<ApiKey | undefined> {
     const apiKey = await dbWrite.query.apiKeys.findFirst({
-      where: and(eq(apiKeys.key_hash, hash), eq(apiKeys.is_active, true)),
+      where: and(
+        eq(apiKeys.key_hash, hash),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+      ),
     });
 
     if (!apiKey) {
@@ -121,6 +136,18 @@ export class ApiKeysRepository {
     });
   }
 
+  /** Lists active matching keys on the primary before a bulk lifecycle mutation. */
+  async findActiveByUserAndNameConsistent(userId: string, name: string): Promise<ApiKey[]> {
+    return await dbWrite.query.apiKeys.findMany({
+      where: and(
+        eq(apiKeys.user_id, userId),
+        eq(apiKeys.name, name),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+      ),
+    });
+  }
+
   /**
    * Lists all API keys for a user. Used to fan-out inference auth-context cache
    * invalidation when a user is banned/deactivated (#9899) - the ban site only
@@ -129,6 +156,21 @@ export class ApiKeysRepository {
   async listByUser(userId: string): Promise<ApiKey[]> {
     return await dbRead.query.apiKeys.findMany({
       where: eq(apiKeys.user_id, userId),
+    });
+  }
+
+  /** Lists active keys for one user and organization on the primary. */
+  async listActiveByUserAndOrganizationConsistent(
+    userId: string,
+    organizationId: string,
+  ): Promise<ApiKey[]> {
+    return await dbWrite.query.apiKeys.findMany({
+      where: and(
+        eq(apiKeys.user_id, userId),
+        eq(apiKeys.organization_id, organizationId),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+      ),
     });
   }
 

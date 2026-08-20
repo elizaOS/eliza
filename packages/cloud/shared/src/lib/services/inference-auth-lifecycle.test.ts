@@ -41,6 +41,14 @@ mock.module("./inference-auth-cache", () => ({
   },
 }));
 
+mock.module("./api-keys", () => ({
+  apiKeysService: {
+    deactivateByUserAndOrganization: async (userId: string, orgId: string) => {
+      lifecycleEvents.push(`api-keys-deactivate:${userId}:${orgId}`);
+    },
+  },
+}));
+
 mock.module("./inference-credential-revocation", () => ({
   setInferenceSessionBindingActive: async (
     orgId: string,
