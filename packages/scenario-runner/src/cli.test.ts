@@ -29,6 +29,7 @@ import {
   writeReport as writeReportToDisk,
   writeScenarioRunViewer as writeScenarioRunViewerToDisk,
 } from "./reporter.ts";
+import { scenarioLiveProviderPreflightProblems } from "./runtime-factory.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
 const ENV_KEYS = [
@@ -38,6 +39,9 @@ const ENV_KEYS = [
   "ELIZA_LIFEOPS_RUN_ID",
   "ELIZA_LIFEOPS_SCENARIO_ID",
   "LIFEOPS_LIVE_JUDGE_MIN_SCORE",
+  "OPENAI_API_KEY",
+  "CEREBRAS_API_KEY",
+  "SCENARIO_JUDGE_REQUIRE_INDEPENDENT",
   "SKIP_REASON",
 ] as const;
 const DETERMINISTIC_PROVIDER_NAME = "deterministic-model-provider" as const;
@@ -219,6 +223,7 @@ function createDependencies(
   return {
     availableProviderNames: vi.fn(() => ["unit-test"]),
     shouldUseDeterministicModel: vi.fn(() => true),
+    scenarioLiveProviderPreflightProblems: vi.fn(() => []),
     createScenarioRuntime: vi.fn(async () => ({
       runtime: {} as never,
       pgliteDir: tmpdir(),
@@ -359,6 +364,58 @@ describe("scenario-runner CLI", () => {
     expect(stderr).toContain(
       "cannot be combined with deterministic model mode",
     );
+    expect(createScenarioRuntime).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [undefined, "missing"],
+    ["   ", "blank"],
+  ] as const)(
+    "fails before runtime construction when the requested provider credential is %s",
+    async (openaiKey) => {
+      writeScenario(tempDir, "provider-exact-key", { lane: "live-only" });
+      const createScenarioRuntime = vi.fn();
+      process.env.CEREBRAS_API_KEY = "judge-key";
+      process.env.SCENARIO_JUDGE_REQUIRE_INDEPENDENT = "1";
+      if (openaiKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = openaiKey;
+
+      await expect(
+        runCli(
+          ["run", tempDir, "--provider", "openai"],
+          createDependencies(() => "passed", {
+            availableProviderNames: vi.fn(() => ["openai"]),
+            shouldUseDeterministicModel: vi.fn(() => false),
+            scenarioLiveProviderPreflightProblems,
+            createScenarioRuntime,
+          }),
+        ),
+      ).resolves.toBe(2);
+      expect(stderr).toContain("--provider openai requires OPENAI_API_KEY");
+      expect(createScenarioRuntime).not.toHaveBeenCalled();
+    },
+  );
+
+  it("fails before runtime construction when acting and judge identities match", async () => {
+    writeScenario(tempDir, "provider-independent-judge", {
+      lane: "live-only",
+    });
+    const createScenarioRuntime = vi.fn();
+
+    await expect(
+      runCli(
+        ["run", tempDir, "--provider", "openai"],
+        createDependencies(() => "passed", {
+          availableProviderNames: vi.fn(() => ["openai"]),
+          shouldUseDeterministicModel: vi.fn(() => false),
+          scenarioLiveProviderPreflightProblems: vi.fn(() => [
+            "acting provider cerebras cannot also be the independent judge provider",
+          ]),
+          createScenarioRuntime,
+        }),
+      ),
+    ).resolves.toBe(2);
+    expect(stderr).toContain("cannot also be the independent judge provider");
     expect(createScenarioRuntime).not.toHaveBeenCalled();
   });
 

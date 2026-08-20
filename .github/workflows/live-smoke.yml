@@ -63,6 +63,32 @@ jobs:
         with:
           submodules: false
 
+      - name: Require exact live information credentials
+        if: inputs.suite == 'live-information'
+        shell: bash
+        env:
+          PLANNER_PROVIDER: ${{ inputs.planner_provider }}
+        run: |
+          set -euo pipefail
+          case "$PLANNER_PROVIDER" in
+            openai) planner_key="${OPENAI_API_KEY:-}" ;;
+            anthropic) planner_key="${ANTHROPIC_API_KEY:-}" ;;
+            openrouter) planner_key="${OPENROUTER_API_KEY:-}" ;;
+            *) echo "::error::Unsupported live-information planner provider."; exit 1 ;;
+          esac
+          planner_key_without_whitespace="${planner_key//[[:space:]]/}"
+          judge_key="${EVAL_CEREBRAS_API_KEY:-${CEREBRAS_API_KEY:-}}"
+          judge_key_without_whitespace="${judge_key//[[:space:]]/}"
+          if [[ -z "$planner_key_without_whitespace" ]]; then
+            echo "::error::The selected live-information planner credential is missing or blank; compatible provider keys cannot substitute for it."
+            exit 1
+          fi
+          if [[ -z "$judge_key_without_whitespace" ]]; then
+            echo "::error::The independent Cerebras judge credential is missing or blank."
+            exit 1
+          fi
+          unset planner_key planner_key_without_whitespace judge_key judge_key_without_whitespace
+
       - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: "1.3.14"

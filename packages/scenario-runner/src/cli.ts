@@ -182,7 +182,9 @@ type LiveProviderModule = {
 };
 type ScenarioRuntimeFactoryModule = Pick<
   typeof import("./runtime-factory.ts"),
-  "createScenarioRuntime" | "shouldUseDeterministicModel"
+  | "createScenarioRuntime"
+  | "scenarioLiveProviderPreflightProblems"
+  | "shouldUseDeterministicModel"
 >;
 
 export interface ParsedArgs {
@@ -221,6 +223,7 @@ export interface CliDependencies {
   writeReportBundle: ReporterModule["writeReportBundle"];
   writeScenarioRunViewer: ReporterModule["writeScenarioRunViewer"];
   createScenarioRuntime: ScenarioRuntimeFactoryModule["createScenarioRuntime"];
+  scenarioLiveProviderPreflightProblems: ScenarioRuntimeFactoryModule["scenarioLiveProviderPreflightProblems"];
   shouldUseDeterministicModel: ScenarioRuntimeFactoryModule["shouldUseDeterministicModel"];
   exportScenarioNativeJsonl: NativeExportModule["exportScenarioNativeJsonl"];
 }
@@ -483,7 +486,11 @@ async function loadCliDependencies(): Promise<CliDependencies> {
       writeReportBundle,
       writeScenarioRunViewer,
     },
-    { createScenarioRuntime, shouldUseDeterministicModel },
+    {
+      createScenarioRuntime,
+      scenarioLiveProviderPreflightProblems,
+      shouldUseDeterministicModel,
+    },
     { exportScenarioNativeJsonl },
     // Keep out-of-root imports behind widened specifiers so TypeScript does not
     // pull those modules into this package's rootDir validation graph.
@@ -509,6 +516,7 @@ async function loadCliDependencies(): Promise<CliDependencies> {
     writeReportBundle,
     writeScenarioRunViewer,
     createScenarioRuntime,
+    scenarioLiveProviderPreflightProblems,
     shouldUseDeterministicModel,
     exportScenarioNativeJsonl,
   };
@@ -573,6 +581,7 @@ export async function runCli(
     writeReportBundle,
     writeScenarioRunViewer,
     createScenarioRuntime,
+    scenarioLiveProviderPreflightProblems,
     shouldUseDeterministicModel,
     exportScenarioNativeJsonl,
   } = dependencies ?? (await loadCliDependencies());
@@ -584,6 +593,17 @@ export async function runCli(
       `[eliza-scenarios] --provider ${parsed.provider} cannot be combined with deterministic model mode.\n`,
     );
     return 2;
+  }
+  if (!deterministicModelEnabled) {
+    const preflightProblems = scenarioLiveProviderPreflightProblems(
+      parsed.provider,
+    );
+    if (preflightProblems.length > 0) {
+      process.stderr.write(
+        `[eliza-scenarios] live provider preflight failed: ${preflightProblems.join("; ")}\n`,
+      );
+      return 2;
+    }
   }
   if (parsed.provider && !configuredProviders.includes(parsed.provider)) {
     process.stderr.write(
