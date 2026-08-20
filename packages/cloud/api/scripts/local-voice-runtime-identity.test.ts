@@ -232,6 +232,63 @@ describe("local voice runtime identity", () => {
     ).rejects.toThrow("canonical lowercase UUID");
   });
 
+  test.each([
+    "2026-08-19T20:00:00Z",
+    "2026-08-19T13:00:00.000-07:00",
+    "Wed, 19 Aug 2026 20:00:00 GMT",
+  ])("rejects a noncanonical live timestamp: %s", async (updatedAt) => {
+    const { fetchImpl } = runtimeFetch({
+      conversations: [{ id: CONVERSATION_ID, updatedAt }],
+    });
+    await expect(
+      resolveLocalVoiceRuntimeIdentity({
+        runtimeOrigin: "http://127.0.0.1:31337",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("canonical ISO timestamp");
+  });
+
+  test("rejects an oversized runtime response while reading its stream", async () => {
+    const fetchImpl = (async () =>
+      new Response(
+        `{"padding":"${"x".repeat(1024 * 1024)}"}`,
+      )) as unknown as typeof fetch;
+    await expect(
+      resolveLocalVoiceRuntimeIdentity({
+        runtimeOrigin: "http://127.0.0.1:31337",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("response size limit");
+  });
+
+  test("rejects runtime record sets above their bounded ceilings", async () => {
+    const tooManyAgents = runtimeFetch({
+      agents: [
+        { id: AGENT_ID, status: "running" },
+        { id: OTHER_AGENT_ID, status: "running" },
+      ],
+    });
+    await expect(
+      resolveLocalVoiceRuntimeIdentity({
+        runtimeOrigin: "http://127.0.0.1:31337",
+        fetchImpl: tooManyAgents.fetchImpl,
+      }),
+    ).rejects.toThrow("agents response exceeds the record limit");
+
+    const tooManyConversations = runtimeFetch({
+      conversations: Array.from({ length: 501 }, (_, index) => ({
+        id: `${index.toString(16).padStart(8, "0")}-c333-4333-8333-c33333333333`,
+        updatedAt: "2026-08-19T20:00:00.000Z",
+      })),
+    });
+    await expect(
+      resolveLocalVoiceRuntimeIdentity({
+        runtimeOrigin: "http://127.0.0.1:31337",
+        fetchImpl: tooManyConversations.fetchImpl,
+      }),
+    ).rejects.toThrow("conversations response exceeds the record limit");
+  });
+
   test("refuses a loopback redirect without contacting its target", async () => {
     let targetRequests = 0;
     const target = Bun.serve({

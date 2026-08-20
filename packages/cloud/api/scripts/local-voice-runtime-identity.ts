@@ -9,6 +9,9 @@
 const CANONICAL_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const MAX_RUNTIME_RESPONSE_BYTES = 1024 * 1024;
+const MAX_RUNTIME_AGENT_RECORDS = 1;
+const MAX_RUNTIME_CONVERSATION_RECORDS = 500;
 
 type FetchLike = (
   input: RequestInfo | URL,
@@ -22,7 +25,7 @@ interface RuntimeAgent {
 
 interface RuntimeConversation {
   id: string;
-  updatedAt: string;
+  updatedAtEpochMs: number;
   agentId?: string;
 }
 
@@ -156,8 +159,20 @@ async function fetchJson(
       `${label} returned HTTP ${response.status}`,
     );
   }
+  let rawBody: string;
   try {
-    return await response.json();
+    rawBody = await readBoundedResponseBody(label, response);
+  } catch (error) {
+    if (error instanceof LocalVoiceRuntimeIdentityError) throw error;
+    // error-policy:J2 Response stream failures retain their transport cause
+    // and cannot become a partially parsed runtime identity document.
+    throw new LocalVoiceRuntimeIdentityError(
+      `${label} response body could not be read`,
+      { cause: error },
+    );
+  }
+  try {
+    return JSON.parse(rawBody) as unknown;
   } catch (error) {
     // error-policy:J3 Runtime JSON is untrusted input and malformed responses
     // fail explicitly instead of becoming an empty healthy identity list.
@@ -165,6 +180,43 @@ async function fetchJson(
       cause: error,
     });
   }
+}
+
+async function readBoundedResponseBody(
+  label: string,
+  response: Response,
+): Promise<string> {
+  const declaredLength = response.headers.get("Content-Length");
+  if (declaredLength !== null) {
+    const parsedLength = Number(declaredLength);
+    if (
+      Number.isFinite(parsedLength) &&
+      parsedLength > MAX_RUNTIME_RESPONSE_BYTES
+    ) {
+      throw new LocalVoiceRuntimeIdentityError(
+        `${label} exceeded the response size limit`,
+      );
+    }
+  }
+
+  if (response.body === null) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let receivedBytes = 0;
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    receivedBytes += value.byteLength;
+    if (receivedBytes > MAX_RUNTIME_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new LocalVoiceRuntimeIdentityError(
+        `${label} exceeded the response size limit`,
+      );
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
 }
 
 function readRecord(label: string, value: unknown): Record<string, unknown> {
@@ -179,6 +231,11 @@ function readAgents(value: unknown): RuntimeAgent[] {
   if (!Array.isArray(body.agents)) {
     throw new LocalVoiceRuntimeIdentityError(
       "local agents response must include an agents array",
+    );
+  }
+  if (body.agents.length > MAX_RUNTIME_AGENT_RECORDS) {
+    throw new LocalVoiceRuntimeIdentityError(
+      "local agents response exceeds the record limit",
     );
   }
   return body.agents.map((value, index) => {
@@ -197,6 +254,11 @@ function readConversations(value: unknown): RuntimeConversation[] {
       "local conversations response must include a conversations array",
     );
   }
+  if (body.conversations.length > MAX_RUNTIME_CONVERSATION_RECORDS) {
+    throw new LocalVoiceRuntimeIdentityError(
+      "local conversations response exceeds the record limit",
+    );
+  }
   return body.conversations.map((value, index) => {
     const record = readRecord(`local conversation ${index}`, value);
     const agentId =
@@ -208,7 +270,7 @@ function readConversations(value: unknown): RuntimeConversation[] {
           );
     return {
       id: readCanonicalUuid(`local conversation ${index} id`, record.id),
-      updatedAt: readTimestamp(
+      updatedAtEpochMs: readCanonicalTimestamp(
         `local conversation ${index} updatedAt`,
         record.updatedAt,
       ),
@@ -265,7 +327,7 @@ function selectConversationId(
       (conversation) =>
         conversation.agentId === undefined || conversation.agentId === agentId,
     )
-    .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    .toSorted((left, right) => right.updatedAtEpochMs - left.updatedAtEpochMs);
   if (candidates.length === 0) {
     throw new LocalVoiceRuntimeIdentityError(
       "local runtime has no conversation for the running agent",
@@ -298,12 +360,16 @@ function readRequiredString(label: string, value: unknown): string {
   return value;
 }
 
-function readTimestamp(label: string, value: unknown): string {
+function readCanonicalTimestamp(label: string, value: unknown): number {
   const timestamp = readRequiredString(label, value);
-  if (!Number.isFinite(Date.parse(timestamp))) {
+  const epochMs = Date.parse(timestamp);
+  if (
+    !Number.isFinite(epochMs) ||
+    new Date(epochMs).toISOString() !== timestamp
+  ) {
     throw new LocalVoiceRuntimeIdentityError(
-      `${label} must be an ISO-compatible timestamp`,
+      `${label} must be a canonical ISO timestamp`,
     );
   }
-  return timestamp;
+  return epochMs;
 }

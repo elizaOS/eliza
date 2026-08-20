@@ -48,9 +48,14 @@ describe("local runtime conversation fetch", () => {
           "X-Eliza-Organization-Id": "org-a",
           "X-Eliza-User-Id": "user-a",
           "X-Eliza-Voice-Trace-Id": "trace-a",
+          "X-Eliza-Trace-Id": "trace-a",
+          Cookie: "session=cloud-secret",
+          "X-Future-Cloud-Secret": "must-not-cross-loopback",
         },
         body: JSON.stringify({
           text: "hello locally",
+          messageRole: "system",
+          clientMessageId: "twilio-call:CA123:started",
           metadata: {
             clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
           },
@@ -68,6 +73,8 @@ describe("local runtime conversation fetch", () => {
     expect(calls[0]?.init?.redirect).toBe("error");
     expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
       text: "hello locally",
+      messageRole: "system",
+      clientMessageId: "twilio-call:CA123:started",
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
       },
@@ -78,7 +85,10 @@ describe("local runtime conversation fetch", () => {
     expect(headers.has("X-Service-Key")).toBe(false);
     expect(headers.has("X-Eliza-Organization-Id")).toBe(false);
     expect(headers.has("X-Eliza-User-Id")).toBe(false);
+    expect(headers.has("Cookie")).toBe(false);
+    expect(headers.has("X-Future-Cloud-Secret")).toBe(false);
     expect(headers.get("X-Eliza-Voice-Trace-Id")).toBe("trace-a");
+    expect(headers.get("X-Eliza-Trace-Id")).toBe("trace-a");
     expect(headers.get("Accept")).toBe("text/event-stream");
   });
 
@@ -212,6 +222,43 @@ describe("local runtime conversation fetch", () => {
       }),
     ).rejects.toThrow(LocalRuntimeConversationFetchError);
   });
+
+  test.each([
+    { messageRole: "user" },
+    { messageRole: null },
+    { clientMessageId: "" },
+    { clientMessageId: " leading-space" },
+    { clientMessageId: "trailing-space " },
+    { clientMessageId: "x".repeat(129) },
+    { clientMessageId: 42 },
+  ])(
+    "rejects noncanonical lifecycle fields before downstream fetch",
+    async (field) => {
+      let calls = 0;
+      const bridge = createLocalRuntimeConversationFetch(
+        "http://127.0.0.1:31337",
+        SCOPE,
+        (async () => {
+          calls += 1;
+          return new Response();
+        }) as unknown as typeof fetch,
+      );
+      const url =
+        "https://cloud.example/api/v1/eliza/agents/agent-a/api/conversations/11111111-1111-4111-8111-111111111111/messages/stream";
+      await expect(
+        bridge(url, {
+          method: "POST",
+          body: JSON.stringify({
+            text: "opening lifecycle event",
+            ...field,
+            metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
+            streamProtocol: "delta-v2",
+          }),
+        }),
+      ).rejects.toBeInstanceOf(LocalRuntimeConversationFetchError);
+      expect(calls).toBe(0);
+    },
+  );
 
   test.each([
     "https://127.0.0.1:31337",

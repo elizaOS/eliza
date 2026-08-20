@@ -11,6 +11,11 @@ import { VOICE_STREAM_PROTOCOL } from "@/lib/voice-session/eliza-sse-bridge";
 const CLOUD_CONVERSATION_STREAM_PATH =
   /^\/api\/v1\/eliza\/agents\/([^/]+)\/api\/conversations\/([^/]+)\/messages\/stream$/;
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const MAX_CLIENT_MESSAGE_ID_LENGTH = 128;
+const FORWARDED_HEADER_NAMES = [
+  "X-Eliza-Voice-Trace-Id",
+  "X-Eliza-Trace-Id",
+] as const;
 
 export interface LocalRuntimeConversationScope {
   agentId: string;
@@ -74,11 +79,12 @@ export function createLocalRuntimeConversationFetch(
       origin,
     );
     const body = parseRequestBody(init?.body);
-    const headers = new Headers(init?.headers);
-    headers.delete("Authorization");
-    headers.delete("X-Service-Key");
-    headers.delete("X-Eliza-Organization-Id");
-    headers.delete("X-Eliza-User-Id");
+    const sourceHeaders = new Headers(init?.headers);
+    const headers = new Headers();
+    for (const name of FORWARDED_HEADER_NAMES) {
+      const value = sourceHeaders.get(name);
+      if (value !== null) headers.set(name, value);
+    }
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "text/event-stream");
 
@@ -132,6 +138,8 @@ function resolveRequestUrl(input: RequestInfo | URL): URL {
 
 function parseRequestBody(body: BodyInit | null | undefined): {
   text: string;
+  messageRole?: "system";
+  clientMessageId?: string;
   metadata: { clientTransport: typeof REALTIME_VOICE_CLIENT_TRANSPORT };
   streamProtocol: typeof VOICE_STREAM_PROTOCOL;
 } {
@@ -143,6 +151,8 @@ function parseRequestBody(body: BodyInit | null | undefined): {
   try {
     const parsed = JSON.parse(body) as {
       text?: unknown;
+      messageRole?: unknown;
+      clientMessageId?: unknown;
       metadata?: unknown;
       streamProtocol?: unknown;
     };
@@ -167,8 +177,31 @@ function parseRequestBody(body: BodyInit | null | undefined): {
         "local voice conversation delta stream protocol is required",
       );
     }
+    if (parsed.messageRole !== undefined && parsed.messageRole !== "system") {
+      throw new LocalRuntimeConversationFetchError(
+        "local voice conversation message role must be system",
+      );
+    }
+    if (parsed.clientMessageId !== undefined) {
+      if (
+        typeof parsed.clientMessageId !== "string" ||
+        parsed.clientMessageId.length === 0 ||
+        parsed.clientMessageId.length > MAX_CLIENT_MESSAGE_ID_LENGTH ||
+        parsed.clientMessageId.trim() !== parsed.clientMessageId
+      ) {
+        throw new LocalRuntimeConversationFetchError(
+          "local voice client message id must be canonical and at most 128 characters",
+        );
+      }
+    }
     return {
       text: parsed.text,
+      ...(parsed.messageRole === undefined
+        ? {}
+        : { messageRole: parsed.messageRole }),
+      ...(parsed.clientMessageId === undefined
+        ? {}
+        : { clientMessageId: parsed.clientMessageId }),
       metadata: { clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT },
       streamProtocol: parsed.streamProtocol,
     };
