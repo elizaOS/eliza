@@ -407,6 +407,27 @@ describe("iOS bridge — memories view routes", () => {
 			call(backend, "GET", "/api/memories/stats"),
 		).rejects.toMatchObject({ code: "MEMORY_STATS_INVALID_COUNT" });
 	});
+
+	it("stats fails closed when individually safe counts overflow in aggregate", async () => {
+		runtime.getMemories = vi.fn(async () => {
+			throw new Error("stats must not fall back to reading rows");
+		});
+		const values: Record<string, number> = {
+			messages: Number.MAX_SAFE_INTEGER,
+			memories: 1,
+			facts: 0,
+			documents: 0,
+		};
+		runtime.countMemories = vi.fn(
+			async ({ tableName }) => values[tableName ?? "messages"] ?? 0,
+		);
+
+		await expect(
+			call(backend, "GET", "/api/memories/stats"),
+		).rejects.toMatchObject({ code: "MEMORY_STATS_INVALID_COUNT" });
+		expect(runtime.countMemories).toHaveBeenCalledTimes(4);
+		expect(runtime.getMemories).not.toHaveBeenCalled();
+	});
 });
 
 describe("iOS bridge — transcripts view routes", () => {
