@@ -223,7 +223,7 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     const overflowMarker = () =>
       `${stdio.stderr}${stdio.stderr.endsWith("\n") || stdio.stderr.length === 0 ? "" : "\n"}[shell-router] stdio exceeded ${MAX_SHELL_STDIO_BYTES} bytes`;
 
-    const takeChunk = (target: "stdout" | "stderr", chunk: Buffer): void => {
+    const takeChunk = (target: "stdout" | "stderr", chunk: string): void => {
       if (settled || overflowed) return;
       const before = target === "stdout" ? stdio.stdout : stdio.stderr;
       const verdict = appendShellStdio(stdio, target, chunk);
@@ -239,10 +239,13 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
       }
     };
 
-    child.stdout.on("data", (chunk: Buffer) => {
+    // Preserve code points split across OS pipe chunks before accumulating.
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
       takeChunk("stdout", chunk);
     });
-    child.stderr.on("data", (chunk: Buffer) => {
+    child.stderr.on("data", (chunk: string) => {
       takeChunk("stderr", chunk);
     });
 

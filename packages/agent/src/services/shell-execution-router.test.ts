@@ -94,6 +94,48 @@ describe("runShell", () => {
     expect(result.stderr).toBe("");
   });
 
+  it("decodes split multibyte stdout and stderr as UTF-8 streams", async () => {
+    const streamedStdout: string[] = [];
+    const streamedStderr: string[] = [];
+    const script = [
+      'const value = Buffer.from("你");',
+      "process.stdout.write(value.subarray(0, 1));",
+      "process.stderr.write(value.subarray(0, 2));",
+      "setTimeout(() => {",
+      "  process.stdout.write(value.subarray(1));",
+      "  process.stderr.write(value.subarray(2));",
+      "}, 50);",
+    ].join("");
+
+    const result = await runShell({
+      command: process.execPath,
+      args: ["-e", script],
+      toolName: "test:host-utf8-split",
+      timeoutMs: 10_000,
+      onStdout: (chunk) => streamedStdout.push(chunk),
+      onStderr: (chunk) => streamedStderr.push(chunk),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("你");
+    expect(result.stderr).toBe("你");
+    expect(streamedStdout.join("")).toBe(result.stdout);
+    expect(streamedStderr.join("")).toBe(result.stderr);
+  });
+
+  it("flushes an incomplete UTF-8 sequence at EOF", async () => {
+    const result = await runShell({
+      command: process.execPath,
+      args: ["-e", "process.stdout.write(Buffer.from([0xe4, 0xbd]))"],
+      toolName: "test:host-utf8-incomplete-eof",
+      timeoutMs: 10_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("\uFFFD");
+    expect(result.stderr).toBe("");
+  });
+
   it("kills a flooding host child and streams the same prefix it retains", async () => {
     const streamed: string[] = [];
     const result = await runShell({
