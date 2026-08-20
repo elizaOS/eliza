@@ -86,9 +86,7 @@ import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
 import { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 import {
   buildTurnSummary,
-  isSharedTurnTraceSampled,
   recordSharedTurnTrace,
-  resolveSharedTurnTraceSampleRate,
   type SharedTurnSummaryResult,
 } from "./shared-turn-trace-recorder";
 
@@ -143,34 +141,56 @@ function recordTurnTraceOffPath(
   traceId: string,
   startedAt: number,
   result: SharedTurnSummaryResult,
+  terminalTiming?: SharedRuntimeTimingReceipt,
 ): void {
   void settleOffResponsePath(executionCtx, async () => {
+    const summary = buildTurnSummary({
+      result,
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+      agentId: agent.id,
+      channelId,
+      traceId,
+      startedAt,
+      completedAt: Date.now(),
+    });
     await recordSharedTurnTrace(
       { insertTrace: (row) => sharedTurnTracesRepository.insertTrace(row) },
-      buildTurnSummary({
-        result,
-        organizationId: agent.organization_id,
-        userId: agent.user_id,
-        agentId: agent.id,
-        channelId,
-        traceId,
-        startedAt,
-        completedAt: Date.now(),
-      }),
+      {
+        ...summary,
+        ...(terminalTiming ? { terminalTiming } : {}),
+      },
     );
   });
 }
 
-/** Keep detailed latency diagnostics on the same bounded sampled off-path as traces. */
-function recordRuntimeTimingOffPath(
+/** Persist error/abort receipts through the same durable sampled trace row. */
+function recordFailedTurnTraceOffPath(
   executionCtx: BridgeExecutionContext | undefined,
-  receipt: SharedRuntimeTimingReceipt,
+  agent: SharedRuntimeAgent,
+  channelId: string,
+  model: string,
+  startedAt: number,
+  terminalTiming: SharedRuntimeTimingReceipt | undefined,
 ): void {
-  if (process.env.SHARED_TURN_TRACES_ENABLED !== "true") return;
-  const sampleRate = resolveSharedTurnTraceSampleRate(process.env.SHARED_TURN_TRACES_SAMPLE);
-  if (!isSharedTurnTraceSampled(receipt.traceId, sampleRate)) return;
+  if (!terminalTiming) return;
   void settleOffResponsePath(executionCtx, async () => {
-    logger.info("[shared-eliza-runtime] sampled turn latency", receipt);
+    await recordSharedTurnTrace(
+      { insertTrace: (row) => sharedTurnTracesRepository.insertTrace(row) },
+      {
+        organizationId: agent.organization_id,
+        userId: agent.user_id,
+        agentId: agent.id,
+        channelId,
+        traceId: terminalTiming.traceId,
+        startedAt,
+        latencyMs: Math.max(0, Math.round(terminalTiming.offsets.completedOffsetMs ?? 0)),
+        model,
+        finishReason: terminalTiming.outcome === "aborted" ? "aborted" : "error",
+        stages: [{ name: "runtime" }],
+        terminalTiming,
+      },
+    );
   });
 }
 
@@ -1151,6 +1171,7 @@ export class SharedRuntimeChatService {
     const memoryStore = sharedTurnMemoryStore(agent);
     const recallContext = await sharedTurnRecallContext(memoryStore, text, history);
     const turnStartedAtEpochMs = Date.now();
+    let terminalTiming: SharedRuntimeTimingReceipt | undefined;
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
@@ -1164,7 +1185,9 @@ export class SharedRuntimeChatService {
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
         traceId: options.traceId ?? messageIds.assistant,
-        onRuntimeTiming: (receipt) => recordRuntimeTimingOffPath(options.executionCtx, receipt),
+        onRuntimeTiming: (receipt) => {
+          terminalTiming = receipt;
+        },
         ...(memoryStore ? { memory: memoryStore } : {}),
         execution: sharedElizaRuntimeExecution(
           agent,
@@ -1178,6 +1201,14 @@ export class SharedRuntimeChatService {
         ),
       });
     } catch (error) {
+      recordFailedTurnTraceOffPath(
+        options.executionCtx,
+        agent,
+        roomId,
+        character.model?.trim() || "shared-runtime",
+        turnStartedAtEpochMs,
+        terminalTiming,
+      );
       await settleFailedProviderWorkOffPath(
         agent,
         billing,
@@ -1195,6 +1226,7 @@ export class SharedRuntimeChatService {
       options.traceId ?? messageIds.assistant,
       turnStartedAtEpochMs,
       turn,
+      terminalTiming,
     );
     let turnCompleted = false;
     let turnIsProvablyFree = false;
@@ -1353,6 +1385,7 @@ export class SharedRuntimeChatService {
     const streamMemoryStore = sharedTurnMemoryStore(agent);
     const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
     const streamTurnStartedAtEpochMs = Date.now();
+    let streamTerminalTiming: SharedRuntimeTimingReceipt | undefined;
     const providerSetupStartedAt = performance.now();
     try {
       turn = await runSharedAgentTurnStream({
@@ -1367,7 +1400,9 @@ export class SharedRuntimeChatService {
         ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
         traceId: options.traceId ?? messageIds.assistant,
-        onRuntimeTiming: (receipt) => recordRuntimeTimingOffPath(options.executionCtx, receipt),
+        onRuntimeTiming: (receipt) => {
+          streamTerminalTiming = receipt;
+        },
         execution: sharedElizaRuntimeExecution(
           agent,
           roomId,
@@ -1380,6 +1415,14 @@ export class SharedRuntimeChatService {
         ),
       });
     } catch (error) {
+      recordFailedTurnTraceOffPath(
+        options.executionCtx,
+        agent,
+        roomId,
+        character.model?.trim() || "shared-runtime",
+        streamTurnStartedAtEpochMs,
+        streamTerminalTiming,
+      );
       detachRequestAbort();
       await settleFailedProviderWorkOffPath(
         agent,
@@ -1394,6 +1437,15 @@ export class SharedRuntimeChatService {
     if (turn.degraded) {
       detachRequestAbort();
       await billing?.settle(0);
+      recordTurnTraceOffPath(
+        options.executionCtx,
+        agent,
+        roomId,
+        options.traceId ?? messageIds.assistant,
+        streamTurnStartedAtEpochMs,
+        turn,
+        streamTerminalTiming,
+      );
       const reply = turn.reply?.trim() ?? "";
       if (!reply) return sseError("Shared runtime is unavailable");
       return withTurnTimingHeaders(
@@ -1487,21 +1539,6 @@ export class SharedRuntimeChatService {
           });
         }
         await afterWrite?.();
-        // Stream traces omit usage (it lives on the finish frame, not the
-        // stream result); the recorder treats it as optional.
-        recordTurnTraceOffPath(
-          options.executionCtx,
-          agent,
-          roomId,
-          options.traceId ?? messageIds.assistant,
-          streamTurnStartedAtEpochMs,
-          {
-            model: turn.model,
-            degraded: turn.degraded,
-            ...(turn.actionResults ? { actionResults: turn.actionResults } : {}),
-            ...(turn.capabilityWall ? { capabilityWall: turn.capabilityWall } : {}),
-          },
-        );
         finalized = true;
       })().catch((error) => {
         finalizationPromise = null;
@@ -1681,6 +1718,34 @@ export class SharedRuntimeChatService {
             );
           }
         } finally {
+          // Runtime timing is emitted only when the provider iterator reaches
+          // its terminal success/error/abort path. Persist it with the turn's
+          // one durable trace row and therefore one deterministic sample.
+          if (streamTerminalTiming?.outcome === "success") {
+            recordTurnTraceOffPath(
+              options.executionCtx,
+              agent,
+              roomId,
+              options.traceId ?? messageIds.assistant,
+              streamTurnStartedAtEpochMs,
+              {
+                model: turn.model,
+                degraded: turn.degraded,
+                ...(turn.actionResults ? { actionResults: turn.actionResults } : {}),
+                ...(turn.capabilityWall ? { capabilityWall: turn.capabilityWall } : {}),
+              },
+              streamTerminalTiming,
+            );
+          } else {
+            recordFailedTurnTraceOffPath(
+              options.executionCtx,
+              agent,
+              roomId,
+              turn.model,
+              streamTurnStartedAtEpochMs,
+              streamTerminalTiming,
+            );
+          }
           detachRequestAbort();
           if (!consumerCanceled) {
             controller.close();

@@ -8,6 +8,7 @@ import { AgentRuntime, ChannelType } from "@elizaos/core/edge";
 import { NotificationService } from "@elizaos/core/services/notification";
 import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
+import type { RunSharedAgentTurnResult } from "./run-shared-agent-turn";
 import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
 const scheduledInputs: Array<Record<string, unknown>> = [];
@@ -176,6 +177,65 @@ const reminderRunner = {
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
 
+function successfulRuntimeResponse(reply = "teardown-safe reply"): Response {
+  return Response.json({
+    id: "chatcmpl-teardown",
+    object: "chat.completion",
+    created: 0,
+    model: "gemma-4-31b",
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "shared-handle-response-teardown",
+              type: "function",
+              function: {
+                name: "HANDLE_RESPONSE",
+                arguments: JSON.stringify({
+                  shouldRespond: "RESPOND",
+                  thought: "Return the deterministic teardown test reply.",
+                  contexts: ["simple"],
+                  intents: [],
+                  candidateActionNames: [],
+                  replyText: reply,
+                  replyEffectStatus: "none",
+                  facts: [],
+                  relationships: [],
+                  addressedTo: [],
+                }),
+              },
+            },
+          ],
+        },
+        finish_reason: "tool_calls",
+      },
+    ],
+    usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 },
+  });
+}
+
+async function runTeardownTestTurn(): Promise<RunSharedAgentTurnResult> {
+  const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+  return await runSharedAgentTurn({
+    character: {
+      name: "Shared Eliza",
+      system: "You are Eliza.",
+      model: "gemma-4-31b",
+    },
+    history: [],
+    message: "test teardown",
+    traceId: "trace-teardown",
+    execution: {
+      channel: { type: ChannelType.DM, source: "shared-runtime" },
+      agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+    },
+  });
+}
+
 beforeEach(() => {
   scheduledInputs.length = 0;
   storedTodos.length = 0;
@@ -205,6 +265,66 @@ describe("Shared Eliza Workerd runtime", () => {
       await Promise.all([prewarmSharedElizaRuntime(), prewarmSharedElizaRuntime()]);
 
       expect(providerCalls).toBe(0);
+      expect(stopSpy).toHaveBeenCalledTimes(1);
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      stopSpy.mockRestore();
+      closeSpy.mockRestore();
+    }
+  });
+
+  test("preserves a successful turn when stop fails and still attempts close", async () => {
+    globalThis.fetch = (async () => successfulRuntimeResponse()) as typeof fetch;
+    const stopSpy = spyOn(AgentRuntime.prototype, "stop").mockImplementation(async () => {
+      throw new Error("stop teardown failed");
+    });
+    const closeSpy = spyOn(AgentRuntime.prototype, "close");
+    const reportSpy = spyOn(AgentRuntime.prototype, "reportError");
+    try {
+      await expect(runTeardownTestTurn()).resolves.toMatchObject({ reply: "teardown-safe reply" });
+      expect(stopSpy).toHaveBeenCalledTimes(1);
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(reportSpy).toHaveBeenCalledWith("SharedElizaRuntime.stop", expect.any(Error), {
+        traceId: "trace-teardown",
+      });
+    } finally {
+      stopSpy.mockRestore();
+      closeSpy.mockRestore();
+      reportSpy.mockRestore();
+    }
+  });
+
+  test("preserves a successful turn when close alone fails", async () => {
+    globalThis.fetch = (async () => successfulRuntimeResponse()) as typeof fetch;
+    const closeSpy = spyOn(AgentRuntime.prototype, "close").mockImplementation(async () => {
+      throw new Error("close teardown failed");
+    });
+    try {
+      await expect(runTeardownTestTurn()).resolves.toMatchObject({ reply: "teardown-safe reply" });
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      closeSpy.mockRestore();
+    }
+  });
+
+  test("preserves the runtime's provider-failure outcome when teardown also fails", async () => {
+    globalThis.fetch = (async () => {
+      throw new Error("authoritative provider failure");
+    }) as typeof fetch;
+    const baseline = await runTeardownTestTurn();
+    const stopSpy = spyOn(AgentRuntime.prototype, "stop").mockImplementation(async () => {
+      throw new Error("stop teardown failed");
+    });
+    const closeSpy = spyOn(AgentRuntime.prototype, "close").mockImplementation(async () => {
+      throw new Error("close teardown failed");
+    });
+    try {
+      await expect(runTeardownTestTurn()).resolves.toMatchObject({
+        reply: baseline.reply,
+        responded: baseline.responded,
+        degraded: baseline.degraded,
+        model: baseline.model,
+      });
       expect(stopSpy).toHaveBeenCalledTimes(1);
       expect(closeSpy).toHaveBeenCalledTimes(1);
     } finally {
@@ -292,6 +412,7 @@ describe("Shared Eliza Workerd runtime", () => {
     }) as typeof fetch;
 
     const { runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
+    const reportSpy = spyOn(AgentRuntime.prototype, "reportError");
     let dispatches = 0;
     const result = await runSharedAgentTurnStream({
       character: {
@@ -336,6 +457,10 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(JSON.stringify(requests[0])).toContain("What is one small way to reset my focus?");
     expect(JSON.stringify(requests[0])).not.toContain("Opening Focus for you");
     expect(JSON.stringify(requests[0])).not.toContain('"name":"VIEWS"');
+    expect(reportSpy).toHaveBeenCalledWith("SharedElizaRuntime.timingObserver", expect.any(Error), {
+      traceId: "trace-observer-nonfatal",
+    });
+    reportSpy.mockRestore();
   });
 
   test("aborts the genuine runtime provider stream before barge-in can emit text", async () => {

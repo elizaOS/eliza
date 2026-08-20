@@ -104,11 +104,18 @@ describe("SharedRuntimeTimingCollector", () => {
     });
   });
 
-  test("rejects invalid durations and caps pathological values", () => {
+  test("rejects invalid and over-limit durations instead of fabricating boundary values", () => {
     const timing = new SharedRuntimeTimingCollector("bounded", 0, clock([50, 40, 700_100]));
     timing.markProviderDispatched();
+    timing.markInferenceSpans([
+      { name: "provider:first", durationMs: 400_000 },
+      { name: "provider:second", durationMs: 300_001 },
+      { name: "composeState", durationMs: Number.POSITIVE_INFINITY },
+    ]);
     const receipt = timing.receipt("error");
     expect(receipt.offsets.providerDispatchOffsetMs).toBeNull();
-    expect(receipt.offsets.completedOffsetMs).toBe(600_000);
+    expect(receipt.offsets.completedOffsetMs).toBeNull();
+    expect(receipt.inference.providerTotalDurationMs).toBeNull();
+    expect(receipt.inference.composeStateDurationMs).toBeNull();
   });
 });
