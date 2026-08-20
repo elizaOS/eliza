@@ -9,6 +9,10 @@
  */
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  type BoundCapabilityRequest,
+  normalizeBoundCapabilityRequest,
+} from "@elizaos/core/types/provider-integrations";
 import { oauthSuccessProofTicketsRepository } from "../../../db/repositories/oauth-success-proof-tickets";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { getAllProviderIds } from "./provider-registry";
@@ -68,6 +72,7 @@ export interface OAuthSuccessProofPayload {
   userId: string;
   exp: number;
   nonce: string;
+  capabilityContinuation: BoundCapabilityRequest | null;
 }
 
 /** Server-side ticket record stored under the proof nonce for one-time consume. */
@@ -209,6 +214,7 @@ export async function mintOAuthSuccessProof(args: {
   connectionId?: string | null;
   organizationId: string;
   userId: string;
+  capabilityContinuation?: BoundCapabilityRequest | null;
   ttlMs?: number;
 }): Promise<string | null> {
   const secret = resolveProofSecret();
@@ -230,6 +236,9 @@ export async function mintOAuthSuccessProof(args: {
     userId,
     exp,
     nonce,
+    capabilityContinuation: args.capabilityContinuation
+      ? normalizeBoundCapabilityRequest(args.capabilityContinuation)
+      : null,
   };
   const ticket: OAuthSuccessProofTicket = {
     platform,
@@ -318,6 +327,15 @@ export async function consumeOAuthSuccessProof(
       typeof raw.connectionId === "string" && raw.connectionId.trim()
         ? raw.connectionId.trim()
         : null;
+    let capabilityContinuation: BoundCapabilityRequest | null = null;
+    if (raw.capabilityContinuation !== undefined && raw.capabilityContinuation !== null) {
+      try {
+        capabilityContinuation = normalizeBoundCapabilityRequest(raw.capabilityContinuation);
+      } catch {
+        // error-policy:J3 a malformed signed payload is still invalid input.
+        return { ok: false, reason: "malformed" };
+      }
+    }
     payload = {
       platform: raw.platform.trim().toLowerCase(),
       connectionId,
@@ -325,6 +343,7 @@ export async function consumeOAuthSuccessProof(
       userId: raw.userId.trim(),
       exp: raw.exp,
       nonce: raw.nonce.trim(),
+      capabilityContinuation,
     };
   } catch {
     // error-policy:J3 malformed proof payload is an explicit invalid result.
@@ -416,6 +435,14 @@ export function verifyOAuthSuccessProof(
       typeof raw.connectionId === "string" && raw.connectionId.trim()
         ? raw.connectionId.trim()
         : null;
+    let capabilityContinuation: BoundCapabilityRequest | null = null;
+    if (raw.capabilityContinuation !== undefined && raw.capabilityContinuation !== null) {
+      try {
+        capabilityContinuation = normalizeBoundCapabilityRequest(raw.capabilityContinuation);
+      } catch {
+        return { ok: false, reason: "malformed" };
+      }
+    }
     return {
       ok: true,
       payload: {
@@ -425,6 +452,7 @@ export function verifyOAuthSuccessProof(
         userId: raw.userId.trim(),
         exp: raw.exp,
         nonce: raw.nonce.trim(),
+        capabilityContinuation,
       },
     };
   } catch {

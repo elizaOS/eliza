@@ -13,10 +13,14 @@ import { secretsService } from "../../secrets";
 import { DecryptionError } from "../../secrets/encryption";
 import { incrementOAuthVersion } from "../cache-version";
 import { Errors } from "../errors";
-import { getProvider } from "../provider-registry";
-import { refreshOAuth2Token } from "../providers";
+import { getAllowedScopes, getProvider } from "../provider-registry";
+import {
+  OAuthRefreshRejectedError,
+  refreshOAuth2Token,
+  revokeOAuth2Credential,
+} from "../providers";
 import type { OAuthConnection, TokenResult } from "../types";
-import { formatOAuthConnectionRole } from "../types";
+import { formatOAuthConnectionRole, normalizeOAuthConnectionRole } from "../types";
 import type { ConnectionAdapter } from "./types";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -158,6 +162,18 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
       let accessToken: string;
       let expiresAt: Date | undefined = cred.token_expires_at || undefined;
       let wasRefreshed = false;
+      const storedUserScopes = readOAuthUserScopes(cred.source_context) ?? [];
+      const storedRole =
+        cred.source_context && typeof cred.source_context === "object"
+          ? normalizeOAuthConnectionRole(
+              (cred.source_context as Record<string, unknown>).connectionRole ??
+                (cred.source_context as Record<string, unknown>).agentGoogleSide,
+            )
+          : "OWNER";
+      let effectiveScopes =
+        storedRole === "OWNER" && storedUserScopes.length > 0
+          ? storedUserScopes
+          : ((cred.scopes as string[]) ?? []);
 
       if (tokenExpired && cred.refresh_token_secret_id) {
         // Attempt to refresh the token
@@ -237,10 +253,34 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
           const newExpiresAt = refreshResult.expiresIn
             ? new Date(Date.now() + refreshResult.expiresIn * 1000)
             : undefined;
+          const allowedScopes = new Set(getAllowedScopes(provider));
+          const allowedUserScopes = new Set(
+            provider.allowedUserScopes ?? provider.userScopes ?? [],
+          );
+          const confirmedScopes = refreshResult.grantedScopes?.filter((scope) =>
+            allowedScopes.has(scope),
+          );
+          const confirmedUserScopes = refreshResult.grantedUserScopes?.filter((scope) =>
+            allowedUserScopes.has(scope),
+          );
+          if (storedRole === "OWNER" && confirmedUserScopes !== undefined) {
+            effectiveScopes = confirmedUserScopes;
+          } else if (confirmedScopes !== undefined) {
+            effectiveScopes = confirmedScopes;
+          }
+          const sourceContext =
+            cred.source_context && typeof cred.source_context === "object"
+              ? { ...(cred.source_context as Record<string, unknown>) }
+              : {};
+          if (confirmedUserScopes !== undefined) {
+            sourceContext.oauthUserScopes = confirmedUserScopes;
+          }
           await dbWrite
             .update(platformCredentials)
             .set({
               token_expires_at: newExpiresAt,
+              ...(confirmedScopes !== undefined ? { scopes: confirmedScopes } : {}),
+              ...(confirmedUserScopes !== undefined ? { source_context: sourceContext } : {}),
               last_refreshed_at: new Date(),
               last_used_at: new Date(),
               updated_at: new Date(),
@@ -262,6 +302,13 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
           // failure into the typed tokenRefreshFailed domain error carrying the
           // underlying reason; the failure is never swallowed.
         } catch (error) {
+          if (error instanceof OAuthRefreshRejectedError && error.reauthRequired) {
+            await dbWrite
+              .update(platformCredentials)
+              .set({ status: "expired", updated_at: new Date() })
+              .where(eq(platformCredentials.id, connectionId));
+            await incrementOAuthVersion(organizationId, platform);
+          }
           logger.error(`[GenericAdapter] Token refresh failed for ${platform}`, {
             connectionId,
             organizationId,
@@ -290,7 +337,7 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
       return {
         accessToken,
         expiresAt,
-        scopes: (cred.scopes as string[]) || [],
+        scopes: effectiveScopes,
         refreshed: wasRefreshed,
         fromCache: false,
       };
@@ -305,6 +352,31 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
         actorId: "oauth-service",
         source: "revoke-connection",
       };
+
+      const provider = getProvider(platform);
+      if (!provider) throw Errors.platformNotSupported(platform);
+      const accessToken =
+        provider.revocation?.token === "access" && cred.access_token_secret_id
+          ? await decryptTokenSecret(
+              cred.access_token_secret_id,
+              organizationId,
+              connectionId,
+              "access_token",
+            )
+          : undefined;
+      const refreshToken =
+        provider.revocation?.token === "refresh" && cred.refresh_token_secret_id
+          ? await decryptTokenSecret(
+              cred.refresh_token_secret_id,
+              organizationId,
+              connectionId,
+              "refresh_token",
+            )
+          : undefined;
+      const revocation = await revokeOAuth2Credential(provider, {
+        accessToken,
+        refreshToken,
+      });
 
       const deleteSecret = async (id: string | null, tokenType: string) => {
         if (!id) return;
@@ -340,6 +412,7 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
       logger.info(`[GenericAdapter] Connection revoked for ${platform}`, {
         connectionId,
         organizationId,
+        remoteRevoked: revocation.remoteRevoked,
       });
     },
 

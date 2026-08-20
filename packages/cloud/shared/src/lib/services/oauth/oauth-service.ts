@@ -5,6 +5,10 @@
  * across multiple platforms (Google, Twitter, Twilio, Blooio).
  */
 
+import {
+  type CapabilityRequest,
+  normalizeCapabilityRequest,
+} from "@elizaos/core/types/provider-integrations";
 import { and, eq } from "drizzle-orm";
 import { dbRead } from "../../../db/client";
 import { platformCredentials } from "../../../db/schemas/platform-credentials";
@@ -100,6 +104,20 @@ export function getMostRecentActiveConnection(
     const connTime = conn.lastUsedAt?.getTime() || conn.linkedAt.getTime();
     return connTime > mostTime ? conn : most;
   });
+}
+
+/** Select an account only when consent cannot be confused with another active account. */
+export function selectImplicitIncrementalOAuthConnection(
+  platform: string,
+  connections: readonly OAuthConnection[],
+): string | undefined {
+  const activeConnections = connections.filter((connection) => connection.status === "active");
+  if (activeConnections.length > 1) {
+    throw Errors.invalidCapabilityRequest(platform, [
+      "connectionId is required when multiple active accounts are available",
+    ]);
+  }
+  return activeConnections[0]?.id;
 }
 
 export function getPreferredActiveConnection(
@@ -216,6 +234,7 @@ class OAuthService {
       redirectUrl,
       scopes,
       capabilities,
+      capabilityRequest,
       connectionId,
       connectionRole,
     } = params;
@@ -226,6 +245,17 @@ class OAuthService {
     if (!isProviderConfigured(provider)) throw Errors.platformNotConfigured(platform);
     if (connectionId !== undefined && capabilities === undefined) {
       throw Errors.invalidCapabilityRequest(platform, ["connectionId requires named capabilities"]);
+    }
+    const normalizedCapabilityRequest: CapabilityRequest | undefined = capabilityRequest
+      ? normalizeCapabilityRequest(capabilityRequest)
+      : undefined;
+    if (
+      normalizedCapabilityRequest &&
+      (!capabilities || !capabilities.includes(normalizedCapabilityRequest.capabilityId))
+    ) {
+      throw Errors.invalidCapabilityRequest(platform, [
+        "capabilityRequest.capabilityId must be included in capabilities",
+      ]);
     }
 
     // API key providers return a form URL
@@ -241,10 +271,25 @@ class OAuthService {
       let grantedScopes: string[] | undefined;
       let grantedUserScopes: string[] | undefined;
       let expectedPlatformUserId: string | undefined;
-      if (connectionId !== undefined) {
-        const connection = await this.getConnection({ organizationId, connectionId });
+      let selectedConnectionId = connectionId;
+      if (capabilities !== undefined && selectedConnectionId === undefined) {
+        selectedConnectionId = selectImplicitIncrementalOAuthConnection(
+          platform,
+          await this.listConnections({
+            organizationId,
+            userId,
+            platform,
+            connectionRole: role,
+          }),
+        );
+      }
+      if (selectedConnectionId !== undefined) {
+        const connection = await this.getConnection({
+          organizationId,
+          connectionId: selectedConnectionId,
+        });
         const grant = resolveExistingCapabilityGrant(connection, {
-          connectionId,
+          connectionId: selectedConnectionId,
           platform,
           userId,
           connectionRole: role,
@@ -254,6 +299,15 @@ class OAuthService {
         grantedScopes = grant.grantedScopes;
         grantedUserScopes = grant.grantedUserScopes;
         expectedPlatformUserId = grant.expectedPlatformUserId;
+        if (
+          normalizedCapabilityRequest?.accountId &&
+          normalizedCapabilityRequest.accountId !== selectedConnectionId
+        ) {
+          throw Errors.connectionNotFound(normalizedCapabilityRequest.accountId);
+        }
+      }
+      if (normalizedCapabilityRequest?.accountId && selectedConnectionId === undefined) {
+        throw Errors.connectionNotFound(normalizedCapabilityRequest.accountId);
       }
 
       const result = await initiateOAuth2(provider, {
@@ -262,6 +316,7 @@ class OAuthService {
         redirectUrl,
         scopes,
         capabilities,
+        capabilityRequest: normalizedCapabilityRequest,
         grantedScopes,
         grantedUserScopes,
         expectedPlatformUserId,
@@ -272,7 +327,9 @@ class OAuthService {
         state: result.state,
         capabilityAccess: result.capabilityAccess,
         retryAfterConsent:
-          result.capabilityAccess?.some((capability) => capability.status !== "available") ?? false,
+          normalizedCapabilityRequest !== undefined &&
+          (result.capabilityAccess?.some((capability) => capability.status !== "available") ??
+            false),
       };
     }
 

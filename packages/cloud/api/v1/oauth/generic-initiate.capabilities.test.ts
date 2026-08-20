@@ -50,15 +50,18 @@ const initiateAuth = mock(
     scopes?: string[];
     redirectUrl?: string;
     connectionId?: string;
+    capabilityRequest?: unknown;
   }) => ({
     authUrl: "https://accounts.example/authorize",
     state: "state-1",
     capabilityAccess: params.capabilities?.map((capabilityId) => ({
       capabilityId,
+      riskLevel: "R1" as const,
       status: "needs_scope" as const,
       missingScopes: ["calendar.read"],
       missingUserScopes: [],
     })),
+    retryAfterConsent: params.capabilityRequest !== undefined,
   }),
 );
 mock.module("@/lib/services/oauth", () => ({
@@ -87,7 +90,7 @@ describe("generic OAuth capability initiation (#19879)", () => {
 
   test("returns the consent state and preserves the retry redirect", async () => {
     const response = await request({
-      capabilities: ["google.calendar.read"],
+      capabilities: ["calendar.events.read"],
       redirectUrl: "/cloud/calendar?retry=intent-1",
     });
 
@@ -95,7 +98,7 @@ describe("generic OAuth capability initiation (#19879)", () => {
     expect(initiateAuth).toHaveBeenCalledWith(
       expect.objectContaining({
         platform: "google",
-        capabilities: ["google.calendar.read"],
+        capabilities: ["calendar.events.read"],
         scopes: undefined,
         redirectUrl: "/cloud/calendar?retry=intent-1",
       }),
@@ -103,17 +106,17 @@ describe("generic OAuth capability initiation (#19879)", () => {
     expect(await response.json()).toMatchObject({
       capabilityAccess: [
         {
-          capabilityId: "google.calendar.read",
+          capabilityId: "calendar.events.read",
           status: "needs_scope",
         },
       ],
-      retryAfterConsent: true,
+      retryAfterConsent: false,
     });
   });
 
   test("passes the explicit connection binding used to inspect existing grants", async () => {
     const response = await request({
-      capabilities: ["google.calendar.read"],
+      capabilities: ["calendar.events.read"],
       connectionId: "11111111-1111-4111-8111-111111111111",
     });
 
@@ -127,7 +130,7 @@ describe("generic OAuth capability initiation (#19879)", () => {
 
   test.each([
     { capabilities: [] },
-    { capabilities: "google.calendar.read" },
+    { capabilities: "calendar.events.read" },
     { capabilities: [" "] },
   ])("rejects malformed capability input %#", async (body) => {
     const response = await request(body);
@@ -138,7 +141,7 @@ describe("generic OAuth capability initiation (#19879)", () => {
   test("rejects ambiguous raw-scope and capability requests", async () => {
     const response = await request({
       scopes: ["calendar.read"],
-      capabilities: ["google.calendar.read"],
+      capabilities: ["calendar.events.read"],
     });
     expect(response.status).toBe(400);
     expect(initiateAuth).not.toHaveBeenCalled();
@@ -154,7 +157,7 @@ describe("generic OAuth capability initiation (#19879)", () => {
 
   test("rejects a malformed connection binding before tenant lookup", async () => {
     const response = await request({
-      capabilities: ["google.calendar.read"],
+      capabilities: ["calendar.events.read"],
       connectionId: "not-a-uuid",
     });
     expect(response.status).toBe(400);
@@ -171,5 +174,30 @@ describe("generic OAuth capability initiation (#19879)", () => {
       }),
     );
     expect(await response.json()).toMatchObject({ retryAfterConsent: false });
+  });
+
+  test("forwards an exact request only through the authenticated continuation", async () => {
+    const capabilityRequest = {
+      contractVersion: 2,
+      requestId: "req_calendar_1",
+      capabilityId: "calendar.events.read",
+      operation: "calendar.events.list",
+      riskLevel: "R1",
+      accountId: null,
+      inputDigest: "a".repeat(64),
+    };
+    const response = await request({
+      capabilities: ["calendar.events.read"],
+      capabilityRequest,
+    });
+
+    expect(response.status).toBe(200);
+    expect(initiateAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilityRequest,
+        redirectUrl: "/auth/success",
+      }),
+    );
+    expect(await response.json()).toMatchObject({ retryAfterConsent: true });
   });
 });

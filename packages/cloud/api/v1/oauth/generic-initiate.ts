@@ -36,6 +36,7 @@ interface InitiateRequestBody {
   redirectUrl?: string;
   scopes?: string[];
   capabilities?: string[];
+  capabilityRequest?: unknown;
   connectionId?: string;
   connectionRole?: "owner" | "agent";
 }
@@ -115,7 +116,11 @@ export async function handleGenericOAuthInitiate(
       // Empty body is fine — defaults apply.
     }
 
-    const redirectUrl = body.redirectUrl || "/cloud/settings?tab=connections";
+    const redirectUrl =
+      body.redirectUrl ||
+      (body.capabilityRequest
+        ? "/auth/success"
+        : "/cloud/settings?tab=connections");
     if (redirectUrl.startsWith("http")) {
       const allowedAbsoluteOrigins = [
         ...getDefaultPlatformRedirectOrigins(),
@@ -172,6 +177,18 @@ export async function handleGenericOAuthInitiate(
       );
     }
     if (
+      body.capabilityRequest !== undefined &&
+      body.capabilities === undefined
+    ) {
+      return c.json(
+        {
+          error: "INVALID_CAPABILITY_REQUEST",
+          message: "capabilityRequest requires named capabilities",
+        },
+        400,
+      );
+    }
+    if (
       body.connectionId !== undefined &&
       (typeof body.connectionId !== "string" ||
         body.connectionId.trim().length === 0 ||
@@ -218,6 +235,7 @@ export async function handleGenericOAuthInitiate(
       redirectUrl,
       scopes,
       capabilities,
+      capabilityRequest: body.capabilityRequest,
       connectionId: body.connectionId,
       connectionRole,
     });
@@ -230,10 +248,7 @@ export async function handleGenericOAuthInitiate(
         name: provider.name,
       },
       capabilityAccess: result.capabilityAccess,
-      retryAfterConsent:
-        result.capabilityAccess?.some(
-          (capability) => capability.status !== "available",
-        ) ?? false,
+      retryAfterConsent: result.retryAfterConsent ?? false,
     });
   } catch (error) {
     logger.error(`[OAuth ${platform}] Failed to initiate auth`, {

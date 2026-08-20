@@ -53,6 +53,7 @@ app.get("/", async (c) => {
     ok: true,
     platform: result.payload.platform,
     connectionId: result.payload.connectionId,
+    capabilityContinuation: result.payload.capabilityContinuation,
     exp: result.payload.exp,
   });
 });

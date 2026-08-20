@@ -59,6 +59,7 @@ mock.module("../provider-registry", () => ({
   resolveOAuthCapabilityRequest: realProviderRegistry.resolveOAuthCapabilityRequest,
   resolveRequestedScopes: realProviderRegistry.resolveRequestedScopes,
   getNestedValue: realProviderRegistry.getNestedValue,
+  projectOAuthConnectedAccount: realProviderRegistry.projectOAuthConnectedAccount,
 }));
 
 mock.module("../../secrets", () => ({
@@ -108,12 +109,13 @@ afterAll(() => {
   mock.module("../../../../db/helpers", () => realDbHelpersExports);
 });
 
-function jsonResponse(body: unknown) {
+function jsonResponse(body: unknown, headers?: HeadersInit) {
   return {
     ok: true,
     status: 200,
     json: async () => body,
     text: async () => JSON.stringify(body),
+    headers: new Headers(headers),
   } as unknown as Response;
 }
 
@@ -128,7 +130,7 @@ const provider = {
   defaultScopes: ["a"],
   allowedScopes: ["a", "b"],
   capabilityScopes: {
-    "test.write": { scopes: ["b"], consent: "review" },
+    "test.write": { scopes: ["b"], riskLevel: "R2" },
   },
   userScopes: ["user:read"],
   allowedUserScopes: ["user:read"],
@@ -148,7 +150,11 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
       connectionRole: "OWNER",
       createdAt: Date.now(),
     };
-    tokenBody = { access_token: "at-123", token_type: "Bearer" };
+    tokenBody = {
+      access_token: "at-123",
+      token_type: "Bearer",
+      authed_user: { access_token: "user-at-123" },
+    };
     storedConnection = null;
     cachedState = null;
     originalFetch = globalThis.fetch;
@@ -222,7 +228,11 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
       fetchedSignals.push(init?.signal);
       const u = String(url);
       if (u.includes("/token")) {
-        return jsonResponse({ access_token: "at-123", token_type: "Bearer" });
+        return jsonResponse({
+          access_token: "at-123",
+          token_type: "Bearer",
+          authed_user: { access_token: "user-at-123" },
+        });
       }
       if (u.includes("/userinfo")) {
         return jsonResponse(userInfoBody);
@@ -292,7 +302,10 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
       access_token: "at-123",
       token_type: "Bearer",
       scope: "a provider:unexpected",
-      authed_user: { scope: "user:read rogue:scope" },
+      authed_user: {
+        access_token: "user-at-123",
+        scope: "user:read rogue:scope",
+      },
     };
 
     await handleOAuth2Callback(provider, "auth-code", "state-token");
@@ -324,6 +337,69 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
     );
     expect(insertReturning).not.toHaveBeenCalled();
   });
+
+  it("rejects an OWNER grant when the provider omits the user-authority token", async () => {
+    const { handleOAuth2Callback } = await import("./oauth2");
+    userInfoBody = { id: "real-user-42" };
+    tokenBody = { access_token: "bot-at-123", token_type: "Bearer" };
+
+    await expect(handleOAuth2Callback(provider, "auth-code", "state-token")).rejects.toThrow(
+      "permission",
+    );
+    expect(secretsCreateCalls).toHaveLength(0);
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+
+  it("uses GitHub's confirmed grant header and never continues on a merely requested repo scope", async () => {
+    const { handleOAuth2Callback } = await import("./oauth2");
+    const githubProvider = {
+      ...provider,
+      id: "github",
+      userScopes: undefined,
+      allowedUserScopes: undefined,
+      defaultScopes: ["read:user"],
+      allowedScopes: ["read:user", "repo"],
+      capabilityScopes: {
+        "repositories.full_control": { scopes: ["repo"], riskLevel: "R3" },
+      },
+      grantedScopeAuthority: { source: "user_info_header", header: "x-oauth-scopes" },
+    } as never;
+    stateData = {
+      organizationId: "org-1",
+      userId: "user-1",
+      providerId: "github",
+      redirectUrl: "/auth/success",
+      scopes: ["read:user", "repo"],
+      capabilities: ["repositories.full_control"],
+      capabilityRequest: {
+        contractVersion: 2,
+        requestId: "req_repo_1",
+        capabilityId: "repositories.full_control",
+        operation: "repository.write",
+        riskLevel: "R3",
+        accountId: null,
+        inputDigest: "a".repeat(64),
+      },
+      connectionRole: "OWNER",
+      createdAt: Date.now(),
+    };
+    tokenBody = { access_token: "github-at", token_type: "Bearer", scope: "repo" };
+    globalThis.fetch = mock(async (url: unknown) => {
+      if (String(url).includes("/token")) return jsonResponse(tokenBody);
+      if (String(url).includes("/userinfo")) {
+        return jsonResponse({ id: "github-user" }, { "x-oauth-scopes": "read:user" });
+      }
+      throw new Error(`unexpected fetch ${String(url)}`);
+    }) as unknown as typeof globalThis.fetch;
+
+    const result = await handleOAuth2Callback(githubProvider, "auth-code", "state-token");
+
+    expect(storedConnection?.scopes).toEqual(["read:user"]);
+    expect(result.capabilityAccess).toMatchObject([
+      { capabilityId: "repositories.full_control", riskLevel: "R3", status: "needs_admin" },
+    ]);
+    expect(result.capabilityContinuation).toBeUndefined();
+  });
 });
 
 describe("initiateOAuth2 — incremental capability protocol (#19879)", () => {
@@ -348,6 +424,7 @@ describe("initiateOAuth2 — incremental capability protocol (#19879)", () => {
     expect(result.capabilityAccess).toEqual([
       {
         capabilityId: "test.write",
+        riskLevel: "R2",
         status: "needs_review",
         missingScopes: ["b"],
         missingUserScopes: [],
@@ -360,5 +437,58 @@ describe("initiateOAuth2 — incremental capability protocol (#19879)", () => {
       userScopes: ["user:read"],
       expectedPlatformUserId: "platform-user-1",
     });
+  });
+});
+
+describe("OAuth2 provider credential lifecycle (#19879)", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("revokes only the selected GitHub token with authenticated app credentials", async () => {
+    const { revokeOAuth2Credential } = await import("./oauth2");
+    let capturedUrl = "";
+    let capturedInit: RequestInit | undefined;
+    globalThis.fetch = mock(async (url: unknown, init?: RequestInit) => {
+      capturedUrl = String(url);
+      capturedInit = init;
+      return jsonResponse({});
+    }) as unknown as typeof globalThis.fetch;
+
+    await expect(
+      revokeOAuth2Credential(
+        {
+          ...provider,
+          id: "github",
+          revocation: { transport: "github_token", token: "access", response: "http_ok" },
+        } as never,
+        { accessToken: "selected-token" },
+      ),
+    ).resolves.toEqual({ remoteRevoked: true });
+
+    expect(capturedUrl).toBe("https://api.github.com/applications/client-id/token");
+    expect(capturedInit?.method).toBe("DELETE");
+    expect(capturedInit?.body).toBe(JSON.stringify({ access_token: "selected-token" }));
+    expect(new Headers(capturedInit?.headers).get("authorization")).toBe(
+      `Basic ${Buffer.from("client-id:client-secret").toString("base64")}`,
+    );
+  });
+
+  it("does not treat Slack HTTP 200 as revocation without an affirmative body", async () => {
+    const { revokeOAuth2Credential } = await import("./oauth2");
+    globalThis.fetch = mock(async () =>
+      jsonResponse({ ok: false, error: "not_authed" }),
+    ) as unknown as typeof globalThis.fetch;
+
+    await expect(
+      revokeOAuth2Credential(
+        {
+          ...provider,
+          endpoints: { ...provider.endpoints, revoke: "https://slack.com/api/auth.revoke" },
+          revocation: { transport: "bearer", token: "access", response: "slack_json" },
+        } as never,
+        { accessToken: "slack-token" },
+      ),
+    ).rejects.toThrow("did not confirm");
   });
 });

@@ -5,6 +5,12 @@
  * Works with standard OAuth 2.0 and supports provider-specific variations via config.
  */
 
+import {
+  type BoundCapabilityRequest,
+  bindCapabilityRequest,
+  type CapabilityRequest,
+  normalizeCapabilityRequest,
+} from "@elizaos/core/types/provider-integrations";
 import { and, eq, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/client";
 import { writeTransaction } from "../../../../db/helpers";
@@ -28,11 +34,12 @@ import {
   getClientId,
   getClientSecret,
   getNestedValue,
+  projectOAuthConnectedAccount,
   resolveOAuthCapabilityRequest,
   resolveRequestedScopes,
 } from "../provider-registry";
-import type { OAuthConnectionRole, OAuthStandardConnectionRole } from "../types";
-import { normalizeOAuthConnectionRole } from "../types";
+import type { OAuthConnection, OAuthConnectionRole, OAuthStandardConnectionRole } from "../types";
+import { formatOAuthConnectionRole, normalizeOAuthConnectionRole } from "../types";
 
 const STATE_TTL_SECONDS = 600; // 10 minutes
 export const OAUTH2_REQUEST_TIMEOUT_MS = 15_000;
@@ -55,6 +62,8 @@ interface OAuth2State {
   redirectUrl: string;
   scopes: string[];
   userScopes?: string[];
+  capabilities?: string[];
+  capabilityRequest?: CapabilityRequest;
   expectedPlatformUserId?: string;
   connectionRole?: OAuthConnectionRole;
   createdAt: number;
@@ -110,6 +119,7 @@ function resolveGrantedScopes(
   provider: OAuthProviderConfig,
   tokens: TokenResponse,
   requestedScopes: string[],
+  confirmedUserInfoScopes?: readonly string[],
 ): { scopes: string[]; userScopes: string[] } {
   const tokenScopes = parseGrantedScopeField(tokens.scope);
   const tokenScopesConfirmed = typeof tokens.scope === "string";
@@ -119,7 +129,11 @@ function resolveGrantedScopes(
       ? (authedUser as Record<string, unknown>).scope
       : undefined;
   const userTokenScopes = rawUserScope === undefined ? [] : parseGrantedScopeField(rawUserScope);
-  const resolvedScopes = tokenScopesConfirmed ? tokenScopes : requestedScopes;
+  const resolvedScopes = provider.grantedScopeAuthority
+    ? [...(confirmedUserInfoScopes ?? [])]
+    : tokenScopesConfirmed
+      ? tokenScopes
+      : requestedScopes;
   // User-token grants must never be inferred from the request. Slack returns
   // them under authed_user.scope; if that authority is absent or malformed,
   // persist no user grant and require consent again.
@@ -142,6 +156,7 @@ interface ExtractedUserInfo {
   displayName?: string;
   avatarUrl?: string;
   raw: Record<string, unknown>;
+  confirmedScopes?: string[];
 }
 
 /**
@@ -171,12 +186,7 @@ function pickUserInfoToken(
       return userToken;
     }
   }
-  // Fall back to the bot token if the provider didn't return a user
-  // token (e.g. the user denied user-scope permissions on the consent
-  // screen). The caller will still hit the dedup guard, but that's the
-  // correct behavior: an OWNER connection without user-token grants
-  // isn't meaningfully distinct from an AGENT connection.
-  return tokens.access_token;
+  throw Errors.forbidden();
 }
 
 function getStoredConnectionRole(sourceContext: unknown): OAuthStandardConnectionRole {
@@ -230,6 +240,8 @@ export interface OAuth2CallbackResult {
   email?: string;
   displayName?: string;
   redirectUrl: string;
+  capabilityAccess?: OAuthCapabilityAccess[];
+  capabilityContinuation?: BoundCapabilityRequest;
 }
 
 /**
@@ -245,6 +257,7 @@ export async function initiateOAuth2(
     redirectUrl?: string;
     scopes?: string[];
     capabilities?: string[];
+    capabilityRequest?: CapabilityRequest;
     grantedScopes?: string[];
     grantedUserScopes?: string[];
     expectedPlatformUserId?: string;
@@ -275,10 +288,44 @@ export async function initiateOAuth2(
           params.capabilities,
           params.grantedScopes,
           params.grantedUserScopes,
+          normalizeOAuthConnectionRole(params.connectionRole),
         );
+  const normalizedBlockedRequest = params.capabilityRequest
+    ? normalizeCapabilityRequest(params.capabilityRequest)
+    : undefined;
+  if (
+    normalizedBlockedRequest &&
+    (!params.capabilities || !params.capabilities.includes(normalizedBlockedRequest.capabilityId))
+  ) {
+    throw Errors.invalidCapabilityRequest(provider.id, [
+      "capabilityRequest.capabilityId must be included in capabilities",
+    ]);
+  }
+  const blockedCapability = capabilityRequest?.capabilities.find(
+    (capability) => capability.capabilityId === normalizedBlockedRequest?.capabilityId,
+  );
+  if (
+    normalizedBlockedRequest &&
+    blockedCapability &&
+    ["R0", "R1", "R2", "R3"].indexOf(normalizedBlockedRequest.riskLevel) <
+      ["R0", "R1", "R2", "R3"].indexOf(blockedCapability.riskLevel)
+  ) {
+    throw Errors.invalidCapabilityRequest(provider.id, [
+      "capabilityRequest.riskLevel cannot downgrade catalog risk",
+    ]);
+  }
   const scopes = capabilityRequest?.scopes ?? resolveRequestedScopes(provider, params.scopes);
   const userScopes = capabilityRequest?.userScopes ?? provider.userScopes ?? [];
   const redirectUrl = params.redirectUrl || "/auth/success";
+  if (normalizedBlockedRequest) {
+    const continuationTarget = new URL(redirectUrl, baseUrl);
+    const normalizedPath = continuationTarget.pathname.replace(/\/+$/, "") || "/";
+    if (normalizedPath !== "/auth/success") {
+      throw Errors.invalidCapabilityRequest(provider.id, [
+        "capabilityRequest requires the authenticated /auth/success continuation",
+      ]);
+    }
+  }
 
   // Generate cryptographically secure state
   const state = crypto.randomUUID();
@@ -300,6 +347,8 @@ export async function initiateOAuth2(
     redirectUrl,
     scopes,
     userScopes,
+    capabilities: params.capabilities,
+    capabilityRequest: normalizedBlockedRequest,
     expectedPlatformUserId: params.expectedPlatformUserId,
     connectionRole: normalizeOAuthConnectionRole(params.connectionRole),
     createdAt: Date.now(),
@@ -389,8 +438,16 @@ export async function handleOAuth2Callback(
   // Delete state to prevent replay attacks
   await cache.del(stateKey);
 
-  const { organizationId, userId, redirectUrl, scopes, expectedPlatformUserId, codeVerifier } =
-    stateData;
+  const {
+    organizationId,
+    userId,
+    redirectUrl,
+    scopes,
+    capabilities,
+    capabilityRequest,
+    expectedPlatformUserId,
+    codeVerifier,
+  } = stateData;
   const connectionRole = normalizeOAuthConnectionRole(stateData.connectionRole);
 
   // Exchange code for tokens
@@ -426,17 +483,58 @@ export async function handleOAuth2Callback(
   }
 
   // Store connection
-  const granted = resolveGrantedScopes(provider, tokens, scopes);
+  const granted = resolveGrantedScopes(provider, tokens, scopes, userInfo.confirmedScopes);
   const connectionId = await storeConnection(
     provider,
     organizationId,
     userId,
     connectionRole,
-    tokens,
+    connectionRole === "OWNER" && userInfoToken !== tokens.access_token
+      ? { ...tokens, access_token: userInfoToken }
+      : tokens,
     userInfo,
     granted.scopes,
     granted.userScopes,
   );
+
+  const capabilityAccess = capabilities
+    ? resolveOAuthCapabilityRequest(
+        provider,
+        capabilities,
+        granted.scopes,
+        granted.userScopes,
+        connectionRole,
+      ).capabilities
+    : undefined;
+  let capabilityContinuation: BoundCapabilityRequest | undefined;
+  if (capabilityRequest) {
+    const connection: OAuthConnection = {
+      id: connectionId,
+      userId: connectionRole === "OWNER" ? userId : undefined,
+      connectionRole: formatOAuthConnectionRole(connectionRole),
+      platform: provider.id,
+      platformUserId: userInfo.id,
+      displayName: userInfo.displayName,
+      username: userInfo.username,
+      status: "active",
+      scopes: granted.scopes,
+      userScopes: granted.userScopes,
+      linkedAt: new Date(),
+      tokenExpired: false,
+      source: "platform_credentials",
+    };
+    const account = projectOAuthConnectedAccount(provider, connection);
+    const targetCapability = account.capabilities.find(
+      (entry) => entry.capabilityId === capabilityRequest.capabilityId,
+    );
+    if (targetCapability?.status === "available") {
+      capabilityContinuation = bindCapabilityRequest(
+        capabilityRequest,
+        account,
+        new Date().toISOString(),
+      );
+    }
+  }
 
   logger.info(`[OAuth2] Callback completed for ${provider.id}`, {
     organizationId,
@@ -452,6 +550,8 @@ export async function handleOAuth2Callback(
     email: userInfo.email,
     displayName: userInfo.displayName,
     redirectUrl,
+    capabilityAccess,
+    capabilityContinuation,
   };
 }
 
@@ -624,7 +724,14 @@ async function fetchUserInfo(
     throw new Error(`GraphQL error: ${errorMessage}`);
   }
 
-  return extractUserInfo(provider.userInfoMapping, data);
+  const extracted = extractUserInfo(provider.userInfoMapping, data);
+  const grantAuthority = provider.grantedScopeAuthority;
+  if (!grantAuthority) return extracted;
+  const rawHeader = response.headers.get(grantAuthority.header);
+  return {
+    ...extracted,
+    confirmedScopes: parseGrantedScopeField(rawHeader),
+  };
 }
 
 /**
@@ -1091,6 +1198,8 @@ export async function refreshOAuth2Token(
   accessToken: string;
   expiresIn?: number;
   newRefreshToken?: string;
+  grantedScopes?: string[];
+  grantedUserScopes?: string[];
 }> {
   const clientId = getClientId(provider);
   const clientSecret = getClientSecret(provider);
@@ -1144,15 +1253,16 @@ export async function refreshOAuth2Token(
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
     logger.error(`[OAuth2] Token refresh failed for ${provider.id}`, {
       status: response.status,
-      error: errorText.substring(0, 500),
     });
-    throw new Error(`Token refresh failed: ${response.status}`);
+    throw new OAuthRefreshRejectedError(
+      `Token refresh failed: ${response.status}`,
+      response.status === 400 || response.status === 401,
+    );
   }
 
-  const data = (await response.json()) as Record<string, string | number | undefined>;
+  const data = (await response.json()) as Record<string, unknown>;
   const tokenMapping = provider.tokenMapping;
 
   const accessToken = data[tokenMapping?.accessToken || "access_token"] as string | undefined;
@@ -1164,5 +1274,106 @@ export async function refreshOAuth2Token(
     accessToken,
     expiresIn: data[tokenMapping?.expiresIn || "expires_in"] as number | undefined,
     newRefreshToken: data[tokenMapping?.refreshToken || "refresh_token"] as string | undefined,
+    grantedScopes:
+      typeof data[tokenMapping?.scope || "scope"] === "string"
+        ? parseGrantedScopeField(data[tokenMapping?.scope || "scope"])
+        : undefined,
+    grantedUserScopes:
+      data.authed_user &&
+      typeof data.authed_user === "object" &&
+      !Array.isArray(data.authed_user) &&
+      typeof (data.authed_user as Record<string, unknown>).scope === "string"
+        ? parseGrantedScopeField((data.authed_user as Record<string, unknown>).scope)
+        : undefined,
   };
+}
+
+/** Refresh rejection that distinguishes reauthorization from a transient outage. */
+export class OAuthRefreshRejectedError extends Error {
+  constructor(
+    message: string,
+    public readonly reauthRequired: boolean,
+  ) {
+    super(message);
+    this.name = "OAuthRefreshRejectedError";
+  }
+}
+
+/**
+ * Revoke the provider-side grant when the registry declares a verified
+ * protocol. A missing protocol is an explicit local-disconnect result.
+ */
+export async function revokeOAuth2Credential(
+  provider: OAuthProviderConfig,
+  credentials: { accessToken?: string; refreshToken?: string },
+): Promise<{ remoteRevoked: boolean }> {
+  const config = provider.revocation;
+  if (!config) return { remoteRevoked: false };
+  const token = config.token === "refresh" ? credentials.refreshToken : credentials.accessToken;
+  if (!token) {
+    throw new Error(`[OAuth2] ${provider.id} revocation requires a ${config.token} token`);
+  }
+
+  let url: string;
+  let init: RequestInit;
+  if (config.transport === "github_token") {
+    const clientId = getClientId(provider);
+    const clientSecret = getClientSecret(provider);
+    if (!clientId || !clientSecret) {
+      throw new Error(`[OAuth2] ${provider.id} revocation requires app credentials`);
+    }
+    url = `https://api.github.com/applications/${encodeURIComponent(clientId)}/token`;
+    init = {
+      method: "DELETE",
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
+        "Content-Type": "application/json",
+        "X-GitHub-Api-Version": "2026-03-10",
+      },
+      body: JSON.stringify({ access_token: token }),
+    };
+  } else {
+    if (!provider.endpoints?.revoke) {
+      throw new Error(`[OAuth2] ${provider.id} revocation endpoint is not configured`);
+    }
+    url = provider.endpoints.revoke;
+    if (config.transport === "bearer") {
+      init = {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      };
+    } else {
+      const body = new URLSearchParams({ token });
+      if (config.includeClientCredentials) {
+        const clientId = getClientId(provider);
+        const clientSecret = getClientSecret(provider);
+        if (!clientId || !clientSecret) {
+          throw new Error(`[OAuth2] ${provider.id} revocation requires app credentials`);
+        }
+        body.set("client_id", clientId);
+        body.set("client_secret", clientSecret);
+      }
+      init = {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+      };
+    }
+  }
+
+  const response = await fetchOAuth2(url, init);
+  if (!response.ok) {
+    throw new Error(`[OAuth2] ${provider.id} revocation failed with status ${response.status}`);
+  }
+  if (config.response === "slack_json") {
+    const body = (await response.json()) as Record<string, unknown>;
+    if (body.ok !== true || body.revoked !== true) {
+      throw new Error(`[OAuth2] ${provider.id} did not confirm token revocation`);
+    }
+  }
+  return { remoteRevoked: true };
 }

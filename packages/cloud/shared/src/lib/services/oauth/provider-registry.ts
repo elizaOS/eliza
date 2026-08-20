@@ -12,27 +12,62 @@
  * - API Key (Twilio, Blooio - user provides credentials)
  */
 
+import {
+  type CapabilityRiskLevel,
+  type CapabilityUnavailableCode,
+  type ConnectedAccount,
+  normalizeConnectedAccount,
+  PROVIDER_INTEGRATION_CONTRACT_VERSION,
+} from "@elizaos/core/types/provider-integrations";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { Errors } from "./errors";
-import type { OAuthProviderType } from "./types";
-
-/** Approval boundary for a named OAuth capability bundle. */
-export type OAuthCapabilityConsent = "consent" | "review" | "admin";
+import {
+  normalizeOAuthConnectionRole,
+  type OAuthConnection,
+  type OAuthProviderType,
+  type OAuthStandardConnectionRole,
+} from "./types";
 
 /** Provider-owned scope mapping for one stable product capability. */
 export interface OAuthCapabilityScopeBundle {
   scopes: string[];
   userScopes?: string[];
-  consent?: OAuthCapabilityConsent;
+  riskLevel: CapabilityRiskLevel;
 }
 
 /** Capability availability projected without exposing provider credentials. */
 export interface OAuthCapabilityAccess {
   capabilityId: string;
-  status: "available" | "needs_scope" | "needs_review" | "needs_admin";
+  riskLevel: CapabilityRiskLevel;
+  status: "available" | CapabilityUnavailableCode;
   missingScopes: string[];
   missingUserScopes: string[];
 }
+
+/** Provider-specific source of the grant set confirmed after authorization. */
+export interface OAuthGrantedScopeAuthority {
+  source: "user_info_header";
+  header: string;
+}
+
+/** Protocol required to revoke the provider-side grant, not merely local storage. */
+export type OAuthRevocationConfig =
+  | {
+      transport: "form";
+      token: "access" | "refresh";
+      includeClientCredentials?: boolean;
+      response: "http_ok" | "slack_json";
+    }
+  | {
+      transport: "bearer";
+      token: "access" | "refresh";
+      response: "http_ok" | "slack_json";
+    }
+  | {
+      transport: "github_token";
+      token: "access";
+      response: "http_ok";
+    };
 
 /** Canonical scope request derived from named capabilities. */
 export interface ResolvedOAuthCapabilityRequest {
@@ -160,6 +195,12 @@ export interface OAuthProviderConfig {
 
   /** Superset of user-level scopes accepted across named capability bundles. */
   allowedUserScopes?: string[];
+
+  /** Authoritative post-exchange scope source when the token body is insufficient. */
+  grantedScopeAuthority?: OAuthGrantedScopeAuthority;
+
+  /** Exact provider-side token/grant revocation protocol. */
+  revocation?: OAuthRevocationConfig;
 
   /**
    * Default user-level OAuth scopes for providers that distinguish between
@@ -292,24 +333,28 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       "https://www.googleapis.com/auth/contacts.readonly",
     ],
     capabilityScopes: {
-      "google.gmail.read": {
+      "email.messages.read": {
         scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+        riskLevel: "R1",
       },
-      "google.gmail.send": {
+      "email.messages.send": {
         scopes: ["https://www.googleapis.com/auth/gmail.send"],
-        consent: "review",
+        riskLevel: "R2",
       },
-      "google.calendar.read": {
+      "calendar.events.read": {
         scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+        riskLevel: "R1",
       },
-      "google.calendar.write": {
+      "calendar.events.write": {
         scopes: ["https://www.googleapis.com/auth/calendar.events"],
-        consent: "review",
+        riskLevel: "R2",
       },
-      "google.contacts.read": {
+      "contacts.read": {
         scopes: ["https://www.googleapis.com/auth/contacts.readonly"],
+        riskLevel: "R1",
       },
     },
+    revocation: { transport: "form", token: "access", response: "http_ok" },
     userInfoMapping: {
       id: "id",
       email: "email",
@@ -353,19 +398,19 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       "Mail.Send",
     ],
     capabilityScopes: {
-      "microsoft.calendar.read": { scopes: ["Calendars.Read"] },
-      "microsoft.calendar.write": {
+      "calendar.events.read": { scopes: ["Calendars.Read"], riskLevel: "R1" },
+      "calendar.events.write": {
         scopes: ["Calendars.ReadWrite"],
-        consent: "review",
+        riskLevel: "R2",
       },
-      "microsoft.mail.read": { scopes: ["Mail.Read"] },
-      "microsoft.mail.write": {
+      "email.messages.read": { scopes: ["Mail.Read"], riskLevel: "R1" },
+      "email.messages.write": {
         scopes: ["Mail.ReadWrite"],
-        consent: "review",
+        riskLevel: "R2",
       },
-      "microsoft.mail.send": {
+      "email.messages.send": {
         scopes: ["Mail.Send"],
-        consent: "review",
+        riskLevel: "R2",
       },
     },
     userInfoMapping: {
@@ -398,10 +443,10 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     defaultScopes: ["read"],
     allowedScopes: ["read", "write", "issues:create"],
     capabilityScopes: {
-      "linear.issue.write": { scopes: ["write"], consent: "review" },
-      "linear.issue.create": {
+      "issues.write": { scopes: ["write"], riskLevel: "R2" },
+      "issues.create": {
         scopes: ["issues:create"],
-        consent: "review",
+        riskLevel: "R2",
       },
     },
     userInfoMapping: {
@@ -458,7 +503,16 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     defaultScopes: ["read:user", "user:email"],
     allowedScopes: ["read:user", "user:email", "repo"],
     capabilityScopes: {
-      "github.repository": { scopes: ["repo"], consent: "review" },
+      "repositories.full_control": { scopes: ["repo"], riskLevel: "R3" },
+    },
+    grantedScopeAuthority: {
+      source: "user_info_header",
+      header: "x-oauth-scopes",
+    },
+    revocation: {
+      transport: "github_token",
+      token: "access",
+      response: "http_ok",
     },
     userInfoMapping: {
       id: "id",
@@ -487,24 +541,31 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       revoke: "https://slack.com/api/auth.revoke",
     },
     defaultScopes: ["users:read"],
-    allowedScopes: ["identity.basic", "users:read", "chat:write", "channels:read"],
+    allowedScopes: ["identity.basic", "users:read", "chat:write", "channels:read", "files:read"],
     capabilityScopes: {
-      "slack.channels.read": { scopes: ["channels:read"] },
-      "slack.users.read": {
-        scopes: [],
+      "channels.read": { scopes: ["channels:read"], riskLevel: "R1" },
+      "directory.users.read": {
+        scopes: ["users:read"],
         userScopes: ["users:read"],
+        riskLevel: "R1",
       },
-      "slack.message.send": {
+      "messages.send": {
         scopes: ["chat:write"],
         userScopes: ["chat:write"],
-        consent: "review",
+        riskLevel: "R2",
       },
-      "slack.message.search": {
+      "messages.search": {
         scopes: [],
         userScopes: ["search:read"],
+        riskLevel: "R1",
       },
-      "slack.files.read": { scopes: [], userScopes: ["files:read"] },
+      "files.read": {
+        scopes: ["files:read"],
+        userScopes: ["files:read"],
+        riskLevel: "R1",
+      },
     },
+    revocation: { transport: "bearer", token: "access", response: "slack_json" },
     // User-level scopes requested for the OWNER role so the user's own
     // Slack identity (authed_user.access_token, `xoxp-...`) can act on
     // the user's behalf — read their channels, write as them, search
@@ -635,13 +696,14 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     defaultScopes: ["id", "refresh_token"],
     allowedScopes: ["full", "api", "id", "refresh_token", "chatter_api"],
     capabilityScopes: {
-      "salesforce.api": { scopes: ["api"], consent: "review" },
-      "salesforce.chatter": {
+      "crm.api": { scopes: ["api"], riskLevel: "R2" },
+      "crm.chatter": {
         scopes: ["chatter_api"],
-        consent: "review",
+        riskLevel: "R2",
       },
-      "salesforce.full": { scopes: ["full"], consent: "admin" },
+      "crm.full_control": { scopes: ["full"], riskLevel: "R3" },
     },
+    revocation: { transport: "form", token: "refresh", response: "http_ok" },
     userInfoMapping: {
       id: "user_id",
       email: "email",
@@ -679,26 +741,27 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
       "webhook:manage",
     ],
     capabilityScopes: {
-      "airtable.records.read": { scopes: ["data.records:read"] },
-      "airtable.records.write": {
+      "records.read": { scopes: ["data.records:read"], riskLevel: "R1" },
+      "records.write": {
         scopes: ["data.records:write"],
-        consent: "review",
+        riskLevel: "R2",
       },
-      "airtable.comments.read": {
+      "record_comments.read": {
         scopes: ["data.recordComments:read"],
+        riskLevel: "R1",
       },
-      "airtable.comments.write": {
+      "record_comments.write": {
         scopes: ["data.recordComments:write"],
-        consent: "review",
+        riskLevel: "R2",
       },
-      "airtable.schema.read": { scopes: ["schema.bases:read"] },
-      "airtable.schema.write": {
+      "schemas.read": { scopes: ["schema.bases:read"], riskLevel: "R1" },
+      "schemas.write": {
         scopes: ["schema.bases:write"],
-        consent: "admin",
+        riskLevel: "R3",
       },
-      "airtable.webhook.manage": {
+      "webhooks.manage": {
         scopes: ["webhook:manage"],
-        consent: "admin",
+        riskLevel: "R3",
       },
     },
     userInfoMapping: {
@@ -1012,9 +1075,78 @@ function capabilityStatus(
   missing: boolean,
 ): OAuthCapabilityAccess["status"] {
   if (!missing) return "available";
-  if (bundle.consent === "admin") return "needs_admin";
-  if (bundle.consent === "review") return "needs_review";
+  if (bundle.riskLevel === "R3") return "needs_admin";
+  if (bundle.riskLevel === "R2") return "needs_review";
   return "needs_scope";
+}
+
+function unavailableForConnection(connection: OAuthConnection): CapabilityUnavailableCode | null {
+  switch (connection.status) {
+    case "active":
+      return null;
+    case "revoked":
+      return "account_revoked";
+    case "error":
+      return "account_error";
+    case "expired":
+      return "needs_scope";
+    case "pending":
+      return "provider_unavailable";
+  }
+}
+
+/**
+ * Project Cloud's credential row into the canonical opaque connected-account
+ * authority. Provider identities, raw scopes, and credential row internals do
+ * not cross this boundary.
+ */
+export function projectOAuthConnectedAccount(
+  provider: OAuthProviderConfig,
+  connection: OAuthConnection,
+): ConnectedAccount {
+  if (connection.platform !== provider.id) {
+    throw Errors.connectionNotFound(connection.id);
+  }
+  const scopes = new Set(normalizeScopes(connection.scopes));
+  const userScopes = new Set(normalizeScopes(connection.userScopes));
+  const accountUnavailable = unavailableForConnection(connection);
+  const capabilities = Object.entries(provider.capabilityScopes ?? {}).map(
+    ([capabilityId, bundle]) => {
+      const ownerUsesUserGrant =
+        normalizeOAuthConnectionRole(connection.connectionRole) === "OWNER" &&
+        normalizeScopes(bundle.userScopes).length > 0;
+      const hasAllScopes = ownerUsesUserGrant
+        ? true
+        : normalizeScopes(bundle.scopes).every((scope) => scopes.has(scope));
+      const hasAllUserScopes = ownerUsesUserGrant
+        ? normalizeScopes(bundle.userScopes).every((scope) => userScopes.has(scope))
+        : true;
+      return {
+        capabilityId,
+        riskLevel: bundle.riskLevel,
+        status: accountUnavailable ?? capabilityStatus(bundle, !hasAllScopes || !hasAllUserScopes),
+      };
+    },
+  );
+  const accountStatus =
+    connection.status === "active"
+      ? "connected"
+      : connection.status === "expired"
+        ? "reauth_required"
+        : connection.status === "pending"
+          ? "unavailable"
+          : connection.status;
+
+  return normalizeConnectedAccount({
+    contractVersion: PROVIDER_INTEGRATION_CONTRACT_VERSION,
+    accountId: connection.id,
+    providerId: provider.id,
+    mode: "cloud",
+    status: accountStatus,
+    displayName: connection.displayName ?? connection.username ?? null,
+    capabilities,
+    lastUsedAt: connection.lastUsedAt?.toISOString() ?? null,
+  });
 }
 
 export function getAllowedScopes(provider: OAuthProviderConfig): string[] {
@@ -1049,6 +1181,7 @@ export function resolveOAuthCapabilityRequest(
   requestedCapabilities: string[],
   grantedScopes: readonly string[] = [],
   grantedUserScopes: readonly string[] = [],
+  connectionRole: OAuthStandardConnectionRole = "OWNER",
 ): ResolvedOAuthCapabilityRequest {
   const capabilityIds = normalizeScopes(requestedCapabilities);
   const bundles = provider.capabilityScopes ?? {};
@@ -1071,14 +1204,17 @@ export function resolveOAuthCapabilityRequest(
     if (!bundle) {
       throw Errors.invalidCapabilityRequest(provider.id, [capabilityId]);
     }
-    const requiredScopes = normalizeScopes(bundle.scopes);
-    const requiredUserScopes = normalizeScopes(bundle.userScopes);
+    const ownerUsesUserGrant =
+      connectionRole === "OWNER" && normalizeScopes(bundle.userScopes).length > 0;
+    const requiredScopes = ownerUsesUserGrant ? [] : normalizeScopes(bundle.scopes);
+    const requiredUserScopes = ownerUsesUserGrant ? normalizeScopes(bundle.userScopes) : [];
     const capabilityMissingScopes = missingScopes(requiredScopes, grantedScopeSet);
     const capabilityMissingUserScopes = missingScopes(requiredUserScopes, grantedUserScopeSet);
     scopes.push(...requiredScopes);
     userScopes.push(...requiredUserScopes);
     return {
       capabilityId,
+      riskLevel: bundle.riskLevel,
       status: capabilityStatus(
         bundle,
         capabilityMissingScopes.length > 0 || capabilityMissingUserScopes.length > 0,

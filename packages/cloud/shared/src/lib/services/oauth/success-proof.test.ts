@@ -1,5 +1,6 @@
 /** Unit tests for OAuth success-proof mint/consume (HMAC + one-time ticket). */
 
+import { bindCapabilityRequest } from "@elizaos/core/types/provider-integrations";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __setOAuthSuccessProofTicketStoreForTests,
@@ -50,6 +51,48 @@ describe("oauth success proof", () => {
     });
     const second = await consumeOAuthSuccessProof(proof, BINDING);
     expect(second).toEqual({ ok: false, reason: "already_used" });
+  });
+
+  it("returns the exact signed capability continuation only to the bound session", async () => {
+    const continuation = bindCapabilityRequest(
+      {
+        contractVersion: 2,
+        requestId: "req_repo_1",
+        capabilityId: "repositories.full_control",
+        operation: "repository.write",
+        riskLevel: "R3",
+        accountId: null,
+        inputDigest: "a".repeat(64),
+      },
+      {
+        contractVersion: 2,
+        accountId: "conn-1",
+        providerId: "github",
+        mode: "cloud",
+        status: "connected",
+        displayName: null,
+        capabilities: [
+          {
+            capabilityId: "repositories.full_control",
+            riskLevel: "R3",
+            status: "available",
+          },
+        ],
+        lastUsedAt: null,
+      },
+      "2026-08-20T00:00:00.000Z",
+    );
+    const proof = await mintOAuthSuccessProof({
+      platform: "github",
+      connectionId: "conn-1",
+      capabilityContinuation: continuation,
+      ...BINDING,
+    });
+
+    expect(await consumeOAuthSuccessProof(proof, BINDING)).toEqual({
+      ok: true,
+      payload: expect.objectContaining({ capabilityContinuation: continuation }),
+    });
   });
 
   it("mints twitter proofs without a connection id and consumes once", async () => {

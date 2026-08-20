@@ -14,6 +14,7 @@ import {
   isProviderConfigured,
   isValidProvider,
   type OAuthProviderConfig,
+  projectOAuthConnectedAccount,
   resolveOAuthCapabilityRequest,
   resolveRequestedScopes,
 } from "./provider-registry";
@@ -87,7 +88,7 @@ describe("incremental capability scope bundles (#19879)", () => {
     const google = getProvider("google");
     if (!google) throw new Error("google provider must exist");
 
-    const request = resolveOAuthCapabilityRequest(google, ["google.calendar.read"]);
+    const request = resolveOAuthCapabilityRequest(google, ["calendar.events.read"]);
 
     expect(request.scopes).toEqual([
       "https://www.googleapis.com/auth/userinfo.email",
@@ -97,7 +98,8 @@ describe("incremental capability scope bundles (#19879)", () => {
     expect(request.scopes).not.toContain("https://www.googleapis.com/auth/gmail.send");
     expect(request.capabilities).toEqual([
       {
-        capabilityId: "google.calendar.read",
+        capabilityId: "calendar.events.read",
+        riskLevel: "R1",
         status: "needs_scope",
         missingScopes: ["https://www.googleapis.com/auth/calendar.readonly"],
         missingUserScopes: [],
@@ -113,15 +115,15 @@ describe("incremental capability scope bundles (#19879)", () => {
     expect(
       resolveOAuthCapabilityRequest(
         google,
-        ["google.calendar.read"],
+        ["calendar.events.read"],
         ["https://www.googleapis.com/auth/calendar.readonly"],
       ).capabilities[0]?.status,
     ).toBe("available");
     expect(
-      resolveOAuthCapabilityRequest(google, ["google.gmail.send"]).capabilities[0]?.status,
+      resolveOAuthCapabilityRequest(google, ["email.messages.send"]).capabilities[0]?.status,
     ).toBe("needs_review");
     expect(
-      resolveOAuthCapabilityRequest(salesforce, ["salesforce.full"]).capabilities[0]?.status,
+      resolveOAuthCapabilityRequest(salesforce, ["crm.full_control"]).capabilities[0]?.status,
     ).toBe("needs_admin");
   });
 
@@ -131,7 +133,7 @@ describe("incremental capability scope bundles (#19879)", () => {
 
     const request = resolveOAuthCapabilityRequest(
       google,
-      ["google.calendar.read"],
+      ["calendar.events.read"],
       ["https://www.googleapis.com/auth/gmail.readonly"],
     );
 
@@ -148,28 +150,86 @@ describe("incremental capability scope bundles (#19879)", () => {
     const slack = getProvider("slack");
     if (!slack) throw new Error("slack provider must exist");
 
-    const request = resolveOAuthCapabilityRequest(slack, [
-      "slack.message.send",
-      "slack.files.read",
-    ]);
+    const request = resolveOAuthCapabilityRequest(slack, ["messages.send", "files.read"]);
 
-    expect(request.scopes).toEqual(["users:read", "chat:write"]);
+    expect(request.scopes).toEqual(["users:read"]);
     expect(request.userScopes).toEqual(["identity.basic", "chat:write", "files:read"]);
+
+    const agentRequest = resolveOAuthCapabilityRequest(
+      slack,
+      ["messages.send", "files.read"],
+      [],
+      [],
+      "AGENT",
+    );
+    expect(agentRequest.scopes).toEqual(["users:read", "chat:write", "files:read"]);
+    expect(agentRequest.userScopes).toEqual(["identity.basic"]);
   });
 
   test("deduplicates repeated capabilities and fails closed for unknown names", () => {
     const airtable = getProvider("airtable");
     if (!airtable) throw new Error("airtable provider must exist");
 
-    const request = resolveOAuthCapabilityRequest(airtable, [
-      "airtable.records.read",
-      "airtable.records.read",
-    ]);
+    const request = resolveOAuthCapabilityRequest(airtable, ["records.read", "records.read"]);
     expect(request.capabilities).toHaveLength(1);
     expect(request.scopes).toEqual(["user.email:read", "data.records:read"]);
-    expect(() => resolveOAuthCapabilityRequest(airtable, ["airtable.not-real"])).toThrow(
+    expect(() => resolveOAuthCapabilityRequest(airtable, ["not-real"])).toThrow(
       "Requested capabilities are not registered",
     );
+  });
+
+  test("uses one provider-neutral vocabulary for equivalent Google and Microsoft grants", () => {
+    const google = getProvider("google");
+    const microsoft = getProvider("microsoft");
+    if (!google || !microsoft) throw new Error("calendar providers must exist");
+
+    for (const capabilityId of ["calendar.events.read", "calendar.events.write"]) {
+      expect(google.capabilityScopes?.[capabilityId]).toBeDefined();
+      expect(microsoft.capabilityScopes?.[capabilityId]).toBeDefined();
+    }
+    expect(getProvider("github")?.capabilityScopes?.["repositories.full_control"]).toMatchObject({
+      scopes: ["repo"],
+      riskLevel: "R3",
+    });
+  });
+
+  test("projects an opaque canonical account and invalidates capabilities with lifecycle state", () => {
+    const google = getProvider("google");
+    if (!google) throw new Error("google provider must exist");
+    const baseConnection = {
+      id: "11111111-1111-4111-8111-111111111111",
+      userId: "cloud-user-private",
+      connectionRole: "owner" as const,
+      platform: "google",
+      platformUserId: "provider-user-private",
+      email: "private@example.test",
+      displayName: "Work calendar",
+      status: "active" as const,
+      scopes: ["https://www.googleapis.com/auth/calendar.events"],
+      linkedAt: new Date("2026-08-19T00:00:00.000Z"),
+      tokenExpired: false,
+      source: "platform_credentials" as const,
+    };
+
+    const connected = projectOAuthConnectedAccount(google, baseConnection);
+    expect(JSON.stringify(connected)).not.toMatch(/provider-user-private|private@example/);
+    expect(connected).toMatchObject({
+      contractVersion: 2,
+      accountId: baseConnection.id,
+      providerId: "google",
+      mode: "cloud",
+      status: "connected",
+    });
+    expect(
+      connected.capabilities.find(({ capabilityId }) => capabilityId === "calendar.events.write"),
+    ).toMatchObject({ riskLevel: "R2", status: "available" });
+
+    const revoked = projectOAuthConnectedAccount(google, {
+      ...baseConnection,
+      status: "revoked",
+    });
+    expect(revoked.status).toBe("revoked");
+    expect(revoked.capabilities.every(({ status }) => status === "account_revoked")).toBe(true);
   });
 
   test("validates every registered bundle against its provider allowlists", () => {

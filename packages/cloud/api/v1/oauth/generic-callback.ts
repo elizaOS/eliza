@@ -138,6 +138,7 @@ export async function handleGenericOAuthCallback(
         connectionId: result.connectionId,
         organizationId: result.organizationId,
         userId: result.userId,
+        capabilityContinuation: result.capabilityContinuation,
       });
       if (proof) {
         redirectTarget.searchParams.set("proof", proof);

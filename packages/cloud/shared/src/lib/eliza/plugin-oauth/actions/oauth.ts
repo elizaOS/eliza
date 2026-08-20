@@ -236,6 +236,10 @@ async function runConnect(
       redirectUrl: typeof params.redirectUrl === "string" ? params.redirectUrl : undefined,
       scopes: normalizeScopes(params.scopes),
       capabilities,
+      capabilityRequest:
+        params.capabilityRequest && typeof params.capabilityRequest === "object"
+          ? params.capabilityRequest
+          : undefined,
       connectionId: capabilities ? activeConnectionId : undefined,
       connectionRole,
     });

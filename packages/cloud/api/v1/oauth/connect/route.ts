@@ -27,6 +27,7 @@ interface ConnectRequestBody {
   redirectUrl?: string;
   scopes?: string[];
   capabilities?: string[];
+  capabilityRequest?: unknown;
   connectionId?: string;
 }
 
@@ -97,6 +98,17 @@ app.post("/", async (c) => {
       );
     }
     if (
+      body.capabilityRequest !== undefined &&
+      body.capabilities === undefined
+    ) {
+      return c.json(
+        validationErrorResponse(
+          "capabilityRequest requires named capabilities",
+        ),
+        400,
+      );
+    }
+    if (
       body.connectionId !== undefined &&
       (!isValidString(body.connectionId) ||
         !UUID_PATTERN.test(body.connectionId) ||
@@ -128,6 +140,7 @@ app.post("/", async (c) => {
       redirectUrl: body.redirectUrl,
       scopes: body.scopes,
       capabilities: body.capabilities,
+      capabilityRequest: body.capabilityRequest,
       connectionId: body.connectionId,
     });
 

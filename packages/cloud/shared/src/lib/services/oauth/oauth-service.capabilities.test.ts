@@ -5,7 +5,10 @@
 
 import { describe, expect, test } from "bun:test";
 import { OAuthErrorCode } from "./errors";
-import { resolveExistingCapabilityGrant } from "./oauth-service";
+import {
+  resolveExistingCapabilityGrant,
+  selectImplicitIncrementalOAuthConnection,
+} from "./oauth-service";
 import type { OAuthConnection } from "./types";
 
 const CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
@@ -37,6 +40,21 @@ function resolve(candidate: OAuthConnection | null) {
 }
 
 describe("existing OAuth capability grant binding (#19879)", () => {
+  test("requires explicit selection when multiple active accounts exist", () => {
+    const first = connection();
+    const second = {
+      ...first,
+      id: "22222222-2222-4222-8222-222222222222",
+      platformUserId: "provider-user-2",
+    };
+    expect(() => selectImplicitIncrementalOAuthConnection("test", [first, second])).toThrow(
+      "multiple active accounts",
+    );
+    expect(selectImplicitIncrementalOAuthConnection("test", [first])).toBe(first.id);
+    expect(
+      selectImplicitIncrementalOAuthConnection("test", [{ ...first, status: "expired" }]),
+    ).toBeUndefined();
+  });
   test("projects only allowlisted grants and binds the provider account", () => {
     expect(resolve(connection())).toEqual({
       grantedScopes: ["identity", "calendar.read"],

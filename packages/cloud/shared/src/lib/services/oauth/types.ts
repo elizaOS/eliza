@@ -5,6 +5,12 @@
  * a consistent interface across multiple OAuth providers (Google, Twitter, Twilio, Blooio).
  */
 
+import type {
+  BoundCapabilityRequest,
+  ConnectedAccountCapability,
+} from "@elizaos/core/types/provider-integrations";
+import type { OAuthCapabilityAccess } from "./provider-registry";
+
 export type OAuthProviderType = "oauth2" | "oauth1a" | "api_key";
 
 export type OAuthConnectionStatus = "pending" | "active" | "expired" | "revoked" | "error";
@@ -145,6 +151,8 @@ export interface InitiateAuthParams {
   scopes?: string[];
   /** Stable provider capability IDs to request incrementally. */
   capabilities?: string[];
+  /** Exact blocked action intent to bind after the provider confirms consent. */
+  capabilityRequest?: unknown;
   /** Existing tenant-owned connection whose grants should be extended. */
   connectionId?: string;
   /** Logical Agent-side role for the connection */
@@ -160,14 +168,13 @@ export interface InitiateAuthResult {
   /** State parameter for CSRF protection */
   state?: string;
   /** Capability states that caused this incremental consent flow. */
-  capabilityAccess?: Array<{
-    capabilityId: string;
-    status: "available" | "needs_scope" | "needs_review" | "needs_admin";
-    missingScopes: string[];
-    missingUserScopes: string[];
-  }>;
+  capabilityAccess?: OAuthCapabilityAccess[];
   /** Signals that the caller's redirect may retry its blocked action after consent. */
   retryAfterConsent?: boolean;
+  /** Selected canonical account capability when incremental consent is account-bound. */
+  selectedCapability?: ConnectedAccountCapability;
+  /** Authenticated exact-action continuation, emitted only after callback verification. */
+  capabilityContinuation?: BoundCapabilityRequest;
   /** For API key platforms - indicates credentials form should be shown */
   requiresCredentials?: boolean;
 }
