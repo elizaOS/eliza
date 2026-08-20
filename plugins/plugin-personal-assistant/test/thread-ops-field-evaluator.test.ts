@@ -143,6 +143,15 @@ describe("threadOpsFieldEvaluator", () => {
       expect(threadOpsFieldEvaluator.description).toContain(
         "route through their OWNER_* actions instead of threadOps",
       );
+      expect(threadOpsFieldEvaluator.descriptionCompressed).toContain(
+        "stop/abort",
+      );
+      expect(threadOpsFieldEvaluator.descriptionCompressed).toContain(
+        "OWNER_*",
+      );
+      expect(
+        threadOpsFieldEvaluator.descriptionCompressed?.length,
+      ).toBeLessThan(300);
     });
 
     it("declares a strict-mode schema with all op types including abort", () => {

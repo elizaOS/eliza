@@ -82,6 +82,16 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 		expect(reportError).not.toHaveBeenCalled();
 	});
 
+	test("does not retry a provider chain the runtime dimension probe disabled", async () => {
+		const { runtime, calls } = makeRuntime({
+			embed: async () => [0.1, 0.2, 0.3],
+		});
+		vi.spyOn(runtime, "isEmbeddingGenerationDisabled").mockReturnValue(true);
+
+		await expect(embedRecallQuery(runtime, "recall me")).resolves.toBeNull();
+		expect(calls.count).toBe(0);
+	});
+
 	test("returns the vector when the embed resolves", async () => {
 		const { runtime } = makeRuntime({
 			embed: async () => [0.1, 0.2, 0.3],

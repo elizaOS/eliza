@@ -58,9 +58,15 @@ feature with tests. Every scenario is independently verified after the agent
 finishes, and native trajectories are included in the emitted JSON report.
 
 ```bash
-ELIZA_LIVE_QA_OPENROUTER_KEY=... \
+CEREBRAS_API_KEY=... \
+  ELIZA_LIVE_QA_MODEL=gemma-4-31b \
   bun run --cwd packages/examples/code e2e:owned-runtime-live
 ```
+
+The live harness requires direct Cerebras through `CEREBRAS_API_KEY` (or the
+QA-specific `ELIZA_LIVE_QA_CEREBRAS_KEY`) and removes stale OpenRouter/OpenAI
+launch variables before boot. It fails closed rather than selecting another
+provider.
 
 Set `ELIZA_LIVE_QA_KEEP=1` to retain the temporary workspaces and full JSON plus
 Markdown trajectories for manual review. Never commit those generated evidence
@@ -84,7 +90,8 @@ unchanged read-only fixtures, independent passing tests, overlap between both
 concurrent child sessions, and successful validate/archive/reopen transitions.
 
 ```bash
-ELIZA_LIVE_QA_OPENROUTER_KEY=... \
+CEREBRAS_API_KEY=... \
+  ELIZA_LIVE_QA_MODEL=gemma-4-31b \
   ELIZA_LIVE_QA_REPORT_DIR=/private/safe/report/directory \
   bun run --cwd packages/examples/code e2e:owned-parent-orchestrator-live
 ```

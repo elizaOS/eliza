@@ -250,6 +250,16 @@ export async function embedRecallQuery(
 	) {
 		return null;
 	}
+	// The runtime dimension probe already established that every registered
+	// embedding provider is unusable. Re-probing that same failed chain on every
+	// chat turn adds latency and noise while memory writes are deliberately in
+	// keyword-only mode; the deferred recovery probe will clear this latch.
+	const embeddingHealth = runtime as IAgentRuntime & {
+		isEmbeddingGenerationDisabled?: () => boolean;
+	};
+	if (embeddingHealth.isEmbeddingGenerationDisabled?.() === true) {
+		return null;
+	}
 
 	let runId: string;
 	try {

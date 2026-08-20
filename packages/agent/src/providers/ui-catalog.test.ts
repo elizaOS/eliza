@@ -177,9 +177,9 @@ describe("relevance keyword separation", () => {
     expect(uiWidgetsProvider.relevanceKeywords).not.toContain("dashboard");
   });
 
-  it("keeps the compact marker guide available to ordinary response turns", () => {
+  it("keeps the compact marker guide routed without making every reply pay for it", () => {
     expect(uiWidgetsProvider.dynamic).toBe(true);
-    expect(uiWidgetsProvider.alwaysInResponseState).toBe(true);
+    expect(uiWidgetsProvider.alwaysInResponseState).toBeUndefined();
     expect(uiWidgetsProvider.cacheStable).toBe(true);
     expect(uiWidgetsProvider.cacheScope).toBe("agent");
     expect(uiWidgetsProvider.roleGate).toBeUndefined();

@@ -20,7 +20,11 @@ import { v4 as uuidv4 } from "uuid";
 import { getAgentClient } from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
 import { loadEnv } from "./lib/load-env.js";
-import { resolveModelProvider } from "./lib/model-provider.js";
+import {
+  applyCerebrasProviderEnv,
+  hasModelProviderCredential,
+  resolveModelProvider,
+} from "./lib/model-provider.js";
 import {
   createDefaultSessionState,
   loadSession,
@@ -104,9 +108,10 @@ Examples:
   echo "Explain this code" | eliza-code
 
 Environment Variables:
+  CEREBRAS_API_KEY        Required (if using Cerebras). Your Cerebras API key
   OPENAI_API_KEY          Required (if using OpenAI). Your OpenAI API key
   ANTHROPIC_API_KEY       Required (if using Anthropic). Your Anthropic API key
-  ELIZA_CODE_PROVIDER     Optional. Force provider: openai|anthropic
+  ELIZA_CODE_PROVIDER     Optional. Force provider: cerebras|openai|anthropic
   LOG_LEVEL               Log level (default: fatal for CLI)
 `;
 
@@ -436,17 +441,15 @@ export async function main(
 
   // Check for API key
   try {
+    applyCerebrasProviderEnv(process.env);
     const provider = resolveModelProvider(process.env);
-    if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY?.trim()) {
+    if (!hasModelProviderCredential(provider, process.env)) {
       console.error(
-        "Error: ANTHROPIC_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=anthropic)",
-      );
-      console.error("Set it in your environment or in a .env file");
-      return 1;
-    }
-    if (provider === "openai" && !process.env.OPENAI_API_KEY?.trim()) {
-      console.error(
-        "Error: OPENAI_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=openai)",
+        provider === "anthropic"
+          ? "Error: ANTHROPIC_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=anthropic)"
+          : provider === "cerebras"
+            ? "Error: CEREBRAS_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=cerebras)"
+            : "Error: OPENAI_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=openai)",
       );
       console.error("Set it in your environment or in a .env file");
       return 1;

@@ -11,10 +11,11 @@ explicit optional ACP backends, but neither is required for the owned path.
 Correctness is release-ready after both the normal-person browser regression and
 the exact-head parent/orchestrator matrix below. The pushed handoff identifies
 the final exact commit and its retained clean-start/clean-end report. The
-OpenRouter/Qwen QA configuration is still not a flawless interactive
-experience: successful two- to four-step coding turns took 62-81 seconds in the
-saved runtime trajectories. Treat provider/model latency as a visible ship
-caveat, not as evidence of a tool or orchestration failure.
+earlier OpenRouter/Qwen diagnostic remains historical evidence only; it is not
+the intended ship configuration. Current acceptance targets direct Cerebras
+with `gemma-4-31b`. Do not call the provider migration accepted until an
+exact-head Cerebras browser turn and parent/orchestrator matrix retain their
+model/provider identities and end-to-end timings.
 
 The tested production chain is:
 
@@ -130,9 +131,9 @@ read/edit calls only and produced a clean final response.
 
 ### Real parent and concurrent child acceptance
 
-Run `e2e:owned-parent-orchestrator-live` with a private OpenRouter credential.
-It builds every required package and uses the real OpenRouter-backed parent and
-child runtimes with `qwen/qwen3.8-27b`.
+Run `e2e:owned-parent-orchestrator-live` with a private Cerebras credential. It
+builds every required package and uses the real direct-Cerebras parent and child
+runtimes with `gemma-4-31b` by default.
 
 The live gate requires all of the following:
 
@@ -182,12 +183,14 @@ three passing tests and zero failures, the durable task moved through validation
 to `done` on the first attempt, and the asynchronous result appeared in the UI.
 No native desktop bundle was launched or tested by this coding-runtime lane.
 
-### Normal-person browser coding acceptance
+### Historical normal-person browser coding diagnostic
 
-The same isolated browser Eliza runtime was then exercised with ordinary chat
+The earlier OpenRouter/Qwen browser runtime was exercised with ordinary chat
 requests against a disposable Git fixture. These were not direct shell commands
 from the QA driver: each request went through the app UI, parent response
-handler, model planner, real FILE/SHELL actions, and persisted trajectory.
+handler, model planner, real FILE/SHELL actions, and persisted trajectory. The
+tool results remain useful regression evidence, but these runs are historical
+diagnostics rather than the current Cerebras/Gemma release gate.
 
 | Request                                                | Runtime path                                 | Independent result                                                    | Trajectory time | Verdict                |
 | ------------------------------------------------------ | -------------------------------------------- | --------------------------------------------------------------------- | --------------: | ---------------------- |
@@ -208,6 +211,52 @@ runtime trajectories are `tj-893f281f56b99c`, `tj-8ada53325b7132`,
 `tj-8ccb7336aab84a`, and `tj-8eb677a191c1d2`. The original broken run remains
 available as `tj-830fad609544a3` so the regression is auditable rather than
 hidden.
+
+### Provider correction and simple-turn latency audit
+
+The user's plain `hey` turn on the historical runtime took 5.587 seconds from
+the persisted user message to the persisted assistant reply. Its saved
+trajectory reported 3.474 seconds inside the Qwen model call, but the trajectory
+did not begin until 2.033 seconds after ingress. It also showed 6,481 prompt
+tokens, 148 completion tokens, zero cache hits, no planner/tool stages, and a
+22,214-character composed prompt. The largest avoidable contributors were an
+unrelated 2,989-character widget guide, an over-detailed compact context
+catalog, a 2,888-character current-turn boundary, the full thread-operations
+field description, and a known-dead embedding provider chain retried on the
+turn.
+
+The current delta fixes those causes without branching on greeting text:
+
+- `eliza-code` has a first-class `cerebras` provider selection, requires
+  `CEREBRAS_API_KEY` for that selection, preserves explicit non-Cerebras
+  choices, reports the real Gemma model in the status bar, and does not copy the
+  secret into `OPENAI_API_KEY`.
+- Both owned live harnesses require direct Cerebras, default to
+  `gemma-4-31b`, remove stale OpenAI/OpenRouter/OpenCode launch variables, and
+  fail closed when the Cerebras credential is absent.
+- Stage 1 still performs the normal structured simple-versus-actions decision.
+  The widget guide is selected only for matching routed contexts, compact
+  context lines omit redundant UI/access/cache metadata, and the
+  current-turn/thread-operation instructions retain their routing invariants in
+  compressed form.
+- Recall embedding skips a provider chain the runtime dimension probe has
+  already disabled; the existing deferred recovery probe remains responsible
+  for clearing that state.
+- File trajectories now begin at the trusted server-side `MessageService`
+  ingress timestamp, so compose, evaluator, and pre-model work is included in
+  end-to-end duration instead of disappearing before the first recorded stage.
+- Evaluator-owned replacement candidates remain exclusive after Stage 1;
+  generic text retrieval cannot re-add an action that the evaluator explicitly
+  cleared.
+
+Focused verification for this delta currently covers 361 passing tests: 275
+agent/core routing, prompt, embedding, and trajectory tests; 17 `eliza-code`
+provider/CLI/status/harness tests; 12 thread-operation evaluator tests; and 57
+first-party Cerebras transport/configuration tests. Core's Node/browser/edge
+build, agent build, `eliza-code` packaged `index.js`/`acp.js` build, personal
+assistant build, and the four relevant package typechecks pass. Exact-head live
+Cerebras browser and parent/orchestrator results must replace this paragraph's
+pending status before release acceptance.
 
 ## Reproduce
 
@@ -231,11 +280,11 @@ Run the complete live parent matrix without putting a credential in a tracked
 file or command argument:
 
 ```bash
-export ELIZA_LIVE_QA_OPENROUTER_KEY='<private OpenRouter key>'
-export ELIZA_LIVE_QA_MODEL='qwen/qwen3.8-27b'
+export CEREBRAS_API_KEY='<private Cerebras key>'
+export ELIZA_LIVE_QA_MODEL='gemma-4-31b'
 export ELIZA_LIVE_QA_REPORT_DIR='/private/safe/report/directory'
 bun run --cwd packages/examples/code e2e:owned-parent-orchestrator-live
-unset ELIZA_LIVE_QA_OPENROUTER_KEY
+unset CEREBRAS_API_KEY
 ```
 
 `ELIZA_LIVE_QA_KEEP=1` keeps the unsanitized temporary runtime for local
@@ -277,7 +326,7 @@ for a normal handoff, and it should still be reviewed before publication.
 
 Fetch the dedicated `codex/coding-runtime-ship-20260820` branch, inspect the
 reported delivery commit, install dependencies, and run the deterministic
-commands above. Use a private environment-secret mechanism for a live OpenRouter
+commands above. Use a private environment-secret mechanism for a live Cerebras
 rerun. Do not copy a credential, local state directory, PGlite database, or
 unsanitized trajectory directory from the QA host.
 

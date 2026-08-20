@@ -68,11 +68,8 @@ describe("v5 planner selection — ordinary-user reachability, no admin leak", (
     expect(plannerNames(["GUEST"])).toContain("uiWidgets");
   });
 
-  it("selects uiWidgets regardless of the turn's Stage-1 contexts (always-on)", () => {
-    // `alwaysInResponseState` is the reachability guarantee: even a turn whose
-    // Stage-1 contexts miss the declared gate still composes the guide, so
-    // marker emission never depends on context-classifier luck.
-    expect(plannerNames(["GUEST"], ["wallet"])).toContain("uiWidgets");
+  it("does not inject uiWidgets into unrelated planner contexts", () => {
+    expect(plannerNames(["GUEST"], ["wallet"])).not.toContain("uiWidgets");
   });
 
   it("keeps the ADMIN-gated generative catalog out of non-admin turns", () => {

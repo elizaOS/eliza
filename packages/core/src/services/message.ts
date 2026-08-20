@@ -3596,17 +3596,17 @@ async function createV5MessageContextObject(args: {
 		stable: false,
 		content: args.includeTools
 			? 'current_turn_boundary: Plan and execute only the final message:user. Prior messages and reply_reference are context for resolving references, never pending commands. The prior_message:agent blocks are your own earlier replies, shown only so you can resolve what a continuation like "finish it", "yes", or "that is good" refers to — treat every fact in them as stale. Stage 1 already decided this turn needs tools; use current tool results for live data and side effects, never answer by repeating a prior reply in place of executing the fresh check, and never claim work that no tool result proves.'
-			: 'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
+			: "current_turn_boundary: The prior_message blocks above are context only. A reply_reference is context for resolving references only; execute only the final message:user, and do not merge earlier requests unless it references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. This covers literal visible chat only. A recap/status ask about tracked todos, tasks, reminders, habits, goals, notes, or the user's day is a live tasks lookup: route to tasks tools and never infer an empty day from chat context." +
 				// Only the chat-recall context renders the agent's own prior turns;
 				// the tool-planner context deliberately omits them (stale-answer
 				// hazard), so this grounding sentence would be false there.
 				(args.includeTools
 					? ""
-					: " Your own prior replies are the prior_message:agent blocks: when asked what YOU said, told, or promised earlier, answer only from those blocks — never assert you said something that does not appear in them, and never deny saying something that does.") +
-				' Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly.' +
+					: " Your own prior replies are the prior_message:agent blocks; when asked what YOU said, answer only from those blocks and never claim or deny beyond them.") +
+				" Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message, answer from the current message directly." +
 				(hasMemoryRecallSurface
-					? ' The prior_message blocks are only the most recent window of a longer stored conversation — older messages may exist that are not shown here, and the memory context can search them. When the asked-about token appears neither in the current message nor in any visible prior_message block, or the question asks about the conversation beyond the visible window ("how many times have I mentioned X", "have I ever told you about Y"), that is a live lookup over the stored record: route it to the memory context (set requiresTool) so the stored history is actually searched this turn. Never answer a beyond-window recall or count question from the visible window alone, never present the visible window as the whole conversation, and never claim you searched anything a tool did not return this turn. Run status is equally checkable: when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.'
-					: ' The prior_message blocks are the only conversation window you have, and there is no separate chat-history search tool. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action. If the user asks for a whole-conversation count or another exhaustive history claim ("how many times have I mentioned X", "have I ever told you Y"), never present visible matches as the full-history answer: either decline to give a total, or explicitly label any observation as limited to the recent messages you can see and say older history cannot be verified. This "no chat-history search" limit is about CHAT recall ONLY. It does NOT apply to what a task, build, deploy, or sub-agent YOU ran actually did: that run status IS verifiable with the task/sub-agent tools. So when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.'),
+					? " The prior_message blocks are only the most recent window of a longer stored conversation. If the answer is not visible or the ask is beyond-window/exhaustive, route it to the memory context (set requiresTool). Never answer a beyond-window recall or count question from the visible window alone, and never claim a search or total without its tool result. Questions about a task/build/deploy/sub-agent you ran are also live verification requests: CHECK current status with a tool."
+					: ' The prior_message blocks are the only conversation window you have, and there is no separate chat-history search tool. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly. For exhaustive/count questions, never present visible matches as the full-history answer; explicitly label any observation as limited to the recent messages you can see. This "no chat-history search" limit is about CHAT recall ONLY. A task, build, deploy, or sub-agent YOU ran is different: that run status IS verifiable with the task/sub-agent tools. Treat disputes or status asks as live verification (requiresTool) and CHECK current status before replying.'),
 	});
 
 	// Prompt automations execute without a visible human message; their reply is
@@ -4734,6 +4734,15 @@ export function formatAvailableContextsForPrompt(
 	return contexts
 		.map((definition) => {
 			const description = definition.description?.trim();
+			if (options?.compact) {
+				// Role filtering has already happened, and the structured schema
+				// constrains the valid ids. Compact routing needs only the id and its
+				// short discriminator; labels/cache/access metadata are prompt waste.
+				const compressed = definition.descriptionCompressed?.trim();
+				return compressed
+					? `- ${definition.id}: ${compressed}`
+					: `- ${definition.id}`;
+			}
 			const metadata = [
 				definition.label && definition.label !== definition.id
 					? `label=${definition.label}`
@@ -4755,15 +4764,6 @@ export function formatAvailableContextsForPrompt(
 				definition.cacheScope ? `cache=${definition.cacheScope}` : undefined,
 			].filter(Boolean);
 			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
-			if (options?.compact) {
-				// Compact catalog lines carry only the short routing hint (when the
-				// definition ships one) — never the full description, which is what
-				// the compact tiers exist to avoid.
-				const compressed = definition.descriptionCompressed?.trim();
-				return compressed
-					? `- ${definition.id}${suffix}: ${compressed}`
-					: `- ${definition.id}${suffix}`;
-			}
 			return description
 				? `- ${definition.id}${suffix}: ${description}`
 				: `- ${definition.id}${suffix}`;
@@ -7655,6 +7655,8 @@ export async function runV5MessageRuntimeStage1(args: {
 	message: Memory;
 	state: State;
 	responseId: UUID;
+	/** Trusted server timestamp captured at MessageService ingress. */
+	turnStartedAt?: number;
 	callback?: HandlerCallback;
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
@@ -7722,6 +7724,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		? recorder.startTrajectory({
 				agentId: String(args.runtime.agentId ?? "unknown-agent"),
 				roomId: args.message.roomId ? String(args.message.roomId) : undefined,
+				startedAt: args.turnStartedAt,
 				// Run/scenario correlation the aggregator joins on. The scenario CLI
 				// sets these env vars before each scenario (packages/scenario-runner/
 				// src/cli.ts); passing them here makes this call site the source of
@@ -8701,7 +8704,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			fullSurfaceEnv === "true" ||
 			fullSurfaceEnv === "yes" ||
 			fullSurfaceEnv === "on";
-		const plannerCandidateActions = useFullSurface
+		const collectedPlannerCandidateActions = useFullSurface
 			? (args.runtime.actions ?? []).filter(
 					(action) =>
 						// Full-surface = the eliza-code coding sub-agent (its ACP server
@@ -8738,6 +8741,23 @@ export async function runV5MessageRuntimeStage1(args: {
 					userRoles: [senderRole],
 					diagnostics: candidateGateDiagnostics,
 				});
+		// An evaluator that explicitly cleared Stage-1 candidates is an
+		// authoritative runtime-state route. Keep its replacement set exclusive;
+		// message-text retrieval must not reintroduce the generic candidate the
+		// evaluator intentionally removed.
+		const evaluatorCandidateNames = new Set(
+			getMessageHandlerCandidateActions(messageHandler).flatMap((name) => [
+				normalizeActionIdentifier(name),
+				...parentAliasesForCandidateAction(name).map(normalizeActionIdentifier),
+			]),
+		);
+		const plannerCandidateActions =
+			!useFullSurface &&
+			responseHandlerEvaluation.candidateActionsClearedByEvaluators
+				? collectedPlannerCandidateActions.filter((action) =>
+						evaluatorCandidateNames.has(normalizeActionIdentifier(action.name)),
+					)
+				: collectedPlannerCandidateActions;
 		// Surface-privacy short-circuit: stage-1 named a capability that EXISTS
 		// but its owner-exclusive disclosure gate rejected this destination, and
 		// no named candidate survived into the collected set. Planning anyway
@@ -12039,6 +12059,7 @@ export class DefaultMessageService implements IMessageService {
 		callback?: HandlerCallback,
 		options?: MessageProcessingOptions,
 	): Promise<MessageProcessingResult> {
+		const handleStartedAt = Date.now();
 		// Analysis-mode token detection runs BEFORE any planner work so the
 		// agent never hallucinates a "performing an analysis" reply. Gated by
 		// `ELIZA_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
@@ -12465,7 +12486,7 @@ export class DefaultMessageService implements IMessageService {
 							mode: "none",
 						};
 					}
-					const startTime = Date.now();
+					const startTime = handleStartedAt;
 
 					// Per-turn inference latency timer. Every stage (composeState,
 					// useModel round-trips, the cloud HTTP fetch, evaluators) records
@@ -12592,6 +12613,7 @@ export class DefaultMessageService implements IMessageService {
 										deliveredVisibleTexts,
 										responseId,
 										runId,
+										startTime,
 										opts,
 									),
 								),
@@ -12747,6 +12769,7 @@ export class DefaultMessageService implements IMessageService {
 		deliveredVisibleTexts: Set<string>,
 		responseId: UUID,
 		runId: UUID,
+		turnStartedAt: number,
 		opts: ResolvedMessageOptions,
 	): Promise<MessageProcessingResult> {
 		const runTerminalOwner = opts.runTerminalOwner;
@@ -13326,6 +13349,7 @@ export class DefaultMessageService implements IMessageService {
 							message,
 							state,
 							responseId,
+							turnStartedAt,
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
 							...(opts.roomHandlerLease

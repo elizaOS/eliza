@@ -20,21 +20,20 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { initializeAgent, shutdownAgent } from "../../src/lib/agent.ts";
+import {
+  applyLiveProviderConfig,
+  resolveLiveProviderConfig,
+} from "./live-provider-config.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, "../..");
 const repoRoot = resolve(packageRoot, "../../..");
 const acpEntry = join(packageRoot, "dist", "acp.js");
-const apiKey = process.env.ELIZA_LIVE_QA_OPENROUTER_KEY?.trim();
-const model = process.env.ELIZA_LIVE_QA_MODEL?.trim() || "qwen/qwen3.8-27b";
+const liveProvider = resolveLiveProviderConfig();
+const { apiKey, model } = liveProvider;
 const keepArtifacts = process.env.ELIZA_LIVE_QA_KEEP === "1";
 const timeoutMs = Number(process.env.ELIZA_LIVE_QA_TIMEOUT_MS || "300000");
 
-if (!apiKey) {
-  throw new Error(
-    "ELIZA_LIVE_QA_OPENROUTER_KEY is required; pass it through the environment without writing it to the repository.",
-  );
-}
 if (!existsSync(acpEntry)) {
   throw new Error(
     `Missing ${acpEntry}; run \`bun run build\` in ${packageRoot}.`,
@@ -52,6 +51,7 @@ const workspacesRoot = join(testRoot, "workspaces");
 mkdirSync(runtimeHome, { recursive: true });
 mkdirSync(workspacesRoot, { recursive: true });
 
+applyLiveProviderConfig(liveProvider);
 Object.assign(process.env, {
   ELIZA_HOME: runtimeHome,
   ELIZA_STATE_DIR: join(runtimeHome, "state"),
@@ -60,11 +60,6 @@ Object.assign(process.env, {
   ELIZA_ACP_DEFAULT_AGENT: "elizaos",
   ELIZA_ACP_WORKSPACE_ROOT: workspacesRoot,
   ELIZA_ELIZAOS_ACP_COMMAND: `bun ${acpEntry}`,
-  ELIZA_CODE_PROVIDER: "openai",
-  OPENAI_API_KEY: apiKey,
-  OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
-  OPENAI_LARGE_MODEL: model,
-  OPENAI_SMALL_MODEL: model,
   ELIZA_TRAJECTORY_LOGGING: "1",
   ELIZA_TRAJECTORY_REVIEW_MODE: "1",
   ELIZA_ALLOW_DEFAULT_SECRET_SALT: "1",
@@ -407,7 +402,7 @@ const report = {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
   stack: ["AgentRuntime", "AcpService", "native ACP", "eliza-code-acp"],
-  provider: "OpenRouter via @elizaos/plugin-openai",
+  provider: liveProvider.provider,
   model,
   repoHead: execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: repoRoot,

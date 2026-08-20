@@ -1,5 +1,38 @@
 // Provides shared support logic for the Code example.
-type ModelProvider = "anthropic" | "openai";
+export type ModelProvider = "anthropic" | "cerebras" | "openai";
+
+const DEFAULT_CEREBRAS_MODEL = "gemma-4-31b";
+
+function hasValue(value: string | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Make direct Cerebras configuration first-class for eliza-code. The OpenAI
+ * plugin owns the transport and already supports Cerebras natively, so this
+ * selects that mode without copying the Cerebras credential into OPENAI_*.
+ */
+export function applyCerebrasProviderEnv(
+  env: Record<string, string | undefined> = process.env,
+): void {
+  if (!hasValue(env.CEREBRAS_API_KEY)) return;
+  const explicitCodeProvider = (
+    env.ELIZA_CODE_PROVIDER ??
+    env.ELIZA_CODE_MODEL_PROVIDER ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  if (explicitCodeProvider && explicitCodeProvider !== "cerebras") return;
+  if (!explicitCodeProvider) env.ELIZA_CODE_PROVIDER = "cerebras";
+  // The code-provider choice is authoritative here. Replacing a stale
+  // OpenAI/OpenRouter transport hint prevents a mixed-provider process while
+  // still preserving an explicit non-Cerebras ELIZA_CODE_PROVIDER above.
+  env.ELIZA_PROVIDER = "cerebras";
+  if (!hasValue(env.CEREBRAS_MODEL)) {
+    env.CEREBRAS_MODEL = DEFAULT_CEREBRAS_MODEL;
+  }
+}
 
 /**
  * Make eliza-code a drop-in replacement for the `opencode` coding sub-agent:
@@ -15,20 +48,46 @@ type ModelProvider = "anthropic" | "openai";
 export function applyOpencodeProviderEnv(
   env: Record<string, string | undefined> = process.env,
 ): void {
-  const has = (v: string | undefined): v is string =>
-    typeof v === "string" && v.trim().length > 0;
-  if (!has(env.OPENAI_API_KEY) && has(env.ELIZA_OPENCODE_API_KEY)) {
+  const explicitCodeProvider = (
+    env.ELIZA_CODE_PROVIDER ??
+    env.ELIZA_CODE_MODEL_PROVIDER ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  if (explicitCodeProvider === "cerebras") return;
+  if (!hasValue(env.OPENAI_API_KEY) && hasValue(env.ELIZA_OPENCODE_API_KEY)) {
     env.OPENAI_API_KEY = env.ELIZA_OPENCODE_API_KEY;
-    if (!has(env.ELIZA_CODE_PROVIDER)) env.ELIZA_CODE_PROVIDER = "openai";
+    if (!hasValue(env.ELIZA_CODE_PROVIDER)) env.ELIZA_CODE_PROVIDER = "openai";
   }
-  if (!has(env.OPENAI_BASE_URL) && has(env.ELIZA_OPENCODE_BASE_URL))
+  if (!hasValue(env.OPENAI_BASE_URL) && hasValue(env.ELIZA_OPENCODE_BASE_URL))
     env.OPENAI_BASE_URL = env.ELIZA_OPENCODE_BASE_URL;
-  if (!has(env.OPENAI_LARGE_MODEL) && has(env.ELIZA_OPENCODE_MODEL_POWERFUL))
+  if (
+    !hasValue(env.OPENAI_LARGE_MODEL) &&
+    hasValue(env.ELIZA_OPENCODE_MODEL_POWERFUL)
+  )
     env.OPENAI_LARGE_MODEL = env.ELIZA_OPENCODE_MODEL_POWERFUL;
-  if (!has(env.OPENAI_SMALL_MODEL) && has(env.ELIZA_OPENCODE_MODEL_FAST))
+  if (
+    !hasValue(env.OPENAI_SMALL_MODEL) &&
+    hasValue(env.ELIZA_OPENCODE_MODEL_FAST)
+  )
     env.OPENAI_SMALL_MODEL = env.ELIZA_OPENCODE_MODEL_FAST;
-  if (!has(env.OPENAI_MEDIUM_MODEL) && has(env.ELIZA_OPENCODE_MODEL_FAST))
+  if (
+    !hasValue(env.OPENAI_MEDIUM_MODEL) &&
+    hasValue(env.ELIZA_OPENCODE_MODEL_FAST)
+  )
     env.OPENAI_MEDIUM_MODEL = env.ELIZA_OPENCODE_MODEL_FAST;
+}
+
+export function hasModelProviderCredential(
+  provider: ModelProvider,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return provider === "anthropic"
+    ? hasValue(env.ANTHROPIC_API_KEY)
+    : provider === "cerebras"
+      ? hasValue(env.CEREBRAS_API_KEY)
+      : hasValue(env.OPENAI_API_KEY);
 }
 
 /**
@@ -52,7 +111,12 @@ export function describeActiveModel(
   const model =
     provider === "openai"
       ? (env.OPENAI_LARGE_MODEL ?? env.OPENAI_SMALL_MODEL)
-      : (env.ANTHROPIC_LARGE_MODEL ?? env.ANTHROPIC_SMALL_MODEL);
+      : provider === "cerebras"
+        ? (env.CEREBRAS_LARGE_MODEL ??
+          env.CEREBRAS_MODEL ??
+          env.CEREBRAS_SMALL_MODEL ??
+          DEFAULT_CEREBRAS_MODEL)
+        : (env.ANTHROPIC_LARGE_MODEL ?? env.ANTHROPIC_SMALL_MODEL);
   const trimmed = model?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : provider;
 }
@@ -65,9 +129,11 @@ export function resolveModelProvider(
   const explicit = explicitRaw.trim().toLowerCase();
 
   if (explicit === "anthropic" || explicit === "claude") return "anthropic";
+  if (explicit === "cerebras") return "cerebras";
   if (explicit === "openai" || explicit === "codex") return "openai";
 
   // Auto-detect based on available keys (incl. the opencode-compatible key).
+  if (hasValue(env.CEREBRAS_API_KEY)) return "cerebras";
   if (env.OPENAI_API_KEY && env.OPENAI_API_KEY.trim().length > 0)
     return "openai";
   if (
@@ -79,6 +145,6 @@ export function resolveModelProvider(
     return "anthropic";
 
   throw new Error(
-    "No model provider configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY (or ELIZA_CODE_PROVIDER=anthropic|openai).",
+    "No model provider configured. Set CEREBRAS_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY (or ELIZA_CODE_PROVIDER=cerebras|anthropic|openai).",
   );
 }

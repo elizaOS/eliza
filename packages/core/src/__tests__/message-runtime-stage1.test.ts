@@ -1930,15 +1930,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const systemContent = params.messages?.[0]?.content ?? "";
 		expect(systemContent).toContain("task: Plan this direct message.");
-		expect(systemContent).toContain("- calendar [label=Calendar");
-		expect(systemContent).toContain("role>=ADMIN");
+		expect(systemContent).toMatch(/^- calendar$/m);
+		expect(systemContent).not.toContain("role>=ADMIN");
+		expect(systemContent).not.toContain("label=Calendar");
 		expect(systemContent).not.toContain(longDescription);
 		// Compactness ceiling for the DM Stage-1 prompt. Any leaked context
 		// description (~2,500+ chars each) blows far past this; deliberate
 		// template rules only nudge it, so keep the ceiling tight (currently
 		// ~4.3k rendered after the #19863 owner-life routing floor and the F15
 		// history-never-creates-a-capability grounding line).
-		expect(systemContent.length).toBeLessThan(4_450);
+		expect(systemContent.length).toBeLessThan(4_250);
 	});
 
 	it("direct-channel prompt grounds capability denials in executable actions and requires fresh tool retries", async () => {

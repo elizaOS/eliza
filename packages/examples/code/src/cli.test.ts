@@ -7,12 +7,21 @@ import { formatOutput, getMessage, main, parseArgs, runCLI } from "./cli.js";
 
 const originalProvider = process.env.ELIZA_CODE_PROVIDER;
 const originalOpenAiKey = process.env.OPENAI_API_KEY;
+const originalCerebrasKey = process.env.CEREBRAS_API_KEY;
+const originalElizaProvider = process.env.ELIZA_PROVIDER;
+const originalCerebrasModel = process.env.CEREBRAS_MODEL;
 
 afterEach(() => {
   if (originalProvider === undefined) delete process.env.ELIZA_CODE_PROVIDER;
   else process.env.ELIZA_CODE_PROVIDER = originalProvider;
   if (originalOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
   else process.env.OPENAI_API_KEY = originalOpenAiKey;
+  if (originalCerebrasKey === undefined) delete process.env.CEREBRAS_API_KEY;
+  else process.env.CEREBRAS_API_KEY = originalCerebrasKey;
+  if (originalElizaProvider === undefined) delete process.env.ELIZA_PROVIDER;
+  else process.env.ELIZA_PROVIDER = originalElizaProvider;
+  if (originalCerebrasModel === undefined) delete process.env.CEREBRAS_MODEL;
+  else process.env.CEREBRAS_MODEL = originalCerebrasModel;
 });
 
 describe("CLI boundaries", () => {
@@ -75,6 +84,7 @@ describe("CLI boundaries", () => {
       expect(await main(["--interactive"])).toBe(-1);
       process.env.ELIZA_CODE_PROVIDER = "openai";
       delete process.env.OPENAI_API_KEY;
+      delete process.env.CEREBRAS_API_KEY;
       expect(await main(["hello"])).toBe(1);
       process.env.ELIZA_CODE_PROVIDER = "invalid";
       expect(await main(["hello"])).toBe(1);

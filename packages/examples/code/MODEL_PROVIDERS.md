@@ -11,9 +11,15 @@ You select the provider with env vars — no code change. Any
 `resolveModelProvider(env)`:
 
 1. Explicit override: `ELIZA_CODE_PROVIDER` (or its alias
-   `ELIZA_CODE_MODEL_PROVIDER`) — `anthropic`/`claude` or `openai`/`codex`.
-2. Else auto-detect: `OPENAI_API_KEY` → `openai`; `ELIZA_OPENCODE_API_KEY` →
-   `openai`; `ANTHROPIC_API_KEY` → `anthropic`.
+   `ELIZA_CODE_MODEL_PROVIDER`) — `cerebras`, `anthropic`/`claude`, or
+   `openai`/`codex`.
+2. Else auto-detect: `CEREBRAS_API_KEY` → Cerebras through the first-party
+   OpenAI-compatible plugin; then `OPENAI_API_KEY`, `ELIZA_OPENCODE_API_KEY`,
+   or `ANTHROPIC_API_KEY`.
+
+Direct Cerebras configuration does not copy its credential into
+`OPENAI_API_KEY`. It sets the plugin's Cerebras mode and defaults to
+`gemma-4-31b` when no `CEREBRAS_*_MODEL` override is present.
 
 `applyOpencodeProviderEnv(env)` maps the `ELIZA_OPENCODE_*` knobs onto the
 `OPENAI_*` ones the provider plugin reads (and pins
@@ -34,11 +40,13 @@ always win — the mapping only fills unset vars.
 ### Cerebras (fast, OpenAI-compatible)
 
 ```bash
-ELIZA_OPENCODE_BASE_URL=https://api.cerebras.ai/v1
-ELIZA_OPENCODE_API_KEY=${CEREBRAS_API_KEY}
-ELIZA_OPENCODE_MODEL_POWERFUL=zai-glm-4.7
-ELIZA_OPENCODE_MODEL_FAST=zai-glm-4.7
+ELIZA_CODE_PROVIDER=cerebras
+CEREBRAS_API_KEY=${CEREBRAS_API_KEY}
+CEREBRAS_MODEL=gemma-4-31b
 ```
+
+`ELIZA_OPENCODE_*` remains a compatibility input for existing deployments, but
+the owned coding path no longer requires an OpenCode-shaped configuration.
 
 ### Surplus Intelligence (Claude / GPT / others via one OpenAI-compatible endpoint)
 

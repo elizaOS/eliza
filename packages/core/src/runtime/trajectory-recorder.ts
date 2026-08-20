@@ -352,6 +352,8 @@ export interface StartTrajectoryInput {
 	agentId: string;
 	roomId?: string;
 	rootMessage: { id: string; text: string; sender?: string };
+	/** Earliest server-observed turn timestamp, so pre-model work is visible. */
+	startedAt?: number;
 	// Optional run / scenario correlation for the lifeops aggregator. When set
 	// (typically by the scenario CLI via env vars before each scenario), the
 	// recorder includes them on the persisted trajectory so the aggregator can
@@ -1345,6 +1347,16 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			parentStepId: input.parentStepId ?? inheritedCorrelation.parentStepId,
 		};
 
+		const now = Date.now();
+		const requestedStartedAt = input.startedAt;
+		const startedAt =
+			typeof requestedStartedAt === "number" &&
+			Number.isFinite(requestedStartedAt) &&
+			requestedStartedAt > 0 &&
+			requestedStartedAt <= now
+				? Math.floor(requestedStartedAt)
+				: now;
+
 		const trajectory: MutableTrajectory = {
 			trajectoryId: id,
 			agentId: input.agentId,
@@ -1359,7 +1371,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			sessionId: correlation.sessionId,
 			parentStepId: correlation.parentStepId,
 			rootMessage: cloneRootMessageForRecord(input.rootMessage),
-			startedAt: Date.now(),
+			startedAt,
 			status: "running",
 			stages: [],
 			metrics: {

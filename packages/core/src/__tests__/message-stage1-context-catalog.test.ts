@@ -191,8 +191,9 @@ describe("formatAvailableContextsForPrompt", () => {
 			compact: true,
 		});
 		// Compressed hint when present; bare id line when absent.
-		expect(block).toContain("- tasks [label=Tasks]: reminders/habits/todos");
-		expect(block).toContain("- general [label=General]");
+		expect(block).toContain("- tasks: reminders/habits/todos");
+		expect(block).toContain("- general");
+		expect(block).not.toContain("label=");
 		expect(block).not.toContain("Normal conversation.");
 		expect(block).not.toContain("must not render");
 	});

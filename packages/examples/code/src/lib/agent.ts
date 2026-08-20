@@ -1,7 +1,9 @@
 /** Provides shared runtime assembly for interactive and ACP Code agents. */
 import { AgentRuntime, type Character, type Plugin } from "@elizaos/core";
 import {
+  applyCerebrasProviderEnv,
   applyOpencodeProviderEnv,
+  hasModelProviderCredential,
   resolveModelProvider,
 } from "./model-provider.js";
 import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
@@ -88,15 +90,17 @@ export async function initializeAgent(
 ): Promise<AgentRuntime> {
   if (options.loadDotenv !== false) await import("dotenv/config");
   const includeOrchestrator = options.includeOrchestrator !== false;
+  applyCerebrasProviderEnv(process.env);
   applyOpencodeProviderEnv(process.env);
   const provider = resolveModelProvider(process.env);
-  if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
+  if (!hasModelProviderCredential(provider, process.env)) {
     throw new Error(
-      "ANTHROPIC_API_KEY is required (ELIZA_CODE_PROVIDER=anthropic).",
+      provider === "anthropic"
+        ? "ANTHROPIC_API_KEY is required (ELIZA_CODE_PROVIDER=anthropic)."
+        : provider === "cerebras"
+          ? "CEREBRAS_API_KEY is required (ELIZA_CODE_PROVIDER=cerebras)."
+          : "OPENAI_API_KEY is required (ELIZA_CODE_PROVIDER=openai).",
     );
-  }
-  if (provider === "openai" && !process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is required (ELIZA_CODE_PROVIDER=openai).");
   }
 
   const providerPlugin =

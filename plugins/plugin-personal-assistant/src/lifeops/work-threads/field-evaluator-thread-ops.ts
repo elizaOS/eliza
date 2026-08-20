@@ -85,6 +85,9 @@ Do not use for owner record keeping: goals ("I want a goal", "my goal is", "coun
 
 Empty array when no thread intent. Do not invent threads; only use active workThreadId values listed elsewhere in prompt.`;
 
+const THREAD_OPS_DESCRIPTION_COMPRESSED =
+  "Durable work only: create, steer, stop/abort, merge, attach, follow up, wait, or complete an active workThreadId; [] otherwise. Goals, todos, reminders, habits, routines, alarms, check-ins, and schedules use OWNER_* actions, never threadOps.";
+
 // ---------------------------------------------------------------------------
 // JSON schema slice
 // ---------------------------------------------------------------------------
@@ -422,6 +425,7 @@ export const threadOpsFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
   name: "threadOps",
   description: THREAD_OPS_DESCRIPTION,
+  descriptionCompressed: THREAD_OPS_DESCRIPTION_COMPRESSED,
   priority: 30, // Runs before contexts/candidateActions can be finalized.
   schema: THREAD_OPS_SCHEMA,
   shouldRun: threadOpsShouldRun,

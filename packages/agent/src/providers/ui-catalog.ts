@@ -136,15 +136,14 @@ is ordered; [CHECKLIST] is unordered.
 - Custom dashboards/tables/charts → separate generative-UI guide; facts → text`;
 
 /**
- * Everyday marker guidance — cheap, always the first thing the model learns
- * about rich output, including response turns that bypass dynamic selection.
+ * Everyday marker guidance selected for turns whose routed context can use a
+ * widget. Ordinary text-only replies should not pay this prompt cost.
  */
 export const uiWidgetsProvider: Provider = {
   name: "uiWidgets",
   description:
     "How to render in-chat widgets: plugin config cards, forms with native date/time pickers, follow-up chips, checklists, and step pipelines",
   dynamic: true,
-  alwaysInResponseState: true,
   relevanceKeywords: getValidationKeywordTerms("provider.uiWidgets.relevance", {
     includeAllLocales: true,
   }),

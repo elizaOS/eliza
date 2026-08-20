@@ -17,6 +17,10 @@ const MODEL_ENV_KEYS = [
   "OPENAI_LARGE_MODEL",
   "OPENAI_MODEL",
   "OPENAI_SMALL_MODEL",
+  "CEREBRAS_API_KEY",
+  "CEREBRAS_MODEL",
+  "CEREBRAS_LARGE_MODEL",
+  "ELIZA_PROVIDER",
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_LARGE_MODEL",
 ] as const;
@@ -62,6 +66,15 @@ describe("status bar model indicator (#11294)", () => {
 
     const joined = new StatusBar().render(100).join("\n");
     expect(joined).toContain("anthropic");
+  });
+
+  test("shows the configured direct Cerebras model", () => {
+    process.env.ELIZA_CODE_PROVIDER = "cerebras";
+    process.env.ELIZA_PROVIDER = "cerebras";
+    process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.CEREBRAS_MODEL = "gemma-4-31b";
+
+    expect(new StatusBar().render(100).join("\n")).toContain("gemma-4-31b");
   });
 
   test("elides an overlong model name", () => {

@@ -80,6 +80,23 @@ afterEach(async () => {
 });
 
 describe("JsonFileTrajectoryRecorder", () => {
+	it("can include pre-model turn work in the trajectory start timestamp", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const startedAt = Date.now() - 2_000;
+		const id = recorder.startTrajectory({
+			agentId: "agent-test",
+			rootMessage: { id: "msg-early", text: "hello" },
+			startedAt,
+		});
+
+		await recorder.endTrajectory(id, "finished");
+		const parsed = await recorder.load(id);
+		expect(parsed?.startedAt).toBe(startedAt);
+		expect(
+			(parsed?.endedAt ?? 0) - (parsed?.startedAt ?? 0),
+		).toBeGreaterThanOrEqual(2_000);
+	});
+
 	it("startTrajectory + recordStage + endTrajectory produces a JSON file with the §18.1 shape", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({
