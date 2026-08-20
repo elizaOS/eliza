@@ -19,17 +19,23 @@ vi.mock("../../widgets/WidgetHost", () => ({
   ),
 }));
 
+import {
+  __resetNotificationStoreForTests,
+  __setHydratedForTests,
+} from "../../state/notifications/notification-store";
 import { __resetHomeEntranceForTests, HomeScreen } from "./HomeScreen";
 
 beforeEach(() => {
   vi.useFakeTimers();
   __resetHomeEntranceForTests();
+  __resetNotificationStoreForTests();
 });
 
 afterEach(() => {
   cleanup();
   vi.runOnlyPendingTimers();
   vi.useRealTimers();
+  __resetNotificationStoreForTests();
   vi.restoreAllMocks();
 });
 
@@ -47,6 +53,31 @@ function classOnAnyBlock(container: HTMLElement): boolean {
 }
 
 describe("HomeScreen entrance flicker lock (#9304)", () => {
+  it("keeps secondary content unpainted until initial notification hydration settles", () => {
+    const { container } = render(
+      <HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />,
+    );
+    const belowNotifications = container.querySelector<HTMLElement>(
+      "[data-home-below-notifications]",
+    );
+    const homeContent = container.querySelector<HTMLElement>(
+      '[aria-label="Home content"]',
+    );
+
+    expect(
+      belowNotifications?.hasAttribute("data-home-notifications-pending"),
+    ).toBe(true);
+    expect(homeContent?.getAttribute("aria-hidden")).toBe("true");
+    expect(homeContent?.hasAttribute("inert")).toBe(true);
+
+    act(() => __setHydratedForTests(true));
+    expect(
+      belowNotifications?.hasAttribute("data-home-notifications-pending"),
+    ).toBe(false);
+    expect(homeContent?.hasAttribute("aria-hidden")).toBe(false);
+    expect(homeContent?.hasAttribute("inert")).toBe(false);
+  });
+
   it("plays home-enter once on mount, never re-adds it on a later re-render (no flash)", () => {
     const { container, rerender } = render(
       <HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />,
