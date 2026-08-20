@@ -43,7 +43,10 @@ beforeAll(async () => {
         },
         response: {
           status: 200,
-          body: { servers: [{ id: 7, name: "node-a" }] },
+          body: {
+            servers: [{ id: 7, name: "node-a" }],
+            meta: { pagination: { next_page: null } },
+          },
         },
       },
       {
@@ -110,7 +113,10 @@ describe("HetznerCloudClient provider contract", () => {
         "designed-empty": async () => {
           provider.enqueueFault("GET", "/v1/servers", {
             type: "schema-drift",
-            body: { servers: [] },
+            body: {
+              servers: [],
+              meta: { pagination: { next_page: null } },
+            },
           });
           expect(await client.listServers()).toEqual([]);
           return {
