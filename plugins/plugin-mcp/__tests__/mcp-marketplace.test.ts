@@ -130,6 +130,27 @@ describe("MCP marketplace client", () => {
     ]);
   });
 
+  it("detaches the caller abort listener once a request settles on its own", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        registryList({
+          name: "io.example/files",
+          description: "Files",
+          version: "1.0.0",
+        })
+      )
+    );
+    const caller = new AbortController();
+    const addListener = vi.spyOn(caller.signal, "addEventListener");
+    const removeListener = vi.spyOn(caller.signal, "removeEventListener");
+
+    await searchMcpMarketplace(undefined, 10, { signal: caller.signal });
+
+    const abortListener = addListener.mock.calls.find(([type]) => type === "abort")?.[1];
+    expect(abortListener).toBeTypeOf("function");
+    expect(removeListener).toHaveBeenCalledWith("abort", abortListener);
+  });
+
   it("fails closed on invalid JSON or a consumed field with the wrong type", async () => {
     fetchMock.mockResolvedValueOnce(new Response("not json"));
     await expect(searchMcpMarketplace()).rejects.toMatchObject({
