@@ -69,8 +69,11 @@ export async function openWebUIWithPairing(agentId: string): Promise<void> {
 
     const deadline = Date.now() + MAX_PAIRING_WAIT_MS;
     while (Date.now() < deadline) {
+      // Bound each pairing hop so a hung endpoint cannot stall the retry
+      // loop past MAX_PAIRING_WAIT_MS (deadline is only checked at loop top).
       const res = await fetch(`/api/v1/eliza/agents/${agentId}/pairing-token`, {
         method: "POST",
+        signal: AbortSignal.timeout(10_000),
       });
       const data = (await res
         .json()

@@ -167,6 +167,9 @@ export const whatsappAdapter: PlatformAdapter = {
         type: "text",
         text: { body: text },
       }),
+      // Bound the outbound WhatsApp hop so a stalled Graph API cannot lose
+      // the fire-and-forget reply silently.
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!response.ok) {

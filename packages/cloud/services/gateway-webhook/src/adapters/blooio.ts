@@ -151,6 +151,9 @@ async function sendBlooioMessage(
     method: "POST",
     headers,
     body: JSON.stringify(body),
+    // Bound the outbound Blooio hop so a stalled provider cannot lose the
+    // fire-and-forget reply (also used by scheduled reminder retries).
+    signal: AbortSignal.timeout(15_000),
   });
   const responseText = await response.text();
   if (!response.ok) {

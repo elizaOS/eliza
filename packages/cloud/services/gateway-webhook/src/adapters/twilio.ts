@@ -240,6 +240,10 @@ export const twilioAdapter: PlatformAdapter = {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: body.toString(),
+      // Bound the outbound SMS hop so a stalled Twilio API cannot lose the
+      // fire-and-forget reply silently (sendReply is awaited in the reply
+      // phase and has no enclosing timeout).
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!response.ok) {
