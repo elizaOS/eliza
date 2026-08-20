@@ -97,18 +97,45 @@ export function resetHonoMountCache(): void {
   cached = null;
 }
 
-async function readNodeBody(req: IncomingMessage): Promise<ArrayBuffer | null> {
+// Matches the 1 MiB cap applied to the sibling JSON/body readers in
+// server.ts (MAX_BODY_BYTES). The Hono fallback path never goes through that
+// reader, so it needs its own guard: without it a POST to any Hono-eligible
+// plugin routeHandler with an unbounded body is fully buffered into an
+// ArrayBuffer with no 413, hanging or OOM-ing the process.
+const MAX_HONO_BODY_BYTES = 1024 * 1024; // 1 MiB
+
+interface ReadNodeBodyResult {
+  body: ArrayBuffer | null;
+  tooLarge: boolean;
+}
+
+async function readNodeBody(req: IncomingMessage): Promise<ReadNodeBodyResult> {
   const method = (req.method ?? "GET").toUpperCase();
-  if (method === "GET" || method === "HEAD") return null;
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  if (method === "GET" || method === "HEAD") {
+    return { body: null, tooLarge: false };
   }
-  if (chunks.length === 0) return null;
+  const chunks: Buffer[] = [];
+  let total = 0;
+  let tooLarge = false;
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buf.byteLength;
+    if (total > MAX_HONO_BODY_BYTES) {
+      tooLarge = true;
+      // Stop draining the socket immediately — do not buffer the rest and do
+      // not allocate the ArrayBuffer. Destroying prevents a slow-client from
+      // holding the connection open while we discard the remainder.
+      req.destroy();
+      break;
+    }
+    chunks.push(buf);
+  }
+  if (tooLarge) return { body: null, tooLarge: true };
+  if (chunks.length === 0) return { body: null, tooLarge: false };
   const concatenated = Buffer.concat(chunks);
   const body = new ArrayBuffer(concatenated.byteLength);
   new Uint8Array(body).set(concatenated);
-  return body;
+  return { body, tooLarge: false };
 }
 
 function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
@@ -237,7 +264,20 @@ export async function tryHandleHonoRuntimeRoute(options: {
 
   const app = getHonoApp(runtime);
 
-  const bodyBytes = await readNodeBody(req);
+  const { body: bodyBytes, tooLarge } = await readNodeBody(req);
+  if (tooLarge) {
+    // The request body exceeded the 1 MiB cap. Respond 413 without dispatching
+    // to Hono — the body was never fully buffered and the request was destroyed.
+    res.statusCode = 413;
+    res.setHeader("content-type", "application/json");
+    res.end(
+      JSON.stringify({
+        error: "Request body too large",
+        maxBytes: MAX_HONO_BODY_BYTES,
+      }),
+    );
+    return true;
+  }
   const url = new URL(
     req.url ?? "/",
     `http://${req.headers.host ?? "localhost"}`,
