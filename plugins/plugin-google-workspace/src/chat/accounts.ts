@@ -218,7 +218,8 @@ export function resolveGoogleChatAccountSettings(
       account.serviceAccountKeyFile ??
       (allowOwnerBind ? base.serviceAccountFile : undefined) ??
       (allowOwnerBind ? base.serviceAccountKeyFile : undefined) ??
-      (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_SERVICE_ACCOUNT_FILE") : undefined),
+      (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_SERVICE_ACCOUNT_FILE") : undefined) ??
+      (allowOwnerBind ? process.env.GOOGLE_APPLICATION_CREDENTIALS : undefined),
     audienceType: (account.audienceType ??
       base.audienceType ??
       (allowOwnerBind ? envOrSetting(runtime, "GOOGLE_CHAT_AUDIENCE_TYPE") : undefined) ??
