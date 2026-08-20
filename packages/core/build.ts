@@ -1350,6 +1350,11 @@ export async function generateTypeScriptDeclarations() {
 
 	// Verify all flat entrypoints exist — prevents regressions like #22847
 	// where a subpath export in package.json has no corresponding dist/<subpath>.js
+	//
+	// Strategy: for file-style subpaths whose default/import resolves to a
+	// specific .js file inside a subdirectory (dist/node/..., dist/browser/...),
+	// assert that a flat dist/<subpath>.js exists. Directory-style subpaths
+	// (./node, ./browser, ./edge, ./testing) and wildcards are skipped.
 	const pkg = JSON.parse(
 		await fs.readFile("package.json", "utf-8"),
 	) as { exports?: Record<string, unknown> };
@@ -1367,22 +1372,28 @@ export async function generateTypeScriptDeclarations() {
 		if (await fs.stat(flatFile).catch(() => null)) {
 			continue; // flat entrypoint already exists
 		}
-		// Check if the default/import target exists in dist/node/ or dist/
+		// Determine if this is a file-style subpath that needs a flat entrypoint.
+		// Extract the default/import path from the export config.
 		const defaultPath =
 			typeof config === "object" && config !== null
 				? (config.default ?? config.import ?? "")
 				: "";
-		if (
-			typeof defaultPath === "string" &&
-			defaultPath.endsWith(".js") &&
-			!(await fs
-				.stat(defaultPath.replace(/^\.\//, ""))
-				.catch(() => null))
-		) {
-			missing.push(
-				`${exportPath}: flat entrypoint ${flatFile} missing and default target ${defaultPath} not found`,
-			);
+		if (typeof defaultPath !== "string" || !defaultPath.endsWith(".js")) {
+			continue; // not a file-style export
 		}
+		// Skip directory-style subpaths: if defaultPath resolves to
+		//   dist/<dir>/index.js  or  dist/<dir>/index.<variant>.js
+		// (e.g. dist/node/index.node.js, dist/testing/index.js)
+		// it resolves to a directory, not a flat entrypoint.
+		const relative = defaultPath.replace(/^\.\//, "");
+		const dirIndex = relative.match(/^dist\/[^/]+\/index(?:\.[^.]+)?\.js$/);
+		if (dirIndex) {
+			continue;
+		}
+		// For file-style subpaths the flat entrypoint is mandatory.
+		missing.push(
+			`${exportPath}: flat entrypoint ${flatFile} is missing (build must emit it as a re-export)`,
+		);
 	}
 	if (missing.length > 0) {
 		throw new Error(
