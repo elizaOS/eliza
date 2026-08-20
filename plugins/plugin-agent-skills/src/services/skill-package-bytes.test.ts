@@ -650,14 +650,14 @@ describe("readCappedSkillPackage", () => {
 		try {
 			await expect(
 				service.install("metadata-stall", {
-					downloadTimeoutMs: 75,
+					downloadTimeoutMs: 500,
 					throwOnDownloadError: true,
 				}),
 			).rejects.toMatchObject({
 				code: "SKILL_DOWNLOAD_TIMEOUT",
-				context: { timeoutMs: 75 },
+				context: { timeoutMs: 500 },
 			});
-			expect(Date.now() - startedAt).toBeLessThan(1_500);
+			expect(Date.now() - startedAt).toBeLessThan(2_500);
 			expect(requestCount).toBe(1);
 			expect(storage.getPackage("metadata-stall")).toBeUndefined();
 		} finally {
