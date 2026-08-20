@@ -8,6 +8,8 @@ import {
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+  ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
+  ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   androidPlayManifestEvidenceFromAapt,
@@ -150,6 +152,28 @@ describe("Android Play manifest policy", () => {
         "llama-cpp-capacitor",
       ]),
     );
+    expect(ANDROID_CLOUD_STRIPPED_RESOURCE_FILES).toEqual(
+      expect.arrayContaining([
+        "drawable/eliza_ime_mic_bg.xml",
+        "drawable/ic_eliza_ime_keyboard.xml",
+        "drawable/ic_eliza_ime_mic.xml",
+        "drawable/ic_eliza_ime_open.xml",
+        "layout/eliza_voice_ime.xml",
+        "xml/eliza_accessibility_service.xml",
+        "xml/method.xml",
+      ]),
+    );
+    expect(ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES).toMatchObject({
+      "values/android_app_actions.xml": [
+        "app_widget_quick_actions_description",
+        "app_widget_quick_actions_title",
+      ],
+      "values/strings.xml": expect.arrayContaining([
+        "assistant_session_prompt",
+        "eliza_ime_label",
+        "eliza_ime_permission_needed",
+      ]),
+    });
   });
 
   it("targets API 36 and excludes background-worker dependencies in Cloud", () => {
