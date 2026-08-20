@@ -5,7 +5,7 @@
  * Also covers the fail-closed budget on attacker-controlled tool inputSchema
  * graphs: cyclic `items` used to RangeError `processSchema`.
  */
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { GoogleMcpCompatibility } from "../src/tool-compatibility/providers/google.ts";
 import { OpenAIMcpCompatibility } from "../src/tool-compatibility/providers/openai.ts";
@@ -166,5 +166,18 @@ describe("MCP tool compatibility", () => {
     const cyclic = { type: "array", items: undefined as unknown };
     cyclic.items = cyclic;
     expect(() => compatibility.transformToolSchema(cyclic as never)).toThrowError(ElizaError);
+  });
+
+  it("rejects a provider rewrite that expands beyond the retained-schema byte cap", () => {
+    const compatibility = new GoogleMcpCompatibility({
+      provider: "google",
+      modelId: "gemini-pro",
+    });
+    expect(() =>
+      compatibility.transformToolSchema({
+        type: "string",
+        pattern: "x".repeat(262_055),
+      })
+    ).toThrowError(ElizaError);
   });
 });

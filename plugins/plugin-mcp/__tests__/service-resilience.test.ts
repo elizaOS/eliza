@@ -187,6 +187,17 @@ describe("tool schema failure containment", () => {
     await expect(service.fetchToolsList("remote")).rejects.toThrow("compatibility regression");
   });
 
+  it("omits a schema whose provider rewrite expands past the retained byte cap", async () => {
+    const service = makeToolService([
+      { name: "expanded", inputSchema: { type: "string", pattern: "x".repeat(262_055) } },
+      { name: "healthy", inputSchema: { type: "object" } },
+    ]);
+
+    await expect(service.fetchToolsList("remote")).resolves.toEqual([
+      expect.objectContaining({ name: "healthy" }),
+    ]);
+  });
+
   it.each(["openai/gpt-5", "openrouter/auto"])(
     "omits an unbounded schema even when %s needs no compatibility rewrite",
     async (modelProvider) => {

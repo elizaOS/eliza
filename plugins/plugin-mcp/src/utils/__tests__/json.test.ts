@@ -3,7 +3,7 @@
  * They cover fenced/prose-wrapped JSON extraction, JSON5 leniency, and schema checks for tool-call arguments.
  */
 
-import { ElizaError } from "@elizaos/core/errors";
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   assertMcpJsonSchemaBudget,
@@ -206,14 +206,58 @@ describe("assertMcpJsonSchemaBudget", () => {
     ).toThrowError(/serialized size/);
   });
 
-  it("rejects a throwing schema accessor as unsafe input", () => {
+  it("rejects a schema accessor without invoking it", () => {
     const schema = { type: "object" } as Record<string, unknown>;
+    let reads = 0;
     Object.defineProperty(schema, "properties", {
       enumerable: true,
       get: () => {
-        throw new Error("getter escaped");
+        reads += 1;
+        return {};
       },
     });
-    expect(() => assertMcpJsonSchemaBudget(schema)).toThrowError(/not safely traversable/);
+    expect(() => assertMcpJsonSchemaBudget(schema)).toThrowError(/contains an accessor/);
+    expect(reads).toBe(0);
+  });
+
+  it("rejects custom toJSON before it can synthesize an unbounded second graph", () => {
+    let calls = 0;
+    const schema = { type: "object" };
+    Object.defineProperty(schema, "toJSON", {
+      get: () => {
+        calls += 1;
+        return () => ({ description: "x".repeat(1_000_000) });
+      },
+    });
+    expect(() => assertMcpJsonSchemaBudget(schema)).toThrowError(/custom toJSON/);
+    expect(calls).toBe(0);
+  });
+
+  it("rejects an inherited toJSON accessor without invoking it", () => {
+    const original = Object.getOwnPropertyDescriptor(Object.prototype, "toJSON");
+    let calls = 0;
+    let caught: unknown;
+    Object.defineProperty(Object.prototype, "toJSON", {
+      configurable: true,
+      get: () => {
+        calls += 1;
+        return () => ({ description: "x".repeat(300_000) });
+      },
+    });
+    try {
+      assertMcpJsonSchemaBudget({ type: "object" });
+    } catch (error) {
+      caught = error;
+    } finally {
+      if (original) {
+        Object.defineProperty(Object.prototype, "toJSON", original);
+      } else {
+        delete (Object.prototype as { toJSON?: unknown }).toJSON;
+      }
+    }
+
+    expect(caught).toBeInstanceOf(ElizaError);
+    expect((caught as ElizaError).message).toMatch(/custom toJSON/);
+    expect(calls).toBe(0);
   });
 });

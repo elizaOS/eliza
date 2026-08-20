@@ -73,7 +73,11 @@ export abstract class McpToolCompatibility {
       return toolSchema;
     }
 
-    return this.processSchema(toolSchema);
+    const processed = this.processSchema(toolSchema);
+    // Rewrites can expand removed constraints into prose, so the retained
+    // schema needs the same bound as the untrusted input.
+    assertMcpJsonSchemaBudget(processed);
+    return processed;
   }
 
   protected processSchema(schema: JSONSchema7): JSONSchema7 {
