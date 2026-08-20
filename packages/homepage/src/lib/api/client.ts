@@ -1,11 +1,14 @@
 /**
  * Browser fetch helpers for calling the Eliza Cloud API from the static
- * homepage.
+ * homepage. `elizacloudFetch` honors `ELIZACLOUD_FETCH_TIMEOUT_MS` so a hung
+ * Cloud hop cannot stall marketing/auth pages.
  */
 // Browser calls use the canonical API host directly because CORS preflights do
 // not follow redirects. Marketing and hosted-app origins never proxy these
 // source-module requests in the optional isolated harness.
 const ELIZACLOUD_DEFAULT_URL = "https://api.eliza.app";
+/** Bound for homepage Cloud API hops so a hung peer cannot stall the page. */
+export const ELIZACLOUD_FETCH_TIMEOUT_MS = 15_000;
 
 function getBaseUrl(): string {
   return (
@@ -44,6 +47,7 @@ export async function elizacloudFetch<T = unknown>(
       "Content-Type": "application/json",
       ...reqInit.headers,
     },
+    signal: reqInit.signal ?? AbortSignal.timeout(ELIZACLOUD_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const text = await res.text();
