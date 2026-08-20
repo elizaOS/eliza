@@ -214,6 +214,9 @@ describe("landing Shared-agent capability contract", () => {
       ]),
     );
     expect(copy).toContain("severe peanut allergy");
+    expect(copy).toContain("I already filtered");
+    expect(copy).not.toContain("shared room profile");
+    expect(copy).not.toContain("no peanuts for me");
     expect(copy).toContain("checked its current allergy policy");
     expect(copy).toContain("separate tools and a manager check");
     expect(copy).not.toMatch(/allergy-safe|guaranteed safe|zero risk/i);

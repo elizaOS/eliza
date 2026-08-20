@@ -275,11 +275,11 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
         name: "Priya",
         text: "has to have veggie stuff for me lol",
       },
-      { kind: "member", name: "Jamie", text: "and no peanuts for me obv" },
+      { kind: "member", name: "Jamie", text: "honestly just pick somewhere" },
       {
         capability: "room-memory",
         kind: "eliza",
-        text: "Jamie's shared room profile says severe peanut allergy. I'm treating that as a hard constraint, not a preference.",
+        text: "I already filtered for Priya being vegetarian and Jamie's severe peanut allergy. Peanut cross-contact is a hard constraint.",
       },
       {
         capability: "room-memory",
@@ -295,7 +295,7 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] = [
           ],
           source: {
             kind: "memory",
-            label: "Friends memory · shared with room",
+            label: "Remembered for Friends",
           },
           status: "Filtering risky matches",
           statusKind: "open",
