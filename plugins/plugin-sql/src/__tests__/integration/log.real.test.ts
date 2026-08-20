@@ -4,11 +4,19 @@
  * contract, JSON-body escaping (backslashes, NUL stripping), and filtering
  * by type.
  */
-import { type AgentRuntime, ChannelType, type Entity, type Room, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ChannelType,
+  ElizaError,
+  type Entity,
+  type Room,
+  type UUID,
+} from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
+import { MAX_SQL_JSON_SANITIZE_DEPTH, SQL_JSON_SANITIZE_UNBOUNDED } from "../../sanitize-json";
 import { logTable } from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
@@ -146,6 +154,35 @@ describe("Log Integration Tests", () => {
       });
       expect(logs).toHaveLength(1);
       expect(logs[0].body).toEqual({ text: "ab" });
+    });
+
+    it("rejects an over-depth body before the real adapter inserts a log", async () => {
+      let body: Record<string, unknown> = { leaf: true };
+      for (let depth = 0; depth <= MAX_SQL_JSON_SANITIZE_DEPTH; depth += 1) {
+        body = { child: body };
+      }
+
+      try {
+        await adapter.log({
+          body,
+          entityId: testEntityId,
+          roomId: testRoomId,
+          type: "unbounded_test",
+        });
+        throw new Error("expected adapter.log to reject");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ElizaError);
+        expect((error as ElizaError).code).toBe("DB_INSERT_FAILED");
+        expect((error as Error).cause).toEqual(
+          expect.objectContaining({ code: SQL_JSON_SANITIZE_UNBOUNDED })
+        );
+      }
+
+      const logs = await adapter.getLogs({
+        roomId: testRoomId,
+        type: "unbounded_test",
+      });
+      expect(logs).toHaveLength(0);
     });
 
     it("should filter logs by type", async () => {
