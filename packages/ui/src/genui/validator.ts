@@ -87,7 +87,7 @@ function isSafeImageSrc(value: string): boolean {
   }
 }
 
-function validateUnsafeFields(
+function snapshotUnsafeFields(
   value: unknown,
   issues: ElizaGenUiValidationIssue[],
   path: string,
@@ -104,8 +104,8 @@ function validateUnsafeFields(
     halted: false,
     maxCodeUnits: DEFAULT_MAX_JSON_BYTES,
   },
-): void {
-  if (ctx.halted) return;
+): unknown {
+  if (ctx.halted) return undefined;
   if (depth > MAX_GENUI_UNSAFE_FIELD_DEPTH) {
     addIssue(issues, {
       code: "unbounded_nest",
@@ -114,7 +114,7 @@ function validateUnsafeFields(
       path,
     });
     ctx.halted = true;
-    return;
+    return undefined;
   }
   ctx.visits += 1;
   if (ctx.visits > MAX_GENUI_UNSAFE_FIELD_NODES) {
@@ -125,7 +125,7 @@ function validateUnsafeFields(
       path,
     });
     ctx.halted = true;
-    return;
+    return undefined;
   }
   if (typeof value === "string" && value.length > ctx.maxCodeUnits) {
     addIssue(issues, {
@@ -135,10 +135,10 @@ function validateUnsafeFields(
       path,
     });
     ctx.halted = true;
-    return;
+    return undefined;
   }
   if (!value || typeof value !== "object") {
-    return;
+    return value;
   }
   if (ctx.ancestors.has(value)) {
     addIssue(issues, {
@@ -148,35 +148,29 @@ function validateUnsafeFields(
       path,
     });
     ctx.halted = true;
-    return;
+    return undefined;
   }
   ctx.ancestors.add(value);
   try {
-    // JSON.stringify performs an ordinary Get of `toJSON`, including through
-    // the prototype chain. Inspect descriptors without invoking accessors so a
-    // hostile object cannot run code or synthesize a second, unbudgeted graph.
-    let prototype: object | null = value;
-    while (prototype) {
-      const descriptor = Object.getOwnPropertyDescriptor(prototype, "toJSON");
-      if (descriptor) {
-        if (
-          "get" in descriptor ||
-          "set" in descriptor ||
-          typeof descriptor.value === "function"
-        ) {
-          addIssue(issues, {
-            code: "unbounded_nest",
-            message:
-              "Generated UI values may not define custom JSON serialization.",
-            componentId,
-            path,
-          });
-          ctx.halted = true;
-          return;
-        }
-        break;
-      }
-      prototype = Object.getPrototypeOf(prototype);
+    // JSON.stringify performs an ordinary Get of an own or inherited `toJSON`.
+    // The trusted snapshot below severs the input prototype chain; reject an
+    // own hook explicitly and never perform an ordinary Get on untrusted data.
+    const toJsonDescriptor = Object.getOwnPropertyDescriptor(value, "toJSON");
+    if (
+      toJsonDescriptor &&
+      ("get" in toJsonDescriptor ||
+        "set" in toJsonDescriptor ||
+        typeof toJsonDescriptor.value === "function")
+    ) {
+      addIssue(issues, {
+        code: "unbounded_nest",
+        message:
+          "Generated UI values may not define custom JSON serialization.",
+        componentId,
+        path,
+      });
+      ctx.halted = true;
+      return undefined;
     }
 
     if (Array.isArray(value)) {
@@ -194,8 +188,9 @@ function validateUnsafeFields(
           path,
         });
         ctx.halted = true;
-        return;
+        return undefined;
       }
+      const snapshot = new Array<unknown>(length);
       for (let index = 0; index < length; index += 1) {
         const descriptor = Object.getOwnPropertyDescriptor(
           value,
@@ -209,9 +204,9 @@ function validateUnsafeFields(
             path: `${path}/${index}`,
           });
           ctx.halted = true;
-          return;
+          return undefined;
         }
-        validateUnsafeFields(
+        const entry = snapshotUnsafeFields(
           descriptor?.value,
           issues,
           `${path}/${index}`,
@@ -219,11 +214,15 @@ function validateUnsafeFields(
           depth + 1,
           ctx,
         );
+        if (ctx.halted) return undefined;
+        if (descriptor) snapshot[index] = entry;
       }
-      return;
+      return snapshot;
     }
-    for (const key in value) {
-      if (ctx.halted) return;
+    const snapshot = Object.create(null) as Record<string, unknown>;
+    for (const key of Reflect.ownKeys(value)) {
+      if (ctx.halted) return undefined;
+      if (typeof key !== "string") continue;
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (!descriptor?.enumerable) continue;
       if (key.length > ctx.maxCodeUnits) {
@@ -234,7 +233,7 @@ function validateUnsafeFields(
           path,
         });
         ctx.halted = true;
-        return;
+        return undefined;
       }
       if ("get" in descriptor || "set" in descriptor) {
         addIssue(issues, {
@@ -244,7 +243,7 @@ function validateUnsafeFields(
           path: `${path}/${key}`,
         });
         ctx.halted = true;
-        return;
+        return undefined;
       }
       if (UNSAFE_FIELD_NAMES.has(key)) {
         addIssue(issues, {
@@ -254,7 +253,7 @@ function validateUnsafeFields(
           path: `${path}/${key}`,
         });
       }
-      validateUnsafeFields(
+      const entry = snapshotUnsafeFields(
         descriptor.value,
         issues,
         `${path}/${key}`,
@@ -262,7 +261,15 @@ function validateUnsafeFields(
         depth + 1,
         ctx,
       );
+      if (ctx.halted) return undefined;
+      Object.defineProperty(snapshot, key, {
+        value: entry,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
+    return snapshot;
   } catch {
     // error-policy:J3 proxies and racing descriptors are invalid input; the
     // public validator never lets reflection failures escape.
@@ -273,6 +280,7 @@ function validateUnsafeFields(
       path,
     });
     ctx.halted = true;
+    return undefined;
   } finally {
     ctx.ancestors.delete(value);
   }
@@ -539,16 +547,16 @@ export function validateElizaGenUiSpec(
 ): ElizaGenUiValidationResult {
   const issues: ElizaGenUiValidationIssue[] = [];
   const options = normalizeValidationOptions(validationOptions);
-  validateUnsafeFields(value, issues, "", undefined, 0, {
+  const snapshot = snapshotUnsafeFields(value, issues, "", undefined, 0, {
     visits: 0,
     ancestors: new WeakSet<object>(),
     halted: false,
     maxCodeUnits: options.maxJsonBytes,
   });
   if (issues.length > 0) return { ok: false, errors: issues };
-  if (!validateJsonSize(value, issues, options))
+  if (!validateJsonSize(snapshot, issues, options))
     return { ok: false, errors: issues };
-  const record = asRecord(value);
+  const record = asRecord(snapshot);
   if (!record) {
     addIssue(issues, {
       code: "invalid_spec",
@@ -564,7 +572,7 @@ export function validateElizaGenUiSpec(
   if (issues.length > 0) {
     return { ok: false, errors: issues };
   }
-  return { ok: true, spec: value as ElizaGenUiSpec };
+  return { ok: true, spec: snapshot as ElizaGenUiSpec };
 }
 
 export function assertValidElizaGenUiSpec(

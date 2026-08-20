@@ -100,7 +100,7 @@ describe("validateElizaGenUiSpec unbounded nests", () => {
     expect(calls).toBe(0);
   });
 
-  it("rejects inherited toJSON hooks without invoking them", () => {
+  it("severs inherited toJSON hooks without invoking them", () => {
     let calls = 0;
     const prototype = Object.create(null) as Record<string, unknown>;
     Object.defineProperty(prototype, "toJSON", {
@@ -112,8 +112,38 @@ describe("validateElizaGenUiSpec unbounded nests", () => {
     const data = Object.create(prototype) as Record<string, unknown>;
     data.safe = true;
     const result = validateElizaGenUiSpec(specWithData(data));
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
     expect(calls).toBe(0);
+  });
+
+  it("snapshots a Proxy without invoking a synthesized toJSON or ordinary getters", () => {
+    let getCalls = 0;
+    const data = new Proxy(
+      { safe: true },
+      {
+        get(target, key, receiver) {
+          getCalls += 1;
+          if (key === "toJSON")
+            return () => ({ expanded: "x".repeat(100_000) });
+          return Reflect.get(target, key, receiver);
+        },
+      },
+    );
+
+    const result = validateElizaGenUiSpec(specWithData(data));
+    expect(result.ok).toBe(true);
+    expect(getCalls).toBe(0);
+  });
+
+  it("does not traverse an inherited prototype chain", () => {
+    let prototype: object | null = null;
+    for (let index = 0; index < 10_000; index += 1) {
+      prototype = Object.create(prototype);
+    }
+    const data = Object.create(prototype) as Record<string, unknown>;
+    data.safe = true;
+
+    expect(validateElizaGenUiSpec(specWithData(data)).ok).toBe(true);
   });
 
   it("translates hostile reflection traps instead of throwing", () => {
