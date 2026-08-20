@@ -153,6 +153,15 @@ export interface SkillsRouteContext {
     options?: ReadJsonBodyOptions,
   ) => Promise<T | null>;
   readBody: (req: http.IncomingMessage) => Promise<string>;
+  /** Canonical percent-decoding for path components, injected by server.ts
+   *  (fix 972cf5d8f3b) so skill-name segments decode identically across every
+   *  route surface: returns null after writing the 400 itself when the raw
+   *  segment is malformed. Optional: routes fall back to decodeURIComponent. */
+  decodePathComponent?: (
+    raw: string,
+    res: http.ServerResponse,
+    fieldName: string,
+  ) => string | null;
   // Functions from server.ts that skills routes need
   discoverSkills: (
     workspaceDir: string,
