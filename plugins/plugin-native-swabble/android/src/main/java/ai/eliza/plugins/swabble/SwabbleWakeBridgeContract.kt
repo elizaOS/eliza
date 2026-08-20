@@ -3,6 +3,14 @@ package ai.eliza.plugins.swabble
 import com.getcapacitor.JSObject
 
 internal object SwabbleWakeBridgeContract {
+    /**
+     * Wake tokens are a handful of short words. Unbounded Levenshtein on a
+     * no-space ASR dump or a hostile trigger is O(len²) and hangs the
+     * recognizer callback. Exact matching is unchanged; fuzzy refuses
+     * oversized tokens instead of allocating the DP tables.
+     */
+    const val MAX_FUZZY_TOKEN_CODE_UNITS = 64
+
     data class Config(
         val triggers: List<String>,
         val minPostTriggerGap: Double,
@@ -47,6 +55,11 @@ internal object SwabbleWakeBridgeContract {
                 if (wordIndex + triggerLen > words.size) continue
 
                 val candidate = words.subList(wordIndex, wordIndex + triggerLen).joinToString(" ")
+                if (candidate.length > MAX_FUZZY_TOKEN_CODE_UNITS ||
+                    trigger.length > MAX_FUZZY_TOKEN_CODE_UNITS
+                ) {
+                    continue
+                }
                 val distance = levenshteinDistance(candidate.lowercase(), trigger.lowercase())
                 val maxLen = maxOf(candidate.length, trigger.length)
                 if (maxLen == 0 || distance.toDouble() / maxLen > 0.3) continue
@@ -124,6 +137,9 @@ internal object SwabbleWakeBridgeContract {
     private fun levenshteinDistance(a: String, b: String): Int {
         val m = a.length
         val n = b.length
+        if (m > MAX_FUZZY_TOKEN_CODE_UNITS || n > MAX_FUZZY_TOKEN_CODE_UNITS) {
+            return Int.MAX_VALUE
+        }
         if (m == 0) return n
         if (n == 0) return m
 
