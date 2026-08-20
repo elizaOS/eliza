@@ -304,6 +304,7 @@ function readCapabilityParameter(value: unknown): AgentCapabilityId | undefined 
 export function createSharedCapabilityPlugin(options: {
   agentKey: string;
   catalog: AgentCapabilityCatalog;
+  actionsEnabled?: boolean;
 }): Plugin {
   const provider: Provider = {
     name: "AGENT_CAPABILITIES",
@@ -389,7 +390,7 @@ export function createSharedCapabilityPlugin(options: {
     name: "shared-capability-catalog",
     description: "Runtime-derived capability context and setup handoff.",
     providers: [provider],
-    actions: [action],
+    actions: options.actionsEnabled === false ? [] : [action],
   };
 }
 
@@ -485,6 +486,7 @@ function createRuntime(options: {
       createSharedCapabilityPlugin({
         agentKey: options.agentKey,
         catalog: options.capabilityCatalog,
+        actionsEnabled: options.actionsEnabled,
       }),
       createSharedProfilePlugin(options.profileState, options.actionsEnabled),
       ...(!options.actionsEnabled ? [sharedSystemLifecyclePlugin] : []),

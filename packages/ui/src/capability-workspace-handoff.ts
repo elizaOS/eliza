@@ -39,7 +39,7 @@ export interface CapabilityConnectorContinuation {
   capabilityId: CapabilityHandoffRequest["capabilityId"];
   originalIntent: string;
   clientMessageId?: string;
-  requiresConfirmation: boolean;
+  requiresConfirmation: true;
   connectorId?: string;
 }
 
@@ -259,6 +259,7 @@ export function persistCapabilityConnectorContinuation(
   if (
     typeof window === "undefined" ||
     !originalIntent ||
+    handoff.requiresConfirmation !== true ||
     !CONNECTION_CAPABILITIES.has(handoff.capabilityId)
   ) {
     return false;
@@ -321,7 +322,7 @@ function readConnectorContinuation(
     typeof candidate.originalIntent !== "string" ||
     !candidate.originalIntent.trim() ||
     candidate.originalIntent.trim().length > MAX_CONTINUATION_INTENT_LENGTH ||
-    typeof candidate.requiresConfirmation !== "boolean" ||
+    candidate.requiresConfirmation !== true ||
     (candidate.clientMessageId !== undefined &&
       (typeof candidate.clientMessageId !== "string" ||
         !candidate.clientMessageId.trim() ||
@@ -343,7 +344,7 @@ function readConnectorContinuation(
       capabilityId:
         candidate.capabilityId as CapabilityHandoffRequest["capabilityId"],
       originalIntent: candidate.originalIntent,
-      requiresConfirmation: candidate.requiresConfirmation,
+      requiresConfirmation: true,
       ...(candidate.clientMessageId
         ? { clientMessageId: candidate.clientMessageId }
         : {}),
@@ -355,11 +356,18 @@ function readConnectorContinuation(
 /** Bind the pending request to the connector setup the user actually initiated. */
 export function claimCapabilityConnectorContinuation(
   connectorId: string,
+  agentId: string,
   now: () => number = Date.now,
 ): boolean {
   try {
     const pending = readConnectorContinuation(now);
-    if (!pending || pending.continuation.connectorId) return false;
+    if (
+      !pending ||
+      pending.continuation.agentId !== agentId ||
+      pending.continuation.connectorId
+    ) {
+      return false;
+    }
     pending.continuation.connectorId = connectorId;
     window.sessionStorage.setItem(
       CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
@@ -376,11 +384,12 @@ export function claimCapabilityConnectorContinuation(
 /** Bind and read the typed request so OAuth can persist it server-side. */
 export function getOrClaimCapabilityConnectorContinuation(
   connectorId: string,
+  agentId: string,
   now: () => number = Date.now,
 ): CapabilityConnectorContinuation | null {
   try {
     const pending = readConnectorContinuation(now);
-    if (!pending) return null;
+    if (!pending || pending.continuation.agentId !== agentId) return null;
     if (!pending.continuation.connectorId) {
       pending.continuation.connectorId = connectorId;
       window.sessionStorage.setItem(
@@ -401,11 +410,17 @@ export function getOrClaimCapabilityConnectorContinuation(
 /** Consume the exact request only after its user-selected connector is connected. */
 export function consumeCapabilityConnectorContinuation(
   connectorId: string,
+  agentId: string,
   now: () => number = Date.now,
 ): CapabilityConnectorContinuation | null {
   try {
     const pending = readConnectorContinuation(now);
-    if (pending?.continuation.connectorId !== connectorId) return null;
+    if (
+      pending?.continuation.connectorId !== connectorId ||
+      pending.continuation.agentId !== agentId
+    ) {
+      return null;
+    }
     window.sessionStorage.removeItem(
       CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
     );

@@ -173,6 +173,16 @@ test("Shared capability gate preserves intent and opens personal workspace setup
   const handles = await installCapabilityHandoffRoutes(page);
   await openAppPath(page, "/chat");
 
+  if (process.env.ELIZA_MANUAL_ONBOARDING_REVIEW === "1") {
+    console.log(
+      `[manual-review] Drive the capability handoff in Chromium with: ${USER_INTENT}`,
+    );
+    console.log(
+      "[manual-review] Press Ctrl+C when finished; run test:e2e:record for the asserted recording.",
+    );
+    await page.pause();
+  }
+
   await page.getByTestId("chat-composer-textarea").fill(USER_INTENT);
   await page.getByTestId("chat-composer-action").click();
   await expect.poll(() => handles.streamRequests).toContain(USER_INTENT);

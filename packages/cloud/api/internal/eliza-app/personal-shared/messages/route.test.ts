@@ -333,6 +333,7 @@ describe("personal Shared messaging deliveries", () => {
         chatId: "123456789",
       },
       undefined,
+      undefined,
       { preferredName: "Nubs" },
     );
   });
@@ -521,6 +522,7 @@ describe("personal Shared messaging deliveries", () => {
           chatId: "123456789",
         },
         undefined,
+        undefined,
         { preferredName: "Nubs" },
       );
       await expect(response.json()).resolves.toMatchObject({
@@ -692,6 +694,7 @@ describe("personal Shared messaging deliveries", () => {
       },
       undefined,
       undefined,
+      undefined,
     );
   });
 
@@ -732,6 +735,7 @@ describe("personal Shared messaging deliveries", () => {
         platform: "discord",
         discordUserId: "123456789012345678",
       },
+      undefined,
       undefined,
       { preferredName: "Shaw" },
     );

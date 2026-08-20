@@ -227,15 +227,23 @@ export function composeLifecycleFollowUp(events: AuthoritativeLifecycleEvent[]):
 async function lifecycleDigest(events: AuthoritativeLifecycleEvent[]): Promise<string> {
   const canonical = [...events]
     .map((event) =>
-      [
+      JSON.stringify([
         event.userId,
         event.organizationId,
         event.origin,
         event.kind,
         event.idempotencyKey,
         event.resourceId,
-        event.agentId ?? "",
-      ].join(":"),
+        event.agentId ?? null,
+        event.continuation
+          ? [
+              event.continuation.originalIntent,
+              event.continuation.capabilityId,
+              event.continuation.clientMessageId ?? null,
+              event.continuation.requiresConfirmation,
+            ]
+          : null,
+      ]),
     )
     .sort()
     .join("|");

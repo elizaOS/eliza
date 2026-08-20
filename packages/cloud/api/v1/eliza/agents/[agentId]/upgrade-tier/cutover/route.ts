@@ -122,6 +122,18 @@ function continuationMatchesStored(
   );
 }
 
+function continuationConflictResponse(): Response {
+  return json(
+    {
+      success: false,
+      code: "dedicated_continuation_conflict",
+      error:
+        "Dedicated setup is already preserving another pending request. Finish or dismiss that request before starting a different one.",
+    },
+    409,
+  );
+}
+
 async function clearQueuedContinuation(input: {
   userId: string;
   organizationId: string;
@@ -421,6 +433,13 @@ app.post("/", async (c) => {
         AGENT_UPGRADE_CONTINUATION_KEY
       ],
     );
+    if (
+      requestContinuation &&
+      storedContinuation &&
+      !continuationMatchesStored(requestContinuation, storedContinuation)
+    ) {
+      return continuationConflictResponse();
+    }
     let continuation = requestContinuation ?? storedContinuation?.continuation;
     if (
       active?.id === parsed.data.dedicatedAgentId &&
@@ -554,6 +573,13 @@ app.post("/", async (c) => {
         AGENT_UPGRADE_CONTINUATION_KEY
       ],
     );
+    if (
+      requestContinuation &&
+      storedContinuation &&
+      !continuationMatchesStored(requestContinuation, storedContinuation)
+    ) {
+      return continuationConflictResponse();
+    }
     continuation ??= storedContinuation?.continuation;
 
     const base = personalDedicatedAgentApiBase(

@@ -38,6 +38,7 @@ const SHARED_RESUME = "cccccccc-7777-4777-8777-777777777777";
 const STOPPED_TARGET = "cccccccc-8888-4888-8888-888888888888";
 const SLEEPING_TARGET = "cccccccc-9999-4999-8999-999999999999";
 const SHARED_CONCURRENT = "cccccccc-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SHARED_CONTINUATION = "cccccccc-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SHARED_B = "cccccccc-2222-4222-8222-222222222222";
 const MISSING = "dddddddd-9999-4999-8999-999999999999";
 const ORG_FULL = "33333333-3333-4333-8333-333333333333";
@@ -344,7 +345,15 @@ function cutover(agentId: string, dedicatedAgentId: string) {
   );
 }
 
-async function upgrade(agentId: string) {
+async function upgrade(
+  agentId: string,
+  continuation?: {
+    originalIntent: string;
+    capabilityId: "calendar";
+    clientMessageId: string;
+    requiresConfirmation: true;
+  },
+) {
   const quoted = await quote(agentId);
   const body = (await quoted
     .clone()
@@ -360,6 +369,7 @@ async function upgrade(agentId: string) {
       body: JSON.stringify({
         action: "activate_dedicated",
         quoteId: body?.data?.quoteId ?? "0".repeat(64),
+        ...(continuation ? { continuation } : {}),
       }),
     },
     ENV,
@@ -784,6 +794,65 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       .where(eq(apiKeys.name, `agent-sandbox:${targets[0]!.id}`));
     expect(targetKeys).toHaveLength(1);
     expect(targetKeys[0]?.is_active).toBe(true);
+  });
+
+  test("concurrent distinct continuations preserve one winner and exact replay reattaches", async () => {
+    expect(pgliteReady).toBe(true);
+    await setOrgBalance(ORG_A, "100");
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    await dbWrite.insert(agentSandboxes).values({
+      id: SHARED_CONTINUATION,
+      organization_id: ORG_A,
+      user_id: USER_A,
+      agent_name: "Continuation Source",
+      execution_tier: "shared",
+      status: "running",
+      database_status: "none",
+    });
+    const firstContinuation = {
+      originalIntent: "Move tomorrow's meeting to 3pm",
+      capabilityId: "calendar" as const,
+      clientMessageId: "turn-1",
+      requiresConfirmation: true as const,
+    };
+    const secondContinuation = {
+      ...firstContinuation,
+      originalIntent: "Email Maya the report",
+      clientMessageId: "turn-2",
+    };
+    const attempts = await Promise.all([
+      upgrade(SHARED_CONTINUATION, firstContinuation),
+      upgrade(SHARED_CONTINUATION, secondContinuation),
+    ]);
+    expect(attempts.map(({ status }) => status).sort()).toEqual([202, 409]);
+    const conflict = attempts.find(({ status }) => status === 409);
+    expect(conflict).toBeDefined();
+    if (!conflict) throw new Error("Expected continuation conflict");
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({
+      code: "dedicated_continuation_conflict",
+    });
+    const winningContinuation =
+      attempts[0]?.status === 202 ? firstContinuation : secondContinuation;
+    const replay = await upgrade(SHARED_CONTINUATION, winningContinuation);
+    expect(replay.status).toBe(202);
+
+    const [target] = (await dbWrite.select().from(agentSandboxes)).filter(
+      (agent) =>
+        (agent.agent_config as Record<string, unknown> | null)
+          ?.__agentUpgradedFrom === SHARED_CONTINUATION,
+    );
+    expect(target).toBeDefined();
+    if (!target) throw new Error("Expected continuation target");
+    expect(
+      (
+        (target.agent_config as Record<string, unknown>)
+          .__agentUpgradeContinuation as {
+          continuation: { clientMessageId: string };
+        }
+      ).continuation.clientMessageId,
+    ).toBe(winningContinuation.clientMessageId);
   });
 
   test("an org at its non-terminal cap gets the typed 429 quota body before any credential is minted", async () => {

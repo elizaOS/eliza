@@ -24,6 +24,7 @@ import {
 } from "../../api";
 import { getOrClaimCapabilityConnectorContinuation } from "../../capability-workspace-handoff";
 import { useAppSelectorShallow } from "../../state";
+import { loadPersistedActiveServer } from "../../state/persistence";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import { PagePanel } from "../composites/page-panel";
 import { ConnectorModeSelector } from "../connectors/ConnectorModeSelector";
@@ -813,9 +814,13 @@ function ConnectorPluginCard({
     try {
       const redirectUrl =
         typeof window !== "undefined" ? window.location.href : undefined;
-      const pending = getOrClaimCapabilityConnectorContinuation(
-        cloudOAuthConnector.platform,
-      );
+      const activeAgentId = loadPersistedActiveServer()?.cloudRuntimeAgentId;
+      const pending = activeAgentId
+        ? getOrClaimCapabilityConnectorContinuation(
+            cloudOAuthConnector.platform,
+            activeAgentId,
+          )
+        : null;
       const oauthResponse =
         cloudOAuthConnector.oauthInitiation === "twitter-endpoint"
           ? await client.initiateCloudTwitterOauth({

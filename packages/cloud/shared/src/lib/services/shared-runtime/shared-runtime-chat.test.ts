@@ -7,8 +7,9 @@
 
 process.env.MOCK_REDIS = "1";
 
-import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import * as realLogger from "../../utils/logger";
 
 let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
@@ -70,6 +71,7 @@ function timingReceipt(
     routing: { decision: "respond" as const, contextIds: ["room"] },
   };
 }
+const REAL_LOGGER = { ...realLogger };
 
 class ApiInsufficientCreditsError extends Error {}
 
@@ -390,11 +392,15 @@ const rpc = {
 
 type TestMessage = {
   id?: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   createdAt?: number;
   interrupted?: boolean;
 };
+
+function visibleHistory(messages: TestMessage[]): TestMessage[] {
+  return messages.filter((message) => message.id !== "shared-profile-v1");
+}
 
 function harness() {
   let history: TestMessage[] = [{ role: "assistant", content: "prior" }];
@@ -425,9 +431,13 @@ function harness() {
     executionCtx: {
       waitUntil: (promise: Promise<unknown>) => background.push(promise),
     },
-    history: () => history,
+    history: () => visibleHistory(history),
   };
 }
+
+afterAll(() => {
+  mock.module("../../utils/logger", () => REAL_LOGGER);
+});
 
 beforeEach(() => {
   settleCalls.length = 0;
@@ -1444,8 +1454,9 @@ describe("SharedRuntimeChatService", () => {
     await Promise.all(h.background);
 
     expect(attempts).toBe(2);
-    expect(history.at(-2)).toMatchObject({ role: "user", content: "hello" });
-    expect(history.at(-1)).toMatchObject({
+    const visible = visibleHistory(history);
+    expect(visible.at(-2)).toMatchObject({ role: "user", content: "hello" });
+    expect(visible.at(-1)).toMatchObject({
       role: "assistant",
       content: "partial",
       interrupted: true,

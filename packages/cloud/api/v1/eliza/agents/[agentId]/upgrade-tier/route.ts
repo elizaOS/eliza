@@ -255,6 +255,36 @@ function invalidUpgradeSource(source: UpgradeSource): Response | null {
   return null;
 }
 
+async function persistContinuationForLiveTarget(input: {
+  user: AuthedUser;
+  sourceAgentId: string;
+  dedicatedAgentId: string;
+  continuation: NonNullable<
+    ReturnType<typeof parseLifecycleCapabilityContinuation>
+  >;
+}): Promise<Response | null> {
+  const result = await persistTierUpgradeCapabilityContinuation({
+    organizationId: input.user.organization_id,
+    userId: input.user.id,
+    sourceAgentId: input.sourceAgentId,
+    dedicatedAgentId: input.dedicatedAgentId,
+    capabilityContinuation: createStoredLifecycleCapabilityContinuation(
+      input.continuation,
+    ),
+  });
+  return result === "conflict"
+    ? json(
+        {
+          success: false,
+          code: "dedicated_continuation_conflict",
+          error:
+            "Dedicated setup is already preserving another pending request. Finish or dismiss that request before starting a different one.",
+        },
+        409,
+      )
+    : null;
+}
+
 /**
  * Respond for a live migration target that already owns this upgrade — both
  * the pre-checked reattach and the race loser whose single-flight call
@@ -449,15 +479,13 @@ async function __hono_POST(
     );
     if (existingTarget) {
       if (capabilityContinuation) {
-        await persistTierUpgradeCapabilityContinuation({
-          organizationId: user.organization_id,
-          userId: user.id,
+        const conflict = await persistContinuationForLiveTarget({
+          user,
           sourceAgentId: source.id,
           dedicatedAgentId: existingTarget.id,
-          capabilityContinuation: createStoredLifecycleCapabilityContinuation(
-            capabilityContinuation,
-          ),
+          continuation: capabilityContinuation,
         });
+        if (conflict) return conflict;
       }
       return await respondToLiveTarget(
         existingTarget,
@@ -582,15 +610,13 @@ async function __hono_POST(
     // this one was in flight — reattach to that durable state.
     if (!result.created) {
       if (capabilityContinuation) {
-        await persistTierUpgradeCapabilityContinuation({
-          organizationId: user.organization_id,
-          userId: user.id,
+        const conflict = await persistContinuationForLiveTarget({
+          user,
           sourceAgentId: source.id,
           dedicatedAgentId: result.agent.id,
-          capabilityContinuation: createStoredLifecycleCapabilityContinuation(
-            capabilityContinuation,
-          ),
+          continuation: capabilityContinuation,
         });
+        if (conflict) return conflict;
       }
       return await respondToLiveTarget(
         result.agent,

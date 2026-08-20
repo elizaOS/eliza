@@ -29,6 +29,15 @@ const realDbHelpersExports = { ...realDbHelpers };
 
 const secretsCreateCalls: unknown[] = [];
 const insertReturning = mock(async () => [{ id: "conn-1" }]);
+const dbWriteMock = {
+  select: () => ({
+    from: () => ({
+      where: () => ({
+        limit: async () => [] as unknown[],
+      }),
+    }),
+  }),
+};
 
 let stateData: Record<string, unknown> | null;
 let storedState: unknown;
@@ -72,20 +81,12 @@ mock.module("../../secrets", () => ({
 }));
 
 mock.module("../../../../db/client", () => ({
-  dbWrite: {
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          limit: async () => [] as unknown[],
-        }),
-      }),
-    }),
-  },
+  dbWrite: dbWriteMock,
 }));
 
 mock.module("../../../../db/helpers", () => ({
   dbRead: {},
-  dbWrite: {},
+  dbWrite: dbWriteMock,
   writeTransaction: async (fn: (tx: unknown) => Promise<unknown>) =>
     fn({
       insert: () => ({
@@ -266,6 +267,8 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
     } finally {
       AbortSignal.timeout = originalTimeout;
     }
+  });
+
   it("keeps bounded capability intent in server state and out of the OAuth URL", async () => {
     const { initiateOAuth2 } = await import("./oauth2");
     const result = await initiateOAuth2(provider, {

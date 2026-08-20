@@ -3,8 +3,13 @@
  * including trusted gateway continuations and authenticated identity matching.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realCacheClient from "../../cache/client";
 import * as realCloudBindings from "../../runtime/cloud-bindings";
+import * as realLogger from "../../utils/logger";
+import * as realManagedLaunch from "../eliza-managed-launch";
 import type { OnboardingChatMessage, OnboardingSession } from "./onboarding-chat";
+import * as realProvisioning from "./provisioning";
+import * as realUserService from "./user-service";
 
 function continuationToken(result: { loginUrl: string }): string {
   const token = new URL(result.loginUrl).searchParams.get("onboardingSession");
@@ -35,7 +40,12 @@ const linkTelegramToUser = mock();
 const readManagedElizaAgentConnection = mock();
 const loggerWarn = mock();
 let cloudEnv: Record<string, string | undefined> = {};
+const REAL_CACHE_CLIENT = { ...realCacheClient };
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
+const REAL_LOGGER = { ...realLogger };
+const REAL_MANAGED_LAUNCH = { ...realManagedLaunch };
+const REAL_PROVISIONING = { ...realProvisioning };
+const REAL_USER_SERVICE = { ...realUserService };
 
 mock.module("../../cache/client", () => ({
   CacheClient: class CacheClient {
@@ -125,7 +135,12 @@ describe("runOnboardingChat", () => {
   });
 
   afterAll(() => {
+    mock.module("../../cache/client", () => REAL_CACHE_CLIENT);
     mock.module("../../runtime/cloud-bindings", () => REAL_CLOUD_BINDINGS);
+    mock.module("../../utils/logger", () => REAL_LOGGER);
+    mock.module("../eliza-managed-launch", () => REAL_MANAGED_LAUNCH);
+    mock.module("./provisioning", () => REAL_PROVISIONING);
+    mock.module("./user-service", () => REAL_USER_SERVICE);
   });
 
   test("asks for a name before provisioning a trusted phone onboarding session", async () => {
@@ -309,7 +324,6 @@ describe("runOnboardingChat", () => {
       },
       statusOnly: true,
     });
-
     await expect(
       inspectTelegramPersonalAccountContinuation(continuationToken(ordinarySession)),
     ).rejects.toMatchObject({

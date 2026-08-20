@@ -59,7 +59,7 @@ import {
   readUpgradedFromAgentId,
 } from "./eliza-agent-config";
 import {
-  parseStoredLifecycleCapabilityContinuation,
+  readStoredLifecycleCapabilityContinuation,
   type StoredLifecycleCapabilityContinuation,
 } from "./eliza-app/lifecycle-follow-up";
 import {
@@ -102,15 +102,29 @@ export type TierUpgradeTargetResult =
   | { created: true; agent: AgentSandbox; job: Job }
   | { created: false; agent: AgentSandbox };
 
-/** Adds a validated pending request to an already-live single-flight target. */
+export type TierUpgradeContinuationPersistence = "stored" | "replay" | "conflict";
+
+function sameCapabilityContinuation(
+  left: StoredLifecycleCapabilityContinuation,
+  right: StoredLifecycleCapabilityContinuation,
+): boolean {
+  return (
+    left.continuation.originalIntent === right.continuation.originalIntent &&
+    left.continuation.capabilityId === right.continuation.capabilityId &&
+    left.continuation.clientMessageId === right.continuation.clientMessageId &&
+    left.continuation.requiresConfirmation === right.continuation.requiresConfirmation
+  );
+}
+
+/** Stores the first pending request; exact retries attach and distinct requests conflict. */
 export async function persistTierUpgradeCapabilityContinuation(params: {
   organizationId: string;
   userId: string;
   sourceAgentId: string;
   dedicatedAgentId: string;
   capabilityContinuation: StoredLifecycleCapabilityContinuation;
-}): Promise<void> {
-  await dbWrite.transaction(async (tx) => {
+}): Promise<TierUpgradeContinuationPersistence> {
+  return dbWrite.transaction(async (tx) => {
     await configureElizaLifecycleTransaction(tx);
     await tx.execute(
       elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
@@ -137,6 +151,16 @@ export async function persistTierUpgradeCapabilityContinuation(params: {
         },
       });
     }
+    const current = readStoredLifecycleCapabilityContinuation(
+      ((target.agent_config as Record<string, unknown> | null) ?? {})[
+        AGENT_UPGRADE_CONTINUATION_KEY
+      ],
+    );
+    if (current) {
+      return sameCapabilityContinuation(current, params.capabilityContinuation)
+        ? "replay"
+        : "conflict";
+    }
     await tx
       .update(agentSandboxes)
       .set({
@@ -147,6 +171,7 @@ export async function persistTierUpgradeCapabilityContinuation(params: {
         updated_at: new Date(),
       })
       .where(eq(agentSandboxes.id, target.id));
+    return "stored";
   });
 }
 
@@ -178,18 +203,18 @@ export async function clearTierUpgradeCapabilityContinuation(params: {
     if (!target) return false;
     const config = (target.agent_config as Record<string, unknown> | null) ?? {};
     const currentRaw = config[AGENT_UPGRADE_CONTINUATION_KEY];
-    const current = parseStoredLifecycleCapabilityContinuation(
+    const current = readStoredLifecycleCapabilityContinuation(
       currentRaw,
       () => Number.NEGATIVE_INFINITY,
     );
     const expected = params.expected.continuation;
     if (
       !current ||
-      (currentRaw as { expiresAt?: unknown }).expiresAt !== params.expected.expiresAt ||
-      current.originalIntent !== expected.originalIntent ||
-      current.capabilityId !== expected.capabilityId ||
-      current.clientMessageId !== expected.clientMessageId ||
-      current.requiresConfirmation !== expected.requiresConfirmation
+      current.expiresAt !== params.expected.expiresAt ||
+      current.continuation.originalIntent !== expected.originalIntent ||
+      current.continuation.capabilityId !== expected.capabilityId ||
+      current.continuation.clientMessageId !== expected.clientMessageId ||
+      current.continuation.requiresConfirmation !== expected.requiresConfirmation
     ) {
       return false;
     }

@@ -47,7 +47,16 @@ describe("findCapabilityWorkspaceHandoff", () => {
   afterEach(() => window.sessionStorage.clear());
   it("preserves the submitted intent when the server omitted continuation", () => {
     const handoff = findCapabilityWorkspaceHandoff(
-      [result()],
+      [
+        result({
+          values: {
+            capabilityHandoff: {
+              ...(result().values?.capabilityHandoff as object),
+              requiresConfirmation: true,
+            },
+          },
+        }),
+      ],
       "Move tomorrow's meeting to 3pm",
     );
 
@@ -161,7 +170,16 @@ describe("findCapabilityWorkspaceHandoff", () => {
 
   it("binds and consumes typed intent only for the connector the user starts", () => {
     const handoff = findCapabilityWorkspaceHandoff(
-      [result()],
+      [
+        result({
+          values: {
+            capabilityHandoff: {
+              ...(result().values?.capabilityHandoff as object),
+              requiresConfirmation: true,
+            },
+          },
+        }),
+      ],
       "Move tomorrow's meeting to 3pm",
     );
     if (!handoff) throw new Error("Expected a valid capability handoff");
@@ -169,11 +187,15 @@ describe("findCapabilityWorkspaceHandoff", () => {
       persistCapabilityConnectorContinuation(handoff, "agent-1", () => 1_000),
     ).toBe(true);
     expect(
-      claimCapabilityConnectorContinuation("google-calendar", () => 2_000),
+      claimCapabilityConnectorContinuation(
+        "google-calendar",
+        "agent-1",
+        () => 2_000,
+      ),
     ).toBe(true);
 
     expect(
-      consumeCapabilityConnectorContinuation("gmail", () => 3_000),
+      consumeCapabilityConnectorContinuation("gmail", "agent-1", () => 3_000),
     ).toBeNull();
     expect(
       window.sessionStorage.getItem(
@@ -181,7 +203,11 @@ describe("findCapabilityWorkspaceHandoff", () => {
       ),
     ).not.toBeNull();
     expect(
-      consumeCapabilityConnectorContinuation("google-calendar", () => 3_000),
+      consumeCapabilityConnectorContinuation(
+        "google-calendar",
+        "agent-1",
+        () => 3_000,
+      ),
     ).toMatchObject({
       agentId: "agent-1",
       capabilityId: "calendar",
@@ -193,6 +219,40 @@ describe("findCapabilityWorkspaceHandoff", () => {
         CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
       ),
     ).toBeNull();
+  });
+
+  it("retains a connector continuation when the active agent does not match", () => {
+    const handoff = findCapabilityWorkspaceHandoff(
+      [
+        result({
+          values: {
+            capabilityHandoff: {
+              ...(result().values?.capabilityHandoff as object),
+              requiresConfirmation: true,
+            },
+          },
+        }),
+      ],
+      "Move tomorrow's meeting to 3pm",
+    );
+    if (!handoff) throw new Error("Expected a valid capability handoff");
+    expect(persistCapabilityConnectorContinuation(handoff, "agent-1")).toBe(
+      true,
+    );
+    expect(
+      claimCapabilityConnectorContinuation("google-calendar", "agent-2"),
+    ).toBe(false);
+    expect(
+      claimCapabilityConnectorContinuation("google-calendar", "agent-1"),
+    ).toBe(true);
+    expect(
+      consumeCapabilityConnectorContinuation("google-calendar", "agent-2"),
+    ).toBeNull();
+    expect(
+      window.sessionStorage.getItem(
+        CAPABILITY_CONNECTOR_CONTINUATION_STORAGE_KEY,
+      ),
+    ).not.toBeNull();
   });
 
   it("does not carry non-connection capabilities into arbitrary setup", () => {
@@ -213,6 +273,8 @@ describe("findCapabilityWorkspaceHandoff", () => {
     expect(persistCapabilityConnectorContinuation(handoff, "agent-1")).toBe(
       false,
     );
-    expect(claimCapabilityConnectorContinuation("gmail")).toBe(false);
+    expect(claimCapabilityConnectorContinuation("gmail", "agent-1")).toBe(
+      false,
+    );
   });
 });

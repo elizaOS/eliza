@@ -453,7 +453,9 @@ describe("Shared Eliza Workerd runtime", () => {
     });
     expect(dispatches).toBe(1);
     expect(requests).toHaveLength(1);
-    expect(JSON.stringify(requests[0])).toContain("Missing fields: location, timezone");
+    expect(JSON.stringify(requests[0])).toContain(
+      "Missing fields: preferredName, location, timezone",
+    );
     expect(requests[0]).toMatchObject({ stream: true });
     expect(JSON.stringify(requests[0])).toContain("What is one small way to reset my focus?");
     expect(JSON.stringify(requests[0])).not.toContain("Opening Focus for you");
@@ -696,8 +698,10 @@ describe("Shared Eliza Workerd runtime", () => {
     });
 
     expect(result).toMatchObject({ reply: "", responded: false, degraded: false });
-    expect(result.history).toHaveLength(1);
-    expect(result.history[0]).toMatchObject({
+    const { withoutSharedProfileMessages } = await import("./shared-profile");
+    const visibleHistory = withoutSharedProfileMessages(result.history);
+    expect(visibleHistory).toHaveLength(1);
+    expect(visibleHistory[0]).toMatchObject({
       role: "user",
       content: "Alice and Bob should continue without me.",
     });
@@ -1195,7 +1199,8 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(result.reply).toBe(
       "here's your image.\nhttps://media.example.com/generated/lighthouse.png",
     );
-    expect(result.history.at(-1)?.content).toBe(result.reply);
+    const { withoutSharedProfileMessages } = await import("./shared-profile");
+    expect(withoutSharedProfileMessages(result.history).at(-1)?.content).toBe(result.reply);
     expect(result.actionResults?.[0]).toMatchObject({
       success: true,
       verifiedUserFacing: true,

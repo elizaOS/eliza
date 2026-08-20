@@ -28,6 +28,7 @@ import { withFrozenClock, withSeededRandom } from "../../../test/determinism";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
 import { persistCapabilityConnectorContinuation } from "../../capability-workspace-handoff";
+import { CHAT_PREFILL_EVENT } from "../../events";
 import { __setAppValueForTests } from "../../state/app-store";
 import { AppContext } from "../../state/useApp";
 
@@ -128,6 +129,7 @@ beforeEach(() => {
   windowOpenMock.mockReset();
   vi.stubGlobal("open", windowOpenMock);
   window.sessionStorage.clear();
+  window.localStorage.clear();
 });
 
 afterEach(() => {
@@ -363,6 +365,18 @@ describe("connector-setup card — collapse-on-connect with modes", () => {
   });
 
   it("acknowledges a server-confirmed OAuth connection and offers to continue once", async () => {
+    window.localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "cloud:agent-1",
+        kind: "cloud",
+        label: "Eliza",
+        cloudRuntimeAgentId: "agent-1",
+        cloudRuntime: "dedicated",
+      }),
+    );
+    const prefill = vi.fn();
+    window.addEventListener(CHAT_PREFILL_EVENT, prefill);
     clientMock.getPlugins
       .mockResolvedValueOnce({
         plugins: [plugin({ id: "discord", name: "Discord" })],
@@ -425,20 +439,22 @@ describe("connector-setup card — collapse-on-connect with modes", () => {
       "success",
       4_200,
     );
-    expect(sendActionMessageMock).toHaveBeenCalledTimes(1);
-    expect(sendActionMessageMock).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'offer to continue this quoted user request: "Move tomorrow\'s meeting to 3pm"',
-      ),
-    );
-    expect(sendActionMessageMock).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Do not perform a consequential action without confirmation",
-      ),
-    );
+    expect(sendActionMessageMock).not.toHaveBeenCalled();
+    expect(prefill).toHaveBeenCalledTimes(1);
+    const prefillEvent = prefill.mock.calls[0]?.[0];
+    expect(prefillEvent).toBeInstanceOf(CustomEvent);
+    if (!(prefillEvent instanceof CustomEvent)) {
+      throw new Error("Expected chat prefill event");
+    }
+    expect(prefillEvent.detail).toEqual({
+      text: "Move tomorrow's meeting to 3pm",
+      select: true,
+    });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(6_000);
     });
-    expect(sendActionMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendActionMessageMock).not.toHaveBeenCalled();
+    expect(prefill).toHaveBeenCalledTimes(1);
+    window.removeEventListener(CHAT_PREFILL_EVENT, prefill);
   });
 });

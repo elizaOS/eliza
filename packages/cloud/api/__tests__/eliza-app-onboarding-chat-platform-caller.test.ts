@@ -661,9 +661,10 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     // account that owns the attested Telegram identity, statusOnly so nothing
     // is appended or provisioned.
     resolveIdentity.mockResolvedValue({ user: userRow(), identity: undefined });
+    const claimSessionId = `platform:telegram-claim:${"d".repeat(64)}`;
     await dataOf(
       await post({
-        sessionId: `platform:telegram-claim:${"a".repeat(64)}`,
+        sessionId: claimSessionId,
         platform: "telegram",
         platformUserId: "9911",
         platformDisplayName: "Ada",
@@ -671,8 +672,10 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       }),
     );
     const stored = sessionCache.get(
-      `eliza-app:onboarding:platform:telegram-claim:${"a".repeat(64)}`,
-    ) as { continuationToken?: string };
+      `eliza-app:onboarding:${claimSessionId}`,
+    ) as {
+      continuationToken?: string;
+    };
     const continuation = stored?.continuationToken;
     if (!continuation) throw new Error("Expected a claim continuation token");
 

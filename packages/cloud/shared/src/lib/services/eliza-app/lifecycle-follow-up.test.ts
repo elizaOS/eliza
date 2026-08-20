@@ -198,6 +198,38 @@ describe("lifecycle follow-up", () => {
     expect(await drainProactiveGreetings("in_app")).toEqual([]);
   });
 
+  test("distinct validated continuations do not collide while exact replays stay stable", async () => {
+    const base = event("connector_connected", {
+      agentId: "agent-1",
+      continuation: {
+        originalIntent: "Find a time with Maya",
+        capabilityId: "calendar",
+        clientMessageId: "turn-1",
+        requiresConfirmation: true,
+      },
+    });
+    const dependencies = { findUser: async () => user() };
+    const first = await enqueueUserLifecycleFollowUps([base], dependencies);
+    const replay = await enqueueUserLifecycleFollowUps([base], dependencies);
+    const distinct = await enqueueUserLifecycleFollowUps(
+      [
+        {
+          ...base,
+          continuation: {
+            ...base.continuation!,
+            originalIntent: "Email Maya the report",
+            clientMessageId: "turn-2",
+          },
+        },
+      ],
+      dependencies,
+    );
+
+    expect(replay.sessionId).toBe(first.sessionId);
+    expect(distinct.sessionId).not.toBe(first.sessionId);
+    expect(peekLocalGreetingQueue()).toHaveLength(2);
+  });
+
   test("same source idempotency in different tenants cannot collide", async () => {
     const secondUserId = "33333333-3333-4333-8333-333333333333";
     const secondOrgId = "44444444-4444-4444-8444-444444444444";

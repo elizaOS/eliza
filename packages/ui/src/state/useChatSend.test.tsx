@@ -1662,7 +1662,7 @@ describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
       currentTier: "shared",
       requiredTier: "personal",
       nextAction: "upgrade_workspace",
-      requiresConfirmation: false,
+      requiresConfirmation: true,
       cta: {
         label: "Set up personal workspace",
         href: "/cloud/agents/agent-123",
