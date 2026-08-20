@@ -15,12 +15,21 @@ const ORG_A = "10000000-0000-4000-8000-000000000001";
 const ORG_B = "10000000-0000-4000-8000-000000000002";
 
 async function migrationStatements(): Promise<string[]> {
-  return (
-    await readFile(
+  const migrations = await Promise.all([
+    readFile(
       new URL("./migrations/0264_organization_billing_authority.sql", import.meta.url),
       "utf8",
-    )
-  )
+    ),
+    readFile(
+      new URL(
+        "./migrations/0270_allow_nested_organization_billing_shadow_sync.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ]);
+  return migrations
+    .join("\n")
     .split("--> statement-breakpoint")
     .map((statement) => statement.trim())
     .filter(Boolean);
@@ -219,6 +228,42 @@ describe("organization billing authority", () => {
       `SELECT count(*)::text count FROM organization_billing WHERE organization_id = '${ORG_A}'`,
     );
     expect(cascaded.rows[0]?.count).toBe("0");
+  });
+
+  test("allows nested canonical synchronization while retaining the direct-write guard", async () => {
+    const database = await createDatabase();
+    databases.push(database);
+    await applyMigration(database);
+    await database.exec(`
+      CREATE TABLE users (
+        id uuid PRIMARY KEY,
+        organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE
+      );
+      CREATE FUNCTION nested_disable_auto_top_up() RETURNS trigger AS $$ BEGIN
+        UPDATE organizations SET auto_top_up_enabled = false WHERE id = OLD.organization_id;
+        RETURN OLD;
+      END $$ LANGUAGE plpgsql;
+      CREATE TRIGGER users_nested_disable BEFORE DELETE ON users
+      FOR EACH ROW EXECUTE FUNCTION nested_disable_auto_top_up();
+      INSERT INTO users (id, organization_id)
+      VALUES ('20000000-0000-4000-8000-000000000001', '${ORG_A}');
+      DELETE FROM organizations WHERE id = '${ORG_A}';
+    `);
+
+    expect(
+      (
+        await database.query<{ count: string }>(`
+          SELECT count(*)::text count FROM organization_billing WHERE organization_id = '${ORG_A}'
+        `)
+      ).rows[0]?.count,
+    ).toBe("0");
+    await expect(
+      database.exec(`UPDATE organization_billing SET billing_email = 'wrong@example.test'
+        WHERE organization_id = '${ORG_B}'`),
+    ).rejects.toMatchObject({
+      code: "23514",
+      constraint: "organization_billing_shadow_mismatch",
+    });
   });
 
   test("serializes concurrent attempts to claim one Stripe customer", async () => {

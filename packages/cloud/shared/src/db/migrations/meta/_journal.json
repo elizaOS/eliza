@@ -1884,6 +1884,13 @@
       "when": 1792699200000,
       "tag": "0269_account_deletion_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1792785600000,
+      "tag": "0270_allow_nested_organization_billing_shadow_sync",
+      "breakpoints": true
     }
   ]
 }
