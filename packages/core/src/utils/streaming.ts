@@ -7,6 +7,9 @@
  *
  * For the interface definition, see types/streaming.ts.
  * Implementations can use these or create their own extractors.
+ *
+ * Reasoning-tag filtering compares fixed-length prefixes and accumulates
+ * visible runs without copying the remaining stream suffix at every index.
  */
 
 import type { StreamChunkCallback } from "../types/components";
@@ -1066,45 +1069,57 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			});
 		const source = `${filter.pending}${value}`;
 		filter.pending = "";
-		let output = "";
+		const parts: string[] = [];
 		let index = 0;
 
 		while (index < source.length) {
 			if (filter.mode === "outside") {
-				const open = matchTagAt(source, index, "<think>");
+				const candidate = source.indexOf("<", index);
+				if (candidate === -1) {
+					parts.push(source.slice(index));
+					break;
+				}
+				if (candidate > index) {
+					parts.push(source.slice(index, candidate));
+				}
+				const open = matchTagAt(source, candidate, "<think>");
 				if (open === "full") {
 					filter.mode = "inside";
-					index += "<think>".length;
+					index = candidate + "<think>".length;
 					continue;
 				}
 				if (open === "partial") {
-					filter.pending = source.slice(index);
+					filter.pending = source.slice(candidate);
 					break;
 				}
-				output += source[index] ?? "";
-				index++;
+				parts.push("<");
+				index = candidate + 1;
 				continue;
 			}
 
-			const close = matchTagAt(source, index, "</think>");
+			const candidate = source.indexOf("<", index);
+			if (candidate === -1) {
+				break;
+			}
+			const close = matchTagAt(source, candidate, "</think>");
 			if (close === "full") {
 				filter.mode = "outside";
-				index += "</think>".length;
+				index = candidate + "</think>".length;
 				continue;
 			}
 			if (close === "partial") {
-				filter.pending = source.slice(index);
+				filter.pending = source.slice(candidate);
 				break;
 			}
-			index++;
+			index = candidate + 1;
 		}
 
 		if (final && filter.mode === "outside" && filter.pending) {
-			output += filter.pending;
+			parts.push(filter.pending);
 			filter.pending = "";
 		}
 		this.reasoningFilters.set(field, filter);
-		return output;
+		return parts.join("");
 	}
 
 	private flushReasoningFilter(field: string): string {
@@ -1131,19 +1146,22 @@ function matchTagAt(
 	index: number,
 	tag: "<think>" | "</think>",
 ): "full" | "partial" | "none" {
-	const remaining = source.slice(index);
-	const lowerRemaining = remaining.toLowerCase();
-	const lowerTag = tag.toLowerCase();
-	if (lowerRemaining.startsWith(lowerTag)) {
+	const remainingLen = source.length - index;
+	if (remainingLen <= 0) {
+		return "none";
+	}
+	const compareLen = remainingLen < tag.length ? remainingLen : tag.length;
+	for (let offset = 0; offset < compareLen; offset++) {
+		const sourceCh = source[index + offset] ?? "";
+		const tagCh = tag[offset] ?? "";
+		if (sourceCh.toLowerCase() !== tagCh.toLowerCase()) {
+			return "none";
+		}
+	}
+	if (remainingLen >= tag.length) {
 		return "full";
 	}
-	if (
-		index + remaining.length === source.length &&
-		lowerTag.startsWith(lowerRemaining)
-	) {
-		return "partial";
-	}
-	return "none";
+	return "partial";
 }
 
 function findJsonStringEnd(value: string): number | null {

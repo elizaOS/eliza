@@ -317,6 +317,50 @@ describe("ResponseSkeletonStreamExtractor", () => {
 		expect(chunks.join("")).toBe("Hello there");
 	});
 
+	it("filters a large legal think-free reply through the production extractor", () => {
+		const body = "x".repeat(256 * 1024);
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			unordered: true,
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+		extractor.push(`{"replyText":"${body}"}`);
+		extractor.flush();
+		expect(chunks.join("")).toBe(body);
+	});
+
+	it("preserves mixed-case reasoning tags across every stream split", () => {
+		const tagged = "<ThInK>secret</tHiNk>";
+		for (let split = 1; split < tagged.length; split++) {
+			const chunks: string[] = [];
+			const extractor = new ResponseSkeletonStreamExtractor({
+				skeleton,
+				streamFields: ["replyText"],
+				unordered: true,
+				onChunk: (chunk) => chunks.push(chunk),
+			});
+			extractor.push(`{"replyText":"Hello ${tagged.slice(0, split)}`);
+			extractor.push(`${tagged.slice(split)}there"}`);
+			extractor.flush();
+			expect(chunks.join(""), `split ${split}`).toBe("Hello there");
+		}
+	});
+
+	it("keeps a final tag-like prefix visible when it never becomes a tag", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			unordered: true,
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+		extractor.push('{"replyText":"literal <thi"}');
+		extractor.flush();
+		expect(chunks.join("")).toBe("literal <thi");
+	});
+
 	it("surfaces a 'Cancelled by user' error and emits nothing when already aborted", () => {
 		const controller = new AbortController();
 		controller.abort();
