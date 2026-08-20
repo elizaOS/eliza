@@ -71,6 +71,29 @@ describe("AutonomyService optimized prompt integration", () => {
 		]);
 	});
 
+	test.each(["0x1388", "5e3", "5000.5", "05000"])(
+		"rejects non-canonical autonomy interval %s",
+		(raw) => {
+			const warn = vi.fn();
+			const service = new AutonomyService();
+			(service as unknown as { runtime: IAgentRuntime }).runtime =
+				createMockRuntime({
+					getSetting: (key: string) =>
+						key === "AUTONOMY_INTERVAL_MS" ? raw : null,
+					logger: { warn } as IAgentRuntime["logger"],
+				});
+
+			const interval = (
+				service as unknown as {
+					resolveConfiguredIntervalMs: () => number | null;
+				}
+			).resolveConfiguredIntervalMs();
+
+			expect(interval).toBeNull();
+			expect(warn).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	test("fills the GEPA-optimized autonomy prompt when an autonomy artifact is loaded", () => {
 		const optimizedPromptService = makeOptimizedAutonomyService(
 			"GEPA autonomy prompt\ncontext={{targetRoomContext}}\nlast={{lastThought}}",

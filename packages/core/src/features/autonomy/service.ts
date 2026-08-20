@@ -106,12 +106,12 @@ export class AutonomyService extends Service {
 		const raw = this.runtime.getSetting("AUTONOMY_INTERVAL_MS");
 		if (raw === null || raw === undefined || raw === "") return null;
 		const value =
-			typeof raw === "number"
+			typeof raw === "number" && Number.isSafeInteger(raw)
 				? raw
-				: typeof raw === "string" && raw.trim().length > 0
+				: typeof raw === "string" && /^(?:0|[1-9]\d*)$/u.test(raw.trim())
 					? Number(raw.trim())
 					: Number.NaN;
-		if (!Number.isFinite(value) || value <= 0) {
+		if (!Number.isSafeInteger(value) || value <= 0) {
 			this.runtime.logger.warn(
 				{
 					src: "autonomy",
@@ -122,7 +122,7 @@ export class AutonomyService extends Service {
 			);
 			return null;
 		}
-		return Math.min(600_000, Math.max(5_000, Math.floor(value)));
+		return Math.min(600_000, Math.max(5_000, value));
 	}
 
 	/**

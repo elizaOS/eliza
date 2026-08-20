@@ -249,19 +249,23 @@ function resolveEvaluatorBudget(
 	};
 }
 
-function evaluatorBudgetOptions(contextWindowTokens: number): {
+function evaluatorBudgetOptions(
+	contextWindowTokens: number,
+	minOutputReserveTokens = DEFAULT_EVALUATOR_MAX_TOKENS,
+): {
 	contextWindowTokens: number;
 	reserveTokens: number;
 } {
 	const desiredReserve = Math.max(
 		DEFAULT_COMPACTION_RESERVE_TOKENS,
 		Math.floor(contextWindowTokens * MODEL_WINDOW_RESERVE_FRACTION),
+		minOutputReserveTokens,
 	);
 	// Custom/local model windows can be smaller than the global 10k reserve.
 	// Keep enough room for input and the requested evaluator output instead of
 	// turning such models into an unconditional one-token bottom-out.
 	const smallWindowCap = Math.max(
-		DEFAULT_EVALUATOR_MAX_TOKENS,
+		minOutputReserveTokens,
 		Math.floor(contextWindowTokens * 0.4),
 	);
 	return {
@@ -491,6 +495,7 @@ export async function runEvaluator(
 			promptSegments?: PromptSegment[];
 			providerOptions?: Record<string, unknown>;
 		},
+		maxOutputTokens = DEFAULT_EVALUATOR_MAX_TOKENS,
 	): Promise<void> => {
 		const modelName = modelNameFromMetadata(params.runtime, attempt.metadata);
 		const resolvedBudget = buildModelInputBudget({ modelName });
@@ -505,7 +510,7 @@ export async function runEvaluator(
 		let attemptBudget = buildModelInputBudget({
 			messages: attemptInput.messages,
 			promptSegments: attemptInput.promptSegments,
-			...evaluatorBudgetOptions(attemptWindow),
+			...evaluatorBudgetOptions(attemptWindow, maxOutputTokens),
 		});
 		while (
 			attemptBudget.shouldCompact &&
@@ -524,7 +529,7 @@ export async function runEvaluator(
 			attemptBudget = buildModelInputBudget({
 				messages: attemptInput.messages,
 				promptSegments: attemptInput.promptSegments,
-				...evaluatorBudgetOptions(attemptWindow),
+				...evaluatorBudgetOptions(attemptWindow, maxOutputTokens),
 			});
 		}
 		const attemptOptions = buildAttemptProviderOptions(
@@ -595,6 +600,68 @@ export async function runEvaluator(
 			preparedAttempt = undefined;
 			const callStartedAt = Date.now();
 			activeCallStartedAt = callStartedAt;
+			let callInput = renderedInput;
+			let callProviderOptions = providerOptions;
+			if (
+				maxTokens > DEFAULT_EVALUATOR_MAX_TOKENS &&
+				params.runtime.supportsModelAttemptPreparation !== true &&
+				budgetResolution.contextWindowTokens
+			) {
+				let retryToolResultCap = toolResultCap;
+				let retryBudget = buildModelInputBudget({
+					messages: callInput.messages,
+					promptSegments: callInput.promptSegments,
+					...evaluatorBudgetOptions(
+						budgetResolution.contextWindowTokens,
+						maxTokens,
+					),
+				});
+				while (
+					retryBudget.shouldCompact &&
+					retryToolResultCap > EVALUATOR_MIN_TOOL_RESULT_CHARS
+				) {
+					retryToolResultCap = Math.max(
+						EVALUATOR_MIN_TOOL_RESULT_CHARS,
+						Math.floor(retryToolResultCap / 4),
+					);
+					callInput = renderEvaluatorModelInput({
+						context: params.context,
+						trajectory: params.trajectory,
+						maxToolResultChars: retryToolResultCap,
+						redactText: redactDiagnosticText,
+					});
+					retryBudget = buildModelInputBudget({
+						messages: callInput.messages,
+						promptSegments: callInput.promptSegments,
+						...evaluatorBudgetOptions(
+							budgetResolution.contextWindowTokens,
+							maxTokens,
+						),
+					});
+				}
+				const retryOptions = buildAttemptProviderOptions(
+					callInput,
+					retryBudget,
+					params.provider,
+				);
+				callProviderOptions = retryOptions.providerOptions;
+				preparedAttempt = {
+					input: callInput,
+					providerOptions: callProviderOptions,
+					prefixHashes: retryOptions.prefixHashes,
+					prefixHash: retryOptions.prefixHash,
+					provider: params.provider,
+				};
+				if (retryBudget.shouldCompact) {
+					throw buildInputBudgetError({
+						input: callInput,
+						budget: retryBudget,
+						toolResultCap: retryToolResultCap,
+						resolvedModelNames: budgetResolution.modelNames,
+						unknownReachableModel: budgetResolution.unknownReachableModel,
+					});
+				}
+			}
 			const callRaw = await runWithStreamingContext(
 				streamingContext
 					? {
@@ -604,11 +671,11 @@ export async function runEvaluator(
 					: undefined,
 				() => {
 					const modelRequest = {
-						messages: renderedInput.messages,
+						messages: callInput.messages,
 						maxTokens,
 						responseSchema: evaluatorSchema,
-						promptSegments: renderedInput.promptSegments,
-						providerOptions,
+						promptSegments: callInput.promptSegments,
+						providerOptions: callProviderOptions,
 						prepareModelAttempt: (
 							attempt: ModelAttemptContext,
 							attemptParams: {
@@ -616,7 +683,7 @@ export async function runEvaluator(
 								promptSegments?: PromptSegment[];
 								providerOptions?: Record<string, unknown>;
 							},
-						) => prepareModelAttempt(attempt, attemptParams),
+						) => prepareModelAttempt(attempt, attemptParams, maxTokens),
 					};
 					return params.runtime.useModel(
 						modelType,
@@ -708,47 +775,65 @@ export async function runEvaluator(
 			} catch (retryError) {
 				// error-policy:J4 The retry is an optional recovery attempt. Preserve
 				// the original truncated response so the established protocol-failure
-				// path can request another planner round for expected provider errors;
-				// programmer and budget failures still propagate.
-				if (!isModelProviderError(retryError)) throw retryError;
+				// path can request another planner round for expected provider or
+				// retry-budget failures; programmer failures still propagate.
+				const retryBudgetError =
+					retryError instanceof ElizaError &&
+					retryError.code === "EVALUATOR_INPUT_OVER_BUDGET";
+				if (!retryBudgetError && !isModelProviderError(retryError)) {
+					throw retryError;
+				}
 				const retrySnapshot = preparedAttempt;
-				const retryDetail = modelProviderErrorDetail(retryError);
-				await recordEvaluationStage({
-					runtime: params.runtime,
-					recorder: params.recorder,
-					trajectoryId: params.trajectoryId,
-					parentStageId: params.parentStageId,
-					iteration: params.iteration ?? 1,
-					attempt: 2,
-					modelType: String(modelType),
-					provider: retrySnapshot?.provider ?? params.provider,
-					messages: (retrySnapshot?.input ?? renderedInput).messages,
-					providerOptions: retrySnapshot?.providerOptions ?? providerOptions,
-					raw: `[evaluator truncation retry failed] ${
-						retryError instanceof Error
-							? retryError.message
-							: String(retryError)
-					}${retryDetail?.providerMessage ? ` | provider: ${retryDetail.providerMessage}` : ""}${
-						retryDetail?.status !== undefined
-							? ` | status: ${retryDetail.status}`
-							: ""
-					}`,
-					output: {
-						success: false,
-						decision: "CONTINUE",
-						thought:
-							"Evaluator truncation retry failed before producing output.",
-						protocolFailure: true,
-						raw: {},
-					},
-					startedAt: activeCallStartedAt,
-					endedAt: Date.now(),
-					segmentHashes: (retrySnapshot?.prefixHashes ?? prefixHashes).map(
-						(entry) => entry.segmentHash,
-					),
-					prefixHash: retrySnapshot?.prefixHash ?? prefixHash,
-					logger: params.runtime.logger,
-				});
+				const retryDetail = retryBudgetError
+					? undefined
+					: modelProviderErrorDetail(retryError);
+				if (retryBudgetError) {
+					await recordInputBudgetFailure({
+						error: retryError,
+						input: retrySnapshot?.input ?? renderedInput,
+						provider: retrySnapshot?.provider ?? params.provider,
+						providerOptions: retrySnapshot?.providerOptions ?? providerOptions,
+						attempt: 2,
+						failureStartedAt: activeCallStartedAt,
+					});
+				} else {
+					await recordEvaluationStage({
+						runtime: params.runtime,
+						recorder: params.recorder,
+						trajectoryId: params.trajectoryId,
+						parentStageId: params.parentStageId,
+						iteration: params.iteration ?? 1,
+						attempt: 2,
+						modelType: String(modelType),
+						provider: retrySnapshot?.provider ?? params.provider,
+						messages: (retrySnapshot?.input ?? renderedInput).messages,
+						providerOptions: retrySnapshot?.providerOptions ?? providerOptions,
+						raw: `[evaluator truncation retry failed] ${
+							retryError instanceof Error
+								? retryError.message
+								: String(retryError)
+						}${retryDetail?.providerMessage ? ` | provider: ${retryDetail.providerMessage}` : ""}${
+							retryDetail?.status !== undefined
+								? ` | status: ${retryDetail.status}`
+								: ""
+						}`,
+						output: {
+							success: false,
+							decision: "CONTINUE",
+							thought:
+								"Evaluator truncation retry failed before producing output.",
+							protocolFailure: true,
+							raw: {},
+						},
+						startedAt: activeCallStartedAt,
+						endedAt: Date.now(),
+						segmentHashes: (retrySnapshot?.prefixHashes ?? prefixHashes).map(
+							(entry) => entry.segmentHash,
+						),
+						prefixHash: retrySnapshot?.prefixHash ?? prefixHash,
+						logger: params.runtime.logger,
+					});
+				}
 				// The selected response remains the initial attempt. Restore its
 				// provider/input snapshot rather than attributing it to the failed retry.
 				selectedCall = initialCall;
