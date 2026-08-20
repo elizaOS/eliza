@@ -217,7 +217,19 @@ export const Buffer = {
   alloc: () => ({}),
   byteLength: () => 0,
 };
-export const promises = {};
+export const promises = {
+  access: anyfn,
+  readFile: anyfn,
+  writeFile: anyfn,
+  mkdir: anyfn,
+  rm: anyfn,
+  cp: anyfn,
+  symlink: anyfn,
+  readdir: anyfn,
+  stat: anyfn,
+  unlink: anyfn,
+  rmdir: anyfn,
+};
 export const existsSync = () => false;
 export const readFileSync = anyfn;
 export const writeFileSync = anyfn;
@@ -243,6 +255,12 @@ export const mkdir = anyfn;
 export const stat = anyfn;
 export const readdir = () => [];
 export const isIP = () => 0;
+export class BlockList {
+  addSubnet() {}
+  check() {
+    return false;
+  }
+}
 export const statfsSync = anyfn;
 export const cp = anyfn;
 export const unlinkSync = anyfn;
@@ -370,7 +388,7 @@ const context = await browser.newContext({
 });
 const page = await context.newPage();
 page.on("pageerror", (err) => {
-  console.log("  [pageerror]", err.message?.slice(0, 500));
+  console.log("  [pageerror]", err.stack?.slice(0, 2_000));
 });
 
 let shot = 0;
