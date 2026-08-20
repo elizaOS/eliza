@@ -1,41 +1,67 @@
 /**
- * Exercises real login, provisioning, and chat through the app UI against
+ * Exercises real login, Personal Eliza identity resolution, and chat through
  * Eliza Cloud, without mocking cloud endpoints. The opt-in workflow must supply
  * both live-stack flags and ELIZAOS_CLOUD_API_KEY; this test spends real cloud
  * credits and must never run in a keyless PR lane.
  */
 
+import { randomBytes } from "node:crypto";
 import { resolveDirectCloudAuthApiBase } from "@elizaos/ui/api/direct-cloud-endpoints";
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { isPersonalSharedElizaId } from "@elizaos/ui/utils/cloud-agent-base";
+import {
+  type BrowserContext,
+  expect,
+  type Locator,
+  type Page,
+  test,
+} from "@playwright/test";
 import { seedCloudLiveBrowserAuth } from "../cloud-live-browser-auth";
+import {
+  type CloudLiveBindingReuse,
+  type CloudLiveContinuityEvidenceInput,
+  type CloudLiveHistoryObservation,
+  type CloudLiveRuntimeBinding,
+  compareCloudLiveRuntimeBindings,
+  createCloudLiveContinuityEvidence,
+  createCloudLiveNetworkAudit,
+  writeCloudLiveContinuityEvidence,
+} from "../cloud-live-continuity-contract";
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
-import { assertOnboardingLiveness } from "../liveness-contract";
-import { openAppPath, seedAppStorage } from "./helpers";
+import {
+  assertOnboardingLivenessWithTiming,
+  buildLivenessChallenge,
+  extractLivenessChallengeToken,
+} from "../liveness-contract";
+import { writeStagingCloudChatLatencyEvidence } from "../staging-cloud-chat-latency-evidence";
+import { openAppPath } from "./helpers";
 
 const CLOUD_LIVE_ENABLED =
   process.env.ELIZA_UI_SMOKE_CLOUD_LIVE === "1" &&
   process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 const HAS_CLOUD_KEY = Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
 
-const PROVISION_ATTEMPT_TIMEOUT_MS = 180_000;
-const PROVISION_ATTEMPTS = 2;
+const PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS = 180_000;
+const PERSONAL_IDENTITY_ATTEMPTS = 2;
 
-// This lane deliberately places a real Cloud bearer in browser storage. A
-// Playwright trace records init-script arguments and request headers, so never
-// retain a trace that could publish the credential in the uploaded artifact.
-test.use({ trace: "off" });
+// This lane deliberately places a real Cloud bearer in browser storage.
+// Playwright traces record init-script arguments and request headers, while
+// screenshots/video can retain private model content. This credentialed lane
+// uploads neither; its durable evidence is the closed-schema receipt/metric.
+test.use({
+  trace: "off",
+  screenshot: "off",
+  video: "off",
+  serviceWorkers: "block",
+});
 
 async function clickIfVisible(
   locator: Locator,
   timeout = 10_000,
-): Promise<boolean> {
-  try {
-    await locator.first().waitFor({ state: "visible", timeout });
-    await locator.first().click();
-    return true;
-  } catch {
-    return false;
-  }
+): Promise<void> {
+  await locator
+    .first()
+    .click({ timeout })
+    .catch(() => {});
 }
 
 // Drive the cloud entry point of first-run: the transcript's Eliza Cloud option,
@@ -52,41 +78,168 @@ async function chooseCloudRuntime(page: Page): Promise<void> {
   );
 }
 
-async function readActiveServer(page: Page): Promise<{
-  kind?: string;
-  apiBase?: string;
-} | null> {
-  return page.evaluate(() => {
-    const raw = localStorage.getItem("elizaos:active-server");
-    return raw
-      ? (JSON.parse(raw) as { kind?: string; apiBase?: string })
-      : null;
+async function seedProtectedCloudBlankStart(page: Page): Promise<void> {
+  expect(
+    await seedCloudLiveBrowserAuth({
+      async addInitScript(script, seed) {
+        await page.addInitScript(script, seed);
+      },
+    }),
+    "Cloud-live mode must hand its validated workflow bearer to the browser",
+  ).toBe(true);
+  await page.addInitScript(() => {
+    // Do not use the general smoke seed: its local active-server fixture would
+    // invalidate a fresh-context continuity claim. These explicit empty values
+    // plus the protected bearer above are the only values the test seeds.
+    if (localStorage.getItem("eliza:first-run-complete") === null) {
+      localStorage.setItem("eliza:first-run-complete", "");
+    }
+    if (localStorage.getItem("elizaos:active-server") === null) {
+      localStorage.setItem("elizaos:active-server", "");
+    }
   });
 }
 
-async function waitForProvisioningOutcome(
+async function readActiveBinding(
   page: Page,
-): Promise<"cloud" | "retry"> {
-  let outcome: "cloud" | "retry" | "pending" = "pending";
-  await expect
-    .poll(
-      async () => {
-        const active = await readActiveServer(page);
-        if (active?.kind === "cloud") outcome = "cloud";
-        else if (
-          await page.getByTestId("choice-__first_run__:error:retry").isVisible()
-        )
-          outcome = "retry";
-        return outcome;
-      },
-      { timeout: PROVISION_ATTEMPT_TIMEOUT_MS },
-    )
-    .not.toBe("pending");
-  return outcome;
+): Promise<CloudLiveRuntimeBinding | null> {
+  const persisted = await page.evaluate(() => {
+    const raw = localStorage.getItem("elizaos:active-server");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      kind: parsed.kind,
+      id: parsed.id,
+      cloudRuntimeAgentId: parsed.cloudRuntimeAgentId,
+      runtime: parsed.cloudRuntime,
+      apiBase: parsed.apiBase,
+    };
+  });
+  if (
+    persisted?.kind !== "cloud" ||
+    typeof persisted.id !== "string" ||
+    !persisted.id.startsWith("cloud:") ||
+    !isPersonalSharedElizaId(persisted.id.slice("cloud:".length)) ||
+    typeof persisted.cloudRuntimeAgentId !== "string" ||
+    !persisted.cloudRuntimeAgentId ||
+    (persisted.runtime !== "shared" && persisted.runtime !== "dedicated") ||
+    typeof persisted.apiBase !== "string" ||
+    !persisted.apiBase
+  ) {
+    return null;
+  }
+  // Never return accessToken or the rest of the persisted record to the test
+  // process; only the private inputs needed for in-memory comparison cross.
+  return {
+    personalIdentity: persisted.id,
+    runtimeBinding: persisted.cloudRuntimeAgentId,
+    runtime: persisted.runtime,
+    apiBase: persisted.apiBase,
+  };
 }
 
-test.describe("real cloud login + provisioning + chat", () => {
-  test.setTimeout(420_000);
+async function requireActiveBinding(
+  page: Page,
+): Promise<CloudLiveRuntimeBinding> {
+  const binding = await readActiveBinding(page);
+  if (!binding) {
+    throw new Error(
+      "Personal Eliza did not persist the required logical/runtime/API binding fields",
+    );
+  }
+  return binding;
+}
+
+function installNetworkAudit(context: BrowserContext) {
+  const audit = createCloudLiveNetworkAudit();
+  context.on("request", (request) => {
+    audit.observeRequest(request.method(), request.url(), request.postData());
+  });
+  context.on("response", (response) => {
+    audit.observeResponse(
+      response.request().method(),
+      response.url(),
+      response.status(),
+    );
+  });
+  return audit;
+}
+
+async function proveChallengeHistory(
+  page: Page,
+  audit: ReturnType<typeof createCloudLiveNetworkAudit>,
+  priorCount: number,
+  challengeToken: string,
+): Promise<CloudLiveHistoryObservation> {
+  await expect
+    .poll(() => audit.snapshot().successfulHistoryGetCount > priorCount, {
+      timeout: 120_000,
+    })
+    .toBe(true);
+  await expect
+    .poll(
+      () =>
+        page.evaluate((token) => {
+          const hasToken = (role: "user" | "assistant") =>
+            Array.from(
+              document.querySelectorAll<HTMLElement>(
+                `[data-testid="thread-line"][data-role="${role}"]`,
+              ),
+            ).some((row) =>
+              (row.textContent ?? "").toLowerCase().includes(token),
+            );
+          return hasToken("user") && hasToken("assistant");
+        }, challengeToken.toLowerCase()),
+      { timeout: 120_000 },
+    )
+    .toBe(true);
+  return {
+    historyGetSucceeded: true,
+    challengeUserLinePresent: true,
+    challengeAssistantLinePresent: true,
+  };
+}
+
+async function resolvePersonalIdentity(
+  page: Page,
+): Promise<CloudLiveRuntimeBinding> {
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
+    timeout: 60_000,
+  });
+  await chooseCloudRuntime(page);
+  for (let attempt = 1; attempt <= PERSONAL_IDENTITY_ATTEMPTS; attempt += 1) {
+    let binding: CloudLiveRuntimeBinding | null = null;
+    await expect
+      .poll(
+        async () => {
+          binding = await readActiveBinding(page);
+          return (
+            Boolean(binding) ||
+            (await page
+              .getByTestId("choice-__first_run__:error:retry")
+              .isVisible())
+          );
+        },
+        { timeout: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS },
+      )
+      .toBe(true);
+    if (binding) {
+      await clickIfVisible(
+        page.getByTestId("choice-__first_run__:tutorial:skip"),
+        15_000,
+      );
+      return binding;
+    }
+    if (attempt === PERSONAL_IDENTITY_ATTEMPTS) {
+      throw new Error("Personal Eliza identity resolution exhausted its retry");
+    }
+    await page.getByTestId("choice-__first_run__:error:retry").click();
+  }
+  throw new Error("Personal Eliza identity resolution remained pending");
+}
+
+test.describe("real cloud login + personal identity + chat", () => {
+  test.setTimeout(900_000);
   test.skip(
     !CLOUD_LIVE_ENABLED,
     "set ELIZA_UI_SMOKE_CLOUD_LIVE=1 and ELIZA_UI_SMOKE_LIVE_STACK=1 to run against real Eliza Cloud",
@@ -96,11 +249,14 @@ test.describe("real cloud login + provisioning + chat", () => {
     "set ELIZAOS_CLOUD_API_KEY to authenticate to real Eliza Cloud",
   );
 
-  test("provisions a real cloud agent from onboarding and chats with it", async ({
+  test("resolves Personal Eliza, chats once, and preserves server history", async ({
+    baseURL,
+    browser,
+    context,
     page,
   }) => {
     // #18076: prove which Cloud deployment this lane targets BEFORE any
-    // auth/provision/chat traffic. When the workflow pins an expected
+    // auth/identity/chat traffic. When the workflow pins an expected
     // environment (staging/production), a defaulted or mismatched origin is a
     // hard failure — never a silent fall-through to production.
     const originContract = resolveCloudLiveOriginContract(process.env);
@@ -121,18 +277,25 @@ test.describe("real cloud login + provisioning + chat", () => {
         `resolved Cloud API origin: ${originContract.origin}`,
     ).toBe(true);
 
-    expect(
-      await seedCloudLiveBrowserAuth(page),
-      "Cloud-live mode must hand its validated workflow bearer to the browser",
-    ).toBe(true);
-    await seedAppStorage(page, { "eliza:first-run-complete": "" });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const stagingLatencyEvidencePath =
+      process.env.ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH?.trim() ??
+      "";
+    const stagingContinuityEvidencePath =
+      process.env.ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH?.trim() ?? "";
+    if (originContract.environment === "staging") {
+      expect(
+        stagingLatencyEvidencePath,
+        "the staging lane must persist its privacy-safe chat latency artifact",
+      ).toBeTruthy();
+      expect(
+        stagingContinuityEvidencePath,
+        "the staging lane must persist its privacy-safe continuity artifact",
+      ).toBeTruthy();
+    }
 
-    // Wait for the in-chat first-run surface: #9952 onboarding IS the chat, so
-    // the seeded greeting + runtime choice render inside the floating overlay.
-    await expect(page.getByTestId("chat-overlay")).toBeVisible({
-      timeout: 60_000,
-    });
+    const primaryAudit = installNetworkAudit(context);
+    await seedProtectedCloudBlankStart(page);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
 
     // The process-level contract above only pins the spawned runtime's proxy.
     // The renderer carries its own Cloud base, resolved at BUILD time from
@@ -143,14 +306,26 @@ test.describe("real cloud login + provisioning + chat", () => {
     // bearer. Compare through resolveDirectCloudAuthApiBase because the boot
     // value is a SITE base ("https://eliza.app") while the contract exposes an
     // API origin ("https://api.eliza.app") -- equivalent, differently spelled.
-    const rendererCloudBase = await page.evaluate(() => {
-      const config = (
-        window as unknown as {
-          __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
-        }
-      ).__ELIZAOS_APP_BOOT_CONFIG__;
-      return config?.cloudApiBase ?? "";
-    });
+    const readRendererCloudBase = () =>
+      page.evaluate(() => {
+        const config = (
+          window as unknown as {
+            __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
+          }
+        ).__ELIZAOS_APP_BOOT_CONFIG__;
+        return config?.cloudApiBase?.trim() ?? "";
+      });
+    // The public shell hands off to the full app asynchronously after the
+    // document event. Wait only for the non-secret boot mirror to exist; once
+    // present, the exact-origin assertion below still fails immediately on a
+    // production or malformed value.
+    await expect
+      .poll(readRendererCloudBase, {
+        message: "renderer boot config must expose its Cloud base",
+        timeout: 30_000,
+      })
+      .not.toBe("");
+    const rendererCloudBase = await readRendererCloudBase();
     const rendererApiOrigin = (() => {
       if (!rendererCloudBase) return "";
       try {
@@ -170,42 +345,153 @@ test.describe("real cloud login + provisioning + chat", () => {
       `renderer bundle resolves ${rendererCloudBase || "<unset>"} -> ${rendererApiOrigin || "<empty>"}; the lane pinned ${originContract.origin}`,
     ).toBe(originContract.origin);
 
-    await chooseCloudRuntime(page);
-
-    // Real provisioning (create -> provision -> poll jobs -> launch) persists a
-    // cloud active-server with the provisioned agent's bridge URL. This only
-    // succeeds if real login + provisioning actually completed. Retry once
-    // through the product's explicit recovery choice when a transient Cloud
-    // request fails; a repeated error remains a hard failure.
-    for (let attempt = 1; attempt <= PROVISION_ATTEMPTS; attempt += 1) {
-      const outcome = await waitForProvisioningOutcome(page);
-      if (outcome === "cloud") break;
-      if (attempt === PROVISION_ATTEMPTS) {
-        throw new Error(
-          `Eliza Cloud provisioning requested retry ${PROVISION_ATTEMPTS} times`,
-        );
-      }
-      await page.getByTestId("choice-__first_run__:error:retry").click();
-    }
-    const active = await readActiveServer(page);
-    expect(active?.kind).toBe("cloud");
+    // The current Cloud join flow resolves the account-derived Personal Eliza
+    // identity through the read-only Personal endpoint. It persists the
+    // account-owned binding without creating dedicated compute.
+    const referenceBinding = await resolvePersonalIdentity(page);
     expect(
-      active?.apiBase,
-      "provisioned cloud agent must expose a bridge URL",
-    ).toBeTruthy();
+      primaryAudit.snapshot().successfulPersonalIdentityGetCount,
+      "Personal Eliza resolution must include a successful canonical identity GET",
+    ).toBeGreaterThan(0);
 
-    // In cloud-only mode (#13377, the default) provisioning success completes
-    // onboarding by itself and no tutorial choice is seeded. Under the
-    // dev-only runtime chooser, completion is deferred to the tutorial-or-skip
-    // pick — tolerate both: skip the tour if it is offered, else proceed.
-    await clickIfVisible(
-      page.getByTestId("choice-__first_run__:tutorial:skip"),
-      15_000,
-    );
-
-    // Real chat turn against the provisioned cloud agent — the shared liveness
+    // Real chat turn against the resolved Personal Eliza agent — the liveness
     // contract (#14359) proves a real model answered (non-empty, no stub marker).
     await openAppPath(page, "/chat");
-    await assertOnboardingLiveness(page, { label: "cloud-live" });
+    const challenge = buildLivenessChallenge(randomBytes(4).toString("hex"));
+    const challengeToken = extractLivenessChallengeToken(challenge);
+    const liveness = await assertOnboardingLivenessWithTiming(page, {
+      label: "cloud-live",
+      prompt: challenge,
+      challengeToken,
+    });
+    test.info().annotations.push({
+      type: "first-turn-latency-ms",
+      description: String(liveness.firstTurnLatencyMs),
+    });
+    const challengeAudit = primaryAudit.snapshot();
+    const challengeLogicalChatSendCount = challengeAudit.logicalChatSendCount;
+    expect(challengeLogicalChatSendCount).toBe(1);
+    expect(challengeAudit.unidentifiedChatSendAttemptCount).toBe(0);
+
+    // Reload the same document partition. A successful server history GET plus
+    // both challenge-bound rows proves the turn did not survive merely in React
+    // memory. Private binding values are reduced to booleans before evidence.
+    const reloadHistoryBefore =
+      primaryAudit.snapshot().successfulHistoryGetCount;
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const reload = await proveChallengeHistory(
+      page,
+      primaryAudit,
+      reloadHistoryBefore,
+      challengeToken,
+    );
+    const reloadBindingReuse = compareCloudLiveRuntimeBindings(
+      referenceBinding,
+      await requireActiveBinding(page),
+    );
+
+    expect(
+      baseURL,
+      "Playwright baseURL is required for a fresh context",
+    ).toBeTruthy();
+    const freshResult = await (async () => {
+      // Deliberately omit storageState. The new context gets no cookies or
+      // origins from the first one, blocks the production service worker, and
+      // receives only the protected bearer + explicit blank boot values.
+      const freshContext = await browser.newContext({
+        baseURL,
+        serviceWorkers: "block",
+      });
+      try {
+        const pristineState = await freshContext.storageState();
+        const createdWithoutStorageState =
+          pristineState.cookies.length === 0 &&
+          pristineState.origins.length === 0;
+        expect(createdWithoutStorageState).toBe(true);
+
+        const freshPage = await freshContext.newPage();
+        const freshAudit = installNetworkAudit(freshContext);
+        await seedProtectedCloudBlankStart(freshPage);
+        await freshPage.goto("/", { waitUntil: "domcontentloaded" });
+        const freshBinding = await resolvePersonalIdentity(freshPage);
+        const freshHistoryBefore =
+          freshAudit.snapshot().successfulHistoryGetCount;
+        await openAppPath(freshPage, "/chat");
+        const history = await proveChallengeHistory(
+          freshPage,
+          freshAudit,
+          freshHistoryBefore,
+          challengeToken,
+        );
+        return {
+          history: {
+            ...history,
+            createdWithoutStorageState,
+            serviceWorkersBlocked: true,
+          },
+          bindingReuse: compareCloudLiveRuntimeBindings(
+            referenceBinding,
+            freshBinding,
+          ),
+          audit: freshAudit.snapshot(),
+        };
+      } finally {
+        await freshContext.close();
+      }
+    })();
+
+    const primarySnapshot = primaryAudit.snapshot();
+    const personalIdentityEndpointPassed =
+      primarySnapshot.successfulPersonalIdentityGetCount > 0 &&
+      freshResult.audit.successfulPersonalIdentityGetCount > 0;
+    expect(personalIdentityEndpointPassed).toBe(true);
+    const noAdditionalChatSendAfterChallenge =
+      primarySnapshot.logicalChatSendCount === challengeLogicalChatSendCount &&
+      primarySnapshot.unidentifiedChatSendAttemptCount === 0 &&
+      freshResult.audit.logicalChatSendCount === 0 &&
+      freshResult.audit.unidentifiedChatSendAttemptCount === 0;
+    expect(noAdditionalChatSendAfterChallenge).toBe(true);
+    const forbiddenAgentMutationCount =
+      primarySnapshot.forbiddenAgentMutationCount +
+      freshResult.audit.forbiddenAgentMutationCount;
+    expect(forbiddenAgentMutationCount).toBe(0);
+    const bindingReuse: CloudLiveBindingReuse = {
+      personalIdentityReused:
+        reloadBindingReuse.personalIdentityReused &&
+        freshResult.bindingReuse.personalIdentityReused,
+      runtimeBindingReused:
+        reloadBindingReuse.runtimeBindingReused &&
+        freshResult.bindingReuse.runtimeBindingReused,
+      apiBaseReused:
+        reloadBindingReuse.apiBaseReused &&
+        freshResult.bindingReuse.apiBaseReused,
+    };
+
+    // No agent was created by this test, so there is nothing honest to delete.
+    // The successful reload + fresh-context read is the cleanup state we want:
+    // preserve the account-owned conversation history exactly where it lives.
+    const continuityEvidenceInput = {
+      challengeTurnCount: 1,
+      noAdditionalChatSendAfterChallenge,
+      personalIdentityEndpointPassed,
+      reload,
+      freshContext: freshResult.history,
+      bindingReuse,
+      forbiddenAgentMutationCount,
+      cleanupDisposition: "no-test-owned-agent",
+      conversationHistoryDisposition: "preserved",
+    } satisfies CloudLiveContinuityEvidenceInput;
+    createCloudLiveContinuityEvidence(continuityEvidenceInput);
+
+    if (originContract.environment === "staging") {
+      await writeStagingCloudChatLatencyEvidence(
+        stagingLatencyEvidencePath,
+        liveness.firstTurnLatencyMs,
+      );
+      await writeCloudLiveContinuityEvidence(
+        stagingContinuityEvidencePath,
+        continuityEvidenceInput,
+      );
+    }
   });
 });

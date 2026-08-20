@@ -7,10 +7,14 @@
  * Playwright reports the only test as skipped and the declared live job is green.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
+const repoRootPath = fileURLToPath(repoRoot);
 
 function read(path: string): string {
   return readFileSync(new URL(path, repoRoot), "utf8");
@@ -37,6 +41,10 @@ interface Workflow {
   env?: Record<string, string>;
   on?: Record<string, unknown>;
   jobs?: Record<string, WorkflowJob>;
+}
+
+interface WorkflowDispatch {
+  inputs?: Record<string, { default?: boolean; type?: string }>;
 }
 
 const workflow = Bun.YAML.parse(
@@ -67,6 +75,21 @@ describe("App Live E2E real Cloud job (#14357, #16194)", () => {
     );
   });
 
+  test("keeps production Cloud mutations off manual staging-only dispatches", () => {
+    const dispatch = workflow.on?.workflow_dispatch as
+      | WorkflowDispatch
+      | undefined;
+
+    expect(dispatch?.inputs?.run_cloud_production).toEqual({
+      description:
+        "Also run the production Cloud login+personal-identity+chat lane. Keep false for staging-only evidence.",
+      type: "boolean",
+      default: false,
+    });
+    expect(cloudJob?.if).toContain("github.event_name == 'schedule'");
+    expect(cloudJob?.if).toContain("inputs.run_cloud_production");
+  });
+
   test("fails on a missing key before setup, build, or Playwright can skip", () => {
     const steps = cloudJob?.steps ?? [];
     const preflightIndex = steps.findIndex(
@@ -76,7 +99,7 @@ describe("App Live E2E real Cloud job (#14357, #16194)", () => {
       (step) => step.name === "Free disk space for browser smoke",
     );
     const testIndex = steps.findIndex(
-      (step) => step.name === "Run real cloud login + provision + chat",
+      (step) => step.name === "Run real cloud login + personal identity + chat",
     );
 
     expect(preflightIndex).toBeGreaterThanOrEqual(0);
@@ -119,8 +142,12 @@ describe("App Live E2E real Cloud job (#14357, #16194)", () => {
   test("hands the job credential to the browser without retaining secret-bearing traces", () => {
     const spec = read("packages/app/test/ui-smoke/cloud-live.spec.ts");
 
-    expect(spec).toContain("await seedCloudLiveBrowserAuth(page)");
-    expect(spec).toContain('test.use({ trace: "off" });');
+    expect(cloudJob?.env?.PLAYWRIGHT_NO_COPY_PROMPT).toBe("1");
+    expect(spec).toContain("await seedCloudLiveBrowserAuth({");
+    expect(spec).toContain('trace: "off"');
+    expect(spec).toContain('screenshot: "off"');
+    expect(spec).toContain('video: "off"');
+    expect(spec).toContain('serviceWorkers: "block"');
   });
 });
 
@@ -143,12 +170,16 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
       "https://api-staging.eliza.app",
     );
     expect(stagingJob?.env?.ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV).toBe("staging");
+    expect(stagingJob?.env?.VITE_ELIZA_CLOUD_BASE).toBe(
+      "https://api-staging.eliza.app",
+    );
     // The staging credential must come only from the staging Environment —
     // a production repository-secret fallback would silently retarget prod.
     expect(stagingJob?.env?.ELIZAOS_CLOUD_API_KEY).toBe(
       "$" + "{{ secrets.ELIZAOS_CLOUD_API_KEY }}",
     );
     expect(stagingJob?.env?.ELIZAOS_CLOUD_API_KEY).not.toContain("||");
+    expect(stagingJob?.env?.PLAYWRIGHT_NO_COPY_PROMPT).toBe("1");
   });
 
   test("builds the renderer against the staging Cloud origin, and never retargets production", () => {
@@ -170,7 +201,7 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     expect(productionBuild?.env?.VITE_ELIZA_CLOUD_BASE).toBeUndefined();
   });
 
-  test("stays opt-in on schedule until the staging key is provisioned", () => {
+  test("stays opt-in on schedule until the staging key is configured", () => {
     expect(stagingJob?.if).toContain("ELIZA_CLOUD_STAGING_LIVE_READY");
     expect(stagingJob?.if).toContain("inputs.run_cloud_staging");
   });
@@ -185,7 +216,8 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
       (step) => step.name === "Free disk space for browser smoke",
     );
     const testIndex = steps.findIndex(
-      (step) => step.name === "Run real STAGING cloud login + provision + chat",
+      (step) =>
+        step.name === "Run real STAGING cloud login + personal identity + chat",
     );
 
     expect(guardIndex).toBeGreaterThanOrEqual(0);
@@ -236,41 +268,268 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     expect(spec).toContain("renderer-source");
   });
 
-  test("keeps production and staging as separate jobs and artifacts", () => {
+  test("uploads only the staging closed receipt, never credentialed Playwright output", () => {
     expect(cloudJob?.env?.ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV).toBe("production");
-    const prodUpload = cloudJob?.steps?.find((step) =>
+    const prodUploads = cloudJob?.steps?.filter((step) =>
       step.uses?.startsWith("actions/upload-artifact"),
     );
     const stagingUpload = stagingJob?.steps?.find((step) =>
       step.uses?.startsWith("actions/upload-artifact"),
     );
-    expect(prodUpload?.with?.name).toBe("app-live-e2e-cloud");
+    expect(prodUploads).toEqual([]);
     expect(stagingUpload?.with?.name).toBe("app-live-e2e-cloud-staging");
   });
 
   test("uploads a mandatory exact-SHA, secret-free receipt for every executed smoke", () => {
     const smoke = stagingStep(
-      "Run real STAGING cloud login + provision + chat",
+      "Run real STAGING cloud login + personal identity + chat",
     );
     const receipt = stagingStep("Write secret-free staging receipt");
+    const latency = stagingStep(
+      "Validate privacy-safe staging chat latency evidence",
+    );
+    const continuity = stagingStep(
+      "Validate privacy-safe staging history continuity evidence",
+    );
+    const aggregate = stagingStep(
+      "Resolve fail-closed staging receipt evidence",
+    );
+    const summary = stagingStep("Record what this lane drove");
     const upload = stagingStep("Upload cloud-live staging artifacts");
 
     expect(smoke.id).toBe("staging-cloud-smoke");
+    expect(
+      stagingJob?.env?.ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH,
+    ).toBe(
+      "$" +
+        "{{ github.workspace }}/artifacts/app-live-e2e/cloud-staging-chat-latency.json",
+    );
+    expect(
+      stagingJob?.env?.ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH,
+    ).toBe(
+      "$" +
+        "{{ github.workspace }}/artifacts/app-live-e2e/cloud-staging-continuity.json",
+    );
+    expect(smoke.run).toContain(
+      'rm -f -- "$ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH"',
+    );
+    expect(smoke.run).toContain(
+      'rm -f -- "$ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH"',
+    );
     expect(smoke.run).toContain('echo "started_ms=$started_ms"');
     expect(smoke.run).toContain('echo "completed_ms=$completed_ms"');
+    expect(latency.id).toBe("staging-cloud-chat-latency");
+    expect(latency.if).toContain(
+      "steps.staging-cloud-smoke.outcome == 'success'",
+    );
+    expect(latency.run).toContain("staging-cloud-chat-latency-evidence.ts");
+    expect(latency.run).toContain('echo "first_turn_latency_ms=$latency_ms"');
+    expect(continuity.id).toBe("staging-cloud-continuity");
+    expect(continuity.if).toContain(
+      "steps.staging-cloud-smoke.outcome == 'success'",
+    );
+    expect(continuity.run).toContain("cloud-live-continuity-contract.ts");
+    expect(continuity.run).toContain(
+      'echo "continuity_evidence=$continuity_evidence"',
+    );
+    expect(aggregate.id).toBe("staging-cloud-receipt-evidence");
+    expect(aggregate.if).toContain(
+      "steps.staging-cloud-smoke.outcome != 'skipped'",
+    );
+    expect(aggregate.env?.SMOKE_OUTCOME).toContain(
+      "steps.staging-cloud-smoke.outcome",
+    );
+    expect(aggregate.env?.LATENCY_VALIDATION_OUTCOME).toContain(
+      "steps.staging-cloud-chat-latency.outcome",
+    );
+    expect(aggregate.env?.CONTINUITY_VALIDATION_OUTCOME).toContain(
+      "steps.staging-cloud-continuity.outcome",
+    );
+    expect(aggregate.run).toContain("receipt_outcome=failure");
+    expect(aggregate.run).toContain("first_turn_latency_ms=unavailable");
+    expect(aggregate.run).toContain("continuity_evidence=unavailable");
+    expect(summary.env?.TEST_OUTCOME).toBe(
+      "$" +
+        "{{ steps.staging-cloud-receipt-evidence.outputs.receipt_outcome || 'failure' }}",
+    );
+    expect(summary.env?.CONTINUITY_EVIDENCE).toContain(
+      "steps.staging-cloud-receipt-evidence.outputs.continuity_evidence",
+    );
+    expect(summary.run).toContain(
+      '[[ "$TEST_OUTCOME" == "success" && "$CONTINUITY_EVIDENCE" == "verified" ]]',
+    );
+    expect(summary.run).toContain(
+      "no deletion or preservation claim is made for this run",
+    );
+    expect(summary.run).toContain("no deletion attempted or claimed");
     expect(receipt.if).toContain(
       "steps.staging-cloud-smoke.outcome != 'skipped'",
     );
+    expect(receipt.env?.TEST_OUTCOME).toContain(
+      "steps.staging-cloud-receipt-evidence.outputs.receipt_outcome",
+    );
+    expect(receipt.env?.FIRST_TURN_LATENCY_MS).toContain(
+      "steps.staging-cloud-receipt-evidence.outputs.first_turn_latency_ms",
+    );
+    expect(receipt.env?.CONTINUITY_EVIDENCE).toContain(
+      "steps.staging-cloud-receipt-evidence.outputs.continuity_evidence",
+    );
     expect(receipt.run).toContain("write-staging-cloud-receipt.mjs");
     expect(receipt.run).toContain('--source-sha "$GITHUB_SHA"');
+    expect(receipt.run).toContain(
+      '--first-turn-latency-ms "$FIRST_TURN_LATENCY_MS"',
+    );
+    expect(receipt.run).toContain(
+      '--continuity-evidence "$CONTINUITY_EVIDENCE"',
+    );
     expect(receipt.run).not.toMatch(
       /ELIZAOS_CLOUD_API_KEY|authorization|bearer/i,
     );
     expect(upload.if).toBe(receipt.if);
-    expect(upload.with?.path).toContain(
+    expect(upload.with?.path).toBe(
       "artifacts/app-live-e2e/cloud-staging-receipt.json",
     );
+    expect(upload.with?.path).not.toMatch(/playwright-report|test-results/);
     expect(upload.with?.["if-no-files-found"]).toBe("error");
+  });
+
+  test("turns either validator failure into an exact-SHA failure receipt instead of losing the artifact", () => {
+    const aggregate = stagingStep(
+      "Resolve fail-closed staging receipt evidence",
+    );
+    const receipt = stagingStep("Write secret-free staging receipt");
+    const directory = mkdtempSync(join(tmpdir(), "staging-receipt-workflow-"));
+    try {
+      const exactSha = "87da9c8ba169440f0fb21dc613f7bc425c8014b6";
+      for (const [failedValidator, latencyOutcome, continuityOutcome] of [
+        ["latency", "failure", "success"],
+        ["continuity", "success", "failure"],
+      ] as const) {
+        const githubOutput = join(
+          directory,
+          `${failedValidator}-github-output`,
+        );
+        const aggregateResult = spawnSync("bash", ["-c", aggregate.run ?? ""], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            GITHUB_OUTPUT: githubOutput,
+            SMOKE_OUTCOME: "success",
+            LATENCY_VALIDATION_OUTCOME: latencyOutcome,
+            CONTINUITY_VALIDATION_OUTCOME: continuityOutcome,
+            VALIDATED_FIRST_TURN_LATENCY_MS: "12345",
+            VALIDATED_CONTINUITY_EVIDENCE: "verified",
+          },
+        });
+        expect(aggregateResult.status).toBe(0);
+        const outputs = Object.fromEntries(
+          readFileSync(githubOutput, "utf8")
+            .trim()
+            .split("\n")
+            .map((line) => line.split("=", 2)),
+        );
+        expect(outputs).toEqual({
+          receipt_outcome: "failure",
+          first_turn_latency_ms: "unavailable",
+          continuity_evidence: "unavailable",
+        });
+
+        const outputPath = join(
+          directory,
+          `${failedValidator}-cloud-staging-receipt.json`,
+        );
+        const receiptRun = (receipt.run ?? "").replace(
+          "artifacts/app-live-e2e/cloud-staging-receipt.json",
+          outputPath,
+        );
+        const receiptResult = spawnSync("bash", ["-c", receiptRun], {
+          cwd: repoRootPath,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            GITHUB_SHA: exactSha,
+            GITHUB_RUN_ID: "32237956456",
+            GITHUB_RUN_ATTEMPT: "1",
+            TEST_OUTCOME: outputs.receipt_outcome,
+            TEST_STARTED_MS: "1787151674000",
+            TEST_COMPLETED_MS: "1787151717600",
+            FIRST_TURN_LATENCY_MS: outputs.first_turn_latency_ms,
+            CONTINUITY_EVIDENCE: outputs.continuity_evidence,
+          },
+        });
+        expect(receiptResult.status).toBe(0);
+        const parsed = JSON.parse(readFileSync(outputPath, "utf8"));
+        expect(parsed.sourceSha).toBe(exactSha);
+        expect(parsed.result).toEqual({
+          outcome: "failure",
+          startedAtMs: 1787151674000,
+          completedAtMs: 1787151717600,
+          durationMs: 43600,
+        });
+        expect(parsed.measurements.firstTurnLatencyMs).toBeNull();
+        expect(parsed.continuity.verified).toBe(false);
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("measures a validated rendered assistant reply without claiming first-token latency", () => {
+    const spec = read("packages/app/test/ui-smoke/cloud-live.spec.ts");
+    const contract = read("packages/app/test/liveness-contract.ts");
+
+    expect(spec).toContain("assertOnboardingLivenessWithTiming(page");
+    expect(spec).toContain("buildLivenessChallenge(randomBytes(4)");
+    expect(spec).toContain(
+      "const challengeToken = extractLivenessChallengeToken(challenge)",
+    );
+    expect(spec).toContain("challengeToken,");
+    expect(spec).toContain("writeStagingCloudChatLatencyEvidence(");
+    expect(contract).toContain("const sendStartedAt = performance.now()");
+    expect(contract).toContain("firstTurnLatencyMs");
+    expect(contract).toContain(
+      "sendChatAndMeasureRenderedReply(page, options, false)",
+    );
+    expect(contract).toContain(
+      "sendChatAndMeasureRenderedReply(page, options, true)",
+    );
+    expect(contract).toContain('[aria-busy="false"]');
+    expect(contract).toContain('row.getAttribute("data-failure")');
+    expect(contract).toContain('[data-testid="thread-line-retry"]');
+    expect(contract).toContain("const settledReply = await acceptedReplyText(");
+    expect(contract).toContain("transport first-token timing");
+  });
+
+  test("proves server history continuity without a second challenge or an agent cleanup mutation", () => {
+    const spec = read("packages/app/test/ui-smoke/cloud-live.spec.ts");
+    const contract = read(
+      "packages/app/test/cloud-live-continuity-contract.ts",
+    );
+
+    expect(spec.match(/assertOnboardingLivenessWithTiming\(/g)).toHaveLength(1);
+    expect(spec).toContain("challengeLogicalChatSendCount).toBe(1)");
+    expect(spec).toContain("unidentifiedChatSendAttemptCount).toBe(0)");
+    expect(spec).not.toContain("seedAppStorage");
+    expect(spec).toContain(
+      'localStorage.setItem("eliza:first-run-complete", "")',
+    );
+    expect(spec).toContain('localStorage.setItem("elizaos:active-server", "")');
+    expect(spec).toContain("const freshContext = await browser.newContext({");
+    expect(spec).toContain('serviceWorkers: "block"');
+    expect(spec).not.toContain("storageState:");
+    expect(spec).toContain("await page.reload(");
+    expect(spec).toContain("proveChallengeHistory(");
+    expect(spec).toContain('hasToken("user") && hasToken("assistant")');
+    expect(spec).toContain("compareCloudLiveRuntimeBindings(");
+    expect(spec).toContain("isPersonalSharedElizaId(");
+    expect(spec).toContain("successfulPersonalIdentityGetCount");
+    expect(spec).toContain('cleanupDisposition: "no-test-owned-agent"');
+    expect(spec).toContain('conversationHistoryDisposition: "preserved"');
+    expect(contract).toContain("classifyForbiddenAgentMutation(");
+    expect(contract).toContain("forbiddenAgentMutationCount: 0");
+    expect(contract).toContain("createdWithoutStorageState");
+    expect(contract).toContain("serviceWorkersBlocked");
+    expect(contract).toContain("exact closed schema");
   });
 });
 

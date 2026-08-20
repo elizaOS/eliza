@@ -27,7 +27,11 @@ on:
         type: boolean
         default: false
       run_cloud_staging:
-        description: "Also run the staging Cloud login+provision+chat lane (requires the staging Environment's ELIZAOS_CLOUD_API_KEY)."
+        description: "Also run the staging Cloud login+personal-identity+chat lane (requires the staging Environment's ELIZAOS_CLOUD_API_KEY)."
+        type: boolean
+        default: false
+      run_cloud_production:
+        description: "Also run the production Cloud login+personal-identity+chat lane. Keep false for staging-only evidence."
         type: boolean
         default: false
 
@@ -226,14 +230,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Real CLOUD login + provisioning + chat through the app UI against real Eliza
+  # Real CLOUD login + Personal Eliza identity resolution + chat through the app UI against real Eliza
   # Cloud. cloud-live.spec.ts mocks nothing; ELIZA_UI_SMOKE_CLOUD_LIVE=1 leaves
   # first-run open so the spec drives cloud onboarding, and ELIZAOS_CLOUD_API_KEY
   # authenticates. The secret-gated job fails before setup when neither accepted
   # repository secret is configured; the spec remains safely skippable outside
   # this workflow so keyless PR lanes cannot spend Cloud credits.
   cloud-live:
-    name: cloud login + provision + chat (real Eliza Cloud, production)
+    name: cloud login + personal identity + chat (real Eliza Cloud, production)
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_cloud_production) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     env:
@@ -245,6 +250,9 @@ jobs:
       # Prefer the variable named for the runtime contract, but retain the
       # repository's established ELIZACLOUD_API_KEY as the canonical fallback.
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+      # Suppress Playwright's automatic full-page ARIA snapshot. Credentialed
+      # Playwright output is not uploaded by this job.
+      PLAYWRIGHT_NO_COPY_PROMPT: "1"
       PGLITE_WASM_MODE: node
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -297,22 +305,11 @@ jobs:
       - name: Build app renderer bundle
         run: bun run --cwd packages/app build:web
 
-      - name: Run real cloud login + provision + chat
+      - name: Run real cloud login + personal identity + chat
         run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium
 
-      - name: Upload cloud-live artifacts
-        if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: app-live-e2e-cloud
-          path: |
-            packages/app/playwright-report/
-            packages/app/test-results/
-          if-no-files-found: ignore
-          retention-days: 7
-
   # STAGING counterpart of cloud-live (#18076): the same real login +
-  # provisioning + chat path, pinned to the staging control plane. Kept a
+  # Personal Eliza identity + chat path, pinned to the staging control plane. Kept a
   # separate job so staging and production report as distinct results and
   # artifacts. It is fail-closed by construction:
   #   - the job-level ELIZAOS_CLOUD_BASE_URL pins the staging API origin and
@@ -324,13 +321,13 @@ jobs:
   #     staging, and no repository-secret fallback is allowed here);
   #   - a missing credential fails the job loudly before any setup/build work.
   # Scheduled runs stay opt-in via ELIZA_CLOUD_STAGING_LIVE_READY until an
-  # owner has minted the staging-scoped key, so an unprovisioned nightly is a
+  # owner has minted the staging-scoped key, so an unconfigured nightly is a
   # visible skip, not a misleading red or a green-by-skip.
   # NOTE: this lane drives the renderer bundle built from the checked-out
   # revision against the staging API; it does not exercise the deployed
   # staging Pages artifact (recorded in the spec annotations + step summary).
   cloud-live-staging:
-    name: cloud login + provision + chat (real Eliza Cloud, staging)
+    name: cloud login + personal identity + chat (real Eliza Cloud, staging)
     if: ${{ (github.event_name == 'schedule' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1') || (github.event_name == 'workflow_dispatch' && inputs.run_cloud_staging) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     environment: staging
@@ -339,7 +336,16 @@ jobs:
       ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
       ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: staging
       ELIZAOS_CLOUD_BASE_URL: https://api-staging.eliza.app
+      # Keep the target on every subprocess, including the live-stack harness's
+      # guarded renderer rebuild path; the explicit prebuild step is not the
+      # only process allowed to rebuild dist.
+      VITE_ELIZA_CLOUD_BASE: https://api-staging.eliza.app
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+      ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH: ${{ github.workspace }}/artifacts/app-live-e2e/cloud-staging-chat-latency.json
+      ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH: ${{ github.workspace }}/artifacts/app-live-e2e/cloud-staging-continuity.json
+      # Suppress Playwright's automatic full-page ARIA snapshot. This job
+      # uploads only the closed receipt, never raw Playwright output.
+      PLAYWRIGHT_NO_COPY_PROMPT: "1"
       PGLITE_WASM_MODE: node
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -396,7 +402,8 @@ jobs:
         # VITE_ELIZA_CLOUD_BASE and otherwise defaults to production
         # (ui/src/platform/ios-runtime.ts resolveCloudApiBase). The job-level
         # ELIZAOS_CLOUD_BASE_URL pins the spawned runtime's proxy, which
-        # carries create/provision; it does NOT reach Vite. The chat leg is
+        # carries Personal Eliza identity resolution; it does NOT reach Vite.
+        # The chat leg is
         # what breaks: selectOrProvisionCloudAgent derives the shared-agent
         # base from the boot value, so a production-defaulted bundle sends a
         # staging agent id and this lane's staging bearer to api.eliza.app
@@ -405,11 +412,13 @@ jobs:
           VITE_ELIZA_CLOUD_BASE: ${{ env.ELIZAOS_CLOUD_BASE_URL }}
         run: bun run --cwd packages/app build:web
 
-      - name: Run real STAGING cloud login + provision + chat
+      - name: Run real STAGING cloud login + personal identity + chat
         id: staging-cloud-smoke
         shell: bash
         run: |
           set -uo pipefail
+          rm -f -- "$ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH"
+          rm -f -- "$ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH"
           started_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
           echo "started_ms=$started_ms" >> "$GITHUB_OUTPUT"
           set +e
@@ -420,12 +429,62 @@ jobs:
           echo "completed_ms=$completed_ms" >> "$GITHUB_OUTPUT"
           exit "$test_status"
 
+      - name: Validate privacy-safe staging chat latency evidence
+        id: staging-cloud-chat-latency
+        if: ${{ always() && steps.staging-cloud-smoke.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          latency_ms="$(bun packages/app/test/staging-cloud-chat-latency-evidence.ts "$ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH")"
+          echo "first_turn_latency_ms=$latency_ms" >> "$GITHUB_OUTPUT"
+
+      - name: Validate privacy-safe staging history continuity evidence
+        id: staging-cloud-continuity
+        if: ${{ always() && steps.staging-cloud-smoke.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          continuity_evidence="$(bun packages/app/test/cloud-live-continuity-contract.ts "$ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH")"
+          echo "continuity_evidence=$continuity_evidence" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve fail-closed staging receipt evidence
+        id: staging-cloud-receipt-evidence
+        if: ${{ always() && steps.staging-cloud-smoke.outcome != 'skipped' }}
+        shell: bash
+        env:
+          SMOKE_OUTCOME: ${{ steps.staging-cloud-smoke.outcome }}
+          LATENCY_VALIDATION_OUTCOME: ${{ steps.staging-cloud-chat-latency.outcome }}
+          CONTINUITY_VALIDATION_OUTCOME: ${{ steps.staging-cloud-continuity.outcome }}
+          VALIDATED_FIRST_TURN_LATENCY_MS: ${{ steps.staging-cloud-chat-latency.outputs.first_turn_latency_ms }}
+          VALIDATED_CONTINUITY_EVIDENCE: ${{ steps.staging-cloud-continuity.outputs.continuity_evidence }}
+        run: |
+          set -euo pipefail
+          receipt_outcome=failure
+          first_turn_latency_ms=unavailable
+          continuity_evidence=unavailable
+          if [[ "$SMOKE_OUTCOME" == "success" \
+            && "$LATENCY_VALIDATION_OUTCOME" == "success" \
+            && "$CONTINUITY_VALIDATION_OUTCOME" == "success" \
+            && "$VALIDATED_FIRST_TURN_LATENCY_MS" =~ ^[1-9][0-9]*$ \
+            && "$VALIDATED_CONTINUITY_EVIDENCE" == "verified" ]]; then
+            receipt_outcome=success
+            first_turn_latency_ms="$VALIDATED_FIRST_TURN_LATENCY_MS"
+            continuity_evidence="$VALIDATED_CONTINUITY_EVIDENCE"
+          fi
+          {
+            echo "receipt_outcome=$receipt_outcome"
+            echo "first_turn_latency_ms=$first_turn_latency_ms"
+            echo "continuity_evidence=$continuity_evidence"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Write secret-free staging receipt
         if: ${{ always() && steps.staging-cloud-smoke.outcome != 'skipped' }}
         env:
-          TEST_OUTCOME: ${{ steps.staging-cloud-smoke.outcome }}
+          TEST_OUTCOME: ${{ steps.staging-cloud-receipt-evidence.outputs.receipt_outcome || 'failure' }}
           TEST_STARTED_MS: ${{ steps.staging-cloud-smoke.outputs.started_ms }}
           TEST_COMPLETED_MS: ${{ steps.staging-cloud-smoke.outputs.completed_ms }}
+          FIRST_TURN_LATENCY_MS: ${{ steps.staging-cloud-receipt-evidence.outputs.first_turn_latency_ms || 'unavailable' }}
+          CONTINUITY_EVIDENCE: ${{ steps.staging-cloud-receipt-evidence.outputs.continuity_evidence || 'unavailable' }}
         run: |
           node packages/scripts/write-staging-cloud-receipt.mjs \
             --output artifacts/app-live-e2e/cloud-staging-receipt.json \
@@ -434,15 +493,28 @@ jobs:
             --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --outcome "$TEST_OUTCOME" \
             --started-ms "$TEST_STARTED_MS" \
-            --completed-ms "$TEST_COMPLETED_MS"
+            --completed-ms "$TEST_COMPLETED_MS" \
+            --first-turn-latency-ms "$FIRST_TURN_LATENCY_MS" \
+            --continuity-evidence "$CONTINUITY_EVIDENCE"
 
       - name: Record what this lane drove
         if: ${{ always() }}
+        env:
+          TEST_OUTCOME: ${{ steps.staging-cloud-receipt-evidence.outputs.receipt_outcome || 'failure' }}
+          CONTINUITY_EVIDENCE: ${{ steps.staging-cloud-receipt-evidence.outputs.continuity_evidence || 'unavailable' }}
         run: |
           {
             echo "## Staging Cloud live lane"
-            echo "- API origin: https://api-staging.eliza.app (asserted in-spec before auth/provision/chat)"
-            echo "- Renderer: locally built bundle from \`${GITHUB_SHA}\` driven through the live stack — NOT the deployed staging Pages artifact"
+            echo "- API target: https://api-staging.eliza.app (the spec asserts it before auth/Personal identity/chat traffic)"
+            echo "- Renderer scope: local bundle from \`${GITHUB_SHA}\`; this job does NOT test a deployed staging Pages artifact"
+            echo "- First-turn metric definition: composer send click to the same fresh assistant row settled and accepted by the liveness contract (not first-token latency); the receipt records measured or unavailable"
+            if [[ "$TEST_OUTCOME" == "success" && "$CONTINUITY_EVIDENCE" == "verified" ]]; then
+              echo "- Continuity: verified — canonical Personal identity GET + one challenge turn, then successful server-history GET + challenge-bound user/assistant rows after reload and a fresh BrowserContext; zero agent create/provision/upgrade/delete mutations"
+              echo "- Cleanup: no test-owned agent; account-owned conversation history preserved (no deletion attempted or claimed)"
+            else
+              echo "- Continuity: unavailable — the run did not produce a verified continuity proof"
+              echo "- Cleanup: unavailable — no deletion or preservation claim is made for this run"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload cloud-live staging artifacts
@@ -450,10 +522,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: app-live-e2e-cloud-staging
-          path: |
-            artifacts/app-live-e2e/cloud-staging-receipt.json
-            packages/app/playwright-report/
-            packages/app/test-results/
+          path: artifacts/app-live-e2e/cloud-staging-receipt.json
           if-no-files-found: error
           retention-days: 7
 
@@ -624,8 +693,8 @@ jobs:
               "",
               `- app live chat: \`${process.env.R_CHAT}\``,
               `- full walkthrough: \`${process.env.R_WALK}\``,
-              `- cloud login+provision+chat (production): \`${process.env.R_CLOUD}\``,
-              `- cloud login+provision+chat (staging): \`${process.env.R_CLOUD_STAGING}\``,
+              `- cloud login+personal-identity+chat (production): \`${process.env.R_CLOUD}\``,
+              `- cloud login+personal-identity+chat (staging): \`${process.env.R_CLOUD_STAGING}\``,
               `- desktop packaged (build+boot+renderer): \`${process.env.R_DESKTOP}\``,
               "",
               `Run log + failure artifacts: ${process.env.RUN_URL}`,
