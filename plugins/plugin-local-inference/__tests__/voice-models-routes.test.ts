@@ -213,6 +213,25 @@ describe("handleVoiceModelsRoutes — fall-through", () => {
 	});
 });
 
+describe("POST /api/local-inference/voice-models/:id/{update,pin} encoding", () => {
+	it.each([
+		["bare percent", "/api/local-inference/voice-models/%/update"],
+		["illegal hex", "/api/local-inference/voice-models/%ZZ/pin"],
+		["truncated hex", "/api/local-inference/voice-models/%2/update"],
+		["truncated utf8", "/api/local-inference/voice-models/%E0%A4%A/pin"],
+	])("400s %s without throwing URIError", async (_label, url) => {
+		const { res, captured } = makeRes();
+		const handled = await handleVoiceModelsRoutes(
+			makeReq({ method: "POST", url }),
+			res,
+		);
+		expect(handled).toBe(true);
+		expect(captured.statusCode).toBe(400);
+		const body = (await readJson(captured)) as { error?: string };
+		expect(body.error).toMatch(/invalid voice model id encoding/i);
+	});
+});
+
 describe("GET /api/local-inference/voice-models", () => {
 	it("lists installations resolved from disk + the pin set", async () => {
 		const dir = path.join(tmpRoot, "models", "voice");
