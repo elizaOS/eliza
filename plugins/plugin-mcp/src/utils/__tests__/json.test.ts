@@ -3,8 +3,15 @@
  * They cover fenced/prose-wrapped JSON extraction, JSON5 leniency, and schema checks for tool-call arguments.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { parseJSON, parseStructuredModelOutput, validateJsonSchema } from "../json";
+import {
+  assertMcpJsonSchemaBudget,
+  MCP_TOOL_SCHEMA_UNBOUNDED,
+  parseJSON,
+  parseStructuredModelOutput,
+  validateJsonSchema,
+} from "../json";
 
 describe("parseJSON", () => {
   it("parses a plain JSON object", () => {
@@ -163,5 +170,94 @@ describe("validateJsonSchema", () => {
     if (!result.success) {
       expect(result.error).toMatch(/nesting depth/);
     }
+  });
+});
+
+describe("assertMcpJsonSchemaBudget", () => {
+  it("accepts a small object schema", () => {
+    expect(() =>
+      assertMcpJsonSchemaBudget({
+        type: "object",
+        properties: { name: { type: "string" } },
+      })
+    ).not.toThrow();
+  });
+
+  it("throws MCP_TOOL_SCHEMA_UNBOUNDED on a cyclic graph", () => {
+    const cyclic: Record<string, unknown> = { type: "array" };
+    cyclic.items = cyclic;
+    expect(() => assertMcpJsonSchemaBudget(cyclic)).toThrowError(ElizaError);
+    try {
+      assertMcpJsonSchemaBudget(cyclic);
+    } catch (error) {
+      expect((error as ElizaError).code).toBe(MCP_TOOL_SCHEMA_UNBOUNDED);
+    }
+  });
+
+  it("rejects a huge sparse array before whole-graph serialization", () => {
+    const sparse: unknown[] = [];
+    sparse.length = 1_000_000_000;
+    expect(() => assertMcpJsonSchemaBudget(sparse)).toThrowError(ElizaError);
+  });
+
+  it("rejects giant primitive text during traversal", () => {
+    expect(() =>
+      assertMcpJsonSchemaBudget({ type: "string", description: "x".repeat(300_000) })
+    ).toThrowError(/serialized size/);
+  });
+
+  it("rejects a schema accessor without invoking it", () => {
+    const schema = { type: "object" } as Record<string, unknown>;
+    let reads = 0;
+    Object.defineProperty(schema, "properties", {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return {};
+      },
+    });
+    expect(() => assertMcpJsonSchemaBudget(schema)).toThrowError(/contains an accessor/);
+    expect(reads).toBe(0);
+  });
+
+  it("rejects custom toJSON before it can synthesize an unbounded second graph", () => {
+    let calls = 0;
+    const schema = { type: "object" };
+    Object.defineProperty(schema, "toJSON", {
+      get: () => {
+        calls += 1;
+        return () => ({ description: "x".repeat(1_000_000) });
+      },
+    });
+    expect(() => assertMcpJsonSchemaBudget(schema)).toThrowError(/custom toJSON/);
+    expect(calls).toBe(0);
+  });
+
+  it("rejects an inherited toJSON accessor without invoking it", () => {
+    const original = Object.getOwnPropertyDescriptor(Object.prototype, "toJSON");
+    let calls = 0;
+    let caught: unknown;
+    Object.defineProperty(Object.prototype, "toJSON", {
+      configurable: true,
+      get: () => {
+        calls += 1;
+        return () => ({ description: "x".repeat(300_000) });
+      },
+    });
+    try {
+      assertMcpJsonSchemaBudget({ type: "object" });
+    } catch (error) {
+      caught = error;
+    } finally {
+      if (original) {
+        Object.defineProperty(Object.prototype, "toJSON", original);
+      } else {
+        delete (Object.prototype as { toJSON?: unknown }).toJSON;
+      }
+    }
+
+    expect(caught).toBeInstanceOf(ElizaError);
+    expect((caught as ElizaError).message).toMatch(/custom toJSON/);
+    expect(calls).toBe(0);
   });
 });

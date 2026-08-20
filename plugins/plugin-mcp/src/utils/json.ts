@@ -5,62 +5,23 @@
  * Ajv. Used on the untrusted-model-output boundary in the selection flow.
  *
  * MCP tool `inputSchema` is attacker-controlled. A byte, depth, and node budget
- * limits compile work; each schema then uses an isolated Ajv so untrusted `$id`
- * values cannot poison process-wide state. Compile and evaluation failures are
- * translated to an invalid-schema result at this boundary.
+ * limits compile work and the tool-compatibility rewrite; each schema then uses
+ * an isolated Ajv so untrusted `$id` values cannot poison process-wide state.
+ * Compile and evaluation failures are translated to an invalid-schema result
+ * at this boundary.
  */
 import Ajv from "ajv";
 import JSON5 from "json5";
+import { getMcpJsonSchemaBudgetError } from "./schema-budget";
 
-const MAX_MCP_SCHEMA_JSON_BYTES = 256 * 1024;
-const MAX_MCP_SCHEMA_DEPTH = 32;
-const MAX_MCP_SCHEMA_NODES = 2048;
-
-function walkSchema(node: unknown, depth: number, acc: { nodes: number }): string | undefined {
-  if (depth > MAX_MCP_SCHEMA_DEPTH) {
-    return `MCP JSON schema nesting depth exceeds ${MAX_MCP_SCHEMA_DEPTH}`;
-  }
-  if (node === null || typeof node !== "object") {
-    return undefined;
-  }
-
-  acc.nodes += 1;
-  if (acc.nodes > MAX_MCP_SCHEMA_NODES) {
-    return `MCP JSON schema node count exceeds ${MAX_MCP_SCHEMA_NODES}`;
-  }
-
-  if (!Array.isArray(node) && (node as Record<string, unknown>).$async === true) {
-    return "MCP JSON schema uses unsupported asynchronous validation";
-  }
-
-  for (const value of Array.isArray(node) ? node : Object.values(node)) {
-    const error = walkSchema(value, depth + 1, acc);
-    if (error) {
-      return error;
-    }
-  }
-  return undefined;
-}
-
-export function getMcpJsonSchemaBudgetError(schema: unknown): string | undefined {
-  let serialized: string | undefined;
-  try {
-    serialized = JSON.stringify(schema);
-  } catch {
-    // error-policy:J3 schema preflight returns an explicit invalid result below
-    return "MCP JSON schema is not JSON-serializable";
-  }
-
-  if (serialized === undefined) {
-    return "MCP JSON schema is not JSON-serializable";
-  }
-  const bytes = Buffer.byteLength(serialized);
-  if (bytes > MAX_MCP_SCHEMA_JSON_BYTES) {
-    return `MCP JSON schema serialized size ${bytes} exceeds ${MAX_MCP_SCHEMA_JSON_BYTES}`;
-  }
-
-  return walkSchema(schema, 0, { nodes: 0 });
-}
+export {
+  assertMcpJsonSchemaBudget,
+  getMcpJsonSchemaBudgetError,
+  MAX_MCP_SCHEMA_DEPTH,
+  MAX_MCP_SCHEMA_JSON_BYTES,
+  MAX_MCP_SCHEMA_NODES,
+  MCP_TOOL_SCHEMA_UNBOUNDED,
+} from "./schema-budget";
 
 export function parseJSON<T>(input: string): T {
   let cleanedInput = input.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
