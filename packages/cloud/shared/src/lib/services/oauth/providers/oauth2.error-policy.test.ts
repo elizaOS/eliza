@@ -1,10 +1,7 @@
 /**
- * Error-policy regression for #13415: OAuth identity extraction must fail closed.
- * Drives the real handleOAuth2Callback (token exchange + userInfo fetch mocked at
- * the HTTP boundary; db/secrets/cache mocked) to prove a provider response with no
- * id/sub PROPAGATES a thrown error instead of fabricating an "unknown" platform
- * user id, while a minimal-but-valid response (id present, no email) still succeeds
- * — the failure and the legitimately-sparse case are distinguishable.
+ * Drives the production OAuth callback and refresh boundaries with deterministic
+ * HTTP, database, secret, and cache collaborators. The suite proves identity
+ * extraction fails closed and every provider request receives the shared deadline.
  */
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
@@ -182,12 +179,20 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
     expect(insertReturning).toHaveBeenCalledTimes(1);
   });
 
-  it("exports OAUTH2_REQUEST_TIMEOUT_MS with 15-second bound and passes signal to fetch", async () => {
-    const { handleOAuth2Callback, OAUTH2_REQUEST_TIMEOUT_MS } = await import("./oauth2");
+  it("applies the shared 15-second deadline to callback and refresh requests", async () => {
+    const { handleOAuth2Callback, OAUTH2_REQUEST_TIMEOUT_MS, refreshOAuth2Token } = await import(
+      "./oauth2"
+    );
     expect(OAUTH2_REQUEST_TIMEOUT_MS).toBe(15_000);
 
     userInfoBody = { id: "real-user-42" };
     const fetchedSignals: unknown[] = [];
+    const timeoutCalls: number[] = [];
+    const originalTimeout = AbortSignal.timeout;
+    AbortSignal.timeout = mock((milliseconds: number) => {
+      timeoutCalls.push(milliseconds);
+      return originalTimeout(milliseconds);
+    }) as typeof AbortSignal.timeout;
     globalThis.fetch = mock(async (url: unknown, init?: RequestInit) => {
       fetchedSignals.push(init?.signal);
       const u = String(url);
@@ -200,11 +205,58 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
       throw new Error(`unexpected fetch ${u}`);
     }) as unknown as typeof globalThis.fetch;
 
-    await handleOAuth2Callback(provider, "auth-code", "state-token");
-    expect(fetchedSignals.length).toBeGreaterThanOrEqual(2);
-    for (const sig of fetchedSignals) {
-      expect(sig).toBeDefined();
-      expect(sig).toBeInstanceOf(AbortSignal);
+    try {
+      await handleOAuth2Callback(provider, "auth-code", "state-token");
+      await expect(refreshOAuth2Token(provider, "refresh-token")).resolves.toMatchObject({
+        accessToken: "at-123",
+      });
+      expect(timeoutCalls).toEqual([15_000, 15_000, 15_000]);
+      expect(fetchedSignals).toHaveLength(3);
+      for (const sig of fetchedSignals) {
+        expect(sig).toBeInstanceOf(AbortSignal);
+      }
+    } finally {
+      AbortSignal.timeout = originalTimeout;
+    }
+  });
+
+  it("propagates a provider deadline before storing callback credentials", async () => {
+    const { handleOAuth2Callback } = await import("./oauth2");
+    const controller = new AbortController();
+    const timeoutCalls: number[] = [];
+    const originalTimeout = AbortSignal.timeout;
+    AbortSignal.timeout = mock((milliseconds: number) => {
+      timeoutCalls.push(milliseconds);
+      return controller.signal;
+    }) as typeof AbortSignal.timeout;
+    let markFetchStarted: (() => void) | undefined;
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve;
+    });
+    globalThis.fetch = mock(
+      async (_url: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          markFetchStarted?.();
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(signal.reason);
+            return;
+          }
+          signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+    ) as unknown as typeof globalThis.fetch;
+
+    try {
+      const pending = handleOAuth2Callback(provider, "auth-code", "state-token");
+      await fetchStarted;
+      controller.abort(new DOMException("OAuth provider deadline exceeded", "TimeoutError"));
+
+      await expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+      expect(timeoutCalls).toEqual([15_000]);
+      expect(secretsCreateCalls).toHaveLength(0);
+      expect(insertReturning).not.toHaveBeenCalled();
+    } finally {
+      AbortSignal.timeout = originalTimeout;
     }
   });
 });

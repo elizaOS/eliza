@@ -31,6 +31,13 @@ const STATE_TTL_SECONDS = 600; // 10 minutes
 export const OAUTH2_REQUEST_TIMEOUT_MS = 15_000;
 type PlatformCredentialSourceContext = (typeof platformCredentials.$inferSelect)["source_context"];
 
+function fetchOAuth2(input: string | URL, init?: RequestInit): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: AbortSignal.timeout(OAUTH2_REQUEST_TIMEOUT_MS),
+  });
+}
+
 /**
  * OAuth state stored in cache during authorization flow.
  */
@@ -430,11 +437,10 @@ async function exchangeCodeForTokens(
     body = new URLSearchParams(bodyParams).toString();
   }
 
-  const response = await fetch(provider.endpoints.token, {
+  const response = await fetchOAuth2(provider.endpoints.token, {
     method: "POST",
     headers,
     body,
-    signal: AbortSignal.timeout(OAUTH2_REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -483,32 +489,29 @@ async function fetchUserInfo(
 
   let response: Response;
   if (graphqlQuery) {
-    response = await fetch(provider.endpoints.userInfo, {
+    response = await fetchOAuth2(provider.endpoints.userInfo, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ query: graphqlQuery }),
-      signal: AbortSignal.timeout(OAUTH2_REQUEST_TIMEOUT_MS),
     });
   } else if (userInfoMethod === "POST") {
     // Some providers (e.g., Dropbox) require POST for user info
-    response = await fetch(provider.endpoints.userInfo, {
+    response = await fetchOAuth2(provider.endpoints.userInfo, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(OAUTH2_REQUEST_TIMEOUT_MS),
     });
   } else {
-    response = await fetch(provider.endpoints.userInfo, {
+    response = await fetchOAuth2(provider.endpoints.userInfo, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(OAUTH2_REQUEST_TIMEOUT_MS),
     });
   }
 
@@ -551,9 +554,7 @@ async function fetchTokenInfo(
     throw new Error(`No tokenInfo endpoint configured for ${provider.id}`);
   }
   const url = `${baseUrl.replace(/\/$/, "")}/${encodeURIComponent(accessToken)}`;
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(OAUTH2_REQUEST_TIMEOUT_MS),
-  });
+  const response = await fetchOAuth2(url);
   if (!response.ok) {
     const errorText = await response.text();
     logger.error(`[OAuth2] Token info fetch failed for ${provider.id}`, {
@@ -1049,11 +1050,10 @@ export async function refreshOAuth2Token(
     body = new URLSearchParams(bodyParams).toString();
   }
 
-  const response = await fetch(provider.endpoints.token, {
+  const response = await fetchOAuth2(provider.endpoints.token, {
     method: "POST",
     headers,
     body,
-    signal: AbortSignal.timeout(OAUTH2_REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
