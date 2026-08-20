@@ -66,7 +66,15 @@ async function finalizeReadResult(params: {
     "CODING_TOOLS_MAX_READ_LINES",
     2000,
   );
-  const limit = Math.max(1, Math.floor(requestedLimit ?? defaultLimit));
+  // Unified FILE schemas expose optional fields on every operation, and some
+  // models represent an omitted read limit as zero. Treat that sentinel as the
+  // configured default instead of forcing an inefficient one-line read.
+  const limit = Math.max(
+    1,
+    Math.floor(
+      requestedLimit === 0 ? defaultLimit : (requestedLimit ?? defaultLimit),
+    ),
+  );
 
   const endExclusive = Math.min(totalLines, offset + limit);
   const slice = lines.slice(offset, endExclusive);
