@@ -187,13 +187,6 @@ export const views = [
     icon: VIEW_HERO_ICONS.messages,
   },
   {
-    out: "plugins/plugin-maps/assets/hero.svg",
-    id: "maps",
-    label: "Maps",
-    hue: 24,
-    icon: VIEW_HERO_ICONS.vectorBrowser,
-  },
-  {
     out: "plugins/plugin-native-settings/assets/hero.svg",
     id: "device-settings",
     label: "Device Settings",
