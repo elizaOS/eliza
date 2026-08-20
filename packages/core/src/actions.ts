@@ -15,7 +15,10 @@
  * resolve-action-args). Nested model `params` graphs are bounded in
  * `action-parameter-value.ts`.
  */
-import { toActionParameterValue } from "./action-parameter-value.ts";
+import {
+	parseActionParams,
+	toActionParameterValue,
+} from "./action-parameter-value.ts";
 import { testSchemaPattern } from "./actions/validate-tool-args.ts";
 import { allActionDocs } from "./generated/action-docs.ts";
 import type {
@@ -403,65 +406,7 @@ function formatParameterType(schema: ActionParameterSchema): string {
 	}
 }
 
-export function parseActionParams(
-	paramsInput: unknown,
-): Map<string, ActionParameters> {
-	const parsed =
-		typeof paramsInput === "string"
-			? parseActionParamsJson(paramsInput)
-			: (paramsInput ?? null);
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return new Map();
-	}
-
-	const record = parsed as Record<string, unknown>;
-	const candidate =
-		record.params &&
-		typeof record.params === "object" &&
-		!Array.isArray(record.params)
-			? (record.params as Record<string, unknown>)
-			: record;
-	const result = new Map<string, ActionParameters>();
-
-	for (const [actionName, paramsValue] of Object.entries(candidate)) {
-		if (
-			!paramsValue ||
-			typeof paramsValue !== "object" ||
-			Array.isArray(paramsValue)
-		) {
-			continue;
-		}
-
-		const params: ActionParameters = {};
-		for (const [paramName, paramValue] of Object.entries(paramsValue)) {
-			params[paramName] = toActionParameterValue(paramValue);
-		}
-
-		if (Object.keys(params).length > 0) {
-			result.set(actionName.trim().toUpperCase(), params);
-		}
-	}
-
-	return result;
-}
-
-function parseActionParamsJson(input: string): Record<string, unknown> | null {
-	const trimmed = input.trim();
-	if (!trimmed) {
-		return null;
-	}
-
-	try {
-		const parsed = JSON.parse(trimmed);
-		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
-			: null;
-	} catch {
-		// error-policy:J3 action parameters cross an untrusted model boundary;
-		// malformed JSON is an explicit invalid result.
-		return null;
-	}
-}
+export { parseActionParams };
 
 export function validateActionParams(
 	action: Action,

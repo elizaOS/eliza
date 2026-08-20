@@ -3,8 +3,9 @@
  * `{ params }` JSON. Planner output can nest arrays and objects; the previous
  * recursive map RangeError'd an 8k nest on Node 24.15.0. Depth, node, and
  * cycle limits are all load-bearing. Every reflective read is fail-closed
- * to the typed unbounded error; array length and indexes come from own
- * data descriptors so Proxy get/has traps cannot hang the planner.
+ * to the typed unbounded error; array length, indexes, and record keys come
+ * from own data descriptors so Proxy get/has traps cannot hang the planner.
+ * `parseActionParams` shares one walk budget across the whole params graph.
  */
 
 import { ElizaError } from "./errors";
@@ -63,13 +64,158 @@ function isArrayRecord(value: unknown): value is unknown[] {
 	return inspectRecord("isArray", () => Array.isArray(value));
 }
 
+function ownEnumerableStringDataEntries(
+	value: object,
+	ctx: WalkContext,
+): Array<[string, unknown]> {
+	const keys = inspectRecord("ownKeys", () => Reflect.ownKeys(value));
+	reserve(ctx, keys.length);
+	const entries: Array<[string, unknown]> = [];
+	for (const key of keys) {
+		if (typeof key !== "string") continue;
+		const descriptor = ownDescriptor(value, key);
+		if (!descriptor?.enumerable) continue;
+		if (!("value" in descriptor)) {
+			failUnbounded({ accessor: true, side: "object", key });
+		}
+		entries.push([key, descriptor.value]);
+	}
+	return entries;
+}
+
+function newWalkContext(): WalkContext {
+	return {
+		visits: 0,
+		visiting: new WeakSet<object>(),
+	};
+}
+
 export function toActionParameterValue(
 	value: unknown,
 ): ActionParameters[string] {
-	return toActionParameterValueInner(value, 0, {
-		visits: 0,
-		visiting: new WeakSet<object>(),
-	});
+	return toActionParameterValueInner(value, 0, newWalkContext());
+}
+
+/**
+ * Production planner boundary: descriptor-only traversal of the model
+ * `{ params }` graph with one shared node/cycle budget.
+ */
+export function parseActionParams(
+	paramsInput: unknown,
+): Map<string, ActionParameters> {
+	const parsed =
+		typeof paramsInput === "string"
+			? parseActionParamsJson(paramsInput)
+			: (paramsInput ?? null);
+	if (parsed === null || parsed === undefined) {
+		return new Map();
+	}
+	return parseActionParamsRecord(parsed, newWalkContext());
+}
+
+function parseActionParamsJson(input: string): unknown | null {
+	const trimmed = input.trim();
+	if (!trimmed) {
+		return null;
+	}
+	try {
+		return JSON.parse(trimmed) as unknown;
+	} catch {
+		// error-policy:J3 action parameters cross an untrusted model boundary;
+		// malformed JSON is an explicit invalid result.
+		return null;
+	}
+}
+
+function parseActionParamsRecord(
+	parsed: unknown,
+	ctx: WalkContext,
+): Map<string, ActionParameters> {
+	if (!parsed || typeof parsed !== "object") {
+		return new Map();
+	}
+	if (isArrayRecord(parsed)) {
+		return new Map();
+	}
+	reserve(ctx, 1);
+	if (ctx.visiting.has(parsed)) {
+		failUnbounded({ cycle: true });
+	}
+	ctx.visiting.add(parsed);
+	try {
+		const rootEntries = ownEnumerableStringDataEntries(parsed, ctx);
+		const paramsSlot = rootEntries.find(([key]) => key === "params");
+		if (paramsSlot) {
+			const paramsValue = paramsSlot[1];
+			if (
+				paramsValue &&
+				typeof paramsValue === "object" &&
+				!isArrayRecord(paramsValue)
+			) {
+				return collectActionParams(paramsValue, ctx);
+			}
+		}
+		return collectActionsFromEntries(rootEntries, ctx);
+	} finally {
+		ctx.visiting.delete(parsed);
+	}
+}
+
+function collectActionParams(
+	candidate: object,
+	ctx: WalkContext,
+): Map<string, ActionParameters> {
+	if (ctx.visiting.has(candidate)) {
+		failUnbounded({ cycle: true });
+	}
+	ctx.visiting.add(candidate);
+	try {
+		return collectActionsFromEntries(
+			ownEnumerableStringDataEntries(candidate, ctx),
+			ctx,
+		);
+	} finally {
+		ctx.visiting.delete(candidate);
+	}
+}
+
+function collectActionsFromEntries(
+	actionEntries: Array<[string, unknown]>,
+	ctx: WalkContext,
+): Map<string, ActionParameters> {
+	const result = new Map<string, ActionParameters>();
+	for (const [actionName, paramsValue] of actionEntries) {
+		if (!paramsValue || typeof paramsValue !== "object") {
+			continue;
+		}
+		if (isArrayRecord(paramsValue)) {
+			continue;
+		}
+		if (ctx.visiting.has(paramsValue)) {
+			failUnbounded({ cycle: true });
+		}
+		ctx.visiting.add(paramsValue);
+		try {
+			const params: ActionParameters = {};
+			for (const [paramName, paramValue] of ownEnumerableStringDataEntries(
+				paramsValue,
+				ctx,
+			)) {
+				params[paramName] = toActionParameterValueInner(
+					paramValue,
+					0,
+					ctx,
+					true,
+				);
+			}
+			if (Object.keys(params).length > 0) {
+				result.set(actionName.trim().toUpperCase(), params);
+			}
+		} finally {
+			ctx.visiting.delete(paramsValue);
+		}
+	}
+	return result;
 }
 
 function toActionParameterValueInner(
@@ -125,17 +271,7 @@ function toActionParameterValueInner(
 			return out as ActionParameters[string];
 		}
 
-		const entries: Array<[string, unknown]> = [];
-		for (const key of inspectRecord("ownKeys", () => Reflect.ownKeys(value))) {
-			if (typeof key !== "string") continue;
-			const descriptor = ownDescriptor(value, key);
-			if (!descriptor?.enumerable) continue;
-			if (!("value" in descriptor)) {
-				failUnbounded({ accessor: true, side: "object", key });
-			}
-			entries.push([key, descriptor.value]);
-		}
-		reserve(ctx, entries.length);
+		const entries = ownEnumerableStringDataEntries(value, ctx);
 		const normalized: ActionParameters = {};
 		for (const [key, entry] of entries) {
 			normalized[key] = toActionParameterValueInner(

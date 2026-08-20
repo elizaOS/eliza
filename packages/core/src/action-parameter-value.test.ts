@@ -1,7 +1,7 @@
 /**
  * Deterministic tests for the planner action-parameter walk. No live model:
- * the walker is the production toActionParameterValue used on untrusted
- * `{ params }` JSON.
+ * the walker is the production parseActionParams / toActionParameterValue
+ * used on untrusted `{ params }` JSON.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -10,6 +10,7 @@ import {
 	MAX_ACTION_PARAMETER_NODES,
 	toActionParameterValue,
 } from "./action-parameter-value";
+import { parseActionParams } from "./actions";
 import { ElizaError } from "./errors";
 
 function nestArray(depth: number): unknown {
@@ -149,5 +150,154 @@ describe("toActionParameterValue", () => {
 			expect((error as Error).name).not.toBe("RangeError");
 		}
 		expect(performance.now() - started).toBeLessThan(50);
+	});
+
+	it("translates a getOwnPropertyDescriptor trap to ACTION_PARAMETER_UNBOUNDED", () => {
+		const hostile = new Proxy(
+			{ payload: "x" },
+			{
+				getOwnPropertyDescriptor() {
+					throw new Error("descriptor trap escaped");
+				},
+			},
+		);
+		try {
+			toActionParameterValue(hostile);
+			expect.unreachable("parse should fail closed on a descriptor trap");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
+			expect((error as Error).message).not.toContain("trap escaped");
+		}
+	});
+});
+
+describe("parseActionParams", () => {
+	it("parses honest wrapped and unwrapped action param records", () => {
+		expect(
+			parseActionParams({
+				params: { SHELL_COMMAND: { command: "ls" } },
+			}).get("SHELL_COMMAND"),
+		).toEqual({ command: "ls" });
+		expect(
+			parseActionParams({ SHELL_COMMAND: { command: "ls" } }).get(
+				"SHELL_COMMAND",
+			),
+		).toEqual({ command: "ls" });
+		expect(parseActionParams("{ not json").size).toBe(0);
+	});
+
+	it("does not invoke action-slot accessors", () => {
+		let invoked = 0;
+		const hostile = {
+			params: {
+				get ACT() {
+					invoked += 1;
+					return { payload: "x" };
+				},
+			},
+		};
+		try {
+			parseActionParams(hostile);
+			expect.unreachable("parse should fail closed on action-slot accessors");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
+		}
+		expect(invoked).toBe(0);
+	});
+
+	it("does not invoke parameter-slot accessors", () => {
+		let invoked = 0;
+		const hostile = {
+			params: {
+				ACT: {
+					get payload() {
+						invoked += 1;
+						return ["x"];
+					},
+				},
+			},
+		};
+		try {
+			parseActionParams(hostile);
+			expect.unreachable(
+				"parse should fail closed on parameter-slot accessors",
+			);
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
+		}
+		expect(invoked).toBe(0);
+	});
+
+	it("does not invoke Proxy get/has traps on the production boundary", () => {
+		let gets = 0;
+		let hasCalls = 0;
+		const proxy = new Proxy(
+			{ params: { ACT: { payload: "x" } } },
+			{
+				get() {
+					gets += 1;
+					throw new Error("get trap escaped");
+				},
+				has() {
+					hasCalls += 1;
+					throw new Error("has trap escaped");
+				},
+			},
+		);
+		expect(parseActionParams(proxy).get("ACT")).toEqual({ payload: "x" });
+		expect(gets).toBe(0);
+		expect(hasCalls).toBe(0);
+	});
+
+	it(`throws ${ACTION_PARAMETER_UNBOUNDED} on a revoked Proxy instead of TypeError`, () => {
+		const { proxy, revoke } = Proxy.revocable(
+			{ params: { ACT: { payload: "x" } } },
+			{},
+		);
+		revoke();
+		try {
+			parseActionParams(proxy);
+			expect.unreachable("parse should fail closed on a revoked Proxy");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
+			expect((error as Error).name).not.toBe("TypeError");
+		}
+	});
+
+	it("fails closed on an 8k nest through parseActionParams", () => {
+		const started = performance.now();
+		try {
+			parseActionParams({
+				params: { ACT: { payload: nestArray(8_000) } },
+			});
+			expect.unreachable("production parse should fail closed on an 8k nest");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
+			expect((error as Error).name).not.toBe("RangeError");
+		}
+		expect(performance.now() - started).toBeLessThan(50);
+	});
+
+	it("shares the node budget across the whole params graph", () => {
+		const left: unknown[] = [];
+		const right: unknown[] = [];
+		left[1_200] = "x";
+		right[1_200] = "y";
+		try {
+			parseActionParams({
+				params: { A: { p: left }, B: { p: right } },
+			});
+			expect.unreachable(
+				"shared budget should fail closed across action slots",
+			);
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
+		}
 	});
 });
