@@ -253,7 +253,11 @@ describe("partitionMemorySearchBudget", () => {
 				},
 				{
 					toolCall: { name: "SEARCH_KNOWLEDGE", params: { query: "q two" } },
-					result: { success: false, text: "no matches" },
+					result: {
+						success: true,
+						text: "no matches",
+						data: { count: 0, items: [] },
+					},
 				},
 			],
 		};
@@ -288,7 +292,7 @@ describe("partitionMemorySearchBudget", () => {
 		expect(out.skippedNearDuplicate).toEqual([dup]);
 	});
 
-	it("failed searches still consume budget (each cost a full planner round)", () => {
+	it("failed searches do not suppress a corrected call", () => {
 		const trajectory = {
 			...emptyTrajectory(),
 			steps: [
@@ -305,9 +309,14 @@ describe("partitionMemorySearchBudget", () => {
 				},
 			],
 		};
-		const next = { name: "MEMORY_SEARCH", params: { query: "third try" } };
+		const next = {
+			name: "MEMORY_SEARCH",
+			params: { query: "first try", roomId: "corrected-room" },
+		};
 		const out = partitionMemorySearchBudget([next], trajectory, 2);
-		expect(out.skippedOverBudget).toEqual([next]);
+		expect(out.allowed).toEqual([next]);
+		expect(out.skippedOverBudget).toEqual([]);
+		expect(out.skippedNearDuplicate).toEqual([]);
 	});
 });
 
