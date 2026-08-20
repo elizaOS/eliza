@@ -3178,8 +3178,13 @@ async function executeQueuedToolCall(params: {
 	assertTrajectoryLimit({
 		kind: "tool_calls",
 		max: params.config.maxToolCalls,
+		// Compaction moves settled steps out of `steps` into `archivedSteps`,
+		// so counting only the live half restarts the budget mid-turn. Every
+		// other trajectory-wide read in this file spans both halves.
 		observed:
-			params.trajectory.steps.filter((step) => step.toolCall).length + 1,
+			[...params.trajectory.archivedSteps, ...params.trajectory.steps].filter(
+				(step) => step.toolCall,
+			).length + 1,
 	});
 
 	const streamingContext = getStreamingContext();
