@@ -140,8 +140,18 @@ async function listAgents(token) {
     ? res.body.data
     : Array.isArray(res.body)
       ? res.body
-      : [];
-  return rows.map(normalizeAgentRow).filter((row) => row !== null);
+      : null;
+  if (!rows) {
+    throw new Error("Cloud agent list returned an unexpected response shape");
+  }
+  const normalized = rows.map(normalizeAgentRow);
+  const malformedCount = normalized.filter((row) => row === null).length;
+  if (malformedCount > 0) {
+    throw new Error(
+      `Cloud agent list contained ${malformedCount} row(s) without a usable id`,
+    );
+  }
+  return normalized;
 }
 
 async function deleteAgent(token, agent) {
@@ -152,7 +162,10 @@ async function deleteAgent(token, agent) {
   );
   if (res.status === 202) {
     const jobId = res.body?.data?.jobId ?? null;
-    if (wait && jobId) {
+    if (wait && !jobId) {
+      throw new Error(`delete request for ${agent.id} omitted its job id`);
+    }
+    if (wait) {
       const deadline = Date.now() + 120_000;
       while (Date.now() < deadline) {
         const job = await cloud(

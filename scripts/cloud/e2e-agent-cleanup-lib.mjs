@@ -72,8 +72,8 @@ function firstString(...values) {
 /**
  * Select the leaked agents to delete. Contract:
  * - agents in `protectIds` are never selected;
- * - the `keepNewest` most recently created agents are retained (agents with
- *   an unparseable createdAt sort oldest, so they are deleted first);
+ * - only `dedicated-always` agents with a valid creation time are eligible;
+ * - the `keepNewest` most recently created eligible agents are retained;
  * - agents younger than `minAgeMs` are retained, so the lane can never race
  *   an onboarding run that is provisioning its agent right now.
  * Returns { toDelete, kept } with reasons on every kept row.
@@ -101,8 +101,11 @@ export function selectAgentsForCleanup(
   for (const agent of agents) {
     if (protect.has(agent.id)) {
       kept.push({ agent, reason: "protected" });
+    } else if (agent.executionTier !== "dedicated-always") {
+      kept.push({ agent, reason: "not-dedicated-always" });
+    } else if (agent.createdAtMs === null) {
+      kept.push({ agent, reason: "unknown-created-at" });
     } else if (
-      agent.createdAtMs !== null &&
       now - agent.createdAtMs < minAgeMs
     ) {
       kept.push({ agent, reason: "younger-than-min-age" });
@@ -110,8 +113,7 @@ export function selectAgentsForCleanup(
       eligible.push(agent);
     }
   }
-  // Newest first; null createdAt sorts oldest.
-  eligible.sort((a, b) => (b.createdAtMs ?? -1) - (a.createdAtMs ?? -1));
+  eligible.sort((a, b) => b.createdAtMs - a.createdAtMs);
   for (const agent of eligible.slice(0, keepNewest)) {
     kept.push({ agent, reason: "kept-newest" });
   }

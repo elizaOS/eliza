@@ -266,7 +266,8 @@ bun run cloud:e2e:agents:cleanup                 # dry run: list + selection
 bun run cloud:e2e:agents:cleanup -- --apply --wait   # delete leaked agents
 ```
 
-It keeps the newest agent, never touches agents younger than 30 minutes
-(so it cannot race an in-flight onboarding run), and supports `--protect
-<agentId>`, `--keep <n>`, and `--report <path>`. See
+It only selects `dedicated-always` agents with a valid creation time, keeps the
+newest eligible agent, and never touches eligible agents younger than 30
+minutes (so it cannot race an in-flight onboarding run). It also supports
+`--protect <agentId>`, `--keep <n>`, and `--report <path>`. See
 `scripts/cloud/e2e-agent-cleanup.mjs`.
