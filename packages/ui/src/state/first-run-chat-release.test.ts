@@ -41,4 +41,30 @@ describe("first-run chat release tracking", () => {
 
     expect(state.releasePending).toBe(false);
   });
+
+  it("cancels a stale unacknowledged release when first run restarts", () => {
+    let state = createFirstRunChatReleaseState(false);
+    state = recordMountedFirstRunChat(state);
+    state = observeFirstRunCompletion(state, true);
+    expect(state.releasePending).toBe(true);
+
+    state = observeFirstRunCompletion(state, false);
+    expect(state).toEqual({
+      observedIncomplete: true,
+      mountedWhileIncomplete: false,
+      releasePending: false,
+    });
+
+    state = observeFirstRunCompletion(state, true);
+    expect(state.releasePending).toBe(false);
+  });
+
+  it("retains a mounted epoch across an unresolved probe", () => {
+    let state = createFirstRunChatReleaseState(false);
+    state = recordMountedFirstRunChat(state);
+    state = observeFirstRunCompletion(state, null);
+    state = observeFirstRunCompletion(state, true);
+
+    expect(state.releasePending).toBe(true);
+  });
 });

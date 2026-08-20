@@ -25,6 +25,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -186,17 +187,12 @@ import {
   useChatInputRef,
 } from "./state/ChatComposerContext.hooks";
 import {
-  acknowledgeFirstRunChatRelease,
-  createFirstRunChatReleaseState,
-  observeFirstRunCompletion,
-  recordMountedFirstRunChat,
-} from "./state/first-run-chat-release";
-import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
   shouldShowRemoteAgentPairingGate,
   topLevelAuthGateOwnsSurface,
 } from "./state/top-level-auth-gate";
+import { useFirstRunChatRelease } from "./state/use-first-run-chat-release";
 import {
   isBootstrapGateRequired,
   isLoopbackGatewayHost,
@@ -2177,7 +2173,7 @@ function ChatOverlayMount({
     isElevated: isOwner,
     isAuthorized: atLeast("USER"),
   });
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (controller && firstRunComplete === false) {
       onFirstRunChatMounted?.();
     }
@@ -2344,23 +2340,7 @@ function AppContent() {
   // Runtime-target adoption can remount the shell on the exact render where
   // first-run completes. Retain that completion edge above the remount and let
   // the next ChatOverlay acknowledge it after applying the FULL detent.
-  const firstRunChatReleaseRef = useRef(
-    createFirstRunChatReleaseState(firstRunComplete),
-  );
-  firstRunChatReleaseRef.current = observeFirstRunCompletion(
-    firstRunChatReleaseRef.current,
-    firstRunComplete,
-  );
-  const handleFirstRunChatMounted = useCallback(() => {
-    firstRunChatReleaseRef.current = recordMountedFirstRunChat(
-      firstRunChatReleaseRef.current,
-    );
-  }, []);
-  const handleFirstRunReleaseHandled = useCallback(() => {
-    firstRunChatReleaseRef.current = acknowledgeFirstRunChatRelease(
-      firstRunChatReleaseRef.current,
-    );
-  }, []);
+  const firstRunChatRelease = useFirstRunChatRelease(firstRunComplete);
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -3354,9 +3334,9 @@ function AppContent() {
           behind stays live.
         */}
         <ChatOverlayMount
-          releaseFirstRunToFull={firstRunChatReleaseRef.current.releasePending}
-          onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
-          onFirstRunChatMounted={handleFirstRunChatMounted}
+          releaseFirstRunToFull={firstRunChatRelease.releasePending}
+          onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
+          onFirstRunChatMounted={firstRunChatRelease.recordMountedChat}
         />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
