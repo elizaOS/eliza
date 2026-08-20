@@ -42,6 +42,8 @@ const fixtures: readonly unknown[] = [
     },
     operationInput: {
       orderType: "hold",
+      totalCents: 29950,
+      currency: "USD",
       passengers: [
         {
           offerPassengerId: "pas_canary",

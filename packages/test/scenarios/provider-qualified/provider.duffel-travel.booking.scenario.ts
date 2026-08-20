@@ -30,7 +30,7 @@ export default scenario({
     {
       kind: "message",
       name: "propose exact signed duffel hold",
-      text: "Prepare, but do not execute, the exact Duffel operation pre-bound by the operator-signed manifest as duffel.booking-hold-create: the bound offerId and itinerary, the bound passenger records, orderType=hold, and calendarSync.enabled=false. Queue exactly one durable book_travel approval, preserve its identity for the later owner decision, and report that it is pending. Do not create a Duffel order, make or authorize a payment, choose another offer, or infer or alter passenger data. This proposal turn is not approval.",
+      text: "Prepare, but do not execute, the exact Duffel operation pre-bound by the operator-signed manifest as duffel.booking-hold-create: the bound offerId and itinerary, the bound passenger records, orderType=hold, totalCents and currency, and calendarSync.enabled=false. Queue exactly one durable book_travel approval, preserve its identity and exact payload for the later owner decision, and report that it is pending. Do not create a Duffel order, make or authorize a payment, choose another offer, change the quoted price, or infer or alter passenger data. This proposal turn is not approval.",
       responseJudge: {
         minimumScore: 0.95,
         rubric:
@@ -40,7 +40,7 @@ export default scenario({
     {
       kind: "message",
       name: "owner approves same signed duffel hold",
-      text: "Approve exactly the pending book_travel request created by the preceding proposal turn, and only if its durable payload still matches the operator-signed duffel.booking-hold-create binding and the selected offer remains hold-capable. After the request is durably approved, create exactly one Duffel order with type=hold for that bound offer and those bound passengers, then read it back and finish the same request as done. Do not create or capture a payment, switch to an instant or nonrefundable order, sync a calendar event, or continue if the provider cannot honor a payment-free hold.",
+      text: "Approve exactly the pending book_travel request created by the preceding proposal turn, and only if its durable payload still matches the operator-signed duffel.booking-hold-create offer, passengers, orderType=hold, totalCents, currency, and calendarSync.enabled=false binding and the selected offer remains hold-capable at that exact price. After the request is durably approved, create exactly one Duffel order with type=hold for that bound offer and those bound passengers, then read it back and finish the same request as done. Do not create or capture a payment, switch to an instant or nonrefundable order, change the approved price, sync a calendar event, or continue if the provider cannot honor a payment-free hold.",
       responseJudge: {
         minimumScore: 0.95,
         rubric:

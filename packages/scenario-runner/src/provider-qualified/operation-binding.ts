@@ -156,6 +156,8 @@ export interface ProviderOperationInputByKind {
   "discord.message-send": { text: string; attachments: [] };
   "duffel.booking-hold-create": {
     orderType: "hold";
+    totalCents: number;
+    currency: string;
     passengers: [DuffelCanaryPassenger, ...DuffelCanaryPassenger[]];
     calendarSync: {
       enabled: boolean;
@@ -615,6 +617,8 @@ function inputFor(kind: ProviderOperationKind, value: unknown): unknown {
     case "duffel.booking-hold-create": {
       const input = exactRecord(value, path, [
         "orderType",
+        "totalCents",
+        "currency",
         "passengers",
         "calendarSync",
       ]);
@@ -633,6 +637,13 @@ function inputFor(kind: ProviderOperationKind, value: unknown): unknown {
       ]);
       return {
         orderType: "hold",
+        totalCents: positiveInteger(input.totalCents, `${path}.totalCents`),
+        currency: stringMatching(
+          input.currency,
+          `${path}.currency`,
+          /^[A-Z]{3}$/,
+          "an uppercase ISO 4217 currency code",
+        ),
         passengers: input.passengers.map((passenger, index) =>
           validatePassenger(passenger, `${path}.passengers[${index}]`),
         ),
