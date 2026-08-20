@@ -3303,10 +3303,6 @@ export function ChatOverlay({
     [threadHeight, fullBleedT] as MotionValue<number>[],
     ([h, t]: number[]) => sheetBlackoutProgress(h, halfH, t),
   );
-  const surfaceBackgroundColor = useTransform(surfaceBlackout, (t: number) => {
-    const percent = (clamp01(t) * 100).toFixed(3);
-    return `color-mix(in srgb, var(--bg) ${percent}%, ${GLASS_SHEET_FILL})`;
-  });
   const surfaceEdgeShadow = useTransform(fullBleedT, (t: number) =>
     liquidGlassEdgeShadow(1 - t),
   );
@@ -5835,22 +5831,16 @@ export function ChatOverlay({
               // sheet radius squares off as it maximizes and rounds back as it
               // de-maximizes, in lockstep with the side/bottom insets.
               borderRadius: morphRadius,
-              // Frosted glass at REST, black when OPEN. The resting composer
-              // keeps the token-system glass (`GLASS_SHEET_FILL` +
-              // `GLASS_SHEET_BACKDROP_FILTER` from `glass/tokens.ts`, heavy
-              // neutral blur, no saturate — saturate muddies the warm field to
-              // brown), and the drag-up blends the fill to the opaque panel
-              // `--bg` by the HALF detent (`surfaceBlackout`): the open sheet
-              // reads BLACK over any substrate — bright web pages and the warm
-              // wallpaper both washed the old translucent open sheet. `--card`
-              // / `--bg` are scoped by CHAT_PANEL_THEME on the fieldset, not
-              // the orange app theme behind. Full-bleed stays fully opaque (it
-              // covers the whole screen — there is nothing to see through, and
-              // the blur would be wasted battery).
+              // Keep one BASE paint identity for the whole gesture. Rebuilding
+              // a color-mix background on every pointer frame forces browsers
+              // to re-rasterize this large, resizing backdrop-filter layer and
+              // can expose a transparent frame. A persistent compositor child
+              // below owns the glass→opaque blend with opacity instead.
               backgroundColor:
                 firstRunOpen || nativeInsetSheet
                   ? "var(--bg)"
-                  : surfaceBackgroundColor,
+                  : GLASS_SHEET_FILL,
+              overflow: "hidden",
               backdropFilter: cssSheetBackdropActive
                 ? GLASS_SHEET_BACKDROP_FILTER
                 : undefined,
@@ -5882,7 +5872,22 @@ export function ChatOverlay({
               // commit. Harmless when the inset is 0.
               top: glassTopExtension,
             }}
-          />
+          >
+            {!firstRunOpen && !nativeInsetSheet ? (
+              <motion.div
+                data-testid="chat-sheet-blackout"
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  // Frosted glass at rest, black by HALF. This is numerically
+                  // the same blend the old per-frame color-mix produced, but
+                  // it keeps both paints resident and animates only opacity.
+                  opacity: surfaceBlackout,
+                  backgroundColor: "var(--bg)",
+                  borderRadius: "inherit",
+                }}
+              />
+            ) : null}
+          </motion.div>
           {/* AX-tree mirror of data-detent: the native gesture e2e suites
               (XCUITest) can only observe web state through the accessibility
               tree, and data attributes never surface there. sr-only text does.

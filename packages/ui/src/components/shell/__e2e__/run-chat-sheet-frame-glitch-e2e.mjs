@@ -178,11 +178,23 @@ async function captureTransition(page, drive) {
     window.__samples = [];
     const sheet = () => document.querySelector('[data-testid="chat-sheet"]');
     const tick = () => {
+      const surface = document.querySelector(
+        '[data-testid="chat-sheet-surface"]',
+      );
+      const blackout = document.querySelector(
+        '[data-testid="chat-sheet-blackout"]',
+      );
       window.__samples.push({
         t: performance.now(),
         pill: eff('[data-testid="chat-pill"]'),
         grabber: eff('[data-testid="chat-sheet-grabber"]'),
         state: sheet()?.getAttribute("data-chat-state") ?? null,
+        surfaceBackground: surface
+          ? getComputedStyle(surface).backgroundColor
+          : null,
+        blackout: blackout
+          ? Number.parseFloat(getComputedStyle(blackout).opacity)
+          : null,
       });
       window.__raf = requestAnimationFrame(tick);
     };
@@ -368,6 +380,28 @@ const grabberMax = Math.max(...samples.map((s) => s.grabber));
 assert(
   pillMax > 0.6 && grabberMax > 0.6,
   `crossfade exercised: pill swept to ${pillMax.toFixed(2)}, grabber to ${grabberMax.toFixed(2)}`,
+);
+
+// A dynamically resized backdrop-filter layer must keep one base paint identity
+// for the complete gesture. Rebuilding a color-mix background string on every
+// pointer frame makes Chromium/WebKit re-rasterize that large layer and can
+// expose a transparent frame even when settled screenshots look correct. The
+// opaque open-sheet transition belongs to a compositor opacity child instead.
+const surfaceBackgrounds = new Set(
+  samples.map((sample) => sample.surfaceBackground).filter(Boolean),
+);
+assert(
+  surfaceBackgrounds.size === 1,
+  `surface base paint stays stable through drag (${surfaceBackgrounds.size} computed colors)`,
+);
+const blackoutSamples = samples
+  .map((sample) => sample.blackout)
+  .filter((value) => Number.isFinite(value));
+assert(
+  blackoutSamples.length >= 8 &&
+    Math.min(...blackoutSamples) <= 0.05 &&
+    Math.max(...blackoutSamples) >= 0.95,
+  `compositor blackout covers the glass-to-open range (${blackoutSamples.length} samples)`,
 );
 
 // Decode frames + per-pair diff counts.

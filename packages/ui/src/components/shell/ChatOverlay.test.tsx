@@ -1682,6 +1682,7 @@ describe("ChatOverlay", () => {
     const fade = screen.getByTestId("chat-thread-top-fade");
     const rim = screen.getByTestId("chat-sheet-rim");
     const surface = screen.getByTestId("chat-sheet-surface");
+    const blackout = screen.getByTestId("chat-sheet-blackout");
     const viewport = screen.getByTestId("chat-thread-scroll");
     expect(fade.className).toContain("pointer-events-none");
     expect(fade.className).toContain("absolute");
@@ -1694,6 +1695,9 @@ describe("ChatOverlay", () => {
     expect(rim.className).toContain("z-40");
     expect(rim.className).toContain("border-border-strong");
     expect(surface.className.split(/\s+/)).not.toContain("border");
+    expect(blackout.style.opacity).not.toBe("");
+    expect(blackout.style.backgroundColor).toBe("var(--bg)");
+    expect(blackout.style.borderRadius).toBe("inherit");
     const content = screen.getByTestId("chat-content");
     expect(content.style.clipPath).toContain("inset(1px round");
     expect(viewport.style.maskImage).toBe("");
