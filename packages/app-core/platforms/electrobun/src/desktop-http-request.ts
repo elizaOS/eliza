@@ -1,5 +1,10 @@
 /** Implements Electrobun desktop desktop http request ts behavior for app-core shell integration. */
-import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/shared";
+import {
+  isElizaCloudControlPlaneHostname,
+  isElizaDedicatedAgentHostname,
+  isLoopbackBindHost,
+  isWildcardBindHost,
+} from "@elizaos/shared";
 import { resolveExternalApiBase } from "./api-base";
 
 function isExternalPlainHttpUrl(parsed: URL): boolean {
@@ -16,6 +21,21 @@ function isConfiguredExternalApiBaseUrl(parsed: URL): boolean {
     process.env as Record<string, string | undefined>,
   ).base;
   return Boolean(configured && parsed.origin === configured);
+}
+
+/**
+ * Trusted Eliza Cloud HTTPS origins whose CORS policy does not allowlist
+ * loopback renderer origins (e.g. http://127.0.0.1:5174). The desktop main
+ * process (bun) can reach these directly, so the renderer proxies through
+ * desktopHttpRequest to bypass the WKWebView CORS block.
+ */
+function isTrustedElizaCloudHttpsUrl(parsed: URL): boolean {
+  if (parsed.protocol !== "https:") return false;
+  const hostname = parsed.hostname.toLowerCase();
+  return (
+    isElizaCloudControlPlaneHostname(hostname) ||
+    isElizaDedicatedAgentHostname(hostname)
+  );
 }
 
 export function normalizeDesktopHttpRequest(params: unknown): {
@@ -35,10 +55,11 @@ export function normalizeDesktopHttpRequest(params: unknown): {
   const parsed = new URL(record.url);
   if (
     !isExternalPlainHttpUrl(parsed) &&
-    !isConfiguredExternalApiBaseUrl(parsed)
+    !isConfiguredExternalApiBaseUrl(parsed) &&
+    !isTrustedElizaCloudHttpsUrl(parsed)
   ) {
     throw new Error(
-      "desktopHttpRequest supports only external or configured desktop API plain HTTP URLs.",
+      "desktopHttpRequest supports only external or configured desktop API plain HTTP URLs, or trusted Eliza Cloud HTTPS URLs.",
     );
   }
   const method = typeof record.method === "string" ? record.method : "GET";

@@ -29,6 +29,8 @@ import {
   normalizeDirectCloudSharedAgentApiBase,
 } from "../utils/cloud-agent-base";
 import { ElizaClient } from "./client-base";
+import { desktopHttpTransportForUrl } from "./desktop-http-transport";
+import { fetchAgentTransport, type AgentRequestTransport } from "./transport";
 import type {
   ApiError,
   CloudApiKeySummary,
@@ -520,6 +522,22 @@ function resolveBrowserCloudApiRequestUrl(url: string): string {
 }
 
 /**
+ * Fetch a direct Cloud API URL through the Electrobun desktop HTTP bridge when
+ * available, bypassing the WKWebView CORS block on loopback renderer origins.
+ * Falls back to a regular fetch() on web/native platforms.
+ */
+async function directCloudFetch(
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const transport = desktopHttpTransportForUrl(url);
+  if (transport) {
+    return transport.request(url, init ?? {}, undefined);
+  }
+  return fetchAgentTransport.request(url, init ?? {}, undefined);
+}
+
+/**
  * The browser-navigable Eliza Cloud WEB base for a configured cloud base URL
  * (API hosts map to their site host; www maps to the apex). Every URL handed
  * to a browser window/tab must be built on this — never on the raw configured
@@ -849,7 +867,7 @@ async function fetchDirectCloudWithTimeout(
   }, DIRECT_CLOUD_HTTP_TIMEOUT_MS);
 
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await directCloudFetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     if (timedOut) {
       throw new Error(
@@ -3246,7 +3264,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       };
     }
 
-    const res = await fetch(
+    const res = await directCloudFetch(
       resolveBrowserCloudApiRequestUrl(`${authApiBase}/api/auth/cli-session`),
       {
         method: "POST",
@@ -3308,7 +3326,7 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
       return parseCloudLoginPollData(parseDirectCloudJsonSafe(res.data));
     }
 
-    const res = await fetch(
+    const res = await directCloudFetch(
       resolveBrowserCloudApiRequestUrl(
         `${authApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
       ),
@@ -4563,7 +4581,7 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
   // dedicated container subdomain). Both accept the cloud session token —
   // the dedicated-agent proxy swaps it for the container's own token.
   const authedFetch: AuthedAgentFetch = async (base, path, init) => {
-    const res = await fetch(`${base}${path}`, {
+    const res = await directCloudFetch(`${base}${path}`, {
       method: init?.method ?? "GET",
       headers: {
         Accept: "application/json",
@@ -4741,7 +4759,7 @@ ElizaClient.prototype.deleteSharedBridgeAgent = async function (
           )
         ).status
       : (
-          await fetch(resolveBrowserCloudApiRequestUrl(url), {
+          await directCloudFetch(resolveBrowserCloudApiRequestUrl(url), {
             method: "DELETE",
             headers,
             signal: AbortSignal.timeout(20_000),
