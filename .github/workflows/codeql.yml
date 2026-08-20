@@ -108,6 +108,7 @@ jobs:
               - 'plugins/plugin-instagram/**'
               - 'plugins/plugin-local-inference/**'
               - 'plugins/plugin-local-storage/**'
+              - 'plugins/plugin-maps/**'
               - 'plugins/plugin-matrix/**'
               - 'plugins/plugin-mcp/**'
               - 'plugins/plugin-meetings/**'
