@@ -80,29 +80,59 @@ function approvalPrompt(payload: Record<string, unknown>): string | undefined {
 
 function normalizeWorkflow(
   workflow: WorkflowDefinition,
-  id: string,
-  active: boolean
+  id: string | undefined,
+  fallbackActive: boolean
 ): WorkflowDefinition {
-  validateSmithersSource(workflow.source);
-  if (!workflow.name.trim()) throw new WorkflowApiError('Workflow name is required', 400);
-  if (workflow.language !== 'tsx' && workflow.language !== 'typescript') {
+  const snapshot = cloneJson(workflow);
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    throw new WorkflowApiError('Workflow definition must be an object', 400);
+  }
+  if (typeof snapshot.source !== 'string') {
+    throw new WorkflowApiError('Workflow source is required', 400);
+  }
+  validateSmithersSource(snapshot.source);
+  if (typeof snapshot.name !== 'string' || !snapshot.name.trim()) {
+    throw new WorkflowApiError('Workflow name is required', 400);
+  }
+  if (snapshot.language !== 'tsx' && snapshot.language !== 'typescript') {
     throw new WorkflowApiError('Workflow language must be tsx or typescript', 400);
   }
+  if (snapshot.active !== undefined && typeof snapshot.active !== 'boolean') {
+    throw new WorkflowApiError('Workflow active must be a boolean', 400);
+  }
+  if (snapshot.id !== undefined && typeof snapshot.id !== 'string') {
+    throw new WorkflowApiError('Workflow id must be a string', 400);
+  }
+  if (snapshot.steps !== undefined && !Array.isArray(snapshot.steps)) {
+    throw new WorkflowApiError('Workflow steps must be an array', 400);
+  }
   const stepIds = new Set<string>();
-  for (const step of workflow.steps ?? []) {
-    if (!step.id.trim()) throw new WorkflowApiError('Workflow step id is required', 400);
+  for (const step of snapshot.steps ?? []) {
+    if (!step || typeof step !== 'object' || typeof step.id !== 'string' || !step.id.trim()) {
+      throw new WorkflowApiError('Workflow step id is required', 400);
+    }
     if (stepIds.has(step.id))
       throw new WorkflowApiError(`Duplicate workflow step id: ${step.id}`, 400);
     stepIds.add(step.id);
   }
-  for (const step of workflow.steps ?? []) {
+  for (const step of snapshot.steps ?? []) {
+    if (step.dependsOn !== undefined && !Array.isArray(step.dependsOn)) {
+      throw new WorkflowApiError(`Workflow dependencies must be an array: ${step.id}`, 400);
+    }
     for (const dependency of step.dependsOn ?? []) {
+      if (typeof dependency !== 'string') {
+        throw new WorkflowApiError(`Workflow dependency must be a string: ${step.id}`, 400);
+      }
       if (!stepIds.has(dependency)) {
         throw new WorkflowApiError(`Unknown dependency ${dependency} on step ${step.id}`, 400);
       }
     }
   }
-  return { ...cloneJson(workflow), id, active };
+  return {
+    ...snapshot,
+    id: id ?? (snapshot.id?.trim() || randomUUID()),
+    active: snapshot.active ?? fallbackActive,
+  };
 }
 
 function responseFromStored(stored: StoredWorkflow): WorkflowDefinitionResponse {
@@ -272,26 +302,30 @@ export class EmbeddedWorkflowService extends Service {
   ): Promise<void> {
     await this.getDb()
       .insert(workflowRevisions)
-      .values({
-        agentId: this.tenantId,
-        id: randomUUID(),
-        workflowId: id,
-        versionId: stored.versionId,
-        name: stored.workflow.name,
-        active: stored.workflow.active === true,
-        workflow: cloneJson(stored.workflow),
-        createdAt: stored.createdAt,
-        updatedAt: stored.updatedAt,
-        capturedAt: nowIso(),
-        operation,
-      });
+      .values(this.revisionValues(id, stored, operation));
+  }
+
+  private revisionValues(id: string, stored: StoredWorkflow, operation: WorkflowRevisionOperation) {
+    return {
+      agentId: this.tenantId,
+      id: randomUUID(),
+      workflowId: id,
+      versionId: stored.versionId,
+      name: stored.workflow.name,
+      active: stored.workflow.active === true,
+      workflow: cloneJson(stored.workflow),
+      createdAt: stored.createdAt,
+      updatedAt: stored.updatedAt,
+      capturedAt: nowIso(),
+      operation,
+    };
   }
 
   async createWorkflow(workflow: WorkflowDefinition): Promise<WorkflowDefinitionResponse> {
-    const id = workflow.id?.trim() || randomUUID();
     const timestamp = nowIso();
     const versionId = randomUUID();
-    const normalized = normalizeWorkflow(workflow, id, workflow.active === true);
+    const normalized = normalizeWorkflow(workflow, undefined, false);
+    const id = normalized.id ?? randomUUID();
     await this.getDb()
       .insert(embeddedWorkflows)
       .values({
@@ -320,24 +354,28 @@ export class EmbeddedWorkflowService extends Service {
     revisionOperation: WorkflowRevisionOperation = 'update'
   ): Promise<WorkflowDefinitionResponse> {
     const current = await this.getStoredWorkflow(id);
-    await this.captureRevision(id, current, revisionOperation);
     const updatedAt = nowIso();
     const versionId = randomUUID();
-    const normalized = normalizeWorkflow(
-      workflow,
-      id,
-      workflow.active ?? current.workflow.active === true
-    );
-    await this.getDb()
-      .update(embeddedWorkflows)
-      .set({
-        name: normalized.name,
-        active: normalized.active === true,
-        workflow: normalized,
-        updatedAt,
-        versionId,
-      })
-      .where(and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id)));
+    const normalized = normalizeWorkflow(workflow, id, current.workflow.active === true);
+    await this.getDb().transaction(async (transaction) => {
+      await transaction
+        .insert(workflowRevisions)
+        .values(this.revisionValues(id, current, revisionOperation));
+      const updatedRows = await transaction
+        .update(embeddedWorkflows)
+        .set({
+          name: normalized.name,
+          active: normalized.active === true,
+          workflow: normalized,
+          updatedAt,
+          versionId,
+        })
+        .where(and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id)))
+        .returning({ id: embeddedWorkflows.id });
+      if (updatedRows.length !== 1) {
+        throw new WorkflowApiError(`Workflow not found: ${id}`, 404);
+      }
+    });
     const response = responseFromStored({
       workflow: normalized,
       createdAt: current.createdAt,

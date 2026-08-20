@@ -115,7 +115,7 @@ describe('cloneJson', () => {
     expectUnbounded(() => cloneJson(`${escapedAtLimit}\u0000`));
   });
 
-  test('never invokes custom or Proxy-synthesized JSON hooks', () => {
+  test('never invokes custom serializers or Proxy traps', () => {
     let calls = 0;
     const custom = {
       toJSON() {
@@ -128,13 +128,25 @@ describe('cloneJson', () => {
     const proxy = new Proxy(
       { safe: true },
       {
-        get(target, key, receiver) {
+        get() {
           calls += 1;
-          return key === 'toJSON' ? () => ({ expanded: true }) : Reflect.get(target, key, receiver);
+          return undefined;
+        },
+        getOwnPropertyDescriptor() {
+          calls += 1;
+          return undefined;
+        },
+        getPrototypeOf() {
+          calls += 1;
+          return Object.prototype;
+        },
+        ownKeys() {
+          calls += 1;
+          return ['safe'];
         },
       }
     );
-    expect(cloneJson(proxy)).toEqual({ safe: true });
+    expectUnbounded(() => cloneJson(proxy));
     expect(calls).toBe(0);
   });
 
@@ -159,19 +171,9 @@ describe('cloneJson', () => {
   });
 
   test('does not traverse input prototypes and preserves __proto__ as data', () => {
-    let prototypeReads = 0;
-    const value = new Proxy(
-      JSON.parse('{"__proto__":{"kept":true},"safe":1}') as Record<string, unknown>,
-      {
-        getPrototypeOf() {
-          prototypeReads += 1;
-          return Object.prototype;
-        },
-      }
-    );
+    const value = JSON.parse('{"__proto__":{"kept":true},"safe":1}') as Record<string, unknown>;
     const cloned = cloneJson(value) as Record<string, unknown>;
 
-    expect(prototypeReads).toBe(0);
     expect(Object.hasOwn(cloned, '__proto__')).toBe(true);
     expect(JSON.parse(JSON.stringify(cloned))).toEqual(
       JSON.parse('{"__proto__":{"kept":true},"safe":1}')
@@ -190,5 +192,30 @@ describe('cloneJson', () => {
       date: '2026-08-20T00:00:00.000Z',
       array: [null, null, 0],
     });
+  });
+
+  test('enforces the exact serialized UTF-8 byte ceiling', () => {
+    const exact = 'x'.repeat(MAX_WORKFLOW_JSON_BYTES - 2);
+    expect(cloneJson(exact)).toBe(exact);
+    expect(new TextEncoder().encode(JSON.stringify(cloneJson(exact))).byteLength).toBe(
+      MAX_WORKFLOW_JSON_BYTES
+    );
+    expectUnbounded(() => cloneJson(`${exact}x`));
+
+    const utf8 = '😀'.repeat(Math.floor(MAX_WORKFLOW_JSON_BYTES / 4));
+    expectUnbounded(() => cloneJson(utf8));
+
+    const exactKey = 'k'.repeat(MAX_WORKFLOW_JSON_BYTES - 9);
+    const exactKeySnapshot = cloneJson({ [exactKey]: null });
+    expect(new TextEncoder().encode(JSON.stringify(exactKeySnapshot)).byteLength).toBe(
+      MAX_WORKFLOW_JSON_BYTES
+    );
+    expectUnbounded(() => cloneJson({ [`${exactKey}k`]: null }));
+
+    const exactEscaped = '"'.repeat((MAX_WORKFLOW_JSON_BYTES - 2) / 2);
+    expect(new TextEncoder().encode(JSON.stringify(cloneJson(exactEscaped))).byteLength).toBe(
+      MAX_WORKFLOW_JSON_BYTES
+    );
+    expectUnbounded(() => cloneJson(`${exactEscaped}"`));
   });
 });
