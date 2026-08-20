@@ -1,12 +1,14 @@
 /**
  * Path and command security checks for computer-use: validates file targets
- * against allowed roots (resolving symlinks), flags dangerous shell commands, and
+ * against the credential/system-path blocklists (re-checked on the canonical
+ * path after resolving symlinks), flags dangerous shell commands, and
  * sanitizes the child-process environment before any spawn.
  */
 import fs from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { formatError } from "@elizaos/core";
 
 export interface PathValidationResult {
   allowed: boolean;
@@ -78,7 +80,10 @@ const SYSTEM_DIR_PATTERNS_UNIX: LabelledPattern[] = [
   { pattern: /^\/usr\/sbin\//i, label: "system admin binary directory" },
   { pattern: /^\/usr\/lib\//i, label: "system library directory" },
   {
-    pattern: /^\/etc\/(?:shadow|sudoers|pam\.d|master\.passwd)/i,
+    // Both spellings: /etc is the canonical form on Linux, but a symlink to
+    // /private/etc on macOS — the canonical-path recheck in
+    // resolveSafeFileTarget only blocks what this list names canonically.
+    pattern: /^(?:\/private)?\/etc\/(?:shadow|sudoers|pam\.d|master\.passwd)/i,
     label: "system auth config",
   },
   { pattern: /^\/System\//i, label: "macOS System directory" },
@@ -166,6 +171,21 @@ const DANGEROUS_COMMAND_PATTERNS: DangerousPattern[] = [
  * `/root` or `/home/<user>` prefix. The full normalized path is always included
  * so the non-anchored browser-store patterns continue to match anywhere.
  */
+let canonicalHomeMemo: string | null = null;
+function canonicalHome(): string {
+  if (canonicalHomeMemo === null) {
+    try {
+      canonicalHomeMemo = fs.realpathSync(os.homedir()).replace(/\\/g, "/");
+    } catch {
+      // error-policy:J3 a missing or unresolvable home (minimal containers)
+      // disables only the canonical-spelling strip; the lexical home strip
+      // below still applies, so nothing is over-allowed.
+      canonicalHomeMemo = "";
+    }
+  }
+  return canonicalHomeMemo;
+}
+
 function credentialRelativePaths(normalized: string): string[] {
   const candidates = new Set<string>([normalized]);
 
@@ -174,10 +194,21 @@ function credentialRelativePaths(normalized: string): string[] {
     candidates.add(normalized.slice(home.length));
   }
 
-  // /root/... and /home/<user>/... — strip the home root so reads of other
-  // users' (and root's) credential files are caught regardless of os.homedir().
+  // The home directory may itself sit behind a symlink (bind-mounted homes in
+  // containers, /var/root -> /private/var/root on macOS). resolveSafeFileTarget
+  // re-validates CANONICAL paths, so the canonical spelling of the home must
+  // strip like the lexical one or a symlink ancestor could smuggle a
+  // credential path past the anchored patterns.
+  const realHome = canonicalHome();
+  if (realHome && realHome !== home && normalized.startsWith(`${realHome}/`)) {
+    candidates.add(normalized.slice(realHome.length));
+  }
+
+  // /root/..., /home/<user>/..., and macOS /var/root (both spellings) — strip
+  // the home root so reads of other users' (and root's) credential files are
+  // caught regardless of os.homedir().
   const otherHomeMatch = normalized.match(
-    /^\/root(?=\/)|^\/home\/[^/]+(?=\/)/i,
+    /^\/root(?=\/)|^\/home\/[^/]+(?=\/)|^(?:\/private)?\/var\/root(?=\/)/i,
   );
   if (otherHomeMatch) {
     candidates.add(normalized.slice(otherHomeMatch[0].length));
@@ -318,36 +349,20 @@ function errnoCode(error: unknown): string {
     : "";
 }
 
-async function pathContainsSymlink(absolutePath: string): Promise<boolean> {
-  const root = path.parse(absolutePath).root;
-  const segments = path
-    .relative(root, absolutePath)
-    .split(path.sep)
-    .filter(Boolean);
-  let current = root;
-
-  for (const segment of segments) {
-    current = path.join(current, segment);
-    try {
-      if ((await lstat(current)).isSymbolicLink()) {
-        return true;
-      }
-    } catch (error) {
-      // error-policy:J3 an absent component means the remaining lexical tail
-      // is absent too; every existing component checked so far was non-symlink.
-      if (errnoCode(error) === "ENOENT") {
-        return false;
-      }
-      throw error;
-    }
-  }
-
-  return false;
-}
-
 /**
  * Resolve and re-validate file paths after lstat/realpath to reduce TOCTOU /
  * symlink escapes (GHSA-qmf5-p9x5-9xr5).
+ *
+ * Symlink ANCESTORS are legitimate and resolved, not refused: on macOS /tmp,
+ * /var, and /etc are symlinks into /private, and usr-merged Linux links /bin
+ * into /usr, so refusing them refuses ordinary paths outright. The security
+ * boundary is the blocklist in validateFilePath, re-run on the CANONICAL
+ * path — a symlink cannot smuggle a blocked location past it, provided the
+ * blocklist covers canonical spellings: /private aliases for the system-dir
+ * patterns, and the canonical home spelling in credentialRelativePaths for
+ * the home-anchored credential patterns. A symlink LEAF is still refused:
+ * the operation would apply to the link target while the caller named the
+ * link.
  */
 export async function resolveSafeFileTarget(
   filePath: string,
@@ -361,15 +376,6 @@ export async function resolveSafeFileTarget(
   const resolved = path.resolve(filePath);
 
   try {
-    // Inspect every existing lexical component before canonicalizing. Checking
-    // only the longest existing descendant misses a symlink earlier in the
-    // path when the symlink target already contains later components.
-    if (await pathContainsSymlink(resolved)) {
-      return {
-        allowed: false,
-        reason: "Symbolic links are not allowed for file operations.",
-      };
-    }
     const stat = await lstat(resolved);
     if (stat.isSymbolicLink()) {
       return {
@@ -388,48 +394,53 @@ export async function resolveSafeFileTarget(
     // does not exist yet) degrades to static path validation; every other
     // failure returns an explicit not-allowed result below.
     if (errnoCode(error) === "ENOENT") {
-      // Walk up to the longest existing parent and realpath that, then
-      // rejoin the tail so a workspace symlink-to-elsewhere cannot hide
-      // behind a not-yet-created descendant. Mirrors
-      // plugins/plugin-coding-tools/src/lib/path-utils.ts#resolveRealPath.
+      // Walk up to the deepest existing ancestor and realpath THAT — which
+      // resolves every symlink in the ancestry — then rejoin the tail, so a
+      // symlink-to-a-blocked-zone cannot hide behind a not-yet-created
+      // descendant while a benign one (e.g. /tmp on macOS) resolves normally.
+      // Same walk shape as plugins/plugin-coding-tools/src/lib/path-utils.ts
+      // #resolveRealPath, but stricter: an existing ancestor that cannot
+      // canonicalize fails closed here instead of falling back lexically.
       const tail: string[] = [path.basename(resolved)];
       let current = path.dirname(resolved);
       while (true) {
         try {
-          const currentStat = await lstat(current);
-          if (currentStat.isSymbolicLink()) {
-            return {
-              allowed: false,
-              reason: "Parent path is a symbolic link.",
-            };
-          }
-          const currentReal = await realpath(current);
-          const target = path.join(currentReal, ...tail);
-          const parentCheck = validateFilePath(target, operation);
-          if (!parentCheck.allowed) {
-            return parentCheck;
-          }
-          return { allowed: true, resolvedPath: target };
-        } catch (parentError) {
+          await lstat(current);
+        } catch (probeError) {
           // error-policy:J3 only ENOENT walks further up; every other
           // failure fails closed.
-          if (errnoCode(parentError) === "ENOENT") {
+          if (errnoCode(probeError) === "ENOENT") {
             const parent = path.dirname(current);
             if (parent === current) {
+              // Loop terminator: unreachable on POSIX (lstat("/") succeeds),
+              // reached on win32 for an unmapped drive root.
               break;
             }
             tail.unshift(path.basename(current));
             current = parent;
             continue;
           }
-          return {
-            allowed: false,
-            reason:
-              parentError instanceof Error
-                ? parentError.message
-                : String(parentError),
-          };
+          return { allowed: false, reason: formatError(probeError) };
         }
+        let currentReal: string;
+        try {
+          currentReal = await realpath(current);
+        } catch (resolveError) {
+          // error-policy:J3 an ancestor that exists (lstat above) but cannot
+          // canonicalize is a dangling symlink or a permission fault mid-walk;
+          // there is no trustworthy canonical target, so fail closed.
+          return { allowed: false, reason: formatError(resolveError) };
+        }
+        // Only the rejoined full target is validated, not each tail component
+        // mkdir -p will create. That is sound while the system-dir patterns
+        // stay ^-anchored (a blocked prefix implies a blocked target); a
+        // $-anchored system-dir pattern would need per-component checks here.
+        const target = path.join(currentReal, ...tail);
+        const parentCheck = validateFilePath(target, operation);
+        if (!parentCheck.allowed) {
+          return parentCheck;
+        }
+        return { allowed: true, resolvedPath: target };
       }
       const fallback = validateFilePath(resolved, operation);
       if (!fallback.allowed) {
@@ -440,7 +451,7 @@ export async function resolveSafeFileTarget(
 
     return {
       allowed: false,
-      reason: error instanceof Error ? error.message : String(error),
+      reason: formatError(error),
     };
   }
 }
