@@ -352,6 +352,71 @@ describe("shared runtime long-term transcript context", () => {
     expect(JSON.stringify(projected)).toContain("origin guard");
   });
 
+  test("a lifecycle event does not break an immediate deictic follow-up", () => {
+    const projected = sharedRuntimeModelHistoryMessages(
+      [
+        { role: "user", content: "Search for the ARC resource proxy." },
+        {
+          role: "assistant",
+          content: "Here is what I found.",
+          grounding: {
+            kind: "web_search",
+            query: "NubsCarson Tessera GitHub",
+            provider: "parallel",
+            text: "Tessera validates ARC resources through an origin guard.",
+            observedAt: 1,
+            truncated: false,
+          },
+        },
+        { role: "system", content: "The voice session ended." },
+      ],
+      "What did you find?",
+      1,
+    );
+
+    expect(projected.filter((message) => message.role === "tool")).toHaveLength(1);
+    expect(JSON.stringify(projected)).toContain("origin guard");
+  });
+
+  test("a topical grounding outranks a newer unrelated deictic candidate", () => {
+    const projected = sharedRuntimeModelHistoryMessages(
+      [
+        { role: "user", content: "Find the Tessera architecture." },
+        {
+          role: "assistant",
+          content: "Tessera result.",
+          grounding: {
+            kind: "web_search",
+            query: "Tessera architecture",
+            provider: "parallel",
+            text: "Tessera is an ARC resource proxy.",
+            observedAt: 1,
+            truncated: false,
+          },
+        },
+        { role: "user", content: "Find the Paris weather." },
+        {
+          role: "assistant",
+          content: "Weather result.",
+          grounding: {
+            kind: "web_search",
+            query: "Paris weather",
+            provider: "exa",
+            text: "Paris is cloudy.",
+            observedAt: 2,
+            truncated: false,
+          },
+        },
+      ],
+      "What did you find about Tessera?",
+      2,
+    );
+
+    const encoded = JSON.stringify(projected);
+    expect(encoded).toContain("ARC resource proxy");
+    expect(encoded).not.toContain("Paris is cloudy");
+  });
+
   test("the newest matching search supersedes older contradictory results", () => {
     const projected = sharedRuntimeModelHistoryMessages(
       [

@@ -77,7 +77,7 @@ const GROUNDING_STOP_WORDS = new Set([
   "you",
 ]);
 const DEICTIC_GROUNDING_FOLLOW_UP =
-  /\b(?:it|that|this|those|these|they|them|result|results|source|sources|finding|findings|corrected|correction)\b/i;
+  /\b(?:it|that|this|those|these|they|them|result|results|source|sources|find|found|finding|findings|corrected|correction)\b/i;
 const encoder = new TextEncoder();
 
 export type SharedRuntimeHistoryMessageLike = SharedRuntimeHistoryMessage;
@@ -224,7 +224,7 @@ function selectedGrounding(
   now: number,
 ): SelectedGrounding | undefined {
   const query = groundingWords(queryText);
-  const ranked = history.flatMap((message, index) => {
+  const candidates = history.flatMap((message, index) => {
     const grounding =
       message.role === "assistant" ? parseSharedPublicWebGrounding(message.grounding) : undefined;
     if (!grounding) return [];
@@ -239,15 +239,29 @@ function selectedGrounding(
     const trustedWords = groundingWords(`${precedingUserQuery}\n${grounding.query}`);
     let overlap = 0;
     for (const word of query) if (trustedWords.has(word)) overlap += 1;
-    const immediate = index === history.length - 1;
-    return overlap > 0 || (immediate && DEICTIC_GROUNDING_FOLLOW_UP.test(queryText))
-      ? [{ index, overlap, grounding }]
-      : [];
+    const immediate = !history
+      .slice(index + 1)
+      .some((laterMessage) => laterMessage.role === "user" || laterMessage.role === "assistant");
+    return [{ index, overlap, immediate, grounding }];
   });
-  const latest = ranked.sort(
-    (left, right) =>
-      right.grounding.observedAt - left.grounding.observedAt || right.index - left.index,
-  )[0];
+  const topical = candidates.filter((candidate) => candidate.overlap > 0);
+  const ranked =
+    topical.length > 0
+      ? topical.sort(
+          (left, right) =>
+            right.overlap - left.overlap ||
+            right.grounding.observedAt - left.grounding.observedAt ||
+            right.index - left.index,
+        )
+      : DEICTIC_GROUNDING_FOLLOW_UP.test(queryText)
+        ? candidates
+            .filter((candidate) => candidate.immediate)
+            .sort(
+              (left, right) =>
+                right.grounding.observedAt - left.grounding.observedAt || right.index - left.index,
+            )
+        : [];
+  const latest = ranked[0];
   if (!latest) return undefined;
   if (latest.grounding.kind === "web_search_unavailable") {
     return { ...latest, status: "unavailable" };
