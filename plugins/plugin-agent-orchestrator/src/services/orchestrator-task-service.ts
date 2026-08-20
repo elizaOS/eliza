@@ -3468,7 +3468,8 @@ export class OrchestratorTaskService extends Service {
   ): Promise<void> {
     try {
       const doc = await this.store.getTask(taskId);
-      if (!doc || doc.task.metadata?.autoSubmittedAt) return;
+      if (!doc) return;
+      const alreadySubmitted = Boolean(doc.task.metadata?.autoSubmittedAt);
       const session = doc.sessions.find((s) => s.sessionId === sessionId);
       const acp = this.acp();
       const liveMeta = acp
@@ -3488,6 +3489,45 @@ export class OrchestratorTaskService extends Service {
       if (!workspaceService) return;
       const workspace = workspaceService.getWorkspace(workspaceId);
       if (!workspace) return;
+      if (alreadySubmitted) {
+        // Sync leg for corrective laps: each verify-failed round makes the
+        // child commit more work, but the full submit is claim-once — the
+        // early return left every later commit UNPUSHED, so the residuals
+        // gate flagged "commits not pushed" forever and parked a task whose
+        // PR was already open (live 2026-08-20: three laps in 36s, GLOSSARY
+        // run). Push pending commits to the registered branch and let the
+        // next verify see the true state.
+        const { execFile: execSync } = await import("node:child_process");
+        const syncGit = (args: string[]) =>
+          new Promise<string>((resolve, reject) =>
+            execSync(
+              "git",
+              ["-C", workspace.path, ...args],
+              { timeout: 30_000 },
+              (err, stdout) => (err ? reject(err) : resolve(stdout.trim())),
+            ),
+          );
+        try {
+          const unpushed = await syncGit(["rev-list", "@{u}..HEAD"]).catch(
+            () => "",
+          );
+          if (unpushed) {
+            await syncGit(["push"]);
+            this.log("info", "pushed corrective-lap commits to the PR branch", {
+              taskId,
+              sessionId,
+            });
+          }
+        } catch (err) {
+          // error-policy:J6 best-effort sync; the residuals gate reports the
+          // still-unpushed truth and the corrective loop continues.
+          this.log("warn", "corrective-lap push failed", {
+            taskId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        return;
+      }
       // Claim before the slow work so a redelivered task_complete cannot race
       // a duplicate submit.
       await this.store.updateTask(taskId, {
