@@ -28,9 +28,10 @@ import {
   NOTIFICATION_PUSH_SERVICE_TYPE,
   NotificationPushService,
 } from "../services/push/notification-push-service.ts";
-import type {
-  PushPlatform,
-  PushTokenRegistry,
+import {
+  MAX_PUSH_TOKEN_LENGTH,
+  type PushPlatform,
+  type PushTokenRegistry,
 } from "../services/push/push-token-registry.ts";
 
 export interface PushTokenRouteState {
@@ -91,6 +92,10 @@ export async function handlePushTokenRoute(
     const token = typeof body.token === "string" ? body.token.trim() : "";
     if (!token) {
       helpers.error(res, "token is required", 400);
+      return true;
+    }
+    if (token.length > MAX_PUSH_TOKEN_LENGTH) {
+      helpers.error(res, "token exceeds the length cap", 400);
       return true;
     }
     await registry.register(platform, token);

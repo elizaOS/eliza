@@ -30,6 +30,20 @@ export interface PushTokenRecord {
 /** Stable cache key the registry persists under (scoped per agent). */
 const cacheKeyFor = (agentId: string): string => `push-tokens:${agentId}`;
 
+/**
+ * Hard cap on distinct tokens stored per agent. A device re-register is an
+ * upsert; unique tokens are unbounded on origin and `persist()` writes the
+ * entire Map to the durable runtime cache. Oldest `createdAt` is evicted first.
+ */
+export const MAX_PUSH_TOKENS_PER_AGENT = 64;
+
+/**
+ * Hard cap on a single token string. The HTTP body reader already stops at
+ * 8 KiB; this keeps a direct `register()` caller from planting a huge Map key
+ * and a huge cache row.
+ */
+export const MAX_PUSH_TOKEN_LENGTH = 4096;
+
 export class PushTokenRegistry {
   private tokens = new Map<string, PushTokenRecord>();
   private hydrated = false;
@@ -65,9 +79,7 @@ export class PushTokenRegistry {
     );
     if (Array.isArray(stored)) {
       this.tokens = new Map(
-        stored
-          .filter(isPushTokenRecord)
-          .map((record) => [record.token, record]),
+        newestPushTokenRecords(stored).map((record) => [record.token, record]),
       );
     }
     this.hydrated = true;
@@ -97,6 +109,9 @@ export class PushTokenRegistry {
     if (!trimmed) {
       throw new Error("[PushTokenRegistry] token is required");
     }
+    if (trimmed.length > MAX_PUSH_TOKEN_LENGTH) {
+      throw new Error("[PushTokenRegistry] token exceeds the length cap");
+    }
     await this.enqueueMutation(async () => {
       await this.hydrate();
       this.tokens.set(trimmed, {
@@ -104,6 +119,7 @@ export class PushTokenRegistry {
         platform,
         createdAt: Date.now(),
       });
+      evictOldestPushTokens(this.tokens);
       await this.persist();
     });
   }
@@ -136,6 +152,34 @@ export class PushTokenRegistry {
   async count(): Promise<number> {
     await this.hydrate();
     return this.tokens.size;
+  }
+}
+
+function newestPushTokenRecords(stored: unknown[]): PushTokenRecord[] {
+  const valid = stored.filter(isPushTokenRecord);
+  if (valid.length <= MAX_PUSH_TOKENS_PER_AGENT) {
+    return valid;
+  }
+  return valid
+    .slice()
+    .sort((left, right) => right.createdAt - left.createdAt)
+    .slice(0, MAX_PUSH_TOKENS_PER_AGENT);
+}
+
+function evictOldestPushTokens(tokens: Map<string, PushTokenRecord>): void {
+  while (tokens.size > MAX_PUSH_TOKENS_PER_AGENT) {
+    let oldestKey: string | null = null;
+    let oldestAt = Number.POSITIVE_INFINITY;
+    for (const [key, record] of tokens) {
+      if (record.createdAt < oldestAt) {
+        oldestAt = record.createdAt;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey === null) {
+      break;
+    }
+    tokens.delete(oldestKey);
   }
 }
 

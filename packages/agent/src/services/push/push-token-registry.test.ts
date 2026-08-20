@@ -10,6 +10,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  MAX_PUSH_TOKEN_LENGTH,
+  MAX_PUSH_TOKENS_PER_AGENT,
   type PushTokenRecord,
   PushTokenRegistry,
 } from "./push-token-registry.ts";
@@ -185,5 +187,63 @@ describe("PushTokenRegistry", () => {
       "android-token",
       "ios-token",
     ]);
+  });
+
+  it("evicts the oldest unique token once the per-agent cap is exceeded", async () => {
+    for (let i = 0; i < MAX_PUSH_TOKENS_PER_AGENT; i++) {
+      await registry.register("ios", `tok-${i}`);
+    }
+    expect(await registry.count()).toBe(MAX_PUSH_TOKENS_PER_AGENT);
+
+    await registry.register("android", "tok-newest");
+    const list = await registry.list();
+    expect(list).toHaveLength(MAX_PUSH_TOKENS_PER_AGENT);
+    expect(list.map((r) => r.token)).toContain("tok-newest");
+    expect(list.map((r) => r.token)).not.toContain("tok-0");
+    expect(list.map((r) => r.token)).toContain("tok-1");
+
+    const persisted = ctx.cache.get(
+      "push-tokens:00000000-0000-0000-0000-0000000000aa",
+    ) as PushTokenRecord[];
+    expect(persisted).toHaveLength(MAX_PUSH_TOKENS_PER_AGENT);
+    expect(persisted.map((r) => r.token)).not.toContain("tok-0");
+  });
+
+  it("does not grow the registry when an existing token is re-registered at the cap", async () => {
+    for (let i = 0; i < MAX_PUSH_TOKENS_PER_AGENT; i++) {
+      await registry.register("ios", `tok-${i}`);
+    }
+    await registry.register("android", "tok-0");
+    const list = await registry.list();
+    expect(list).toHaveLength(MAX_PUSH_TOKENS_PER_AGENT);
+    expect(list.find((r) => r.token === "tok-0")?.platform).toBe("android");
+  });
+
+  it("hydrates only the newest capped records from an oversized cache dump", async () => {
+    const dumped: PushTokenRecord[] = [];
+    for (let i = 0; i < MAX_PUSH_TOKENS_PER_AGENT + 40; i++) {
+      dumped.push({
+        token: `old-${i}`,
+        platform: "ios",
+        createdAt: i + 1,
+      });
+    }
+    ctx.cache.set(
+      "push-tokens:00000000-0000-0000-0000-0000000000aa",
+      dumped,
+    );
+    const fresh = new PushTokenRegistry(ctx.runtime);
+    const list = await fresh.list();
+    expect(list).toHaveLength(MAX_PUSH_TOKENS_PER_AGENT);
+    expect(list.map((r) => r.token)).toContain(
+      `old-${MAX_PUSH_TOKENS_PER_AGENT + 39}`,
+    );
+    expect(list.map((r) => r.token)).not.toContain("old-0");
+  });
+
+  it("rejects a token longer than the length cap", async () => {
+    const huge = "x".repeat(MAX_PUSH_TOKEN_LENGTH + 1);
+    await expect(registry.register("ios", huge)).rejects.toThrow(/length cap/);
+    expect(await registry.count()).toBe(0);
   });
 });
