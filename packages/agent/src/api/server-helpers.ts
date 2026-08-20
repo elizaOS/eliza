@@ -2,7 +2,8 @@
  * General-purpose helper functions extracted from server.ts.
  *
  * Utility functions for plugin services, UUID validation, state persistence,
- * config, and package root resolution.
+ * config, and package root resolution. Blocked-object-key sanitization lives
+ * in `blocked-object-keys.ts` and is re-exported here for existing callers.
  */
 
 import crypto from "node:crypto";
@@ -56,7 +57,6 @@ import {
 } from "../services/plugin-manager-types.ts";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import { persistImageThumbnail, persistMediaBytes } from "./media-store.ts";
-import { isBlockedObjectKey } from "./server-helpers-config.ts";
 import type {
   ChatAttachmentWithData,
   ChatImageAttachment,
@@ -67,6 +67,14 @@ import {
   resolvePluginEvmLoaded,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
+
+export {
+  BLOCKED_OBJECT_GRAPH_UNBOUNDED,
+  cloneWithoutBlockedObjectKeys,
+  hasBlockedObjectKeyDeep,
+  MAX_BLOCKED_OBJECT_DEPTH,
+  MAX_BLOCKED_OBJECT_NODES,
+} from "./blocked-object-keys.ts";
 
 // ---------------------------------------------------------------------------
 // Service accessors
@@ -448,37 +456,6 @@ export function decodePathComponent(
     return null;
   }
   return decoded.value;
-}
-
-// ---------------------------------------------------------------------------
-// Blocked-key helpers
-// ---------------------------------------------------------------------------
-
-export function hasBlockedObjectKeyDeep(value: unknown): boolean {
-  if (value === null || value === undefined) return false;
-  if (Array.isArray(value)) return value.some(hasBlockedObjectKeyDeep);
-  if (typeof value !== "object") return false;
-
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (isBlockedObjectKey(key)) return true;
-    if (hasBlockedObjectKeyDeep(child)) return true;
-  }
-  return false;
-}
-
-export function cloneWithoutBlockedObjectKeys<T>(value: T): T {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => cloneWithoutBlockedObjectKeys(item)) as T;
-  }
-  if (typeof value !== "object") return value;
-
-  const out: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (isBlockedObjectKey(key)) continue;
-    out[key] = cloneWithoutBlockedObjectKeys(child);
-  }
-  return out as T;
 }
 
 // ---------------------------------------------------------------------------
