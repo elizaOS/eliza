@@ -83,6 +83,7 @@ import {
   type LifeOpsOccurrence,
   type LifeOpsOccurrenceView,
   type LifeOpsPersonalBaseline,
+  type LifeOpsProgressEvent,
   type LifeOpsProposalProposer,
   type LifeOpsProposalStatus,
   type LifeOpsRelationshipInteraction,
@@ -4084,6 +4085,88 @@ export class LifeOpsRepository {
    * when the id already existed. Used by circadian event emission to dedupe
    * across runtime restarts (same state transition -> same id).
    */
+  /**
+   * Appends one quota progress increment; a repeated (agent, occurrence,
+   * idempotency key) is a single-statement no-op so message replays never
+   * double-count. Returns true only when the row was inserted.
+   */
+  async appendProgressEventIfNew(
+    event: LifeOpsProgressEvent,
+  ): Promise<boolean> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_task_progress_events (
+        id, agent_id, definition_id, occurrence_id, local_date_key,
+        idempotency_key, quantity, unit, note, actor, created_at
+      ) VALUES (
+        ${sqlQuote(event.id)},
+        ${sqlQuote(event.agentId)},
+        ${sqlQuote(event.definitionId)},
+        ${sqlQuote(event.occurrenceId)},
+        ${sqlQuote(event.localDateKey)},
+        ${sqlQuote(event.idempotencyKey)},
+        ${Math.trunc(event.quantity)},
+        ${sqlQuote(event.unit)},
+        ${event.note === null ? "NULL" : sqlQuote(event.note)},
+        ${sqlQuote(event.actor)},
+        ${sqlQuote(event.createdAt)}
+      )
+      ON CONFLICT (agent_id, occurrence_id, idempotency_key) DO NOTHING
+      RETURNING id`,
+    );
+    return rows.length > 0;
+  }
+
+  /** Derived completed count for an occurrence: always summed from the append-only rows. */
+  async sumProgressEvents(
+    agentId: string,
+    occurrenceId: string,
+  ): Promise<number> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT COALESCE(SUM(quantity), 0) AS total
+         FROM app_lifeops.life_task_progress_events
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND occurrence_id = ${sqlQuote(occurrenceId)}`,
+    );
+    const raw = rows[0]?.total;
+    const total = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(total)) {
+      throw new Error(
+        `LifeOpsRepository: non-numeric progress sum for occurrence ${occurrenceId}`,
+      );
+    }
+    return Math.trunc(total);
+  }
+
+  async listProgressEvents(
+    agentId: string,
+    occurrenceId: string,
+  ): Promise<LifeOpsProgressEvent[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_task_progress_events
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND occurrence_id = ${sqlQuote(occurrenceId)}
+        ORDER BY created_at ASC, id ASC`,
+    );
+    return rows.map((row) => ({
+      id: String(row.id),
+      agentId: String(row.agent_id),
+      definitionId: String(row.definition_id),
+      occurrenceId: String(row.occurrence_id),
+      localDateKey: String(row.local_date_key),
+      idempotencyKey: String(row.idempotency_key),
+      quantity: Number(row.quantity),
+      unit: String(row.unit),
+      note:
+        row.note === null || row.note === undefined ? null : String(row.note),
+      actor: String(row.actor),
+      createdAt: String(row.created_at),
+    }));
+  }
+
   async createAuditEventIfNew(event: LifeOpsAuditEvent): Promise<boolean> {
     const rows = await executeRawSql(
       this.runtime,

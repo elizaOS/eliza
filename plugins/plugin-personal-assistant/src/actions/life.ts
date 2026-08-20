@@ -1503,6 +1503,19 @@ function summarizeCadence(cadence: LifeOpsCadence): string {
         .map((slot) => slot.label.trim() || `${slot.minuteOfDay}`)
         .filter(Boolean)
         .join(" and ");
+    case "count_per_day": {
+      const work =
+        cadence.perOccurrenceWork !== null
+          ? `${cadence.perOccurrenceWork} `
+          : "";
+      const timing =
+        cadence.timing.kind === "windows"
+          ? `in the ${cadence.timing.windows.join(", ")}`
+          : "any time";
+      return `${work}${cadence.targetCount} ${cadence.unit}${
+        cadence.targetCount === 1 ? "" : "s"
+      } a day, ${timing}`;
+    }
     case "interval":
       return cadenceWindows.length > 0
         ? `every ${cadence.everyMinutes} minutes in ${cadenceWindows.join(", ")}`
@@ -1894,37 +1907,6 @@ function buildSlotsFromWindows(
       durationMinutes: preset.durationMinutes,
     };
   });
-}
-
-function buildDistributedDailySlots(count: number): LifeOpsDailySlot[] {
-  const normalizedCount = Math.max(1, Math.min(6, count));
-  let minutes: number[];
-  switch (normalizedCount) {
-    case 1:
-      minutes = [9 * 60];
-      break;
-    case 2:
-      minutes = [8 * 60, 21 * 60];
-      break;
-    case 3:
-      minutes = [8 * 60, 13 * 60, 20 * 60];
-      break;
-    case 4:
-      minutes = [8 * 60, 12 * 60, 16 * 60, 20 * 60];
-      break;
-    case 5:
-      minutes = [8 * 60, 11 * 60, 14 * 60, 17 * 60, 20 * 60];
-      break;
-    default:
-      minutes = [8 * 60, 10 * 60, 12 * 60, 14 * 60, 17 * 60, 20 * 60];
-      break;
-  }
-  return minutes.map((minuteOfDay, index) => ({
-    key: `slot-${index + 1}`,
-    label: `Time ${index + 1}`,
-    minuteOfDay,
-    durationMinutes: 45,
-  }));
 }
 
 function inferWindowFromMinuteOfDay(
@@ -2461,14 +2443,54 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
         : typeof record.count === "string"
           ? Number(record.count)
           : NaN;
+    // A bare count ("3 times a day") is a flexible daily quota: never
+    // fabricate wall-clock slot times the owner did not name.
     if (Number.isFinite(count) && count > 0) {
       return {
-        kind: "times_per_day",
-        slots: buildDistributedDailySlots(count),
-        visibilityLeadMinutes: 90,
-        visibilityLagMinutes: 180,
+        kind: "count_per_day",
+        targetCount: Math.trunc(count),
+        unit: "time",
+        perOccurrenceWork: null,
+        timing: { kind: "anytime" },
       };
     }
+  }
+
+  if (cadenceKind === "count_per_day") {
+    const rawTarget = record.targetCount ?? record.count;
+    const targetCount =
+      typeof rawTarget === "number"
+        ? rawTarget
+        : typeof rawTarget === "string"
+          ? Number(rawTarget)
+          : NaN;
+    if (Number.isFinite(targetCount) && targetCount > 0) {
+      const timingRecord =
+        record.timing && typeof record.timing === "object"
+          ? (record.timing as Record<string, unknown>)
+          : undefined;
+      const timingWindows = normalizeLifeWindows(
+        timingRecord?.windows ?? record.windows,
+      );
+      return {
+        kind: "count_per_day",
+        targetCount: Math.trunc(targetCount),
+        unit:
+          typeof record.unit === "string" && record.unit.trim().length > 0
+            ? record.unit.trim()
+            : "time",
+        perOccurrenceWork:
+          typeof record.perOccurrenceWork === "string" &&
+          record.perOccurrenceWork.trim().length > 0
+            ? record.perOccurrenceWork.trim()
+            : null,
+        timing:
+          timingWindows.length > 0
+            ? { kind: "windows", windows: timingWindows }
+            : { kind: "anytime" },
+      };
+    }
+    return undefined;
   }
 
   if (cadenceKind === "daily") {
@@ -2646,15 +2668,20 @@ export function buildCadenceFromLlmParams(
     }
     const count = params.timesPerDay;
     if (!count || count <= 0) return null;
+    // The owner gave a count with no clock times: this is a flexible daily
+    // quota. Fabricating distributed minuteOfDay slots here invented
+    // 08:00/13:00/20:00 schedules the owner never asked for (#17025); an
+    // explicitly named window set constrains the quota without slot times.
     return {
       cadence: {
-        kind: "times_per_day",
-        slots: buildDistributedDailySlots(count).map((slot) => ({
-          ...slot,
-          durationMinutes: slotDuration,
-        })),
-        visibilityLeadMinutes: 90,
-        visibilityLagMinutes: 180,
+        kind: "count_per_day",
+        targetCount: Math.trunc(count),
+        unit: "time",
+        perOccurrenceWork: null,
+        timing:
+          windows.length > 0
+            ? { kind: "windows", windows }
+            : { kind: "anytime" },
       },
     };
   }
@@ -4763,7 +4790,11 @@ async function runLifeOperationHandlerInner(
           | undefined) ??
         (ownerSurfaceActionName === "OWNER_TODOS" ? "task" : "habit");
       const leadShaped =
-        cadence.kind === "unscheduled"
+        // An anytime quota has no fixed clock time to remind at: a default
+        // offset-0 step would fire at local midnight (the occurrence's day
+        // start). Check-in nudges for quotas are policy work, not a default
+        // due-time reminder.
+        cadence.kind === "unscheduled" || cadence.kind === "count_per_day"
           ? { cadence, plan: null }
           : applyLeadUpReminderShape({
               cadence,
@@ -5846,6 +5877,45 @@ async function runLifeOperationHandlerInner(
         runtime.agentId,
         resolvedTargetId,
       );
+      const priorView = await service.repository.getOccurrenceView(
+        runtime.agentId,
+        resolvedTargetId,
+      );
+      // A count-per-day quota occurrence treats "done"/"did one" as ONE
+      // increment toward the daily target, not a terminal completion; the
+      // occurrence completes itself when the derived count reaches the
+      // target. The message id keys the increment so a replayed or
+      // re-planned turn never double-counts.
+      if (
+        priorView &&
+        priorView.cadence.kind === "count_per_day" &&
+        priorView.state !== "completed"
+      ) {
+        const progressResult = await service.recordOccurrenceProgress(
+          resolvedTargetId,
+          {
+            idempotencyKey: `msg:${message.id}`,
+            note: detailString(details, "note"),
+          },
+        );
+        const { progress } = progressResult;
+        const unitLabel =
+          progress.completedCount === 1 ? progress.unit : `${progress.unit}s`;
+        const fallback = progressResult.completed
+          ? `That's ${progress.targetCount}/${progress.targetCount} — "${priorView.title}" is done for today.`
+          : `Logged ${progress.completedCount}/${progress.targetCount} ${unitLabel} for "${priorView.title}" — ${progress.remainingCount} to go.`;
+        return {
+          success: true,
+          text: fallback,
+          data: toActionData({
+            ...progressResult.occurrence,
+            progress,
+            applied: progressResult.applied,
+            progressEventId: progressResult.progressEventId,
+            effectReplayed: !progressResult.applied,
+          }),
+        };
+      }
       const completed = await service.completeOccurrence(resolvedTargetId, {
         note: detailString(details, "note"),
       });

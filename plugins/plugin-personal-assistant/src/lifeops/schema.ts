@@ -172,6 +172,43 @@ export const lifeTaskOccurrences = appLifeopsPgSchema.table(
   ],
 );
 
+/**
+ * Append-only per-increment progress for count-quota occurrences. The
+ * completed count is always derived by summing rows for an occurrence — it is
+ * never cached on the occurrence row, so concurrent increments cannot clobber
+ * each other through full-row occurrence upserts. The (agent, occurrence,
+ * idempotency key) uniqueness makes replayed increments single-statement
+ * no-ops (INSERT .. ON CONFLICT DO NOTHING), mirroring life_audit_events.
+ */
+export const lifeTaskProgressEvents = appLifeopsPgSchema.table(
+  "life_task_progress_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    definitionId: text("definition_id").notNull(),
+    occurrenceId: text("occurrence_id").notNull(),
+    localDateKey: text("local_date_key").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    unit: text("unit").notNull(),
+    note: text("note"),
+    actor: text("actor").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.occurrenceId, t.idempotencyKey),
+    index("idx_life_task_progress_events_occurrence").on(
+      t.agentId,
+      t.occurrenceId,
+    ),
+    index("idx_life_task_progress_events_definition_day").on(
+      t.agentId,
+      t.definitionId,
+      t.localDateKey,
+    ),
+  ],
+);
+
 // NOTE: the goal tables (life_goal_definitions / life_goal_links) were carved
 // out to @elizaos/plugin-goals (`app_goals`). These app_lifeops defs remain
 // only as the non-destructive migration SOURCE — PA's repository (incl. the
@@ -1967,6 +2004,7 @@ export const lifeOpsSchema = {
   lifeAccountPrivacy,
   lifeTaskDefinitions,
   lifeTaskOccurrences,
+  lifeTaskProgressEvents,
   lifeGoalDefinitions,
   lifeGoalLinks,
   lifeReminderPlans,

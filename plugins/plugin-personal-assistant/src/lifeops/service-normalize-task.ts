@@ -503,6 +503,46 @@ export function normalizeCadence(
         slots,
       }) as LifeOpsCadence;
     }
+    case "count_per_day": {
+      const targetCount = Math.trunc(
+        normalizeFiniteNumber(cadence.targetCount, "cadence.targetCount"),
+      );
+      if (targetCount <= 0 || targetCount > 100) {
+        fail(400, "cadence.targetCount must be between 1 and 100");
+      }
+      const unit = requireNonEmptyString(cadence.unit, "cadence.unit");
+      const perOccurrenceWork =
+        cadence.perOccurrenceWork === null
+          ? null
+          : requireNonEmptyString(
+              cadence.perOccurrenceWork,
+              "cadence.perOccurrenceWork",
+            );
+      if (
+        !cadence.timing ||
+        (cadence.timing.kind !== "anytime" && cadence.timing.kind !== "windows")
+      ) {
+        fail(400, "cadence.timing.kind must be anytime or windows");
+      }
+      const timing =
+        cadence.timing.kind === "anytime"
+          ? ({ kind: "anytime" } as const)
+          : ({
+              kind: "windows",
+              windows: normalizeWindowNames(
+                cadence.timing.windows,
+                "cadence.timing.windows",
+                windowPolicy,
+              ),
+            } as const);
+      return withVisibility({
+        kind: "count_per_day",
+        targetCount,
+        unit,
+        perOccurrenceWork,
+        timing,
+      }) as LifeOpsCadence;
+    }
     case "interval": {
       const everyMinutes = Math.trunc(
         normalizeFiniteNumber(cadence.everyMinutes, "cadence.everyMinutes"),

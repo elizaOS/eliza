@@ -14,6 +14,8 @@ import type {
   LifeOpsReminderPlan,
   LifeOpsReminderStep,
   LifeOpsTaskDefinition,
+  RecordLifeOpsProgressRequest,
+  RecordLifeOpsProgressResult,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
 } from "../../contracts/index.js";
@@ -455,6 +457,121 @@ export class DefinitionsDomain {
       {},
     );
     await this.deps.syncWebsiteAccessState();
+  }
+
+  /**
+   * Records one increment toward a count-per-day quota occurrence. The write
+   * is a single-statement idempotent append keyed by the caller's idempotency
+   * key, and the day's completed count is always re-derived from the
+   * append-only event table so concurrent increments can neither lose nor
+   * exceed the target: when the derived count reaches the target the
+   * occurrence is terminal-completed through the ordinary (retry-idempotent)
+   * completion path, and further increments are refused.
+   */
+  async recordOccurrenceProgress(
+    occurrenceId: string,
+    request: RecordLifeOpsProgressRequest,
+    now = new Date(),
+  ): Promise<RecordLifeOpsProgressResult> {
+    const { definition, occurrence } = await this.deps.getFreshOccurrence(
+      occurrenceId,
+      now,
+    );
+    const cadence = definition.cadence;
+    if (cadence.kind !== "count_per_day") {
+      fail(409, "occurrence does not track count-per-day progress");
+    }
+    const idempotencyKey = requireNonEmptyString(
+      request.idempotencyKey,
+      "idempotencyKey",
+    );
+    const rawQuantity = request.quantity ?? 1;
+    if (
+      typeof rawQuantity !== "number" ||
+      !Number.isFinite(rawQuantity) ||
+      Math.trunc(rawQuantity) <= 0
+    ) {
+      fail(400, "quantity must be a positive integer");
+    }
+    const quantity = Math.trunc(rawQuantity);
+    if (["skipped", "expired", "muted"].includes(occurrence.state)) {
+      fail(409, `progress cannot be recorded from state ${occurrence.state}`);
+    }
+    const localDateKey = occurrence.metadata.localDateKey;
+    if (typeof localDateKey !== "string" || localDateKey.length === 0) {
+      fail(500, "quota occurrence is missing its localDateKey");
+    }
+
+    const note = normalizeOptionalString(request.note ?? undefined) ?? null;
+    let applied = false;
+    let progressEventId: string | null = null;
+    const alreadyComplete = occurrence.state === "completed";
+    if (!alreadyComplete) {
+      const eventId = crypto.randomUUID();
+      applied = await this.ctx.repository.appendProgressEventIfNew({
+        id: eventId,
+        agentId: this.ctx.agentId(),
+        definitionId: definition.id,
+        occurrenceId: occurrence.id,
+        localDateKey,
+        idempotencyKey,
+        quantity,
+        unit: cadence.unit,
+        note,
+        actor: "owner",
+        createdAt: now.toISOString(),
+      });
+      if (applied) {
+        progressEventId = eventId;
+        await this.ctx.recordAudit(
+          "occurrence_progress_recorded",
+          "occurrence",
+          occurrence.id,
+          "quota progress increment recorded",
+          { idempotencyKey, quantity, note },
+          {
+            definitionId: definition.id,
+            occurrenceKey: occurrence.occurrenceKey,
+          },
+        );
+      }
+    }
+
+    const rawCount = await this.ctx.repository.sumProgressEvents(
+      this.ctx.agentId(),
+      occurrence.id,
+    );
+    const completedCount = Math.min(rawCount, cadence.targetCount);
+    const reachedTarget = rawCount >= cadence.targetCount;
+    if (reachedTarget && !alreadyComplete) {
+      // completeOccurrence is retry-idempotent, so a concurrent increment
+      // that also crossed the target results in one terminal completion.
+      await this.completeOccurrence(
+        occurrence.id,
+        { note: note ?? undefined },
+        now,
+      );
+    }
+    const view = await this.ctx.repository.getOccurrenceView(
+      this.ctx.agentId(),
+      occurrence.id,
+    );
+    if (!view) {
+      fail(404, "life-ops occurrence not found after progress record");
+    }
+    return {
+      occurrence: view,
+      progress: {
+        completedCount,
+        targetCount: cadence.targetCount,
+        remainingCount: Math.max(cadence.targetCount - completedCount, 0),
+        unit: cadence.unit,
+        perOccurrenceWork: cadence.perOccurrenceWork,
+      },
+      applied,
+      completed: reachedTarget || alreadyComplete,
+      progressEventId,
+    };
   }
 
   async completeOccurrence(
