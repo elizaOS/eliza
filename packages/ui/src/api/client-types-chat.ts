@@ -689,6 +689,8 @@ export interface MemoryFeedQuery {
   type?: string;
   limit?: number;
   before?: number;
+  /** ID tie-breaker paired with `before` for an exclusive stable cursor. */
+  beforeId?: string;
 }
 
 export interface MemoryFeedResponse {

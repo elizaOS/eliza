@@ -216,6 +216,76 @@ describe("memory viewer incremental pagination (#22061)", () => {
     expect(response).toMatchObject({ count: 50, hasMore: true });
   });
 
+  test("pages every tied-timestamp feed row exactly once with the id cursor", async () => {
+    const createdAt = 1_700_000_000_000;
+    const rows = Array.from({ length: 120 }, (_, i) =>
+      makeRow(i, `tied row ${i}`, OTHER, createdAt),
+    );
+    const { runtime } = makeRuntime({ messages: rows });
+    const seen: string[] = [];
+    let path = "/api/memories/feed?type=messages&limit=50";
+
+    for (let pageNumber = 0; pageNumber < 3; pageNumber++) {
+      const page = await get(runtime, path);
+      const memories = page.memories as Array<{
+        id: string;
+        createdAt: number;
+      }>;
+      seen.push(...memories.map((memory) => memory.id));
+      if (pageNumber < 2) expect(page.hasMore).toBe(true);
+      const last = memories.at(-1);
+      if (page.hasMore === false || !last) break;
+      path = `/api/memories/feed?type=messages&limit=50&before=${last.createdAt}&beforeId=${last.id}`;
+    }
+
+    expect(seen).toHaveLength(120);
+    expect(new Set(seen).size).toBe(120);
+    expect(new Set(seen)).toEqual(new Set(rows.map((row) => row.id ?? "")));
+  });
+
+  test("rejects an id cursor without a valid timestamp pair", async () => {
+    const { runtime } = makeRuntime({ messages: [] });
+    await expect(
+      get(
+        runtime,
+        `/api/memories/feed?type=messages&beforeId=${makeRow(1, "").id}`,
+      ),
+    ).rejects.toThrow("beforeId must be a UUID paired with before");
+  });
+
+  test("does not replay a concurrent tied-timestamp insert on an older page", async () => {
+    const createdAt = 1_700_000_000_000;
+    const rows = Array.from({ length: 60 }, (_, i) =>
+      makeRow(i, `original ${i}`, OTHER, createdAt),
+    );
+    const { runtime } = makeRuntime({ messages: rows });
+    const first = await get(
+      runtime,
+      "/api/memories/feed?type=messages&limit=50",
+    );
+    const firstMemories = first.memories as Array<{
+      id: string;
+      createdAt: number;
+    }>;
+    const cursor = firstMemories.at(-1);
+    expect(cursor).toBeDefined();
+
+    rows.push(makeRow(100, "concurrent newer tie", OTHER, createdAt));
+    const second = await get(
+      runtime,
+      `/api/memories/feed?type=messages&limit=50&before=${cursor?.createdAt}&beforeId=${cursor?.id}`,
+    );
+    const secondIds = (second.memories as Array<{ id: string }>).map(
+      (memory) => memory.id,
+    );
+
+    expect(secondIds).toHaveLength(10);
+    expect(secondIds).not.toContain(makeRow(100, "").id);
+    expect(
+      new Set([...firstMemories.map((memory) => memory.id), ...secondIds]).size,
+    ).toBe(60);
+  });
+
   test("terminates after one request when a table is truly exhausted", async () => {
     const { runtime, getMemories } = makeRuntime({
       messages: [makeRow(0, "needle"), makeRow(1, "hay")],

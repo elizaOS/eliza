@@ -137,3 +137,87 @@ test("memory viewer queries memory data and the Browse toggle switches the surfa
     });
   }
 });
+
+test("memory feed loads every tied-timestamp row with the tuple cursor", async ({
+  page,
+}, testInfo) => {
+  await hideChatOverlay(page);
+  const createdAt = Date.parse("2026-01-01T00:00:00.000Z");
+  const memoryId = (index: number) =>
+    `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+  const feedRequests: URL[] = [];
+
+  await page.route("**/api/memories/feed**", async (route) => {
+    const url = new URL(route.request().url());
+    feedRequests.push(url);
+    const beforeId = url.searchParams.get("beforeId");
+    const indexes = beforeId
+      ? Array.from({ length: 20 }, (_, index) => 19 - index)
+      : Array.from({ length: 50 }, (_, index) => 69 - index);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        memories: indexes.map((index) => ({
+          id: memoryId(index),
+          type: "messages",
+          text: `Tied memory ${index}`,
+          entityId: "entity-smoke-memory",
+          roomId: "room-smoke-memory",
+          agentId: "agent-smoke-memory",
+          createdAt,
+          metadata: null,
+          source: "ui-smoke",
+        })),
+        count: indexes.length,
+        limit: 50,
+        hasMore: beforeId === null,
+      }),
+    });
+  });
+
+  await openAppPath(page, "/apps/memories");
+  await expect(page.getByTestId("memory-feed")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(page.getByTestId(/^memory-card-/)).toHaveCount(50);
+  if (process.env.E2E_RECORD === "1") {
+    const desktopViewport = page.viewportSize();
+    await page.screenshot({
+      path: testInfo.outputPath("memory-feed-tied-cursor-before-desktop.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.screenshot({
+      path: testInfo.outputPath("memory-feed-tied-cursor-before-mobile.png"),
+      fullPage: true,
+    });
+    if (desktopViewport) await page.setViewportSize(desktopViewport);
+  }
+  await page.getByRole("button", { name: "Load older" }).click();
+  await expect(page.getByTestId(/^memory-card-/)).toHaveCount(70);
+  const oldestMemory = page.getByText("Tied memory 0");
+  await oldestMemory.scrollIntoViewIfNeeded();
+  await expect(oldestMemory).toBeVisible();
+
+  const cursorRequests = feedRequests.filter((request) =>
+    request.searchParams.has("beforeId"),
+  );
+  expect(cursorRequests).toHaveLength(1);
+  expect(cursorRequests[0]?.searchParams.get("before")).toBe(String(createdAt));
+  expect(cursorRequests[0]?.searchParams.get("beforeId")).toBe(memoryId(20));
+
+  if (process.env.E2E_RECORD === "1") {
+    const desktopViewport = page.viewportSize();
+    await page.screenshot({
+      path: testInfo.outputPath("memory-feed-tied-cursor-after-desktop.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.screenshot({
+      path: testInfo.outputPath("memory-feed-tied-cursor-after-mobile.png"),
+      fullPage: true,
+    });
+    if (desktopViewport) await page.setViewportSize(desktopViewport);
+  }
+});

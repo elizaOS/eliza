@@ -1591,6 +1591,7 @@ ElizaClient.prototype.getMemoryFeed = async function (
     params.set("limit", String(query.limit));
   if (typeof query?.before === "number")
     params.set("before", String(query.before));
+  if (query?.beforeId) params.set("beforeId", query.beforeId);
   const qs = params.toString();
   return this.fetch(`/api/memories/feed${qs ? `?${qs}` : ""}`);
 };
