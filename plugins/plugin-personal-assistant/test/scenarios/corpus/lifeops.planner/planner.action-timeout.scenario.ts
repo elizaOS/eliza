@@ -129,9 +129,6 @@ export default scenario({
   evidenceScope: "model-behavior",
   tags: ["lifeops", "planner", "action-timeout", "robustness", "negative-path"],
   isolation: "per-scenario",
-  requires: {
-    plugins: ["scenario-hang-test"],
-  },
   rooms: [
     {
       id: "main",
