@@ -38,6 +38,15 @@ const cleanupHelper = path.join(
 
 const APP_ID = "ai.elizaos.app";
 const RUNTIME_VERSION = "24.08";
+export const FLATPAK_FINISH_ARGS = [
+  "--command=eliza",
+  "--share=network",
+  "--share=ipc",
+  "--socket=wayland",
+  "--socket=fallback-x11",
+  "--socket=pulseaudio",
+  "--device=dri",
+];
 const args = new Map(
   process.argv.slice(2).map((arg) => {
     const [key, ...rest] = arg.replace(/^--/, "").split("=");
@@ -183,17 +192,7 @@ async function main() {
       dereference: true,
     });
     writeMetadata(path.join(appDir, "files"), relativeLauncher);
-    run("flatpak", [
-      "build-finish",
-      "--command=eliza",
-      "--share=network",
-      "--share=ipc",
-      "--socket=wayland",
-      "--socket=fallback-x11",
-      "--socket=pulseaudio",
-      "--device=dri",
-      appDir,
-    ]);
+    run("flatpak", ["build-finish", ...FLATPAK_FINISH_ARGS, appDir]);
     run("flatpak", [
       "build-export",
       `--arch=${arch}`,

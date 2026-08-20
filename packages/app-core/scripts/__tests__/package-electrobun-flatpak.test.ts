@@ -16,6 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  FLATPAK_FINISH_ARGS,
   requireLauncher,
   writeMetadata,
 } from "../package-electrobun-flatpak.mjs";
@@ -72,5 +73,17 @@ describe("Electrobun Flatpak packaging", () => {
     expect(desktop).toContain("Exec=eliza");
     expect(metadata).toContain('type="desktop-application"');
     expect(metadata).toContain("https://github.com/elizaOS/eliza/issues");
+  });
+
+  it("keeps the side-load bundle off host escape surfaces", () => {
+    expect(FLATPAK_FINISH_ARGS).toContain("--socket=wayland");
+    expect(FLATPAK_FINISH_ARGS).toContain("--socket=fallback-x11");
+    expect(FLATPAK_FINISH_ARGS).not.toContain("--filesystem=home");
+    expect(FLATPAK_FINISH_ARGS).not.toContain("--filesystem=host");
+    expect(FLATPAK_FINISH_ARGS).not.toContain("--socket=session-bus");
+    expect(FLATPAK_FINISH_ARGS).not.toContain("--socket=system-bus");
+    expect(FLATPAK_FINISH_ARGS).not.toContain(
+      "--talk-name=org.freedesktop.Flatpak",
+    );
   });
 });
