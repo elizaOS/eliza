@@ -138,6 +138,8 @@ function formatProviderPayload(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
+    // error-policy:J4 A non-serializable diagnostic payload remains inspectable
+    // through its string representation instead of breaking the whole viewer.
     return String(value);
   }
 }
@@ -155,6 +157,13 @@ export function normalizeTrajectoryCallText(...candidates: unknown[]): string {
     return formatProviderPayload(candidate);
   }
   return "";
+}
+
+/** Reports zero lines for an absent payload instead of inventing one blank line. */
+export function countTrajectoryTextLines(
+  value: string | null | undefined,
+): number {
+  return value ? value.split("\n").length : 0;
 }
 
 function isNativeToolCallEvent(
@@ -761,7 +770,7 @@ export function TrajectoryDetailView({
                 systemPrompt={call.systemPrompt}
                 systemPromptButtonLabel={t("trajectorydetailview.SystemPrompt")}
                 systemLabel={t("trajectorydetailview.System")}
-                systemLinesLabel={`${call.systemPrompt?.split("\n").length ?? 0} ${t(
+                systemLinesLabel={`${countTrajectoryTextLines(call.systemPrompt)} ${t(
                   "trajectorydetailview.lines",
                 )}`}
                 systemCollapseLabel={t("common.collapse", {
@@ -772,18 +781,16 @@ export function TrajectoryDetailView({
                 })}
                 inputLabel={t("trajectorydetailview.InputUser")}
                 outputLabel={t("trajectorydetailview.OutputResponse")}
-                inputLinesLabel={`${
+                inputLinesLabel={`${countTrajectoryTextLines(
                   normalizeTrajectoryCallText(
                     call.userPrompt,
                     call.prompt,
                     call.messages,
-                  ).split("\n").length
-                } ${t("trajectorydetailview.lines")}`}
-                outputLinesLabel={`${
-                  normalizeTrajectoryCallText(call.response, call.output).split(
-                    "\n",
-                  ).length
-                } ${t("trajectorydetailview.lines")}`}
+                  ),
+                )} ${t("trajectorydetailview.lines")}`}
+                outputLinesLabel={`${countTrajectoryTextLines(
+                  normalizeTrajectoryCallText(call.response, call.output),
+                )} ${t("trajectorydetailview.lines")}`}
                 tags={(call.tags ?? []).filter((tag) => tag !== "llm")}
                 userPrompt={normalizeTrajectoryCallText(
                   call.userPrompt,
