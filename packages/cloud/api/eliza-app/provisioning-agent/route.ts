@@ -12,11 +12,16 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { containersEnv } from "@/lib/config/containers-env";
+import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import {
+  AgentQuotaExceededError,
+  elizaSandboxService,
+} from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -122,6 +127,9 @@ app.post("/", async (c) => {
         agentName: DEFAULT_AGENT_NAME,
         dockerImage: DEFAULT_DOCKER_IMAGE,
         reuseExistingNonTerminal: true,
+        maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg(
+          creditCheck.balance,
+        ),
       });
 
     // The org-scoped guard reused an in-flight sandbox; its provision job is
@@ -163,6 +171,23 @@ app.post("/", async (c) => {
       data: { status: sandbox.status, agentId: sandbox.id },
     });
   } catch (err) {
+    if (err instanceof AgentQuotaExceededError) {
+      logger.warn(
+        "[eliza-app provisioning-agent] provision blocked: per-org quota exceeded",
+        {
+          orgId: session.organizationId,
+          count: err.count,
+          max: err.max,
+        },
+      );
+      return failureResponse(
+        c,
+        new ApiError(429, "agent_quota_exceeded", err.message, {
+          currentAgents: err.count,
+          maxAgents: err.max,
+        }),
+      );
+    }
     logger.error("[eliza-app provisioning-agent] POST provision error", {
       error: err,
     });
