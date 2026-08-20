@@ -23,6 +23,7 @@
  *    - DO NOT MODIFY - elizaOS manages these
  */
 
+export * from "./account-deletion-requests";
 // ============================================
 // Advertising Domain
 // ============================================
@@ -33,7 +34,6 @@ export * from "./ad-conversions";
 export * from "./ad-creatives";
 export * from "./ad-report-shares";
 export * from "./ad-transactions";
-export * from "./account-deletion-requests";
 export * from "./affiliates";
 export * from "./agent-billing";
 export * from "./agent-events";
