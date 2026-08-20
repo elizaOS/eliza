@@ -1,7 +1,7 @@
 /** Dispatches Maps view reads through the owning runtime service. */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
 import { MapsError } from "./errors.js";
 import { getMapsService } from "./service.js";
 import {
@@ -37,6 +37,13 @@ function requiredText(value: unknown, field: string): string {
   }
   return parsed;
 }
+
+const providerIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/);
 
 function expectedFailure(error: unknown): MapsInteractResult {
   if (error instanceof ZodError) {
@@ -74,9 +81,12 @@ export async function serverInteract(
     });
   }
   const values = record(params);
-  const provider = optionalText(values.provider);
 
   try {
+    const provider =
+      values.provider === undefined
+        ? undefined
+        : providerIdSchema.parse(values.provider);
     const service = getMapsService(context.runtime);
     switch (capability) {
       case "maps-search-places": {

@@ -5,7 +5,7 @@
  * success, stale-response ordering, route alternatives, handoffs, and failures.
  */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -112,10 +112,56 @@ describe("MapsView", () => {
     await user.click(screen.getByRole("button", { name: "park" }));
     expect(
       document.querySelector(
-        '[data-agent-id="maps-place-fixture_maps-ferry-building"]',
+        '[data-agent-id="maps-place-fixture_maps:ferry-building"]',
       ),
     ).toBeNull();
     expect(screen.getByText("Embarcadero Plaza")).toBeTruthy();
+  });
+
+  it("gives every rendered control a unique collision-safe agent id", async () => {
+    const collisionPlaces = [
+      place("space", "Space", ["a b"], 37.79, -122.39),
+      place("dash", "Dash", ["a-b"], 37.8, -122.4),
+      place("slash", "Slash", ["a/b"], 37.81, -122.41),
+      place("sentinel", "Sentinel", ["ALL"], 37.82, -122.42),
+    ];
+    const user = userEvent.setup();
+    render(
+      <MapsView
+        transport={transport({
+          search: vi.fn(async () => ({
+            places: collisionPlaces,
+            nextCursor: null,
+          })),
+        })}
+        online
+      />,
+    );
+
+    await searchFor(user, "collision test");
+    const view = screen.getByTestId("maps-view");
+    const controls = Array.from(
+      view.querySelectorAll<HTMLElement>(
+        "button, input, select, textarea, a[href]",
+      ),
+    );
+    const ids = controls.map((control) =>
+      control.getAttribute("data-agent-id"),
+    );
+    expect(ids.every((id): id is string => Boolean(id))).toBe(true);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.filter((id) => id === "maps-filter-all")).toHaveLength(1);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "maps-search-query",
+        "maps-search-submit",
+        "maps-filter-a%20b",
+        "maps-filter-a-b",
+        "maps-filter-a%2Fb",
+        "maps-place-fixture_maps:space",
+        "maps-marker-fixture_maps:space",
+      ]),
+    );
   });
 
   it("shows only provider-returned route alternatives and hands writes to actions", async () => {
@@ -132,8 +178,11 @@ describe("MapsView", () => {
     ).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("button", { name: "Start here" }));
+    expect(
+      document.querySelector('[data-agent-id="maps-clear-origin"]'),
+    ).toBeTruthy();
     const plazaButton = document.querySelector<HTMLButtonElement>(
-      '[data-agent-id="maps-place-fixture_maps-embarcadero-plaza"]',
+      '[data-agent-id="maps-place-fixture_maps:embarcadero-plaza"]',
     );
     if (!plazaButton) throw new Error("Embarcadero Plaza result is missing");
     await user.click(plazaButton);
@@ -184,7 +233,7 @@ describe("MapsView", () => {
     expect((await screen.findAllByText("Pier 7")).length).toBeGreaterThan(0);
     expect(
       document.querySelectorAll(
-        '[data-agent-id="maps-place-fixture_maps-pier-7"]',
+        '[data-agent-id="maps-place-fixture_maps:pier-7"]',
       ),
     ).toHaveLength(1);
     expect(search).toHaveBeenNthCalledWith(
@@ -223,6 +272,167 @@ describe("MapsView", () => {
     expect(screen.queryByText("Ferry Building")).toBeNull();
   });
 
+  it("ignores an old place detail after a new search even when transport ignores abort", async () => {
+    let resolveOldDetail: ((value: PlaceRef) => void) | undefined;
+    let oldDetailSignal: AbortSignal | undefined;
+    const staleDetail = { ...PLAZA, name: "Stale Plaza Detail" };
+    const fake = transport({
+      search: vi.fn<MapsViewTransport["search"]>(async (query) => ({
+        places: query === "new search" ? [PIER] : [FERRY, PLAZA],
+        nextCursor: null,
+      })),
+      getPlace: vi.fn<MapsViewTransport["getPlace"]>((value, signal) =>
+        value.providerPlaceId === PLAZA.providerPlaceId
+          ? new Promise<PlaceRef>((resolve) => {
+              oldDetailSignal = signal;
+              resolveOldDetail = resolve;
+            })
+          : Promise.resolve(value),
+      ),
+    });
+    const user = userEvent.setup();
+    render(<MapsView transport={fake} online />);
+
+    await searchFor(user, "old search");
+    const plazaButton = await waitFor(() => {
+      const button = document.querySelector<HTMLButtonElement>(
+        '[data-agent-id="maps-place-fixture_maps:embarcadero-plaza"]',
+      );
+      if (!button) throw new Error("Embarcadero Plaza result is missing");
+      return button;
+    });
+    await user.click(plazaButton);
+    expect(
+      screen.getByRole("heading", { name: "Embarcadero Plaza" }),
+    ).toBeTruthy();
+
+    await searchFor(user, "new search");
+    expect(oldDetailSignal?.aborted).toBe(true);
+    expect(await screen.findByRole("heading", { name: "Pier 7" })).toBeTruthy();
+    await act(async () => {
+      resolveOldDetail?.(staleDetail);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("Stale Plaza Detail")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Pier 7" })).toBeTruthy();
+  });
+
+  it("ignores old routes after the destination changes even when transport ignores abort", async () => {
+    const pendingRoutes: Array<{
+      destination: PlaceRef;
+      mode: TravelMode;
+      signal?: AbortSignal;
+      resolve: (value: RoutePlan) => void;
+    }> = [];
+    const fake = transport({
+      search: vi.fn(async () => ({
+        places: [FERRY, PLAZA, PIER],
+        nextCursor: null,
+      })),
+      planRoute: vi.fn<MapsViewTransport["planRoute"]>(
+        (_origin, destination, mode, signal) =>
+          new Promise<RoutePlan>((resolve) => {
+            pendingRoutes.push({ destination, mode, signal, resolve });
+          }),
+      ),
+    });
+    const user = userEvent.setup();
+    render(<MapsView transport={fake} online />);
+
+    await searchFor(user, "waterfront");
+    await screen.findByRole("heading", { name: "Ferry Building" });
+    await user.click(screen.getByRole("button", { name: "Start here" }));
+    const selectResult = async (id: string) => {
+      const button = document.querySelector<HTMLButtonElement>(
+        `[data-agent-id="maps-place-fixture_maps:${id}"]`,
+      );
+      if (!button) throw new Error(`Maps result ${id} is missing`);
+      await user.click(button);
+    };
+
+    await selectResult("embarcadero-plaza");
+    await user.click(screen.getByRole("button", { name: "Routes" }));
+    await waitFor(() => expect(fake.planRoute).toHaveBeenCalledTimes(4));
+
+    await selectResult("pier-7");
+    expect(
+      pendingRoutes
+        .filter(
+          ({ destination }) =>
+            destination.providerPlaceId === PLAZA.providerPlaceId,
+        )
+        .every(({ signal }) => signal?.aborted === true),
+    ).toBe(true);
+    expect(screen.queryByText("Route alternatives")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Routes" }));
+    await waitFor(() => expect(fake.planRoute).toHaveBeenCalledTimes(8));
+
+    const settleRoutes = async (
+      destinationId: string,
+      distanceMeters: number,
+    ) => {
+      await act(async () => {
+        for (const pending of pendingRoutes.filter(
+          ({ destination }) => destination.providerPlaceId === destinationId,
+        )) {
+          pending.resolve({
+            provider: "fixture_maps",
+            routeId: `${destinationId}-${pending.mode}`,
+            origin: FERRY,
+            destination: pending.destination,
+            travelMode: pending.mode,
+            distanceMeters,
+            durationSeconds: 300,
+            warnings: [],
+          });
+        }
+        await Promise.resolve();
+      });
+    };
+
+    await settleRoutes(PIER.providerPlaceId, 222);
+    expect(await screen.findByText("Route alternatives")).toBeTruthy();
+    expect(screen.getAllByText("222 m")).toHaveLength(4);
+
+    await settleRoutes(PLAZA.providerPlaceId, 111);
+    expect(screen.queryByText("111 m")).toBeNull();
+    expect(screen.getAllByText("222 m")).toHaveLength(4);
+
+    await selectResult("embarcadero-plaza");
+    expect(screen.queryByText("Route alternatives")).toBeNull();
+    expect(screen.queryByText("222 m")).toBeNull();
+  });
+
+  it("clears a stale route error when a new search starts", async () => {
+    const fake = transport({
+      search: vi.fn<MapsViewTransport["search"]>(async (query) => ({
+        places: query === "new search" ? [PIER] : [FERRY, PLAZA],
+        nextCursor: null,
+      })),
+      planRoute: vi.fn(async () => {
+        throw new Error("Old route failure");
+      }),
+    });
+    const user = userEvent.setup();
+    render(<MapsView transport={fake} online />);
+
+    await searchFor(user, "old search");
+    await screen.findByRole("heading", { name: "Ferry Building" });
+    await user.click(screen.getByRole("button", { name: "Start here" }));
+    const plazaButton = document.querySelector<HTMLButtonElement>(
+      '[data-agent-id="maps-place-fixture_maps:embarcadero-plaza"]',
+    );
+    if (!plazaButton) throw new Error("Embarcadero Plaza result is missing");
+    await user.click(plazaButton);
+    await user.click(screen.getByRole("button", { name: "Routes" }));
+    expect(await screen.findByText("Old route failure")).toBeTruthy();
+
+    await searchFor(user, "new search");
+    expect(await screen.findByRole("heading", { name: "Pier 7" })).toBeTruthy();
+    expect(screen.queryByText("Old route failure")).toBeNull();
+  });
+
   it("renders loading, error, retry, designed-empty, and offline states", async () => {
     let rejectSearch: ((error: Error) => void) | undefined;
     const fake = transport({
@@ -242,6 +452,11 @@ describe("MapsView", () => {
       "Provider temporarily unavailable.",
     );
     expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: /retry/i })
+        .getAttribute("data-agent-id"),
+    ).toBe("maps-retry-search");
 
     rerender(<MapsView transport={transport()} online={false} />);
     expect(await screen.findByText("Offline")).toBeTruthy();
@@ -260,6 +475,9 @@ describe("MapsView", () => {
     ).toBeTruthy();
     expect(
       document.querySelector('[data-agent-id="maps-save-place"]'),
+    ).toBeTruthy();
+    expect(
+      document.querySelector('[data-agent-id="maps-search-submit"]'),
     ).toBeTruthy();
 
     await user.keyboard("{Escape}");

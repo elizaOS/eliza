@@ -53,6 +53,11 @@ const primaryClass =
 const subtleButtonClass =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-bg px-3 text-sm font-medium text-text outline-none transition-colors hover:border-[#ff5800] hover:bg-[#ff5800]/10 focus-visible:ring-2 focus-visible:ring-[#ff5800]/35";
 
+/** Encode provider-owned strings without collapsing punctuation variants. */
+function agentIdPart(value: string): string {
+  return encodeURIComponent(value);
+}
+
 type Phase = "idle" | "searching" | "ready" | "error";
 
 function readChatSheetOpen(): boolean {
@@ -127,6 +132,41 @@ function SearchControl({ value, invalid, busy, onValue }: SearchControlProps) {
   );
 }
 
+function SearchSubmitControl({
+  busy,
+  disabled,
+  onActivate,
+}: {
+  busy: boolean;
+  disabled: boolean;
+  onActivate: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: "maps-search-submit",
+    role: "button",
+    label: busy ? "Searching" : "Search",
+    description: "Submit the current place search",
+    status: busy ? "busy" : "ready",
+    onActivate,
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="submit"
+      className={`${primaryClass} sm:min-w-28`}
+      disabled={disabled}
+    >
+      {busy ? (
+        <RotateCcw aria-hidden="true" className="size-4 animate-spin" />
+      ) : (
+        <Search aria-hidden="true" className="size-4" />
+      )}
+      {busy ? "Searching" : "Search"}
+    </button>
+  );
+}
+
 interface AgentButtonProps {
   id: string;
   label: string;
@@ -180,7 +220,7 @@ interface PlaceRowProps {
 
 function PlaceRow({ place, active, origin, onSelect }: PlaceRowProps) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `maps-place-${place.provider}-${place.providerPlaceId}`,
+    id: `maps-place-${agentIdPart(place.provider)}:${agentIdPart(place.providerPlaceId)}`,
     role: "list-item",
     label: place.name,
     description: place.formattedAddress ?? "Select place details",
@@ -225,6 +265,46 @@ function PlaceRow({ place, active, origin, onSelect }: PlaceRowProps) {
         aria-hidden="true"
         className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
       />
+    </button>
+  );
+}
+
+function MapMarker({
+  place,
+  index,
+  active,
+  x,
+  y,
+  onSelect,
+}: {
+  place: PlaceRef;
+  index: number;
+  active: boolean;
+  x: number;
+  y: number;
+  onSelect: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `maps-marker-${agentIdPart(place.provider)}:${agentIdPart(place.providerPlaceId)}`,
+    role: "button",
+    label: `Select ${place.name} on map`,
+    description: place.formattedAddress ?? "Select map marker details",
+    status: active ? "selected" : "available",
+    onActivate: onSelect,
+  });
+  return (
+    <button
+      ref={ref}
+      {...agentProps}
+      type="button"
+      aria-pressed={active}
+      onClick={onSelect}
+      className={`absolute grid size-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-white font-bold shadow-md outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-[#ff5800] ${
+        active ? "bg-[#d94b00] text-white" : "bg-[#ff5800] text-white"
+      }`}
+      style={{ left: `${x}%`, top: `${y}%` }}
+    >
+      <span aria-hidden="true">{index + 1}</span>
     </button>
   );
 }
@@ -376,19 +456,15 @@ function MapPanel({ places, selected, activeRoute, onSelect }: MapPanelProps) {
             selected?.provider === place.provider &&
             selected.providerPlaceId === place.providerPlaceId;
           return (
-            <button
+            <MapMarker
               key={`${place.provider}:${place.providerPlaceId}`}
-              type="button"
-              aria-label={`Select ${place.name} on map`}
-              aria-pressed={active}
-              onClick={() => onSelect(place)}
-              className={`absolute grid size-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-white font-bold shadow-md outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-[#ff5800] ${
-                active ? "bg-[#d94b00] text-white" : "bg-[#ff5800] text-white"
-              }`}
-              style={{ left: `${x}%`, top: `${y}%` }}
-            >
-              <span aria-hidden="true">{index + 1}</span>
-            </button>
+              place={place}
+              index={index}
+              active={active}
+              x={x}
+              y={y}
+              onSelect={() => onSelect(place)}
+            />
           );
         })}
       </div>
@@ -435,13 +511,15 @@ function EmptyState({
             : "Search a place, landmark, category, or address. Results stay provider-neutral until a maps connector answers."}
         </p>
         {filtered ? (
-          <button
-            type="button"
+          <AgentButton
+            id="maps-clear-filter"
+            label="Clear place filters"
+            description="Show every loaded place result"
             className={`${subtleButtonClass} mt-4`}
             onClick={onReset}
           >
             Clear filters
-          </button>
+          </AgentButton>
         ) : null}
       </div>
     </div>
@@ -474,6 +552,18 @@ export function MapsView({
   const searchRequest = useRef<AbortController | null>(null);
   const detailRequest = useRef<AbortController | null>(null);
   const routeRequest = useRef<AbortController | null>(null);
+  const detailRequestGeneration = useRef(0);
+  const routeRequestGeneration = useRef(0);
+
+  const invalidateRouteOperation = useCallback(() => {
+    routeRequestGeneration.current += 1;
+    routeRequest.current?.abort();
+    routeRequest.current = null;
+    setRouteBusy(false);
+    setRouteError(null);
+    setRoutes([]);
+    setActiveRouteId(null);
+  }, []);
 
   useEffect(() => {
     if (online !== undefined) {
@@ -506,18 +596,16 @@ export function MapsView({
     return null;
   }, [query]);
 
-  const categories = useMemo(
-    () =>
-      [
-        "all",
-        ...new Set(
-          places.flatMap((place) =>
-            place.categories.map((value) => value.trim().toLowerCase()),
-          ),
-        ),
-      ].slice(0, 8),
-    [places],
-  );
+  const categories = useMemo(() => {
+    const normalized = new Set(
+      places.flatMap((place) =>
+        place.categories.map((value) => value.trim().toLowerCase()),
+      ),
+    );
+    normalized.delete("");
+    normalized.delete("all");
+    return ["all", ...normalized].slice(0, 8);
+  }, [places]);
 
   const filteredPlaces = useMemo(
     () =>
@@ -541,6 +629,10 @@ export function MapsView({
       const normalized = requested.trim();
       if (!normalized) {
         searchRequest.current?.abort();
+        detailRequestGeneration.current += 1;
+        detailRequest.current?.abort();
+        detailRequest.current = null;
+        invalidateRouteOperation();
         setPhase("idle");
         setError(null);
         setPlaces([]);
@@ -555,6 +647,11 @@ export function MapsView({
         setPhase(places.length ? "ready" : "error");
         return;
       }
+      detailRequestGeneration.current += 1;
+      detailRequest.current?.abort();
+      detailRequest.current = null;
+      invalidateRouteOperation();
+      setSelected(null);
       searchRequest.current?.abort();
       setPageBusy(false);
       const controller = new AbortController();
@@ -564,7 +661,8 @@ export function MapsView({
       setLastQuery(normalized);
       try {
         const page = await transport.search(normalized, controller.signal);
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || searchRequest.current !== controller)
+          return;
         setPlaces(page.places);
         setNextCursor(page.nextCursor);
         setSelected(page.places[0] ?? null);
@@ -585,7 +683,7 @@ export function MapsView({
         if (searchRequest.current === controller) searchRequest.current = null;
       }
     },
-    [isOnline, places.length, transport],
+    [invalidateRouteOperation, isOnline, places.length, transport],
   );
 
   const loadNextPage = useCallback(async () => {
@@ -640,29 +738,50 @@ export function MapsView({
 
   const selectPlace = useCallback(
     (place: PlaceRef) => {
-      setSelected(place);
-      setRouteError(null);
+      detailRequestGeneration.current += 1;
+      const detailGeneration = detailRequestGeneration.current;
       detailRequest.current?.abort();
+      detailRequest.current = null;
+      invalidateRouteOperation();
+      setSelected(place);
       if (!isOnline) return;
       const controller = new AbortController();
       detailRequest.current = controller;
       void transport
         .getPlace(place, controller.signal)
         .then((detail) => {
-          if (!controller.signal.aborted && detail) setSelected(detail);
+          if (
+            controller.signal.aborted ||
+            detailRequest.current !== controller ||
+            detailRequestGeneration.current !== detailGeneration
+          )
+            return;
+          if (detail) setSelected(detail);
         })
         // error-policy:J4 the normalized search result remains visible while
         // a failed optional detail enrichment is announced.
         .catch((cause: unknown) => {
-          if (controller.signal.aborted) return;
+          if (
+            controller.signal.aborted ||
+            detailRequest.current !== controller ||
+            detailRequestGeneration.current !== detailGeneration
+          )
+            return;
           setRouteError(
             cause instanceof Error
               ? cause.message
               : "Place details unavailable.",
           );
+        })
+        .finally(() => {
+          if (
+            detailRequest.current === controller &&
+            detailRequestGeneration.current === detailGeneration
+          )
+            detailRequest.current = null;
         });
     },
-    [isOnline, transport],
+    [invalidateRouteOperation, isOnline, transport],
   );
 
   const planRoutes = useCallback(async () => {
@@ -679,6 +798,8 @@ export function MapsView({
       return;
     }
     routeRequest.current?.abort();
+    routeRequestGeneration.current += 1;
+    const routeGeneration = routeRequestGeneration.current;
     const controller = new AbortController();
     routeRequest.current = controller;
     setRouteBusy(true);
@@ -690,7 +811,12 @@ export function MapsView({
           transport.planRoute(origin, selected, mode, controller.signal),
         ),
       );
-      if (controller.signal.aborted) return;
+      if (
+        controller.signal.aborted ||
+        routeRequest.current !== controller ||
+        routeRequestGeneration.current !== routeGeneration
+      )
+        return;
       const available = outcomes.flatMap((outcome) =>
         outcome.status === "fulfilled" ? [outcome.value] : [],
       );
@@ -707,6 +833,12 @@ export function MapsView({
       setRoutes(available);
       setActiveRouteId(available[0]?.routeId ?? null);
     } catch (cause) {
+      if (
+        controller.signal.aborted ||
+        routeRequest.current !== controller ||
+        routeRequestGeneration.current !== routeGeneration
+      )
+        return;
       // error-policy:J4 route failures remain distinct from place results.
       setRouteError(
         cause instanceof Error && cause.message.trim()
@@ -714,8 +846,13 @@ export function MapsView({
           : "Could not plan a route.",
       );
     } finally {
-      if (routeRequest.current === controller) routeRequest.current = null;
-      if (!controller.signal.aborted) setRouteBusy(false);
+      if (
+        routeRequest.current === controller &&
+        routeRequestGeneration.current === routeGeneration
+      ) {
+        routeRequest.current = null;
+        setRouteBusy(false);
+      }
     }
   }, [isOnline, origin, routeBusy, selected, transport]);
 
@@ -741,13 +878,18 @@ export function MapsView({
     [selected, setActionNotice],
   );
 
-  const handleShellKey = useCallback((event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape") {
-      setSelected(null);
-      setRoutes([]);
-      setActiveRouteId(null);
-    }
-  }, []);
+  const handleShellKey = useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      if (event.key === "Escape") {
+        detailRequestGeneration.current += 1;
+        detailRequest.current?.abort();
+        detailRequest.current = null;
+        invalidateRouteOperation();
+        setSelected(null);
+      }
+    },
+    [invalidateRouteOperation],
+  );
 
   return (
     <main
@@ -784,16 +926,18 @@ export function MapsView({
               />
               <span className="text-muted-foreground">Starting at</span>
               <strong className="max-w-44 truncate">{origin.name}</strong>
-              <button
-                type="button"
+              <AgentButton
+                id="maps-clear-origin"
+                label={`Clear route origin ${origin.name}`}
+                description="Remove the current route starting place"
                 className="ml-1 min-h-11 rounded-md px-2 text-[#c54500] outline-none hover:bg-[#ff5800]/10 focus-visible:ring-2 focus-visible:ring-[#ff5800]/35"
                 onClick={() => {
                   setOrigin(null);
-                  setRoutes([]);
+                  invalidateRouteOperation();
                 }}
               >
                 Clear
-              </button>
+              </AgentButton>
             </div>
           ) : null}
         </header>
@@ -831,18 +975,11 @@ export function MapsView({
             busy={phase === "searching"}
             onValue={setQuery}
           />
-          <button
-            type="submit"
-            className={`${primaryClass} sm:min-w-28`}
+          <SearchSubmitControl
+            busy={phase === "searching"}
             disabled={Boolean(validationError)}
-          >
-            {phase === "searching" ? (
-              <RotateCcw aria-hidden="true" className="size-4 animate-spin" />
-            ) : (
-              <Search aria-hidden="true" className="size-4" />
-            )}
-            {phase === "searching" ? "Searching" : "Search"}
-          </button>
+            onActivate={() => void runSearch(query)}
+          />
         </form>
         {validationError ? (
           <p
@@ -860,7 +997,7 @@ export function MapsView({
             {categories.map((value) => (
               <AgentButton
                 key={value}
-                id={`maps-filter-${value.replace(/[^a-z0-9]+/g, "-")}`}
+                id={`maps-filter-${agentIdPart(value)}`}
                 label={`${value === "all" ? "All" : value} places`}
                 description="Filter loaded place results"
                 pressed={category === value}
@@ -915,13 +1052,15 @@ export function MapsView({
                   />
                   <h2 className="mt-3 font-semibold">Places unavailable</h2>
                   <p className="mt-2 text-sm text-muted-foreground">{error}</p>
-                  <button
-                    type="button"
+                  <AgentButton
+                    id="maps-retry-search"
+                    label="Retry place search"
+                    description="Retry the last submitted place search"
                     className={`${subtleButtonClass} mt-4`}
                     onClick={() => void runSearch(lastQuery || query)}
                   >
                     <RotateCcw aria-hidden="true" className="size-4" /> Retry
-                  </button>
+                  </AgentButton>
                 </div>
               </div>
             ) : filteredPlaces.length ? (
@@ -1028,7 +1167,7 @@ export function MapsView({
                       description="Use this place as the route origin"
                       onClick={() => {
                         setOrigin(selected);
-                        setRoutes([]);
+                        invalidateRouteOperation();
                       }}
                     >
                       <LocateFixed aria-hidden="true" className="size-4" />{" "}

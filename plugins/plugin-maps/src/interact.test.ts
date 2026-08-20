@@ -127,6 +127,24 @@ describe("Maps view serverInteract", () => {
       success: false,
       error: { code: "MAPS_RATE_LIMITED", retryAfterMs: 4_000 },
     });
+
+    for (const provider of [
+      "contains spaces",
+      "-leading-dash",
+      "x".repeat(65),
+      42,
+    ]) {
+      await expect(
+        serverInteract(
+          "maps-search-places",
+          { query: "cafe", provider },
+          { runtime },
+        ),
+      ).resolves.toMatchObject({
+        success: false,
+        error: { code: "MAPS_INVALID_INPUT" },
+      });
+    }
   });
 
   it("does not expose a save capability that bypasses receipt settlement", async () => {
