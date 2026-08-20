@@ -53,6 +53,7 @@ const GROUP_PURPOSE: Record<GoogleCapabilityGroup, ConnectorAccountPurpose> = {
   calendar: "calendar" as ConnectorAccountPurpose,
   drive: "drive" as ConnectorAccountPurpose,
   meet: "meet" as ConnectorAccountPurpose,
+  people: "contacts" as ConnectorAccountPurpose,
 };
 
 interface GoogleTokenResponse {

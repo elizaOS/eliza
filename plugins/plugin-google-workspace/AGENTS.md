@@ -1,10 +1,10 @@
 # @elizaos/plugin-google-workspace
 
-Google Workspace integration for Gmail, Calendar, Drive, and Meet with account-scoped OAuth, plus the Google Chat messaging connector (service-account auth) and Google-owned assistant message projections.
+Google Workspace integration for Gmail, Calendar, Drive, Meet, and People (Contacts) with account-scoped OAuth, plus the Google Chat messaging connector (service-account auth) and Google-owned assistant message projections.
 
 ## Purpose / role
 
-Adds `GoogleWorkspaceService` to an Eliza agent runtime, exposing Gmail, Google Calendar, Google Drive, and Google Meet operations through a single account-scoped OAuth grant. It also exports `GoogleGmailAdapter`, the Gmail-owned message-triage adapter used by assistant plugins such as LifeOps. The plugin is opt-in — load it as `googlePlugin` from this package. It also registers with `ConnectorAccountManager` so the generic connector HTTP routes can manage Google accounts and run OAuth flows automatically; that provider registration also mounts the Gmail send `MessageConnector` (`source: "gmail"`, aliases `email`/`mail`) so `MESSAGE op=send` can compose and send email through the connected account.
+Adds `GoogleWorkspaceService` to an Eliza agent runtime, exposing Gmail, Google Calendar, Google Drive, Google Meet, and Google People (Contacts) operations through a single account-scoped OAuth grant. It also exports `GoogleGmailAdapter`, the Gmail-owned message-triage adapter used by assistant plugins such as LifeOps. The plugin is opt-in — load it as `googlePlugin` from this package. It also registers with `ConnectorAccountManager` so the generic connector HTTP routes can manage Google accounts and run OAuth flows automatically; that provider registration also mounts the Gmail send `MessageConnector` (`source: "gmail"`, aliases `email`/`mail`) so `MESSAGE op=send` can compose and send email through the connected account.
 
 Google Chat lives here too, as the `src/chat/` module: `GoogleChatService` (service type `"google-chat"`) registers a runtime `MessageConnector` for spaces, DMs, threads, reactions, and attachments. Chat authenticates with a service account (scope `https://www.googleapis.com/auth/chat.bot`), NOT the consolidated Workspace OAuth grant — the two auth models are intentionally separate even though they share this package. The plugin auto-enables when a `connectors.googlechat` block is present and not explicitly disabled (`auto-enable.ts`); the Workspace OAuth side stays opt-in.
 
@@ -12,7 +12,7 @@ Google Chat lives here too, as the `src/chat/` module: `GoogleChatService` (serv
 
 The plugin object (`googlePlugin`, service name `"google"`) registers:
 
-- **Services:** `GoogleWorkspaceService` — wraps four sub-clients (Gmail, Calendar, Drive, Meet), retrieved via `runtime.getService("google")`; `GoogleChatService` — the Chat connector, retrieved via `runtime.getService("google-chat")`.
+- **Services:** `GoogleWorkspaceService` — wraps five sub-clients (Gmail, Calendar, Drive, Meet, People), retrieved via `runtime.getService("google")`; `GoogleChatService` — the Chat connector, retrieved via `runtime.getService("google-chat")`.
 - **Message adapters:** `GoogleGmailAdapter` — Gmail projection into the core message-triage shape for assistant plugins (thread replies and new outbound email).
 - **Message connectors:** the Gmail send connector from `gmail-message-connector.ts`, registered through the Google connector-account provider — routes `MESSAGE op=send source=gmail` / email-literal targets to `GoogleWorkspaceService.sendGmailMessage`.
 - **Actions:** none (empty array).
@@ -43,6 +43,11 @@ Meet (`src/meet.ts` via `GoogleMeetClient`):
 - `createMeeting` / `getMeeting` / `getMeetingSpace` — space management.
 - `getConferenceRecord` / `listMeetingParticipants` / `listMeetingParticipantSessions` / `listMeetingTranscripts` / `getMeetingTranscript` / `listMeetingRecordings` / `getMeetingRecordingUrl` — conference artifacts.
 - `endMeeting` — ends an active conference.
+
+People (`src/people.ts` via `GooglePeopleClient`, capability `people.read`):
+- `listContacts` — page-based saved-contact listing (opaque `nextPageToken` replay, Drive-style).
+- `searchContacts` — dual-source search over saved contacts and interaction-derived Other Contacts, with the documented empty-query warmup request; `includeOtherContacts: false` limits to saved contacts.
+- `getContact` — fetch one person by `resourceName` (`people/…` or `otherContacts/…`).
 - `generateReport` — builds a structured `GoogleMeetReport` from transcript + recording artifacts and includes a canonical `elizaos.meeting_artifact.v1` artifact.
 - `buildGoogleMeetCanonicalArtifact` / `classifyGoogleMeetImportError` — deterministic fixture helpers for saved Google API responses, Google Docs transcript mismatch warnings, missing-artifact classifications, and bot-free capture mapping.
 
@@ -69,6 +74,7 @@ src/
   calendar.ts                  GoogleCalendarClient — Calendar list/CRUD
   drive.ts                     GoogleDriveClient — Drive/Docs/Sheets operations
   meet.ts                      GoogleMeetClient — Meet space/conference/artifact operations
+  people.ts                    GooglePeopleClient — Contacts/Other Contacts list, search, get
   chat/                        Google Chat connector (service-account auth, MessageConnector)
     service.ts                 GoogleChatService — Chat REST client, webhook processing, multi-account
     accounts.ts                Multi-account config resolution, env var parsing
@@ -156,7 +162,7 @@ Google Chat (service-account auth; see `src/chat/accounts.ts` for full resolutio
 
 - **Every method takes `GoogleAccountRef` (`{ accountId: string }`)** as the first positional field. All API calls are account-scoped; there is no single-account shortcut.
 - **Credential resolution is pluggable.** The default `DefaultGoogleCredentialResolver` reads from `ConnectorAccountManager` → `ConnectorAccountStorage` → vault. For tests, inject a custom `GoogleCredentialResolver` via `GoogleWorkspaceService` constructor options or `service.setCredentialResolver(...)`.
-- **Single consolidated OAuth grant.** All capabilities (Gmail, Calendar, Drive, Meet) share one OAuth token per account. Callers may pass a subset of capabilities to `startOAuth` to limit the requested scopes.
+- **Single consolidated OAuth grant.** All capabilities (Gmail, Calendar, Drive, Meet, People) share one OAuth token per account. Callers may pass a subset of capabilities to `startOAuth` to limit the requested scopes.
 - **No actions or providers are registered by default.** Callers that need agent-facing actions must implement them separately and call `GoogleWorkspaceService` methods directly.
 - **Node-only.** `package.json` declares `"runtime": "node"`. This plugin uses `node:crypto` and `googleapis` (Node SDK); it will not run in browser or edge environments.
 - **googleapis clients are created per-call.** `GoogleApiClientFactory` creates a new googleapis client each call (auth client is cached by credential version in `DefaultGoogleCredentialResolver`).
