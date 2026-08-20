@@ -5795,7 +5795,8 @@ describe("buildRuntimeBootstrapAgent persona seed", () => {
 //   3. provider.create OK but the row-write hits a UNIQUE (port TOCTOU) on the
 //      first attempt → ghost stop + retry → second attempt succeeds.
 //   4. a NON-unique post-create error → markError + NO retry (one create only).
-//   5. all MAX_PROVISION_ATTEMPTS exhausted → "Provisioning failed after N".
+//   5. all MAX_PROVISION_ATTEMPTS exhausted → "Provisioning failed after 3 attempts"
+//      (no "(not retryable)" marker: the last failure was a collision).
 // The provider is a plain SandboxProvider fake; the post-create metadata uses a
 // real DockerSandboxMetadata shape so isDockerSandboxMetadata() genuinely passes.
 describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)", () => {
@@ -6138,10 +6139,13 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       prefix: "eliza_test",
     });
     const svc = new ElizaSandboxService();
+    let markedMessage = "";
     const markErrorSpy = spyOn(
       svc as unknown as { markError: (rec: AgentSandbox, msg: string) => Promise<void> },
       "markError",
-    ).mockResolvedValue(undefined);
+    ).mockImplementation(async (_rec, msg) => {
+      markedMessage = msg;
+    });
     const ensureStartedSpy = spyOn(
       svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
       "ensureRuntimeAgentStarted",
@@ -6161,6 +6165,12 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       // Ghost deletion still runs once for the single failed attempt.
       expect(stop).toHaveBeenCalledTimes(1);
       expect(markErrorSpy).toHaveBeenCalledTimes(1);
+      // #22508: the row must record the attempt that was actually made. Naming
+      // MAX_PROVISION_ATTEMPTS here made this one-attempt failure look like an
+      // exhausted retry budget and sent a live outage down the wrong path.
+      expect(markedMessage).toBe(
+        "Provisioning failed after 1 attempt (not retryable): connection terminated unexpectedly",
+      );
     } finally {
       findSpy.mockRestore();
       findByIdSpy.mockRestore();
@@ -6229,7 +6239,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       expect(create).toHaveBeenCalledTimes(3);
       expect(stop).toHaveBeenCalledTimes(3);
       expect(statusWrites).toBe(3);
-      expect(markedMessage).toContain("Provisioning failed after 3 attempts");
+      expect(markedMessage).toContain("Provisioning failed after 3 attempts: ");
     } finally {
       findSpy.mockRestore();
       findByIdSpy.mockRestore();
@@ -6858,7 +6868,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
   // rejected 401 Unauthorized (bridge URL routing to a dead/rotated container),
   // which is deterministic on every attempt — retrying only burned the
   // provision attempts and bricked agent 23766030 into status=error
-  // ("Provisioning failed after 3 attempts: State restore failed: HTTP 401
+  // ("Provisioning failed after 1 attempt (not retryable): State restore failed: HTTP 401
   // {"error":"Unauthorized"}"). It must instead degrade to a fresh boot on the
   // FIRST detection. Drives the REAL pushState (fetch intercepted with the
   // incident's exact response) so the classified error is the code's own throw
@@ -7522,7 +7532,7 @@ describe("isUnrecoverableSnapshotError (permanent-vs-transient classification)",
     expect(
       isUnrecoverableSnapshotError(
         new Error(
-          'Provisioning failed after 3 attempts: State restore failed: HTTP 401 {"error":"Unauthorized"}',
+          'Provisioning failed after 1 attempt (not retryable): State restore failed: HTTP 401 {"error":"Unauthorized"}',
         ),
       ),
     ).toBe(false);

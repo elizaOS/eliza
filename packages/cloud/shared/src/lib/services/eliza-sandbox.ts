@@ -3124,6 +3124,16 @@ export class ElizaSandboxService {
     // Solution: Retry loop catches unique constraint errors, cleans up ghost container, and retries.
     const MAX_PROVISION_ATTEMPTS = 3;
     let lastError: string = "Unknown error";
+    // Only a port collision retries; any other failure gives up after its first
+    // attempt. `attempt` is scoped to the loop header, so the count that
+    // actually ran is mirrored here for the post-loop markError message —
+    // reporting the constant instead told operators "after 3 attempts" for a
+    // one-attempt failure and misdirected a live outage investigation (#22508).
+    let attemptsMade = 0;
+    // Whether the failure that ended the loop was a port collision (the only
+    // retryable class). Drives the "(not retryable)" marker: keying it off the
+    // attempt count instead mislabels a collision-then-hard-failure run.
+    let lastErrorRetryable = false;
     const provisionDockerImage =
       isWarmPoolProvision &&
       rec.docker_image &&
@@ -3153,6 +3163,7 @@ export class ElizaSandboxService {
     }
 
     for (let attempt = 1; attempt <= MAX_PROVISION_ATTEMPTS; attempt++) {
+      attemptsMade = attempt;
       let handle;
 
       try {
@@ -3632,6 +3643,7 @@ export class ElizaSandboxService {
           msg.includes("23505") ||
           msg.toLowerCase().includes("unique") ||
           msg.toLowerCase().includes("duplicate");
+        lastErrorRetryable = isUniqueConstraintError;
 
         if (isUniqueConstraintError && attempt < MAX_PROVISION_ATTEMPTS) {
           logger.info("[agent-sandbox] Port collision detected, retrying", {
@@ -3646,10 +3658,13 @@ export class ElizaSandboxService {
       }
     }
 
-    // All attempts exhausted
+    // Exhausted: either the retry budget is spent, or the last failure was not
+    // a port collision and therefore was never eligible for a retry.
+    const attemptsLabel = attemptsMade === 1 ? "1 attempt" : `${attemptsMade} attempts`;
+    const giveUpReason = lastErrorRetryable ? "" : " (not retryable)";
     await this.markError(
       rec,
-      `Provisioning failed after ${MAX_PROVISION_ATTEMPTS} attempts: ${lastError}`,
+      `Provisioning failed after ${attemptsLabel}${giveUpReason}: ${lastError}`,
     );
     return {
       success: false,
