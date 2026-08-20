@@ -3674,6 +3674,16 @@ export class OrchestratorTaskService extends Service {
           ...(((await this.store.getTask(taskId))?.task.metadata ??
             {}) as Record<string, unknown>),
           autoSubmittedPrUrl: pr.url,
+          // Canonical PR fields: the verifier's evidence, the ground-truth
+          // check, and the chat task widget all read `prUrl` — the submit
+          // writing only its own key left the judge insisting "no pull
+          // request was opened" while its OWN submit's PR sat open (live
+          // 2026-08-20: three verify attempts on TESTING.md, all failed on
+          // exactly that).
+          prUrl: pr.url,
+          ...(typeof (pr as { number?: unknown }).number === "number"
+            ? { prNumber: (pr as { number?: number }).number }
+            : {}),
         },
       });
       this.log("info", "auto-submitted provisioned workspace", {
