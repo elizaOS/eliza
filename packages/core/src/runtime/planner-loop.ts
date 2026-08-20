@@ -544,7 +544,28 @@ async function runPlannerLoopIterations(
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
-			const plannerOutput = await callPlanner({
+			// Providers occasionally 400 with "Failed to generate tool_calls …
+			// tool_choice = 'required'": the model simply failed to emit a call
+			// this sample (Cerebras/gemma, live 2026-08-20 — a casual "surprise
+			// me" ask died to a canned apology). One bounded retry recovers it;
+			// a second identical failure propagates as before.
+			const callPlannerWithToolChoiceRetry = async (
+				args: Parameters<typeof callPlanner>[0],
+			): ReturnType<typeof callPlanner> => {
+				try {
+					return await callPlanner(args);
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : String(error);
+					if (!/failed to generate tool_calls/i.test(message)) throw error;
+					params.runtime.logger?.warn?.(
+						{ src: "planner-loop", iteration },
+						"provider failed to generate a required tool call; retrying once",
+					);
+					return await callPlanner(args);
+				}
+			};
+			const plannerOutput = await callPlannerWithToolChoiceRetry({
 				runtime: params.runtime,
 				context: trajectory.context,
 				trajectory,
