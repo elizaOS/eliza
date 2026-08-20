@@ -55,10 +55,6 @@ const eventDispatchQueues = new WeakMap<
   IAgentRuntime,
   Map<UUID, Promise<void>>
 >();
-interface RuntimeEventTaskLookup {
-  pending?: Promise<Task[]>;
-}
-const eventTaskLookups = new WeakMap<IAgentRuntime, RuntimeEventTaskLookup>();
 
 const DEFAULT_MAX_ACTIVE_TRIGGERS = 100;
 
@@ -963,35 +959,18 @@ function serializableEventPayload(
   return payload;
 }
 
-async function listRuntimeEventTasks(runtime: IAgentRuntime): Promise<Task[]> {
-  const lookup = eventTaskLookups.get(runtime) ?? {};
-  eventTaskLookups.set(runtime, lookup);
-  let pending = lookup.pending;
-  if (!pending) {
-    pending = listTriggerTasks(runtime);
-    lookup.pending = pending;
-  }
-  try {
-    return await pending;
-  } finally {
-    // Share only a lookup that is currently in flight. Retaining the result,
-    // even briefly, can lose a native event for a trigger saved or enabled
-    // between two Smithers steps because that trigger would never be queued.
-    if (lookup.pending === pending) lookup.pending = undefined;
-  }
-}
-
 /**
  * Dispatch one runtime event through the same persisted trigger engine used by
- * the HTTP event boundary. Event-kind filtering happens before queueing; the
- * exact payload filter is rechecked on the freshly loaded task at execution.
+ * Discovery is deliberately fresh for every event: trigger creation and
+ * enablement have no invalidation channel, so sharing even an in-flight query
+ * can lose an event emitted after the write but before that query resolves.
  */
 export async function dispatchRuntimeEventTriggers(
   runtime: IAgentRuntime,
   eventKind: string,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  const tasks = await listRuntimeEventTasks(runtime);
+  const tasks = await listTriggerTasks(runtime);
   const matchingTasks = tasks.filter((task) => {
     const trigger = readTriggerConfig(task);
     return (

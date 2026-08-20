@@ -64,7 +64,7 @@ interface MockRuntimeHandle {
   setRuntimeSetting: (name: string, value: unknown) => void;
 }
 
-function makeRuntime(): MockRuntimeHandle {
+function makeRuntime(agentId: UUID = AGENT_ID): MockRuntimeHandle {
   const dispatchCalls: WorkflowDispatchCall[] = [];
   const promptMessages: PromptMessageCall[] = [];
   const deletedTaskIds: UUID[] = [];
@@ -126,7 +126,7 @@ function makeRuntime(): MockRuntimeHandle {
   };
 
   const runtime = {
-    agentId: AGENT_ID,
+    agentId,
     character: { name: "trigger-test" },
     messageService,
     logger: {
@@ -1107,7 +1107,7 @@ describe("runtime event trigger bridge", () => {
     ).toMatchObject({ enabled: false, runCount: 1 });
   });
 
-  it("coalesces only concurrent task lookups and sees newly saved triggers immediately", async () => {
+  it("performs fresh discovery for concurrent and newly saved trigger events", async () => {
     const target = makeTriggerTask({
       triggerType: "event",
       eventKind: "workflow_run_event",
@@ -1126,7 +1126,7 @@ describe("runtime event trigger bridge", () => {
       } as never),
     ]);
     await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(2));
-    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(2);
+    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(4);
 
     const newlySaved = makeTriggerTask({
       triggerType: "event",
@@ -1138,7 +1138,168 @@ describe("runtime event trigger bridge", () => {
       event: { id: "event-3", type: "NodeFinished" },
     } as never);
     await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(4));
-    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(4);
+    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(6);
+  });
+
+  it("sees create and enable writes while an older discovery is still in flight", async () => {
+    async function expectMutationVisible(
+      initialTasks: Task[],
+      currentTask: Task,
+      eventPrefix: string,
+    ): Promise<void> {
+      const lane = makeRuntime(stringToUuid(`owner-${eventPrefix}`));
+      lane.setTasks(initialTasks);
+      let releaseInitialLookup: (() => void) | undefined;
+      const initialLookup = new Promise<void>((resolve) => {
+        releaseInitialLookup = resolve;
+      });
+      const getTasks = vi.fn(async () => {
+        const callNumber = getTasks.mock.calls.length;
+        if (callNumber <= 2) {
+          await initialLookup;
+          return initialTasks;
+        }
+        return [currentTask];
+      });
+      lane.runtime.getTasks = getTasks;
+      registerTriggerTaskWorker(lane.runtime);
+
+      await lane.runtime.emitEvent("workflow_run_event", {
+        event: { id: `${eventPrefix}-before`, type: "NodeFinished" },
+      } as never);
+      await vi.waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+
+      lane.setTasks([currentTask]);
+      await lane.runtime.emitEvent("workflow_run_event", {
+        event: { id: `${eventPrefix}-after`, type: "NodeFinished" },
+      } as never);
+      try {
+        await vi.waitFor(() => expect(getTasks).toHaveBeenCalledTimes(4));
+        await vi.waitFor(() => expect(lane.dispatchCalls).toHaveLength(1));
+      } finally {
+        releaseInitialLookup?.();
+      }
+      expect(
+        (
+          lane.dispatchCalls[0]?.payload?.eventPayload as {
+            event?: { id?: string };
+          }
+        )?.event?.id,
+      ).toBe(`${eventPrefix}-after`);
+    }
+
+    const created = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+    });
+    await expectMutationVisible([], created, "create");
+
+    const disabled = makeTriggerTask(
+      {
+        triggerType: "event",
+        eventKind: "workflow_run_event",
+      },
+      { enabled: false },
+    );
+    const disabledTrigger = readTriggerConfig(disabled);
+    if (!disabledTrigger) throw new Error("disabled trigger config missing");
+    const enabled = {
+      ...disabled,
+      metadata: {
+        ...(disabled.metadata as Record<string, unknown>),
+        trigger: { ...disabledTrigger, enabled: true },
+      },
+    } as Task;
+    await expectMutationVisible([disabled], enabled, "enable");
+  });
+
+  it("keeps event discovery and dispatch isolated by runtime owner", async () => {
+    const ownerA = makeRuntime(stringToUuid("workflow-event-owner-a"));
+    const ownerB = makeRuntime(stringToUuid("workflow-event-owner-b"));
+    ownerA.setTasks([
+      makeTriggerTask({
+        triggerType: "event",
+        eventKind: "workflow_run_event",
+        workflowId: "target-owner-a",
+      }),
+    ]);
+    ownerB.setTasks([
+      makeTriggerTask({
+        triggerType: "event",
+        eventKind: "workflow_run_event",
+        workflowId: "target-owner-b",
+      }),
+    ]);
+    registerTriggerTaskWorker(ownerA.runtime);
+    registerTriggerTaskWorker(ownerB.runtime);
+
+    await ownerA.runtime.emitEvent("workflow_run_event", {
+      event: { id: "owner-a-event", type: "NodeFinished" },
+    } as never);
+    await vi.waitFor(() => expect(ownerA.dispatchCalls).toHaveLength(1));
+    expect(ownerA.dispatchCalls[0]?.workflowId).toBe("target-owner-a");
+    expect(ownerB.dispatchCalls).toHaveLength(0);
+  });
+
+  it("rechecks disabled and deleted tasks from a stale discovery snapshot", async () => {
+    const stale = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+    });
+    const staleTrigger = readTriggerConfig(stale);
+    if (!staleTrigger) throw new Error("trigger config missing");
+    const disabled = {
+      ...stale,
+      metadata: {
+        ...(stale.metadata as Record<string, unknown>),
+        trigger: { ...staleTrigger, enabled: false },
+      },
+    } as Task;
+    handle.runtime.getTasks = vi.fn(async () => [stale]);
+
+    handle.setTasks([disabled]);
+    await dispatchRuntimeEventTriggers(handle.runtime, "workflow_run_event", {
+      event: { id: "after-disable", type: "NodeFinished" },
+    });
+    expect(handle.dispatchCalls).toHaveLength(0);
+
+    handle.setTasks([]);
+    await dispatchRuntimeEventTriggers(handle.runtime, "workflow_run_event", {
+      event: { id: "after-delete", type: "NodeFinished" },
+    });
+    expect(handle.dispatchCalls).toHaveLength(0);
+    expect(handle.runtime.getTask).toHaveBeenCalledTimes(2);
+  });
+
+  it("dispatches every distinct rapid event for the same trigger", async () => {
+    const target = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+    });
+    handle.setTasks([target]);
+
+    await Promise.all([
+      dispatchRuntimeEventTriggers(handle.runtime, "workflow_run_event", {
+        event: { id: "distinct-event-a", type: "NodeFinished" },
+      }),
+      dispatchRuntimeEventTriggers(handle.runtime, "workflow_run_event", {
+        event: { id: "distinct-event-b", type: "NodeFinished" },
+      }),
+    ]);
+
+    expect(handle.dispatchCalls).toHaveLength(2);
+    expect(
+      handle.dispatchCalls
+        .map(
+          (call) =>
+            (call.payload?.eventPayload as { event?: { id?: string } })?.event
+              ?.id,
+        )
+        .sort(),
+    ).toEqual(["distinct-event-a", "distinct-event-b"]);
+    expect(handle.dispatchCalls[0]?.options?.idempotencyKey).not.toBe(
+      handle.dispatchCalls[1]?.options?.idempotencyKey,
+    );
   });
 
   it("derives the same durable dispatch key when a Smithers event is replayed", async () => {
