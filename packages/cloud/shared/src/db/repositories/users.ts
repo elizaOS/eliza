@@ -2969,6 +2969,39 @@ export class UsersRepository {
   async delete(id: string): Promise<void> {
     await dbWrite.delete(users).where(eq(users.id, id));
   }
+
+  /**
+   * Removes a sole-user personal organization as one database transaction.
+   * Deleting the organization first lets its declared cascades erase the user
+   * and associated content. Any restrictive retention FK aborts the entire
+   * transaction, so a retry can never observe a half-deleted account.
+   */
+  async deletePersonalOrganizationAtomically(
+    userId: string,
+    organizationId: string,
+  ): Promise<void> {
+    await dbWrite.transaction(async (tx) => {
+      const members = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.organization_id, organizationId))
+        .for("update");
+      if (!members.some((member) => member.id === userId)) {
+        throw new Error("Account deletion user is not a member of its personal organization");
+      }
+      if (members.length !== 1) {
+        throw new Error("Account deletion requires a sole-user personal organization");
+      }
+
+      const deleted = await tx
+        .delete(organizations)
+        .where(eq(organizations.id, organizationId))
+        .returning({ id: organizations.id });
+      if (deleted.length !== 1) {
+        throw new Error("Personal organization disappeared during account deletion");
+      }
+    });
+  }
 }
 
 /**

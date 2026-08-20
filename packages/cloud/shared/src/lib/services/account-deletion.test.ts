@@ -30,7 +30,7 @@ const findByIdForWrite = mock(async () => ({ id: "user-1" }));
 const deactivateSteward = mock(async () => ({ userId: "steward-1" }));
 const deleteSteward = mock(async () => ({ userId: "steward-1" }));
 const updateUser = mock(async () => undefined);
-const deleteUser = mock(async () => undefined);
+const deletePersonalAccount = mock(async () => undefined);
 const updateOrg = mock(async () => undefined);
 const purgeOrganizationResources = mock(async () => undefined);
 const recordPurgeFailure = requestRepo.recordPurgeFailure;
@@ -56,7 +56,9 @@ mock.module("./steward-platform-users", () => ({
 mock.module("./user-sessions", () => ({
   userSessionsService: { endAllUserSessions: mock(async () => undefined) },
 }));
-mock.module("./users", () => ({ usersService: { update: updateUser, delete: deleteUser } }));
+mock.module("./users", () => ({
+  usersService: { update: updateUser, deletePersonalAccount },
+}));
 mock.module("./organizations", () => ({
   organizationsService: { update: updateOrg },
 }));
@@ -71,7 +73,7 @@ beforeEach(() => {
   deactivateSteward.mockClear();
   deleteSteward.mockClear();
   updateUser.mockClear();
-  deleteUser.mockClear();
+  deletePersonalAccount.mockClear();
   updateOrg.mockClear();
   purgeOrganizationResources.mockClear();
   recordPurgeFailure.mockClear();
@@ -115,7 +117,7 @@ describe("account deletion lifecycle", () => {
       blob,
     });
     expect(deleteSteward).toHaveBeenCalledWith("steward-1");
-    expect(deleteUser).toHaveBeenCalledWith("user-1");
+    expect(deletePersonalAccount).toHaveBeenCalledWith("user-1", "org-1");
     expect(requestRepo.update).toHaveBeenLastCalledWith(
       "request-1",
       expect.objectContaining({
@@ -146,7 +148,7 @@ describe("account deletion lifecycle", () => {
 
     expect(result).toEqual({ recovered: 0, processed: 1, completed: 0, actionRequired: 1 });
     expect(deleteSteward).not.toHaveBeenCalled();
-    expect(deleteUser).not.toHaveBeenCalled();
+    expect(deletePersonalAccount).not.toHaveBeenCalled();
     expect(recordPurgeFailure).toHaveBeenCalledWith("request-1", "purge_failed");
   });
 });

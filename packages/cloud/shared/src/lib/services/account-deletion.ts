@@ -159,7 +159,10 @@ export async function processDueAccountDeletions(
       });
       await deleteStewardPlatformUser(request.steward_user_id);
       const user = await usersRepository.findByIdForWrite(request.user_id);
-      if (user) await usersService.delete(request.user_id);
+      if (!user) {
+        throw new Error("Cloud user disappeared before database erasure completed");
+      }
+      await usersService.deletePersonalAccount(request.user_id, request.organization_id);
       await accountDeletionRequestsRepository.update(request.id, {
         status: "completed",
         completed_at: new Date(),
