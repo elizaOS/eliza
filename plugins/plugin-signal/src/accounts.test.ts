@@ -99,6 +99,23 @@ describe("resolveSignalAccount case-insensitive lookup (issue #22680)", () => {
     // ambiguous; enumeration must fail loudly rather than start two accounts.
     expect(() => listSignalAccountIds(rt)).toThrowError(/collide after normalization/i);
     expect(() => listEnabledSignalAccounts(rt)).toThrowError(/collide after normalization/i);
+    expect(() => resolveSignalAccount(rt, "work")).toThrowError(/collide after normalization/i);
+  });
+
+  it("rejects whitespace and case variants through every resolver entry point", () => {
+    const rt = createRuntime({
+      accounts: {
+        Work: { enabled: true, account: "+15550001111" },
+        " work ": { enabled: true, account: "+15550003333" },
+      },
+    });
+    for (const resolve of [
+      () => listSignalAccountIds(rt),
+      () => listEnabledSignalAccounts(rt),
+      () => resolveSignalAccount(rt, "WORK"),
+    ]) {
+      expect(resolve).toThrowError(/collide after normalization/i);
+    }
   });
 
   it("still resolves all-lowercase configs unchanged", () => {
