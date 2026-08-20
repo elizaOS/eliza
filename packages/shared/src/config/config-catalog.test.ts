@@ -229,6 +229,15 @@ describe("evaluateLogicExpression budget", () => {
     ).toBe(true);
   });
 
+  it("rejects a huge sparse child array before short-circuit iteration", () => {
+    const sparseChildren: unknown[] = [];
+    sparseChildren.length = 5_000_000;
+
+    expect(() =>
+      evaluateLogicExpression({ or: sparseChildren } as never, {}),
+    ).toThrowError(ElizaError);
+  });
+
   it("throws LOGIC_EXPRESSION_UNBOUNDED on a cyclic and graph, not RangeError", () => {
     const cyclic: { and: unknown[] } = { and: [] };
     cyclic.and.push(cyclic);
@@ -247,6 +256,7 @@ describe("evaluateLogicExpression budget", () => {
     ["non-object node", null],
     ["non-array and", { and: "not-an-array" }],
     ["short comparison tuple", { eq: [1] }],
+    ["sparse comparison tuple", { eq: new Array(2) }],
     ["multiple operators", { path: "/x", not: { path: "/y" } }],
   ])(
     "rejects malformed %s with a typed invalid-expression error",
@@ -261,6 +271,20 @@ describe("evaluateLogicExpression budget", () => {
       }
     },
   );
+
+  it("dispatches only the validated own operator", () => {
+    const inheritedAnd = Object.create({
+      and: [{ path: "/inheritedFalse" }],
+    }) as Record<string, unknown>;
+    inheritedAnd.path = "/ownTrue";
+
+    expect(
+      evaluateLogicExpression(inheritedAnd as never, {
+        inheritedFalse: false,
+        ownTrue: true,
+      }),
+    ).toBe(true);
+  });
 
   it("bounds direct path character work at the exact limit", () => {
     const acceptedPath = "x".repeat(MAX_LOGIC_EXPRESSION_PATH_LENGTH);

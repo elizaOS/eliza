@@ -303,10 +303,42 @@ function requireLogicTuple(
   value: unknown,
   operator: string,
 ): [DynamicValue, DynamicValue] {
-  if (!Array.isArray(value) || value.length !== 2) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 2 ||
+    !Object.hasOwn(value, 0) ||
+    !Object.hasOwn(value, 1)
+  ) {
     failLogicInvalid(`${operator} requires exactly two operands`, { operator });
   }
   return value as [DynamicValue, DynamicValue];
+}
+
+function requireLogicChildren(
+  value: unknown,
+  operator: "and" | "or",
+  ctx: LogicWalkContext,
+): LogicExpression[] {
+  if (!Array.isArray(value)) {
+    failLogicInvalid(`${operator} requires an array`, { operator });
+  }
+  const remainingVisits = MAX_LOGIC_EXPRESSION_NODES - ctx.visits;
+  if (value.length > remainingVisits) {
+    failLogicUnbounded("visits", {
+      operator,
+      visits: ctx.visits + value.length,
+      max: MAX_LOGIC_EXPRESSION_NODES,
+    });
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index)) {
+      failLogicInvalid(`${operator} requires a dense child array`, {
+        operator,
+        index,
+      });
+    }
+  }
+  return value as LogicExpression[];
 }
 
 /**
@@ -361,65 +393,51 @@ function evalLogic(
       operators,
     });
   }
+  const operator = operators[0];
+  const node = expr as unknown as Record<string, unknown>;
   try {
-    if ("and" in expr) {
-      if (!Array.isArray(expr.and)) {
-        failLogicInvalid("and requires an array", { depth });
+    switch (operator) {
+      case "and":
+        return requireLogicChildren(node.and, "and", ctx).every((child) =>
+          evalLogic(child, state, depth + 1, ctx),
+        );
+      case "or":
+        return requireLogicChildren(node.or, "or", ctx).some((child) =>
+          evalLogic(child, state, depth + 1, ctx),
+        );
+      case "not":
+        return !evalLogic(node.not as LogicExpression, state, depth + 1, ctx);
+      case "path":
+        return Boolean(getByPath(state, requireLogicPath(node.path)));
+      case "eq": {
+        const [left, right] = requireLogicTuple(node.eq, "eq");
+        return (
+          resolveLogicDynamic(left, state) === resolveLogicDynamic(right, state)
+        );
       }
-      return (expr.and as LogicExpression[]).every((child) =>
-        evalLogic(child, state, depth + 1, ctx),
-      );
-    }
-    if ("or" in expr) {
-      if (!Array.isArray(expr.or)) {
-        failLogicInvalid("or requires an array", { depth });
+      case "neq": {
+        const [left, right] = requireLogicTuple(node.neq, "neq");
+        return (
+          resolveLogicDynamic(left, state) !== resolveLogicDynamic(right, state)
+        );
       }
-      return (expr.or as LogicExpression[]).some((child) =>
-        evalLogic(child, state, depth + 1, ctx),
-      );
+      case "gt":
+      case "gte":
+      case "lt":
+      case "lte": {
+        const [left, right] = requireLogicTuple(node[operator], operator);
+        const leftValue = resolveLogicDynamic(left, state);
+        const rightValue = resolveLogicDynamic(right, state);
+        if (typeof leftValue !== "number" || typeof rightValue !== "number") {
+          return false;
+        }
+        if (operator === "gt") return leftValue > rightValue;
+        if (operator === "gte") return leftValue >= rightValue;
+        if (operator === "lt") return leftValue < rightValue;
+        return leftValue <= rightValue;
+      }
     }
-    if ("not" in expr)
-      return !evalLogic(
-        (expr as { not: LogicExpression }).not,
-        state,
-        depth + 1,
-        ctx,
-      );
-    if ("path" in expr)
-      return Boolean(getByPath(state, requireLogicPath(expr.path)));
-    if ("eq" in expr) {
-      const [l, r] = requireLogicTuple(expr.eq, "eq");
-      return resolveLogicDynamic(l, state) === resolveLogicDynamic(r, state);
-    }
-    if ("neq" in expr) {
-      const [l, r] = requireLogicTuple(expr.neq, "neq");
-      return resolveLogicDynamic(l, state) !== resolveLogicDynamic(r, state);
-    }
-    if ("gt" in expr) {
-      const [l, r] = requireLogicTuple(expr.gt, "gt");
-      const lv = resolveLogicDynamic(l, state),
-        rv = resolveLogicDynamic(r, state);
-      return typeof lv === "number" && typeof rv === "number" && lv > rv;
-    }
-    if ("gte" in expr) {
-      const [l, r] = requireLogicTuple(expr.gte, "gte");
-      const lv = resolveLogicDynamic(l, state),
-        rv = resolveLogicDynamic(r, state);
-      return typeof lv === "number" && typeof rv === "number" && lv >= rv;
-    }
-    if ("lt" in expr) {
-      const [l, r] = requireLogicTuple(expr.lt, "lt");
-      const lv = resolveLogicDynamic(l, state),
-        rv = resolveLogicDynamic(r, state);
-      return typeof lv === "number" && typeof rv === "number" && lv < rv;
-    }
-    if ("lte" in expr) {
-      const [l, r] = requireLogicTuple(expr.lte, "lte");
-      const lv = resolveLogicDynamic(l, state),
-        rv = resolveLogicDynamic(r, state);
-      return typeof lv === "number" && typeof rv === "number" && lv <= rv;
-    }
-    return failLogicInvalid("unsupported operator", { depth });
+    return failLogicInvalid("unsupported operator", { depth, operator });
   } finally {
     ctx.visiting.delete(expr);
   }
