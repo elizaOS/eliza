@@ -42,6 +42,15 @@ import {
 
 const MIN_STEPS_FOR_EXTRACTION = 5;
 const MAX_AUTO_REFINEMENTS = 3;
+
+/**
+ * SKILL.md frontmatter is untrusted installer/agent input. `yaml.parse` walks
+ * flow collections recursively and throws `YAMLParseError: Maximum call stack
+ * size exceeded` around ~8000 nested `{a:{a:…}}` maps (proven on
+ * origin/develop). Reject before that walk; real frontmatter is a handful of
+ * keys (`name`, `description`, `provenance`).
+ */
+export const MAX_SKILL_FRONTMATTER_YAML_DEPTH = 32;
 const PROPOSED_SUBDIR = ["skills", "curated", "proposed"] as const;
 const LOG_SRC = "plugin:advanced-capabilities:evaluator:skill_learning";
 
@@ -155,6 +164,71 @@ function normalizeNewlines(text: string): string {
 		.join("\n");
 }
 
+function yamlTextExceedsNestBound(
+	text: string,
+	maxDepth: number = MAX_SKILL_FRONTMATTER_YAML_DEPTH,
+): boolean {
+	let flow = 0;
+	let inSingle = false;
+	let inDouble = false;
+	let escaped = false;
+	for (let i = 0; i < text.length; i += 1) {
+		const ch = text[i];
+		if (inSingle) {
+			if (ch === "'") {
+				if (text[i + 1] === "'") {
+					i += 1;
+					continue;
+				}
+				inSingle = false;
+			}
+			continue;
+		}
+		if (inDouble) {
+			if (escaped) {
+				escaped = false;
+				continue;
+			}
+			if (ch === "\\") {
+				escaped = true;
+				continue;
+			}
+			if (ch === '"') inDouble = false;
+			continue;
+		}
+		if (ch === "'") {
+			inSingle = true;
+			continue;
+		}
+		if (ch === '"') {
+			inDouble = true;
+			continue;
+		}
+		if (ch === "{" || ch === "[") {
+			flow += 1;
+			if (flow > maxDepth) return true;
+			continue;
+		}
+		if (ch === "}" || ch === "]") {
+			flow = Math.max(0, flow - 1);
+		}
+	}
+
+	for (const line of text.split("\n")) {
+		const trimmed = line.trim();
+		if (trimmed === "" || trimmed.startsWith("#")) continue;
+		let indent = 0;
+		while (
+			indent < line.length &&
+			(line[indent] === " " || line[indent] === "\t")
+		) {
+			indent += 1;
+		}
+		if (Math.floor(indent / 2) > maxDepth) return true;
+	}
+	return false;
+}
+
 function splitFrontmatter(content: string): ParsedSkillFile | null {
 	const normalized = normalizeNewlines(content);
 	const lines = normalized.split("\n");
@@ -172,12 +246,27 @@ function splitFrontmatter(content: string): ParsedSkillFile | null {
 		.slice(endIndex + 1)
 		.join("\n")
 		.replaceAll("\u0000", "");
-	const parsed = parseYaml(yamlText);
+	if (yamlTextExceedsNestBound(yamlText)) {
+		return null;
+	}
+	let parsed: unknown;
+	try {
+		parsed = parseYaml(yamlText);
+	} catch {
+		// error-policy:J3 SKILL.md frontmatter is untrusted; a parser overflow or
+		// malformed block is a skipped skill, never an evaluator crash.
+		return null;
+	}
 	const frontmatter =
 		parsed && typeof parsed === "object" && !Array.isArray(parsed)
 			? (parsed as Record<string, unknown>)
 			: {};
 	return { frontmatter, body: body.startsWith("\n") ? body.slice(1) : body };
+}
+
+/** Test hook: the refinement evaluator's SKILL.md frontmatter parse. */
+export function _splitFrontmatter(content: string): ParsedSkillFile | null {
+	return splitFrontmatter(content);
 }
 
 function bodyContainsFrontmatterDelimiter(body: string): boolean {
