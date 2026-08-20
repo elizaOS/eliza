@@ -50,12 +50,19 @@ export const TRIGGER_TASK_TAGS = ["queue", "repeat", "trigger"] as const;
 const HEARTBEAT_TASK_TAGS = ["queue", "repeat", "heartbeat"] as const;
 const WORKFLOW_RUN_EVENT = "workflow_run_event" as const;
 const RUNTIME_TRIGGER_EVENT_KINDS = [WORKFLOW_RUN_EVENT] as const;
+const RUNTIME_EVENT_TASK_CACHE_TTL_MS = 500;
 
 const eventBridgeRegistrations = new WeakSet<IAgentRuntime>();
 const eventDispatchQueues = new WeakMap<
   IAgentRuntime,
   Map<UUID, Promise<void>>
 >();
+interface RuntimeEventTaskCache {
+  pending?: Promise<Task[]>;
+  refreshedAt: number;
+  tasks?: Task[];
+}
+const eventTaskCaches = new WeakMap<IAgentRuntime, RuntimeEventTaskCache>();
 
 const DEFAULT_MAX_ACTIVE_TRIGGERS = 100;
 
@@ -902,6 +909,35 @@ function serializableEventPayload(
   return payload;
 }
 
+async function listCachedRuntimeEventTasks(
+  runtime: IAgentRuntime,
+): Promise<Task[]> {
+  const now = Date.now();
+  const cache = eventTaskCaches.get(runtime) ?? { refreshedAt: 0 };
+  eventTaskCaches.set(runtime, cache);
+  if (
+    cache.tasks &&
+    now - cache.refreshedAt >= 0 &&
+    now - cache.refreshedAt < RUNTIME_EVENT_TASK_CACHE_TTL_MS
+  ) {
+    return cache.tasks;
+  }
+  let pending = cache.pending;
+  if (!pending) {
+    pending = listTriggerTasks(runtime).then((tasks) => {
+      cache.tasks = tasks;
+      cache.refreshedAt = Date.now();
+      return tasks;
+    });
+    cache.pending = pending;
+  }
+  try {
+    return await pending;
+  } finally {
+    if (cache.pending === pending) cache.pending = undefined;
+  }
+}
+
 /**
  * Dispatch one runtime event through the same persisted trigger engine used by
  * the HTTP event boundary. Filtering happens before execution so unrelated
@@ -912,7 +948,7 @@ export async function dispatchRuntimeEventTriggers(
   eventKind: string,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  const tasks = await listTriggerTasks(runtime);
+  const tasks = await listCachedRuntimeEventTasks(runtime);
   const matchingTasks = tasks.filter((task) => {
     const trigger = readTriggerConfig(task);
     return (

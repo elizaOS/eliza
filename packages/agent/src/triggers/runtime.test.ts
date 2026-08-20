@@ -1036,6 +1036,45 @@ describe("runtime event trigger bridge", () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
+  it("coalesces concurrent task lookups and reuses them for a bounded window", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    const target = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+    });
+    handle.setTasks([target]);
+    registerTriggerTaskWorker(handle.runtime);
+
+    await Promise.all([
+      handle.runtime.emitEvent("workflow_run_event", {
+        runtime: handle.runtime,
+        event: { id: "event-1", type: "NodeFinished" },
+      } as never),
+      handle.runtime.emitEvent("workflow_run_event", {
+        runtime: handle.runtime,
+        event: { id: "event-2", type: "NodeFinished" },
+      } as never),
+    ]);
+    await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(2));
+    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(2);
+
+    now.mockReturnValue(10_400);
+    await handle.runtime.emitEvent("workflow_run_event", {
+      runtime: handle.runtime,
+      event: { id: "event-3", type: "NodeFinished" },
+    } as never);
+    await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(3));
+    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(2);
+
+    now.mockReturnValue(10_501);
+    await handle.runtime.emitEvent("workflow_run_event", {
+      runtime: handle.runtime,
+      event: { id: "event-4", type: "NodeFinished" },
+    } as never);
+    await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(4));
+    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(4);
+  });
+
   it("derives the same durable dispatch key when a Smithers event is replayed", async () => {
     const target = makeTriggerTask({
       triggerType: "event",
