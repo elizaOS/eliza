@@ -1047,11 +1047,16 @@ export interface ActionContext {
  *   Present when the emission originates from a structured field extractor.
  *   Undefined for raw-token streams (useModel without an extractor) where no
  *   field-level accumulation exists.
+ * @param streamRevision - Monotonically allocated structured-extractor attempt
+ *   number. A change means `accumulated` restarted and consumers must discard
+ *   incremental state from the preceding attempt. Undefined for raw-token
+ *   streams.
  */
 export type StreamChunkCallback = (
 	chunk: string,
 	messageId?: string,
 	accumulated?: string,
+	streamRevision?: number,
 ) => void | Promise<void>;
 
 /**
