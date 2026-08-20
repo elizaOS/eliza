@@ -19,13 +19,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   commitExternalCanaryPublication,
   consumeThenPublishExternalCanary,
   EXTERNAL_CANARY_MAX_CLOCK_SKEW_MS,
   EXTERNAL_CANARY_MAX_SIGNATURE_AGE_MS,
   EXTERNAL_PROVIDER_CANARY_CONFIG_SCHEMA,
+  EXTERNAL_PROVIDER_CANARY_HELP,
   loadPinnedExternalProviderCapabilityModule,
   parseExternalProviderCanaryConfig,
   readCanonicalProviderScenarioDefinition,
@@ -288,5 +289,14 @@ describe("external provider-canary CLI", () => {
   it("returns usage status before touching config", async () => {
     await expect(runExternalProviderCanaryCli([])).resolves.toBe(2);
     await expect(runExternalProviderCanaryCli(["one", "two"])).resolves.toBe(2);
+  });
+
+  it("prints help without treating the flag as a config path", async () => {
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+    await expect(runExternalProviderCanaryCli(["--help"])).resolves.toBe(0);
+    expect(write).toHaveBeenCalledWith(EXTERNAL_PROVIDER_CANARY_HELP);
+    write.mockRestore();
   });
 });

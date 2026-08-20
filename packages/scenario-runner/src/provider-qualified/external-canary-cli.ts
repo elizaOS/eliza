@@ -48,6 +48,14 @@ export const EXTERNAL_PROVIDER_CANARY_CONFIG_SCHEMA =
   "eliza.external-provider-canary-config.v2" as const;
 export const EXTERNAL_CANARY_MAX_SIGNATURE_AGE_MS = 300_000;
 export const EXTERNAL_CANARY_MAX_CLOCK_SKEW_MS = 5_000;
+export const EXTERNAL_PROVIDER_CANARY_HELP = `Usage:
+  eliza-provider-canary <external-canary-config.json>
+  eliza-provider-canary --help
+
+Runs one previously authorized provider canary from canonical data and a
+content-pinned operator bundle. It does not create credentials, authorization,
+provider accounts, observer evidence, or judge evidence.
+`;
 const JOURNAL_SCHEMA = "eliza.external-provider-canary-run-journal.v1";
 
 export interface ExternalProviderCanaryConfig {
@@ -684,10 +692,12 @@ export async function executeExternalProviderCanaryFromConfig(
 export async function runExternalProviderCanaryCli(
   argv: readonly string[] = process.argv.slice(2),
 ): Promise<number> {
+  if (argv.length === 1 && ["--help", "-h", "help"].includes(argv[0])) {
+    process.stdout.write(EXTERNAL_PROVIDER_CANARY_HELP);
+    return 0;
+  }
   if (argv.length !== 1) {
-    process.stderr.write(
-      "usage: eliza-provider-canary <external-canary-config.json>\n",
-    );
+    process.stderr.write(EXTERNAL_PROVIDER_CANARY_HELP);
     return 2;
   }
   return executeExternalProviderCanaryFromConfig(argv[0]);
