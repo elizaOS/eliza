@@ -16,32 +16,15 @@ import path from "node:path";
 import { logger } from "@elizaos/core";
 import { analyzeShellCommand } from "../approvals/analysis.js";
 
-/**
- * Realpath `p`, walking up to the longest existing parent when the leaf is
- * missing so a symlink directory cannot hide behind a not-yet-created name.
- */
-function resolveRealPathSync(p: string): string {
-  const absolute = path.resolve(p);
+/** Resolve an existing directory without accepting partial or lexical paths. */
+function resolveDirectoryRealPathSync(p: string): string | null {
   try {
-    return fs.realpathSync(absolute);
+    const realPath = fs.realpathSync(path.resolve(p));
+    return fs.statSync(realPath).isDirectory() ? realPath : null;
   } catch {
-    // error-policy:J3 missing leaf or ancestor — walk up rather than treating
-    // the lexical path as contained.
-  }
-  const tail: string[] = [];
-  let current = absolute;
-  for (;;) {
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return absolute;
-    }
-    tail.unshift(path.basename(current));
-    try {
-      return path.join(fs.realpathSync(parent), ...tail);
-    } catch {
-      // error-policy:J3 this ancestor is also missing; keep walking.
-      current = parent;
-    }
+    // error-policy:J3 cwd candidates are untrusted input. Missing, dangling,
+    // looping, inaccessible, and racing paths all fail closed.
+    return null;
   }
 }
 
@@ -51,11 +34,21 @@ export function validatePath(
   currentDir: string,
 ): string | null {
   const resolvedPath = path.resolve(currentDir, commandPath);
-  const realPath = resolveRealPathSync(resolvedPath);
-  const realAllowed = resolveRealPathSync(allowedDir);
+  const realPath = resolveDirectoryRealPathSync(resolvedPath);
+  const realAllowed = resolveDirectoryRealPathSync(allowedDir);
+  if (!realPath || !realAllowed) {
+    logger.warn(
+      `Path validation failed: ${resolvedPath} or its allowed directory could not be resolved as a directory`,
+    );
+    return null;
+  }
   const relative = path.relative(realAllowed, realPath);
 
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
     logger.warn(
       `Path validation failed: ${resolvedPath} is outside allowed directory ${allowedDir}`,
     );

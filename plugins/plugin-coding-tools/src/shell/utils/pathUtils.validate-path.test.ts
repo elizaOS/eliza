@@ -5,8 +5,10 @@
  * outside the sandbox. This harness is real filesystem, not mocked.
  */
 import {
+  closeSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -43,6 +45,13 @@ describe("validatePath — symlink workdir confinement", () => {
     expect(validatePath("sub", allowed, allowed)).toBe(realpathSync(child));
   });
 
+  it("accepts a descendant whose name begins with two dots", () => {
+    const { allowed } = sandbox();
+    const child = path.join(allowed, "..safe");
+    mkdirSync(child);
+    expect(validatePath("..safe", allowed, allowed)).toBe(realpathSync(child));
+  });
+
   it("rejects lexical .. escapes", () => {
     const { allowed } = sandbox();
     expect(validatePath("..", allowed, allowed)).toBeNull();
@@ -58,6 +67,17 @@ describe("validatePath — symlink workdir confinement", () => {
     },
   );
 
+  itSymlink(
+    "rejects a dangling outside symlink instead of treating it lexically",
+    () => {
+      const { allowed, outside } = sandbox();
+      const absentOutsideTarget = path.join(outside, "not-created");
+      symlinkSync(absentOutsideTarget, path.join(allowed, "escape"));
+
+      expect(validatePath("escape/subdir", allowed, allowed)).toBeNull();
+    },
+  );
+
   itSymlink("accepts a symlink that stays inside the allowed tree", () => {
     const { allowed } = sandbox();
     const inner = path.join(allowed, "inner");
@@ -65,5 +85,14 @@ describe("validatePath — symlink workdir confinement", () => {
     symlinkSync(inner, path.join(allowed, "alias"));
     const validated = validatePath("alias", allowed, allowed);
     expect(validated).toBe(realpathSync(inner));
+  });
+
+  it("rejects missing paths and regular files because cwd must be a directory", () => {
+    const { allowed } = sandbox();
+    expect(validatePath("missing", allowed, allowed)).toBeNull();
+
+    const file = path.join(allowed, "file.txt");
+    closeSync(openSync(file, "w"));
+    expect(validatePath("file.txt", allowed, allowed)).toBeNull();
   });
 });
