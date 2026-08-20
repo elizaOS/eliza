@@ -7,7 +7,7 @@
  * here. Account IDs are lowercased via `normalizeAccountId`, and `"default"`
  * (`DEFAULT_ACCOUNT_ID`) is the sentinel for single-account env-only setups.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 
 /**
  * Default account identifier used when no specific account is configured
@@ -165,12 +165,31 @@ export function listSignalAccountIds(runtime: IAgentRuntime): string[] {
     return [DEFAULT_ACCOUNT_ID];
   }
 
-  const ids = Object.keys(accounts).filter(Boolean);
+  // Enumerate under the same normalized (lowercased) identity that
+  // `resolveSignalAccount`/`getAccountConfig` use for lookup, otherwise an
+  // uppercase-keyed account (`"Work"`) is listed raw but resolves under
+  // `"work"`, misses its overrides, and is silently dropped (issue #22680).
+  const normalizedToConfigured = new Map<string, string>();
+  for (const configuredId of Object.keys(accounts).filter(Boolean)) {
+    const normalized = normalizeAccountId(configuredId);
+    const existing = normalizedToConfigured.get(normalized);
+    if (existing !== undefined && existing !== configuredId) {
+      throw new ElizaError("Signal account identifiers collide after normalization", {
+        code: "SIGNAL_ACCOUNT_ID_COLLISION",
+        context: {
+          normalizedAccountId: normalized,
+          configuredIds: [existing, configuredId],
+        },
+      });
+    }
+    normalizedToConfigured.set(normalized, configuredId);
+  }
+  const ids = Array.from(normalizedToConfigured.keys());
   if (ids.length === 0) {
     return [DEFAULT_ACCOUNT_ID];
   }
 
-  return [...ids].sort((a: string, b: string) => a.localeCompare(b));
+  return ids.slice().sort((a: string, b: string) => a.localeCompare(b));
 }
 
 /**
@@ -198,7 +217,14 @@ function getAccountConfig(
     return undefined;
   }
 
-  return accounts[accountId];
+  // Accept both the exact key and its normalized form so an uppercase or
+  // mixed-case configured key still matches the lowercased lookup id.
+  return (
+    accounts[accountId] ??
+    Object.entries(accounts).find(
+      ([configuredId]) => normalizeAccountId(configuredId) === accountId
+    )?.[1]
+  );
 }
 
 /**
