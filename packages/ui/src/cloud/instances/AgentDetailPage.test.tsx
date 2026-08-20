@@ -25,7 +25,7 @@ vi.mock("../lib/use-document-title", () => ({
 }));
 
 const agentState: {
-  data: AgentDetailDto;
+  data: AgentDetailDto | undefined;
   isLoading: boolean;
   error: Error | null;
 } = {
@@ -46,6 +46,7 @@ vi.mock("./components/eliza-connect-button", () => ({
 }));
 
 import { PageHeaderProvider } from "../../cloud-ui/components/layout";
+import { ApiError } from "../lib/api-client";
 import AgentDetailPage from "./AgentDetailPage";
 
 const baseAgent: AgentDetailDto = {
@@ -73,7 +74,7 @@ const baseAgent: AgentDetailDto = {
   adminDetails: null,
 };
 
-function renderPage(agent: AgentDetailDto) {
+function renderPage(agent: AgentDetailDto | undefined) {
   agentState.data = agent;
   return render(
     <MemoryRouter initialEntries={["/dashboard/agents/test-agent-1"]}>
@@ -89,6 +90,33 @@ function renderPage(agent: AgentDetailDto) {
 describe("AgentDetailPage product detail", () => {
   afterEach(() => {
     cleanup();
+    agentState.data = baseAgent;
+    agentState.isLoading = false;
+    agentState.error = null;
+  });
+
+  it("keeps a deleted agent visible as a distinct recoverable state", () => {
+    agentState.error = new ApiError(404, "NOT_FOUND", "Agent not found");
+    renderPage(undefined);
+
+    expect(
+      screen.getByRole("heading", { name: "Agent no longer available" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/deleted or is no longer available/i)).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Return to Agents" })
+        .getAttribute("href"),
+    ).toBe("/cloud/agents");
+  });
+
+  it("does not disguise a successful response with missing data as deletion", () => {
+    renderPage(undefined);
+
+    expect(
+      screen.getByText("The agent response did not include agent details."),
+    ).toBeTruthy();
+    expect(screen.queryByText("Agent no longer available")).toBeNull();
   });
 
   it("presents shared agents without infrastructure or admin panels", () => {

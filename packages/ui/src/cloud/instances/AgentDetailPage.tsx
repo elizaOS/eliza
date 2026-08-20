@@ -13,7 +13,7 @@ import {
   DashboardLoadingState,
 } from "@elizaos/ui/cloud-ui";
 import { AlertCircle, ArrowLeft, Cloud } from "lucide-react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
@@ -49,7 +49,29 @@ export default function AgentDetailPage() {
   }
 
   if (query.error instanceof ApiError && query.error.status === 404) {
-    return <Navigate to="/cloud/agents" replace />;
+    return (
+      <div className="mx-auto max-w-prose space-y-4 p-12 text-sm text-muted-strong">
+        <h1 className="text-lg font-semibold text-txt-strong">
+          {t("cloud.agents.detail.unavailableTitle", {
+            defaultValue: "Agent no longer available",
+          })}
+        </h1>
+        <p>
+          {t("cloud.agents.detail.unavailableBody", {
+            defaultValue:
+              "This agent may have been deleted or is no longer available to your account.",
+          })}
+        </p>
+        <Link
+          to="/cloud/agents"
+          className="inline-flex min-h-touch items-center text-sm font-medium text-accent hover:text-accent-hover transition-colors"
+        >
+          {t("cloud.agents.detail.returnToAgents", {
+            defaultValue: "Return to Agents",
+          })}
+        </Link>
+      </div>
+    );
   }
   if (query.error) {
     const msg =
@@ -62,7 +84,15 @@ export default function AgentDetailPage() {
   }
 
   const agent = query.data;
-  if (!agent) return <Navigate to="/cloud/agents" replace />;
+  if (!agent) {
+    return (
+      <DashboardErrorState
+        message={t("cloud.agents.detail.errorMissingData", {
+          defaultValue: "The agent response did not include agent details.",
+        })}
+      />
+    );
+  }
 
   const isRunningish =
     agent.status === "running" || agent.status === "provisioning";
