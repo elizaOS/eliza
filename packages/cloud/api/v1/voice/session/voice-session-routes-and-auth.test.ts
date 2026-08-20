@@ -20,6 +20,7 @@ import * as realJwt from "@/lib/voice-session/jwt";
 import * as realSessionRegistry from "@/lib/voice-session/session-registry";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import * as workerCoreStub from "../../../src/stubs/elizaos-core";
+import * as coreTestContract from "../../../src/stubs/elizaos-core-test-contract";
 
 const realCloudWorkerErrorsExports = { ...realCloudWorkerErrors };
 const realJwtExports = { ...realJwt };
@@ -55,11 +56,34 @@ const apiRoot = new URL("../../../src", import.meta.url).href;
 // the DB-free unit lane (matches the sibling mint-consent route test).
 mock.module("@elizaos/core", () => ({
   ...workerCoreStub,
+  canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
+  ChannelType: coreTestContract.ChannelType,
+  DatabaseAdapter: coreTestContract.DatabaseAdapter,
+  decryptedCharacter: coreTestContract.decryptedCharacter,
+  DOCUMENT_LIST_QUERY_CAPABILITY_VERSION:
+    coreTestContract.DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  documentMutationSnapshotMatches:
+    coreTestContract.documentMutationSnapshotMatches,
+  documentRoleHasGlobalVisibility:
+    coreTestContract.documentRoleHasGlobalVisibility,
+  encryptedCharacter: coreTestContract.encryptedCharacter,
   ElizaError: workerCoreStub.ElizaError,
   isElizaError: workerCoreStub.isElizaError,
   isSensitiveKeyName: () => false,
+  logger: coreTestContract.logger,
+  normalizePairingPageOptions: coreTestContract.normalizePairingPageOptions,
   redactLogArgs: (a: unknown) => a,
   redactSensitiveText: workerCoreStub.redactSensitiveText,
+  Service: coreTestContract.Service,
+  validateDocumentFragmentQueryParams:
+    coreTestContract.validateDocumentFragmentQueryParams,
+  validateDocumentListQueryParams:
+    coreTestContract.validateDocumentListQueryParams,
+  validateDocumentRequesterContext:
+    coreTestContract.validateDocumentRequesterContext,
+  validateQueryEntitiesPagination:
+    coreTestContract.validateQueryEntitiesPagination,
+  validateUuid: coreTestContract.validateUuid,
 }));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({

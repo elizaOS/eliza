@@ -14,6 +14,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 const requireAuthOrApiKeyWithOrg = mock(async () => ({
   user: { id: "user-1", organization_id: "org-1" },
@@ -133,9 +134,32 @@ mock.module("@elizaos/shared/voice/first-sentence-snip", () => ({
 }));
 
 mock.module("@elizaos/core", () => ({
+  canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
+  ChannelType: coreTestContract.ChannelType,
+  DatabaseAdapter: coreTestContract.DatabaseAdapter,
+  decryptedCharacter: coreTestContract.decryptedCharacter,
+  DOCUMENT_LIST_QUERY_CAPABILITY_VERSION:
+    coreTestContract.DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  documentMutationSnapshotMatches:
+    coreTestContract.documentMutationSnapshotMatches,
+  documentRoleHasGlobalVisibility:
+    coreTestContract.documentRoleHasGlobalVisibility,
+  encryptedCharacter: coreTestContract.encryptedCharacter,
   ElizaError: MockElizaError,
   isElizaError: (error: unknown) => error instanceof MockElizaError,
+  logger: coreTestContract.logger,
+  normalizePairingPageOptions: coreTestContract.normalizePairingPageOptions,
   redactSensitiveText: (text: string) => text,
+  Service: coreTestContract.Service,
+  validateDocumentFragmentQueryParams:
+    coreTestContract.validateDocumentFragmentQueryParams,
+  validateDocumentListQueryParams:
+    coreTestContract.validateDocumentListQueryParams,
+  validateDocumentRequesterContext:
+    coreTestContract.validateDocumentRequesterContext,
+  validateQueryEntitiesPagination:
+    coreTestContract.validateQueryEntitiesPagination,
+  validateUuid: coreTestContract.validateUuid,
 }));
 
 mock.module("@/lib/auth", () => ({
