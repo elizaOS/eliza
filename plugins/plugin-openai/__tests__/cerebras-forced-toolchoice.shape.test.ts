@@ -152,4 +152,54 @@ describe("Cerebras forced toolChoice name sanitization (#22663)", () => {
     expect(call.toolChoice).toEqual({ type: "tool", toolName: "math.factorial" });
     expect(toolKeys).toContain(call.toolChoice?.toolName);
   });
+
+  it("keeps a caller-keyed ToolSet and its forced choice verbatim in Cerebras mode", async () => {
+    vi.stubEnv("OPENAI_BASE_URL", "https://api.cerebras.ai/v1");
+    const toolChoice = { type: "tool", toolName: "math.factorial" } as const;
+
+    await handleTextSmall(createRuntime(), {
+      prompt: "compute",
+      tools: {
+        "math.factorial": {
+          description: "caller-owned AI SDK tool",
+          inputSchema: { type: "object", properties: {} },
+        },
+      },
+      toolChoice,
+    } as never);
+
+    const call = capturedCall();
+    expect(Object.keys(call.tools ?? {})).toEqual(["math.factorial"]);
+    expect(call.toolChoice).toBe(toolChoice);
+  });
+
+  it("fails closed when two source names collapse to one Cerebras tool key", async () => {
+    vi.stubEnv("OPENAI_BASE_URL", "https://api.cerebras.ai/v1");
+
+    await expect(
+      handleTextSmall(createRuntime(), {
+        prompt: "compute",
+        tools: [
+          { name: "math.factorial", parameters: { type: "object" } },
+          { name: "math:factorial", parameters: { type: "object" } },
+        ],
+        toolChoice: "required",
+      } as never)
+    ).rejects.toMatchObject({ code: "OPENAI_TOOL_NAME_COLLISION" });
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("preserves __proto__ as an own tool key instead of mutating the registry", async () => {
+    vi.stubEnv("OPENAI_BASE_URL", "https://api.openai.com/v1");
+
+    await handleTextSmall(createRuntime(), {
+      prompt: "invoke",
+      tools: [{ name: "__proto__", parameters: { type: "object" } }],
+      toolChoice: { type: "tool", name: "__proto__" },
+    } as never);
+
+    const call = capturedCall();
+    expect(Object.keys(call.tools ?? {})).toEqual(["__proto__"]);
+    expect(call.toolChoice).toEqual({ type: "tool", toolName: "__proto__" });
+  });
 });

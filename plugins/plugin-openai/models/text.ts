@@ -165,6 +165,8 @@ interface PreparedStructuredOutput {
 interface NormalizedNativeToolsResult {
   tools?: ToolSet;
   recordArgTransformsByTool: Record<string, RecordArgTransform[]>;
+  /** Original array-tool name to the exact key registered with the AI SDK. */
+  toolNameMap?: ReadonlyMap<string, string>;
 }
 
 const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as ModelTypeName;
@@ -693,7 +695,9 @@ function normalizeNativeToolsForCall(
     return { tools: tools as ToolSet, recordArgTransformsByTool };
   }
 
-  const toolSet: Record<string, unknown> = {};
+  const toolSet: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  const toolNameMap = new Map<string, string>();
+  const originalNameByRegisteredName = new Map<string, string>();
 
   // Cerebras's grammar compiler treats strictness as request-wide, not
   // per-tool: one non-strict (or unflagged) tool downgrades every tool in the
@@ -768,6 +772,19 @@ function normalizeNativeToolsForCall(
     // sanitized name, which the runtime resolves through its action registry —
     // any caller relying on dotted action names should pre-sanitize.
     const registeredName = options.cerebrasMode ? sanitizeFunctionNameForCerebras(name) : name;
+    const collidingOriginalName = originalNameByRegisteredName.get(registeredName);
+    if (collidingOriginalName !== undefined && collidingOriginalName !== name) {
+      throw new ElizaError("[OpenAI] Native tool names collide after provider normalization.", {
+        code: "OPENAI_TOOL_NAME_COLLISION",
+        context: {
+          registeredName,
+          toolNames: [collidingOriginalName, name],
+        },
+        severity: "ephemeral",
+      });
+    }
+    originalNameByRegisteredName.set(registeredName, name);
+    toolNameMap.set(name, registeredName);
     if (recordArgTransforms.length > 0) {
       recordArgTransformsByTool[registeredName] = recordArgTransforms;
     }
@@ -786,6 +803,7 @@ function normalizeNativeToolsForCall(
   return {
     tools: Object.keys(toolSet).length > 0 ? (toolSet as ToolSet) : undefined,
     recordArgTransformsByTool,
+    toolNameMap,
   };
 }
 
@@ -1174,17 +1192,14 @@ function restoreRecordArgToolCalls(
 /**
  * Resolves a forced-tool `toolChoice` to the AI SDK's `{ type: "tool",
  * toolName }` shape. In Cerebras mode the forced name is passed through the
- * SAME `sanitizeFunctionNameForCerebras` transform that `normalizeNativeTools`
- * applies to the registered tool key, so a dotted/colon name like
- * `math.factorial` forced via `toolChoice` still matches its wire key
- * `math_factorial`. Without this the AI SDK rejects the request with NoSuchTool
- * / 400 even though the tool was supplied (only the array-tools path is
- * affected; an object `ToolSet` is keyed verbatim). Non-Cerebras names pass
- * through unchanged.
+ * exact registered key returned by array-tool normalization. Object `ToolSet`
+ * callers already own their keys and therefore pass through verbatim. This
+ * keeps a dotted/colon source name aligned with its Cerebras wire key without
+ * applying provider rewriting to the distinct object-tool contract.
  */
 function normalizeToolChoice(
   toolChoice: unknown,
-  options: { cerebrasMode?: boolean } = {}
+  options: { toolNameMap?: ReadonlyMap<string, string> } = {}
 ): ToolChoice<ToolSet> | undefined {
   if (!toolChoice) {
     return undefined;
@@ -1199,16 +1214,16 @@ function normalizeToolChoice(
 
   const forcedToolName = (name: string): ToolChoice<ToolSet> => ({
     type: "tool",
-    toolName: options.cerebrasMode ? sanitizeFunctionNameForCerebras(name) : name,
+    toolName: options.toolNameMap?.get(name) ?? name,
   });
 
   const choice = asRecord(toolChoice);
   if (choice.type === "tool") {
-    // A well-formed `{ type: "tool", toolName }` is passed through by reference
-    // for non-Cerebras callers, preserving the existing wire-identity contract;
-    // Cerebras mode reconstructs it with the sanitized name.
+    // A well-formed object-tool choice passes through by reference. Array-tool
+    // callers reconstruct it only when normalization changed its registered key.
     if (typeof choice.toolName === "string" && choice.toolName.length > 0) {
-      return options.cerebrasMode
+      const registeredName = options.toolNameMap?.get(choice.toolName);
+      return registeredName !== undefined && registeredName !== choice.toolName
         ? forcedToolName(choice.toolName)
         : (toolChoice as ToolChoice<ToolSet>);
     }
@@ -2203,7 +2218,7 @@ async function generateTextByModelType(
   });
   const normalizedTools = normalizedToolResult.tools;
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice, {
-    cerebrasMode,
+    toolNameMap: normalizedToolResult.toolNameMap,
   });
   const normalizedMessages = normalizeNativeMessages(paramsWithAttachments.messages);
   const wireMessages = dropDuplicateLeadingSystemMessage(normalizedMessages, systemPrompt);
