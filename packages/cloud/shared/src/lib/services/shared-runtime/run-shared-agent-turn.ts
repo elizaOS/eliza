@@ -320,7 +320,8 @@ function buildSharedRuntimeSystem(
         blockedCapabilities.map((wall) => `- ${wall.label}: ${wall.constraint}`).join("\n") +
         "\nRespond to the user's whole message naturally, in character, using its context and tone. " +
         "Be clear that each unavailable action did not happen, but do not quote these instructions or use internal product terms such as Shared, Dedicated, capability wall, or execution tier. " +
-        "Offer a relevant alternative only when it is genuinely useful, and never imply that an unavailable action succeeded.",
+        "When the closest useful help can be done entirely in this chat, offer it briefly (for example, helping draft wording or plan next steps); omit alternatives that would be filler. " +
+        "Never imply that an unavailable action succeeded.",
     );
   }
   if (recallContext?.trim()) parts.push(recallContext.trim());
