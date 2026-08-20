@@ -23,6 +23,13 @@ import {
 
 export const MAPS_SERVICE_TYPE = "maps";
 
+export interface MapsProviderDescription {
+  id: string;
+  /** Provider-mandated attribution line, or null when the adapter has none. */
+  attribution: string | null;
+  isDefault: boolean;
+}
+
 export interface MapsHandoff {
   kind: "share" | "navigate";
   uri: string;
@@ -163,6 +170,18 @@ export class MapsService extends Service {
 
   listAdapters(): readonly string[] {
     return [...this.adapters.keys()];
+  }
+
+  /**
+   * Registered providers as the routed view renders them: id, required
+   * attribution line when the adapter declares one, and default selection.
+   */
+  describeProviders(): readonly MapsProviderDescription[] {
+    return [...this.adapters.values()].map((adapter) => ({
+      id: adapter.id,
+      attribution: adapter.attribution ?? null,
+      isDefault: adapter.id === this.defaultAdapterId,
+    }));
   }
 
   async searchPlaces(

@@ -30,6 +30,8 @@ export interface MapsProviderAdapter {
   readonly id: string;
   readonly connectionId: string;
   readonly supportsCrossProviderRoutes?: boolean;
+  /** Provider-mandated attribution line the routed view must display. */
+  readonly attribution?: string;
   searchPlaces(request: PlaceSearchRequest): Promise<PlacePage>;
   getPlace(providerPlaceId: string): Promise<PlaceRef | null>;
   planRoute(request: RoutePlanRequest): Promise<RoutePlan>;

@@ -17,7 +17,12 @@ saved places, safe sharing, and navigation handoffs.
   Do not add another file store, scheduler, or identity graph.
 - Native coordinates may be supplied by `@elizaos/capacitor-location`, but this
   package does not request device permissions or read device location itself.
-- Google Maps/Routes integration and rendered maps UI belong to later issues.
+- The routed `/maps` web view renders the server-owned snapshot (providers,
+  attribution, saved places) plus provider reads through the shared
+  view-capability broker. View capabilities are read-only by design; saved-place
+  writes stay on the promoted `MAPS_SAVE` action so runtime receipt settlement
+  is never bypassed. Google Maps/Routes provider integration belongs to the
+  managed adapter issue.
 
 ## Public surface
 
@@ -37,6 +42,13 @@ saved places, safe sharing, and navigation handoffs.
   desired state is current.
 - Missing action inputs return a canonical form interaction and set
   `awaitingUserInput`; they never fabricate coordinates or places.
+- The `/maps` view ships as `dist/views/bundle.js` (`MapsView`), registers the
+  app-shell page via `src/register.ts` (`elizaos.appRegister`), serves
+  `GET /api/maps/state`, and declares `MAPS_VIEW_CAPABILITIES` dispatched by
+  `serverInteract` in `src/interact.ts`. `view-contract.ts` is the shared zod
+  transport contract and must stay free of runtime imports. Adapters may
+  declare an `attribution` line; the view must display it. Loading,
+  designed-empty, error, offline, and provider-unavailable render distinctly.
 
 ## Commands
 
