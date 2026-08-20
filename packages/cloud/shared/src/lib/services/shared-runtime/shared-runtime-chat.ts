@@ -213,8 +213,12 @@ function turnActionResults(
   return results.length ? results : undefined;
 }
 
-function isProviderFreeTurn(turn: Pick<RunSharedAgentTurnResult, "capabilityWall">): boolean {
-  return Boolean(turn.capabilityWall);
+function isProviderFreeTurn(
+  turn: Pick<RunSharedAgentTurnResult, "capabilityWall" | "model">,
+): boolean {
+  // Capability refusals now run through the agent model so they stay in
+  // character. Retain compatibility for replayed legacy wall-only turns.
+  return Boolean(turn.capabilityWall && turn.model === "capability-wall");
 }
 
 /** Terminal result of a landed shared turn, durably replayable by claim key. */
