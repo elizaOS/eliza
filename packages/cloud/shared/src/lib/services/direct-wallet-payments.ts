@@ -148,6 +148,8 @@ const NATIVE_SLIPPAGE_BPS = 200;
  * pass verification.
  */
 const MAX_DIRECT_SLIPPAGE_BPS = NATIVE_SLIPPAGE_BPS;
+const CANONICAL_NONNEGATIVE_INTEGER_PATTERN = /^(?:0|[1-9]\d*)$/;
+const CANONICAL_NONNEGATIVE_DECIMAL_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
 /**
  * Thrown when a stored `slippage_bps` metadata value cannot be trusted to
@@ -183,7 +185,12 @@ export class CorruptDirectWalletSlippageError extends Error {
  */
 export function parseDirectWalletSlippageBps(rawValue: unknown): number {
   if (rawValue === undefined || rawValue === null) return 0;
-  const numeric = typeof rawValue === "number" ? rawValue : Number(rawValue);
+  const numeric =
+    typeof rawValue === "number"
+      ? rawValue
+      : typeof rawValue === "string" && CANONICAL_NONNEGATIVE_INTEGER_PATTERN.test(rawValue)
+        ? Number(rawValue)
+        : Number.NaN;
   if (
     !Number.isFinite(numeric) ||
     !Number.isInteger(numeric) ||
@@ -595,14 +602,20 @@ export function parseDirectWalletMetadataNumber(params: {
   max?: number;
 }): number {
   const value = params.value ?? params.defaultValue;
+  const canonicalString =
+    typeof value !== "string" ||
+    (params.integer
+      ? CANONICAL_NONNEGATIVE_INTEGER_PATTERN
+      : CANONICAL_NONNEGATIVE_DECIMAL_PATTERN
+    ).test(value);
   const parsed =
-    (typeof value === "number" || typeof value === "string") && String(value).trim() !== ""
+    canonicalString && (typeof value === "number" || typeof value === "string")
       ? Number(value)
       : Number.NaN;
   if (
     !Number.isFinite(parsed) ||
     parsed < 0 ||
-    (params.integer && !Number.isInteger(parsed)) ||
+    (params.integer && !Number.isSafeInteger(parsed)) ||
     (params.max !== undefined && parsed > params.max)
   ) {
     throw new ElizaError("Direct wallet payment has corrupt numeric metadata", {
@@ -2421,6 +2434,7 @@ export class DirectWalletPaymentsService {
             value: (metadataOf(payment) as Record<string, unknown>).verify_attempts,
             defaultValue: 0,
             integer: true,
+            max: Number.MAX_SAFE_INTEGER - 1,
           }) + 1;
 
         const bumpVerifyAttempts = () =>
