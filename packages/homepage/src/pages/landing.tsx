@@ -1003,6 +1003,7 @@ function ContactSheet({
 
 const SESSION_STORAGE_KEY = "eliza_app_session";
 const COPY_CONFIRMATION_MS = 2_200;
+const HANDOFF_RECOVERY_MS = 5_000;
 
 export default function LandingPage() {
   const t = useT();
@@ -1023,10 +1024,16 @@ export default function LandingPage() {
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
 
   useEffect(() => {
-    if (phoneCopyState !== "copied") return;
+    const dismissAfter =
+      phoneCopyState === "copied"
+        ? COPY_CONFIRMATION_MS
+        : phoneCopyState === "handoff"
+          ? HANDOFF_RECOVERY_MS
+          : null;
+    if (dismissAfter === null) return;
     const timeout = window.setTimeout(
       () => setPhoneCopyState("idle"),
-      COPY_CONFIRMATION_MS,
+      dismissAfter,
     );
     return () => window.clearTimeout(timeout);
   }, [phoneCopyState]);

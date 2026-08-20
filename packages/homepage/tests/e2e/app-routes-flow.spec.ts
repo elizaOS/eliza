@@ -577,7 +577,7 @@ test("supported-platform messaging keeps a manual copy recovery visible", async 
   await expect(page.getByRole("status")).toHaveText("Phone number copied");
 });
 
-test("mobile call recovery stays compact and clear of the composer", async ({
+test("mobile handoff recovery stays compact, clear, and temporary", async ({
   context,
   page,
 }) => {
@@ -599,10 +599,10 @@ test("mobile call recovery stays compact and clear of the composer", async ({
   await page
     .getByRole("button", { name: "All the ways to reach Eliza" })
     .click();
-  await page.getByRole("button", { name: "Call Eliza" }).click();
+  await page.getByRole("button", { name: "Text Eliza on iMessage" }).click();
 
   const notice = page.locator(".landing-copy-notice--handoff");
-  await expect(notice).toContainText("Phone didn't open?");
+  await expect(notice).toContainText("Messages didn't open?");
   await expect(
     notice.getByRole("button", { name: "Copy phone number" }),
   ).toHaveText("Copy number");
@@ -626,6 +626,7 @@ test("mobile call recovery stays compact and clear of the composer", async ({
   expect(geometry.status.height).toBeLessThan(28);
   expect(geometry.action.height).toBeGreaterThanOrEqual(40);
   expect(geometry.notice.bottom).toBeLessThanOrEqual(geometry.composer.top);
+  await expect(notice).toHaveCount(0, { timeout: 6_000 });
 });
 
 test("the latest manual-copy attempt owns the visible result", async ({
