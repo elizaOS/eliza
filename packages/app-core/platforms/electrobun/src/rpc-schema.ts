@@ -1577,6 +1577,18 @@ export type ElizaDesktopRPCSchema = {
         params: DesktopHttpRequestOptions;
         response: DesktopHttpRequestResult;
       };
+      desktopStoreRuntimeCredential: {
+        params: { runtimeId: string; token: string };
+        response: { stored: true };
+      };
+      desktopLoadRuntimeCredential: {
+        params: { runtimeId: string };
+        response: { token: string | null };
+      };
+      desktopDeleteRuntimeCredential: {
+        params: { runtimeId: string };
+        response: { deleted: true };
+      };
       nativeTranscriptPublishStream: {
         params: { schema: string; events: unknown[] };
         response: { view: unknown; rejectedIndexes: number[] };
@@ -2522,6 +2534,9 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "database:backupPglite": "databaseBackupPglite",
   "database:resetPglite": "databaseResetPglite",
   "desktop:getRuntimeMode": "desktopGetRuntimeMode",
+  "desktop:storeRuntimeCredential": "desktopStoreRuntimeCredential",
+  "desktop:loadRuntimeCredential": "desktopLoadRuntimeCredential",
+  "desktop:deleteRuntimeCredential": "desktopDeleteRuntimeCredential",
   "desktop:openLogsFolder": "desktopOpenLogsFolder",
   "desktop:createBugReportBundle": "desktopCreateBugReportBundle",
   "desktop:beep": "desktopBeep",

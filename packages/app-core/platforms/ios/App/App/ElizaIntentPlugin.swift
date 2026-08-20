@@ -1,6 +1,7 @@
 import Capacitor
 import Foundation
 import MetricKit
+import Security
 import UIKit
 import UserNotifications
 
@@ -39,6 +40,11 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "receiveIntent", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getPairingStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setPairingStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "storeRuntimeCredential", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "loadRuntimeCredential", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "deleteRuntimeCredential", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getOrCreateControllerIdentity", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "signRemoteCommand", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getDeviceCapabilities", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getResourceSnapshot", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getMetricKitPayloads", returnType: CAPPluginReturnPromise),
@@ -57,6 +63,93 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private static let pairingDeviceIdKey = "com.eliza.companion.pairing.deviceId"
     private static let pairingAgentUrlKey = "com.eliza.companion.pairing.agentUrl"
+    private static let runtimeCredentialService = "ai.elizaos.runtime-credentials"
+    private static let controllerSigningTagPrefix = "ai.elizaos.remote-controller.signing."
+
+    private static func base64Url(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func controllerSigningTag(_ deviceId: String) -> Data {
+        Data("\(controllerSigningTagPrefix)\(deviceId)".utf8)
+    }
+
+    private static func loadControllerPrivateKey(_ deviceId: String) -> SecKey? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: controllerSigningTag(deviceId),
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecReturnRef as String: true,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess else {
+            return nil
+        }
+        return item as? SecKey
+    }
+
+    private static func createControllerPrivateKey(
+        _ deviceId: String,
+        secureEnclave: Bool
+    ) throws -> SecKey {
+        var privateAttributes: [String: Any] = [
+            kSecAttrIsPermanent as String: true,
+            kSecAttrApplicationTag as String: controllerSigningTag(deviceId),
+        ]
+        if secureEnclave {
+            var accessError: Unmanaged<CFError>?
+            guard let access = SecAccessControlCreateWithFlags(
+                nil,
+                kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+                .privateKeyUsage,
+                &accessError
+            ) else {
+                throw accessError!.takeRetainedValue() as Error
+            }
+            privateAttributes[kSecAttrAccessControl as String] = access
+        } else {
+            privateAttributes[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        }
+        var attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeySizeInBits as String: 256,
+            kSecPrivateKeyAttrs as String: privateAttributes,
+        ]
+        if secureEnclave {
+            attributes[kSecAttrTokenID as String] = kSecAttrTokenIDSecureEnclave
+        }
+        var keyError: Unmanaged<CFError>?
+        guard let key = SecKeyCreateRandomKey(attributes as CFDictionary, &keyError) else {
+            throw keyError!.takeRetainedValue() as Error
+        }
+        return key
+    }
+
+    private static func controllerPrivateKey(_ deviceId: String) throws -> (SecKey, Bool) {
+        if let existing = loadControllerPrivateKey(deviceId) {
+            let attributes = SecKeyCopyAttributes(existing) as? [String: Any]
+            return (existing, attributes?[kSecAttrTokenID as String] != nil)
+        }
+        #if targetEnvironment(simulator)
+        return (try createControllerPrivateKey(deviceId, secureEnclave: false), false)
+        #else
+        return (try createControllerPrivateKey(deviceId, secureEnclave: true), true)
+        #endif
+    }
+
+    private static func runtimeCredentialQuery(_ runtimeId: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: runtimeCredentialService,
+            kSecAttrAccount as String: runtimeId,
+            // Explicitly device-bound: runtime bearer credentials never sync
+            // through iCloud Keychain or leave this installation.
+            kSecAttrSynchronizable as String: false,
+        ]
+    }
 
     @objc public func scheduleAlarm(_ call: CAPPluginCall) {
         guard let timeIso = call.getString("timeIso"),
@@ -237,6 +330,139 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         defaults.set(deviceId, forKey: ElizaIntentPlugin.pairingDeviceIdKey)
         defaults.set(agentUrl, forKey: ElizaIntentPlugin.pairingAgentUrlKey)
         call.resolve(["ok": true])
+    }
+
+    @objc public func storeRuntimeCredential(_ call: CAPPluginCall) {
+        guard let runtimeId = call.getString("runtimeId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !runtimeId.isEmpty,
+              let token = call.getString("token")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty,
+              let tokenData = token.data(using: .utf8) else {
+            call.reject("storeRuntimeCredential requires runtimeId and token")
+            return
+        }
+        var query = ElizaIntentPlugin.runtimeCredentialQuery(runtimeId)
+        let update: [String: Any] = [kSecValueData as String: tokenData]
+        let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        if updateStatus == errSecItemNotFound {
+            query[kSecValueData as String] = tokenData
+            query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            let addStatus = SecItemAdd(query as CFDictionary, nil)
+            guard addStatus == errSecSuccess else {
+                call.reject("Keychain rejected runtime credential (\(addStatus))")
+                return
+            }
+        } else if updateStatus != errSecSuccess {
+            call.reject("Keychain rejected runtime credential (\(updateStatus))")
+            return
+        }
+        call.resolve(["stored": true])
+    }
+
+    @objc public func loadRuntimeCredential(_ call: CAPPluginCall) {
+        guard let runtimeId = call.getString("runtimeId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !runtimeId.isEmpty else {
+            call.reject("loadRuntimeCredential requires runtimeId")
+            return
+        }
+        var query = ElizaIntentPlugin.runtimeCredentialQuery(runtimeId)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound {
+            call.resolve(["token": NSNull()])
+            return
+        }
+        guard status == errSecSuccess,
+              let data = item as? Data,
+              let token = String(data: data, encoding: .utf8) else {
+            call.reject("Keychain could not read runtime credential (\(status))")
+            return
+        }
+        call.resolve(["token": token])
+    }
+
+    @objc public func deleteRuntimeCredential(_ call: CAPPluginCall) {
+        guard let runtimeId = call.getString("runtimeId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !runtimeId.isEmpty else {
+            call.reject("deleteRuntimeCredential requires runtimeId")
+            return
+        }
+        let status = SecItemDelete(
+            ElizaIntentPlugin.runtimeCredentialQuery(runtimeId) as CFDictionary
+        )
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            call.reject("Keychain could not delete runtime credential (\(status))")
+            return
+        }
+        call.resolve(["deleted": true])
+    }
+
+    @objc public func getOrCreateControllerIdentity(_ call: CAPPluginCall) {
+        guard let deviceId = call.getString("deviceId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !deviceId.isEmpty else {
+            call.reject("getOrCreateControllerIdentity requires deviceId")
+            return
+        }
+        do {
+            let (privateKey, hardwareBacked) = try ElizaIntentPlugin.controllerPrivateKey(deviceId)
+            guard let publicKey = SecKeyCopyPublicKey(privateKey) else {
+                call.reject("Controller public key is unavailable")
+                return
+            }
+            var exportError: Unmanaged<CFError>?
+            guard let representation = SecKeyCopyExternalRepresentation(publicKey, &exportError) as Data? else {
+                call.reject("Controller public key export failed")
+                return
+            }
+            // ANSI X9.63 uncompressed P-256: 0x04 || X(32) || Y(32).
+            guard representation.count == 65, representation.first == 0x04 else {
+                call.reject("Controller public key has an unexpected format")
+                return
+            }
+            let x = representation.subdata(in: 1..<33)
+            let y = representation.subdata(in: 33..<65)
+            call.resolve([
+                "deviceId": deviceId,
+                "keyId": "p256:\(ElizaIntentPlugin.base64Url(x).prefix(16))",
+                "hardwareBacked": hardwareBacked,
+                "publicKeyJwk": [
+                    "kty": "EC",
+                    "crv": "P-256",
+                    "x": ElizaIntentPlugin.base64Url(x),
+                    "y": ElizaIntentPlugin.base64Url(y),
+                ],
+            ])
+        } catch {
+            call.reject("Controller identity creation failed: \(error.localizedDescription)")
+        }
+    }
+
+    @objc public func signRemoteCommand(_ call: CAPPluginCall) {
+        guard let deviceId = call.getString("deviceId")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !deviceId.isEmpty,
+              let canonicalBody = call.getString("canonicalBody"),
+              let bodyData = canonicalBody.data(using: .utf8) else {
+            call.reject("signRemoteCommand requires deviceId and canonicalBody")
+            return
+        }
+        do {
+            let (privateKey, _) = try ElizaIntentPlugin.controllerPrivateKey(deviceId)
+            var signError: Unmanaged<CFError>?
+            guard let signature = SecKeyCreateSignature(
+                privateKey,
+                .ecdsaSignatureMessageX962SHA256,
+                bodyData as CFData,
+                &signError
+            ) as Data? else {
+                call.reject("Remote command signing failed")
+                return
+            }
+            call.resolve(["signature": ElizaIntentPlugin.base64Url(signature)])
+        } catch {
+            call.reject("Remote command signing failed: \(error.localizedDescription)")
+        }
     }
 
     /// Returns a snapshot of real device capabilities for the device-bridge

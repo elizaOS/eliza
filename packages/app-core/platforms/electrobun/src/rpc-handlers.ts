@@ -125,6 +125,11 @@ import {
 import { resolveRpcAgentPort } from "./rpc-port-resolver";
 import type { ElizaDesktopRPCSchema, StewardRpcStatus } from "./rpc-schema";
 import {
+  desktopDeleteRuntimeCredential,
+  desktopLoadRuntimeCredential,
+  desktopStoreRuntimeCredential,
+} from "./runtime-credential-rpc";
+import {
   buildRuntimePermissionUnavailableState,
   fetchRuntimePermissionState,
   isRuntimePermissionId,
@@ -681,6 +686,9 @@ export function buildBunRpcHandlers({
       };
     },
     desktopHttpRequest,
+    desktopStoreRuntimeCredential,
+    desktopLoadRuntimeCredential,
+    desktopDeleteRuntimeCredential,
     nativeTranscriptPublishStream: async (params) =>
       publishNativeTranscriptStream(params),
     nativeTranscriptReadViewModel: async () => ({

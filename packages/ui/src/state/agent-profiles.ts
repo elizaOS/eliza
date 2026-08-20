@@ -77,6 +77,7 @@ function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
       : {}),
     apiBase: parsed.apiBase,
     accessToken: parsed.accessToken,
+    credentialRef: parsed.credentialRef,
     createdAt: new Date().toISOString(),
   };
 
@@ -274,6 +275,7 @@ export function upsertAndActivateAgentProfile(
     // A fresh token supersedes a stale one; an absent token leaves the prior in
     // place (a re-activate that carries no new token must not blank it out).
     ...(profile.accessToken ? { accessToken: profile.accessToken } : {}),
+    ...(profile.credentialRef ? { credentialRef: profile.credentialRef } : {}),
   };
   registry.profiles[existingIdx] = merged;
   registry.activeProfileId = merged.id;

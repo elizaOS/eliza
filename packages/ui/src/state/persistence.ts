@@ -1209,6 +1209,8 @@ export interface PersistedActiveServer {
   apiBase?: string;
   /** Optional auth/access token for the selected server. */
   accessToken?: string;
+  /** Opaque native secure-store lookup key; safe to persist. */
+  credentialRef?: string;
   /** Cloud runtime currently serving the stable identity encoded by `id`. */
   cloudRuntimeAgentId?: string;
   /** Hosting mode of the current Cloud runtime target. */
@@ -1267,6 +1269,7 @@ export function createPersistedActiveServer(args: {
   id?: string;
   apiBase?: string;
   accessToken?: string;
+  credentialRef?: string;
   label?: string;
   cloudRuntimeAgentId?: string;
   cloudRuntime?: "shared" | "dedicated";
@@ -1276,6 +1279,7 @@ export function createPersistedActiveServer(args: {
     ? undefined
     : normalizedApiBase;
   const accessToken = trimPersistedValue(args.accessToken);
+  const credentialRef = trimPersistedValue(args.credentialRef);
   const explicitLabel = trimPersistedValue(args.label);
   const cloudRuntimeAgentId = trimPersistedValue(args.cloudRuntimeAgentId);
 
@@ -1293,6 +1297,7 @@ export function createPersistedActiveServer(args: {
         label: explicitLabel ?? "Eliza Cloud",
         ...(apiBase ? { apiBase } : {}),
         ...(accessToken ? { accessToken } : {}),
+        ...(credentialRef ? { credentialRef } : {}),
         ...(cloudRuntimeAgentId ? { cloudRuntimeAgentId } : {}),
         ...(args.cloudRuntime ? { cloudRuntime: args.cloudRuntime } : {}),
       };
@@ -1316,6 +1321,7 @@ export function createPersistedActiveServer(args: {
         label,
         ...(apiBase ? { apiBase } : {}),
         ...(accessToken ? { accessToken } : {}),
+        ...(credentialRef ? { credentialRef } : {}),
       };
     }
   }
@@ -1346,6 +1352,7 @@ function normalizePersistedActiveServer(
     ? undefined
     : normalizedApiBase;
   const accessToken = trimPersistedValue(record.accessToken);
+  const credentialRef = trimPersistedValue(record.credentialRef);
   const cloudRuntimeAgentId = trimPersistedValue(record.cloudRuntimeAgentId);
   const cloudRuntime =
     record.cloudRuntime === "shared" || record.cloudRuntime === "dedicated"
@@ -1358,6 +1365,7 @@ function normalizePersistedActiveServer(
     label,
     ...(apiBase ? { apiBase } : {}),
     ...(accessToken ? { accessToken } : {}),
+    ...(credentialRef ? { credentialRef } : {}),
     ...(kind === "cloud" && cloudRuntimeAgentId ? { cloudRuntimeAgentId } : {}),
     ...(kind === "cloud" && cloudRuntime ? { cloudRuntime } : {}),
   };

@@ -210,6 +210,7 @@ export * from "./config/zod-schema.agent-runtime.js";
 export * from "./config/zod-schema.core.js";
 export * from "./connector-account-catalog.js";
 export * from "./connectors.js";
+export * from "./contracts/remote-control.js";
 export {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderFamily,

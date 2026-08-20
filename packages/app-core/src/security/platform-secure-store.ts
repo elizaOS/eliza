@@ -16,7 +16,15 @@ export type SecureStoreSecretKind =
   | "steward.tenant_id"
   | "steward.agent_id"
   | "steward.api_key"
-  | "steward.agent_token";
+  | "steward.agent_token"
+  /** Device-bound P-256 controller signing private key (PKCS#8/JWK wrapper). */
+  | "remote.controller_signing_key"
+  /** Device-bound P-256 controller key-agreement private key. */
+  | "remote.controller_encryption_key"
+  /** Bearer credential for one saved remote runtime. */
+  | "remote.runtime_access_token"
+  /** SSH private key or opaque native key reference for one server. */
+  | "remote.ssh_private_key";
 
 export type SecureStoreUnavailableReason =
   | "not_found"

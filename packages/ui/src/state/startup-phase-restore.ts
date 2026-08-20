@@ -53,6 +53,7 @@ import {
   isOnboardingReplayRequested,
   wasForceFreshResetApplied,
 } from "../platform";
+import { loadRuntimeCredential } from "../platform/runtime-credential-store";
 import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {
   buildCloudSharedAgentApiBase,
@@ -78,6 +79,7 @@ import {
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "./persistence";
+import { migrateLegacyRuntimeCredentials } from "./runtime-credential-migration";
 import {
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
@@ -698,7 +700,12 @@ export async function applyRestoredConnection(args: {
   }
   clientRef.setToken(null);
   clientRef.setBaseUrl(reconciled ?? null);
-  clientRef.setToken(restoredActiveServer.accessToken ?? null);
+  const restoredCredential =
+    restoredActiveServer.accessToken ??
+    (restoredActiveServer.credentialRef
+      ? await loadRuntimeCredential(restoredActiveServer.credentialRef)
+      : null);
+  clientRef.setToken(restoredCredential ?? null);
 }
 
 function activeServerToTarget(
@@ -817,6 +824,8 @@ export async function runRestoringSession(
   // re-onboarded on the boot after the wipe. No-op on web/desktop and whenever
   // localStorage still carries the flag.
   await hydratePersistedFirstRunCompleteFromNativeStore();
+  if (cancelled.current) return;
+  await migrateLegacyRuntimeCredentials();
   if (cancelled.current) return;
   let persistedActiveServer = loadPersistedActiveServer();
   let hadPrior = loadPersistedFirstRunComplete();

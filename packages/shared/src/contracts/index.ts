@@ -43,6 +43,7 @@ export * from "./personal-assistant.js";
 export * from "./plugin-routes.js";
 export * from "./relationships-routes.js";
 export * from "./scheduled-task-execution.js";
+export * from "./remote-control.js";
 export * from "./service-routing.js";
 export * from "./skills-routes.js";
 export * from "./subscription-routes.js";

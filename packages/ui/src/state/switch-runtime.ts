@@ -11,6 +11,7 @@ import {
 } from "../first-run/mobile-runtime-mode";
 import { activeServerKindToFirstRunRuntimeTarget } from "../first-run/runtime-target";
 import { getFrontendPlatform } from "../platform/platform-guards";
+import { loadRuntimeCredential } from "../platform/runtime-credential-store";
 import type { AgentProfile } from "./agent-profile-types";
 import {
   activeServerIdForAgentProfile,
@@ -53,6 +54,7 @@ export type SwitchRuntimeResult =
  */
 export function switchRuntimeNonDestructive(
   profileId: string,
+  resolvedCredential?: string | null,
 ): SwitchRuntimeResult {
   const registry = loadAgentProfileRegistry();
   const profile = registry.profiles.find((p) => p.id === profileId);
@@ -74,11 +76,13 @@ export function switchRuntimeNonDestructive(
     return { ok: false, reason: "untrusted-cloud" };
   }
 
+  const accessToken = resolvedCredential ?? profile.accessToken ?? null;
   const server = createPersistedActiveServer({
     kind: profile.kind,
     id: activeServerIdForAgentProfile(profile),
     apiBase: profile.apiBase,
-    accessToken: profile.accessToken,
+    accessToken: profile.credentialRef ? undefined : (accessToken ?? undefined),
+    credentialRef: profile.credentialRef,
     label: profile.label,
     cloudRuntimeAgentId: profile.cloudRuntimeAgentId,
     cloudRuntime: profile.cloudRuntime,
@@ -93,7 +97,7 @@ export function switchRuntimeNonDestructive(
   // the live client stuck on the stale remote base + token for the rest of the
   // session (it only self-heals on reboot).
   if (profile.apiBase) {
-    client.repointBaseUrl(profile.apiBase, profile.accessToken ?? null);
+    client.repointBaseUrl(profile.apiBase, accessToken);
   } else if (typeof window !== "undefined") {
     client.setToken(null);
     client.repointBaseUrl(window.location.origin);
@@ -119,4 +123,20 @@ export function switchRuntimeNonDestructive(
   }
 
   return { ok: true, profile };
+}
+
+/** Resolve a native secure-store credential before applying a saved runtime. */
+export async function switchRuntimeWithStoredCredential(
+  profileId: string,
+): Promise<SwitchRuntimeResult> {
+  const profile = loadAgentProfileRegistry().profiles.find(
+    (candidate) => candidate.id === profileId,
+  );
+  if (!profile) return { ok: false, reason: "not-found" };
+  const accessToken =
+    profile.accessToken ??
+    (profile.credentialRef
+      ? await loadRuntimeCredential(profile.credentialRef)
+      : null);
+  return switchRuntimeNonDestructive(profileId, accessToken);
 }

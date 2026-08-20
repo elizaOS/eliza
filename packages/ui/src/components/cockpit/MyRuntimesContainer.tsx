@@ -8,9 +8,14 @@ import { client } from "../../api";
 import { isStoreBuild } from "../../build-variant";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import {
+  loadRuntimeCredential,
+  storeRuntimeCredential,
+} from "../../platform/runtime-credential-store";
+import {
   addAgentProfile,
   loadAgentProfileRegistry,
   switchRuntimeNonDestructive,
+  updateAgentProfile,
 } from "../../state";
 import { isTrustedRestoreApiBaseUrl } from "../../state/runtime-url-trust";
 import { SettingsStack } from "../settings/settings-layout";
@@ -63,7 +68,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
   }, []);
 
   const onSwitch = useCallback(
-    (id: string) => {
+    async (id: string) => {
       setBusy(true);
       setError(null);
       try {
@@ -78,7 +83,15 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
             return;
           }
         }
-        const res = switchRuntimeNonDestructive(id);
+        const target = loadAgentProfileRegistry().profiles.find(
+          (profile) => profile.id === id,
+        );
+        const credential = target?.credentialRef
+          ? await loadRuntimeCredential(target.credentialRef)
+          : null;
+        const res = credential
+          ? switchRuntimeNonDestructive(id, credential)
+          : switchRuntimeNonDestructive(id);
         if (!res.ok) {
           setError(switchFailureMessage(res.reason));
         }
@@ -91,7 +104,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
   );
 
   const onAddRemote = useCallback(
-    (entry: { label: string; apiBase: string; accessToken?: string }) => {
+    async (entry: { label: string; apiBase: string; accessToken?: string }) => {
       setBusy(true);
       setError(null);
       try {
@@ -109,11 +122,16 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
             kind: "remote",
             label: entry.label,
             apiBase: entry.apiBase,
-            accessToken: entry.accessToken,
           },
           { activate: false },
         );
-        const result = switchRuntimeNonDestructive(profile.id);
+        if (entry.accessToken) {
+          await storeRuntimeCredential(profile.id, entry.accessToken);
+          updateAgentProfile(profile.id, { credentialRef: profile.id });
+        }
+        const result = entry.accessToken
+          ? switchRuntimeNonDestructive(profile.id, entry.accessToken)
+          : switchRuntimeNonDestructive(profile.id);
         if (!result.ok) setError(switchFailureMessage(result.reason));
       } finally {
         refresh();

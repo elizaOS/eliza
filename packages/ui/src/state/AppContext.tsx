@@ -43,6 +43,7 @@ import {
   type Tab,
 } from "../navigation";
 import { getFrontendPlatform } from "../platform/platform-guards";
+import { loadRuntimeCredential } from "../platform/runtime-credential-store";
 import { applyThemeToDocument } from "../themes/apply-theme";
 import {
   tryHandleTutorialAction,
@@ -1511,7 +1512,7 @@ function AppProviderInner({
   );
 
   const switchAgentProfile = useCallback(
-    (profileId: string) => {
+    async (profileId: string) => {
       const profile = loadAgentProfileRegistry().profiles.find(
         (p) => p.id === profileId,
       );
@@ -1537,11 +1538,19 @@ function AppProviderInner({
         return;
       }
 
+      const resolvedCredential =
+        profile.accessToken ??
+        (profile.credentialRef
+          ? await loadRuntimeCredential(profile.credentialRef)
+          : null);
       const server = createPersistedActiveServer({
         kind: profile.kind,
         id: activeServerIdForAgentProfile(profile),
         apiBase: profile.apiBase,
-        accessToken: profile.accessToken,
+        accessToken: profile.credentialRef
+          ? undefined
+          : (resolvedCredential ?? undefined),
+        credentialRef: profile.credentialRef,
         label: profile.label,
         cloudRuntimeAgentId: profile.cloudRuntimeAgentId,
         cloudRuntime: profile.cloudRuntime,
@@ -1576,7 +1585,10 @@ function AppProviderInner({
         persistMobileRuntimeModeForServerTarget(runtimeTarget);
       }
 
-      applyAgentProfileConnection(profile, client);
+      applyAgentProfileConnection(
+        { ...profile, accessToken: resolvedCredential ?? undefined },
+        client,
+      );
 
       const target =
         profile.kind === "cloud"
