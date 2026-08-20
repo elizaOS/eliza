@@ -6730,9 +6730,14 @@ async function settleTasksOperation(args: {
       ...result,
       text,
     };
+    // Planner-only projection: delivered:true blocks the settle re-send —
+    // the hedge kept reaching chat through that leg even after losing the
+    // verbatim license ("The message may have been sent, but I couldn't
+    // confirm it" posted mid-turn, live 2026-08-20 color-mixer).
     canonical = {
       response: { ...(canonical?.response ?? {}), text },
       actionName: canonical?.actionName,
+      delivered: true,
     };
   } else if (outcomeUnknown && result.success === false) {
     result = {
