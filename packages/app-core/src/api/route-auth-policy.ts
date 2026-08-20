@@ -130,6 +130,10 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   publicExact("auth.setup", "POST", "/api/auth/setup"),
   publicExact("auth.login.password", "POST", "/api/auth/login/password"),
   publicExact("auth.status", "GET", "/api/auth/status"),
+  // The pairing handler itself keeps code disclosure loopback-only. Admit the
+  // request to that handler so the managed-prefix fail-closed gate does not
+  // preempt the trusted-local check with an unconditional 401.
+  publicExact("auth.pair-code", "GET", "/api/auth/pair-code"),
   publicExact("auth.pair", "POST", "/api/auth/pair"),
   publicExact("embed.auth", "POST", "/api/embed/auth"),
   publicExact("tts.elevenlabs-passthrough", "POST", "/api/tts/elevenlabs"),
