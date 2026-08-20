@@ -25,6 +25,20 @@ export function supportsFullAppShellRoutes(
   return !isLimitedCloudAgentApiBase(value);
 }
 
+/**
+ * Runtime-aware app-shell route gate. The Play Android client has no server at
+ * its synthetic Capacitor origin, so an empty authority cannot expose the
+ * desktop/local `/api/*` surface even though an empty URL is otherwise valid
+ * shorthand for same-origin web deployments.
+ */
+export function supportsAppShellRoutesForRuntime(
+  value: string | null | undefined,
+  options: { androidCloudBuild?: boolean } = {},
+): boolean {
+  if (options.androidCloudBuild && !value?.trim()) return false;
+  return supportsFullAppShellRoutes(value);
+}
+
 function parseHttpUrl(value: string): URL | null {
   try {
     const url = new URL(value);

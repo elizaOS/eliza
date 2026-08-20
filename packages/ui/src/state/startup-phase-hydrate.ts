@@ -18,7 +18,7 @@ import {
   client,
   type StreamEventEnvelope,
 } from "../api";
-import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { supportsAppShellRoutesForRuntime } from "../api/app-shell-capabilities";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { dispatchCompletedActionNavigation } from "../completed-action-navigation";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
@@ -36,6 +36,7 @@ import {
   type Tab,
   tabFromPath,
 } from "../navigation";
+import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { isTransientOptionalFetchFailure } from "../utils";
 import { recoverMissedCurrentView } from "../view-action-handoff";
 import { emitViewEvent } from "../views/view-event-bus";
@@ -169,8 +170,9 @@ export async function runHydrating(
   // Start the WS bridge before history hydration finishes so restored-session
   // flows regain live updates without waiting for conversation restore.
   client.connectWs();
-  const appShellRoutesSupported = supportsFullAppShellRoutes(
+  const appShellRoutesSupported = supportsAppShellRoutesForRuntime(
     client.getBaseUrl(),
+    { androidCloudBuild: isAndroidCloudBuild() },
   );
   const hydrateConversation = async (): Promise<void> => {
     const greetConvId = await deps.hydrateInitialConversationState();

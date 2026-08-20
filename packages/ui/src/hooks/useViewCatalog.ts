@@ -15,8 +15,9 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { type AppLaunchResult, client } from "../api";
-import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { supportsAppShellRoutesForRuntime } from "../api/app-shell-capabilities";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
+import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { getActiveViewModality } from "../platform/platform-guards";
 import { useEnabledViewKinds } from "../state/useViewKinds";
 import { useRoutableViews } from "./useAvailableViews";
@@ -50,8 +51,9 @@ export function useViewCatalog(): UseViewCatalogResult {
   } = useRoutableViews();
   const enabledKinds = useEnabledViewKinds();
   const activeModality = useMemo(() => getActiveViewModality(), []);
-  const appShellRoutesSupported = supportsFullAppShellRoutes(
+  const appShellRoutesSupported = supportsAppShellRoutesForRuntime(
     client.getBaseUrl(),
+    { androidCloudBuild: isAndroidCloudBuild() },
   );
 
   const catalogRes = useCachedResource(

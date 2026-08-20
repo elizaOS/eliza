@@ -3,6 +3,8 @@
  * first-run config and resolves the initial active-server record so a returning
  * user skips re-onboarding. Reads via the injected probe client.
  */
+
+import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 import { asRecord, readString } from "./config-readers";
 import { asApiLikeError } from "./parsers";
@@ -125,7 +127,9 @@ async function interpretAnsweredFirstRunStatus(
  */
 export function shouldProbeExistingLocalInstall(
   origin: string | null | undefined,
+  androidCloudBuild = isAndroidCloudBuild(),
 ): boolean {
+  if (androidCloudBuild) return false;
   return !isElizaCloudControlPlaneAgentlessBase(origin ?? "");
 }
 

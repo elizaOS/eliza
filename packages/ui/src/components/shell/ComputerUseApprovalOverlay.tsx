@@ -8,9 +8,10 @@
  * without that gate every unauthenticated tab would fire 401s (#11084).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
+import { supportsAppShellRoutesForRuntime } from "../../api/app-shell-capabilities";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useAppSelector } from "../../state";
 import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
@@ -57,8 +58,9 @@ function approvalStreamUrl(): string | null {
 export function ComputerUseApprovalOverlay() {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const t = useAppSelector((s) => s.t);
-  const appShellRoutesSupported = supportsFullAppShellRoutes(
+  const appShellRoutesSupported = supportsAppShellRoutesForRuntime(
     client.getBaseUrl(),
+    { androidCloudBuild: isAndroidCloudBuild() },
   );
   // Auth gate (#11084): the shell mounts this overlay before the auth probe
   // resolves, so without this the SSE stream / 1.5s poll fires 401s from every

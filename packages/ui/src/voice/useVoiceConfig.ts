@@ -3,11 +3,11 @@
  * staying in sync via VOICE_CONFIG_UPDATED_EVENT.
  */
 import * as React from "react";
-
 import { client } from "../api/client";
 import type { VoiceConfig } from "../api/client-types-config";
 import { VOICE_CONFIG_UPDATED_EVENT } from "../events";
 import { useDefaultProviderPresets } from "../hooks/useDefaultProviderPresets";
+import { useProtectedAgentProbesEnabled } from "../hooks/useProtectedAgentProbesEnabled";
 import { useResolvedTtsDefault } from "../hooks/useResolvedTtsDefault";
 import { useAppSelector } from "../state";
 import {
@@ -35,6 +35,7 @@ export interface UseVoiceConfigResult {
  * provider/voice — there is a single voice-config pipeline, not two.
  */
 export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
+  const configProbeEnabled = useProtectedAgentProbesEnabled();
   const { defaults: voiceProviderDefaults } = useDefaultProviderPresets();
   const [voiceConfig, setVoiceConfig] = React.useState<VoiceConfig | null>(
     null,
@@ -61,6 +62,13 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   const isMountedRef = React.useRef(false);
 
   const loadVoiceConfig = React.useCallback(async () => {
+    if (!configProbeEnabled) {
+      if (isMountedRef.current) {
+        setVoiceConfig(null);
+        setVoiceBootstrapTick((tick) => tick + 1);
+      }
+      return;
+    }
     try {
       const cfg = await client.getConfig();
       const resolvedVoiceConfig = resolveCharacterVoiceConfigFromAppConfig({
@@ -79,7 +87,7 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
         setVoiceBootstrapTick((tick) => tick + 1);
       }
     }
-  }, [uiLanguage]);
+  }, [configProbeEnabled, uiLanguage]);
 
   React.useEffect(() => {
     isMountedRef.current = true;

@@ -22,6 +22,7 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock("../api/client", () => ({
   client: {
+    getBaseUrl: () => "http://localhost:2138",
     getConfig: hoisted.getConfig,
     updateConfig: hoisted.updateConfig,
   },

@@ -277,6 +277,12 @@ describe("detectExistingFirstRunConnection — fresh-install single shot", () =>
 });
 
 describe("shouldProbeExistingLocalInstall (#16242)", () => {
+  it("skips local-agent detection in the Play Android cloud build", () => {
+    expect(shouldProbeExistingLocalInstall("https://localhost", true)).toBe(
+      false,
+    );
+  });
+
   it("is false only on a bare Cloud control-plane origin", () => {
     expect(shouldProbeExistingLocalInstall("https://app.elizacloud.ai")).toBe(
       false,

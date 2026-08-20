@@ -5,8 +5,9 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api";
-import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { supportsAppShellRoutesForRuntime } from "../api/app-shell-capabilities";
 import { AGENT_READY_EVENT } from "../events";
+import { isAndroidCloudBuild } from "../platform/android-runtime";
 import {
   fetchServerFavoriteApps,
   loadFavoriteApps,
@@ -79,14 +80,23 @@ export function useAppShellState({
   const setFavoriteApps = useCallback((apps: string[]) => {
     setFavoriteAppsRaw(apps);
     saveFavoriteApps(apps);
-    if (supportsFullAppShellRoutes(client.getBaseUrl())) {
+    if (
+      supportsAppShellRoutesForRuntime(client.getBaseUrl(), {
+        androidCloudBuild: isAndroidCloudBuild(),
+      })
+    ) {
       void replaceServerFavoriteApps(apps);
     }
   }, []);
 
   useEffect(() => {
     if (!syncServerFavorites) return;
-    if (!supportsFullAppShellRoutes(client.getBaseUrl())) return;
+    if (
+      !supportsAppShellRoutesForRuntime(client.getBaseUrl(), {
+        androidCloudBuild: isAndroidCloudBuild(),
+      })
+    )
+      return;
     let cancelled = false;
     let hydrated = false;
     const applyServerApps = (serverApps: string[] | null): void => {

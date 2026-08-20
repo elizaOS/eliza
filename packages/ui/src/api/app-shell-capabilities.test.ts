@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   isLimitedCloudAgentApiBase,
   isLimitedCloudAgentApiResourceUrl,
+  supportsAppShellRoutesForRuntime,
   supportsFullAppShellRoutes,
 } from "./app-shell-capabilities";
 
@@ -29,6 +30,18 @@ describe("app shell capabilities", () => {
     expect(supportsFullAppShellRoutes("http://127.0.0.1:3000")).toBe(true);
     expect(supportsFullAppShellRoutes("https://elizacloud.ai")).toBe(true);
     expect(supportsFullAppShellRoutes("")).toBe(true);
+  });
+
+  it("keeps a Play Android shell inert until it selects an authority", () => {
+    expect(
+      supportsAppShellRoutesForRuntime("", { androidCloudBuild: true }),
+    ).toBe(false);
+    expect(
+      supportsAppShellRoutesForRuntime("https://agent.example.com", {
+        androidCloudBuild: true,
+      }),
+    ).toBe(true);
+    expect(supportsAppShellRoutesForRuntime("")).toBe(true);
   });
 
   it("detects absolute API resources served by limited cloud agents", () => {

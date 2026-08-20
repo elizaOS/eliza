@@ -27,7 +27,7 @@ vi.mock("../api", () => ({
   client: { getBaseUrl: () => "http://127.0.0.1:31337" },
 }));
 vi.mock("../api/app-shell-capabilities", () => ({
-  supportsFullAppShellRoutes: () => true,
+  supportsAppShellRoutesForRuntime: () => true,
 }));
 
 import { AGENT_READY_EVENT } from "../events";

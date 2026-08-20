@@ -20,7 +20,7 @@ import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
 import { getBootConfig } from "../config/boot-config";
-import { isNative } from "../platform";
+import { isAndroidCloudBuild, isNative } from "../platform";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
 import {
@@ -29,6 +29,7 @@ import {
 } from "./client-cloud";
 import { fetchWithCsrf } from "./csrf-client";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { resolveDirectCloudAuthApiBase } from "./direct-cloud-endpoints";
 
 // ── Shared response shapes ────────────────────────────────────────────────────
 
@@ -152,10 +153,31 @@ export type AuthChangePasswordResult =
  * Resolves the base URL for auth calls. Reads from the same source as the
  * main ElizaClient so they stay in sync.
  */
+export function resolveAuthBase(options: {
+  apiBase?: string | null;
+  cloudApiBase?: string | null;
+  windowOrigin?: string | null;
+  androidCloudBuild?: boolean;
+}): string {
+  const apiBase = options.apiBase?.trim();
+  if (apiBase) return apiBase.replace(/\/$/, "");
+  if (options.androidCloudBuild) {
+    return resolveDirectCloudAuthApiBase(
+      options.cloudApiBase?.trim() || "https://eliza.app",
+    ).replace(/\/$/, "");
+  }
+  return options.windowOrigin?.replace(/\/$/, "") ?? "";
+}
+
 function authBase(): string {
   if (typeof window === "undefined") return "";
-  const apiBase = getBootConfig().apiBase;
-  return apiBase ? apiBase.replace(/\/$/, "") : window.location.origin;
+  const config = getBootConfig();
+  return resolveAuthBase({
+    apiBase: config.apiBase,
+    cloudApiBase: config.cloudApiBase,
+    windowOrigin: window.location.origin,
+    androidCloudBuild: isAndroidCloudBuild(),
+  });
 }
 
 // ── Endpoint callers ──────────────────────────────────────────────────────────

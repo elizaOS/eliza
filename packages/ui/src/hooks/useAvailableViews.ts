@@ -15,7 +15,7 @@ import {
 } from "@elizaos/core";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { client } from "../api";
-import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { supportsAppShellRoutesForRuntime } from "../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
   type AppShellPageRegistration,
@@ -31,6 +31,7 @@ import {
   TAB_PATHS,
   titleForTab,
 } from "../navigation";
+import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import { useAppSelector } from "../state/app-store";
 import type { StartupPhaseValue } from "../state/startup-coordinator";
@@ -588,7 +589,12 @@ export function withBuiltinShellViews(
 
 function useDefaultViewsNetworkEnabled(): boolean {
   const phase = useAppSelector((s) => s.startupCoordinator?.phase);
-  if (!supportsFullAppShellRoutes(client.getBaseUrl())) return false;
+  if (
+    !supportsAppShellRoutesForRuntime(client.getBaseUrl(), {
+      androidCloudBuild: isAndroidCloudBuild(),
+    })
+  )
+    return false;
   if (typeof phase !== "string") return true;
   // first-run-required is now shell-paintable (onboarding runs in the live
   // chat), but the agent does not exist yet — don't fetch network view
