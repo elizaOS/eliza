@@ -85,6 +85,7 @@ const ROUTER_OWNED_TERMINAL_EVENTS = new Set(["task_complete", "error"]);
 // synthesis must not post the old one (#11711). Matching local literal (no
 // import from sub-agent-router — see the ROUTER_ORIGIN_UUID_RE note).
 const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
+
 // Pending-handoff marker (matching local key literal — see
 // sub-agent-router.ts): the router stamps it on the ORIGINAL session at the
 // moment it decides on a verify-retry / respawn, BEFORE the successor spawn
@@ -98,6 +99,8 @@ const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
 // the handoff's generation token, honored only while handoff-pending.ts
 // still registers it in-flight; a stale marker is ignored AND cleared so the
 // stop synthesizes exactly as if the marker had never leaked.
+import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
+
 const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 
 const LEGACY_TASK_EVICTION_GRACE_MS = 60_000;
@@ -995,6 +998,21 @@ export class SwarmCoordinatorService
       // also refreshes the enrichment cache for downstream reads this turn).
       const fresh = await this.getFreshSessionMetadata(sessionId);
       if (readString(fresh, HANDED_OFF_SUCCESSOR_META_KEY)) {
+        return;
+      }
+      // Administrative stop (task archive/delete/pause, user stop, verifier
+      // teardown, idle reclaim): the lifecycle itself caused this teardown,
+      // so "stopped before completion" is noise the user already knows
+      // about. Suppress WITHOUT claiming the synthesizedCompletionSessions
+      // slot (same no-slot-claim contract as the handoff skip above) so a
+      // later genuine lineage completion still posts. An UNMARKED stop
+      // (crash, subprocess death) still synthesizes — the #11689
+      // never-silent-terminal invariant is the regression line.
+      const adminStop = readString(fresh, ADMIN_STOP_META_KEY);
+      if (adminStop) {
+        logger.debug(
+          `[SwarmCoordinatorService] suppressed administrative stop (sessionId=${sessionId}, reason=${adminStop})`,
+        );
         return;
       }
       // Handoff decided but successor spawn not yet settled: the stop is
