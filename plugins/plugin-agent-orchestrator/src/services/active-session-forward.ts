@@ -214,7 +214,7 @@ export function createActiveSessionForwardHandler(
               acp,
               active.id,
               "user_interrupt",
-            ).catch(() => undefined);
+            );
             // error-policy:J6 best-effort session cancel on interrupt; warn only
             await acp.cancelSession?.(active.id)?.catch?.((err: unknown) =>
               runtime.logger?.warn?.(

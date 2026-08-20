@@ -4,7 +4,7 @@
  * method, and never throws when the stamp fails (fail-open toward the
  * never-silent-terminal invariant — the stop must proceed regardless).
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
   ADMIN_STOP_META_KEY,
   markSessionAdministrativelyStopped,
