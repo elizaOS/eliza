@@ -82,7 +82,7 @@
     "@elizaos/auth": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",
@@ -93,7 +93,7 @@
     "git-workspace-service": "0.4.5",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",

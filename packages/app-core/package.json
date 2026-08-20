@@ -318,7 +318,7 @@
   },
   "devDependencies": {
     "@elizaos/plugin-app-control": "workspace:*",
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.62.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.1",
@@ -328,7 +328,7 @@
     "electrobun": "^1.18.1",
     "fflate": "^0.8.3",
     "nodemailer": "^9.0.1",
-    "playwright": "^1.59.1",
+    "playwright": "^1.62.1",
     "playwright-core": "^1.58.2",
     "puppeteer-core": "^24.43.1",
     "react-test-renderer": "^19.2.4",
@@ -338,7 +338,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
-    "vitest": "^4.0.18",
+    "vitest": "^4.1.10",
     "yaml": "^2.8.4"
   },
   "module": "./dist/index.js",

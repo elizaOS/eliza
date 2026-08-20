@@ -73,7 +73,7 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -82,7 +82,7 @@
     "tsup": "^8.5.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.17",
+    "vitest": "^4.1.10",
     "vite": "^8.0.0"
   }
 }

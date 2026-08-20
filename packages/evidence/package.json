@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
-    "@playwright/test": "^1.61.0",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^24.0.0"
   },
   "elizaos": {

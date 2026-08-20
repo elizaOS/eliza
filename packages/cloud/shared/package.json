@@ -100,7 +100,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@types/node": "^25.6.0",
     "@types/nodemailer": "^8.0.0",
@@ -112,7 +112,7 @@
     "ioredis-mock": "^8.13.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.10"
   },
   "elizaos": {
     "managedIntegration": {
