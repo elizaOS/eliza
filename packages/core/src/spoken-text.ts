@@ -8,8 +8,9 @@
  * Stage-direction stripping peels one innermost `()` / `[]` / `{}` / `**`
  * layer per pass. Honest asides nest a handful of delimiters; each miss
  * rescan is O(remaining), so an uncapped `((((…hello…))))` bomb hangs TTS.
- * {@link MAX_NON_SPEECH_STRIP_PASSES} fail-closes the peel; leftover
- * delimiter glyphs are then dropped in a single linear pass.
+ * {@link MAX_NON_SPEECH_STRIP_PASSES} bounds the compatibility peel. If it
+ * exhausts that budget, a linear interval scan removes every remaining
+ * balanced direction rather than exposing text from the outer layers.
  */
 
 function collapseWhitespace(input: string): string {
@@ -49,16 +50,78 @@ const NON_SPEECH_SEGMENT_PATTERNS = [
  * O(remaining); uncapped nested `((((…))))` hangs TTS. */
 export const MAX_NON_SPEECH_STRIP_PASSES = 8 as const;
 
+const DIRECTION_OPENERS = new Map([
+	["(", ")"],
+	["[", "]"],
+	["{", "}"],
+] as const);
+
+const DIRECTION_CLOSERS = new Map([
+	[")", "("],
+	["]", "["],
+	["}", "{"],
+] as const);
+
+/**
+ * Removes all balanced bracket regions in linear time. Independent stacks
+ * preserve the legacy sanitizer's permissive handling of crossed delimiter
+ * types while ensuring that a deeply nested outer direction cannot become
+ * speech merely because the compatibility peel reached its pass budget.
+ */
+function stripResidualBalancedDirections(input: string): string {
+	const removals = new Int32Array(input.length + 1);
+	const openerStacks = new Map<string, number[]>(
+		[...DIRECTION_OPENERS.keys()].map((opener) => [opener, []]),
+	);
+
+	for (let index = 0; index < input.length; index += 1) {
+		const char = input[index] ?? "";
+		if (DIRECTION_OPENERS.has(char as "(" | "[" | "{")) {
+			openerStacks.get(char)?.push(index);
+			continue;
+		}
+		const opener = DIRECTION_CLOSERS.get(char as ")" | "]" | "}");
+		if (!opener) continue;
+		const start = openerStacks.get(opener)?.pop();
+		if (start === undefined) continue;
+		removals[start] = (removals[start] ?? 0) + 1;
+		removals[index + 1] = (removals[index + 1] ?? 0) - 1;
+	}
+
+	const parts: string[] = [];
+	let activeIntervals = 0;
+	let visibleStart = 0;
+	for (let index = 0; index < input.length; index += 1) {
+		const previous = activeIntervals;
+		activeIntervals += removals[index] ?? 0;
+		if (previous === 0 && activeIntervals > 0) {
+			if (visibleStart < index) parts.push(input.slice(visibleStart, index));
+			parts.push(" ");
+		} else if (previous > 0 && activeIntervals === 0) {
+			visibleStart = index;
+		}
+	}
+	if (activeIntervals === 0 && visibleStart < input.length) {
+		parts.push(input.slice(visibleStart));
+	}
+	return parts.join("");
+}
+
 function stripNonSpeechDirections(input: string): string {
 	let text = input;
+	let stabilized = false;
 	for (let pass = 0; pass < MAX_NON_SPEECH_STRIP_PASSES; pass += 1) {
 		const previous = text;
 		for (const pattern of NON_SPEECH_SEGMENT_PATTERNS) {
 			text = text.replace(pattern, " ");
 		}
 		if (text === previous) {
+			stabilized = true;
 			break;
 		}
+	}
+	if (!stabilized) {
+		text = stripResidualBalancedDirections(text);
 	}
 	return text.replace(/[*()[\]{}]+/g, " ");
 }

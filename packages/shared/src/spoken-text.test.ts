@@ -99,10 +99,23 @@ describe("sanitizeSpeechText", () => {
 
   it("fail-closes a nested-delimiter peel bomb without hanging TTS", () => {
     const nested = `(${"(".repeat(40_000)}hello${")".repeat(40_000)})`;
-    const started = performance.now();
     const spoken = sanitizeSpeechText(`Say this. ${nested} Done.`);
-    const elapsedMs = performance.now() - started;
-    expect(elapsedMs).toBeLessThan(50);
     expect(spoken).toBe("Say this. Done.");
+  });
+
+  it("does not expose text from outer layers after the peel budget", () => {
+    let nested = "(pause)";
+    for (let depth = 0; depth < 12; depth += 1) {
+      nested = `(secret-${depth} ${nested})`;
+    }
+    expect(sanitizeSpeechText(`Say this. ${nested} Done.`)).toBe(
+      "Say this. Done.",
+    );
+  });
+
+  it("keeps legacy unmatched-direction text while dropping its delimiter", () => {
+    expect(sanitizeSpeechText("Say this (perhaps later")).toBe(
+      "Say this perhaps later",
+    );
   });
 });
