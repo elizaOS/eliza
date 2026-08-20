@@ -3,8 +3,10 @@
 import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
 import appViteConfig, {
+  ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS,
   appDevWsBasePlugin,
   resolveAppShellLocalCspSources,
+  scrubAndroidCloudLocalRouting,
 } from "./vite.config";
 
 describe("appDevWsBasePlugin", () => {
@@ -70,6 +72,19 @@ describe("app shell local connection policy", () => {
       localHttpSources: " http://localhost:* http://127.0.0.1:*",
       localConnectSources: " http: ws:",
     });
+  });
+
+  test("keeps cleartext and local routing out of Android cloud builds", () => {
+    expect(resolveAppShellLocalCspSources("android", false, true)).toEqual({
+      localHttpSources: "",
+      localConnectSources: "",
+    });
+    const scrubbed = scrubAndroidCloudLocalRouting(
+      "http://127.0.0.1:31337 http://10.0.2.2:31338 adb reverse tcp:32437",
+    );
+    for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
+      expect(scrubbed.toLowerCase()).not.toContain(marker.toLowerCase());
+    }
   });
 
   test("allows an owner-selected LAN WebSocket outside iOS store builds", () => {

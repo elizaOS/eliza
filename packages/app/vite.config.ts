@@ -959,6 +959,9 @@ const NATIVE_PLUGIN_ALIAS_ENTRIES = CAPACITOR_PLUGIN_NAMES.map((name) => ({
 const CAPACITOR_BUILD_TARGET = process.env.ELIZA_CAPACITOR_BUILD_TARGET ?? "";
 const IS_CAPACITOR_MOBILE_BUILD =
   CAPACITOR_BUILD_TARGET === "ios" || CAPACITOR_BUILD_TARGET === "android";
+const IS_ANDROID_CLOUD_RENDERER_BUILD =
+  CAPACITOR_BUILD_TARGET === "android" &&
+  process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE === "cloud";
 const USE_CORE_SOURCE_BROWSER_ENTRY =
   IS_CAPACITOR_MOBILE_BUILD ||
   process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1" ||
@@ -972,11 +975,12 @@ const USE_CORE_SOURCE_BROWSER_ENTRY =
 export function resolveAppShellLocalCspSources(
   capacitorBuildTarget: string,
   isIosStoreBuild: boolean,
+  isAndroidCloudBuild = false,
 ): {
   localHttpSources: string;
   localConnectSources: string;
 } {
-  if (isIosStoreBuild) {
+  if (isIosStoreBuild || isAndroidCloudBuild) {
     return { localHttpSources: "", localConnectSources: "" };
   }
 
@@ -1001,6 +1005,72 @@ export function resolveAppShellLocalCspSources(
   };
 }
 
+export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS = Object.freeze([
+  "31337",
+  "31338",
+  "32437",
+  "32438",
+  "10.0.2.2",
+  "adb reverse",
+]);
+
+/** Physically removes direct/simulator routing defaults from Play renderer code. */
+export function scrubAndroidCloudLocalRouting(source: string): string {
+  return source
+    .replaceAll("31337", "0")
+    .replaceAll("31338", "0")
+    .replaceAll("32437", "0")
+    .replaceAll("32438", "0")
+    .replaceAll("10.0.2.2", "invalid.invalid")
+    .replaceAll("adb reverse", "Android cloud routing");
+}
+
+function androidCloudRendererPolicyPlugin(): Plugin {
+  return {
+    name: "android-cloud-renderer-policy",
+    enforce: "pre",
+    transform(code, id) {
+      const sourcePath = path.resolve(id.split("?")[0] ?? id);
+      if (
+        !IS_ANDROID_CLOUD_RENDERER_BUILD ||
+        id.startsWith("\0") ||
+        id.includes("node_modules") ||
+        !sourcePath.startsWith(`${elizaRoot}${path.sep}`)
+      ) {
+        return null;
+      }
+      const scrubbed = scrubAndroidCloudLocalRouting(code);
+      return scrubbed === code ? null : { code: scrubbed, map: null };
+    },
+    generateBundle(_options, bundle) {
+      if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return;
+      const findings: string[] = [];
+      for (const [fileName, output] of Object.entries(bundle)) {
+        const content =
+          output.type === "chunk"
+            ? output.code
+            : typeof output.source === "string"
+              ? output.source
+              : null;
+        if (content === null) continue;
+        for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
+          if (content.toLowerCase().includes(marker.toLowerCase())) {
+            findings.push(`${fileName}: ${marker}`);
+          }
+        }
+      }
+      if (findings.length > 0) {
+        throw new Error(
+          `Android Cloud renderer contains forbidden local routing markers:\n${findings
+            .sort()
+            .map((finding) => `  - ${finding}`)
+            .join("\n")}`,
+        );
+      }
+    },
+  };
+}
+
 /** Viewport policies selected by the app-shell metadata transform. */
 export const VIEWPORT_META_NATIVE =
   "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
@@ -1019,8 +1089,15 @@ export function appShellMetadataPlugin(
     capacitorBuildTarget === "ios" &&
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
       process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
+  const isAndroidCloudBuild =
+    capacitorBuildTarget === "android" &&
+    process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE === "cloud";
   const { localHttpSources, localConnectSources } =
-    resolveAppShellLocalCspSources(capacitorBuildTarget, isIosStoreBuild);
+    resolveAppShellLocalCspSources(
+      capacitorBuildTarget,
+      isIosStoreBuild,
+      isAndroidCloudBuild,
+    );
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
@@ -2174,6 +2251,7 @@ export default defineConfig(({ command }) => ({
     ),
   },
   plugins: [
+    androidCloudRendererPolicyPlugin(),
     forcedHostModeFlagGuardPlugin(),
     productionBuildStampGuardPlugin(),
     bufferEsmShimPlugin(),
@@ -2380,13 +2458,17 @@ export const INVALID_TRACER_PROVIDER = {};
     react(),
     desktopCorsPlugin(),
     appDevSettingsBannerPlugin(),
-    visualizer({
-      filename: "dist/stats.html",
-      template: "treemap",
-      gzipSize: true,
-      brotliSize: true,
-      emitFile: false,
-    }) as Plugin,
+    ...(!IS_CAPACITOR_MOBILE_BUILD
+      ? [
+          visualizer({
+            filename: "dist/stats.html",
+            template: "treemap",
+            gzipSize: true,
+            brotliSize: true,
+            emitFile: false,
+          }) as Plugin,
+        ]
+      : []),
   ],
   oxc: {
     // Override tsconfig target so generated workspace configs cannot push the

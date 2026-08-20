@@ -13,6 +13,7 @@ import {
   androidPlayManifestEvidenceFromAapt,
   cloudSafeMainActivityJava,
   createAndroidPlayManifestPolicy,
+  findAndroidPlayTextAssetFindings,
 } from "./run-mobile-build.mjs";
 
 const VARIABLES_GRADLE = fs.readFileSync(
@@ -163,5 +164,26 @@ describe("Android Play manifest policy", () => {
     expect(mainActivity).not.toContain("android.os.SystemProperties");
     expect(mainActivity).not.toContain("java.lang.reflect");
     expect(mainActivity).not.toContain("GatewayConnectionService");
+  });
+
+  it("rejects local routing and credential material in packaged text assets", () => {
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["base/assets/public/app.js"],
+        [Buffer.from("http://127.0.0.1:31337")],
+      ),
+    ).toEqual(["base/assets/public/app.js: local routing marker 31337"]);
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["assets/public/app.js"],
+        [Buffer.from('CEREBRAS_API_KEY="not-a-real-key"')],
+      ),
+    ).toEqual([]);
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["assets/public/app.js"],
+        [Buffer.from(`CARTESIA_API_KEY="${"a".repeat(24)}"`)],
+      ),
+    ).toEqual(["assets/public/app.js: Cerebras/Cartesia credential"]);
   });
 });
