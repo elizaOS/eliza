@@ -36,3 +36,8 @@ export const client: Record<string, unknown> = {
   signBrowserSolanaMessage: reject,
   signBrowserWalletMessage: reject,
 };
+
+/** Supplies constructor imports while preserving the fixture's shared client. */
+export function ElizaClient() {
+  return client;
+}
