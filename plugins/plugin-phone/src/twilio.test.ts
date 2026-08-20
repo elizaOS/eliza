@@ -309,6 +309,35 @@ describe("Twilio transport", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ["missing", {}],
+    ["blank", { sid: "   " }],
+    ["non-string", { sid: 123 }],
+  ])(
+    "rejects a successful response with a %s SID without replaying the create",
+    async (_label, receipt) => {
+      process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
+      const fetchMock = vi.fn(async () =>
+        Response.json(receipt, { status: 201 }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(
+        sendTwilioSms({
+          credentials,
+          to: "+15551112222",
+          body: "hello",
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        status: null,
+        error: "Twilio accepted the request without a valid receipt",
+        retryCount: 0,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("retries only an explicit known-not-processed 429 response", async () => {
     process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
     let attempt = 0;

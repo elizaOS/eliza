@@ -248,11 +248,17 @@ async function sendTwilioRequest(args: {
         }
         continue;
       }
+      const receiptSid = typeof data.sid === "string" ? data.sid.trim() : "";
+      if (receiptSid.length === 0) {
+        // error-policy:J3 A 2xx create without a usable resource identifier is
+        // an ambiguous success. Do not report success or replay the POST.
+        throw new Error("Twilio accepted the request without a valid receipt");
+      }
       span.success({ statusCode: response.status });
       return {
         ok: true,
         status: response.status,
-        sid: data.sid,
+        sid: receiptSid,
         retryCount: attempt,
       };
     } catch (error) {
