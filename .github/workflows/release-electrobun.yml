@@ -490,6 +490,7 @@ jobs:
             desktop-file-utils \
             file \
             flatpak \
+            libayatana-appindicator3-1 \
             rpm \
             xauth \
             xvfb

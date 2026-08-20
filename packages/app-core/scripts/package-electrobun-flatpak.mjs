@@ -8,6 +8,7 @@
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -42,6 +43,22 @@ export const FLATPAK_RUNTIME = {
   sdk: "org.gnome.Sdk",
   version: "49",
 };
+export const FLATPAK_BUNDLED_LIBRARIES = [
+  {
+    package: "libayatana-appindicator3-1",
+    soname: "libayatana-appindicator3.so.1",
+  },
+  {
+    package: "libayatana-indicator3-7",
+    soname: "libayatana-indicator3.so.7",
+  },
+  {
+    package: "libayatana-ido3-0.4-0",
+    soname: "libayatana-ido3-0.4.so.0",
+  },
+  { package: "libdbusmenu-glib4", soname: "libdbusmenu-glib.so.4" },
+  { package: "libdbusmenu-gtk3-4", soname: "libdbusmenu-gtk3.so.4" },
+];
 export const FLATPAK_FINISH_ARGS = [
   "--command=eliza",
   "--share=network",
@@ -163,6 +180,36 @@ export async function writeMetadata(filesDir, relativeLauncher) {
     );
 }
 
+/** Bundle the tray libraries Electrobun links but the GNOME runtime omits. */
+export function copyBundledLibraries(filesDir) {
+  const cache = execFileSync("ldconfig", ["-p"], { encoding: "utf8" });
+  const libraryDir = path.join(filesDir, "lib");
+  const licenseDir = path.join(filesDir, "share/licenses/eliza-bundled");
+  mkdirSync(libraryDir, { recursive: true });
+  mkdirSync(licenseDir, { recursive: true });
+
+  for (const library of FLATPAK_BUNDLED_LIBRARIES) {
+    const line = cache
+      .split("\n")
+      .find((candidate) =>
+        candidate.trimStart().startsWith(`${library.soname} `),
+      );
+    const source = line?.match(/=>\s+(\S+)\s*$/)?.[1];
+    if (!source || !existsSync(source)) {
+      throw new Error(`Missing required Flatpak library ${library.soname}`);
+    }
+    const copyright = path.join("/usr/share/doc", library.package, "copyright");
+    if (!existsSync(copyright)) {
+      throw new Error(`Missing license for bundled package ${library.package}`);
+    }
+    copyFileSync(source, path.join(libraryDir, library.soname));
+    copyFileSync(
+      copyright,
+      path.join(licenseDir, `${library.package}.copyright`),
+    );
+  }
+}
+
 async function main() {
   if (process.platform !== "linux") {
     throw new Error(
@@ -197,6 +244,7 @@ async function main() {
       force: true,
       dereference: true,
     });
+    copyBundledLibraries(path.join(appDir, "files"));
     await writeMetadata(path.join(appDir, "files"), relativeLauncher);
     run("flatpak", ["build-finish", ...FLATPAK_FINISH_ARGS, appDir]);
     run("flatpak", [

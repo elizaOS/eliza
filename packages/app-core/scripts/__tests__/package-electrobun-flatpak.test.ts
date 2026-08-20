@@ -17,6 +17,7 @@ import path from "node:path";
 import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  FLATPAK_BUNDLED_LIBRARIES,
   FLATPAK_FINISH_ARGS,
   FLATPAK_RUNTIME,
   requireLauncher,
@@ -44,6 +45,13 @@ describe("Electrobun Flatpak packaging", () => {
       sdk: "org.gnome.Sdk",
       version: "49",
     });
+    expect(FLATPAK_BUNDLED_LIBRARIES.map(({ soname }) => soname)).toEqual([
+      "libayatana-appindicator3.so.1",
+      "libayatana-indicator3.so.7",
+      "libayatana-ido3-0.4.so.0",
+      "libdbusmenu-glib.so.4",
+      "libdbusmenu-gtk3.so.4",
+    ]);
   });
 
   it("requires the packaged Electrobun launcher", () => {
