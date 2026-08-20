@@ -1,22 +1,23 @@
 /**
- * Real-fs tests for plugin staging copies that must not follow out-of-tree
- * symlinks. Origin `fs.cp({ dereference: true })` materialized host file
- * bytes into the staged tree. Deterministic temp directories, no mocks.
+ * Real-filesystem tests for self-contained plugin staging trees. The harness
+ * exercises production copy and package-link helpers with deterministic temp
+ * directories and no filesystem mocks.
  */
 
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  confinedStagingSymlinkTarget,
   copyPluginTreeWithoutEscapingSymlinks,
+  copySymlinkedPackageForStaging,
 } from "./plugin-resolver.ts";
 
 const dirs: string[] = [];
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     dirs.splice(0).map((dir) => fsp.rm(dir, { recursive: true, force: true })),
   );
@@ -43,6 +44,8 @@ describe("copyPluginTreeWithoutEscapingSymlinks", () => {
     );
     const alias = path.join(target, "alias.txt");
     expect((await fsp.lstat(alias)).isSymbolicLink()).toBe(true);
+    expect(path.isAbsolute(await fsp.readlink(alias))).toBe(false);
+    await fsp.rm(src, { recursive: true, force: true });
     expect(await fsp.readFile(alias, "utf8")).toBe("inside");
   });
 
@@ -66,27 +69,94 @@ describe("copyPluginTreeWithoutEscapingSymlinks", () => {
       fsp.lstat(path.join(target, "leaked.txt")),
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
-});
 
-describe("confinedStagingSymlinkTarget", () => {
-  it("rejects a symlink whose realpath is outside the workspace", async () => {
-    const secretDir = await makeDir("plugin-link-secret-");
-    const secret = path.join(secretDir, "secret.txt");
-    await fsp.writeFile(secret, "HOST-SECRET");
-    const src = await makeDir("plugin-link-src-");
-    const link = path.join(src, "escape");
-    await fsp.symlink(secret, link);
-    expect(await confinedStagingSymlinkTarget(link)).toBeNull();
+  it("does not treat a configured workspace sibling as part of the package", async () => {
+    const workspace = await makeDir("plugin-copy-workspace-");
+    const src = path.join(workspace, "package");
+    const secretDir = path.join(workspace, "secrets");
+    const target = path.join(workspace, "staged");
+    await fsp.mkdir(src);
+    await fsp.mkdir(secretDir);
+    await fsp.writeFile(path.join(secretDir, "token"), "HOST-SECRET");
+    await fsp.symlink(path.join(secretDir, "token"), path.join(src, "leak"));
+    vi.stubEnv("ELIZA_WORKSPACE_ROOT", workspace);
+
+    await copyPluginTreeWithoutEscapingSymlinks(src, target);
+
+    await expect(fsp.lstat(path.join(target, "leak"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
-  it("accepts a symlink that stays inside the source tree", async () => {
-    const src = await makeDir("plugin-link-src-");
-    const file = path.join(src, "ok.txt");
-    await fsp.writeFile(file, "inside");
-    const link = path.join(src, "alias");
-    await fsp.symlink(file, link);
-    expect(await confinedStagingSymlinkTarget(link, src)).toBe(
-      fs.realpathSync(file),
+  it("rejects a relative symlink that traverses an in-tree link to the host", async () => {
+    const secretDir = await makeDir("plugin-copy-secret-");
+    await fsp.writeFile(path.join(secretDir, "secret.txt"), "HOST-SECRET");
+    const src = await makeDir("plugin-copy-src-");
+    await fsp.symlink(secretDir, path.join(src, "redirect"));
+    await fsp.symlink("redirect/secret.txt", path.join(src, "nested-leak"));
+    const target = path.join(await makeDir("plugin-copy-dst-"), "tree");
+
+    await copyPluginTreeWithoutEscapingSymlinks(src, target);
+
+    await expect(
+      fsp.lstat(path.join(target, "redirect")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      fsp.lstat(path.join(target, "nested-leak")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("copySymlinkedPackageForStaging", () => {
+  it("rejects a package symlink whose manifest name does not match", async () => {
+    const secretDir = await makeDir("plugin-link-secret-");
+    await fsp.writeFile(
+      path.join(secretDir, "package.json"),
+      JSON.stringify({ name: "host-secret" }),
     );
+    const src = await makeDir("plugin-link-src-");
+    const link = path.join(src, "escape");
+    const dst = path.join(await makeDir("plugin-link-dst-"), "package");
+    await fsp.symlink(secretDir, link);
+    expect(
+      await copySymlinkedPackageForStaging(link, dst, "expected-package"),
+    ).toBe(false);
+    await expect(fsp.lstat(dst)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("copies a name-bound package instead of planting its live symlink", async () => {
+    const packageRoot = await makeDir("plugin-link-package-");
+    await fsp.writeFile(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({ name: "expected-package" }),
+    );
+    await fsp.writeFile(path.join(packageRoot, "index.js"), "export default 1");
+    const src = await makeDir("plugin-link-src-");
+    const link = path.join(src, "expected-package");
+    const dst = path.join(await makeDir("plugin-link-dst-"), "package");
+    await fsp.symlink(packageRoot, link);
+
+    expect(
+      await copySymlinkedPackageForStaging(link, dst, "expected-package"),
+    ).toBe(true);
+    expect((await fsp.lstat(dst)).isSymbolicLink()).toBe(false);
+    await fsp.rm(packageRoot, { recursive: true, force: true });
+    expect(await fsp.readFile(path.join(dst, "index.js"), "utf8")).toBe(
+      "export default 1",
+    );
+  });
+
+  it("rejects malformed manifests before creating the staged package", async () => {
+    const packageRoot = await makeDir("plugin-link-package-");
+    await fsp.writeFile(path.join(packageRoot, "package.json"), "{not-json");
+    const src = await makeDir("plugin-link-src-");
+    const link = path.join(src, "expected-package");
+    const dst = path.join(await makeDir("plugin-link-dst-"), "package");
+    await fsp.symlink(packageRoot, link);
+
+    expect(
+      await copySymlinkedPackageForStaging(link, dst, "expected-package"),
+    ).toBe(false);
+    await expect(fsp.lstat(dst)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

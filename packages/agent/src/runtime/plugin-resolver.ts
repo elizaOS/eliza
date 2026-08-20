@@ -6,9 +6,9 @@
  * directories. Each plugin is wrapped in an error boundary so a single
  * failing plugin cannot crash the agent startup.
  *
- * Staging copies of node_modules trees must not dereference or re-plant
- * symlinks whose realpath leaves the workspace — `fs.cp({ dereference: true })`
- * materializes host files (for example `/etc/passwd`) into the staged plugin.
+ * Staged package trees are self-contained: nested links remain within the
+ * copied package and symlinked dependency entries are copied only after their
+ * manifest identity is bound to the requested package name.
  *
  * @module plugin-resolver
  */
@@ -127,6 +127,7 @@ function sanitizePluginCacheSegment(value: string): string {
 }
 
 type PluginPackageManifest = {
+  name?: unknown;
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
@@ -257,12 +258,11 @@ async function stageDependencyIntoNodeModules(params: {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   const stat = await fs.lstat(sourcePath);
   if (stat.isSymbolicLink()) {
-    const linkTarget = await confinedStagingSymlinkTarget(sourcePath);
-    if (!linkTarget) {
-      return false;
-    }
-    await fs.symlink(linkTarget, targetPath);
-    return true;
+    return copySymlinkedPackageForStaging(
+      sourcePath,
+      targetPath,
+      params.dependencyName,
+    );
   }
   if (!stat.isDirectory()) {
     return false;
@@ -1070,47 +1070,143 @@ function isPathInsideRoot(child: string, parent: string): boolean {
   );
 }
 
-async function pluginStagingConfinementRoots(
-  extraRoot?: string,
-): Promise<string[]> {
-  const roots = new Set<string>();
-  const add = async (candidate: string | undefined) => {
-    if (!candidate) return;
-    try {
-      roots.add(await fs.realpath(candidate));
-    } catch {
-      // error-policy:J3 missing extra roots are omitted, not invented.
+/**
+ * Resolve a symlink only when both its literal target and final realpath stay
+ * inside the tree being staged. The lexical check keeps a later verbatim copy
+ * self-contained; the realpath check catches an in-tree path that traverses a
+ * second symlink out of the tree.
+ */
+async function confinedTreeSymlinkTarget(
+  sourcePath: string,
+  sourceRoot: string,
+): Promise<string | null> {
+  try {
+    const rawTarget = await fs.readlink(sourcePath);
+    const lexicalTarget = path.resolve(path.dirname(sourcePath), rawTarget);
+    if (
+      lexicalTarget === sourceRoot ||
+      !isPathInsideRoot(lexicalTarget, sourceRoot)
+    ) {
+      return null;
     }
-  };
-  await add(process.cwd());
-  await add(process.env.ELIZA_WORKSPACE_ROOT?.trim());
-  await add(extraRoot);
-  return [...roots];
-}
-
-async function realpathAllowedForPluginStaging(
-  real: string,
-  extraRoot?: string,
-): Promise<boolean> {
-  const roots = await pluginStagingConfinementRoots(extraRoot);
-  return roots.some((root) => real === root || isPathInsideRoot(real, root));
+    const realTarget = await fs.realpath(sourcePath);
+    if (
+      realTarget === sourceRoot ||
+      !isPathInsideRoot(realTarget, sourceRoot) ||
+      isPathInsideRoot(sourcePath, realTarget)
+    ) {
+      return null;
+    }
+    return realTarget;
+  } catch (error) {
+    // error-policy:J3 broken or racing symlinks are rejected, not staged.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
 }
 
 /**
- * Realpath of a staging source symlink, or null when it is missing or points
- * outside the workspace. Re-planting an escaping realpath as a symlink in the
- * staged tree would let later reads follow it to host files.
+ * Copy a package reached through node_modules only after binding the resolved
+ * package name. Copying the validated tree avoids planting a live absolute
+ * workspace symlink in the staged runtime.
  */
-export async function confinedStagingSymlinkTarget(
+export async function copySymlinkedPackageForStaging(
   sourcePath: string,
-  extraRoot?: string,
-): Promise<string | null> {
-  const linkTarget = await resolveSymlinkTargetIfPresent(sourcePath);
-  if (!linkTarget) return null;
-  if (!(await realpathAllowedForPluginStaging(linkTarget, extraRoot))) {
-    return null;
+  targetPath: string,
+  expectedPackageName: string,
+): Promise<boolean> {
+  const packageRoot = await resolveSymlinkTargetIfPresent(sourcePath);
+  if (!packageRoot) return false;
+  try {
+    if (!(await fs.stat(packageRoot)).isDirectory()) return false;
+    const manifest = await readPluginPackageManifest(packageRoot);
+    if (manifest?.name !== expectedPackageName) return false;
+    await copyPluginTreeWithoutEscapingSymlinks(packageRoot, targetPath);
+    return true;
+  } catch (error) {
+    // error-policy:J3 malformed or racing package links are skipped rather
+    // than copied under an unverified dependency name.
+    if (
+      (error as NodeJS.ErrnoException).code === "ENOENT" ||
+      error instanceof SyntaxError
+    ) {
+      return false;
+    }
+    throw error;
   }
-  return linkTarget;
+}
+
+async function rewriteAbsoluteStagingSymlinks(
+  sourceRoot: string,
+  targetRoot: string,
+  currentTarget: string,
+): Promise<void> {
+  const entries = await fs.readdir(currentTarget, { withFileTypes: true });
+  for (const entry of entries) {
+    const stagedPath = path.join(currentTarget, entry.name);
+    if (entry.isDirectory()) {
+      await rewriteAbsoluteStagingSymlinks(sourceRoot, targetRoot, stagedPath);
+      continue;
+    }
+    if (!entry.isSymbolicLink()) continue;
+    const rawTarget = await fs.readlink(stagedPath);
+    if (!path.isAbsolute(rawTarget)) continue;
+    if (!isPathInsideRoot(rawTarget, sourceRoot)) {
+      await fs.unlink(stagedPath);
+      continue;
+    }
+    const mappedTarget = path.join(
+      targetRoot,
+      path.relative(sourceRoot, rawTarget),
+    );
+    const relativeTarget = path.relative(
+      path.dirname(stagedPath),
+      mappedTarget,
+    );
+    const sourceTarget = await fs.stat(rawTarget);
+    const isDirectory = sourceTarget.isDirectory();
+    const rewrittenTarget =
+      process.platform === "win32" && isDirectory
+        ? mappedTarget
+        : relativeTarget || ".";
+    await fs.unlink(stagedPath);
+    await fs.symlink(
+      rewrittenTarget,
+      stagedPath,
+      isDirectory && process.platform === "win32" ? "junction" : "file",
+    );
+  }
+}
+
+async function removeEscapingStagedSymlinks(
+  targetRoot: string,
+  currentTarget: string,
+): Promise<void> {
+  const entries = await fs.readdir(currentTarget, { withFileTypes: true });
+  for (const entry of entries) {
+    const stagedPath = path.join(currentTarget, entry.name);
+    if (entry.isDirectory()) {
+      await removeEscapingStagedSymlinks(targetRoot, stagedPath);
+      continue;
+    }
+    if (!entry.isSymbolicLink()) continue;
+    try {
+      const realTarget = await fs.realpath(stagedPath);
+      if (!isPathInsideRoot(realTarget, targetRoot))
+        await fs.unlink(stagedPath);
+    } catch (error) {
+      // error-policy:J3 broken or racing copied symlinks are removed before the
+      // staged tree becomes importable.
+      if (
+        (error as NodeJS.ErrnoException).code === "ENOENT" ||
+        (error as NodeJS.ErrnoException).code === "ELOOP"
+      ) {
+        await fs.unlink(stagedPath);
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 /**
@@ -1124,23 +1220,41 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
   options?: { filter?: (src: string) => boolean },
 ): Promise<void> {
   const sourceRoot = await fs.realpath(sourcePath);
-  await fs.cp(sourcePath, targetPath, {
-    recursive: true,
-    force: true,
-    dereference: false,
-    filter: async (src) => {
-      if (options?.filter && !options.filter(src)) return false;
-      try {
-        const stat = await fs.lstat(src);
-        if (!stat.isSymbolicLink()) return true;
-        const real = await fs.realpath(src);
-        return realpathAllowedForPluginStaging(real, sourceRoot);
-      } catch {
-        // error-policy:J3 broken or unresolvable symlink is skipped, not copied.
-        return false;
-      }
-    },
-  });
+  try {
+    await fs.cp(sourceRoot, targetPath, {
+      recursive: true,
+      force: true,
+      dereference: false,
+      verbatimSymlinks: true,
+      filter: async (src) => {
+        const logicalSource = path.join(
+          sourcePath,
+          path.relative(sourceRoot, src),
+        );
+        if (options?.filter && !options.filter(logicalSource)) return false;
+        try {
+          const stat = await fs.lstat(src);
+          if (!stat.isSymbolicLink()) return true;
+          return (await confinedTreeSymlinkTarget(src, sourceRoot)) !== null;
+        } catch {
+          // error-policy:J3 broken or unresolvable symlink is skipped, not copied.
+          return false;
+        }
+      },
+    });
+    await rewriteAbsoluteStagingSymlinks(sourceRoot, targetPath, targetPath);
+    await removeEscapingStagedSymlinks(targetPath, targetPath);
+  } catch (error) {
+    try {
+      await fs.rm(targetPath, { recursive: true, force: true });
+    } catch (cleanupError) {
+      // error-policy:J6 failed staging is unusable; cleanup failure is secondary.
+      logger.warn(
+        `[eliza] Failed to remove rejected plugin staging tree: ${formatError(cleanupError)}`,
+      );
+    }
+    throw error;
+  }
 }
 
 async function stageNodeModulesEntries(params: {
@@ -1174,10 +1288,11 @@ async function stageNodeModulesEntries(params: {
           continue;
         }
         if (scopedEntry.isSymbolicLink()) {
-          const linkTarget =
-            await confinedStagingSymlinkTarget(scopedSourcePath);
-          if (!linkTarget) continue;
-          await fs.symlink(linkTarget, scopedTargetPath);
+          await copySymlinkedPackageForStaging(
+            scopedSourcePath,
+            scopedTargetPath,
+            `${entry.name}/${scopedEntry.name}`,
+          );
           continue;
         }
         if (!scopedEntry.isDirectory()) {
@@ -1195,9 +1310,7 @@ async function stageNodeModulesEntries(params: {
       continue;
     }
     if (entry.isSymbolicLink()) {
-      const linkTarget = await confinedStagingSymlinkTarget(sourcePath);
-      if (!linkTarget) continue;
-      await fs.symlink(linkTarget, targetPath);
+      await copySymlinkedPackageForStaging(sourcePath, targetPath, entry.name);
       continue;
     }
     if (!entry.isDirectory()) {
