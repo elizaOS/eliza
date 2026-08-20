@@ -4734,7 +4734,14 @@ export class OrchestratorTaskService extends Service {
         const workspace = getCodingWorkspaceService(this.runtime);
         const groundTruth = await verifyGroundTruth(
           {
-            completion: rawCompletion,
+            // The child cannot push or open PRs — its verbatim completion
+            // never carries the URL, so a raw-completion-only check reported
+            // "no pull request was claimed" while the orchestrator's own
+            // submit had the PR open (live 2026-08-20, ROADMAP run). Join the
+            // recorded PR exactly like verifyGroundTruthForValidation does.
+            completion: [rawCompletion, str(doc.task.metadata?.prUrl)]
+              .filter(Boolean)
+              .join("\n"),
             claimedFiles: changeSet?.changedFiles ?? [],
             requirePullRequest: groundTruthRequiresPullRequest(
               (key) => this.runtime.getSetting(key),
