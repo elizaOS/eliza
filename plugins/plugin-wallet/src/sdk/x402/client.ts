@@ -112,6 +112,7 @@ export class X402Client {
 
     // Execute payment
     const paymentResult = await this.executePayment(selected);
+    const resolvedToken = paymentResult.token;
 
     // Build payment payload
     const paymentPayload: X402PaymentPayload = {
@@ -130,7 +131,7 @@ export class X402Client {
       service,
       url: urlStr,
       amount,
-      token: selected.asset as Address,
+      token: resolvedToken,
       recipient: selected.payTo as Address,
       txHash: paymentResult.txHash,
       network: selected.network,
@@ -246,7 +247,7 @@ export class X402Client {
    */
   private async executePayment(
     req: X402PaymentRequirements,
-  ): Promise<{ txHash: Hash }> {
+  ): Promise<{ txHash: Hash; token: Address }> {
     // Resolve the actual contract address for the requested asset
     const resolvedAddress = resolveAssetAddress(req.asset, req.network);
     if (!resolvedAddress) {
@@ -281,7 +282,7 @@ export class X402Client {
 
     if (feeAmount > 0n) {
       await agentTransferToken(this.wallet, {
-        token: req.asset as Address,
+        token: resolvedAddress,
         to: FEE_COLLECTOR,
         amount: feeAmount,
       });
@@ -294,7 +295,7 @@ export class X402Client {
       amount,
     });
 
-    return { txHash };
+    return { txHash, token: resolvedAddress };
   }
 
   // ─── Budget Access ───
