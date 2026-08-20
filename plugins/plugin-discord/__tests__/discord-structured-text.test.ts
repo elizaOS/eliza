@@ -12,8 +12,8 @@ import {
 	normalizeDiscordMessageText,
 } from "../discord-structured-text";
 
-function nestArray(depth: number): unknown {
-	let value: unknown = "leaf";
+function nestArray(depth: number, leaf: unknown = "leaf"): unknown {
+	let value: unknown = leaf;
 	for (let index = 0; index < depth; index += 1) {
 		value = [value];
 	}
@@ -49,6 +49,14 @@ describe("normalizeDiscordMessageText", () => {
 				nestContent(MAX_DISCORD_STRUCTURED_TEXT_DEPTH - 2),
 			),
 		).toBe("hi");
+	});
+
+	it("does not invent an over-depth child for an empty boundary object", () => {
+		expect(
+			normalizeDiscordMessageText(
+				nestArray(MAX_DISCORD_STRUCTURED_TEXT_DEPTH, {}),
+			),
+		).toBe("");
 	});
 
 	it(`throws ${DISCORD_STRUCTURED_TEXT_UNBOUNDED} one past depth ${MAX_DISCORD_STRUCTURED_TEXT_DEPTH}`, () => {

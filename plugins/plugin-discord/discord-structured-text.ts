@@ -97,31 +97,25 @@ function collectStructuredText(
 		}
 
 		for (const key of PRIMARY_TEXT_KEYS) {
-			const normalized = collectStructuredText(
-				dataValue(value, key),
-				depth + 1,
-				ctx,
-			);
+			const child = dataValue(value, key);
+			if (child === undefined) continue;
+			const normalized = collectStructuredText(child, depth + 1, ctx);
 			if (normalized.length > 0) {
 				return normalized;
 			}
 		}
 		for (const key of COLLECTION_KEYS) {
-			const normalized = collectStructuredText(
-				dataValue(value, key),
-				depth + 1,
-				ctx,
-			);
+			const child = dataValue(value, key);
+			if (child === undefined) continue;
+			const normalized = collectStructuredText(child, depth + 1, ctx);
 			if (normalized.length > 0) {
 				return normalized;
 			}
 		}
 		for (const key of FALLBACK_TEXT_KEYS) {
-			const normalized = collectStructuredText(
-				dataValue(value, key),
-				depth + 1,
-				ctx,
-			);
+			const child = dataValue(value, key);
+			if (child === undefined) continue;
+			const normalized = collectStructuredText(child, depth + 1, ctx);
 			if (normalized.length > 0) {
 				return normalized;
 			}
