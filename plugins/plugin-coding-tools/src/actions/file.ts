@@ -21,6 +21,7 @@ import {
   successActionResult,
   userFacingSuccessResult,
 } from "../lib/format.js";
+import { isAbsolutePath } from "../lib/path-utils.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
 import { editFileHandler } from "./edit.js";
 import { globHandler } from "./glob.js";
@@ -199,6 +200,25 @@ async function deviceFileHandler(
     });
   }
 
+  // An absolute path can only name the host/workspace filesystem. Treating it
+  // as a device-relative path would cross filesystem trust domains, while
+  // letting the bridge throw produces an opaque handler failure that the
+  // planner cannot correlate with a corrected workspace retry. Return the
+  // rejected top-level field explicitly so the planner can retry the same FILE
+  // operation after removing target=device and clear the validation failure.
+  if (isAbsolutePath(path)) {
+    const message =
+      "target=device only accepts device-relative paths. For an absolute host/workspace path, retry FILE without target=device.";
+    return failureToActionResult(
+      { reason: "invalid_param", message },
+      {
+        parameterErrors: [message],
+        invalidParameterNames: ["target"],
+        retryable: true,
+      },
+    );
+  }
+
   const encoding = readDeviceEncoding(options);
   if (!encoding) {
     return failureToActionResult({
@@ -207,61 +227,72 @@ async function deviceFileHandler(
     });
   }
 
-  if (operation === "read") {
-    const content = await bridge.read(path, encoding);
-    const bytes = Buffer.byteLength(content, encoding);
-    const text = `Read ${bytes} byte${bytes === 1 ? "" : "s"} from ${path}`;
-    if (callback) await callback({ text, source: "coding-tools" });
-    return successActionResult(text, {
-      action: "FILE",
-      target: "device",
-      operation,
-      path,
-      encoding,
-      bytes,
-      content,
-    });
-  }
-
-  if (operation === "write") {
-    const content = readStringParam(options, "content");
-    if (content === undefined) {
-      return failureToActionResult({
-        reason: "missing_param",
-        message: "content is required",
-      });
-    }
-    await bridge.write(path, content, encoding);
-    const bytes = Buffer.byteLength(content, encoding);
-    const text = `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${path}`;
-    if (callback) await callback({ text, source: "coding-tools" });
-    // Same single-delivery contract as the workspace write op: the write
-    // confirmation is the complete answer to a single-operation turn.
-    return {
-      ...userFacingSuccessResult(text, {
+  try {
+    if (operation === "read") {
+      const content = await bridge.read(path, encoding);
+      const bytes = Buffer.byteLength(content, encoding);
+      const text = `Read ${bytes} byte${bytes === 1 ? "" : "s"} from ${path}`;
+      if (callback) await callback({ text, source: "coding-tools" });
+      return successActionResult(text, {
         action: "FILE",
         target: "device",
         operation,
         path,
         encoding,
         bytes,
-      }),
-      verifiedUserFacing: true,
-      turnComplete: true,
-    };
-  }
+        content,
+      });
+    }
 
-  const entries = await bridge.list(path);
-  const text = renderDeviceEntries(path, entries);
-  if (callback)
-    await callback({ text: fencePreformatted(text), source: "coding-tools" });
-  return successActionResult(text, {
-    action: "FILE",
-    target: "device",
-    operation,
-    path,
-    entries,
-  });
+    if (operation === "write") {
+      const content = readStringParam(options, "content");
+      if (content === undefined) {
+        return failureToActionResult({
+          reason: "missing_param",
+          message: "content is required",
+        });
+      }
+      await bridge.write(path, content, encoding);
+      const bytes = Buffer.byteLength(content, encoding);
+      const text = `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${path}`;
+      if (callback) await callback({ text, source: "coding-tools" });
+      // Same single-delivery contract as the workspace write op: the write
+      // confirmation is the complete answer to a single-operation turn.
+      return {
+        ...userFacingSuccessResult(text, {
+          action: "FILE",
+          target: "device",
+          operation,
+          path,
+          encoding,
+          bytes,
+        }),
+        verifiedUserFacing: true,
+        turnComplete: true,
+      };
+    }
+
+    const entries = await bridge.list(path);
+    const text = renderDeviceEntries(path, entries);
+    if (callback)
+      await callback({ text: fencePreformatted(text), source: "coding-tools" });
+    return successActionResult(text, {
+      action: "FILE",
+      target: "device",
+      operation,
+      path,
+      entries,
+    });
+  } catch (error) {
+    // error-policy:J1 the bridge is the device-I/O boundary. Translate its
+    // rejection into the same explicit ActionResult failure contract as the
+    // workspace handlers instead of throwing out of the action.
+    const message = error instanceof Error ? error.message : String(error);
+    return failureToActionResult({
+      reason: "io_error",
+      message: `device ${operation} failed: ${message}`,
+    });
+  }
 }
 
 export const fileAction: Action = {
@@ -285,9 +316,9 @@ export const fileAction: Action = {
     "LIST_FILES",
   ],
   description:
-    "Read, write, edit, grep, glob, or list files. Workspace paths are absolute unless the operation defaults to session cwd; target=device uses the device bridge.",
+    "Read, write, edit, grep, glob, or list files. Workspace is the default: omit target (or use target=workspace) for every code/project file and every absolute path. Use target=device only when the user explicitly asks for a phone/mobile Documents file, and then use a relative device path.",
   descriptionCompressed:
-    "File operations umbrella: action=read/write/edit/grep/glob/ls, optional target=device.",
+    "File operations: default workspace for code/project and absolute paths; target=device only for explicitly requested mobile files with relative paths.",
   parameters: [
     {
       name: "action",
@@ -298,13 +329,14 @@ export const fileAction: Action = {
     {
       name: "target",
       description:
-        "target=device uses device-relative paths; omit for workspace.",
+        "Omit or use workspace for code/project files and all absolute paths. Use device only for an explicitly requested phone/mobile file with a relative path.",
       required: false,
       schema: { type: "string", enum: ["workspace", "device"] },
     },
     {
       name: "file_path",
-      description: "Absolute path for read/write/edit operations.",
+      description:
+        "Path for read/write/edit. Absolute paths always use the workspace target, never device.",
       required: false,
       schema: { type: "string" },
     },

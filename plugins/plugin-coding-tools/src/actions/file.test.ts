@@ -141,4 +141,65 @@ describe("FILE target=device", () => {
       "target=device supports action=read/write/ls",
     );
   });
+
+  it("returns a structured correction for an absolute device path", async () => {
+    let readCalls = 0;
+    const bridge = {
+      read: async () => {
+        readCalls += 1;
+        return "unexpected";
+      },
+      write: async () => {},
+      list: async () => [],
+    } as FakeDeviceBridge;
+
+    const result = await fileAction.handler(
+      buildRuntime(bridge),
+      message,
+      undefined,
+      {
+        parameters: {
+          action: "read",
+          target: "device",
+          file_path: "/workspace/grocery-list.txt",
+        },
+      },
+    );
+
+    expect(readCalls).toBe(0);
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("retry FILE without target=device");
+    expect(result.data).toMatchObject({
+      invalidParameterNames: ["target"],
+      retryable: true,
+    });
+  });
+
+  it("translates device bridge errors into an action failure", async () => {
+    const bridge = {
+      read: async () => {
+        throw new Error("device is offline");
+      },
+      write: async () => {},
+      list: async () => [],
+    } as FakeDeviceBridge;
+
+    const result = await fileAction.handler(
+      buildRuntime(bridge),
+      message,
+      undefined,
+      {
+        parameters: {
+          action: "read",
+          target: "device",
+          path: "notes.txt",
+        },
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain(
+      "io_error: device read failed: device is offline",
+    );
+  });
 });

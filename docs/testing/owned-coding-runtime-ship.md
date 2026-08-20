@@ -8,6 +8,12 @@ Eliza's first-party coding path is the implementation being shipped. OpenCode
 and pi-agent were not copied into the runtime. They remain useful references or
 explicit optional ACP backends, but neither is required for the owned path.
 
+Correctness is release-ready after the normal-person browser regression below,
+but the OpenRouter/Qwen QA configuration is not a flawless interactive
+experience: successful two- to four-step coding turns took 62-81 seconds in the
+saved runtime trajectories. Treat provider/model latency as a visible ship
+caveat, not as evidence of a tool or orchestration failure.
+
 The tested production chain is:
 
 ```text
@@ -65,12 +71,31 @@ The result is evidence such as `FILE read <absolute path>` followed by
 output. The LLM goal verifier no longer has to infer success from a thin final
 sentence.
 
+### Workspace/device FILE routing
+
+A normal browser prompt naming an absolute host file initially exposed a real
+failure. The planner selected `FILE target=device`, the device bridge rejected
+the absolute path, and later successful SHELL work could not clear that earlier
+failure because it was a different tool operation. The edit landed correctly,
+but the UI first reported that the runtime step failed and leaked raw command
+evidence. That run is a failed UX acceptance, not a pass.
+
+`FILE` now states that workspace is the default for every code/project file and
+every absolute path, while `target=device` is only for an explicitly requested
+phone/mobile file with a relative path. An impossible absolute device path is
+returned as a structured, retryable parameter error naming `target`; device
+bridge I/O errors are translated to explicit action failures rather than thrown
+through the action boundary. The corrected browser retry used workspace FILE
+read/edit calls only and produced a clean final response.
+
 ## Acceptance coverage
 
 ### Deterministic suites
 
 - `plugin-agent-orchestrator`: 252 test files passed, 7 skipped; 2,941 tests
   passed, 11 skipped.
+- `plugin-coding-tools`: 38 test files and 622 tests passed after the FILE
+  routing regression was added; package typecheck and build passed.
 - `packages/examples/code`: 89 tests passed across 28 files; typecheck and
   packaged `index.js`/`acp.js` build passed.
 - Focused regression coverage proves planner-visible exact-workdir locking,
@@ -125,6 +150,32 @@ three passing tests and zero failures, the durable task moved through validation
 to `done` on the first attempt, and the asynchronous result appeared in the UI.
 No native desktop bundle was launched or tested by this coding-runtime lane.
 
+### Normal-person browser coding acceptance
+
+The same isolated browser Eliza runtime was then exercised with ordinary chat
+requests against a disposable Git fixture. These were not direct shell commands
+from the QA driver: each request went through the app UI, parent response
+handler, model planner, real FILE/SHELL actions, and persisted trajectory.
+
+| Request                                                | Runtime path                                 | Independent result                                                    | Trajectory time | Verdict                |
+| ------------------------------------------------------ | -------------------------------------------- | --------------------------------------------------------------------- | --------------: | ---------------------- |
+| Change `milk` to `oat milk` and leave the rest alone   | FILE read -> FILE edit -> REPLY              | Git diff changed exactly line 2; `bread` and `bananas` unchanged      |          70.2 s | Pass after routing fix |
+| Make `prime_checker.py` and try 29 and 30              | FILE write -> SHELL run -> REPLY             | `29 is prime`; `30 is not prime`; independent 1/2 checks also correct |          76.1 s | Pass                   |
+| Fix `temperature.py` so 212 F becomes 100 C and run it | FILE read -> FILE edit -> SHELL run -> REPLY | One formula change, independent run printed `100.0`                   |          81.1 s | Pass                   |
+| Ask a "coding helper" to make and run `hello.py`       | Parent FILE write -> SHELL run -> REPLY      | Independent run printed `Hello, world.`                               |          62.0 s | Pass, handled inline   |
+
+The last task intentionally shows routing policy: a trivial two-operation job
+stayed in the parent runtime instead of paying the overhead of a sub-agent. The
+dedicated live matrix above separately proves the full parent -> orchestrator ->
+packaged eliza-code child path, including concurrent children and durable
+lifecycle transitions.
+
+The local-only evidence bundle contains the three clean UI captures, fixture
+diffs/files, and the corresponding trajectories (`tj-893f281f56b99c`,
+`tj-8ada53325b7132`, and `tj-8ccb7336aab84a`). The original broken run remains
+available as `tj-830fad609544a3` so the regression is auditable rather than
+hidden.
+
 ## Reproduce
 
 Install and run the deterministic gates from the repository root:
@@ -163,6 +214,13 @@ for a normal handoff, and it should still be reviewed before publication.
   the lifecycle explicitly after independent verification to avoid spending a
   second model judgment on known read-only fixtures.
 - OpenCode and pi-agent are not runtime dependencies of this ship candidate.
+- The QA model/provider dominated latency: filesystem and shell actions usually
+  completed in under one second, while individual model planning stages took
+  roughly 5-40 seconds. A faster configured model/provider should improve the
+  interaction without changing the owned runtime architecture, but that is not
+  claimed here without a separate live run.
+- The first absolute-path browser run failed its UX acceptance even though its
+  edit landed. Only the post-fix rerun counts as the grocery-list pass.
 - The root macOS SourceKitten/native-gateway verifier remains a host toolchain
   concern and is not evidence against this JavaScript/ACP coding path.
 
