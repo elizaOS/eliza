@@ -448,16 +448,32 @@ export class SwabbleWeb extends WebPlugin {
   }
 
   private handleSpeechResult(event: SpeechRecognitionResultEvent): void {
-    let transcript = "";
-    let isFinal = false;
+    // event.results accumulates every result of the continuous session; per the
+    // Web Speech API, event.resultIndex marks the first result that CHANGED
+    // since the previous dispatch. Iterating from 0 would re-process (and
+    // re-fire the wake word for) already-finalized utterances, concatenating
+    // them with no separator and handing the agent a garbled command such as
+    // "open calendareliza close calendar". Process only the changed window and
+    // keep final vs interim text separate so a wake match runs solely against
+    // the newly finalized utterance.
+    let finalTranscript = "";
+    let interimTranscript = "";
+    let hasFinal = false;
 
-    for (let i = 0; i < event.results.length; i++) {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
       const result = event.results[i];
       const first = result?.[0];
       if (!first || typeof first.transcript !== "string") continue;
-      transcript += first.transcript;
-      if (result.isFinal) isFinal = true;
+      if (result.isFinal) {
+        finalTranscript += first.transcript;
+        hasFinal = true;
+      } else {
+        interimTranscript += first.transcript;
+      }
     }
+
+    const transcript = finalTranscript + interimTranscript;
+    const isFinal = hasFinal;
     if (!transcript.trim()) return;
 
     // Web Speech API does not provide word-level timing.
@@ -481,7 +497,9 @@ export class SwabbleWeb extends WebPlugin {
     });
 
     if (isFinal && this.wakeGate) {
-      const match = this.wakeGate.match(transcript);
+      // Match only the newly finalized text so an already-fired utterance is
+      // never re-detected when the accumulating results list carries it again.
+      const match = this.wakeGate.match(finalTranscript);
       if (match) {
         this.notifyListeners("wakeWord", { ...match, transcript, confidence });
       }
