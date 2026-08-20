@@ -23,8 +23,19 @@ export function writeDownloadChunk(
 			if (settled || aborting) return;
 			settled = true;
 			signal.removeEventListener("abort", onAbort);
+			writer.off("error", onError);
 			if (error) reject(error);
 			else resolve();
+		};
+		const onError = (error: Error): void => {
+			if (settled || aborting) return;
+			settled = true;
+			signal.removeEventListener("abort", onAbort);
+			// Keep handling any follow-up error emitted during auto-destroy. The
+			// listener is removed only after the stream has actually closed.
+			writer.once("close", () => writer.off("error", onError));
+			writer.destroy();
+			reject(error);
 		};
 		const onAbort = (): void => {
 			if (aborting) return;
@@ -32,12 +43,14 @@ export function writeDownloadChunk(
 			const reason = abortReason(signal);
 			if (writer.closed) {
 				settled = true;
+				writer.off("error", onError);
 				reject(reason);
 				return;
 			}
 			writer.once("close", () => {
 				if (settled) return;
 				settled = true;
+				writer.off("error", onError);
 				reject(reason);
 			});
 			writer.destroy();
@@ -47,8 +60,14 @@ export function writeDownloadChunk(
 			return;
 		}
 		signal.addEventListener("abort", onAbort, { once: true });
+		writer.on("error", onError);
 		try {
-			writer.write(chunk, (error: Error | null | undefined) => settle(error));
+			writer.write(chunk, (error: Error | null | undefined) => {
+				// Node emits `error` after invoking the write callback with the same
+				// failure. Keep the listener installed so that event cannot escape as
+				// an uncaught process exception; `onError` owns rejection.
+				if (!error) settle();
+			});
 		} catch (error) {
 			settle(error instanceof Error ? error : new Error(String(error)));
 		}

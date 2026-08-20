@@ -24,6 +24,16 @@ class GatedWriter extends Writable {
 	}
 }
 
+class FailingWriter extends Writable {
+	override _write(
+		_chunk: Buffer,
+		_encoding: BufferEncoding,
+		callback: (error?: Error | null) => void,
+	): void {
+		callback(new Error("disk write failed"));
+	}
+}
+
 describe("abort-aware model download writer", () => {
 	it("destroys and rejects a write whose filesystem callback stalls", async () => {
 		const controller = new AbortController();
@@ -56,6 +66,23 @@ describe("abort-aware model download writer", () => {
 		controller.abort(new Error("close deadline"));
 
 		await expect(close).rejects.toThrow("close deadline");
+		expect(writer.destroyed).toBe(true);
+		expect(writer.closed).toBe(true);
+	});
+
+	it("handles the error event emitted after a write callback failure", async () => {
+		const writer = new FailingWriter();
+		const closed = new Promise<void>((resolve) =>
+			writer.once("close", resolve),
+		);
+		await expect(
+			writeDownloadChunk(
+				writer,
+				new Uint8Array([1]),
+				new AbortController().signal,
+			),
+		).rejects.toThrow("disk write failed");
+		await closed;
 		expect(writer.destroyed).toBe(true);
 		expect(writer.closed).toBe(true);
 	});
