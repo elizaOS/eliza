@@ -1114,6 +1114,7 @@ export async function copySymlinkedPackageForStaging(
   sourcePath: string,
   targetPath: string,
   expectedPackageName: string,
+  options?: { beforeCopy?: () => Promise<void> },
 ): Promise<boolean> {
   const packageRoot = await resolveSymlinkTargetIfPresent(sourcePath);
   if (!packageRoot) return false;
@@ -1121,7 +1122,16 @@ export async function copySymlinkedPackageForStaging(
     if (!(await fs.stat(packageRoot)).isDirectory()) return false;
     const manifest = await readPluginPackageManifest(packageRoot);
     if (manifest?.name !== expectedPackageName) return false;
+    await options?.beforeCopy?.();
     await copyPluginTreeWithoutEscapingSymlinks(packageRoot, targetPath);
+    // The source path is not held open across the recursive copy. Bind the
+    // identity again from the self-contained staged bytes so an atomic source
+    // replacement cannot smuggle a different package under the approved name.
+    const stagedManifest = await readPluginPackageManifest(targetPath);
+    if (stagedManifest?.name !== expectedPackageName) {
+      await fs.rm(targetPath, { recursive: true, force: true });
+      return false;
+    }
     return true;
   } catch (error) {
     // error-policy:J3 malformed or racing package links are skipped rather
@@ -1130,6 +1140,7 @@ export async function copySymlinkedPackageForStaging(
       (error as NodeJS.ErrnoException).code === "ENOENT" ||
       error instanceof SyntaxError
     ) {
+      await fs.rm(targetPath, { recursive: true, force: true });
       return false;
     }
     throw error;
@@ -1192,7 +1203,11 @@ async function removeEscapingStagedSymlinks(
     if (!entry.isSymbolicLink()) continue;
     try {
       const realTarget = await fs.realpath(stagedPath);
-      if (!isPathInsideRoot(realTarget, targetRoot))
+      if (
+        realTarget === targetRoot ||
+        !isPathInsideRoot(realTarget, targetRoot) ||
+        isPathInsideRoot(stagedPath, realTarget)
+      )
         await fs.unlink(stagedPath);
     } catch (error) {
       // error-policy:J3 broken or racing copied symlinks are removed before the
@@ -1217,7 +1232,10 @@ async function removeEscapingStagedSymlinks(
 export async function copyPluginTreeWithoutEscapingSymlinks(
   sourcePath: string,
   targetPath: string,
-  options?: { filter?: (src: string) => boolean },
+  options?: {
+    filter?: (src: string) => boolean;
+    afterCopyBeforeAudit?: () => Promise<void>;
+  },
 ): Promise<void> {
   const sourceRoot = await fs.realpath(sourcePath);
   try {
@@ -1243,6 +1261,7 @@ export async function copyPluginTreeWithoutEscapingSymlinks(
       },
     });
     await rewriteAbsoluteStagingSymlinks(sourceRoot, targetPath, targetPath);
+    await options?.afterCopyBeforeAudit?.();
     await removeEscapingStagedSymlinks(targetPath, targetPath);
   } catch (error) {
     try {

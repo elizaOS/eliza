@@ -105,6 +105,33 @@ describe("copyPluginTreeWithoutEscapingSymlinks", () => {
       fsp.lstat(path.join(target, "nested-leak")),
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
+
+  it.each([
+    { name: "the staged root", replacement: "../.." },
+    { name: "a staged ancestor", replacement: ".." },
+  ])(
+    "removes a symlink swapped after copy to point at $name",
+    async ({ replacement }) => {
+      const src = await makeDir("plugin-copy-src-");
+      const nested = path.join(src, "nested", "deeper");
+      await fsp.mkdir(nested, { recursive: true });
+      await fsp.writeFile(path.join(nested, "target.txt"), "inside");
+      await fsp.symlink("target.txt", path.join(nested, "alias"));
+      const target = path.join(await makeDir("plugin-copy-dst-"), "tree");
+
+      await copyPluginTreeWithoutEscapingSymlinks(src, target, {
+        afterCopyBeforeAudit: async () => {
+          const stagedAlias = path.join(target, "nested", "deeper", "alias");
+          await fsp.unlink(stagedAlias);
+          await fsp.symlink(replacement, stagedAlias);
+        },
+      });
+
+      await expect(
+        fsp.lstat(path.join(target, "nested", "deeper", "alias")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
 });
 
 describe("copySymlinkedPackageForStaging", () => {
@@ -156,6 +183,35 @@ describe("copySymlinkedPackageForStaging", () => {
 
     expect(
       await copySymlinkedPackageForStaging(link, dst, "expected-package"),
+    ).toBe(false);
+    await expect(fsp.lstat(dst)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("revalidates staged identity after an atomic source replacement", async () => {
+    const container = await makeDir("plugin-link-race-");
+    const packageRoot = path.join(container, "package");
+    await fsp.mkdir(packageRoot);
+    await fsp.writeFile(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({ name: "expected-package" }),
+    );
+    await fsp.writeFile(path.join(packageRoot, "index.js"), "trusted");
+    const link = path.join(container, "expected-package");
+    const dst = path.join(await makeDir("plugin-link-dst-"), "package");
+    await fsp.symlink(packageRoot, link);
+
+    expect(
+      await copySymlinkedPackageForStaging(link, dst, "expected-package", {
+        beforeCopy: async () => {
+          await fsp.rename(packageRoot, path.join(container, "original"));
+          await fsp.mkdir(packageRoot);
+          await fsp.writeFile(
+            path.join(packageRoot, "package.json"),
+            JSON.stringify({ name: "replacement-package" }),
+          );
+          await fsp.writeFile(path.join(packageRoot, "index.js"), "raced");
+        },
+      }),
     ).toBe(false);
     await expect(fsp.lstat(dst)).rejects.toMatchObject({ code: "ENOENT" });
   });
