@@ -13,8 +13,8 @@
  * as an encrypted, organization-bound vendor connection and gives clients an
  * opaque connection id.
  *
- * Env-gated: if PLAID_CLIENT_ID + PLAID_SECRET are not set, all calls
- * return 503-style errors so the rest of the app keeps working.
+ * Env-gated: calls require PLAID_CLIENT_ID and the selected environment's
+ * secret. PLAID_SECRET remains an active-environment compatibility alias.
  */
 
 import { z } from "zod";
@@ -153,7 +153,7 @@ function requireConfig(environmentOverride?: PlaidConfig["environment"]): PlaidC
   if (!config) {
     throw new AgentPlaidConnectorError(
       503,
-      "Plaid is not configured. Set PLAID_CLIENT_ID and PLAID_SECRET in the cloud environment.",
+      "Plaid is not configured. Set PLAID_CLIENT_ID and the selected environment's PLAID_*_SECRET in the cloud environment.",
     );
   }
   return config;

@@ -14,7 +14,7 @@
  */
 
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsPaymentDirection,
   LifeOpsPaymentSource,
@@ -57,16 +57,17 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
-export class PlaidSyncCursorConflictError extends Error {
-  readonly code = "PLAID_SYNC_CURSOR_CONFLICT";
-
+export class PlaidSyncCursorConflictError extends ElizaError {
   constructor(
     readonly sourceId: string,
     readonly expectedCursor: string,
     readonly actualCursor: string,
   ) {
-    super(`Plaid sync cursor changed while syncing source ${sourceId}.`);
-    this.name = "PlaidSyncCursorConflictError";
+    super(`Plaid sync cursor changed while syncing source ${sourceId}.`, {
+      code: "PLAID_SYNC_CURSOR_CONFLICT",
+      context: { sourceId, expectedCursor, actualCursor },
+      severity: "ephemeral",
+    });
   }
 }
 

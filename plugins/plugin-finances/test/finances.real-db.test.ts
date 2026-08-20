@@ -444,6 +444,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
 
     await expect(
       repository.applyPlaidSync({
+        expectedCursor: "",
         source: {
           ...source,
           metadata: {

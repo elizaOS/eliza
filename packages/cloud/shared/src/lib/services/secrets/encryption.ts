@@ -1,4 +1,6 @@
-// Coordinates cloud service encryption behavior behind route handlers.
+/** Coordinates Cloud service encryption behavior behind route handlers. */
+
+import { ElizaError } from "@elizaos/core";
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
@@ -15,12 +17,12 @@ export class DecryptionError extends Error {
 }
 
 /** Signals that stored ciphertext must not be attempted with the active KMS key. */
-export class EncryptionKeyMismatchError extends Error {
-  readonly code = "ENCRYPTION_KEY_MISMATCH";
-
+export class EncryptionKeyMismatchError extends ElizaError {
   constructor() {
-    super("Stored secret requires credential rotation before it can be decrypted.");
-    this.name = "EncryptionKeyMismatchError";
+    super("Stored secret requires credential rotation before it can be decrypted.", {
+      code: "ENCRYPTION_KEY_MISMATCH",
+      severity: "fatal",
+    });
   }
 }
 
