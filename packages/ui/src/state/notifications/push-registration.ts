@@ -26,6 +26,7 @@
  * does not double-register.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { logger } from "@elizaos/logger";
 import { client, ElizaClient } from "../../api/client";
 import {
@@ -51,6 +52,7 @@ import { navigateDeepLink } from "./navigate-deep-link";
 export interface PushRegistrationDeps {
   getPlatform: () => FrontendPlatform;
   isRemotePushEnabled: (platform: "ios" | "android") => boolean;
+  isPluginAvailable?: (name: string) => boolean;
   getPlugin: () => PushNotificationsPluginLike;
   registerToken: (
     platform: "ios" | "android",
@@ -84,6 +86,7 @@ function captureClientAuthority(): PushRegistrationAuthority {
 const defaultDeps: PushRegistrationDeps = {
   getPlatform: getFrontendPlatform,
   isRemotePushEnabled: isRemotePushTransportEnabled,
+  isPluginAvailable: (name) => Capacitor.isPluginAvailable(name),
   getPlugin: getPushNotificationsPlugin,
   registerToken: (platform, token) => client.registerPushToken(platform, token),
   unregisterToken: (token) => client.unregisterPushToken(token),
@@ -300,6 +303,7 @@ async function startPushRegistration(
   const platform = pushPlatform(deps.getPlatform());
   if (!platform) return false;
   if (!deps.isRemotePushEnabled(platform)) return false;
+  if (deps.isPluginAvailable?.("PushNotifications") === false) return false;
 
   activeAuthorityKey = (deps.captureAuthority?.() ?? { key: "default" }).key;
 

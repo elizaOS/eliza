@@ -1031,6 +1031,9 @@ export function getAppleCalendarPlugin(): AppleCalendarPluginLike {
 }
 
 export function getPushNotificationsPlugin(): PushNotificationsPluginLike {
+  if (!Capacitor.isPluginAvailable("PushNotifications")) {
+    return {} as PushNotificationsPluginLike;
+  }
   return getNativePlugin<PushNotificationsPluginLike>("PushNotifications");
 }
 

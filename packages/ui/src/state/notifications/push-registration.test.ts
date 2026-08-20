@@ -146,6 +146,20 @@ describe("initPushRegistration", () => {
     expect(plugin.__registerCalls).toBe(1);
   });
 
+  it("does not touch a stripped native push plugin", async () => {
+    const plugin = makePlugin("granted");
+    const deps = makeDeps(plugin, "android", true);
+    deps.isPluginAvailable = () => false;
+    plugin.checkPermissions = vi.fn(plugin.checkPermissions);
+
+    await initPushRegistration(deps);
+
+    expect(plugin.checkPermissions).not.toHaveBeenCalled();
+    expect(plugin.__registerCalls).toBe(0);
+    expect(plugin.__listeners.registration).toHaveLength(0);
+    expect(deps.registerToken).not.toHaveBeenCalled();
+  });
+
   it("does not re-POST an unchanged token when registration re-fires", async () => {
     const plugin = makePlugin("granted");
     const deps = makeDeps(plugin, "ios");
