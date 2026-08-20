@@ -15,6 +15,8 @@
  *
  * When the auth mode is `cli`, generation is delegated to `claude -p` via
  * `generateViaCli` / `streamViaCli` instead of the SDK client.
+ * `providerOptions` is converted by the bounded walker in
+ * `anthropic-provider-options.ts`.
  */
 import type {
   GenerateTextParams,
@@ -64,6 +66,7 @@ import {
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { executeWithRetry, formatModelError } from "../utils/retry";
+import { readProviderOptions } from "./anthropic-provider-options";
 
 type ProviderOptionValue =
   | string
@@ -226,39 +229,6 @@ type AnthropicFilePart = {
   filename?: string;
 };
 type AnthropicUserContentPart = AnthropicTextPart | AnthropicFilePart;
-
-function isProviderOptionValue(value: unknown): value is ProviderOptionValue {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.every(isProviderOptionValue);
-  }
-  if (typeof value === "object" && value !== null) {
-    return Object.values(value).every(
-      (entry) => entry === undefined || isProviderOptionValue(entry)
-    );
-  }
-  return false;
-}
-
-function readProviderOptions(value: unknown): ProviderOptions | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const entries = Object.entries(value);
-  if (!entries.every(([, entry]) => entry === undefined || isProviderOptionValue(entry))) {
-    return undefined;
-  }
-
-  return Object.fromEntries(entries) as ProviderOptions;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
