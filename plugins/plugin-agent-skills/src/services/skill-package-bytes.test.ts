@@ -504,6 +504,37 @@ describe("readCappedSkillPackage", () => {
 		expect(storage.getPackage("catalog-cancelled")).toBeUndefined();
 	});
 
+	it("preserves catalog cancellation when 404 body teardown aborts the caller", async () => {
+		const caller = new AbortController();
+		const cancel = vi.fn(() => {
+			caller.abort(new Error("owner stopped during 404 teardown"));
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => unusedErrorResponse(404, cancel)),
+		);
+		const storage = new MemorySkillStore();
+		const service = await AgentSkillsService.start(createRuntime(), {
+			autoLoad: false,
+			storage,
+		});
+
+		await expect(
+			service.install("catalog-404-cancelled", {
+				signal: caller.signal,
+				downloadTimeoutMs: null,
+				throwOnDownloadError: true,
+			}),
+		).rejects.toMatchObject({
+			code: "SKILL_DOWNLOAD_ABORTED",
+			cause: expect.objectContaining({
+				message: "owner stopped during 404 teardown",
+			}),
+		});
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(storage.getPackage("catalog-404-cancelled")).toBeUndefined();
+	});
+
 	it("does not cache catalog details that complete with caller cancellation", async () => {
 		const caller = new AbortController();
 		let requestCount = 0;

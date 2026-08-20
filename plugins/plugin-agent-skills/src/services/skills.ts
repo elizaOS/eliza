@@ -2084,6 +2084,9 @@ export class AgentSkillsService extends Service {
 
 			if (!response.ok) {
 				cancelUnusedSkillDownloadBody(response);
+				if (options.signal?.aborted) {
+					throw skillDownloadAbortError(options.signal);
+				}
 				if (response.status === 404) return null;
 				throw new Error(`Details fetch failed: ${response.status}`);
 			}
