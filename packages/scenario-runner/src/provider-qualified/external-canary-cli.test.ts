@@ -19,6 +19,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   commitExternalCanaryPublication,
@@ -39,6 +40,7 @@ import {
   validateOperatorOwnedProviderCapabilities,
   validateProtectedOperatorStateDirectory,
 } from "./external-canary-cli.ts";
+import { createProviderCanaryScenarioSnapshot } from "./scenario-snapshot.ts";
 
 const temporaryDirectories: string[] = [];
 
@@ -70,17 +72,17 @@ function validConfig(): Record<string, unknown> {
 }
 
 function scenarioDefinition(id = "provider.discord.confirmed-send") {
-  return {
-    domain: "provider-canary",
-    evidenceScope: "provider-certification",
-    executionProfile: "provider-qualified",
-    finalChecks: [],
-    id,
-    isolation: "per-scenario",
-    lane: "live-only",
-    title: "Canonical provider canary",
-    turns: [{ kind: "message", text: "send one canary" }],
-  };
+  const catalog = JSON.parse(
+    readFileSync(
+      new URL("../../schema/provider-canary-definitions.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { scenarios: Array<Record<string, unknown>> };
+  const canonical = catalog.scenarios.find(
+    (definition) => definition.id === "provider.discord.confirmed-send",
+  );
+  if (!canonical) throw new Error("canonical Discord scenario fixture missing");
+  return { ...structuredClone(canonical), id };
 }
 
 afterEach(() => {
@@ -119,7 +121,13 @@ describe("external provider-canary CLI", () => {
   it("accepts only canonical JSON for the matching 13-ID operation", () => {
     const directory = temporaryDirectory();
     const file = path.join(directory, "scenario.json");
-    writeFileSync(file, `${JSON.stringify(scenarioDefinition())}\n`);
+    writeFileSync(
+      file,
+      createProviderCanaryScenarioSnapshot({
+        definition: scenarioDefinition() as unknown as ScenarioDefinition,
+        operationKind: "discord.message-send",
+      }),
+    );
     expect(
       readCanonicalProviderScenarioDefinition(file, "discord.message-send").id,
     ).toBe("provider.discord.confirmed-send");
