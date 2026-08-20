@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   cloneJson,
+  MAX_WORKFLOW_JSON_BYTES,
   MAX_WORKFLOW_JSON_DEPTH,
   MAX_WORKFLOW_JSON_NODES,
   WORKFLOW_JSON_UNBOUNDED,
@@ -89,6 +90,29 @@ describe('cloneJson', () => {
     });
     expectUnbounded(() => cloneJson(accessor));
     expect(calls).toBe(0);
+  });
+
+  test('charges sparse slots cumulatively across nested arrays', () => {
+    const first: unknown[] = [];
+    const second: unknown[] = [];
+    first.length = Math.floor(MAX_WORKFLOW_JSON_NODES / 2);
+    second.length = Math.floor(MAX_WORKFLOW_JSON_NODES / 2);
+
+    expectUnbounded(() => cloneJson({ first, second }));
+  });
+
+  test(`bounds normalized JSON at ${MAX_WORKFLOW_JSON_BYTES} UTF-8 bytes`, () => {
+    const atLimit = 'x'.repeat(MAX_WORKFLOW_JSON_BYTES - 2);
+    expect(cloneJson(atLimit)).toBe(atLimit);
+    expectUnbounded(() => cloneJson(`${atLimit}x`));
+
+    const objectValue = 'x'.repeat(MAX_WORKFLOW_JSON_BYTES - 14);
+    expect(cloneJson({ payload: objectValue })).toEqual({ payload: objectValue });
+    expectUnbounded(() => cloneJson({ payload: `${objectValue}x` }));
+
+    const escapedAtLimit = '\u0000'.repeat((MAX_WORKFLOW_JSON_BYTES - 2) / 6);
+    expect(cloneJson(escapedAtLimit)).toBe(escapedAtLimit);
+    expectUnbounded(() => cloneJson(`${escapedAtLimit}\u0000`));
   });
 
   test('never invokes custom or Proxy-synthesized JSON hooks', () => {
