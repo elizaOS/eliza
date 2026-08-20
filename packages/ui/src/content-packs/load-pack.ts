@@ -15,6 +15,10 @@ import {
 } from "@elizaos/shared";
 
 const CONTENT_PACK_MANIFEST_FETCH_TIMEOUT_MS = 15_000;
+/** Maximum manifest response bytes. Manifests are small JSON files; a larger
+ * declared or streamed body is rejected before/while parsing to bound
+ * renderer memory. */
+const CONTENT_PACK_MANIFEST_MAX_BYTES = 256 * 1024;
 
 export class ContentPackLoadError extends Error {
   constructor(
@@ -56,7 +60,36 @@ export async function loadContentPackFromUrl(
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} ${response.statusText}`);
     }
-    raw = await response.json();
+    // Reject a declared manifest larger than the limit before body parsing.
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > CONTENT_PACK_MANIFEST_MAX_BYTES) {
+      throw new Error(
+        `Content pack manifest exceeds the ${CONTENT_PACK_MANIFEST_MAX_BYTES}-byte limit`,
+      );
+    }
+    // Enforce the same limit while streaming when Content-Length is absent
+    // or inaccurate: accumulate bytes and abort the reader on overflow.
+    if (response.body) {
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > CONTENT_PACK_MANIFEST_MAX_BYTES) {
+          await reader.cancel().catch(() => {});
+          throw new Error(
+            `Content pack manifest exceeds the ${CONTENT_PACK_MANIFEST_MAX_BYTES}-byte limit`,
+          );
+        }
+        chunks.push(value);
+      }
+      const blob = new Blob(chunks);
+      raw = JSON.parse(await blob.text());
+    } else {
+      raw = await response.json();
+    }
   } catch (err) {
     // error-policy:J2 retain the source URL while preserving the transport,
     // body-read, timeout, or caller-cancellation failure as the cause.
