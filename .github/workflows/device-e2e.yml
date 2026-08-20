@@ -30,6 +30,17 @@ on:
     - cron: "17 9 * * 1"
   workflow_call:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Hosted device/evidence platform to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - android
+          - ios
+          - linux
 
 concurrency:
   group: device-e2e-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && format('{0}-{1}', github.event_name, github.run_id) || github.ref }}
@@ -46,6 +57,7 @@ env:
 jobs:
   android-device-bundle:
     name: Android emulator bundle
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'android'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -121,7 +133,7 @@ jobs:
     # The unattended cadence restores Android coverage only. Keep the existing
     # iOS producer available to labeled PR callers and explicit dispatches
     # without adding an unrelated weekly macOS runner allocation.
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'ios')
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -292,3 +304,73 @@ jobs:
               });
               core.info(`Opened scheduled Android failure issue #${created.number}`);
             }
+
+  linux-computeruse-evidence:
+    name: Linux computer-use evidence
+    if: github.event_name == 'workflow_dispatch' && (inputs.platform == 'all' || inputs.platform == 'linux')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DISPLAY: ":99"
+      XDG_SESSION_TYPE: x11
+      ELIZA_COMPUTERUSE_DRIVER: legacy
+      COMPUTER_USE_ENABLED: "1"
+      COMPUTER_USE_BROWSER_HEADLESS: "false"
+      ELIZA_LINUX_EVIDENCE_ROOT: ${{ github.workspace }}/device-e2e-artifacts/linux-computeruse
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install X11 evidence dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends openbox scrot wmctrl x11-utils x11-xserver-utils xclip xdotool xterm xvfb
+
+      - name: Install workspace
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Build computer-use workspace dependencies
+        run: bun run --cwd packages/core build
+
+      - name: Start disposable X11 desktop
+        run: |
+          Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp >"$RUNNER_TEMP/xvfb.log" 2>&1 &
+          echo $! >"$RUNNER_TEMP/xvfb.pid"
+          for attempt in $(seq 1 50); do
+            if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+              openbox >"$RUNNER_TEMP/openbox.log" 2>&1 &
+              echo $! >"$RUNNER_TEMP/openbox.pid"
+              sleep 1
+              wmctrl -m
+              exit 0
+            fi
+            sleep 0.1
+          done
+          echo "::error::Xvfb did not become ready"
+          exit 1
+
+      - name: Capture and strictly validate Linux evidence
+        run: |
+          bun run --cwd plugins/plugin-computeruse capture:linux-desktop-evidence -- --out "$ELIZA_LINUX_EVIDENCE_ROOT"
+          bun run --cwd plugins/plugin-computeruse validate:platform-evidence -- "$ELIZA_LINUX_EVIDENCE_ROOT/linux-desktop-validation.json" --require-complete
+
+      - name: Upload Linux computer-use evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: linux-computeruse-evidence
+          path: |
+            device-e2e-artifacts/linux-computeruse/**
+            ${{ runner.temp }}/xvfb.log
+            ${{ runner.temp }}/openbox.log
+          if-no-files-found: error
+          retention-days: 14

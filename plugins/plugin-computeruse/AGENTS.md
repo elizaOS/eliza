@@ -181,6 +181,7 @@ bun run --cwd plugins/plugin-computeruse format                             # wr
 bun run --cwd plugins/plugin-computeruse format:check                       # read-only formatting check
 bun run --cwd plugins/plugin-computeruse test                               # run package tests
 bun run --cwd plugins/plugin-computeruse capture:macos-desktop-evidence     # macos-desktop-evidence evidence capture
+bun run --cwd plugins/plugin-computeruse capture:linux-desktop-evidence     # linux-desktop-evidence evidence capture
 bun run --cwd plugins/plugin-computeruse capture:windows-desktop-evidence   # windows-desktop-evidence evidence capture
 bun run --cwd plugins/plugin-computeruse postinstall                        # postinstall setup
 bun run --cwd plugins/plugin-computeruse record:windows-cua-input           # bun scripts/record-windows-cua-input.mjs
