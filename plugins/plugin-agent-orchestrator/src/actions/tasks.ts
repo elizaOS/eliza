@@ -980,7 +980,19 @@ async function runCreateLegacy(
     message,
     state,
   );
-  const tasks = taskParts(params, content, text);
+  let tasks = taskParts(params, content, text);
+  // One edit of one existing app is ONE lane. The planner fans edit asks into
+  // parallel subtasks ("make the unit converter dark mode" became 3 builds,
+  // live 2026-08-20), and every lane then resolves to the SAME app dir — three
+  // children racing each other's writes in one directory. Collapse to a single
+  // lane carrying the full instruction; genuine multi-app fan-outs (different
+  // targets, creation asks) keep their lanes.
+  if (tasks.length > 1 && isAppEditIntentText(text) && isAppBuildTask(text)) {
+    logger(runtime).warn(
+      `[TASKS:create] collapsing ${tasks.length} planner lanes to 1 for an edit of an existing app`,
+    );
+    tasks = [tasks.join("\n")];
+  }
   if (tasks.length > MAX_CONCURRENT_AGENTS) {
     // Planner-facing refusal: mechanical text + structured facts; the planner
     // phrases the denial in voice instead of a canned callback bubble.
@@ -1237,7 +1249,18 @@ async function runCreateLegacy(
       const detail = await taskService.createTask({
         title: taskTitle,
         goal: taskGoal,
-        kind: "coding",
+        // Structural kind: the same gate that routes the build into a served
+        // slug dir also names the criteria template. A "coding" kind on an
+        // app ask mints typecheck/lint/test criteria a static page can never
+        // evidence, and the planner's goal rewrite hides the app shape from
+        // goal-text detection ("Implement dark mode for the unit converter"
+        // parked on lint evidence, live 2026-08-20).
+        kind:
+          isAppBuildTask(text) ||
+          (isAppEditIntentText(text) &&
+            /\b(?:page|app|site|webapp|website)\b/i.test(text))
+            ? "app-build"
+            : "coding",
         priority: taskPriority,
         originalRequest: requestText(message),
         ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
@@ -2396,6 +2419,22 @@ const PLACEHOLDER_REPO_OWNERS = new Set([
  * workdir is not the checkout that contains the apps dir. Edits keep the
  * route root (the deploy-contract regex requires a build/create verb).
  */
+/** Edit-shaped app ask: the user is changing an EXISTING app ("make the X
+ * page dark mode", "keep the same link"), not commissioning a new one. */
+function isAppEditIntentText(text: string): boolean {
+  return (
+    /\b(?:same\s+(?:link|url)|keep\s+the\s+(?:same\s+)?(?:link|url)|existing)\b/i.test(
+      text,
+    ) ||
+    (/\b(?:the|my|our)\s+[\w -]{0,40}\b(?:page|app|site|game|tool)\b/i.test(
+      text,
+    ) &&
+      !/\b(?:make|build|create|spin(?:\s+up)?|whip(?:\s+up)?)\s+(?:me|us)\s+a\b/i.test(
+        text,
+      ))
+  );
+}
+
 /** Rewrite planner-invented absolute app paths onto the server-assigned slug
  * dir. The planner writes concrete path guesses into the task text ("...in
  * <appsDir>/unit-converter") and the child obeys them over the resolved
@@ -2477,16 +2516,7 @@ function appBuildSlugWorkdir(
   // 2026-08-20). Creation phrasing ("make me a ...") keeps the never-clobber
   // slot scan.
   const intentText = userText?.trim() ? userText : task;
-  const editIntent =
-    /\b(?:same\s+(?:link|url)|keep\s+the\s+(?:same\s+)?(?:link|url)|existing)\b/i.test(
-      intentText,
-    ) ||
-    (/\b(?:the|my|our)\s+[\w -]{0,40}\b(?:page|app|site|game|tool)\b/i.test(
-      intentText,
-    ) &&
-      !/\b(?:make|build|create|spin(?:\s+up)?|whip(?:\s+up)?)\s+(?:me|us)\s+a\b/i.test(
-        intentText,
-      ));
+  const editIntent = isAppEditIntentText(intentText);
   if (editIntent) {
     // The label rarely matches the app's dir name ("Dark Mode for Unit
     // Converter" vs unit-converter-3), so match by NAME TOKENS against the
