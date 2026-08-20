@@ -1307,12 +1307,12 @@ async function stageNodeModulesEntries(params: {
         if (existsSync(scopedTargetPath)) {
           continue;
         }
-		if (scopedEntry.isSymbolicLink()) {
-			await stageConfinedNodeModulesSymlink(
-				scopedSourcePath,
-				scopedTargetPath,
-				canonicalSourceRoot,
-			);
+        if (scopedEntry.isSymbolicLink()) {
+          await stageConfinedNodeModulesSymlink(
+            scopedSourcePath,
+            scopedTargetPath,
+            canonicalSourceRoot,
+          );
           continue;
         }
         if (!scopedEntry.isDirectory()) {
@@ -1329,12 +1329,12 @@ async function stageNodeModulesEntries(params: {
     if (existsSync(targetPath)) {
       continue;
     }
-	if (entry.isSymbolicLink()) {
-		await stageConfinedNodeModulesSymlink(
-			sourcePath,
-			targetPath,
-			canonicalSourceRoot,
-		);
+    if (entry.isSymbolicLink()) {
+      await stageConfinedNodeModulesSymlink(
+        sourcePath,
+        targetPath,
+        canonicalSourceRoot,
+      );
       continue;
     }
     if (!entry.isDirectory()) {
