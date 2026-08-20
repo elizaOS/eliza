@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import sharp from "sharp";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   FLATPAK_FINISH_ARGS,
@@ -54,9 +55,9 @@ describe("Electrobun Flatpak packaging", () => {
     expect(() => requireLauncher(buildDir)).toThrow(/bin\/launcher/);
   });
 
-  it("emits a graphical desktop entry and exact launcher wrapper", () => {
+  it("emits graphical metadata with an export-safe icon", async () => {
     const filesDir = tempDir();
-    writeMetadata(filesDir, "bin/launcher");
+    await writeMetadata(filesDir, "bin/launcher");
 
     const wrapper = readFileSync(path.join(filesDir, "bin/eliza"), "utf8");
     const desktop = readFileSync(
@@ -67,12 +68,20 @@ describe("Electrobun Flatpak packaging", () => {
       path.join(filesDir, "share/metainfo/ai.elizaos.app.metainfo.xml"),
       "utf8",
     );
+    const icon = await sharp(
+      path.join(
+        filesDir,
+        "share/icons/hicolor/512x512/apps/ai.elizaos.app.png",
+      ),
+    ).metadata();
 
     expect(wrapper).toContain("/app/opt/eliza/bin/launcher");
     expect(desktop).toContain("Terminal=false");
     expect(desktop).toContain("Exec=eliza");
     expect(metadata).toContain('type="desktop-application"');
     expect(metadata).toContain("https://github.com/elizaOS/eliza/issues");
+    expect(icon.width).toBe(512);
+    expect(icon.height).toBe(512);
   });
 
   it("keeps the side-load bundle off host escape surfaces", () => {

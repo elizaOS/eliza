@@ -8,7 +8,6 @@
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -21,6 +20,7 @@ import { cp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import sharp from "sharp";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
@@ -103,7 +103,7 @@ export function requireLauncher(buildDir) {
   return path.relative(buildDir, launcher);
 }
 
-export function writeMetadata(filesDir, relativeLauncher) {
+export async function writeMetadata(filesDir, relativeLauncher) {
   mkdirSync(path.join(filesDir, "bin"), { recursive: true });
   mkdirSync(path.join(filesDir, "share/applications"), { recursive: true });
   mkdirSync(path.join(filesDir, "share/metainfo"), { recursive: true });
@@ -151,10 +151,12 @@ export function writeMetadata(filesDir, relativeLauncher) {
       `  <content_rating type="oars-1.1"/>\n` +
       `</component>\n`,
   );
-  copyFileSync(
-    iconPath,
-    path.join(filesDir, `share/icons/hicolor/512x512/apps/${APP_ID}.png`),
-  );
+  await sharp(iconPath)
+    .resize(512, 512, { fit: "contain" })
+    .png()
+    .toFile(
+      path.join(filesDir, `share/icons/hicolor/512x512/apps/${APP_ID}.png`),
+    );
 }
 
 async function main() {
@@ -191,7 +193,7 @@ async function main() {
       force: true,
       dereference: true,
     });
-    writeMetadata(path.join(appDir, "files"), relativeLauncher);
+    await writeMetadata(path.join(appDir, "files"), relativeLauncher);
     run("flatpak", ["build-finish", ...FLATPAK_FINISH_ARGS, appDir]);
     run("flatpak", [
       "build-export",
