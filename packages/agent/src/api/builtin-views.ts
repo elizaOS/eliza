@@ -235,7 +235,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["cloud", "apps", "applications", "deploy", "monetize"],
     // The renderer registers the native studio in-process under this same id
     // and path. Keeping it in the server registry makes VIEWS/show resolve the
-    // My Apps navigation row instead of claiming an action that cannot open it.
+    // Projects Apps-segment navigation row instead of claiming an action that
+    // cannot open it.
     visibleInManager: false,
     platforms: ["web", "desktop", "ios", "android"],
   },

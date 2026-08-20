@@ -98,7 +98,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-apps": expected({
-    requireAll: ["My Apps"],
+    requireAll: ["Projects"],
     requireAny: [
       "elizaOS apps",
       "Advanced",
