@@ -65,13 +65,18 @@ function isSafeHost(host: string, safeDomains: ReadonlyArray<string>): boolean {
 function parseUrlToken(
 	token: string,
 ): { host: string; hasUserinfo: boolean } {
+	const authority = token.replace(/^https?:\/\//i, "").split(/[/?#]/, 1)[0];
+	const hasUserinfoDelimiter = authority.lastIndexOf("@") >= 0;
 	try {
 		const url = new URL(token);
-		return { host: url.hostname, hasUserinfo: url.username.length > 0 };
+		return {
+			host: url.hostname,
+			hasUserinfo:
+				url.username.length > 0 || url.password.length > 0 || hasUserinfoDelimiter,
+		};
 	} catch {
 		// error-policy:J3 malformed URL token: derive a best-effort host from the
 		// authority component so a parser-evading spoof is treated as external.
-		const authority = token.replace(/^https?:\/\//i, "").split(/[/?#]/, 1)[0];
 		const atIndex = authority.lastIndexOf("@");
 		const hasUserinfo = atIndex >= 0;
 		const hostPort = hasUserinfo ? authority.slice(atIndex + 1) : authority;

@@ -5,8 +5,16 @@
  * no live model.
  */
 
-import { describe, expect, it } from "vitest";
+import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AgentSkillsService } from "../services/skills";
+import { MemorySkillStore } from "../storage";
+import { scanSkillPackage } from "./index";
 import { scanMarkdownSource } from "./markdown-scanner";
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+});
 
 function flagsExternalUrl(
 	source: string,
@@ -55,6 +63,13 @@ describe("markdown scanner md-external-url safe-domain allowlist", () => {
 		expect(flagsExternalUrl("visit https://evil.com@github.com/x")).toBe(true);
 	});
 
+	it("flags password-only and empty userinfo on an otherwise safe host", () => {
+		expect(
+			flagsExternalUrl("visit https://:credential@github.com/x"),
+		).toBe(true);
+		expect(flagsExternalUrl("visit https://@github.com/x")).toBe(true);
+	});
+
 	it("treats subdomains of listed safe domains as safe (suffix semantics)", () => {
 		expect(flagsExternalUrl("See https://gist.github.com/user/abc")).toBe(false);
 		expect(flagsExternalUrl("Docs at https://en.wikipedia.org/wiki/X")).toBe(
@@ -74,6 +89,76 @@ describe("markdown scanner md-external-url safe-domain allowlist", () => {
 	it("is case-insensitive about the host when matching the allowlist", () => {
 		expect(flagsExternalUrl("See https://GitHub.com/a/b")).toBe(false);
 		expect(flagsExternalUrl("See https://GITHUB.COM.evil.com/a")).toBe(true);
+	});
+
+	it("uses the parsed host across ports, IPv6, punycode, encoding, and schemes", () => {
+		expect(flagsExternalUrl("See HTTPS://github.com:443/a")).toBe(false);
+		expect(flagsExternalUrl("See https://evil.com:443/a")).toBe(true);
+		expect(flagsExternalUrl("See https://[::1]/a")).toBe(true);
+		expect(flagsExternalUrl("See https://xn--githb-3ya.com/a")).toBe(true);
+		expect(flagsExternalUrl("See https://%67ithub.com/a")).toBe(false);
+		expect(flagsExternalUrl("See https://%67ithub.com.evil.com/a")).toBe(true);
+		expect(flagsExternalUrl("See http://github.com.evil.com/a")).toBe(true);
+	});
+
+	it("surfaces a spoof as a warning at the installed-package scan boundary", () => {
+		const report = scanSkillPackage(
+			new Map([
+				[
+					"SKILL.md",
+					{
+						content:
+							"---\nname: untrusted\ndescription: scanner boundary\n---\nVisit https://:credential@github.com/x",
+						isText: true,
+					},
+				],
+			]),
+			"/skills/untrusted",
+		);
+
+		expect(report.status).toBe("warning");
+		expect(report.findings).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ ruleId: "md-external-url", severity: "warn" }),
+			]),
+		);
+	});
+
+	it("keeps a direct-URL install disabled when its SKILL.md uses password-only userinfo", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				new Response(
+					"---\nname: untrusted\ndescription: install boundary\n---\nVisit https://:credential@github.com/x",
+					{ headers: { "content-type": "text/markdown" } },
+				),
+			),
+		);
+		const runtime = {
+			getSetting: vi.fn(() => undefined),
+			logger: {
+				debug: vi.fn(),
+				error: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+			},
+		} as unknown as IAgentRuntime;
+		const service = await AgentSkillsService.start(runtime, {
+			autoLoad: false,
+			storage: new MemorySkillStore(),
+		});
+
+		try {
+			await expect(
+				service.installFromUrl("https://skills.example/untrusted.md", {
+					slug: "untrusted",
+				}),
+			).resolves.toBe(true);
+			expect(service.getSkillScanStatus("untrusted")).toBe("warning");
+			expect(service.setSkillEnabled("untrusted", true)).toBe(false);
+		} finally {
+			await service.stop();
+		}
 	});
 
 	it("reports accurate finding metadata for a flagged spoof", () => {
