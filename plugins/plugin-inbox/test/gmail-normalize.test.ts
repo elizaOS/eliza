@@ -92,4 +92,11 @@ describe("parseGmailDateBoundary", () => {
     expect(parseGmailDateBoundary("2026-06-40")).toBeNull();
     expect(parseGmailDateBoundary("garbage")).toBeNull();
   });
+
+  it("rejects calendar-impossible days instead of letting Date.UTC roll them over", () => {
+    expect(parseGmailDateBoundary("2026-02-31")).toBeNull();
+    expect(parseGmailDateBoundary("2026-04-31")).toBeNull();
+    expect(parseGmailDateBoundary("2025-02-29")).toBeNull();
+    expect(parseGmailDateBoundary("2024-02-29")).toBe(Date.UTC(2024, 1, 29));
+  });
 });

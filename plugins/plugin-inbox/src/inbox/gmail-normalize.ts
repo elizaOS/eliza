@@ -116,7 +116,18 @@ export function parseGmailDateBoundary(value: string): number | null {
   ) {
     return null;
   }
-  return Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+  // Date.UTC overflows impossible days (Feb 31 → Mar 3). Round-trip Y/M/D
+  // so after:/before: cannot silently shift onto a later real calendar day.
+  const utc = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+  const parsed = new Date(utc);
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return utc;
 }
 
 export function splitMailboxLikeList(value: string): string[] {

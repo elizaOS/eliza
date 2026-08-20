@@ -69,6 +69,16 @@ describe("parseGmailDateBoundary", () => {
     expect(parseGmailDateBoundary("2026-13-02")).toBeNull();
     expect(parseGmailDateBoundary("nope")).toBeNull();
   });
+
+  it("rejects calendar-impossible days instead of letting Date.UTC roll them over", () => {
+    // Date.UTC(2026, 1, 31) is 2026-03-03. Month 13 already returns null;
+    // day 31 in a 30-day month was accepted and shifted the after:/before:
+    // search window to a later real day.
+    expect(parseGmailDateBoundary("2026-02-31")).toBeNull();
+    expect(parseGmailDateBoundary("2026-04-31")).toBeNull();
+    expect(parseGmailDateBoundary("2025-02-29")).toBeNull();
+    expect(parseGmailDateBoundary("2024-02-29")).toBe(Date.UTC(2024, 1, 29));
+  });
 });
 
 describe("normalizeOptionalMessageIdArray", () => {
@@ -220,6 +230,20 @@ describe("normalizeGmailSearchQueryMatches — standalone OR", () => {
       normalizeGmailSearchQueryMatches("from:alice OR OR from:bob", fromBob),
     ).toBe(true);
     expect(normalizeGmailSearchQueryMatches("OR OR", fromBob)).toBe(false);
+  });
+
+  it("does not treat after:2026-02-31 as after March 3", () => {
+    const marchThird = gmailMessage({
+      id: "m-mar3",
+      subject: "March standup",
+      receivedAt: "2026-03-03T12:00:00.000Z",
+    });
+    expect(
+      normalizeGmailSearchQueryMatches("after:2026-02-31", marchThird),
+    ).toBe(false);
+    expect(
+      normalizeGmailSearchQueryMatches("after:2026-03-03", marchThird),
+    ).toBe(true);
   });
 
   it("filters end-to-end through filterGmailMessagesBySearch", () => {
