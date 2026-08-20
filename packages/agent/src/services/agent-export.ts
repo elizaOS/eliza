@@ -196,21 +196,157 @@ export interface ExportSizeEstimate {
  * collection's digest reproducible across the export → gzip → encrypt → decrypt
  * → gunzip → `JSON.parse` round-trip, regardless of in-memory key ordering, so
  * the digest computed at export equals the one recomputed at import.
+ *
+ * Honest export collections are a handful of objects deep. A decrypted import
+ * can still be legal JSON that `JSON.parse` accepts (depth 20k in ~120 KiB,
+ * well under the 16 MiB gunzip cap) and then stack-overflow the digest walk.
  */
-export function canonicalize(value: unknown): string {
+export const MAX_AGENT_EXPORT_CANONICALIZE_DEPTH = 64;
+/**
+ * Node ceiling across the whole canonicalize walk, including array slots.
+ * Bounds cyclic or accessor-bearing graphs that would otherwise RangeError
+ * `exportAgent` / `verifyExportManifest` on import.
+ */
+export const MAX_AGENT_EXPORT_CANONICALIZE_NODES = 100_000;
+export const AGENT_EXPORT_CANONICALIZE_UNBOUNDED =
+  "AGENT_EXPORT_CANONICALIZE_UNBOUNDED";
+
+export class AgentExportError extends Error {
+  readonly code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "AgentExportError";
+    if (code) this.code = code;
+  }
+}
+
+type CanonicalizeWalkContext = {
+  visits: number;
+  visiting: WeakSet<object>;
+};
+
+function failCanonicalizeUnbounded(
+  context: Record<string, unknown>,
+  cause?: unknown,
+): never {
+  const error = new AgentExportError(
+    "Export payload exceeds the canonicalize walk budget",
+    AGENT_EXPORT_CANONICALIZE_UNBOUNDED,
+  );
+  if (cause !== undefined) {
+    (error as Error & { cause?: unknown }).cause = cause;
+  }
+  (error as Error & { context?: Record<string, unknown> }).context = context;
+  throw error;
+}
+
+function reserveCanonicalizeVisits(
+  ctx: CanonicalizeWalkContext,
+  count: number,
+): void {
+  if (count > MAX_AGENT_EXPORT_CANONICALIZE_NODES - ctx.visits) {
+    failCanonicalizeUnbounded({
+      visits: ctx.visits + count,
+      maxNodes: MAX_AGENT_EXPORT_CANONICALIZE_NODES,
+    });
+  }
+  ctx.visits += count;
+}
+
+function enterCanonicalizeContainer(
+  value: object,
+  ctx: CanonicalizeWalkContext,
+): void {
+  if (ctx.visiting.has(value)) {
+    failCanonicalizeUnbounded({ cycle: true });
+  }
+  ctx.visiting.add(value);
+}
+
+function inspectCanonicalize<T>(operation: string, inspect: () => T): T {
+  try {
+    return inspect();
+  } catch (cause) {
+    // error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
+    failCanonicalizeUnbounded({ inspection: operation }, cause);
+  }
+}
+
+function ownEnumerableStringKeys(value: object): string[] {
+  const keys: string[] = [];
+  for (const key of inspectCanonicalize("ownKeys", () =>
+    Reflect.ownKeys(value),
+  )) {
+    if (typeof key !== "string") continue;
+    const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
+      Object.getOwnPropertyDescriptor(value, key),
+    );
+    if (!descriptor?.enumerable) continue;
+    keys.push(key);
+  }
+  return keys;
+}
+
+function ownValueDescriptor(
+  value: object,
+  key: string,
+): PropertyDescriptor | undefined {
+  const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
+    Object.getOwnPropertyDescriptor(value, key),
+  );
+  if (!descriptor) return undefined;
+  if (!("value" in descriptor)) {
+    failCanonicalizeUnbounded({ accessor: true, key });
+  }
+  return descriptor;
+}
+
+function canonicalizeWalk(
+  value: unknown,
+  depth: number,
+  ctx: CanonicalizeWalkContext,
+): string {
+  if (depth > MAX_AGENT_EXPORT_CANONICALIZE_DEPTH) {
+    failCanonicalizeUnbounded({
+      depth,
+      max: MAX_AGENT_EXPORT_CANONICALIZE_DEPTH,
+    });
+  }
+  reserveCanonicalizeVisits(ctx, 1);
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value ?? null);
   }
-  if (Array.isArray(value)) {
-    return `[${value.map((v) => canonicalize(v)).join(",")}]`;
+
+  enterCanonicalizeContainer(value, ctx);
+  try {
+    if (Array.isArray(value)) {
+      return `[${value
+        .map((entry) => canonicalizeWalk(entry, depth + 1, ctx))
+        .join(",")}]`;
+    }
+
+    const keys = ownEnumerableStringKeys(value)
+      .filter((key) => {
+        const descriptor = ownValueDescriptor(value, key);
+        return descriptor ? descriptor.value !== undefined : false;
+      })
+      .sort();
+    return `{${keys
+      .map((key) => {
+        const descriptor = ownValueDescriptor(value, key);
+        return `${JSON.stringify(key)}:${canonicalizeWalk(descriptor?.value, depth + 1, ctx)}`;
+      })
+      .join(",")}}`;
+  } finally {
+    ctx.visiting.delete(value);
   }
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj)
-    .filter((k) => obj[k] !== undefined)
-    .sort();
-  return `{${keys
-    .map((k) => `${JSON.stringify(k)}:${canonicalize(obj[k])}`)
-    .join(",")}}`;
+}
+
+export function canonicalize(value: unknown): string {
+  return canonicalizeWalk(value, 0, {
+    visits: 0,
+    visiting: new WeakSet<object>(),
+  });
 }
 
 function sha256Hex(input: string): string {
@@ -606,17 +742,6 @@ function unpackFile(fileBuffer: Buffer): {
   }
 
   return { salt, iv, tag, ciphertext, iterations };
-}
-
-// ---------------------------------------------------------------------------
-// Custom error class
-// ---------------------------------------------------------------------------
-
-export class AgentExportError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AgentExportError";
-  }
 }
 
 async function gunzipWithSizeLimit(
