@@ -5695,10 +5695,14 @@ export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
 ]);
 
 export const ANDROID_CLOUD_STRIPPED_RESOURCE_FILES = [
+  path.join("drawable", "eliza_ime_mic_bg.xml"),
   path.join("drawable", "eliza_voice_bar_bg.xml"),
   path.join("drawable", "eliza_voice_bar_dot.xml"),
   path.join("drawable", "eliza_widget_background.xml"),
   path.join("drawable", "eliza_widget_button_background.xml"),
+  path.join("drawable", "ic_eliza_ime_keyboard.xml"),
+  path.join("drawable", "ic_eliza_ime_mic.xml"),
+  path.join("drawable", "ic_eliza_ime_open.xml"),
   path.join("layout", "eliza_quick_actions_widget.xml"),
   path.join("layout", "eliza_voice_ime.xml"),
   path.join("layout", "eliza_voice_interaction_bar.xml"),
@@ -5708,6 +5712,29 @@ export const ANDROID_CLOUD_STRIPPED_RESOURCE_FILES = [
   path.join("xml", "eliza_voice_interaction_service.xml"),
   path.join("xml", "method.xml"),
 ];
+
+export const ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES = Object.freeze({
+  [path.join("values", "android_app_actions.xml")]: Object.freeze([
+    "app_widget_quick_actions_description",
+    "app_widget_quick_actions_title",
+  ]),
+  [path.join("values", "strings.xml")]: Object.freeze([
+    "assistant_session_prompt",
+    "eliza_ime_engine_off",
+    "eliza_ime_error_mic",
+    "eliza_ime_error_transcribe",
+    "eliza_ime_hint",
+    "eliza_ime_label",
+    "eliza_ime_listening",
+    "eliza_ime_model_not_ready",
+    "eliza_ime_no_speech",
+    "eliza_ime_permission_needed",
+    "eliza_ime_prompt",
+    "eliza_ime_subtype_voice",
+    "eliza_ime_switch_back",
+    "eliza_ime_transcribing",
+  ]),
+});
 
 export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@capacitor-community/bluetooth-le", "capacitor-community-bluetooth-le"],
@@ -6530,6 +6557,20 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
       failures.push(`app/src/main/res/${relPath} still exists`);
     }
   }
+  for (const [relPath, names] of Object.entries(
+    ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
+  )) {
+    const target = path.join(resRoot, relPath);
+    if (!fs.existsSync(target)) continue;
+    const xml = fs.readFileSync(target, "utf8");
+    for (const name of names) {
+      if (
+        new RegExp(`<string\\s+name=["']${escapeRegExp(name)}["']`).test(xml)
+      ) {
+        failures.push(`app/src/main/res/${relPath} still defines ${name}`);
+      }
+    }
+  }
 
   const javaRoot = path.join(androidDir, "app", "src", "main", "java");
   const forbiddenJavaFiles = new Set(stripPolicy.javaFiles);
@@ -6805,6 +6846,32 @@ function auditAndroidSystemSource(
  *
  * Idempotent: safe to re-run on an already-stripped tree.
  */
+function stripAndroidCloudResourceValues(resRoot) {
+  let removed = 0;
+  for (const [relPath, names] of Object.entries(
+    ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
+  )) {
+    const target = path.join(resRoot, relPath);
+    if (!fs.existsSync(target)) continue;
+    let xml = fs.readFileSync(target, "utf8");
+    const original = xml;
+    for (const name of names) {
+      const resource = new RegExp(
+        `\\s*<string\\s+name=["']${escapeRegExp(name)}["'][^>]*>[\\s\\S]*?<\\/string>`,
+        "g",
+      );
+      xml = xml.replace(resource, () => {
+        removed += 1;
+        return "";
+      });
+    }
+    if (xml !== original) {
+      fs.writeFileSync(target, xml, "utf8");
+    }
+  }
+  return removed;
+}
+
 function stripAndroidForCloud({ env = process.env } = {}) {
   const androidPackage = APP.appId;
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
@@ -6909,6 +6976,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
       removedResourceCount += 1;
     }
   }
+  removedResourceCount += stripAndroidCloudResourceValues(resRoot);
   if (removedResourceCount > 0) {
     console.log(
       `[mobile-build] Removed ${removedResourceCount} Play-Store-noncompliant Android resource(s).`,
