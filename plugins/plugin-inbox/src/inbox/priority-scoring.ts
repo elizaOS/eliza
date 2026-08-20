@@ -13,6 +13,7 @@
  * - Concurrency-capped to 4 parallel batches.
  * - If the LLM call or parser fails, reports the failure and returns `null` per
  *   message instead of fabricating priorities.
+ * Nested `flags` arrays are bounded in `priority-flags.ts`.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
@@ -22,6 +23,7 @@ import {
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import type { LifeOpsInboxMessage } from "@elizaos/shared";
+import { parseFlags } from "./priority-flags.ts";
 
 export type PriorityCategory = "important" | "planning" | "casual";
 
@@ -218,28 +220,6 @@ function parseCategory(value: unknown): PriorityCategory {
     throw new Error("priority scoring category is not a valid enum");
   }
   return category as PriorityCategory;
-}
-
-function parseFlags(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => parseFlags(entry));
-  }
-  if (typeof value !== "string") {
-    return [];
-  }
-  const trimmed = value.trim();
-  if (
-    trimmed.length === 0 ||
-    trimmed === "[]" ||
-    trimmed.toLowerCase() === "null" ||
-    trimmed.toLowerCase() === "none"
-  ) {
-    return [];
-  }
-  return trimmed
-    .split(/[|,]/)
-    .map((flag) => flag.replace(/^["'`]+|["'`]+$/g, "").trim())
-    .filter(Boolean);
 }
 
 function scoreFromRecord(item: Record<string, unknown>): PriorityScore {
