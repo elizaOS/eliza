@@ -132,3 +132,65 @@ export interface AgentDetailDto extends AgentListItemDto {
 
 export type AgentsResponse = ApiSuccessEnvelope<AgentListItemDto[]>;
 export type AgentResponse = ApiSuccessEnvelope<AgentDetailDto>;
+
+/**
+ * Shared connected-capability projection served by
+ * `GET /api/v1/connections/accounts`. Mirrors the provider-neutral
+ * `ConnectedAccount` contract from `@elizaos/core`; account IDs are opaque
+ * capability handles, never credential row IDs, and no secret material is
+ * ever present.
+ */
+export type ConnectedAccountModeDto =
+  | "cloud"
+  | "connector"
+  | "local"
+  | "native";
+
+export type ConnectedAccountStatusDto =
+  | "connected"
+  | "disabled"
+  | "error"
+  | "reauth_required"
+  | "revoked"
+  | "unavailable";
+
+export type ConnectedCapabilityStatusDto =
+  | "available"
+  | "account_disabled"
+  | "account_error"
+  | "account_revoked"
+  | "cost_blocked"
+  | "needs_admin"
+  | "needs_review"
+  | "needs_scope"
+  | "not_configured"
+  | "provider_unavailable"
+  | "unsupported";
+
+export interface ConnectedAccountCapabilityDto {
+  capabilityId: string;
+  riskLevel: "R0" | "R1" | "R2" | "R3";
+  status: ConnectedCapabilityStatusDto;
+}
+
+export interface ConnectedAccountDto {
+  contractVersion: number;
+  accountId: string;
+  providerId: string;
+  mode: ConnectedAccountModeDto;
+  status: ConnectedAccountStatusDto;
+  displayName: string | null;
+  capabilities: ConnectedAccountCapabilityDto[];
+  lastUsedAt: IsoDateString | null;
+}
+
+export interface ConnectedAccountPageDto {
+  accounts: ConnectedAccountDto[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ConnectedAccountDetailDto {
+  account: ConnectedAccountDto;
+}
