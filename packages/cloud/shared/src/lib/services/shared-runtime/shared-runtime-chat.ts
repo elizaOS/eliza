@@ -1759,7 +1759,7 @@ export class SharedRuntimeChatService {
             finished = true;
             const finalReply = part.text.trim() || streamedReply.trim();
             if (part.responded === false) {
-              await finalizeMessages("", false, async () => {
+              await finalizeMessages("", false, undefined, async () => {
                 if (claimKey && options.turnClaims) {
                   await options.turnClaims.complete(claimKey, {
                     text: "",
