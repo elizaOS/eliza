@@ -103,6 +103,11 @@ writes a plan with three unique run IDs and isolated `attempt-01` through
 `attempt-03` output directories. With exactly three reports at those declared
 paths, it writes deterministic `3/3`, `2/3`, `1/3`, or `0/3` tiers and a
 focus list. It does not execute scenarios or providers.
+Aggregation consumes the pre-existing `stability-plan.json`; it never replaces
+that authority. Reports must be regular files at its exact paths and are bounded
+to 64 MiB, 10,000 scenarios, 1,000 failed assertions per scenario, and bounded
+identifier/detail strings. Conflicting plans and contradictory statuses fail as
+CLI usage errors before an aggregate is written.
 
 ### Lanes
 
