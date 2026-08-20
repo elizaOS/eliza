@@ -2,7 +2,9 @@ import { accountDeletionRequestsRepository } from "../../db/repositories/account
 import { apiKeysRepository } from "../../db/repositories/api-keys";
 import { usersRepository } from "../../db/repositories/users";
 import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";
+import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { logger } from "../utils/logger";
+import { purgePersonalOrganizationResources } from "./account-deletion-resource-purge";
 import { organizationsService } from "./organizations";
 import { deactivateStewardPlatformUser, deleteStewardPlatformUser } from "./steward-platform-users";
 import { userSessionsService } from "./user-sessions";
@@ -121,12 +123,18 @@ export interface ProcessAccountDeletionResult {
   actionRequired: number;
 }
 
+export interface ProcessAccountDeletionResources {
+  blob: RuntimeR2Bucket;
+  purgeOrganizationResources?: typeof purgePersonalOrganizationResources;
+}
+
 /**
  * Executes due requests. The receipt survives account/org deletion and records
  * completion without retaining email, phone, wallet, or other profile data.
  */
 export async function processDueAccountDeletions(
   limit = 10,
+  resources?: ProcessAccountDeletionResources,
 ): Promise<ProcessAccountDeletionResult> {
   const recovered = await accountDeletionRequestsRepository.recoverStaleProcessing(
     new Date(Date.now() - 15 * 60 * 1_000),
@@ -139,6 +147,16 @@ export async function processDueAccountDeletions(
       if (!request.steward_user_id || !request.user_id) {
         throw new Error("Claimed deletion request is missing account identifiers");
       }
+      if (!request.organization_id) {
+        throw new Error("Claimed deletion request is missing its organization identifier");
+      }
+      if (!resources?.blob) {
+        throw new Error("Account deletion requires the Cloud object-storage binding");
+      }
+      await (resources.purgeOrganizationResources ?? purgePersonalOrganizationResources)({
+        organizationId: request.organization_id,
+        blob: resources.blob,
+      });
       await deleteStewardPlatformUser(request.steward_user_id);
       const user = await usersRepository.findByIdForWrite(request.user_id);
       if (user) await usersService.delete(request.user_id);

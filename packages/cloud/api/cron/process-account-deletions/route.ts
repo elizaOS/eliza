@@ -10,7 +10,7 @@ const app = new Hono<AppEnv>();
 app.post("/", async (c) => {
   try {
     requireCronSecret(c);
-    const result = await processDueAccountDeletions();
+    const result = await processDueAccountDeletions(10, { blob: c.env.BLOB });
     return c.json({ success: result.actionRequired === 0, ...result });
   } catch (error) {
     logger.error("[AccountDeletionCron] Processing failed", {

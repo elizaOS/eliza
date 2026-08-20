@@ -32,6 +32,13 @@ const deleteSteward = mock(async () => ({ userId: "steward-1" }));
 const updateUser = mock(async () => undefined);
 const deleteUser = mock(async () => undefined);
 const updateOrg = mock(async () => undefined);
+const purgeOrganizationResources = mock(async () => undefined);
+const recordPurgeFailure = requestRepo.recordPurgeFailure;
+const blob = {
+  get: mock(async () => null),
+  put: mock(async () => undefined),
+  delete: mock(async () => undefined),
+};
 
 mock.module("../../db/repositories/account-deletion-requests", () => ({
   accountDeletionRequestsRepository: requestRepo,
@@ -66,6 +73,9 @@ beforeEach(() => {
   updateUser.mockClear();
   deleteUser.mockClear();
   updateOrg.mockClear();
+  purgeOrganizationResources.mockClear();
+  recordPurgeFailure.mockClear();
+  recordPurgeFailure.mockResolvedValue(undefined);
   requestRepo.claimDue.mockResolvedValue([]);
 });
 
@@ -95,8 +105,15 @@ describe("account deletion lifecycle", () => {
         steward_user_id: "steward-1",
       },
     ]);
-    const result = await processDueAccountDeletions();
+    const result = await processDueAccountDeletions(10, {
+      blob,
+      purgeOrganizationResources,
+    });
     expect(result).toEqual({ recovered: 0, processed: 1, completed: 1, actionRequired: 0 });
+    expect(purgeOrganizationResources).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      blob,
+    });
     expect(deleteSteward).toHaveBeenCalledWith("steward-1");
     expect(deleteUser).toHaveBeenCalledWith("user-1");
     expect(requestRepo.update).toHaveBeenLastCalledWith(
@@ -108,5 +125,28 @@ describe("account deletion lifecycle", () => {
         steward_user_id: null,
       }),
     );
+  });
+
+  test("fails closed before identity and database deletion when resource purge fails", async () => {
+    requestRepo.claimDue.mockResolvedValue([
+      {
+        id: "request-1",
+        user_id: "user-1",
+        organization_id: "org-1",
+        steward_user_id: "steward-1",
+      },
+    ]);
+    purgeOrganizationResources.mockRejectedValueOnce(new Error("provider unavailable"));
+    recordPurgeFailure.mockResolvedValueOnce({ status: "action_required" });
+
+    const result = await processDueAccountDeletions(10, {
+      blob,
+      purgeOrganizationResources,
+    });
+
+    expect(result).toEqual({ recovered: 0, processed: 1, completed: 0, actionRequired: 1 });
+    expect(deleteSteward).not.toHaveBeenCalled();
+    expect(deleteUser).not.toHaveBeenCalled();
+    expect(recordPurgeFailure).toHaveBeenCalledWith("request-1", "purge_failed");
   });
 });

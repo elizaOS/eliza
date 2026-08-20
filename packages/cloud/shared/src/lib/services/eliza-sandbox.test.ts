@@ -4349,6 +4349,35 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     }
   });
 
+  test("account deletion does not create a new backup of data being erased", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = customSandbox();
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await expect(
+        svc.deleteAgent(rec.id, rec.organization_id, {
+          authorization: "account_deletion",
+        }),
+      ).resolves.toEqual({ success: false, error: "halted by test after capture phase" });
+      expect(fetchSnap).not.toHaveBeenCalled();
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "account_deletion", {
+        snapshot: null,
+        captureUnsupportedGeneration: null,
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
   test("the reconciler's unauthorized re-enqueue of a deletion_pending row still captures", async () => {
     // ProvisioningJobService.reEnqueueFailedDeletions re-arms stuck deletes with
     // NO authorization (the original job's grant is not carried through). Gating
