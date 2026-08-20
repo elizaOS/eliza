@@ -9,15 +9,18 @@
  * entityId) is used as-is — a typed address is unambiguous; an entity-store
  * UUID resolves through the entity's stored email handles (component data).
  * Account routing is `connector`-scoped: the handler honors an explicit
- * target accountId, else the sole connected gmail-send-capable Google
- * account, and refuses with a structural not_delivered when the account
- * choice is ambiguous or absent. Subject comes from `content.metadata.subject`
+ * target accountId, else the sole policy-authorized, gmail-send-capable Google
+ * account, and refuses with a structural not_delivered when the account choice
+ * is unauthorized, ambiguous, or absent. Subject comes from `content.metadata.subject`
  * when the planner supplies one, else the first line of the body clipped to a
  * sane header length. Registered by the Google connector-account provider at
  * plugin init.
  */
 import {
   type ConnectorAccount,
+  type ConnectorAccountAccessGate,
+  type ConnectorAccountPurpose,
+  type ConnectorAccountStatus,
   type Content,
   getConnectorAccountManager,
   type IAgentRuntime,
@@ -35,6 +38,9 @@ const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SUBJECT_MAX_LENGTH = 78;
 const EMAIL_COMPONENT_KEYS = ["email", "emailAddress"] as const;
+const GMAIL_SEND_ACCOUNT_STATUSES: ConnectorAccountStatus[] = ["connected"];
+const GMAIL_SEND_ACCOUNT_PURPOSES: ConnectorAccountPurpose[] = ["messaging"];
+const GMAIL_SEND_ACCOUNT_ACCESS_GATES: ConnectorAccountAccessGate[] = ["open", "owner_binding"];
 
 /** True when the value is a deliverable literal email address. */
 export function isEmailAddress(value: unknown): value is string {
@@ -74,28 +80,57 @@ function accountSupportsGmailSend(account: ConnectorAccount): boolean {
   return granted.some((capability) => capability === "gmail.send");
 }
 
+async function accountIsAuthorizedForGmailSend(
+  runtime: IAgentRuntime,
+  account: ConnectorAccount
+): Promise<boolean> {
+  if (!accountSupportsGmailSend(account)) return false;
+  const evaluation = await getConnectorAccountManager(runtime).evaluatePolicy(
+    {
+      provider: GOOGLE_SERVICE_NAME,
+      statuses: GMAIL_SEND_ACCOUNT_STATUSES,
+      purposes: GMAIL_SEND_ACCOUNT_PURPOSES,
+      accessGates: GMAIL_SEND_ACCOUNT_ACCESS_GATES,
+      required: true,
+    },
+    { accountId: account.id, purpose: "messaging" }
+  );
+  return evaluation.allowed && evaluation.account?.id === account.id;
+}
+
 async function resolveGmailAccountId(
   runtime: IAgentRuntime,
   requested: string | undefined
 ): Promise<{ accountId: string } | { error: SendHandlerOutcome }> {
   if (requested?.trim()) {
     const accountId = requested.trim();
-    const accounts = await getConnectorAccountManager(runtime).listAccounts(GOOGLE_SERVICE_NAME);
-    const account = accounts.find((candidate) => candidate.id === accountId);
-    if (!account || !accountSupportsGmailSend(account)) {
+    const manager = getConnectorAccountManager(runtime);
+    const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+    if (
+      !account ||
+      account.id !== accountId ||
+      !(await accountIsAuthorizedForGmailSend(runtime, account))
+    ) {
       return {
         error: {
           kind: "not_delivered",
           code: "GMAIL_ACCOUNT_UNAVAILABLE",
-          message: "The requested Google account is not connected with the gmail.send capability.",
+          message:
+            "The requested Google account is not connected and authorized with the gmail.send capability.",
         },
       };
     }
     return { accountId };
   }
-  const accounts = (
-    await getConnectorAccountManager(runtime).listAccounts(GOOGLE_SERVICE_NAME)
-  ).filter(accountSupportsGmailSend);
+  const listedAccounts =
+    await getConnectorAccountManager(runtime).listAccounts(GOOGLE_SERVICE_NAME);
+  const authorized = await Promise.all(
+    listedAccounts.map(async (account) => ({
+      account,
+      allowed: await accountIsAuthorizedForGmailSend(runtime, account),
+    }))
+  );
+  const accounts = authorized.filter(({ allowed }) => allowed).map(({ account }) => account);
   const sole = accounts.length === 1 ? accounts[0] : undefined;
   if (sole) {
     return { accountId: sole.id };
