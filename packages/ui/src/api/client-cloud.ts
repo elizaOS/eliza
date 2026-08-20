@@ -29,8 +29,6 @@ import {
   normalizeDirectCloudSharedAgentApiBase,
 } from "../utils/cloud-agent-base";
 import { ElizaClient } from "./client-base";
-import { desktopHttpTransportForUrl } from "./desktop-http-transport";
-import { fetchAgentTransport, type AgentRequestTransport } from "./transport";
 import type {
   ApiError,
   CloudApiKeySummary,
@@ -80,7 +78,7 @@ import {
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
 } from "./direct-cloud-endpoints";
-import { fetchAgentTransport } from "./transport";
+import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
 // Module-level constants

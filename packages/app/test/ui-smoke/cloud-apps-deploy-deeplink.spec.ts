@@ -25,7 +25,11 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, type Route, test } from "@playwright/test";
-import { installDefaultAppRoutes, openAppPath } from "./helpers";
+import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
 import { seedStewardSession } from "./helpers/test-auth";
 
 const EVIDENCE_DIR = resolve(
@@ -167,6 +171,11 @@ test.beforeEach(async ({ page }) => {
     subject: "user-deploy-proof",
     userId: "user-deploy-proof",
   });
+  // Mark first-run complete with a local active server: since #19511 a fresh
+  // boot drives cloud onboarding through GET /api/v1/eliza/personal, which this
+  // spec's cloud mock deliberately does not serve — the deep-link contract under
+  // test assumes an already-set-up shell, not the onboarding flow.
+  await seedAppStorage(page);
   await installDefaultAppRoutes(page);
 });
 
@@ -180,25 +189,42 @@ test("eliza://apps/deploy intent mounts the Apps studio and submits repo/ref dep
 
   await openAppPath(page, "/");
 
-  // The exact intent `resolveDeepLinkNavigationIntent("apps/deploy")` produces
-  // (unit-locked in packages/app/src/deep-link-routing.test.ts), dispatched on
-  // the same bus main.tsx's live deep-link handler uses.
-  await page.evaluate(() => {
-    window.dispatchEvent(
-      new CustomEvent("eliza:navigate:view", {
-        detail: { viewId: "cloud-apps", viewPath: "/cloud-apps" },
-      }),
-    );
-  });
-
-  // Applications list (NativeAppsStudio → ApplicationsPage) with the fixture app.
-  const appCard = page.getByText(APP_NAME, { exact: true }).first();
-  await expect(appCard).toBeVisible({ timeout: 30_000 });
+  // The seeded completed first-run can surface the one-time "Set up Eliza"
+  // permissions dialog, whose modal inerts the page behind it — dismiss it
+  // BEFORE driving the deep-link navigation.
   const setupDialog = page.getByRole("dialog", { name: "Set up Eliza" });
-  if (await setupDialog.isVisible()) {
+  const setupDialogShown = await setupDialog
+    .waitFor({ state: "visible", timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (setupDialogShown) {
     await setupDialog.getByRole("button", { name: "Skip for now" }).click();
     await expect(setupDialog).toBeHidden();
   }
+
+  // The exact intent `resolveDeepLinkNavigationIntent("apps/deploy")` produces
+  // (unit-locked in packages/app/src/deep-link-routing.test.ts), dispatched on
+  // the same bus main.tsx's live deep-link handler uses. The shell registers
+  // that listener asynchronously during boot, so a single dispatch can race it
+  // and be lost — re-dispatch until the Applications list actually mounts.
+  const appCard = page.getByText(APP_NAME, { exact: true }).first();
+  await expect
+    .poll(
+      async () => {
+        await page.evaluate(() => {
+          window.dispatchEvent(
+            new CustomEvent("eliza:navigate:view", {
+              detail: { viewId: "cloud-apps", viewPath: "/cloud-apps" },
+            }),
+          );
+        });
+        return appCard.isVisible();
+      },
+      { timeout: 30_000, intervals: [1_000] },
+    )
+    .toBe(true);
+  // Applications list (NativeAppsStudio → ApplicationsPage) with the fixture app.
+  await expect(appCard).toBeVisible();
   await page.screenshot({
     path: `${EVIDENCE_DIR}/cloud-apps-deploy-01-list.png`,
     fullPage: true,
