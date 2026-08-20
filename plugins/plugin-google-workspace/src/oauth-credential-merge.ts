@@ -69,6 +69,27 @@ function readStringFromRecord(record: object, ...keys: string[]): string | undef
   return undefined;
 }
 
+function readScopeArray(scopes: unknown[], ctx: WalkContext): string {
+  const length = dataValue(scopes, "length");
+  if (!Number.isSafeInteger(length) || (length as number) < 0) {
+    failUnbounded({ invalidScopesLength: length });
+  }
+  reserve(ctx, length as number);
+
+  const values: string[] = [];
+  for (let index = 0; index < (length as number); index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(scopes, String(index));
+    if (!descriptor) continue;
+    if (!("value" in descriptor)) {
+      failUnbounded({ accessor: `scopes[${index}]` });
+    }
+    if (typeof descriptor.value === "string") {
+      values.push(descriptor.value);
+    }
+  }
+  return values.join(" ");
+}
+
 function parseExpiry(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value > 0 && value < 10_000_000_000 ? value * 1000 : value;
@@ -135,10 +156,7 @@ function mergeCredentialObjectInner(
     if (tokenType) credentials.token_type = tokenType;
     const scopes = dataValue(record, "scopes");
     if (Array.isArray(scopes)) {
-      reserve(ctx, scopes.length);
-      credentials.scope = scopes
-        .filter((item): item is string => typeof item === "string")
-        .join(" ");
+      credentials.scope = readScopeArray(scopes, ctx);
     } else if (scope) {
       credentials.scope = scope;
     }

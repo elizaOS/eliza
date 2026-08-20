@@ -59,6 +59,45 @@ describe("mergeCredentialObject", () => {
     }
   });
 
+  it("does not invoke indexed scope accessors and fails closed", () => {
+    let invoked = 0;
+    const scopes = ["gmail.read"];
+    Object.defineProperty(scopes, "1", {
+      enumerable: true,
+      get() {
+        invoked += 1;
+        return "drive.readonly";
+      },
+    });
+
+    expect(() => mergeCredentialObject({}, { scopes })).toThrowError(
+      expect.objectContaining({ code: GOOGLE_OAUTH_CREDENTIAL_UNBOUNDED })
+    );
+    expect(invoked).toBe(0);
+  });
+
+  it("preserves sparse scopes and nested-then-outer token precedence", () => {
+    const scopes: unknown[] = ["gmail.read", 42, "drive.readonly"];
+    delete scopes[1];
+    const credentials: OauthCredentialFields = {};
+
+    mergeCredentialObject(credentials, {
+      tokens: {
+        access_token: "nested-access",
+        refresh_token: "nested-refresh",
+        scope: "nested.scope",
+      },
+      accessToken: "outer-access",
+      scopes,
+    });
+
+    expect(credentials).toMatchObject({
+      access_token: "outer-access",
+      refresh_token: "nested-refresh",
+      scope: "gmail.read drive.readonly",
+    });
+  });
+
   it("throws on a cyclic tokens object without hanging", () => {
     const cyclic: { tokens?: unknown } = {};
     cyclic.tokens = cyclic;
