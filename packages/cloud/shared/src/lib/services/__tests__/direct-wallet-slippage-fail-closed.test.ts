@@ -1,7 +1,8 @@
-// Exercises the fail-closed slippage-band boundary for direct wallet native-coin
-// payments. A corrupt/tampered/drifted `slippage_bps` metadata value must be
-// refused (fail closed) instead of silently widening the accepted-payment band
-// on the EVM native verify path (#13415 fallback-slop cloud-shared service layer).
+/**
+ * Exercises the real direct-wallet metadata parsers with deterministic values.
+ * Corrupt stored numerics must fail before token sweep or native-payment-band
+ * verification can consume them.
+ */
 import { describe, expect, test } from "bun:test";
 import {
   CorruptDirectWalletSlippageError,
@@ -45,7 +46,7 @@ describe("parseDirectWalletMetadataNumber", () => {
   });
 
   test("refuses alternate numeric syntax and unsafe integer metadata", () => {
-    for (const value of ["0x10", "0b10", "1e2", " 18 ", "+18", "018"]) {
+    for (const value of ["0x10", "0b10", "1e2", " 18 ", "+18", "018", "18.0", "18.00", "0.0"]) {
       expect(() =>
         parseDirectWalletMetadataNumber({
           paymentId: "pay-noncanonical",
@@ -89,6 +90,12 @@ describe("parseDirectWalletSlippageBps (fail-closed boundary)", () => {
   test("accepts the canonical native slippage (200 bps) and 0", () => {
     expect(parseDirectWalletSlippageBps(0)).toBe(0);
     expect(parseDirectWalletSlippageBps(200)).toBe(200);
+  });
+
+  test("refuses alternate integer syntax at the stored slippage boundary", () => {
+    for (const value of ["0x10", "0b10", "1e2", " 18 ", "+18", "018", "18.0", "18.00", "0.0"]) {
+      expect(() => parseDirectWalletSlippageBps(value)).toThrow(CorruptDirectWalletSlippageError);
+    }
   });
 
   test("accepts a stored NUMERIC string that is a clean non-negative integer", () => {
