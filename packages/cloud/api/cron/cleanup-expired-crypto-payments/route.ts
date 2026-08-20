@@ -1,9 +1,12 @@
 /**
- * GET /api/cron/cleanup-expired-crypto-payments
+ * GET|POST /api/cron/cleanup-expired-crypto-payments
  * Marks expired pending crypto payments as expired.
+ *
+ * Both verbs are registered: the Worker's scheduled() dispatcher fans out with
+ * POST (see `makeCronHandler`), so a GET-only route 404s every cycle.
  */
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { cryptoPaymentsService } from "@/lib/services/crypto-payments";
@@ -12,7 +15,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.get("/", async (c) => {
+async function handle(c: Context<AppEnv>) {
   try {
     requireCronSecret(c);
 
@@ -54,6 +57,9 @@ app.get("/", async (c) => {
     logger.error("[Crypto Payments Cleanup] Cleanup job failed", { error });
     return failureResponse(c, error);
   }
-});
+}
+
+app.get("/", handle);
+app.post("/", handle);
 
 export default app;

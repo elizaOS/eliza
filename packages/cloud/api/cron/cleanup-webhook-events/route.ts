@@ -1,9 +1,12 @@
 /**
- * GET /api/cron/cleanup-webhook-events
+ * GET|POST /api/cron/cleanup-webhook-events
  * Removes webhook event records older than the retention period.
+ *
+ * Both verbs are registered: the Worker's scheduled() dispatcher fans out with
+ * POST (see `makeCronHandler`), so a GET-only route 404s every cycle.
  */
 
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { webhookEventsRepository } from "@/db/repositories/webhook-events";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
@@ -14,7 +17,7 @@ const WEBHOOK_EVENT_RETENTION_DAYS = 30;
 
 const app = new Hono<AppEnv>();
 
-app.get("/", async (c) => {
+async function handle(c: Context<AppEnv>) {
   try {
     requireCronSecret(c);
 
@@ -42,6 +45,9 @@ app.get("/", async (c) => {
     logger.error("[Webhook Events Cleanup] Cleanup job failed", { error });
     return failureResponse(c, error);
   }
-});
+}
+
+app.get("/", handle);
+app.post("/", handle);
 
 export default app;
