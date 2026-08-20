@@ -11,6 +11,7 @@
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { decode, encode } from "@msgpack/msgpack";
+import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 // Break the logger -> @elizaos/core transitive import chain (repo-standard
 // test isolation for cloud-api unit tests). Logic under test is untouched.
@@ -21,11 +22,34 @@ class MockElizaError extends Error {}
 mock.module("@/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/cloud-shared/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/core", () => ({
+  canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
+  ChannelType: coreTestContract.ChannelType,
+  DatabaseAdapter: coreTestContract.DatabaseAdapter,
+  decryptedCharacter: coreTestContract.decryptedCharacter,
+  DOCUMENT_LIST_QUERY_CAPABILITY_VERSION:
+    coreTestContract.DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  documentMutationSnapshotMatches:
+    coreTestContract.documentMutationSnapshotMatches,
+  documentRoleHasGlobalVisibility:
+    coreTestContract.documentRoleHasGlobalVisibility,
+  encryptedCharacter: coreTestContract.encryptedCharacter,
   ElizaError: MockElizaError,
   isElizaError: (error: unknown) => error instanceof MockElizaError,
   isSensitiveKeyName: () => false,
+  logger: coreTestContract.logger,
+  normalizePairingPageOptions: coreTestContract.normalizePairingPageOptions,
   redactLogArgs: (args: unknown) => args,
   redactSensitiveText: (text: string) => text,
+  Service: coreTestContract.Service,
+  validateDocumentFragmentQueryParams:
+    coreTestContract.validateDocumentFragmentQueryParams,
+  validateDocumentListQueryParams:
+    coreTestContract.validateDocumentListQueryParams,
+  validateDocumentRequesterContext:
+    coreTestContract.validateDocumentRequesterContext,
+  validateQueryEntitiesPagination:
+    coreTestContract.validateQueryEntitiesPagination,
+  validateUuid: coreTestContract.validateUuid,
 }));
 
 import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
