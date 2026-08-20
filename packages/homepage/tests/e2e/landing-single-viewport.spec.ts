@@ -98,7 +98,7 @@ test("prefills through Eliza's first embed, then resumes the flow", async ({
   await expect(page.getByText("I'm in", { exact: true })).toBeVisible();
   await expect(page.getByText("same", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("quiet place, ideally outside", { exact: true }),
+    page.getByText("somewhere quiet pls", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText(
@@ -172,9 +172,9 @@ test("concurrent human replies share one compact typing row", async ({
     timeout: 3_000,
   });
   await expect(
-    page.getByText("outdoors if it's warm?", { exact: true }),
+    page.getByText("outside if it's nice?", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Mission or Noe?", { exact: true })).toBeVisible({
+  await expect(page.getByText("mission or noe?", { exact: true })).toBeVisible({
     timeout: 3_000,
   });
 });

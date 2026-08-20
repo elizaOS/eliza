@@ -184,7 +184,17 @@ describe("landing Shared-agent capability contract", () => {
     );
   });
 
-  test("makes the friends room proactive without guaranteeing allergy safety", () => {
+  test("keeps human texts casual and free of ad-copy punctuation", () => {
+    for (const scenario of LANDING_DEMO_SCENARIOS) {
+      for (const step of scenario.steps) {
+        if (step.kind === "member" || step.kind === "user") {
+          expect(step.text).not.toContain(";");
+        }
+      }
+    }
+  });
+
+  test("makes the friends room proactively verify its allergy protocol", () => {
     const friends = LANDING_DEMO_SCENARIOS.find(
       (scenario) => scenario.id === "friends",
     );
@@ -204,8 +214,22 @@ describe("landing Shared-agent capability contract", () => {
       ]),
     );
     expect(copy).toContain("severe peanut allergy");
-    expect(copy).toContain("needs direct confirmation");
+    expect(copy).toContain("checked its current allergy policy");
+    expect(copy).toContain("separate tools and a manager check");
     expect(copy).not.toMatch(/allergy-safe|guaranteed safe|zero risk/i);
+  });
+
+  test("lets Eliza answer the co-parenting handoff question from chat context", () => {
+    const coParenting = LANDING_DEMO_SCENARIOS.find(
+      (scenario) => scenario.id === "co-parenting",
+    );
+    const copy = coParenting?.steps.map(landingDemoStepText).join(" ") ?? "";
+
+    expect(copy).toContain("inhaler is in front");
+    expect(copy).toContain(
+      "Yep, front pocket of the blue backpack. Nina packed it there earlier.",
+    );
+    expect(copy).not.toContain("yes. consensus. unsettling.");
   });
 
   test("lets the trip room reconcile schedules before adding live logistics", () => {
