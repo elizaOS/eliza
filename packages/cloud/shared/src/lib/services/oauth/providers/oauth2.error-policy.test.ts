@@ -181,4 +181,30 @@ describe("handleOAuth2Callback — identity extraction fails closed (#13415)", (
     // The real id flowed through storage untouched (never coerced to "unknown").
     expect(insertReturning).toHaveBeenCalledTimes(1);
   });
+
+  it("exports OAUTH2_REQUEST_TIMEOUT_MS with 15-second bound and passes signal to fetch", async () => {
+    const { handleOAuth2Callback, OAUTH2_REQUEST_TIMEOUT_MS } = await import("./oauth2");
+    expect(OAUTH2_REQUEST_TIMEOUT_MS).toBe(15_000);
+
+    userInfoBody = { id: "real-user-42" };
+    const fetchedSignals: unknown[] = [];
+    globalThis.fetch = mock(async (url: unknown, init?: RequestInit) => {
+      fetchedSignals.push(init?.signal);
+      const u = String(url);
+      if (u.includes("/token")) {
+        return jsonResponse({ access_token: "at-123", token_type: "Bearer" });
+      }
+      if (u.includes("/userinfo")) {
+        return jsonResponse(userInfoBody);
+      }
+      throw new Error(`unexpected fetch ${u}`);
+    }) as unknown as typeof globalThis.fetch;
+
+    await handleOAuth2Callback(provider, "auth-code", "state-token");
+    expect(fetchedSignals.length).toBeGreaterThanOrEqual(2);
+    for (const sig of fetchedSignals) {
+      expect(sig).toBeDefined();
+      expect(sig).toBeInstanceOf(AbortSignal);
+    }
+  });
 });
