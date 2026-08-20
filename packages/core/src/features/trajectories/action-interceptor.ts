@@ -2,6 +2,7 @@
 
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
+import { sanitizeTrajectoryJsonValue } from "../../services/trajectory-json";
 import type {
 	Action,
 	ActionResult,
@@ -24,43 +25,23 @@ interface TrajectoryContext {
 
 const trajectoryContexts = new WeakMap<IAgentRuntime, TrajectoryContext>();
 
-export const TRAJECTORY_STATE_BOUNDED = "[BOUNDED]";
-export const MAX_TRAJECTORY_STATE_DEPTH = 16;
-export const MAX_TRAJECTORY_STATE_NODES = 2_048;
-
 /**
  * Origin snapshotted action/provider `state` with JSON.parse(JSON.stringify).
  * StateValue allows arbitrary objects, so a cyclic or over-deep provider
  * value RangeError/TypeError'd *after* the action already succeeded.
- * Bound the walk; overflow becomes a sentinel so logging cannot fail the turn.
+ * Use the persistence sanitizer so the live snapshot matches the SQL walk
+ * (path-scoped cycles, Dates, bigint/function, item/key/byte caps).
+ * A poisoned getter still throws inside that walk — catch it so diagnostics
+ * cannot fail the turn (J7).
  */
 export function snapshotStateForTrajectory(state: unknown): JsonValue | null {
 	if (state === undefined || state === null) return null;
-	return walkSnapshot(state, 0, new WeakSet<object>(), { n: 0 }) as JsonValue;
-}
-
-function walkSnapshot(
-	value: unknown,
-	depth: number,
-	seen: WeakSet<object>,
-	budget: { n: number },
-): unknown {
-	if (depth > MAX_TRAJECTORY_STATE_DEPTH) return TRAJECTORY_STATE_BOUNDED;
-	if (value === null || typeof value !== "object") return value as JsonValue;
-	if (seen.has(value)) return TRAJECTORY_STATE_BOUNDED;
-	seen.add(value);
-	budget.n += 1;
-	if (budget.n > MAX_TRAJECTORY_STATE_NODES) return TRAJECTORY_STATE_BOUNDED;
-	if (Array.isArray(value)) {
-		return value.map((entry) => walkSnapshot(entry, depth + 1, seen, budget));
+	try {
+		return sanitizeTrajectoryJsonValue(state) ?? null;
+	} catch {
+		return null;
 	}
-	const out: Record<string, unknown> = {};
-	for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-		out[key] = walkSnapshot(entry, depth + 1, seen, budget);
-	}
-	return out;
 }
-
 
 export function setTrajectoryContext(
 	runtime: IAgentRuntime,
@@ -168,9 +149,7 @@ export function wrapActionWithLogging(
 			}
 
 			const successHandler = (): void => {
-				const stateSnapshot = state
-					? snapshotStateForTrajectory(state)
-					: null;
+				const stateSnapshot = state ? snapshotStateForTrajectory(state) : null;
 
 				loggerService.completeStep(
 					trajectoryId,
@@ -203,9 +182,7 @@ export function wrapActionWithLogging(
 					"Action execution failed",
 				);
 
-				const stateSnapshot = state
-					? snapshotStateForTrajectory(state)
-					: null;
+				const stateSnapshot = state ? snapshotStateForTrajectory(state) : null;
 
 				loggerService.completeStep(
 					trajectoryId,
@@ -377,9 +354,7 @@ export function wrapProviderWithLogging(
 				text: "",
 			};
 
-			const stateSnapshot = state
-				? snapshotStateForTrajectory(state)
-				: null;
+			const stateSnapshot = state ? snapshotStateForTrajectory(state) : null;
 
 			loggerService.logProviderAccess(stepId, {
 				providerName: provider.name,
