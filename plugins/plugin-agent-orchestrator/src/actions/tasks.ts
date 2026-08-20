@@ -1223,7 +1223,15 @@ async function runCreateLegacy(
       runtime,
       {
         intent: "confirm",
-        facts: { createdCount: tasks.length, titles: ackTitles },
+        // "createdCount" read as a completed deliverable ("I've created the
+        // weather-mood-page for you") when the build had only STARTED (live
+        // 2026-08-20) — name the facts so the model can only voice a kickoff.
+        facts: {
+          buildsJustStarted: tasks.length,
+          titles: ackTitles,
+          status:
+            "just kicked off — still running, a separate message arrives when it finishes",
+        },
       },
       tasks.length > 1
         ? `On it — starting ${tasks.length} builds.`
@@ -3705,6 +3713,56 @@ async function runSend(
     const textInput = routedCompletion
       ? buildSubAgentCompletionFollowUp(routedCompletion, plannerInput)
       : plannerInput;
+    // A send into a TERMINAL session resolves — the subprocess accepts the
+    // bytes and nothing ever consumes them. The planner then reports success
+    // ("Passed your follow-up instructions to the coding agent") and the
+    // user's follow-up dies silently (live 2026-08-20: "can u run it and show
+    // me the output?" against the completed nubs-script task went nowhere).
+    // Redirect to a successor create carrying the finished task + follow-up.
+    const terminalStatus = ["completed", "stopped", "errored", "cancelled"];
+    const smithersDurable = (
+      target.session.metadata as
+        | { smithersDurableRun?: { state?: string } }
+        | undefined
+    )?.smithersDurableRun;
+    const sessionIsTerminal =
+      terminalStatus.includes(String(target.session.status ?? "")) ||
+      smithersDurable?.state === "completed" ||
+      smithersDurable?.state === "failed";
+    if (sessionIsTerminal && textInput && !routedCompletion) {
+      const meta = target.session.metadata as
+        | Record<string, unknown>
+        | undefined;
+      const rawPrior =
+        typeof meta?.initialTask === "string" ? meta.initialTask : "";
+      const marker = "--- User Task ---";
+      const markerAt = rawPrior.indexOf(marker);
+      const priorTask = (
+        markerAt >= 0 ? rawPrior.slice(markerAt + marker.length) : rawPrior
+      ).trim();
+      logger(runtime).info(
+        `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting follow-up to a successor create`,
+      );
+      return runCreateLegacy(
+        runtime,
+        _message,
+        state,
+        {
+          ...params,
+          action: "create",
+          task: priorTask
+            ? `${priorTask}
+
+Follow-up from the user on the FINISHED deliverable above (build on it, do not redo it from scratch): ${textInput}`
+            : textInput,
+          ...(target.session.workdir
+            ? { workdir: target.session.workdir }
+            : {}),
+        },
+        content,
+        _callback,
+      );
+    }
     if (textInput) {
       // A smithers-driven session's conversation is OWNED by the workflow
       // executor — an interactive send resolves but is never consumed (live
