@@ -56,12 +56,27 @@ describe("appendShellStdio", () => {
   });
 
   it("budgets by UTF-8 byte length, not string length", () => {
-    // "好" is 1 UTF-16 code unit but 3 UTF-8 bytes; a cap of 6 bytes must
-    // admit exactly two of them (6 bytes), not three (which .length-based
-    // accounting would wrongly allow).
     const state = createShellStdioState();
     expect(appendShellStdio(state, "stdout", "好好好", 6)).toBe("overflow");
     expect(state.stdout).toBe("好好");
     expect(state.bytes).toBe(6);
+  });
+
+  it("does not split a code point to fill the remaining byte budget", () => {
+    const state = createShellStdioState();
+    expect(appendShellStdio(state, "stdout", "a", 3)).toBe("ok");
+    expect(appendShellStdio(state, "stdout", "好", 3)).toBe("overflow");
+    expect(state.stdout).toBe("a");
+    expect(state.stdout).not.toContain("\uFFFD");
+    expect(state.bytes).toBe(1);
+    expect(Buffer.byteLength(state.stdout, "utf8")).toBe(state.bytes);
+  });
+
+  it("keeps all complete code points before a partial boundary", () => {
+    const state = createShellStdioState();
+    expect(appendShellStdio(state, "stderr", "好好", 4)).toBe("overflow");
+    expect(state.stderr).toBe("好");
+    expect(state.bytes).toBe(3);
+    expect(Buffer.byteLength(state.stderr, "utf8")).toBe(state.bytes);
   });
 });
