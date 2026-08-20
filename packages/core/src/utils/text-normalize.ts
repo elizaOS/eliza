@@ -6,11 +6,9 @@
  * construction more predictable and avoids each caller inventing slightly
  * different null/array/object coercion rules.
  *
- * The walk is depth-, visit-, and cycle-bounded. Provider output and memory
- * metadata can carry a hostile nest; on origin a 20k-deep array threw
- * `RangeError: Maximum call stack size exceeded`. Cycles still skip the
- * back-edge (existing contract). Over-budget graphs throw `ElizaError`
- * `TEXT_NORMALIZE_UNBOUNDED`.
+ * The walk is depth-, work-, and cycle-bounded because provider output and
+ * memory metadata can carry hostile nests or sparse collections. Cycles skip
+ * the back-edge; over-budget graphs fail closed with a typed error.
  */
 
 import { ElizaError } from "../errors.ts";
@@ -19,22 +17,27 @@ import { ElizaError } from "../errors.ts";
 export const MAX_TEXT_NORMALIZE_DEPTH = 64;
 /** Node ceiling across the whole flatten, including leaves. */
 export const MAX_TEXT_NORMALIZE_NODES = 2048;
+/** Collection-edge ceiling, including sparse holes and inherited keys. */
+export const MAX_TEXT_NORMALIZE_EDGES = 2048;
 
 export const TEXT_NORMALIZE_UNBOUNDED = "TEXT_NORMALIZE_UNBOUNDED";
 
 type WalkContext = {
 	visits: number;
+	edges: number;
 	ancestors: WeakSet<object>;
 };
 
 function failUnbounded(
-	axis: "depth" | "visits",
+	axis: "depth" | "visits" | "edges",
 	context: Record<string, unknown>,
 ): never {
 	throw new ElizaError(
 		axis === "depth"
 			? `text-normalize graph exceeds ${MAX_TEXT_NORMALIZE_DEPTH} nesting depth`
-			: `text-normalize graph exceeds ${MAX_TEXT_NORMALIZE_NODES} nodes`,
+			: axis === "visits"
+				? `text-normalize graph exceeds ${MAX_TEXT_NORMALIZE_NODES} nodes`
+				: `text-normalize graph exceeds ${MAX_TEXT_NORMALIZE_EDGES} collection edges`,
 		{
 			code: TEXT_NORMALIZE_UNBOUNDED,
 			context,
@@ -53,6 +56,16 @@ function reserveVisit(ctx: WalkContext): void {
 	}
 }
 
+function reserveEdge(ctx: WalkContext): void {
+	ctx.edges += 1;
+	if (ctx.edges > MAX_TEXT_NORMALIZE_EDGES) {
+		failUnbounded("edges", {
+			edges: ctx.edges,
+			max: MAX_TEXT_NORMALIZE_EDGES,
+		});
+	}
+}
+
 /**
  * Flatten a mixed nested value into text fragments.
  *
@@ -66,6 +79,7 @@ function reserveVisit(ctx: WalkContext): void {
 export function flattenTextValues(value: unknown): string[] {
 	return flattenTextValuesWithAncestors(value, 0, {
 		visits: 0,
+		edges: 0,
 		ancestors: new WeakSet(),
 	});
 }
@@ -86,9 +100,16 @@ function flattenTextValuesWithAncestors(
 		}
 		ctx.ancestors.add(value);
 		try {
-			return value.flatMap((item) =>
-				flattenTextValuesWithAncestors(item, depth + 1, ctx),
-			);
+			const fragments: string[] = [];
+			for (let index = 0; index < value.length; index += 1) {
+				// Holes still consume work even though they do not contribute text.
+				reserveEdge(ctx);
+				if (!(index in value)) continue;
+				fragments.push(
+					...flattenTextValuesWithAncestors(value[index], depth + 1, ctx),
+				);
+			}
+			return fragments;
 		} finally {
 			ctx.ancestors.delete(value);
 		}
@@ -118,16 +139,21 @@ function flattenTextValuesWithAncestors(
 		}
 		ctx.ancestors.add(value);
 		try {
-			return Object.entries(value as Record<string, unknown>).flatMap(
-				([key, inner]) => {
-					const innerText = flattenTextValuesWithAncestors(
-						inner,
-						depth + 1,
-						ctx,
-					).join(", ");
-					return innerText ? [`${key}: ${innerText}`] : [];
-				},
-			);
+			const fragments: string[] = [];
+			const record = value as Record<string, unknown>;
+			for (const key in record) {
+				// Count inherited enumeration too so a hostile prototype cannot evade the
+				// work cap. Output remains restricted to enumerable own properties.
+				reserveEdge(ctx);
+				if (!Object.hasOwn(record, key)) continue;
+				const innerText = flattenTextValuesWithAncestors(
+					record[key],
+					depth + 1,
+					ctx,
+				).join(", ");
+				if (innerText) fragments.push(`${key}: ${innerText}`);
+			}
+			return fragments;
 		} finally {
 			ctx.ancestors.delete(value);
 		}

@@ -1,5 +1,7 @@
 /**
- * Prompt-batcher shared helpers. sanitizeIdentifier must yield a valid
+ * Deterministic coverage for prompt-batcher shared helpers. Character context
+ * assembly must fail closed when text normalization rejects hostile input;
+ * sanitizeIdentifier must yield a valid
  * identifier (prefix when it can't start with a letter/underscore); retry count
  * is clamped to 0..2; getSourceMessageId derives a stable per-platform dedup key
  * (so the same inbound message isn't batched twice); and rollingAverage folds a
@@ -7,7 +9,13 @@
  */
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../../types/memory";
+import type { IAgentRuntime } from "../../types/runtime";
 import {
+	MAX_TEXT_NORMALIZE_EDGES,
+	TEXT_NORMALIZE_UNBOUNDED,
+} from "../text-normalize.ts";
+import {
+	buildCharacterContext,
 	clampRetryCount,
 	getSourceMessageId,
 	hasMeaningfulSectionDrift,
@@ -15,6 +23,19 @@ import {
 	rollingAverage,
 	sanitizeIdentifier,
 } from "./shared.ts";
+
+describe("buildCharacterContext", () => {
+	it("fails closed when hostile character metadata exceeds the work budget", () => {
+		const topics = new Array(MAX_TEXT_NORMALIZE_EDGES + 1);
+		const runtime = {
+			character: { name: "Bounded Agent", topics, bio: [], style: {} },
+		} as unknown as IAgentRuntime;
+
+		expect(() => buildCharacterContext(runtime)).toThrowError(
+			expect.objectContaining({ code: TEXT_NORMALIZE_UNBOUNDED }),
+		);
+	});
+});
 
 describe("sanitizeIdentifier", () => {
 	it("replaces non-identifier chars and guarantees a valid leading char", () => {

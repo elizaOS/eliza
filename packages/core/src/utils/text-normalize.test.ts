@@ -17,6 +17,7 @@ import { ElizaError } from "../errors.ts";
 import {
 	flattenTextValues,
 	MAX_TEXT_NORMALIZE_DEPTH,
+	MAX_TEXT_NORMALIZE_EDGES,
 	MAX_TEXT_NORMALIZE_NODES,
 	TEXT_NORMALIZE_UNBOUNDED,
 	toMultilineText,
@@ -245,6 +246,33 @@ describe("flattenTextValues budget", () => {
 			(_, i) => `v${i}`,
 		);
 		expect(() => flattenTextValues(siblings)).toThrowError(ElizaError);
+	});
+
+	it("counts sparse array holes against the work budget", () => {
+		const sparse = new Array(MAX_TEXT_NORMALIZE_EDGES + 1);
+		expect(() => flattenTextValues(sparse)).toThrowError(
+			expect.objectContaining({ code: TEXT_NORMALIZE_UNBOUNDED }),
+		);
+	});
+
+	it("does not eagerly read object properties beyond the work budget", () => {
+		let outOfBudgetGetterRead = false;
+		const value: Record<string, unknown> = {};
+		for (let index = 0; index < MAX_TEXT_NORMALIZE_NODES; index += 1) {
+			value[`value${index}`] = "kept";
+		}
+		Object.defineProperty(value, "outOfBudget", {
+			enumerable: true,
+			get() {
+				outOfBudgetGetterRead = true;
+				return "must not be read";
+			},
+		});
+
+		expect(() => flattenTextValues(value)).toThrowError(
+			expect.objectContaining({ code: TEXT_NORMALIZE_UNBOUNDED }),
+		);
+		expect(outOfBudgetGetterRead).toBe(false);
 	});
 
 	it("does not RangeError a 20k array nest", () => {
