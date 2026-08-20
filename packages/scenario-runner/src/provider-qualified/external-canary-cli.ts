@@ -1,15 +1,29 @@
 /**
- * Provides the authorization-first executable boundary for one externally
- * hosted provider canary. The operator capability bundle is content-pinned
- * before it is imported, while the CLI owns qualification output publication.
+ * Runs one authorization-first external provider canary from canonical data.
+ * Durable manifest consumption prevents replay, and completed output appears
+ * only through an atomic sibling-directory rename.
  */
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, rmdirSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { loadScenarioFile } from "../loader.ts";
+import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import {
   type ExternalProviderCanaryCapabilities,
   executeExternalProviderCanary,
@@ -28,13 +42,17 @@ import {
   renderProviderQualificationMarkdown,
   writeProviderQualificationOutputIntoReservedDirectory,
 } from "./qualification-cli.ts";
+import { parseProviderCanaryScenarioSnapshot } from "./scenario-snapshot.ts";
 
 export const EXTERNAL_PROVIDER_CANARY_CONFIG_SCHEMA =
-  "eliza.external-provider-canary-config.v1" as const;
+  "eliza.external-provider-canary-config.v2" as const;
+export const EXTERNAL_CANARY_MAX_SIGNATURE_AGE_MS = 300_000;
+export const EXTERNAL_CANARY_MAX_CLOCK_SKEW_MS = 5_000;
+const JOURNAL_SCHEMA = "eliza.external-provider-canary-run-journal.v1";
 
 export interface ExternalProviderCanaryConfig {
   schema: typeof EXTERNAL_PROVIDER_CANARY_CONFIG_SCHEMA;
-  scenarioFile: string;
+  scenarioDefinitionFile: string;
   authorizationFile: string;
   operationKind: ProviderOperationKind;
   providerTargetFile: string;
@@ -45,6 +63,7 @@ export interface ExternalProviderCanaryConfig {
   semanticJudgePublicKeyFiles: readonly [string, ...string[]];
   operatorModuleFile: string;
   operatorModuleSha256: string;
+  operatorStateDir: string;
   outputDir: string;
   maxSignatureAgeMs?: number;
   maxClockSkewMs?: number;
@@ -61,7 +80,6 @@ export type OperatorOwnedProviderCapabilities = Omit<
   ExternalProviderCanaryCapabilities,
   "publisher"
 >;
-
 export interface ExternalProviderCapabilityModule {
   createExternalProviderCanaryCapabilities(
     input: ExternalProviderCapabilityFactoryInput,
@@ -69,17 +87,39 @@ export interface ExternalProviderCapabilityModule {
     | OperatorOwnedProviderCapabilities
     | Promise<OperatorOwnedProviderCapabilities>;
 }
-
 type ModuleLoader = (
   absoluteModuleFile: string,
   expectedSha256: string,
 ) => Promise<ExternalProviderCapabilityModule>;
 
+export type ExternalCanaryJournalStatus =
+  | "in-progress"
+  | "consumed"
+  | "reconciliation-required";
+interface ExternalCanaryRunJournal {
+  schema: typeof JOURNAL_SCHEMA;
+  manifestSha256: string;
+  scenarioId: string;
+  runId: string;
+  status: ExternalCanaryJournalStatus;
+  updatedAtIso: string;
+}
+export interface ExternalCanaryJournalReservation {
+  file: string;
+  value: ExternalCanaryRunJournal;
+}
+export interface ExternalCanaryPublicationReservation {
+  output: string;
+  staging: string;
+  lock: string;
+  lockDescriptor: number;
+}
+
 function fail(message: string): never {
   throw new Error(`external provider-canary config ${message}`);
 }
 
-function plainRecord(value: unknown, label: string): Record<string, unknown> {
+function record(value: unknown, label: string): Record<string, unknown> {
   if (
     value === null ||
     typeof value !== "object" ||
@@ -91,17 +131,14 @@ function plainRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function requiredString(value: unknown, label: string): string {
+function string(value: unknown, label: string): string {
   if (typeof value !== "string" || value.trim() === "") {
     fail(`${label} must be a non-empty string`);
   }
   return value;
 }
 
-function publicKeyFiles(
-  value: unknown,
-  label: string,
-): readonly [string, ...string[]] {
+function files(value: unknown, label: string): readonly [string, ...string[]] {
   if (
     !Array.isArray(value) ||
     value.length === 0 ||
@@ -113,10 +150,17 @@ function publicKeyFiles(
   return value as [string, ...string[]];
 }
 
-function optionalDuration(value: unknown, label: string): number | undefined {
+function duration(
+  value: unknown,
+  label: string,
+  hardCap: number,
+): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     fail(`${label} must be a non-negative safe integer`);
+  }
+  if ((value as number) > hardCap) {
+    fail(`${label} may only tighten the ${hardCap}ms hard cap`);
   }
   return value as number;
 }
@@ -124,10 +168,10 @@ function optionalDuration(value: unknown, label: string): number | undefined {
 export function parseExternalProviderCanaryConfig(
   value: unknown,
 ): ExternalProviderCanaryConfig {
-  const input = plainRecord(value, "root");
+  const input = record(value, "root");
   const required = [
     "schema",
-    "scenarioFile",
+    "scenarioDefinitionFile",
     "authorizationFile",
     "operationKind",
     "providerTargetFile",
@@ -138,12 +182,13 @@ export function parseExternalProviderCanaryConfig(
     "semanticJudgePublicKeyFiles",
     "operatorModuleFile",
     "operatorModuleSha256",
+    "operatorStateDir",
     "outputDir",
   ];
   const allowed = new Set([...required, "maxSignatureAgeMs", "maxClockSkewMs"]);
   const missing = required.filter((key) => !Object.hasOwn(input, key));
   const unknown = Object.keys(input).filter((key) => !allowed.has(key));
-  if (missing.length > 0 || unknown.length > 0) {
+  if (missing.length || unknown.length) {
     fail(
       `violates the closed shape (missing=${missing.join(",") || "none"}; unknown=${unknown.join(",") || "none"})`,
     );
@@ -151,67 +196,69 @@ export function parseExternalProviderCanaryConfig(
   if (input.schema !== EXTERNAL_PROVIDER_CANARY_CONFIG_SCHEMA) {
     fail("schema is unsupported");
   }
-  const operationKind = requiredString(input.operationKind, "operationKind");
+  const operationKind = string(input.operationKind, "operationKind");
   if (
     !(PROVIDER_OPERATION_KINDS as readonly string[]).includes(operationKind)
   ) {
     fail("operationKind is unsupported");
   }
-  const moduleSha256 = requiredString(
+  const operatorModuleSha256 = string(
     input.operatorModuleSha256,
     "operatorModuleSha256",
   );
-  if (!/^[a-f0-9]{64}$/.test(moduleSha256)) {
+  if (!/^[a-f0-9]{64}$/.test(operatorModuleSha256)) {
     fail("operatorModuleSha256 must be a lowercase SHA-256 digest");
   }
-  const maxSignatureAgeMs = optionalDuration(
+  const maxSignatureAgeMs = duration(
     input.maxSignatureAgeMs,
     "maxSignatureAgeMs",
+    EXTERNAL_CANARY_MAX_SIGNATURE_AGE_MS,
   );
-  const maxClockSkewMs = optionalDuration(
+  const maxClockSkewMs = duration(
     input.maxClockSkewMs,
     "maxClockSkewMs",
+    EXTERNAL_CANARY_MAX_CLOCK_SKEW_MS,
   );
   return Object.freeze({
     schema: EXTERNAL_PROVIDER_CANARY_CONFIG_SCHEMA,
-    scenarioFile: requiredString(input.scenarioFile, "scenarioFile"),
-    authorizationFile: requiredString(
-      input.authorizationFile,
-      "authorizationFile",
+    scenarioDefinitionFile: string(
+      input.scenarioDefinitionFile,
+      "scenarioDefinitionFile",
     ),
+    authorizationFile: string(input.authorizationFile, "authorizationFile"),
     operationKind: operationKind as ProviderOperationKind,
-    providerTargetFile: requiredString(
-      input.providerTargetFile,
-      "providerTargetFile",
-    ),
-    operationInputFile: requiredString(
-      input.operationInputFile,
-      "operationInputFile",
-    ),
-    failureProbesFile: requiredString(
-      input.failureProbesFile,
-      "failureProbesFile",
-    ),
-    manifestAuthorityPublicKeyFiles: publicKeyFiles(
+    providerTargetFile: string(input.providerTargetFile, "providerTargetFile"),
+    operationInputFile: string(input.operationInputFile, "operationInputFile"),
+    failureProbesFile: string(input.failureProbesFile, "failureProbesFile"),
+    manifestAuthorityPublicKeyFiles: files(
       input.manifestAuthorityPublicKeyFiles,
       "manifestAuthorityPublicKeyFiles",
     ),
-    observerPublicKeyFiles: publicKeyFiles(
+    observerPublicKeyFiles: files(
       input.observerPublicKeyFiles,
       "observerPublicKeyFiles",
     ),
-    semanticJudgePublicKeyFiles: publicKeyFiles(
+    semanticJudgePublicKeyFiles: files(
       input.semanticJudgePublicKeyFiles,
       "semanticJudgePublicKeyFiles",
     ),
-    operatorModuleFile: requiredString(
-      input.operatorModuleFile,
-      "operatorModuleFile",
-    ),
-    operatorModuleSha256: moduleSha256,
-    outputDir: requiredString(input.outputDir, "outputDir"),
+    operatorModuleFile: string(input.operatorModuleFile, "operatorModuleFile"),
+    operatorModuleSha256,
+    operatorStateDir: string(input.operatorStateDir, "operatorStateDir"),
+    outputDir: string(input.outputDir, "outputDir"),
     ...(maxSignatureAgeMs === undefined ? {} : { maxSignatureAgeMs }),
     ...(maxClockSkewMs === undefined ? {} : { maxClockSkewMs }),
+  });
+}
+
+/** Read a byte-canonical, executable-free catalog scenario definition. */
+export function readCanonicalProviderScenarioDefinition(
+  file: string,
+  operationKind: ProviderOperationKind,
+): ScenarioDefinition {
+  return parseProviderCanaryScenarioSnapshot({
+    bytes: readFileSync(file),
+    operationKind,
   });
 }
 
@@ -219,107 +266,276 @@ function readJson(file: string, label: string): unknown {
   try {
     return JSON.parse(readFileSync(file, "utf8"));
   } catch (error) {
-    // error-policy:J2 Preserve the exact input boundary that failed.
-    throw new Error(`failed to read ${label} from ${file}`, { cause: error });
+    // error-policy:J2 Retain the input boundary without echoing private content.
+    throw new Error(`failed to read ${label}`, { cause: error });
   }
 }
 
-function resolveFrom(baseDir: string, candidate: string): string {
+function resolve(baseDir: string, candidate: string): string {
   return path.resolve(baseDir, candidate);
 }
 
-function readPublicKeys(
+function readKeys(
   baseDir: string,
-  files: readonly [string, ...string[]],
+  paths: readonly [string, ...string[]],
 ): [string, ...string[]] {
-  return files.map((file) =>
-    readFileSync(resolveFrom(baseDir, file), "utf8"),
-  ) as [string, ...string[]];
+  return paths.map((file) => readFileSync(resolve(baseDir, file), "utf8")) as [
+    string,
+    ...string[],
+  ];
 }
 
-function preflightEvidenceTrustPins(input: {
-  manifestAuthorityPublicKeysPem: readonly [string, ...string[]];
-  observerPublicKeysPem: readonly [string, ...string[]];
-  semanticJudgePublicKeysPem: readonly [string, ...string[]];
-  manifestAuthorityKeyId: string;
-  observerKeyIds: readonly string[];
-  semanticJudgeKeyId: string;
+/** Require a pre-existing state directory private to the current user. */
+export function validateProtectedOperatorStateDirectory(
+  directory: string,
+): string {
+  const absolute = path.resolve(directory);
+  const entry = lstatSync(absolute);
+  const actual = realpathSync(absolute);
+  const status = statSync(actual);
+  if (entry.isSymbolicLink() || !status.isDirectory()) {
+    throw new Error(
+      "external provider-canary operatorStateDir must be a real directory",
+    );
+  }
+  if (status.uid !== process.getuid?.() || (status.mode & 0o077) !== 0) {
+    throw new Error(
+      "external provider-canary operatorStateDir must be current-user-owned with mode 0700 or stricter",
+    );
+  }
+  return actual;
+}
+
+function fsyncDirectory(directory: string): void {
+  const descriptor = openSync(directory, "r");
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function writeExclusive(file: string, value: unknown): void {
+  const descriptor = openSync(file, "wx", 0o600);
+  try {
+    writeFileSync(descriptor, `${JSON.stringify(value)}\n`);
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  fsyncDirectory(path.dirname(file));
+}
+
+/** Exclusively consume the signed manifest before operator code can run. */
+export function reserveExternalCanaryRun(input: {
+  operatorStateDir: string;
+  manifestSha256: string;
+  scenarioId: string;
+  runId: string;
+  now?: Date;
+}): ExternalCanaryJournalReservation {
+  const stateDir = validateProtectedOperatorStateDirectory(
+    input.operatorStateDir,
+  );
+  const value: ExternalCanaryRunJournal = {
+    schema: JOURNAL_SCHEMA,
+    manifestSha256: input.manifestSha256,
+    scenarioId: input.scenarioId,
+    runId: input.runId,
+    status: "in-progress",
+    updatedAtIso: (input.now ?? new Date()).toISOString(),
+  };
+  const file = path.join(stateDir, `${input.manifestSha256}.journal.json`);
+  try {
+    writeExclusive(file, value);
+  } catch (error) {
+    if (existsSync(file)) {
+      throw new Error(
+        "external provider-canary manifest was already started; concurrent, crashed, consumed, and unreconciled runs cannot replay",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+  return { file, value };
+}
+
+/** Durably close a run as consumed or requiring manual reconciliation. */
+export function transitionExternalCanaryRun(
+  reservation: ExternalCanaryJournalReservation,
+  status: Exclude<ExternalCanaryJournalStatus, "in-progress">,
+  now = new Date(),
+): void {
+  const current = JSON.parse(
+    readFileSync(reservation.file, "utf8"),
+  ) as ExternalCanaryRunJournal;
+  if (
+    current.schema !== JOURNAL_SCHEMA ||
+    current.manifestSha256 !== reservation.value.manifestSha256 ||
+    current.status !== "in-progress"
+  ) {
+    throw new Error(
+      "external provider-canary journal no longer matches its reservation",
+    );
+  }
+  const temporary = `${reservation.file}.${process.pid}.tmp`;
+  writeExclusive(temporary, {
+    ...current,
+    status,
+    updatedAtIso: now.toISOString(),
+  });
+  renameSync(temporary, reservation.file);
+  fsyncDirectory(path.dirname(reservation.file));
+}
+
+/** Fully stage output while keeping the final path absent. */
+export function stageExternalCanaryDirectory(
+  outputDir: string,
+  manifestSha256: string,
+  writeStaging: (stagingDirectory: string) => void,
+): ExternalCanaryPublicationReservation {
+  const output = path.resolve(outputDir);
+  const parent = path.dirname(output);
+  const staging = path.join(
+    parent,
+    `.${path.basename(output)}.${manifestSha256}.staging`,
+  );
+  const lock = path.join(parent, `.${path.basename(output)}.publish.lock`);
+  if (existsSync(output)) {
+    throw new Error("external provider-canary outputDir already exists");
+  }
+  const lockDescriptor = openSync(lock, "wx", 0o600);
+  try {
+    fsyncSync(lockDescriptor);
+    fsyncDirectory(parent);
+    if (existsSync(output)) {
+      throw new Error("external provider-canary outputDir already exists");
+    }
+    mkdirSync(staging, { recursive: false, mode: 0o700 });
+    writeStaging(staging);
+    fsyncDirectory(staging);
+    return { output, staging, lock, lockDescriptor };
+  } catch (error) {
+    rmSync(staging, { recursive: true, force: true });
+    closeSync(lockDescriptor);
+    unlinkSync(lock);
+    fsyncDirectory(parent);
+    throw error;
+  }
+}
+
+/** Discard a staged output after a pre-publication failure. */
+export function abortExternalCanaryPublication(
+  reservation: ExternalCanaryPublicationReservation,
+): void {
+  rmSync(reservation.staging, { recursive: true, force: true });
+  closeSync(reservation.lockDescriptor);
+  unlinkSync(reservation.lock);
+  fsyncDirectory(path.dirname(reservation.output));
+}
+
+/** Expose staged output atomically; callers must first close durable state. */
+export function commitExternalCanaryPublication(
+  reservation: ExternalCanaryPublicationReservation,
+): void {
+  renameSync(reservation.staging, reservation.output);
+  fsyncDirectory(path.dirname(reservation.output));
+  closeSync(reservation.lockDescriptor);
+  unlinkSync(reservation.lock);
+  fsyncDirectory(path.dirname(reservation.output));
+}
+
+/** Testable transaction ordering: durable consumption always precedes exposure. */
+export function consumeThenPublishExternalCanary(
+  journal: ExternalCanaryJournalReservation,
+  publication: ExternalCanaryPublicationReservation,
+  transition: typeof transitionExternalCanaryRun = transitionExternalCanaryRun,
+  onConsumed: () => void = () => {},
+): void {
+  try {
+    transition(journal, "consumed");
+  } catch (error) {
+    abortExternalCanaryPublication(publication);
+    throw error;
+  }
+  onConsumed();
+  commitExternalCanaryPublication(publication);
+}
+
+function stageProviderQualificationOutput(
+  outputDir: string,
+  manifestSha256: string,
+  artifact: Parameters<
+    typeof writeProviderQualificationOutputIntoReservedDirectory
+  >[1],
+): ExternalCanaryPublicationReservation {
+  return stageExternalCanaryDirectory(outputDir, manifestSha256, (staging) => {
+    writeProviderQualificationOutputIntoReservedDirectory(staging, artifact);
+    for (const name of ["qualification.json", "qualification.md"]) {
+      const descriptor = openSync(path.join(staging, name), "r");
+      try {
+        fsyncSync(descriptor);
+      } finally {
+        closeSync(descriptor);
+      }
+    }
+  });
+}
+
+function preflightPins(input: {
+  authority: readonly [string, ...string[]];
+  observers: readonly [string, ...string[]];
+  semantic: readonly [string, ...string[]];
+  authorityId: string;
+  observerIds: readonly string[];
+  semanticId: string;
 }): void {
-  const authorityPins = normalizeProviderQualificationPublicKeyPins(
-    input.manifestAuthorityPublicKeysPem,
-    "manifestAuthorityPublicKeyFiles",
-  );
-  const observerPins = normalizeProviderQualificationPublicKeyPins(
-    input.observerPublicKeysPem,
-    "observerPublicKeyFiles",
-  );
-  const semanticPins = normalizeProviderQualificationPublicKeyPins(
-    input.semanticJudgePublicKeysPem,
-    "semanticJudgePublicKeyFiles",
-  );
-  const authorityIds = new Set(authorityPins.map((pin) => pin.keyId));
-  const observerIds = new Set(observerPins.map((pin) => pin.keyId));
-  const semanticIds = new Set(semanticPins.map((pin) => pin.keyId));
-  if (!authorityIds.has(input.manifestAuthorityKeyId)) {
-    throw new Error(
-      "external provider-canary manifest authority pin does not include the authorized signer",
+  const ids = (pins: readonly [string, ...string[]], label: string) =>
+    new Set(
+      normalizeProviderQualificationPublicKeyPins(pins, label).map(
+        (pin) => pin.keyId,
+      ),
     );
+  const authority = ids(input.authority, "manifestAuthorityPublicKeyFiles");
+  const observers = ids(input.observers, "observerPublicKeyFiles");
+  const semantic = ids(input.semantic, "semanticJudgePublicKeyFiles");
+  if (!authority.has(input.authorityId))
+    throw new Error("authority signer is not pinned");
+  if (input.observerIds.some((id) => !observers.has(id))) {
+    throw new Error("an observer signer is not pinned");
   }
-  for (const keyId of input.observerKeyIds) {
-    if (!observerIds.has(keyId)) {
-      throw new Error(
-        "external provider-canary observer pins do not include every manifest observer signer",
-      );
-    }
+  if (!semantic.has(input.semanticId))
+    throw new Error("semantic signer is not pinned");
+  for (const id of authority) {
+    if (observers.has(id) || semantic.has(id))
+      throw new Error("trust keys are not disjoint");
   }
-  if (!semanticIds.has(input.semanticJudgeKeyId)) {
-    throw new Error(
-      "external provider-canary semantic pins do not include the manifest judge signer",
-    );
-  }
-  for (const keyId of authorityIds) {
-    if (observerIds.has(keyId) || semanticIds.has(keyId)) {
-      throw new Error(
-        "external provider-canary trust domains must use disjoint public keys",
-      );
-    }
-  }
-  for (const keyId of observerIds) {
-    if (semanticIds.has(keyId)) {
-      throw new Error(
-        "external provider-canary trust domains must use disjoint public keys",
-      );
-    }
+  for (const id of observers) {
+    if (semantic.has(id)) throw new Error("trust keys are not disjoint");
   }
 }
 
-/** Import one explicitly pinned trusted operator bundle. */
+/** Import exactly the reviewed operator bundle bytes. */
 export async function loadPinnedExternalProviderCapabilityModule(
   absoluteModuleFile: string,
   expectedSha256: string,
 ): Promise<ExternalProviderCapabilityModule> {
-  const moduleBytes = readFileSync(absoluteModuleFile);
-  const actualSha256 = createHash("sha256").update(moduleBytes).digest("hex");
-  if (actualSha256 !== expectedSha256) {
+  const bytes = readFileSync(absoluteModuleFile);
+  if (createHash("sha256").update(bytes).digest("hex") !== expectedSha256) {
+    throw new Error("external provider-canary operator module digest mismatch");
+  }
+  const text = bytes.toString("utf8");
+  if (!Buffer.from(text, "utf8").equals(bytes)) {
     throw new Error(
-      "external provider-canary operator module digest does not match its config pin",
+      "external provider-canary operator module must be UTF-8 JavaScript",
     );
   }
-  const source = moduleBytes.toString("utf8");
-  if (!Buffer.from(source, "utf8").equals(moduleBytes)) {
-    throw new Error(
-      "external provider-canary operator module must be canonical UTF-8 JavaScript",
-    );
-  }
-  // A data URL executes the exact bytes that were hashed and deliberately has
-  // no relative module-resolution base. Operators must provide a self-contained
-  // bundle; provider SDK dependencies cannot drift behind a pinned entry file.
   const imported = (await import(
-    `data:text/javascript;base64,${moduleBytes.toString("base64")}`
+    `data:text/javascript;base64,${bytes.toString("base64")}`
   )) as Partial<ExternalProviderCapabilityModule>;
   if (typeof imported.createExternalProviderCanaryCapabilities !== "function") {
     throw new Error(
-      "external provider-canary operator module must export createExternalProviderCanaryCapabilities",
+      "external provider-canary operator module lacks its capability factory",
     );
   }
   return imported as ExternalProviderCapabilityModule;
@@ -329,130 +545,140 @@ export async function executeExternalProviderCanaryFromConfig(
   configFile: string,
   dependencies: { loadOperatorModule?: ModuleLoader } = {},
 ): Promise<number> {
-  const absoluteConfigFile = path.resolve(configFile);
-  const baseDir = path.dirname(absoluteConfigFile);
+  const configPath = path.resolve(configFile);
+  const baseDir = path.dirname(configPath);
   const config = parseExternalProviderCanaryConfig(
-    readJson(absoluteConfigFile, "external provider-canary config"),
+    readJson(configPath, "config"),
   );
-  const scenario = (
-    await loadScenarioFile(resolveFrom(baseDir, config.scenarioFile))
-  ).scenario;
+  const scenario = readCanonicalProviderScenarioDefinition(
+    resolve(baseDir, config.scenarioDefinitionFile),
+    config.operationKind,
+  );
   const authorization = readJson(
-    resolveFrom(baseDir, config.authorizationFile),
+    resolve(baseDir, config.authorizationFile),
     "operator authorization",
   ) as ProviderCanaryAuthorization;
   const providerTarget = readJson(
-    resolveFrom(baseDir, config.providerTargetFile),
-    "provider target",
+    resolve(baseDir, config.providerTargetFile),
+    "target",
   );
   const operationInput = readJson(
-    resolveFrom(baseDir, config.operationInputFile),
-    "provider operation input",
+    resolve(baseDir, config.operationInputFile),
+    "input",
   );
   const failureProbes = readJson(
-    resolveFrom(baseDir, config.failureProbesFile),
-    "provider failure probes",
+    resolve(baseDir, config.failureProbesFile),
+    "failure probes",
   ) as readonly [
     ProviderFailureProbeMaterial,
     ProviderFailureProbeMaterial,
     ...ProviderFailureProbeMaterial[],
   ];
-  const authorityPins = readPublicKeys(
-    baseDir,
-    config.manifestAuthorityPublicKeyFiles,
-  );
-  const observerPins = readPublicKeys(baseDir, config.observerPublicKeyFiles);
-  const semanticPins = readPublicKeys(
-    baseDir,
-    config.semanticJudgePublicKeyFiles,
-  );
-
-  // Validate every signed private preimage before importing operator code that
-  // can access credentials or perform network I/O.
+  const authority = readKeys(baseDir, config.manifestAuthorityPublicKeyFiles);
+  const observers = readKeys(baseDir, config.observerPublicKeyFiles);
+  const semantic = readKeys(baseDir, config.semanticJudgePublicKeyFiles);
   const preflight = preflightAuthorizedProviderCanaryExecution({
     scenario,
     authorization,
-    pinnedManifestAuthorityPublicKeysPem: authorityPins,
+    pinnedManifestAuthorityPublicKeysPem: authority,
     operationKind: config.operationKind,
     providerTarget,
     operationInput,
     failureProbes,
   });
-  preflightEvidenceTrustPins({
-    manifestAuthorityPublicKeysPem: authorityPins,
-    observerPublicKeysPem: observerPins,
-    semanticJudgePublicKeysPem: semanticPins,
-    manifestAuthorityKeyId:
-      preflight.authorization.manifest.trust.manifestAuthorityKeyId,
-    observerKeyIds: preflight.authorization.manifest.trust.observerSigners.map(
-      (signer) => signer.keyId,
+  preflightPins({
+    authority,
+    observers,
+    semantic,
+    authorityId: preflight.authorization.manifest.trust.manifestAuthorityKeyId,
+    observerIds: preflight.authorization.manifest.trust.observerSigners.map(
+      (item) => item.keyId,
     ),
-    semanticJudgeKeyId: preflight.authorization.manifest.models.judgeKeyId,
+    semanticId: preflight.authorization.manifest.models.judgeKeyId,
   });
-  const outputDir = resolveFrom(baseDir, config.outputDir);
-  mkdirSync(outputDir, { recursive: false, mode: 0o700 });
-  let outputWritten = false;
-  const loadOperatorModule =
-    dependencies.loadOperatorModule ??
-    loadPinnedExternalProviderCapabilityModule;
+  const reservation = reserveExternalCanaryRun({
+    operatorStateDir: resolve(baseDir, config.operatorStateDir),
+    manifestSha256: preflight.authorization.manifest.manifestSha256,
+    scenarioId: scenario.id,
+    runId: preflight.authorization.manifest.run.runId,
+  });
+  let publication: ExternalCanaryPublicationReservation | undefined;
+  let consumed = false;
+  let rendered: string;
   try {
-    const module = await loadOperatorModule(
-      resolveFrom(baseDir, config.operatorModuleFile),
-      config.operatorModuleSha256,
-    );
-    const operatorCapabilities =
-      await module.createExternalProviderCanaryCapabilities({
-        scenarioId: scenario.id,
-        operationKind: config.operationKind,
-        runId: preflight.authorization.manifest.run.runId,
-        manifestSha256: preflight.authorization.manifest.manifestSha256,
-      });
+    const module = await (
+      dependencies.loadOperatorModule ??
+      loadPinnedExternalProviderCapabilityModule
+    )(resolve(baseDir, config.operatorModuleFile), config.operatorModuleSha256);
+    const capabilities = await module.createExternalProviderCanaryCapabilities({
+      scenarioId: scenario.id,
+      operationKind: config.operationKind,
+      runId: preflight.authorization.manifest.run.runId,
+      manifestSha256: preflight.authorization.manifest.manifestSha256,
+    });
     const result = await executeExternalProviderCanary({
       scenario,
       authorization,
-      pinnedManifestAuthorityPublicKeysPem: authorityPins,
+      pinnedManifestAuthorityPublicKeysPem: authority,
       operationKind: config.operationKind,
       providerTarget,
       operationInput,
       failureProbes,
-      pinnedObserverPublicKeysPem: observerPins,
-      pinnedSemanticJudgePublicKeysPem: semanticPins,
+      pinnedObserverPublicKeysPem: observers,
+      pinnedSemanticJudgePublicKeysPem: semantic,
       capabilities: {
-        ...operatorCapabilities,
+        ...capabilities,
         publisher: {
           async publish(artifact) {
-            writeProviderQualificationOutputIntoReservedDirectory(
-              outputDir,
+            publication = stageProviderQualificationOutput(
+              resolve(baseDir, config.outputDir),
+              preflight.authorization.manifest.manifestSha256,
               artifact,
             );
-            outputWritten = true;
           },
         },
       },
-      ...(config.maxSignatureAgeMs === undefined
-        ? {}
-        : { maxSignatureAgeMs: config.maxSignatureAgeMs }),
-      ...(config.maxClockSkewMs === undefined
-        ? {}
-        : { maxClockSkewMs: config.maxClockSkewMs }),
+      maxSignatureAgeMs:
+        config.maxSignatureAgeMs ?? EXTERNAL_CANARY_MAX_SIGNATURE_AGE_MS,
+      maxClockSkewMs:
+        config.maxClockSkewMs ?? EXTERNAL_CANARY_MAX_CLOCK_SKEW_MS,
     });
-    process.stdout.write(renderProviderQualificationMarkdown(result.artifact));
-    return 0;
+    if (!publication) {
+      throw new Error(
+        "external provider-canary produced no staged publication",
+      );
+    }
+    try {
+      transitionExternalCanaryRun(reservation, "consumed");
+    } catch (error) {
+      abortExternalCanaryPublication(publication);
+      publication = undefined;
+      throw error;
+    }
+    consumed = true;
+    commitExternalCanaryPublication(publication);
+    publication = undefined;
+    rendered = renderProviderQualificationMarkdown(result.artifact);
   } catch (error) {
-    if (!outputWritten) {
-      try {
-        rmdirSync(outputDir);
-      } catch (cleanupError) {
-        // error-policy:J2 A dirty reservation is security-relevant and retains
-        // both the execution and local cleanup failures for the operator.
-        throw new AggregateError(
-          [error, cleanupError],
-          "external provider-canary execution failed and its output reservation could not be removed",
-        );
-      }
+    if (consumed) throw error;
+    if (publication) {
+      abortExternalCanaryPublication(publication);
+      publication = undefined;
+    }
+    try {
+      transitionExternalCanaryRun(reservation, "reconciliation-required");
+    } catch (journalError) {
+      // error-policy:J2 Both failures demand protected-state reconciliation.
+      throw new AggregateError(
+        [error, journalError],
+        "canary and journal transition failed",
+      );
     }
     throw error;
   }
+  // The security transaction is complete. A stdout failure cannot mutate it.
+  process.stdout.write(rendered);
+  return 0;
 }
 
 export async function runExternalProviderCanaryCli(
@@ -467,14 +693,17 @@ export async function runExternalProviderCanaryCli(
   return executeExternalProviderCanaryFromConfig(argv[0]);
 }
 
+/** Constant fatal text cannot reflect secrets from operator-controlled errors. */
+export function renderSecretSafeExternalCanaryFatal(): string {
+  return "[eliza-provider-canary] fatal: execution refused; inspect the protected operator journal for reconciliation\n";
+}
+
 export function runExternalProviderCanaryCliAndExit(): void {
   runExternalProviderCanaryCli()
     .then((code) => process.exit(code))
-    // error-policy:J1 The executable boundary reports refusal and exits nonzero.
-    .catch((error: unknown) => {
-      process.stderr.write(
-        `[eliza-provider-canary] fatal: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-      );
+    // error-policy:J1 Never render an untrusted error or stack at this boundary.
+    .catch(() => {
+      process.stderr.write(renderSecretSafeExternalCanaryFatal());
       process.exit(1);
     });
 }

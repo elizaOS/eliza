@@ -275,8 +275,11 @@ independent semantic judge, or make evidence publishable.
 ### External canary execution
 
 The executable controller boundary accepts one closed operator config after the
-manifest has been authorized. It validates the signed scenario, target, input,
-and failure-probe preimages before importing any credential-capable code. The
+manifest has been authorized. Version 2 accepts the scenario only as
+executable-free, key-sorted canonical JSON (one trailing newline), rejects IDs
+outside the repository-owned 13-canary catalog, and requires the catalog's exact
+operation kind. It validates the signed scenario, target, input, and
+failure-probe preimages before importing any credential-capable code. The
 operator capability module is a prebuilt ESM bundle whose exact bytes are
 pinned by SHA-256; its factory supplies authenticated ingress, an independent
 observer, isolated trajectory verification, an independent semantic judge, and
@@ -290,8 +293,8 @@ bun run --cwd packages/scenario-runner provider-canary -- \
 
 ```json
 {
-  "schema": "eliza.external-provider-canary-config.v1",
-  "scenarioFile": "provider.gmail.confirmed-send.scenario.ts",
+  "schema": "eliza.external-provider-canary-config.v2",
+  "scenarioDefinitionFile": "scenario.json",
   "authorizationFile": "authorization.json",
   "operationKind": "gmail.email-send",
   "providerTargetFile": "provider-target.json",
@@ -302,6 +305,7 @@ bun run --cwd packages/scenario-runner provider-canary -- \
   "semanticJudgePublicKeyFiles": ["keys/semantic-judge.pub.pem"],
   "operatorModuleFile": "operator/provider-capabilities.mjs",
   "operatorModuleSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "operatorStateDir": "/absolute/private/operator-state",
   "outputDir": "qualification-output"
 }
 ```
@@ -315,6 +319,23 @@ sandbox; a digest proves exact bytes, not that those bytes are safe. Every
 capability must still produce the independently signed evidence required by the
 qualifier. Missing capabilities, an invalid signature, module drift, failed
 cleanup, or an unpublishable decision exits nonzero and writes no output.
+
+Create `operatorStateDir` before execution with mode `0700`; it must be a real,
+current-user-owned directory, not a symlink. The CLI exclusively and durably
+records the signed manifest as `in-progress` before operator code loads, then
+fully stages the capsule while it remains invisible, durably transitions to
+`consumed`, and only then atomically exposes the directory. A failure before
+durable consumption becomes `reconciliation-required`; a process crash leaves
+`in-progress`. A publication failure after consumption retains the staged
+capsule and the `consumed` state for manual recovery without provider replay.
+All three states refuse replay and require an operator to reconcile provider state rather
+than deleting or editing the journal. Freshness settings are optional tightening
+controls only: signature age cannot exceed five minutes and clock skew cannot
+exceed five seconds. Publication is staged in an empty sibling directory and
+renamed into place atomically, so readers never observe a partial capsule. Fatal
+CLI output never includes operator errors, stacks, paths, credentials, targets,
+or private input; detailed reconciliation belongs in the protected journal and
+operator telemetry.
 
 ### Offline qualification verification
 
