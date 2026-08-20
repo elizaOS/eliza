@@ -3608,6 +3608,17 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		) {
 			continue;
 		}
+		// A tool-declared read-only failure (FILE ls/read/grep/glob miss) leaves
+		// no broken state and must not own the turn's terminal message: an
+		// exploratory first-step miss otherwise reads as "the last step failed"
+		// over a finished deliverable (live 2026-08-20).
+		if (
+			step.result.success === false &&
+			(step.result.data as { readOnlyOperation?: unknown } | undefined)
+				?.readOnlyOperation === true
+		) {
+			continue;
+		}
 		const operationKey = plannerToolOperationKey(step.toolCall, step.result);
 		if (step.result.success === false || step.result.error != null) {
 			unresolvedByOperation.delete(operationKey);
