@@ -58,15 +58,16 @@ describe("landing Shared-agent capability contract", () => {
     ).toBe(LANDING_DEMO_SCENARIOS.length);
   });
 
-  test("gives every room a concise conversation and one closing recap", () => {
+  test("gives every room a full mini-story with working and final recaps", () => {
     for (const scenario of LANDING_DEMO_SCENARIOS) {
-      expect(scenario.steps.length).toBeGreaterThanOrEqual(7);
-      expect(scenario.steps.length).toBeLessThanOrEqual(8);
+      expect(scenario.steps).toHaveLength(12);
       expect(scenario.steps.at(-1)?.kind).toBe("card");
       expect(
         scenario.steps.filter((step) => step.kind === "card"),
-      ).toHaveLength(1);
-      expect(scenario.steps.some((step) => step.kind === "eliza")).toBe(true);
+      ).toHaveLength(2);
+      expect(
+        scenario.steps.filter((step) => step.kind === "eliza").length,
+      ).toBeGreaterThanOrEqual(2);
     }
   });
 

@@ -66,9 +66,10 @@ test("reduced motion renders the settled friends room and all room labels", asyn
     "data-demo-visited",
     "friends,co-parenting,household,trip,community",
   );
-  await expect(demo).toHaveAttribute("data-demo-messages", "8");
+  await expect(demo).toHaveAttribute("data-demo-messages", "12");
   await expect(page.locator(".landing-scenario-strip li")).toHaveCount(5);
-  await expect(page.locator(".landing-demo-card")).toHaveCount(1);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(2);
+  await expect(page.getByText(/of 5$/, { exact: false })).toHaveCount(0);
 
   const assistantMessages = await page
     .locator(".landing-bubble--eliza")

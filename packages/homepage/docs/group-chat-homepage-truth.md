@@ -13,6 +13,8 @@ what still needs connector-by-connector runtime proof.
 - Plain-language positioning around shared clarity and keeping a plan together.
 - A finite pass through friends, co-parenting, household, trip, and community
   rooms, provided each room uses only its own visible conversation context.
+- An intermediate and final recap in each room so the demo shows how Eliza
+  tracks a plan as the conversation changes, not only the terminal answer.
 
 The demo must remain illustrative, use fictional names, and keep every Eliza
 statement inside the bounded current-conversation capability contract enforced

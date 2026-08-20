@@ -84,7 +84,7 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test("all five rooms play once and the final room starts at the top", async ({
+test("all five longer rooms play once without hiding usable thread space", async ({
   page,
 }) => {
   test.setTimeout(75_000);
@@ -103,7 +103,7 @@ test("all five rooms play once and the final room starts at the top", async ({
     "data-demo-visited",
     "friends,co-parenting,household,trip,community",
   );
-  await expect(phone).toHaveAttribute("data-demo-messages", "7");
+  await expect(phone).toHaveAttribute("data-demo-messages", "12");
 
   await expect
     .poll(
@@ -117,10 +117,13 @@ test("all five rooms play once and the final room starts at the top", async ({
           const threadRect = thread.getBoundingClientRect();
           const firstRect = firstMessage.getBoundingClientRect();
           const messageRect = lastMessage.getBoundingClientRect();
-          return (
-            firstRect.top - threadRect.top <= 70 &&
-            messageRect.bottom <= threadRect.bottom
-          );
+          if (thread.scrollHeight <= thread.clientHeight + 1) {
+            return (
+              firstRect.top - threadRect.top <= 70 &&
+              messageRect.bottom <= threadRect.bottom
+            );
+          }
+          return threadRect.bottom - messageRect.bottom <= 18;
         }),
       { timeout: 20_000 },
     )

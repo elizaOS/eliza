@@ -441,7 +441,7 @@ function PhoneMockup() {
               <span className="landing-phone-name landing-phone-name--group">
                 <span>
                   <strong>{scenario.roomName}</strong>
-                  <small>{`${scenario.members.length + 2} people · ${scenarioIndex + 1} of ${DEMO_SCENARIOS.length}`}</small>
+                  <small>{`${scenario.members.length + 2} people`}</small>
                 </span>
                 <svg
                   viewBox="0 0 24 24"
