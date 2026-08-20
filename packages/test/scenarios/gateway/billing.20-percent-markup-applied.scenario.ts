@@ -19,7 +19,6 @@ export default scenario({
   description:
     "Calls the production gateway billing function and checks exact segment, raw-cost, markup, and billed-cost arithmetic. It does not claim a provider charge.",
   isolation: "per-scenario",
-  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",

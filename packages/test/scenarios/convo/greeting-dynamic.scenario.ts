@@ -98,9 +98,6 @@ export default scenario({
   description:
     "Scripted port of the dynamic greeting scenario: sends a single greeting and verifies the GREET_USER action is captured with success=true.",
 
-  requires: {
-    plugins: ["greet-test"],
-  },
   isolation: "per-scenario",
 
   seed: [

@@ -27,7 +27,6 @@ export default scenario({
   description:
     "Runs the production BlueBubbles REST client against a deterministic HTTP boundary and proves exact target/body, credential-at-fetch, confirmation ordering, and replay suppression. It does not claim live iMessage delivery.",
   isolation: "per-scenario",
-  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",

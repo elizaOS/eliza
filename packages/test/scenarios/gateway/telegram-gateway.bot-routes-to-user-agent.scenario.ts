@@ -20,7 +20,6 @@ export default scenario({
   description:
     "Exercises the production Telegram adapter's secret verification and event normalization, then proves project-scoped ownership and replay suppression. It does not claim Telegram delivery.",
   isolation: "per-scenario",
-  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",

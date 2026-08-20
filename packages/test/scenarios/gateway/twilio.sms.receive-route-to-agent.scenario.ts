@@ -27,7 +27,6 @@ export default scenario({
   description:
     "Exercises production Twilio signature verification and SMS normalization, then proves project-scoped ownership and replay suppression. It does not claim Twilio delivery.",
   isolation: "per-scenario",
-  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",

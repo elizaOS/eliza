@@ -27,7 +27,6 @@ export default scenario({
   description:
     "Runs the production Twilio SMS helper against a deterministic HTTP boundary and proves exact request, Basic auth, idempotency key, confirmation ordering, and replay suppression. It does not claim provider delivery.",
   isolation: "per-scenario",
-  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",

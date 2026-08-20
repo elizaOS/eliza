@@ -18,7 +18,6 @@ export default scenario({
   description:
     "Exercises production voice direction and TwiML helpers at the authenticated route's domain seam. It does not place or receive a live PSTN call.",
   isolation: "per-scenario",
-  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",

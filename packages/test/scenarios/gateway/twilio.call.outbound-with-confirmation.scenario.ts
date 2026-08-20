@@ -27,7 +27,6 @@ export default scenario({
   description:
     "Runs the production Twilio voice helper against a deterministic HTTP boundary and proves exact target/TwiML, Basic auth, idempotency key, confirmation ordering, and replay suppression. It does not claim a live PSTN call.",
   isolation: "per-scenario",
-  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",

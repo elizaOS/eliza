@@ -27,7 +27,6 @@ export default scenario({
   description:
     "Exercises the production constant-time BlueBubbles webhook-secret verifier and a stable chat/message identity ledger. It does not claim a live macOS BlueBubbles server.",
   isolation: "per-scenario",
-  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",

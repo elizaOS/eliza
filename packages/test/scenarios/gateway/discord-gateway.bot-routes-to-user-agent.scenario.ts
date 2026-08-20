@@ -18,7 +18,6 @@ export default scenario({
   description:
     "Runs the production Discord bounded-routing helper across a transient failure and typed success response. It does not claim Discord API delivery.",
   isolation: "per-scenario",
-  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",

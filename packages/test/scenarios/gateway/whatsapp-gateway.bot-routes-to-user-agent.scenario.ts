@@ -20,7 +20,6 @@ export default scenario({
   description:
     "Exercises the production WhatsApp adapter's HMAC verification and payload normalization, then proves project-scoped ownership and replay suppression. It does not claim Meta delivery.",
   isolation: "per-scenario",
-  requires: { plugins: ["gateway-deterministic-contract"] },
   rooms: [
     {
       id: "main",
