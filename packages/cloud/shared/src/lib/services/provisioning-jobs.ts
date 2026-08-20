@@ -107,6 +107,7 @@ import {
   JOB_TYPES,
   type ProvisioningJobType,
 } from "./provisioning-job-types";
+import { jobErrorText } from "./job-error-text";
 import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
 import {
   isWaifuWebhookTargetUrl,
@@ -470,6 +471,7 @@ function adminCanaryImageJobResultToRecord(
 function jobAuditTimestamp(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
+
 
 function agentDowngradeJobDataToRecord(data: AgentDowngradeJobData): Record<string, unknown> {
   return { ...data };
@@ -1254,7 +1256,7 @@ export class ProvisioningRecoveryDegradedError extends ElizaError {
         failures: summary.failures.map(({ jobId, jobType, cause }) => ({
           jobId,
           jobType,
-          error: cause instanceof Error ? cause.message : String(cause),
+          error: jobErrorText(cause),
         })),
       },
       severity: "ephemeral",
@@ -1291,7 +1293,7 @@ function assertRecoveryHealthy(
     failures: summary.failures.map(({ jobId, jobType, cause }) => ({
       jobId,
       jobType,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: jobErrorText(cause),
     })),
   });
   throw new ProvisioningRecoveryDegradedError(phase, summary);
@@ -2247,7 +2249,7 @@ export class ProvisioningJobService {
         logger.error("[provisioning-jobs] Warm-claim credential cleanup failed", {
           agentId: candidate.id,
           orgId: candidate.organization_id,
-          error: error instanceof Error ? error.message : String(error),
+          error: jobErrorText(error),
         });
       }
     }
@@ -2919,7 +2921,7 @@ export class ProvisioningJobService {
       // job; the condition it records is re-observed on the next attempt.
       logger.warn("[provisioning-jobs] failed to record snapshot attempt markers", {
         agentId,
-        error: error instanceof Error ? error.message : String(error),
+        error: jobErrorText(error),
       });
     }
   }
@@ -3050,7 +3052,7 @@ export class ProvisioningJobService {
       } catch (error) {
         logger.warn("[provisioning-jobs] Scheduled backup enqueue failed", {
           agentId: agent.id,
-          error: error instanceof Error ? error.message : String(error),
+          error: jobErrorText(error),
         });
       }
     }
@@ -3108,7 +3110,7 @@ export class ProvisioningJobService {
         return;
       } catch (err) {
         logger.debug("[provisioning-jobs] direct triggerImmediate failed", {
-          error: err instanceof Error ? err.message : String(err),
+          error: jobErrorText(err),
         });
       }
     }
@@ -3131,7 +3133,7 @@ export class ProvisioningJobService {
       });
     } catch (err) {
       logger.debug("[provisioning-jobs] triggerImmediate fire-and-forget failed", {
-        error: err instanceof Error ? err.message : String(err),
+        error: jobErrorText(err),
       });
     }
   }
@@ -3200,7 +3202,7 @@ export class ProvisioningJobService {
             jobId: job.id,
             executionGeneration: job.execution_generation,
             executionOwnerId: this.executionOwnerId,
-            error: error instanceof Error ? error.message : String(error),
+            error: jobErrorText(error),
           });
         })
         .finally(() => {
@@ -3248,7 +3250,7 @@ export class ProvisioningJobService {
           executionOwnerId: this.executionOwnerId,
           operation,
           attempt,
-          error: error instanceof Error ? error.message : String(error),
+          error: jobErrorText(error),
         });
         await this.waitForSettlementRetry(attempt);
       }
@@ -4749,7 +4751,7 @@ export class ProvisioningJobService {
         // retryable failure while preserving the cleanup cause.
         throw new RetryableReplacementCleanupError(
           `Admin canary cleanup remains pending: ${
-            error instanceof Error ? error.message : String(error)
+            jobErrorText(error)
           }`,
           job,
           { cause: error },
@@ -4923,7 +4925,7 @@ export class ProvisioningJobService {
       if (retrySnapshot) {
         throw new RetryableReplacementCleanupError(
           `Admin canary post-cutover convergence interrupted: ${
-            error instanceof Error ? error.message : String(error)
+            jobErrorText(error)
           }`,
           retrySnapshot,
           { cause: error },
@@ -5500,7 +5502,7 @@ export class ProvisioningJobService {
           .catch((error: unknown) => {
             logger.warn("[provisioning-jobs] heartbeat threw", {
               agentId: r.id,
-              error: error instanceof Error ? error.message : String(error),
+              error: jobErrorText(error),
             });
             return false;
           });
@@ -5561,7 +5563,7 @@ export class ProvisioningJobService {
           failed += 1;
           logger.warn("[provisioning-jobs] disconnected recovery failed", {
             agentId: r.id,
-            error: error instanceof Error ? error.message : String(error),
+            error: jobErrorText(error),
           });
         }
       }
@@ -5624,7 +5626,7 @@ export class ProvisioningJobService {
           failed += 1;
           logger.warn("[provisioning-jobs] stuck-provisioning reconcile failed", {
             agentId: r.id,
-            error: error instanceof Error ? error.message : String(error),
+            error: jobErrorText(error),
           });
         }
       }
@@ -5749,7 +5751,7 @@ export class ProvisioningJobService {
         failed += 1;
         logger.warn("[provisioning-jobs] re-enqueue of failed deletion failed", {
           agentId: agent.id,
-          error: error instanceof Error ? error.message : String(error),
+          error: jobErrorText(error),
         });
       }
     }
@@ -5880,7 +5882,7 @@ export class ProvisioningJobService {
     } catch (err) {
       logger.error("[provisioning-jobs] Webhook delivery error", {
         jobId: job.id,
-        error: err instanceof Error ? err.message : String(err),
+        error: jobErrorText(err),
       });
 
       await jobsRepository.update(job.id, {
