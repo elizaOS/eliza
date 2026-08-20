@@ -27,7 +27,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "@biomejs/biome": "2.5.8",
     "@elizaos/cloud-shared": "workspace:*",
     "@types/hashring": "^3.2.5",
     "@types/node": "22.19.17",

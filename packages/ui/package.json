@@ -510,7 +510,7 @@
     "fast-check": "^4.8.0",
     "jsdom": "^29.0.0",
     "pixelmatch": "^7.2.0",
-    "playwright": "^1.61.0",
+    "playwright": "^1.62.1",
     "pngjs": "^7.0.0",
     "postcss": "^8.5.16",
     "react": "19.2.7",
@@ -520,7 +520,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.10"
   },
   "publishConfig": {
     "access": "public",
