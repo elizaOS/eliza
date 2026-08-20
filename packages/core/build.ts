@@ -1321,6 +1321,22 @@ export async function generateTypeScriptDeclarations() {
 		"dist/roles.js",
 		`// Roles subpath entry point (explicit)\nexport * from './node/roles.js';\n`,
 	);
+	await fs.writeFile(
+		"dist/client-public.js",
+		`// Client-public subpath entry point (explicit)\nexport * from './node/client-public.js';\n`,
+	);
+	await fs.writeFile(
+		"dist/atomic-json.js",
+		`// Atomic-json subpath entry point (explicit)\nexport * from './node/utils/atomic-json.js';\n`,
+	);
+	await fs.writeFile(
+		"dist/security/kms.js",
+		`// Security/kms subpath entry point (explicit)\nexport * from './node/security/kms/index.js';\n`,
+	);
+	await fs.writeFile(
+		"dist/security/mcp-server-config.js",
+		`// Security/mcp-server-config subpath entry point (explicit)\nexport * from './node/security/mcp-server-config.js';\n`,
+	);
 	// Create main index.d.ts to re-export all types from node build
 	// This ensures TypeScript resolves all exports when using moduleResolution: bundler
 	// Note: Use .js extension for NodeNext module resolution compatibility
@@ -1331,6 +1347,59 @@ export async function generateTypeScriptDeclarations() {
 
 	// Ensure testing module directory and declarations exist
 	await fs.mkdir("dist/testing", { recursive: true });
+
+	// Verify all flat entrypoints exist — prevents regressions like #22847
+	// where a subpath export in package.json has no corresponding dist/<subpath>.js
+	//
+	// Strategy: for file-style subpaths whose default/import resolves to a
+	// specific .js file inside a subdirectory (dist/node/..., dist/browser/...),
+	// assert that a flat dist/<subpath>.js exists. Directory-style subpaths
+	// (./node, ./browser, ./edge, ./testing) and wildcards are skipped.
+	const pkg = JSON.parse(
+		await fs.readFile("package.json", "utf-8"),
+	) as { exports?: Record<string, unknown> };
+	const missing: string[] = [];
+	for (const [exportPath, config] of Object.entries(pkg.exports ?? {})) {
+		if (
+			!exportPath.startsWith("./") ||
+			exportPath === "./package.json" ||
+			exportPath.includes("*")
+		) {
+			continue;
+		}
+		const subpath = exportPath.slice(2); // strip ./
+		const flatFile = `dist/${subpath}.js`;
+		if (await fs.stat(flatFile).catch(() => null)) {
+			continue; // flat entrypoint already exists
+		}
+		// Determine if this is a file-style subpath that needs a flat entrypoint.
+		// Extract the default/import path from the export config.
+		const defaultPath =
+			typeof config === "object" && config !== null
+				? (config.default ?? config.import ?? "")
+				: "";
+		if (typeof defaultPath !== "string" || !defaultPath.endsWith(".js")) {
+			continue; // not a file-style export
+		}
+		// Skip directory-style subpaths: if defaultPath resolves to
+		//   dist/<dir>/index.js  or  dist/<dir>/index.<variant>.js
+		// (e.g. dist/node/index.node.js, dist/testing/index.js)
+		// it resolves to a directory, not a flat entrypoint.
+		const relative = defaultPath.replace(/^\.\//, "");
+		const dirIndex = relative.match(/^dist\/[^/]+\/index(?:\.[^.]+)?\.js$/);
+		if (dirIndex) {
+			continue;
+		}
+		// For file-style subpaths the flat entrypoint is mandatory.
+		missing.push(
+			`${exportPath}: flat entrypoint ${flatFile} is missing (build must emit it as a re-export)`,
+		);
+	}
+	if (missing.length > 0) {
+		throw new Error(
+			`Missing flat entrypoints for subpath exports:\n${missing.join("\n")}`,
+		);
+	}
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ TypeScript declarations generated in ${duration}s`);
