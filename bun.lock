@@ -2096,6 +2096,24 @@
         "vitest": "4.1.10",
       },
     },
+    "plugins/plugin-maps": {
+      "name": "@elizaos/plugin-maps",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@electric-sql/pglite": "^0.4.5",
+        "@elizaos/cloud-test-mocks": "workspace:*",
+        "@elizaos/plugin-sql": "workspace:*",
+        "@types/node": "^25.0.6",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
+      },
+    },
     "plugins/plugin-matrix": {
       "name": "@elizaos/plugin-matrix",
       "version": "2.0.3-beta.7",
@@ -4094,6 +4112,8 @@
     "@elizaos/plugin-local-inference": ["@elizaos/plugin-local-inference@workspace:plugins/plugin-local-inference"],
 
     "@elizaos/plugin-local-storage": ["@elizaos/plugin-local-storage@workspace:plugins/plugin-local-storage"],
+
+    "@elizaos/plugin-maps": ["@elizaos/plugin-maps@workspace:plugins/plugin-maps"],
 
     "@elizaos/plugin-matrix": ["@elizaos/plugin-matrix@workspace:plugins/plugin-matrix"],
 
