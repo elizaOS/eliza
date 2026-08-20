@@ -593,9 +593,15 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ...(typeof params.topP === "number" ? { topP: params.topP } : {}),
       ...(params.signal ? { abortSignal: params.signal } : {}),
     };
-    modelCall.begin();
     if (onStreamChunk && params.stream === true) {
-      const result = streamText(generation);
+      let result: ReturnType<typeof streamText>;
+      try {
+        modelCall.begin();
+        result = streamText(generation);
+      } catch (error) {
+        modelCall.finish();
+        throw error;
+      }
       const text = Promise.resolve(result.text);
       const toolCalls = Promise.resolve(result.toolCalls);
       const finishReason = Promise.resolve(result.finishReason);
@@ -660,6 +666,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     }
     let result: Awaited<ReturnType<typeof generateText>>;
     try {
+      modelCall.begin();
       result = await generateText({ ...generation });
     } finally {
       modelCall.finish();

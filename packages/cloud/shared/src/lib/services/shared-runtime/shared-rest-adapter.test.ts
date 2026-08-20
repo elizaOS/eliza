@@ -317,9 +317,15 @@ describe("shared-rest-adapter — messages", () => {
       selectedProvider: "mixed" as const,
       callsTruncated: false,
       calls: [
-        { provider: "cerebras" as const, durationMs: 3, fallback: false },
+        {
+          provider: "cerebras" as const,
+          durationMs: 3,
+          fallback: false,
+          privateProviderMetadata: "must-not-cross-the-bridge",
+        },
         { provider: "openrouter" as const, durationMs: 5.1, fallback: true },
       ],
+      privateTrace: "must-not-cross-the-bridge",
     };
     coordinateSharedBridge.mockResolvedValueOnce({
       jsonrpc: "2.0",
@@ -335,32 +341,112 @@ describe("shared-rest-adapter — messages", () => {
       EXECUTION_CTX,
       NAMESPACE,
     );
-    expect(out.timing).toEqual(timing);
+    expect(out.timing).toEqual({
+      replayed: false,
+      durationMs: 8.1,
+      callCount: 2,
+      fallbackCount: 1,
+      selectedProvider: "mixed",
+      callsTruncated: false,
+      calls: [
+        { provider: "cerebras", durationMs: 3, fallback: false },
+        { provider: "openrouter", durationMs: 5.1, fallback: true },
+      ],
+    });
     expect(sharedTurnServerTiming(out.timing)).toBe(
       'shared_model;dur=8.1;desc="provider=mixed calls=2 fallbacks=1 replayed=0"',
     );
   });
 
   test("POST rejects impossible provider timing from the untrusted bridge", async () => {
+    const impossibleReceipts = [
+      {
+        replayed: false,
+        durationMs: 1,
+        callCount: 1,
+        fallbackCount: 1,
+        selectedProvider: "mixed",
+        callsTruncated: false,
+        calls: [{ provider: "cerebras", durationMs: 1, fallback: false }],
+      },
+      {
+        replayed: false,
+        durationMs: 1,
+        callCount: 1,
+        fallbackCount: 1,
+        selectedProvider: "cerebras",
+        callsTruncated: false,
+        calls: [{ provider: "cerebras", durationMs: 1, fallback: true }],
+      },
+      {
+        replayed: false,
+        durationMs: 2,
+        callCount: 1,
+        fallbackCount: 0,
+        selectedProvider: "cerebras",
+        callsTruncated: false,
+        calls: [{ provider: "cerebras", durationMs: 1, fallback: false }],
+      },
+      {
+        replayed: false,
+        durationMs: 0,
+        callCount: 0,
+        fallbackCount: 0,
+        selectedProvider: "openrouter",
+        callsTruncated: false,
+        calls: [],
+      },
+    ];
+    for (const timing of impossibleReceipts) {
+      coordinateSharedBridge.mockResolvedValueOnce({
+        jsonrpc: "2.0",
+        id: "timed",
+        result: { text: "four", timing },
+      });
+      expect(
+        await sharedRestMessageSend(SHARED_AGENT, AGENT, "2+2?", "Eliza", EXECUTION_CTX, NAMESPACE),
+      ).toEqual({ text: "four", agentName: "Eliza" });
+    }
+  });
+
+  test("POST accepts the explicit first-16 call truncation contract", async () => {
+    const calls = Array.from({ length: 16 }, () => ({
+      provider: "cerebras" as const,
+      durationMs: 1,
+      fallback: false,
+    }));
     coordinateSharedBridge.mockResolvedValueOnce({
       jsonrpc: "2.0",
-      id: "timed",
+      id: "timed-truncated",
       result: {
         text: "four",
         timing: {
           replayed: false,
-          durationMs: 1,
-          callCount: 1,
+          durationMs: 17,
+          callCount: 17,
           fallbackCount: 1,
           selectedProvider: "mixed",
-          callsTruncated: false,
-          calls: [{ provider: "cerebras", durationMs: 1, fallback: false }],
+          callsTruncated: true,
+          calls,
         },
       },
     });
-    expect(
-      await sharedRestMessageSend(SHARED_AGENT, AGENT, "2+2?", "Eliza", EXECUTION_CTX, NAMESPACE),
-    ).toEqual({ text: "four", agentName: "Eliza" });
+
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "2+2?",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+    expect(out.timing).toMatchObject({
+      callCount: 17,
+      fallbackCount: 1,
+      selectedProvider: "mixed",
+      callsTruncated: true,
+      calls,
+    });
   });
 
   test("POST rides a caller-supplied clientMessageId as the bridge RPC id (retry idempotency, #18045)", async () => {

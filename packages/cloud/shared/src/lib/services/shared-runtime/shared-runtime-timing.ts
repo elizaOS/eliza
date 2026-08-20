@@ -4,7 +4,9 @@
  * cannot accidentally compare unlike measurements.
  */
 
-const MAX_RUNTIME_TIMING_MS = 10 * 60 * 1_000;
+export const MAX_SHARED_PROVIDER_TIMING_MS = 10 * 60 * 1_000;
+export const MAX_SHARED_PROVIDER_TIMING_CALL_COUNT = 1_000;
+export const MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS = 16;
 
 export type SharedRuntimeTimingOutcome = "success" | "aborted" | "error";
 export type SharedRuntimeRoutingDecision = "respond" | "silent" | "unknown";
@@ -22,7 +24,12 @@ export interface SharedModelCallTiming {
   fallback: boolean;
 }
 
-/** Privacy-bounded model timing safe for Shared REST and SSE clients. */
+/**
+ * Privacy-bounded model timing safe for Shared REST and SSE clients.
+ * `callCount` and `fallbackCount` describe every call. `calls` contains the
+ * first 16 calls only, and `callsTruncated` is true exactly when later calls
+ * were omitted.
+ */
 export interface SharedProviderTimingReceipt {
   replayed: boolean;
   durationMs: number;
@@ -31,6 +38,119 @@ export interface SharedProviderTimingReceipt {
   selectedProvider: SharedModelProvider | "mixed" | "none";
   callsTruncated: boolean;
   calls: SharedModelCallTiming[];
+}
+
+/** Validate and canonicalize an untrusted provider receipt at a transport boundary. */
+export function parseSharedProviderTimingReceipt(
+  value: unknown,
+): SharedProviderTimingReceipt | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const receipt = value as Record<string, unknown>;
+  const callCount = receipt.callCount;
+  const calls = receipt.calls;
+  if (
+    typeof callCount !== "number" ||
+    !Number.isInteger(callCount) ||
+    callCount < 0 ||
+    callCount > MAX_SHARED_PROVIDER_TIMING_CALL_COUNT ||
+    typeof receipt.callsTruncated !== "boolean" ||
+    !Array.isArray(calls) ||
+    calls.length !== Math.min(callCount, MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS) ||
+    receipt.callsTruncated !== callCount > calls.length
+  ) {
+    return undefined;
+  }
+  const safeCalls = calls.every((call) => {
+    if (!call || typeof call !== "object") return false;
+    const entry = call as Record<string, unknown>;
+    return (
+      (entry.provider === "cerebras" ||
+        entry.provider === "openrouter" ||
+        entry.provider === "other") &&
+      typeof entry.durationMs === "number" &&
+      Number.isFinite(entry.durationMs) &&
+      entry.durationMs >= 0 &&
+      entry.durationMs <= MAX_SHARED_PROVIDER_TIMING_MS &&
+      typeof entry.fallback === "boolean" &&
+      (!entry.fallback || entry.provider === "openrouter")
+    );
+  });
+  if (!safeCalls) return undefined;
+  const modelCalls = calls as SharedModelCallTiming[];
+  const selectedProvider = receipt.selectedProvider;
+  if (
+    selectedProvider !== "cerebras" &&
+    selectedProvider !== "openrouter" &&
+    selectedProvider !== "other" &&
+    selectedProvider !== "mixed" &&
+    selectedProvider !== "none"
+  ) {
+    return undefined;
+  }
+  const recordedFallbacks = modelCalls.filter((call) => call.fallback).length;
+  const fallbackCount = receipt.fallbackCount;
+  const hiddenCalls = callCount - calls.length;
+  const providers = new Set(modelCalls.map((call) => call.provider));
+  const providerIsPossible =
+    callCount === 0
+      ? selectedProvider === "none"
+      : selectedProvider === "mixed"
+        ? providers.size > 1 || (hiddenCalls > 0 && providers.size === 1)
+        : selectedProvider !== "none" && providers.size === 1 && providers.has(selectedProvider);
+  const fallbackCountIsPossible =
+    typeof fallbackCount === "number" &&
+    Number.isInteger(fallbackCount) &&
+    fallbackCount >= recordedFallbacks &&
+    fallbackCount <= recordedFallbacks + hiddenCalls &&
+    (selectedProvider === "openrouter" || selectedProvider === "mixed" || fallbackCount === 0);
+  const recordedDurationMs =
+    Math.round(modelCalls.reduce((total, call) => total + call.durationMs, 0) * 10) / 10;
+  const durationMs = receipt.durationMs;
+  const durationIsConsistent =
+    typeof durationMs === "number" &&
+    Number.isFinite(durationMs) &&
+    durationMs >= 0 &&
+    durationMs <= MAX_SHARED_PROVIDER_TIMING_MS &&
+    (receipt.callsTruncated ? durationMs >= recordedDurationMs : durationMs === recordedDurationMs);
+  const replayed = receipt.replayed;
+  const emptyReceiptIsConsistent =
+    callCount !== 0 ||
+    (durationMs === 0 &&
+      fallbackCount === 0 &&
+      selectedProvider === "none" &&
+      receipt.callsTruncated === false);
+  const replayIsConsistent =
+    replayed === false ||
+    (durationMs === 0 &&
+      callCount === 0 &&
+      fallbackCount === 0 &&
+      selectedProvider === "none" &&
+      receipt.callsTruncated === false);
+  if (
+    !(
+      typeof replayed === "boolean" &&
+      providerIsPossible &&
+      fallbackCountIsPossible &&
+      durationIsConsistent &&
+      emptyReceiptIsConsistent &&
+      replayIsConsistent
+    )
+  ) {
+    return undefined;
+  }
+  return {
+    replayed,
+    durationMs,
+    callCount,
+    fallbackCount,
+    selectedProvider,
+    callsTruncated: receipt.callsTruncated,
+    calls: modelCalls.map((call) => ({
+      provider: call.provider,
+      durationMs: call.durationMs,
+      fallback: call.fallback,
+    })),
+  };
 }
 
 export interface SharedRuntimeTimingReceipt {
@@ -68,13 +188,13 @@ function boundedDuration(startedAt: number | null, completedAt: number | null): 
   if (startedAt === null || completedAt === null) return null;
   const value = completedAt - startedAt;
   if (!Number.isFinite(value) || value < 0) return null;
-  if (value > MAX_RUNTIME_TIMING_MS) return null;
+  if (value > MAX_SHARED_PROVIDER_TIMING_MS) return null;
   return Math.round(value * 10) / 10;
 }
 
 function boundedMeasuredDuration(value: number): number | null {
   if (!Number.isFinite(value) || value < 0) return null;
-  if (value > MAX_RUNTIME_TIMING_MS) return null;
+  if (value > MAX_SHARED_PROVIDER_TIMING_MS) return null;
   return Math.round(value * 10) / 10;
 }
 
@@ -163,16 +283,16 @@ export class SharedRuntimeTimingCollector {
         if (finished || startedAt === null) return;
         finished = true;
         const durationMs = boundedDuration(startedAt, this.#now()) ?? 0;
-        this.#modelCallCount = Math.min(this.#modelCallCount + 1, 1_000);
+        this.#modelCallCount += 1;
         if (selection.fallback) {
-          this.#modelFallbackCount = Math.min(this.#modelFallbackCount + 1, 1_000);
+          this.#modelFallbackCount += 1;
         }
         this.#modelDurationMs = Math.min(
           Math.round((this.#modelDurationMs + durationMs) * 10) / 10,
-          MAX_RUNTIME_TIMING_MS,
+          MAX_SHARED_PROVIDER_TIMING_MS,
         );
         this.#modelProviders.add(selection.provider);
-        if (this.#modelCalls.length < 16) {
+        if (this.#modelCalls.length < MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS) {
           this.#modelCalls.push({ ...selection, durationMs });
         }
       },

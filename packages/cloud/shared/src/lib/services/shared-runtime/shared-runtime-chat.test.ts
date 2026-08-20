@@ -69,6 +69,15 @@ function timingReceipt(
       providerTotalDurationMs: 10,
       slowestProviderDurationMs: 10,
     },
+    model: {
+      replayed: false,
+      durationMs: 0,
+      callCount: 0,
+      fallbackCount: 0,
+      selectedProvider: "none" as const,
+      callsTruncated: false,
+      calls: [],
+    },
     routing: { decision: "respond" as const, contextIds: ["room"] },
   };
 }

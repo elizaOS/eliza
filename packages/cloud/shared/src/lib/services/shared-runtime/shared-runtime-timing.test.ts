@@ -4,7 +4,10 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { SharedRuntimeTimingCollector } from "./shared-runtime-timing";
+import {
+  parseSharedProviderTimingReceipt,
+  SharedRuntimeTimingCollector,
+} from "./shared-runtime-timing";
 
 function clock(values: number[]): () => number {
   let index = 0;
@@ -66,8 +69,9 @@ describe("SharedRuntimeTimingCollector", () => {
     });
   });
 
-  test("measures model work after admission and records selected fallback authority", () => {
-    const timing = new SharedRuntimeTimingCollector("provider", 0, clock([0, 100, 145, 200]));
+  test("excludes dispatch and setup before the SDK invocation begins", () => {
+    const timing = new SharedRuntimeTimingCollector("provider", 0, clock([0, 100, 145, 200, 220]));
+    timing.markProviderDispatched();
     const call = timing.prepareModelCall();
     call.select({ provider: "openrouter", fallback: true });
     call.begin();
@@ -75,12 +79,128 @@ describe("SharedRuntimeTimingCollector", () => {
 
     expect(timing.receipt("success").model).toEqual({
       replayed: false,
-      durationMs: 45,
+      durationMs: 55,
       callCount: 1,
       fallbackCount: 1,
       selectedProvider: "openrouter",
       callsTruncated: false,
-      calls: [{ provider: "openrouter", durationMs: 45, fallback: true }],
+      calls: [{ provider: "openrouter", durationMs: 55, fallback: true }],
+    });
+  });
+
+  test("keeps exact aggregate counts while truncating only the first-16 call list", () => {
+    let now = 0;
+    const timing = new SharedRuntimeTimingCollector("many-provider-calls", 0, () => now++);
+    for (let index = 0; index < 17; index += 1) {
+      const call = timing.prepareModelCall();
+      call.select(
+        index === 16
+          ? { provider: "openrouter", fallback: true }
+          : { provider: "cerebras", fallback: false },
+      );
+      call.begin();
+      call.finish();
+    }
+
+    expect(timing.receipt("success").model).toMatchObject({
+      durationMs: 17,
+      callCount: 17,
+      fallbackCount: 1,
+      selectedProvider: "mixed",
+      callsTruncated: true,
+    });
+    expect(timing.receipt("success").model.calls).toHaveLength(16);
+  });
+
+  test("canonicalizes a valid receipt and strips undeclared transport fields", () => {
+    expect(
+      parseSharedProviderTimingReceipt({
+        replayed: false,
+        durationMs: 8.1,
+        callCount: 2,
+        fallbackCount: 1,
+        selectedProvider: "mixed",
+        callsTruncated: false,
+        privateTrace: "drop-me",
+        calls: [
+          {
+            provider: "cerebras",
+            durationMs: 3,
+            fallback: false,
+            privateProviderMetadata: "drop-me",
+          },
+          { provider: "openrouter", durationMs: 5.1, fallback: true },
+        ],
+      }),
+    ).toEqual({
+      replayed: false,
+      durationMs: 8.1,
+      callCount: 2,
+      fallbackCount: 1,
+      selectedProvider: "mixed",
+      callsTruncated: false,
+      calls: [
+        { provider: "cerebras", durationMs: 3, fallback: false },
+        { provider: "openrouter", durationMs: 5.1, fallback: true },
+      ],
+    });
+  });
+
+  test("rejects internally impossible untrusted receipts", () => {
+    const base = {
+      replayed: false,
+      durationMs: 1,
+      callCount: 1,
+      fallbackCount: 0,
+      selectedProvider: "cerebras",
+      callsTruncated: false,
+      calls: [{ provider: "cerebras", durationMs: 1, fallback: false }],
+    };
+    expect(parseSharedProviderTimingReceipt(base)).toBeDefined();
+    expect(parseSharedProviderTimingReceipt({ ...base, fallbackCount: 1 })).toBeUndefined();
+    expect(
+      parseSharedProviderTimingReceipt({ ...base, selectedProvider: "mixed" }),
+    ).toBeUndefined();
+    expect(parseSharedProviderTimingReceipt({ ...base, durationMs: 2 })).toBeUndefined();
+    expect(
+      parseSharedProviderTimingReceipt({
+        ...base,
+        calls: [{ provider: "cerebras", durationMs: 1, fallback: true }],
+      }),
+    ).toBeUndefined();
+    expect(
+      parseSharedProviderTimingReceipt({
+        ...base,
+        callCount: 0,
+        durationMs: 0,
+        calls: [],
+        selectedProvider: "openrouter",
+      }),
+    ).toBeUndefined();
+  });
+
+  test("accepts an internally possible first-16 truncated receipt", () => {
+    const calls = Array.from({ length: 16 }, () => ({
+      provider: "cerebras",
+      durationMs: 1,
+      fallback: false,
+    }));
+    expect(
+      parseSharedProviderTimingReceipt({
+        replayed: false,
+        durationMs: 17,
+        callCount: 17,
+        fallbackCount: 1,
+        selectedProvider: "mixed",
+        callsTruncated: true,
+        calls,
+      }),
+    ).toMatchObject({
+      callCount: 17,
+      fallbackCount: 1,
+      selectedProvider: "mixed",
+      callsTruncated: true,
+      calls,
     });
   });
 
