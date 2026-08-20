@@ -95,10 +95,19 @@ function decision(
 	};
 }
 
+function authorizationCoordinator(
+	isSnapshotCurrent: (
+		request: BoundCapabilityRequest,
+		now: number,
+	) => boolean = () => true,
+): CapabilityAuthorizationCoordinator {
+	return new CapabilityAuthorizationCoordinator({ isSnapshotCurrent });
+}
+
 async function allowedAuthorization(
 	requestValue: BoundCapabilityRequest = bound(),
 ): Promise<AuthorizedCapabilityRequest> {
-	const coordinator = new CapabilityAuthorizationCoordinator();
+	const coordinator = authorizationCoordinator();
 	const policy = coordinator.register(
 		decision(requestValue),
 		requestValue,
@@ -343,10 +352,39 @@ describe("provider integration contracts", () => {
 		expect(serializedErrors.join("\n")).not.toContain(sentinel);
 	});
 
+	it("sanitizes malformed nested effect proof errors", async () => {
+		const authorization = await allowedAuthorization();
+		const sentinel = "secret-token-sentinel";
+		let serializedError = "";
+		try {
+			normalizeCapabilityActionReceipt(
+				{
+					...appliedReceipt(authorization),
+					effect: {
+						...(appliedReceipt(authorization).effect as Record<
+							string,
+							unknown
+						>),
+						receiptId: sentinel,
+						outcome: sentinel,
+					},
+				},
+				{
+					authorization,
+					now: Date.parse("2026-08-18T12:01:00.000Z"),
+				},
+			);
+		} catch (error) {
+			serializedError = JSON.stringify(error);
+		}
+		expect(serializedError).not.toBe("");
+		expect(serializedError).not.toContain(sentinel);
+	});
+
 	it("requires a registered, current policy decision for dispatch", async () => {
 		const selected = bound();
 		const rawPolicy = normalizeCapabilityPolicyDecision(decision(selected));
-		const unregistered = new CapabilityAuthorizationCoordinator();
+		const unregistered = authorizationCoordinator();
 		await expect(
 			authorizeCapabilityDispatch(selected, rawPolicy, {
 				authorizationConsumer: unregistered,
@@ -354,7 +392,7 @@ describe("provider integration contracts", () => {
 			}),
 		).rejects.toMatchObject({ code: "STALE_CAPABILITY_AUTHORIZATION" });
 
-		const coordinator = new CapabilityAuthorizationCoordinator();
+		const coordinator = authorizationCoordinator();
 		const policy = coordinator.register(rawPolicy, selected, AUTHORIZED_NOW);
 		const authorization = await authorizeCapabilityDispatch(selected, policy, {
 			authorizationConsumer: coordinator,
@@ -371,9 +409,57 @@ describe("provider integration contracts", () => {
 		).rejects.toMatchObject({ code: "STALE_CAPABILITY_AUTHORIZATION" });
 	});
 
+	it("burns registered authority when the selected account is revoked", async () => {
+		const selected = bound();
+		let accountCurrent = true;
+		const coordinator = authorizationCoordinator(() => accountCurrent);
+		const policy = coordinator.register(
+			decision(selected),
+			selected,
+			AUTHORIZED_NOW,
+		);
+		accountCurrent = false;
+
+		await expect(
+			authorizeCapabilityDispatch(selected, policy, {
+				authorizationConsumer: coordinator,
+				now: AUTHORIZED_NOW,
+			}),
+		).rejects.toMatchObject({ code: "STALE_CAPABILITY_AUTHORIZATION" });
+
+		accountCurrent = true;
+		await expect(
+			authorizeCapabilityDispatch(selected, policy, {
+				authorizationConsumer: coordinator,
+				now: AUTHORIZED_NOW,
+			}),
+		).rejects.toMatchObject({ code: "STALE_CAPABILITY_AUTHORIZATION" });
+	});
+
+	it("fails closed when a snapshot validator is accidentally asynchronous", async () => {
+		const selected = bound();
+		const asynchronousValidator = (() => Promise.resolve(true)) as unknown as (
+			request: BoundCapabilityRequest,
+			now: number,
+		) => boolean;
+		const coordinator = authorizationCoordinator(asynchronousValidator);
+		const policy = coordinator.register(
+			decision(selected),
+			selected,
+			AUTHORIZED_NOW,
+		);
+
+		await expect(
+			authorizeCapabilityDispatch(selected, policy, {
+				authorizationConsumer: coordinator,
+				now: AUTHORIZED_NOW,
+			}),
+		).rejects.toMatchObject({ code: "STALE_CAPABILITY_AUTHORIZATION" });
+	});
+
 	it("refuses stale policy and altered request reuse", async () => {
 		const selected = bound();
-		const coordinator = new CapabilityAuthorizationCoordinator();
+		const coordinator = authorizationCoordinator();
 		expect(() =>
 			coordinator.register(
 				decision(selected, { expiresAt: "2026-08-18T12:00:29.000Z" }),
@@ -398,7 +484,7 @@ describe("provider integration contracts", () => {
 
 	it("atomically consumes one exact expiring confirmation under concurrency", async () => {
 		const selected = bound();
-		const coordinator = new CapabilityAuthorizationCoordinator();
+		const coordinator = authorizationCoordinator();
 		const rawDecision = decision(selected, {
 			outcome: "confirmation_required",
 			confirmation: undefined,
@@ -443,7 +529,7 @@ describe("provider integration contracts", () => {
 
 	it("burns confirmation but refuses dispatch when policy expires during consume", async () => {
 		const selected = bound();
-		const coordinator = new CapabilityAuthorizationCoordinator();
+		const coordinator = authorizationCoordinator();
 		const rawDecision = decision(selected, {
 			outcome: "confirmation_required",
 			confirmationId: "confirm_expiring",
@@ -503,7 +589,7 @@ describe("provider integration contracts", () => {
 
 	it("rejects confirmation substitution by account, operation, input, or decision", async () => {
 		const selected = bound();
-		const coordinator = new CapabilityAuthorizationCoordinator();
+		const coordinator = authorizationCoordinator();
 		const rawDecision = decision(selected, {
 			outcome: "confirmation_required",
 			confirmationId: "confirm_create_event_2",
@@ -634,6 +720,32 @@ describe("provider integration contracts", () => {
 				} as AuthorizedCapabilityRequest,
 				now: Date.parse("2026-08-18T12:01:00.000Z"),
 			}),
+		).toThrow(/trusted dispatch authority/);
+
+		const relabeledAccount = {
+			...authorization.account,
+			accountId: "conn_other",
+		};
+		const symbolBrandedForgery = {
+			...authorization,
+			account: relabeledAccount,
+		} as AuthorizedCapabilityRequest;
+		for (const symbol of Object.getOwnPropertySymbols(authorization)) {
+			Object.defineProperty(symbolBrandedForgery, symbol, {
+				value: authorization[symbol as keyof typeof authorization],
+			});
+		}
+		expect(() =>
+			normalizeCapabilityActionReceipt(
+				{
+					...base,
+					accountId: "conn_other",
+				},
+				{
+					authorization: symbolBrandedForgery,
+					now: Date.parse("2026-08-18T12:01:00.000Z"),
+				},
+			),
 		).toThrow(/trusted dispatch authority/);
 	});
 

@@ -157,6 +157,7 @@ export interface CapabilityAuthorizationConsumer {
 const authorizedCapabilityRequest: unique symbol = Symbol(
 	"elizaos.authorizedCapabilityRequest",
 );
+const authorizedCapabilityRequests = new WeakSet<object>();
 
 /** Host-verified, consume-once dispatch authority. This value is not a wire DTO. */
 export interface AuthorizedCapabilityRequest extends BoundCapabilityRequest {
@@ -393,6 +394,15 @@ function sha256Hex(domain: string, value: unknown): string {
 		sha256(new TextEncoder().encode(`${domain}\n${canonical}`)),
 		(byte) => byte.toString(16).padStart(2, "0"),
 	).join("");
+}
+
+function normalizePrivateEffectReceipt(value: unknown): EffectReceipt {
+	try {
+		return normalizeEffectReceipt(value);
+	} catch {
+		// error-policy:J3 Nested provider receipt values must not enter error context.
+		return invalid("Capability receipt effect proof is invalid.");
+	}
 }
 
 /** Validates and canonicalizes an account projection at a trust boundary. */
@@ -849,6 +859,15 @@ interface RegisteredCapabilityAuthorization {
 	confirmationGrant: CapabilityConfirmationGrant | null;
 }
 
+export interface CapabilityAuthorizationCoordinatorOptions {
+	/**
+	 * Reads the authoritative in-memory account state immediately before
+	 * consumption. It must not perform asynchronous I/O: validation and deletion
+	 * share one event-loop turn so revocation cannot interleave with dispatch.
+	 */
+	isSnapshotCurrent(request: BoundCapabilityRequest, now: number): boolean;
+}
+
 /**
  * In-memory policy/confirmation authority with atomic consume-once dispatch.
  * Durable hosts implement the consumer with one transactional
@@ -857,12 +876,20 @@ interface RegisteredCapabilityAuthorization {
 export class CapabilityAuthorizationCoordinator
 	implements CapabilityAuthorizationConsumer
 {
+	private readonly isSnapshotCurrent: (
+		request: BoundCapabilityRequest,
+		now: number,
+	) => boolean;
 	private readonly registered = new Map<
 		string,
 		RegisteredCapabilityAuthorization
 	>();
 	private readonly reservedDecisionIds = new Set<string>();
 	private readonly reservedConfirmationIds = new Set<string>();
+
+	constructor(options: CapabilityAuthorizationCoordinatorOptions) {
+		this.isSnapshotCurrent = options.isSnapshotCurrent;
+	}
 
 	register(
 		decisionValue: unknown,
@@ -1015,6 +1042,20 @@ export class CapabilityAuthorizationCoordinator
 		) {
 			throw new ElizaError(
 				"Capability authorization is missing, stale, or already consumed.",
+				{
+					code: "STALE_CAPABILITY_AUTHORIZATION",
+					context: {
+						decisionId: decision.decisionId,
+						requestId: request.requestId,
+					},
+					severity: "ephemeral",
+				},
+			);
+		}
+		if (this.isSnapshotCurrent(request, trustedNow) !== true) {
+			this.registered.delete(decision.decisionId);
+			throw new ElizaError(
+				"Capability authorization account snapshot is no longer current.",
 				{
 					code: "STALE_CAPABILITY_AUTHORIZATION",
 					context: {
@@ -1186,7 +1227,9 @@ export async function authorizeCapabilityDispatch(
 		configurable: false,
 		writable: false,
 	});
-	return Object.freeze(authorized);
+	Object.freeze(authorized);
+	authorizedCapabilityRequests.add(authorized);
+	return authorized;
 }
 
 export interface NormalizeCapabilityActionReceiptOptions {
@@ -1200,7 +1243,10 @@ export function normalizeCapabilityActionReceipt(
 	options: NormalizeCapabilityActionReceiptOptions,
 ): CapabilityActionReceipt {
 	const authorization = options.authorization;
-	if (authorization[authorizedCapabilityRequest] !== true) {
+	if (
+		!authorizedCapabilityRequests.has(authorization) ||
+		authorization[authorizedCapabilityRequest] !== true
+	) {
 		return invalid("Capability receipt requires trusted dispatch authority.");
 	}
 	const raw = record(value, "CapabilityActionReceipt");
@@ -1241,7 +1287,7 @@ export function normalizeCapabilityActionReceipt(
 		capabilityId: nonEmptyString(raw.capabilityId, "capabilityId"),
 		operation: nonEmptyString(raw.operation, "operation"),
 		inputDigest: digest(raw.inputDigest, "inputDigest"),
-		effect: normalizeEffectReceipt(raw.effect),
+		effect: normalizePrivateEffectReceipt(raw.effect),
 	});
 	if (
 		receipt.authorizationId !== authorization.authorizationId ||

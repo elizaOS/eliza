@@ -76,6 +76,10 @@ dispatch authorization can never be replayed merely because it did not require
 interactive confirmation. Distributed implementations use one durable
 compare-and-delete transaction and verify that the account/capability snapshot
 is still current; a separate read, verify, and delete sequence is unsafe.
+The in-memory `CapabilityAuthorizationCoordinator` therefore requires a
+synchronous `isSnapshotCurrent` reader. A false result burns the registered
+authority before returning a stale-authorization error, so reconnecting the
+account cannot resurrect consent issued before revocation.
 
 The returned `AuthorizedCapabilityRequest` is an in-process immutable value,
 not a wire credential. `normalizeCapabilityActionReceipt` accepts effect proof
