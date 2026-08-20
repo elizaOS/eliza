@@ -1,6 +1,8 @@
 /**
  * Validates a GenUI spec against the catalog: rejects unknown components and
- * disallowed action names before the renderer runs.
+ * disallowed action names before the renderer runs. Unsafe-field walks are
+ * depth-, work-, and cycle-bounded so a hostile `data`/`metadata` nest cannot
+ * RangeError the validator (which must never throw).
  */
 import {
   ELIZA_GENUI_ALLOWED_ACTION_PREFIXES,
@@ -18,6 +20,10 @@ import type {
 
 const DEFAULT_MAX_COMPONENTS = 200;
 const DEFAULT_MAX_JSON_BYTES = 65_536;
+/** Nesting ceiling for unsafe-field walks. Honest specs are a handful deep. */
+export const MAX_GENUI_UNSAFE_FIELD_DEPTH = 64;
+/** Node ceiling across one unsafe-field walk, including leaves. */
+export const MAX_GENUI_UNSAFE_FIELD_NODES = 2048;
 const UNSAFE_FIELD_NAMES = new Set([
   "script",
   "code",
@@ -86,26 +92,78 @@ function validateUnsafeFields(
   issues: ElizaGenUiValidationIssue[],
   path: string,
   componentId?: string,
+  depth = 0,
+  ctx: { visits: number; ancestors: WeakSet<object> } = {
+    visits: 0,
+    ancestors: new WeakSet<object>(),
+  },
 ): void {
-  if (!value || typeof value !== "object") {
-    return;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => {
-      validateUnsafeFields(item, issues, `${path}/${index}`, componentId);
+  if (depth > MAX_GENUI_UNSAFE_FIELD_DEPTH) {
+    addIssue(issues, {
+      code: "unbounded_nest",
+      message: `Generated UI value exceeds ${MAX_GENUI_UNSAFE_FIELD_DEPTH} nesting depth.`,
+      componentId,
+      path,
     });
     return;
   }
-  for (const [key, entry] of Object.entries(value)) {
-    if (UNSAFE_FIELD_NAMES.has(key)) {
-      addIssue(issues, {
-        code: "unsafe_field",
-        message: `Generated UI field "${key}" is not allowed.`,
-        componentId,
-        path: `${path}/${key}`,
-      });
+  ctx.visits += 1;
+  if (ctx.visits > MAX_GENUI_UNSAFE_FIELD_NODES) {
+    addIssue(issues, {
+      code: "unbounded_nest",
+      message: `Generated UI value exceeds ${MAX_GENUI_UNSAFE_FIELD_NODES} nodes.`,
+      componentId,
+      path,
+    });
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  if (ctx.ancestors.has(value)) {
+    addIssue(issues, {
+      code: "unbounded_nest",
+      message: "Generated UI value contains a cyclic object.",
+      componentId,
+      path,
+    });
+    return;
+  }
+  ctx.ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      for (let index = 0; index < value.length; index += 1) {
+        validateUnsafeFields(
+          value[index],
+          issues,
+          `${path}/${index}`,
+          componentId,
+          depth + 1,
+          ctx,
+        );
+      }
+      return;
     }
-    validateUnsafeFields(entry, issues, `${path}/${key}`, componentId);
+    for (const [key, entry] of Object.entries(value)) {
+      if (UNSAFE_FIELD_NAMES.has(key)) {
+        addIssue(issues, {
+          code: "unsafe_field",
+          message: `Generated UI field "${key}" is not allowed.`,
+          componentId,
+          path: `${path}/${key}`,
+        });
+      }
+      validateUnsafeFields(
+        entry,
+        issues,
+        `${path}/${key}`,
+        componentId,
+        depth + 1,
+        ctx,
+      );
+    }
+  } finally {
+    ctx.ancestors.delete(value);
   }
 }
 
