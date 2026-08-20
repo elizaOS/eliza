@@ -171,6 +171,19 @@ describe("legacy-lane persistent settlement failure", () => {
   });
 
   test.each([
+    { label: "negative", reservedAmount: -1 },
+    { label: "non-finite", reservedAmount: Number.NaN },
+  ])("rejects a $label backing reservation", ({ reservedAmount }) => {
+    expect(() =>
+      assertCreditRefundWithinReservation({
+        reservedAmount,
+        refundAmount: 0,
+        scope: "incident regression",
+      }),
+    ).toThrow();
+  });
+
+  test.each([
     { label: "negative actual", reservedAmount: 1, actualCost: -1 },
     { label: "non-finite actual", reservedAmount: 1, actualCost: Number.NaN },
     { label: "negative reservation", reservedAmount: -1, actualCost: 0 },

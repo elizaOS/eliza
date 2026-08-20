@@ -87,6 +87,8 @@ export function assertCreditRefundWithinReservation(params: {
 }): void {
   const { reservedAmount, refundAmount, scope } = params;
   if (
+    !Number.isFinite(reservedAmount) ||
+    reservedAmount < 0 ||
     !Number.isFinite(refundAmount) ||
     refundAmount < 0 ||
     refundAmount - reservedAmount > EPSILON
@@ -1519,6 +1521,11 @@ export class CreditsService {
       const reservedAmount = Math.abs(parseNumeric(reservation.amount, "reservation_amount"));
       const reservationMetadata = parseMetadata(reservation.metadata);
       const normalizedActualCost = actualCost;
+      assertValidCreditSettlementCosts({
+        reservedAmount,
+        actualCost: normalizedActualCost,
+        scope: "CreditsService.reconcileReservationTransaction",
+      });
       const enqueueAffiliatePayout = async (collectedTotalCost: number): Promise<void> => {
         await enqueueCollectedAffiliatePayout(tx, {
           reservationMetadata,
