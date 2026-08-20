@@ -153,6 +153,7 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
       );
       const result = await new SharedAgentMemoriesReader().searchByEmbedding(
         scope,
+        ROOM_A,
         [0.25, 0.5, 0.25],
         7,
       );
@@ -163,6 +164,8 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
       const rendered = renderedWhere(capturedInnerWhere);
       expect(rendered.sql).toContain("embedding");
       expect(rendered.sql).toContain("cardinality");
+      expect(rendered.sql).toContain("room_id");
+      expect(rendered.params).toContain(ROOM_A);
       expect(rendered.params).toContain(3);
       const order = new PgDialect().sqlToQuery(capturedOuterOrder as SQL);
       expect(order.sql).toContain("distance");
@@ -175,12 +178,15 @@ describe("SharedAgentMemoriesReader.searchByEmbedding", () => {
   test("rejects empty, non-finite, and oversized query vectors", async () => {
     const { SharedAgentMemoriesReader } = await import("./shared-agent-memories");
     const reader = new SharedAgentMemoriesReader();
-    await expect(reader.searchByEmbedding(scope, [], 5)).rejects.toThrow("finite vector");
-    await expect(reader.searchByEmbedding(scope, [0.5, Number.NaN], 5)).rejects.toThrow(
+    await expect(reader.searchByEmbedding(scope, ROOM_A, [], 5)).rejects.toThrow("finite vector");
+    await expect(reader.searchByEmbedding(scope, ROOM_A, [0.5, Number.NaN], 5)).rejects.toThrow(
       "finite vector",
     );
-    await expect(reader.searchByEmbedding(scope, new Array(5000).fill(0.1), 5)).rejects.toThrow(
-      "finite vector",
+    await expect(
+      reader.searchByEmbedding(scope, ROOM_A, new Array(5000).fill(0.1), 5),
+    ).rejects.toThrow("finite vector");
+    await expect(reader.searchByEmbedding(scope, " ", [1, 0, 0], 5)).rejects.toThrow(
+      "roomId is required",
     );
   });
 });

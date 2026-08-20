@@ -19,6 +19,7 @@ import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
+import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 
 export interface SharedConversationCoordinatorOptions {
   /** Standard request correlation identity; never accepted from RPC params. */
@@ -193,12 +194,13 @@ export async function coordinateSharedLifecycleEvent(
  * One normalization for the Durable Object instance name. Turn dispatch and
  * history reads MUST agree — a whitespace/empty variant addressing a second
  * object would migrate the same Postgres row twice and serve a frozen copy.
- * Mirrors the room precedence in shared-runtime-chat's `channelId`.
+ * The authenticated caller may select a logical room, but this normalization
+ * is the server-owned boundary used by both Durable Object addressing and the
+ * hashed runtime channel identity. A caller-provided storage uuid is never
+ * accepted as the memory scope.
  */
 function coordinatorRoom(roomId?: unknown, userId?: unknown): string {
-  const room = typeof roomId === "string" && roomId.trim() ? roomId.trim() : undefined;
-  const user = typeof userId === "string" && userId.trim() ? userId.trim() : undefined;
-  return room ?? user ?? "default";
+  return normalizeSharedRuntimeRoom(roomId, userId);
 }
 
 function coordinatorName(agentId: string, rpc: BridgeRequest): string {

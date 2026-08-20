@@ -202,9 +202,12 @@ mock.module("../../../db/repositories/characters", () => ({
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
   runSharedAgentTurn: async (input: {
+    memory?: { recordTurnPair(pair: TestMemoryPair): Promise<void> };
+    message?: string;
     messageIds?: { user: string; assistant: string };
     messageRole?: "system" | "user";
     onRuntimeTiming?: (receipt: ReturnType<typeof timingReceipt>) => void;
+    execution?: { channel?: { type: ChannelType; source: string } };
     [key: string]: unknown;
   }) => {
     turnCalls++;
@@ -225,6 +228,15 @@ mock.module("./run-shared-agent-turn", () => ({
                 : message,
         )
       : turn.history;
+    if (input.memory && !turn.degraded) {
+      await input.memory.recordTurnPair({
+        userMessage: input.message?.trim() ?? "",
+        assistantReply: typeof turn.reply === "string" ? turn.reply : "",
+        ...(input.messageIds ? { messageIds: input.messageIds } : {}),
+        ...(input.messageRole ? { messageRole: input.messageRole } : {}),
+        ...(input.execution?.channel ? { channel: input.execution.channel } : {}),
+      });
+    }
     return { ...turn, history };
   },
   runSharedAgentTurnStream: async (input: {
@@ -275,14 +287,17 @@ type TestMemoryPair = {
   messageIds?: { user: string; assistant: string };
   messageRole?: "system" | "user";
   interrupted?: boolean;
+  channel?: { type: ChannelType; source: string };
 };
 const memoryPairs: TestMemoryPair[] = [];
+const memoryScopes: Array<{ agentKey: string; roomKey: string }> = [];
 const recordTurnPair = mock(async (pair: TestMemoryPair) => {
   memoryPairs.push(pair);
 });
-const createSharedMemoryStore = mock(() =>
-  process.env.SHARED_MEMORY_TABLES_ENABLED === "true" ? { recordTurnPair } : null,
-);
+const createSharedMemoryStore = mock((scope: { agentKey: string; roomKey: string }) => {
+  memoryScopes.push(scope);
+  return process.env.SHARED_MEMORY_TABLES_ENABLED === "true" ? { recordTurnPair } : null;
+});
 mock.module("./shared-memory-store", () => ({
   createSharedMemoryStore,
 }));
@@ -362,7 +377,7 @@ mock.module("../../cache/client", () => ({
 const { InsufficientCreditsError } = await import("../ai-billing");
 const { InferenceAdmissionDispatchMarkError } = await import("../inference-admission-gate");
 const { personalSharedAgentId } = await import("./personal-shared-agent");
-const { SharedRuntimeChatService } = await import("./shared-runtime-chat");
+const { SharedRuntimeChatService, sharedRuntimeChannelId } = await import("./shared-runtime-chat");
 
 const organizationId = "00000000-0000-4000-8000-000000000002";
 const userId = "00000000-0000-4000-8000-000000000003";
@@ -462,6 +477,7 @@ beforeEach(() => {
   sharedTodoStorageScope.mockClear();
   delete process.env.SHARED_MEMORY_TABLES_ENABLED;
   memoryPairs.length = 0;
+  memoryScopes.length = 0;
   recordTurnPair.mockClear();
   createSharedMemoryStore.mockClear();
   turn = {
@@ -716,6 +732,7 @@ describe("SharedRuntimeChatService", () => {
 
     expect(lastTurnInput?.execution).toEqual({
       agentKey: agent.id,
+      roomKey: sharedRuntimeChannelId(agent.id, "room-1"),
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
@@ -750,6 +767,7 @@ describe("SharedRuntimeChatService", () => {
 
     expect(lastTurnInput?.execution).toEqual({
       agentKey: forgedAgent.id,
+      roomKey: sharedRuntimeChannelId(forgedAgent.id, "room-1"),
       channel: { type: ChannelType.DM, source: "shared-runtime" },
       todos: expectedTodoExecution,
     });
@@ -778,6 +796,7 @@ describe("SharedRuntimeChatService", () => {
     );
     expect(lastStreamTurnInput?.execution).toEqual({
       agentKey: agent.id,
+      roomKey: sharedRuntimeChannelId(agent.id, "room-1"),
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
@@ -847,6 +866,7 @@ describe("SharedRuntimeChatService", () => {
     });
     expect(lastTurnInput?.execution).toEqual({
       agentKey: agent.id,
+      roomKey: sharedRuntimeChannelId(agent.id, "room-1"),
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
@@ -866,6 +886,7 @@ describe("SharedRuntimeChatService", () => {
     });
     expect(lastTurnInput?.execution).toEqual({
       agentKey: agent.id,
+      roomKey: sharedRuntimeChannelId(agent.id, "room-1"),
       channel: { type: ChannelType.DM, source: "shared-runtime" },
       todos: expectedTodoExecution,
     });
@@ -1039,6 +1060,12 @@ describe("SharedRuntimeChatService", () => {
         interrupted: false,
       }),
     ]);
+    expect(memoryScopes).toHaveLength(1);
+    expect(memoryScopes[0]?.roomKey).toBe(sharedRuntimeChannelId(agent.id, "room-1"));
+    expect((lastStreamTurnInput?.execution as { roomKey?: string } | undefined)?.roomKey).toBe(
+      sharedRuntimeChannelId(agent.id, "room-1"),
+    );
+    expect(memoryScopes[0]?.roomKey).not.toBe(agent.id);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
   });
@@ -1483,6 +1510,68 @@ describe("SharedRuntimeChatService", () => {
     expect(second.result).toEqual(first.result);
     expect(second.id).toBe("client-key-1");
     expect(h.history()).toHaveLength(historyAfterFirst);
+  });
+
+  test("isolates concurrent rooms sharing a clientMessageId and replays within one room", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    const service = new SharedRuntimeChatService();
+    const privateHarness = harness();
+    const voiceHarness = harness();
+    const privateClaims = memoryTurnClaims();
+    const voiceClaims = memoryTurnClaims();
+    const privateRpc = {
+      ...keyedRpc,
+      params: { ...keyedRpc.params, roomId: "  private-room  " },
+    };
+    const voiceRpc = {
+      ...keyedRpc,
+      params: { ...keyedRpc.params, roomId: "voice-room" },
+    };
+    const privateOptions = {
+      ...privateHarness,
+      turnClaims: privateClaims.store,
+      channel: { type: ChannelType.DM, source: "client_chat" },
+    };
+    const voiceOptions = {
+      ...voiceHarness,
+      turnClaims: voiceClaims.store,
+      channel: { type: ChannelType.VOICE_GROUP, source: "discord" },
+    };
+
+    await Promise.all([
+      service.bridge(agent, privateRpc, privateOptions),
+      service.bridge(agent, voiceRpc, voiceOptions),
+    ]);
+    await Promise.all([...privateHarness.background, ...voiceHarness.background]);
+
+    expect(turnCalls).toBe(2);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(2);
+    expect(billCalls).toHaveLength(2);
+    expect(settleCalls).toHaveLength(2);
+    expect(memoryPairs).toHaveLength(2);
+    const expectedRoomKeys = new Set([
+      sharedRuntimeChannelId(agent.id, "private-room"),
+      sharedRuntimeChannelId(agent.id, "voice-room"),
+    ]);
+    expect(new Set(memoryScopes.map((scope) => scope.roomKey))).toEqual(expectedRoomKeys);
+    expect(
+      new Set(turnInputs.map((input) => (input.execution as { roomKey: string }).roomKey)),
+    ).toEqual(expectedRoomKeys);
+    const identities = turnInputs.map((input) => input.messageIds);
+    expect(identities[0]).not.toEqual(identities[1]);
+    expect(memoryPairs.map((pair) => pair.channel)).toEqual([
+      { type: ChannelType.DM, source: "client_chat" },
+      { type: ChannelType.VOICE_GROUP, source: "discord" },
+    ]);
+
+    const memoryCount = memoryPairs.length;
+    await service.bridge(agent, privateRpc, privateOptions);
+    await Promise.all(privateHarness.background);
+    expect(turnCalls).toBe(2);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(2);
+    expect(billCalls).toHaveLength(2);
+    expect(settleCalls).toHaveLength(2);
+    expect(memoryPairs).toHaveLength(memoryCount);
   });
 
   test("a reused clientMessageId with different text is rejected before admission", async () => {
