@@ -58,6 +58,7 @@ import type {
 import { SKILL_SOURCE_PRECEDENCE } from "../types";
 import { binaryExistsInPath } from "./bin-lookup";
 import {
+	cancelUnusedSkillDownloadBody,
 	createSkillDownloadLifecycle,
 	DEFAULT_SKILL_DOWNLOAD_TIMEOUT_MS,
 	isSkillDownloadError,
@@ -133,23 +134,16 @@ async function fetchInstallResource(
 ): Promise<Response> {
 	lifecycle.throwIfAborted();
 	try {
-		return await fetch(url, { ...init, signal: lifecycle.signal });
+		const response = await fetch(url, { ...init, signal: lifecycle.signal });
+		if (lifecycle.signal.aborted) {
+			cancelUnusedSkillDownloadBody(response, lifecycle.signal.reason);
+			lifecycle.throwIfAborted();
+		}
+		return response;
 	} catch (cause) {
 		// error-policy:J1 translate lifecycle ownership at the fetch boundary.
 		lifecycle.throwIfAborted(cause);
 		throw cause;
-	}
-}
-
-function cancelUnusedInstallBody(response: Response): void {
-	if (!response.body) return;
-	try {
-		const cancellation = response.body.cancel();
-		void Promise.resolve(cancellation).catch(() => {
-			// error-policy:J6 rejection while discarding an unused response is teardown-only.
-		});
-	} catch {
-		// error-policy:J6 synchronous cancellation of an unused response is teardown-only.
 	}
 }
 
@@ -2083,14 +2077,21 @@ export class AgentSkillsService extends Service {
 				headers: { Accept: "application/json" },
 				signal: options.signal,
 			}, deadlineManaged);
+			if (options.signal?.aborted) {
+				cancelUnusedSkillDownloadBody(response, options.signal.reason);
+				throw skillDownloadAbortError(options.signal);
+			}
 
 			if (!response.ok) {
-				cancelUnusedInstallBody(response);
+				cancelUnusedSkillDownloadBody(response);
 				if (response.status === 404) return null;
 				throw new Error(`Details fetch failed: ${response.status}`);
 			}
 
 			const details = (await response.json()) as SkillDetails;
+			if (options.signal?.aborted) {
+				throw skillDownloadAbortError(options.signal);
+			}
 			this.detailsCache.set(safeSlug, { data: details, cachedAt: Date.now() });
 
 			return details;
@@ -2312,7 +2313,8 @@ export class AgentSkillsService extends Service {
 				const response = await fetchInstallResource(downloadUrl, lifecycle);
 
 				if (!response.ok) {
-					cancelUnusedInstallBody(response);
+					cancelUnusedSkillDownloadBody(response, lifecycle.signal.reason);
+					lifecycle.throwIfAborted();
 					throw new Error(`Download failed: ${response.status}`);
 				}
 
@@ -2451,7 +2453,8 @@ export class AgentSkillsService extends Service {
 				const response = await fetchInstallResource(skillMdUrl, lifecycle);
 
 				if (!response.ok) {
-					cancelUnusedInstallBody(response);
+					cancelUnusedSkillDownloadBody(response, lifecycle.signal.reason);
+					lifecycle.throwIfAborted();
 					throw new Error(
 						`Failed to fetch SKILL.md: ${response.status} from ${skillMdUrl}`,
 					);
@@ -2471,7 +2474,11 @@ export class AgentSkillsService extends Service {
 						});
 						files.push({ name: "README.md", content: readmeContent });
 					} else {
-						cancelUnusedInstallBody(readmeResponse);
+						cancelUnusedSkillDownloadBody(
+							readmeResponse,
+							lifecycle.signal.reason,
+						);
+						lifecycle.throwIfAborted();
 					}
 				} catch (cause) {
 					lifecycle.throwIfAborted(cause);
@@ -2561,7 +2568,8 @@ export class AgentSkillsService extends Service {
 				const response = await fetchInstallResource(url, lifecycle);
 
 				if (!response.ok) {
-					cancelUnusedInstallBody(response);
+					cancelUnusedSkillDownloadBody(response, lifecycle.signal.reason);
+					lifecycle.throwIfAborted();
 					throw new Error(`Failed to fetch: ${response.status}`);
 				}
 
