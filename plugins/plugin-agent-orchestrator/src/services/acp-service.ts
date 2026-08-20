@@ -2460,6 +2460,12 @@ export class AcpService extends Service {
     sessionId: string,
     patch: Record<string, unknown>,
   ): Promise<void> {
+    if (typeof this.store.mergeMetadata === "function") {
+      await this.store.mergeMetadata(sessionId, patch);
+      return;
+    }
+    // Racy fallback for stores without the atomic merge: a concurrent merge
+    // can clobber this patch (the admin-stop stamp was lost to exactly this).
     const session = await this.store.get(sessionId);
     if (!session) return;
     await this.store.update(sessionId, {
@@ -4264,7 +4270,7 @@ export class AcpService extends Service {
     const metadata = { ...(session.metadata ?? {}), account: meta };
     session.metadata = metadata;
     try {
-      await this.store.update(session.id, { metadata });
+      await this.updateSessionMetadata(session.id, { account: meta });
     } catch (err) {
       // error-policy:J7 the failover credential is already resolved and must
       // reach the subprocess; a failed durable re-stamp only degrades the NEXT
