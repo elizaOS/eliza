@@ -1214,6 +1214,30 @@ describe("deterministic action coverage", () => {
     ).toEqual(expected);
   });
 
+  it("keeps scenario-local active-view routes out of package preflight", async () => {
+    const loaded = await loadAllScenarios(scenarioDir);
+    for (const id of [
+      "deterministic-active-view-agent-surface",
+      "live-active-view-agent-surface",
+    ]) {
+      const scenario = loaded.find(
+        (entry) => entry.scenario.id === id,
+      )?.scenario;
+      expect(scenario, `missing active-view scenario ${id}`).toBeDefined();
+      expect(scenario?.requires?.plugins).toEqual([
+        "@elizaos/plugin-app-control",
+      ]);
+
+      const source = readFileSync(
+        resolve(scenarioDir, `${id}.scenario.ts`),
+        "utf8",
+      );
+      expect(source).toContain(
+        "runtime.registerPlugin(scenarioViewsRoutePlugin)",
+      );
+    }
+  });
+
   it("strict LLM-routed scenarios declare planner/response fixtures for their routed actions", async () => {
     const problems: string[] = [];
 
