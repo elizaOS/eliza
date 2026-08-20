@@ -45,6 +45,10 @@ import {
 	transcriptSpeakerCount,
 } from "@elizaos/shared/transcripts";
 import {
+	closeDownloadWriter,
+	writeDownloadChunk,
+} from "../shared/download-writer.ts";
+import {
 	createWriteStream,
 	existsSync,
 	mkdirSync,
@@ -3134,34 +3138,6 @@ function updateNativeDownloadJob(
 	return next;
 }
 
-function writeDownloadChunk(
-	writer: ReturnType<typeof createWriteStream>,
-	chunk: Uint8Array,
-): Promise<void> {
-	return new Promise((resolve, reject) => {
-		writer.write(Buffer.from(chunk), (error: Error | null | undefined) => {
-			if (error) reject(error);
-			else resolve();
-		});
-	});
-}
-
-function closeDownloadWriter(
-	writer: ReturnType<typeof createWriteStream>,
-): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const onError = (error: Error): void => {
-			writer.off("error", onError);
-			reject(error);
-		};
-		writer.once("error", onError);
-		writer.end(() => {
-			writer.off("error", onError);
-			resolve();
-		});
-	});
-}
-
 async function runNativeModelDownload(
 	model: NativeCatalogModelEntry,
 ): Promise<void> {
@@ -3213,7 +3189,7 @@ async function runNativeModelDownload(
 			if (!value) continue;
 			deadline.noteProgress();
 			received += value.byteLength;
-			await writeDownloadChunk(writer, value);
+			await writeDownloadChunk(writer, value, deadline.signal);
 			const elapsedSeconds = Math.max(1, (Date.now() - startedMs) / 1000);
 			const bytesPerSec = Math.round(received / elapsedSeconds);
 			const remaining = Math.max(0, contentLength - received);
@@ -3224,7 +3200,7 @@ async function runNativeModelDownload(
 					bytesPerSec > 0 ? Math.round((remaining / bytesPerSec) * 1000) : null,
 			});
 		}
-		await closeDownloadWriter(writer);
+		await closeDownloadWriter(writer, deadline.signal);
 		const targetPath = nativeModelTargetPath(model);
 		renameSync(partialPath, targetPath);
 		const stats = statSync(targetPath);

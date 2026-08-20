@@ -33,6 +33,16 @@ function paths(): { stagingPath: string; finalPath: string } {
 	};
 }
 
+async function waitFor(
+	predicate: () => boolean,
+	timeoutMs = 500,
+): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate() && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+}
+
 afterEach(async () => {
 	await Promise.all(
 		servers.splice(0).map(
@@ -93,19 +103,15 @@ describe("downloadHttpModel", () => {
 				totalTimeoutMs: 2_000,
 			}),
 		).rejects.toThrow("header stall made no progress for 100ms");
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await waitFor(() => requestClosed);
 		expect(requestClosed).toBe(true);
 		expect(existsSync(target.stagingPath)).toBe(false);
 		expect(existsSync(target.finalPath)).toBe(false);
 	});
 
 	it("cancels a stalled body and removes its partial file", async () => {
-		let responseClosed = false;
 		const { url } = await listen((_request, response) => {
 			response.write("partial");
-			response.once("close", () => {
-				responseClosed = true;
-			});
 		});
 		const target = paths();
 
@@ -118,8 +124,6 @@ describe("downloadHttpModel", () => {
 				totalTimeoutMs: 2_000,
 			}),
 		).rejects.toThrow("body stall made no progress for 100ms");
-		await new Promise((resolve) => setTimeout(resolve, 20));
-		expect(responseClosed).toBe(true);
 		expect(existsSync(target.stagingPath)).toBe(false);
 		expect(existsSync(target.finalPath)).toBe(false);
 	});

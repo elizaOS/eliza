@@ -33,8 +33,17 @@ export function createModelDownloadDeadline({
 	assertPositiveTimeout(idleTimeoutMs, "idleTimeoutMs");
 	assertPositiveTimeout(totalTimeoutMs, "totalTimeoutMs");
 	const idleController = new AbortController();
+	const totalController = new AbortController();
 	let idleTimer: ReturnType<typeof setTimeout> | undefined;
+	let disposed = false;
 	const noteProgress = (): void => {
+		if (
+			disposed ||
+			idleController.signal.aborted ||
+			totalController.signal.aborted
+		) {
+			return;
+		}
 		if (idleTimer !== undefined) clearTimeout(idleTimer);
 		idleTimer = setTimeout(() => {
 			idleController.abort(
@@ -44,9 +53,15 @@ export function createModelDownloadDeadline({
 		idleTimer.unref?.();
 	};
 	noteProgress();
+	const totalTimer = setTimeout(() => {
+		totalController.abort(
+			new Error(`${label} exceeded the ${totalTimeoutMs}ms total deadline`),
+		);
+	}, totalTimeoutMs);
+	totalTimer.unref?.();
 	const signal = AbortSignal.any([
 		idleController.signal,
-		AbortSignal.timeout(totalTimeoutMs),
+		totalController.signal,
 	]);
 	return {
 		signal,
@@ -54,7 +69,9 @@ export function createModelDownloadDeadline({
 		failure: (error) =>
 			signal.aborted && signal.reason instanceof Error ? signal.reason : error,
 		dispose: () => {
+			disposed = true;
 			if (idleTimer !== undefined) clearTimeout(idleTimer);
+			clearTimeout(totalTimer);
 		},
 	};
 }
