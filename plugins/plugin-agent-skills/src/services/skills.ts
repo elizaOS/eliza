@@ -22,6 +22,7 @@
  * @see https://agentskills.io/specification
  */
 
+import { createHash } from "node:crypto";
 import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import {
 	estimateTokens,
@@ -90,6 +91,19 @@ const CACHE_TTL = {
 	SKILL_DETAILS: 1000 * 60 * 30, // 30 min - individual skill details
 	SEARCH: 1000 * 60 * 5, // 5 min - search results
 };
+
+function skillScanReportDigest(report: SkillScanReport): string {
+	return createHash("sha256")
+		.update(
+			JSON.stringify({
+				scannedAt: report.scannedAt,
+				status: report.status,
+				findings: report.findings,
+				manifestFindings: report.manifestFindings,
+			}),
+		)
+		.digest("hex");
+}
 
 /**
  * Cooldown period after a catalog fetch error before retrying (5 minutes).
@@ -317,6 +331,8 @@ export class AgentSkillsService extends Service {
 		string,
 		import("../security/types").SkillScanStatus
 	> = new Map();
+	private acknowledgedScanDigests = new Map<string, string>();
+	private currentScanDigests = new Map<string, string>();
 
 	// Auto-refresh watcher
 	private autoRefreshEnabled: boolean = false;
@@ -1370,6 +1386,15 @@ export class AgentSkillsService extends Service {
 	 */
 	isSkillEnabled(skillName: string): boolean {
 		const entry = this.skillEntries.get(skillName);
+		const scanStatus = this.scanStatusMap.get(skillName);
+		if (scanStatus === "warning" || scanStatus === "critical") {
+			const digest = this.currentScanDigests.get(skillName);
+			return (
+				entry?.enabled === true &&
+				!!digest &&
+				this.acknowledgedScanDigests.get(skillName) === digest
+			);
+		}
 		return entry?.enabled !== false;
 	}
 
@@ -2230,14 +2255,22 @@ export class AgentSkillsService extends Service {
 	 * Returns false if the skill is not loaded or if enabling is blocked
 	 * by a security scan that hasn't been acknowledged.
 	 */
-	setSkillEnabled(slug: string, enabled: boolean): boolean {
+	setSkillEnabled(
+		slug: string,
+		enabled: boolean,
+		options: { reportDigest?: string } = {},
+	): boolean {
 		const skill = this.loadedSkills.get(slug);
 		if (!skill) return false;
 
 		// Block enabling skills with unacknowledged scan findings
 		if (enabled) {
 			const scanStatus = this.scanStatusMap.get(slug);
-			if (scanStatus === "critical" || scanStatus === "warning") {
+			if (
+				(scanStatus === "critical" || scanStatus === "warning") &&
+				(!options.reportDigest ||
+					this.acknowledgedScanDigests.get(slug) !== options.reportDigest)
+			) {
 				return false;
 			}
 		}
@@ -2245,6 +2278,17 @@ export class AgentSkillsService extends Service {
 		const existing = this.skillEntries.get(slug) ?? {};
 		existing.enabled = enabled;
 		this.skillEntries.set(slug, existing);
+		return true;
+	}
+
+	acknowledgeSkillScan(slug: string, reportDigest: string): boolean {
+		const status = this.scanStatusMap.get(slug);
+		if (
+			(status !== "warning" && status !== "critical") ||
+			!/^[a-f0-9]{64}$/.test(reportDigest) ||
+			this.currentScanDigests.get(slug) !== reportDigest
+		) return false;
+		this.acknowledgedScanDigests.set(slug, reportDigest);
 		return true;
 	}
 
@@ -2474,15 +2518,9 @@ export class AgentSkillsService extends Service {
 			});
 			const active = this.loadedSkills.get(candidate.slug);
 			if (active?.source !== "workspace") {
+				this.acknowledgedScanDigests.delete(candidate.slug);
 				this.loadedSkills.set(candidate.slug, loadedCandidate);
-				if (
-					scanReport.status === "critical" ||
-					scanReport.status === "warning"
-				) {
-					this.scanStatusMap.set(candidate.slug, scanReport.status);
-				} else {
-					this.scanStatusMap.delete(candidate.slug);
-				}
+				this.applyScanGate(candidate.slug, scanReport);
 				this.eligibilityCache.delete(candidate.slug);
 			}
 			return scanReport;
@@ -2504,6 +2542,11 @@ export class AgentSkillsService extends Service {
 				const hadScanStatus = this.scanStatusMap.has(candidate.slug);
 				const previousEligibility = this.eligibilityCache.get(candidate.slug);
 				const hadEligibility = this.eligibilityCache.has(candidate.slug);
+				const previousAcknowledgment =
+					this.acknowledgedScanDigests.get(candidate.slug);
+				const previousScanDigest = this.currentScanDigests.get(candidate.slug);
+				const previousSkillEntry = this.skillEntries.get(candidate.slug);
+				const hadSkillEntry = this.skillEntries.has(candidate.slug);
 				let storagePublished = false;
 				try {
 					signal?.throwIfAborted();
@@ -2515,18 +2558,12 @@ export class AgentSkillsService extends Service {
 
 					const managedCandidateIsActive = previousLoaded?.source !== "workspace";
 					if (managedCandidateIsActive) {
+						this.acknowledgedScanDigests.delete(candidate.slug);
 						if (previousLoaded) {
 							loadedCandidate.overrides = `${previousLoaded.source}:${previousLoaded.sourceDir}`;
 						}
 						this.loadedSkills.set(candidate.slug, loadedCandidate);
-						if (
-							scanReport.status === "critical" ||
-							scanReport.status === "warning"
-						) {
-							this.scanStatusMap.set(candidate.slug, scanReport.status);
-						} else {
-							this.scanStatusMap.delete(candidate.slug);
-						}
+						this.applyScanGate(candidate.slug, scanReport);
 						this.eligibilityCache.delete(candidate.slug);
 					}
 					signal?.throwIfAborted();
@@ -2550,6 +2587,18 @@ export class AgentSkillsService extends Service {
 					} else {
 						this.eligibilityCache.delete(candidate.slug);
 					}
+					if (previousAcknowledgment) {
+						this.acknowledgedScanDigests.set(
+							candidate.slug,
+							previousAcknowledgment,
+						);
+					} else this.acknowledgedScanDigests.delete(candidate.slug);
+					if (previousScanDigest) {
+						this.currentScanDigests.set(candidate.slug, previousScanDigest);
+					} else this.currentScanDigests.delete(candidate.slug);
+					if (hadSkillEntry && previousSkillEntry) {
+						this.skillEntries.set(candidate.slug, previousSkillEntry);
+					} else this.skillEntries.delete(candidate.slug);
 					try {
 						lockfileUpdate.rollback();
 					} catch (rollbackCause) {
@@ -2602,6 +2651,7 @@ export class AgentSkillsService extends Service {
 	): Promise<{
 		skill: LoadedSkillWithSource;
 		scanStatus?: "warning" | "critical";
+		scanDigest?: string;
 	} | null> {
 		if (!this.isSkillAllowed(slug)) return null;
 		for (const [source, storages] of [
@@ -2619,11 +2669,22 @@ export class AgentSkillsService extends Service {
 				);
 				if (fallback) {
 					const report = await loadScanReport(storage.getSkillPath(slug));
+					if (
+						report &&
+						(!["clean", "warning", "critical", "blocked"].includes(
+							report.status,
+						) ||
+							report.status === "blocked")
+					) continue;
 					return {
 						skill: fallback,
 						scanStatus:
 							report?.status === "warning" || report?.status === "critical"
 								? report.status
+								: undefined,
+						scanDigest:
+							report?.status === "warning" || report?.status === "critical"
+								? skillScanReportDigest(report)
 								: undefined,
 					};
 				}
@@ -2639,6 +2700,27 @@ export class AgentSkillsService extends Service {
 				error.code === "SKILL_STORAGE_ROLLBACK_FAILED" ||
 				error.code === "SKILL_UNINSTALL_ROLLBACK_FAILED")
 		);
+	}
+
+	private reportFatalSkillMutation(error: ElizaError, slug?: string): void {
+		this.runtime.reportError("AgentSkills.mutation", error, {
+			...(slug ? { slug } : {}),
+			code: error.code,
+		});
+	}
+
+	private applyScanGate(slug: string, report: SkillScanReport): void {
+		if (report.status === "critical" || report.status === "warning") {
+			this.scanStatusMap.set(slug, report.status);
+			this.currentScanDigests.set(slug, skillScanReportDigest(report));
+			this.skillEntries.set(slug, {
+				...(this.skillEntries.get(slug) ?? {}),
+				enabled: false,
+			});
+		} else {
+			this.scanStatusMap.delete(slug);
+			this.currentScanDigests.delete(slug);
+		}
 	}
 
 	/**
@@ -2716,7 +2798,10 @@ export class AgentSkillsService extends Service {
 			// error-policy:J1 preserve the legacy boolean install boundary while
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: Install error: ${error}`);
-			if (this.isFatalSkillMutationError(error)) throw error;
+			if (this.isFatalSkillMutationError(error)) {
+				this.reportFatalSkillMutation(error, slug);
+				throw error;
+			}
 			if (options.throwOnDownloadError) {
 				if (isSkillDownloadError(error)) throw error;
 				if (options.signal?.aborted) {
@@ -2875,7 +2960,10 @@ export class AgentSkillsService extends Service {
 			// error-policy:J1 preserve the legacy boolean install boundary while
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: GitHub install error: ${error}`);
-			if (this.isFatalSkillMutationError(error)) throw error;
+			if (this.isFatalSkillMutationError(error)) {
+				this.reportFatalSkillMutation(error);
+				throw error;
+			}
 			if (options.throwOnDownloadError) {
 				if (isSkillDownloadError(error)) throw error;
 				if (options.signal?.aborted) {
@@ -2959,7 +3047,10 @@ export class AgentSkillsService extends Service {
 			// error-policy:J1 preserve the legacy boolean install boundary while
 			// allowing explicitly requested typed download failures to cross it.
 			this.runtime.logger.error(`AgentSkills: URL install error: ${error}`);
-			if (this.isFatalSkillMutationError(error)) throw error;
+			if (this.isFatalSkillMutationError(error)) {
+				this.reportFatalSkillMutation(error, options.slug);
+				throw error;
+			}
 			if (options.throwOnDownloadError) {
 				if (isSkillDownloadError(error)) throw error;
 				if (options.signal?.aborted) {
@@ -2979,7 +3070,8 @@ export class AgentSkillsService extends Service {
 		options: { signal?: AbortSignal } = {},
 	): Promise<boolean> {
 		const safeSlug = sanitizeSlug(slug);
-		return this.withSkillInstallMutex(safeSlug, options.signal, async () => {
+		try {
+			return await this.withSkillInstallMutex(safeSlug, options.signal, async () => {
 			options.signal?.throwIfAborted();
 			const active = this.loadedSkills.get(safeSlug);
 			const fallback =
@@ -2992,11 +3084,22 @@ export class AgentSkillsService extends Service {
 				// therefore the irreversible commit point; do not observe abort later.
 				const deleted = await this.storage.deleteSkill(safeSlug);
 				if (deleted && (!active || active.source === "managed")) {
+					this.acknowledgedScanDigests.delete(safeSlug);
 					if (fallback) this.loadedSkills.set(safeSlug, fallback.skill);
 					else this.loadedSkills.delete(safeSlug);
 					if (fallback?.scanStatus) {
 						this.scanStatusMap.set(safeSlug, fallback.scanStatus);
-					} else this.scanStatusMap.delete(safeSlug);
+						if (fallback.scanDigest) {
+							this.currentScanDigests.set(safeSlug, fallback.scanDigest);
+						}
+						this.skillEntries.set(safeSlug, {
+							...(this.skillEntries.get(safeSlug) ?? {}),
+							enabled: false,
+						});
+					} else {
+						this.scanStatusMap.delete(safeSlug);
+						this.currentScanDigests.delete(safeSlug);
+					}
 					this.eligibilityCache.delete(safeSlug);
 				}
 				return deleted;
@@ -3023,6 +3126,11 @@ export class AgentSkillsService extends Service {
 					const hadLoaded = this.loadedSkills.has(safeSlug);
 					const hadScan = this.scanStatusMap.has(safeSlug);
 					const hadEligibility = this.eligibilityCache.has(safeSlug);
+					const previousAcknowledgment =
+						this.acknowledgedScanDigests.get(safeSlug);
+					const previousScanDigest = this.currentScanDigests.get(safeSlug);
+					const previousSkillEntry = this.skillEntries.get(safeSlug);
+					const hadSkillEntry = this.skillEntries.has(safeSlug);
 					let storagePublished = false;
 					try {
 						options.signal?.throwIfAborted();
@@ -3032,11 +3140,22 @@ export class AgentSkillsService extends Service {
 						lockUpdate.publish();
 						options.signal?.throwIfAborted();
 						if (!previousLoaded || previousLoaded.source === "managed") {
+							this.acknowledgedScanDigests.delete(safeSlug);
 							if (fallback) this.loadedSkills.set(safeSlug, fallback.skill);
 							else this.loadedSkills.delete(safeSlug);
 							if (fallback?.scanStatus) {
 								this.scanStatusMap.set(safeSlug, fallback.scanStatus);
-							} else this.scanStatusMap.delete(safeSlug);
+								if (fallback.scanDigest) {
+									this.currentScanDigests.set(safeSlug, fallback.scanDigest);
+								}
+								this.skillEntries.set(safeSlug, {
+									...(this.skillEntries.get(safeSlug) ?? {}),
+									enabled: false,
+								});
+							} else {
+								this.scanStatusMap.delete(safeSlug);
+								this.currentScanDigests.delete(safeSlug);
+							}
 							this.eligibilityCache.delete(safeSlug);
 						}
 						options.signal?.throwIfAborted();
@@ -3051,6 +3170,15 @@ export class AgentSkillsService extends Service {
 						else this.scanStatusMap.delete(safeSlug);
 						if (hadEligibility && previousEligibility) this.eligibilityCache.set(safeSlug, previousEligibility);
 						else this.eligibilityCache.delete(safeSlug);
+						if (previousAcknowledgment) {
+							this.acknowledgedScanDigests.set(safeSlug, previousAcknowledgment);
+						} else this.acknowledgedScanDigests.delete(safeSlug);
+						if (previousScanDigest) {
+							this.currentScanDigests.set(safeSlug, previousScanDigest);
+						} else this.currentScanDigests.delete(safeSlug);
+						if (hadSkillEntry && previousSkillEntry) {
+							this.skillEntries.set(safeSlug, previousSkillEntry);
+						} else this.skillEntries.delete(safeSlug);
 						try { lockUpdate.rollback(); } catch (error) { failures.push(error); }
 						if (storagePublished) {
 							try { removal.rollback(); } catch (error) { failures.push(error); }
@@ -3083,7 +3211,13 @@ export class AgentSkillsService extends Service {
 			}
 			this.runtime.logger.info(`AgentSkills: Uninstalled ${safeSlug}`);
 			return true;
-		});
+			});
+		} catch (error) {
+			if (this.isFatalSkillMutationError(error)) {
+				this.reportFatalSkillMutation(error, safeSlug);
+			}
+			throw error;
+		}
 	}
 
 	// ============================================================

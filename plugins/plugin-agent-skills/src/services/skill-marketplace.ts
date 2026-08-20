@@ -209,7 +209,17 @@ async function runSkillSecurityScan(
   signal?: AbortSignal,
 ): Promise<MarketplaceScanReport> {
   throwIfMarketplaceAborted(signal);
-  const report = await scanSkillDirectory(skillDir, { signal });
+  let report: MarketplaceScanReport;
+  try {
+    report = await scanSkillDirectory(skillDir, {
+      signal,
+      maxFileBytes: MAX_SKILL_PACKAGE_BYTES,
+      maxFiles: MAX_MARKETPLACE_FILES,
+    });
+  } catch (cause) {
+    throwIfMarketplaceAborted(signal, cause);
+    throw cause;
+  }
   throwIfMarketplaceAborted(signal);
   await saveScanReport(skillDir, report);
   throwIfMarketplaceAborted(signal);
@@ -790,20 +800,25 @@ async function copyDirectoryWithSignal(
   await fs.mkdir(targetDir, { recursive: false });
   for (const entry of await fs.readdir(sourceDir, { withFileTypes: true })) {
     throwIfMarketplaceAborted(signal);
+    budget.files += 1;
+    if (budget.files > MAX_MARKETPLACE_FILES) {
+      throw marketplaceError(
+        "SKILL_PACKAGE_TOO_LARGE",
+        "Skill repository package exceeds the supported resource limit",
+        { files: budget.files, maxFiles: MAX_MARKETPLACE_FILES },
+      );
+    }
     const sourcePath = path.join(sourceDir, entry.name);
     const targetPath = path.join(targetDir, entry.name);
     if (entry.isDirectory()) {
       await copyDirectoryWithSignal(sourcePath, targetPath, signal, budget);
     } else if (entry.isSymbolicLink()) {
-      budget.files += 1;
       await fs.symlink(await fs.readlink(sourcePath), targetPath);
     } else if (entry.isFile()) {
       const sourceStat = await fs.stat(sourcePath);
-      budget.files += 1;
       budget.bytes += sourceStat.size;
       if (
-        budget.bytes > MAX_SKILL_PACKAGE_BYTES ||
-        budget.files > MAX_MARKETPLACE_FILES
+        budget.bytes > MAX_SKILL_PACKAGE_BYTES
       ) {
         throw marketplaceError(
           "SKILL_PACKAGE_TOO_LARGE",

@@ -10,6 +10,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createSkillPackage,
+	FileSystemSkillStore,
+	type ISkillStorage,
 	MemorySkillStore,
 	type PreparedSkillReplacement,
 	type SkillPackage,
@@ -27,6 +29,7 @@ async function temporaryDirectory(prefix: string): Promise<string> {
 function runtime(): IAgentRuntime {
 	return {
 		getSetting: vi.fn(() => undefined),
+		reportError: vi.fn(),
 		logger: {
 			debug: vi.fn(),
 			error: vi.fn(),
@@ -69,6 +72,26 @@ class AbortAfterPublishStore extends MemorySkillStore {
 	}
 }
 
+class LegacySkillStore implements ISkillStorage {
+	readonly type = "memory" as const;
+	readonly backing = new MemorySkillStore();
+	onSave?: () => void;
+	initialize = () => this.backing.initialize();
+	listSkills = () => this.backing.listSkills();
+	hasSkill = (slug: string) => this.backing.hasSkill(slug);
+	loadSkillContent = (slug: string) => this.backing.loadSkillContent(slug);
+	loadFile = (slug: string, relativePath: string) =>
+		this.backing.loadFile(slug, relativePath);
+	listFiles = (slug: string, subdir?: string) =>
+		this.backing.listFiles(slug, subdir);
+	async saveSkill(pkg: SkillPackage): Promise<void> {
+		await this.backing.saveSkill(pkg);
+		this.onSave?.();
+	}
+	deleteSkill = (slug: string) => this.backing.deleteSkill(slug);
+	getSkillPath = (slug: string) => this.backing.getSkillPath(slug);
+}
+
 afterEach(async () => {
 	vi.unstubAllGlobals();
 	await Promise.all(
@@ -79,6 +102,119 @@ afterEach(async () => {
 });
 
 describe("managed skill install transactions", () => {
+	it("removes prepared storage, cache state, and lock entry together", async () => {
+		const skillsDir = await temporaryDirectory("managed-skill-uninstall-");
+		const storage = new FileSystemSkillStore(skillsDir);
+		await storage.initialize();
+		await storage.saveSkill(
+			createSkillPackage("demo", [
+				{ name: "SKILL.md", content: skillMarkdown("demo", "managed") },
+			]),
+		);
+		await fs.mkdir(path.join(skillsDir, ".cache"), { recursive: true });
+		await fs.writeFile(
+			path.join(skillsDir, ".cache", "lock.json"),
+			JSON.stringify({
+				demo: { version: "1.0.0", installedAt: new Date().toISOString() },
+			}),
+		);
+		const service = await AgentSkillsService.start(runtime(), {
+			autoLoad: true,
+			storage,
+			skillsDir,
+		});
+
+		await expect(service.uninstall("demo")).resolves.toBe(true);
+		expect(await storage.hasSkill("demo")).toBe(false);
+		expect(service.getLoadedSkill("demo")).toBeUndefined();
+		expect(
+			JSON.parse(
+				await fs.readFile(path.join(skillsDir, ".cache", "lock.json"), "utf-8"),
+			),
+		).toEqual({});
+	});
+
+	it("does not remove a prepared skill for a pre-aborted caller", async () => {
+		const storage = new MemorySkillStore();
+		await seedSkill(storage, "demo", "managed");
+		const service = await AgentSkillsService.start(runtime(), {
+			autoLoad: true,
+			storage,
+		});
+		const controller = new AbortController();
+		controller.abort(new Error("disconnected"));
+
+		await expect(
+			service.uninstall("demo", { signal: controller.signal }),
+		).rejects.toThrow("disconnected");
+		expect(await storage.hasSkill("demo")).toBe(true);
+		expect(service.getLoadedSkill("demo")?.source).toBe("managed");
+	});
+
+	it("reveals a scanned bundled fallback immediately after managed removal", async () => {
+		const storage = new MemorySkillStore();
+		await seedSkill(storage, "demo", "managed");
+		const fallbackDir = await temporaryDirectory("bundled-skill-fallback-");
+		const fallbackStorage = new FileSystemSkillStore(fallbackDir);
+		await fallbackStorage.initialize();
+		await fallbackStorage.saveSkill(
+			createSkillPackage("demo", [
+				{ name: "SKILL.md", content: skillMarkdown("demo", "bundled") },
+				{
+					name: ".scan-results.json",
+					content: JSON.stringify({
+						scannedAt: new Date().toISOString(),
+						status: "warning",
+						findings: [{ ruleId: "test" }],
+						manifestFindings: [],
+					}),
+				},
+			]),
+		);
+		const service = await AgentSkillsService.start(runtime(), {
+			autoLoad: true,
+			storage,
+		});
+		const internals = service as unknown as {
+			bundledStorages: Map<string, FileSystemSkillStore>;
+		};
+		internals.bundledStorages.set(fallbackDir, fallbackStorage);
+
+		await expect(service.uninstall("demo")).resolves.toBe(true);
+		expect(service.getLoadedSkill("demo")?.source).toBe("bundled");
+		expect(service.getSkillInstructions("demo")?.body).toContain("bundled");
+		expect(service.getSkillScanStatus("demo")).toBe("warning");
+	});
+	it("keeps legacy custom storage compatible and treats save success as commit", async () => {
+		const storage = new LegacySkillStore();
+		const controller = new AbortController();
+		storage.onSave = () => controller.abort(new Error("abort at legacy save"));
+		const service = await AgentSkillsService.start(runtime(), {
+			autoLoad: false,
+			storage,
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				new Response(skillMarkdown("legacy", "legacy instructions"), {
+					headers: { "content-type": "text/markdown" },
+				}),
+			),
+		);
+
+		await expect(
+			service.installFromUrl("https://skills.example/legacy.md", {
+				slug: "legacy",
+				signal: controller.signal,
+				throwOnDownloadError: true,
+			}),
+		).resolves.toBe(true);
+		expect(await storage.loadSkillContent("legacy")).toContain(
+			"legacy instructions",
+		);
+		await expect(service.uninstall("legacy")).resolves.toBe(true);
+		expect(await storage.hasSkill("legacy")).toBe(false);
+	});
 	it("preserves a prior package and loaded skill when a forced candidate cannot load", async () => {
 		const storage = new MemorySkillStore();
 		await seedSkill(storage, "demo", "old instructions");

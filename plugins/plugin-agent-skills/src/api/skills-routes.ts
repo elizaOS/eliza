@@ -9,12 +9,12 @@
  * persisted folder config, cwd project markers, then the state dir.
  */
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
-import { logger, readWorkspaceFolderConfig } from "@elizaos/core";
+import { type AgentRuntime, ElizaError, logger, readWorkspaceFolderConfig } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   decodeUrlPathComponent,
@@ -29,6 +29,7 @@ import {
   readAliasedEnv,
 } from "@elizaos/shared";
 import {
+  type InstalledMarketplaceSkill,
   installMarketplaceSkill,
   listInstalledMarketplaceSkills,
   searchSkillsMarketplace,
@@ -208,7 +209,80 @@ function respondToSkillInstallError(
     );
     return;
   }
+	if (cause instanceof ElizaError) {
+		const status =
+			cause.code === "SKILL_MARKETPLACE_INVALID_INPUT"
+				? 400
+				: cause.code === "SKILL_MARKETPLACE_ALREADY_INSTALLED"
+					? 409
+					: cause.code === "SKILL_MARKETPLACE_NOT_FOUND"
+						? 404
+						: cause.code === "SKILL_MARKETPLACE_SECURITY_BLOCKED"
+							? 422
+							: null;
+		if (status !== null) {
+			ctx.json(
+				ctx.res,
+				{ error: `${prefix}: ${cause.message}`, code: cause.code },
+				status,
+			);
+			return;
+		}
+	}
   ctx.error(ctx.res, prefix, 500);
+}
+
+function publicMarketplaceSkill(
+  record: InstalledMarketplaceSkill,
+): Omit<InstalledMarketplaceSkill, "installPath"> {
+  const { installPath: _installPath, ...publicRecord } = record;
+  return publicRecord;
+}
+
+function prepareWorkspaceSkillRemoval(
+  workspaceDir: string,
+  skillId: string,
+): { rollback(): void; finalize(): void } {
+  const workspaceRoot = path.resolve(workspaceDir);
+  const skillsRoot = path.join(workspaceRoot, "skills");
+  const target = path.join(skillsRoot, skillId);
+  for (const parent of [workspaceRoot, skillsRoot]) {
+    const stat = fs.lstatSync(parent);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new ElizaError("Workspace skill removal failed the safety policy", {
+        code: "SKILL_MARKETPLACE_SECURITY_BLOCKED",
+        context: { skillId },
+      });
+    }
+  }
+  const targetStat = fs.lstatSync(target);
+  if (
+    targetStat.isSymbolicLink() ||
+    !targetStat.isDirectory() ||
+    fs.realpathSync(path.dirname(target)) !== fs.realpathSync(skillsRoot)
+  ) {
+    throw new ElizaError("Workspace skill removal failed the safety policy", {
+      code: "SKILL_MARKETPLACE_SECURITY_BLOCKED",
+      context: { skillId },
+    });
+  }
+	const stagingDir = fs.mkdtempSync(path.join(skillsRoot, ".delete-"));
+	const retainedPath = path.join(stagingDir, "skill");
+	fs.renameSync(target, retainedPath);
+	let finished = false;
+	return {
+		rollback(): void {
+			if (finished) return;
+			fs.renameSync(retainedPath, target);
+			fs.rmSync(stagingDir, { recursive: true, force: true });
+			finished = true;
+		},
+		finalize(): void {
+			if (finished) return;
+			fs.rmSync(stagingDir, { recursive: true, force: true });
+			finished = true;
+		},
+	};
 }
 
 type AbortEventSource = {
@@ -265,6 +339,30 @@ function createInstallRequestLifecycle(
       registrations.length = 0;
     },
   };
+}
+
+async function refreshAfterCommittedSkillMutation(
+  state: SkillsServerState,
+  workspaceDir: string,
+  scope: string,
+	discover: SkillsRouteContext["discoverSkills"],
+	signal?: AbortSignal,
+): Promise<void> {
+  try {
+		const nextSkills = await discover(
+      workspaceDir,
+      state.config,
+      state.runtime,
+    );
+		if (!signal?.aborted) state.skills = nextSkills;
+  } catch (error) {
+    // error-policy:J7 A committed mutation remains successful when its
+    // post-commit view refresh fails; diagnostics make the stale view visible.
+    state.runtime?.reportError(scope, error, { workspaceDir });
+    logger.warn(
+      `[skills-api] Post-commit skill refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -429,8 +527,21 @@ const SKILL_ACK_CACHE_KEY = "eliza:skill-scan-acknowledgments";
 
 type SkillAcknowledgmentMap = Record<
   string,
-  { acknowledgedAt: string; findingCount: number }
+	{ acknowledgedAt: string; findingCount: number; reportDigest: string }
 >;
+
+function skillScanReportDigest(report: Record<string, unknown>): string {
+	return createHash("sha256")
+		.update(
+			JSON.stringify({
+				scannedAt: report.scannedAt,
+				status: report.status,
+				findings: report.findings,
+				manifestFindings: report.manifestFindings,
+			}),
+		)
+		.digest("hex");
+}
 
 // Same contract as loadSkillPreferences: `{}` means "none acknowledged yet"; a
 // cache read failure propagates rather than being merged over and saved back as
@@ -789,20 +900,20 @@ export async function handleSkillsRoutes(
           signal: requestLifecycle.signal,
           throwOnDownloadError: true,
         });
-        requestLifecycle.signal.throwIfAborted();
 
         if (success) {
           // Refresh the skills list so the UI picks up the new skill
           const workspaceDir =
             state.config.agents?.defaults?.workspace ??
             resolveDefaultAgentWorkspaceDir();
-          const discoveredSkills = await discoverSkills(
-            workspaceDir,
-            state.config,
-            state.runtime,
-          );
-          requestLifecycle.signal.throwIfAborted();
-          state.skills = discoveredSkills;
+					await refreshAfterCommittedSkillMutation(
+						state,
+						workspaceDir,
+						"SkillsRoute.catalogInstallRefresh",
+						discoverSkills,
+						requestLifecycle.signal,
+					);
+					requestLifecycle.signal.throwIfAborted();
 
           json(res, {
             ok: true,
@@ -849,10 +960,14 @@ export async function handleSkillsRoutes(
       return true;
     }
 
+    const requestLifecycle = createInstallRequestLifecycle(req, res);
     try {
       const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
-            uninstall?: (slug: string) => Promise<boolean>;
+            uninstall?: (
+              slug: string,
+              options?: { signal?: AbortSignal },
+            ) => Promise<boolean>;
           }
         | undefined;
 
@@ -865,18 +980,23 @@ export async function handleSkillsRoutes(
         return true;
       }
 
-      const success = await service.uninstall(body.slug);
+      const success = await service.uninstall(body.slug, {
+        signal: requestLifecycle.signal,
+      });
 
       if (success) {
         // Refresh the skills list
         const workspaceDir =
           state.config.agents?.defaults?.workspace ??
           resolveDefaultAgentWorkspaceDir();
-        state.skills = await discoverSkills(
-          workspaceDir,
-          state.config,
-          state.runtime,
-        );
+				await refreshAfterCommittedSkillMutation(
+					state,
+					workspaceDir,
+					"SkillsRoute.catalogUninstallRefresh",
+					discoverSkills,
+					requestLifecycle.signal,
+				);
+				requestLifecycle.signal.throwIfAborted();
 
         json(res, {
           ok: true,
@@ -887,15 +1007,15 @@ export async function handleSkillsRoutes(
         error(
           res,
           `Failed to uninstall skill "${body.slug}" — it may be a bundled skill`,
-          400,
+          404,
         );
       }
+			requestLifecycle.markCompleted();
     } catch (err) {
-      error(
-        res,
-        `Skill uninstall failed: ${err instanceof Error ? err.message : String(err)}`,
-        500,
-      );
+      if (requestLifecycle.signal.aborted) return true;
+      respondToSkillInstallError(ctx, "Skill uninstall failed", err);
+    } finally {
+      requestLifecycle.dispose();
     }
     return true;
   }
@@ -1008,27 +1128,65 @@ export async function handleSkillsRoutes(
       Record<string, unknown>
     >;
     const totalFindings = findings.length + manifestFindings.length;
+		const reportDigest = skillScanReportDigest(report);
 
-    if (state.runtime) {
-      const acks = await loadSkillAcknowledgments(state.runtime);
-      acks[skillId] = {
-        acknowledgedAt: new Date().toISOString(),
-        findingCount: totalFindings,
-      };
-      await saveSkillAcknowledgments(state.runtime, acks);
-    }
+		if (state.runtime) {
+			const previousAcks = await loadSkillAcknowledgments(state.runtime);
+			const nextAcks = {
+				...previousAcks,
+				[skillId]: {
+					acknowledgedAt: new Date().toISOString(),
+					findingCount: totalFindings,
+					reportDigest,
+				},
+			};
+			const previousPrefs = await loadSkillPreferences(state.runtime);
+			const nextPrefs =
+				body.enable === true
+					? { ...previousPrefs, [skillId]: true }
+					: previousPrefs;
+			try {
+				await state.runtime.setCache(SKILL_ACK_CACHE_KEY, nextAcks);
+				if (body.enable === true) {
+					await state.runtime.setCache(SKILL_PREFS_CACHE_KEY, nextPrefs);
+				}
+				const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+					| {
+							acknowledgeSkillScan?: (
+								slug: string,
+								reportDigest: string,
+							) => boolean;
+							setSkillEnabled?: (
+								slug: string,
+								enabled: boolean,
+								options?: { reportDigest?: string },
+							) => boolean;
+						}
+					| undefined;
+				if (service?.acknowledgeSkillScan?.(skillId, reportDigest) === false) {
+					throw new Error("Runtime rejected the scan acknowledgment");
+				}
+				if (
+					body.enable === true &&
+					service?.setSkillEnabled?.(skillId, true, { reportDigest }) === false
+				) {
+					throw new Error("Runtime rejected skill enablement");
+				}
+			} catch (cause) {
+				await Promise.all([
+					state.runtime.setCache(SKILL_ACK_CACHE_KEY, previousAcks),
+					state.runtime.setCache(SKILL_PREFS_CACHE_KEY, previousPrefs),
+				]);
+				error(res, "Failed to persist skill acknowledgment", 500);
+				state.runtime.reportError("SkillsRoute.acknowledge", cause, { skillId });
+				return true;
+			}
+		}
 
-    if (body.enable === true) {
-      const skill = state.skills.find((s) => s.id === skillId);
-      if (skill) {
-        skill.enabled = true;
-        if (state.runtime) {
-          const prefs = await loadSkillPreferences(state.runtime);
-          prefs[skillId] = true;
-          await saveSkillPreferences(state.runtime, prefs);
-        }
-      }
-    }
+		if (body.enable === true) {
+			const skill = state.skills.find((s) => s.id === skillId);
+			if (skill) skill.enabled = true;
+		}
 
     json(res, {
       ok: true,
@@ -1320,7 +1478,12 @@ export async function handleSkillsRoutes(
         Record<string, unknown>
       >;
       const totalFindings = findings.length + manifestFindings.length;
-      if (!ack || ack.findingCount !== totalFindings) {
+			const reportDigest = skillScanReportDigest(report);
+			if (
+				!ack ||
+				ack.findingCount !== totalFindings ||
+				ack.reportDigest !== reportDigest
+			) {
         error(
           res,
           `Skill "${skillId}" has ${totalFindings} security finding(s) that must be acknowledged first. Use POST /api/skills/${skillId}/acknowledge.`,
@@ -1330,17 +1493,46 @@ export async function handleSkillsRoutes(
       }
     }
 
-    skill.enabled = true;
+		const enableReportDigest = report
+			? skillScanReportDigest(report)
+			: undefined;
     if (state.runtime) {
-      const prefs = await loadSkillPreferences(state.runtime);
-      prefs[skillId] = true;
-      await saveSkillPreferences(state.runtime, prefs);
-
       const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
-        | { setSkillEnabled?: (slug: string, enabled: boolean) => boolean }
+			| {
+					acknowledgeSkillScan?: (slug: string, reportDigest: string) => boolean;
+					setSkillEnabled?: (
+						slug: string,
+						enabled: boolean,
+						options?: { reportDigest?: string },
+					) => boolean;
+				}
         | undefined;
-      svc?.setSkillEnabled?.(skillId, true);
+		if (enableReportDigest) {
+			svc?.acknowledgeSkillScan?.(skillId, enableReportDigest);
+		}
+		if (
+			svc?.setSkillEnabled &&
+			!svc.setSkillEnabled(skillId, true, {
+				reportDigest: enableReportDigest,
+			})
+		) {
+			error(res, `Skill "${skillId}" could not be enabled.`, 409);
+			return true;
+		}
+			const previousPrefs = await loadSkillPreferences(state.runtime);
+			try {
+				await state.runtime.setCache(SKILL_PREFS_CACHE_KEY, {
+					...previousPrefs,
+					[skillId]: true,
+				});
+			} catch (cause) {
+				svc?.setSkillEnabled?.(skillId, false);
+				state.runtime.reportError("SkillsRoute.enable", cause, { skillId });
+				error(res, `Skill "${skillId}" could not be enabled.`, 500);
+				return true;
+			}
     }
+		skill.enabled = true;
     json(res, {
       ok: true,
       skill,
@@ -1499,42 +1691,49 @@ export async function handleSkillsRoutes(
     const mpDir = path.join(workspaceDir, "skills", ".marketplace", skillId);
     let deleted = false;
     let source = "";
-
-    if (fs.existsSync(path.join(wsDir, "SKILL.md"))) {
-      fs.rmSync(wsDir, { recursive: true, force: true });
-      deleted = true;
-      source = "workspace";
-    } else if (fs.existsSync(path.join(mpDir, "SKILL.md"))) {
-      try {
+		let externallyCommitted = false;
+		let workspaceRemoval:
+			| { rollback(): void; finalize(): void }
+			| undefined;
+		const requestLifecycle = createInstallRequestLifecycle(req, res);
+		try {
+			if (fs.existsSync(path.join(wsDir, "SKILL.md"))) {
+				requestLifecycle.signal.throwIfAborted();
+				workspaceRemoval = prepareWorkspaceSkillRemoval(workspaceDir, skillId);
+				deleted = true;
+				source = "workspace";
+			} else if (fs.existsSync(path.join(mpDir, "SKILL.md"))) {
         const { uninstallMarketplaceSkill: uninstallMp } = await import(
           "../services/skill-marketplace"
         );
-        await uninstallMp(workspaceDir, skillId);
+				await uninstallMp(workspaceDir, skillId, {
+					signal: requestLifecycle.signal,
+				});
         deleted = true;
+				externallyCommitted = true;
+				requestLifecycle.markCompleted();
         source = "marketplace";
-      } catch (err) {
-        error(
-          res,
-          `Failed to uninstall: ${err instanceof Error ? err.message : String(err)}`,
-          500,
-        );
-        return true;
-      }
-    } else if (state.runtime) {
-      try {
+			} else if (state.runtime) {
         const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
-          | { uninstall?: (slug: string) => Promise<boolean> }
+					| {
+							uninstall?: (
+								slug: string,
+								options?: { signal?: AbortSignal },
+							) => Promise<boolean>;
+						}
           | undefined;
         if (svc?.uninstall) {
-          deleted = await svc.uninstall(skillId);
+					deleted = await svc.uninstall(skillId, {
+						signal: requestLifecycle.signal,
+					});
+					if (deleted) {
+						externallyCommitted = true;
+						requestLifecycle.markCompleted();
+					}
           source = "catalog";
         }
-      } catch (err) {
-        logger.debug(
-          `[api] Service not available: ${err instanceof Error ? err.message : err}`,
-        );
       }
-    }
+			if (!externallyCommitted) requestLifecycle.signal.throwIfAborted();
 
     if (!deleted) {
       error(
@@ -1542,14 +1741,26 @@ export async function handleSkillsRoutes(
         `Skill "${skillId}" not found or is a bundled skill that cannot be deleted`,
         404,
       );
+			requestLifecycle.markCompleted();
       return true;
     }
 
-    state.skills = await discoverSkills(
-      workspaceDir,
-      state.config,
-      state.runtime,
-    );
+		if (externallyCommitted) {
+			await refreshAfterCommittedSkillMutation(
+				state,
+				workspaceDir,
+				"SkillsRoute.deleteRefresh",
+				discoverSkills,
+				requestLifecycle.signal,
+			);
+		} else {
+			state.skills = await discoverSkills(
+				workspaceDir,
+				state.config,
+				state.runtime,
+			);
+			requestLifecycle.signal.throwIfAborted();
+		}
     if (state.runtime) {
       const prefs = await loadSkillPreferences(state.runtime);
       delete prefs[skillId];
@@ -1559,7 +1770,23 @@ export async function handleSkillsRoutes(
       await saveSkillAcknowledgments(state.runtime, acks);
     }
     json(res, { ok: true, skillId, source });
+			workspaceRemoval?.finalize();
+			requestLifecycle.markCompleted();
     return true;
+		} catch (err) {
+			try {
+				workspaceRemoval?.rollback();
+			} catch (rollbackError) {
+				state.runtime?.reportError("SkillsRoute.workspaceRemoval", rollbackError, {
+					skillId,
+				});
+			}
+			if (requestLifecycle.signal.aborted) return true;
+			respondToSkillInstallError(ctx, "Failed to uninstall skill", err);
+			return true;
+		} finally {
+			requestLifecycle.dispose();
+		}
   }
 
   // ── GET /api/skills/marketplace/search ─────────────────────────────────
@@ -1579,8 +1806,10 @@ export async function handleSkillsRoutes(
       );
       json(res, { ok: true, results });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      error(res, msg, 502);
+      logger.warn(
+        `[skills-marketplace] Marketplace search failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      error(res, "Skills marketplace search failed", 502);
     }
     return true;
   }
@@ -1592,13 +1821,12 @@ export async function handleSkillsRoutes(
         state.config.agents?.defaults?.workspace ??
         resolveDefaultAgentWorkspaceDir();
       const installed = await listInstalledMarketplaceSkills(workspaceDir);
-      json(res, { ok: true, skills: installed });
+      json(res, { ok: true, skills: installed.map(publicMarketplaceSkill) });
     } catch (err) {
-      error(
-        res,
-        `Failed to list installed skills: ${err instanceof Error ? err.message : err}`,
-        500,
+      logger.warn(
+        `[skills-marketplace] Installed-skill listing failed: ${err instanceof Error ? err.message : String(err)}`,
       );
+      error(res, "Failed to list installed skills", 500);
     }
     return true;
   }
@@ -1690,20 +1918,20 @@ export async function handleSkillsRoutes(
             signal: requestLifecycle.signal,
             throwOnDownloadError: true,
           });
-          requestLifecycle.signal.throwIfAborted();
           if (!success) {
             error(res, `Failed to install skill "${slug}"`, 500);
             requestLifecycle.markCompleted();
             return true;
           }
 
-          const discoveredSkills = await discoverSkills(
-            workspaceDir,
-            state.config,
-            state.runtime,
-          );
-          requestLifecycle.signal.throwIfAborted();
-          state.skills = discoveredSkills;
+					await refreshAfterCommittedSkillMutation(
+						state,
+						workspaceDir,
+						"SkillsRoute.marketplaceCatalogInstallRefresh",
+						discoverSkills,
+						requestLifecycle.signal,
+					);
+					requestLifecycle.signal.throwIfAborted();
 
           json(res, {
             ok: true,
@@ -1738,14 +1966,15 @@ export async function handleSkillsRoutes(
             },
             { signal: requestLifecycle.signal },
           );
-          requestLifecycle.signal.throwIfAborted();
-          state.skills = await discoverSkills(
-            workspaceDir,
-            state.config,
-            state.runtime,
-          );
-          requestLifecycle.signal.throwIfAborted();
-          json(res, { ok: true, skill: result });
+					await refreshAfterCommittedSkillMutation(
+						state,
+						workspaceDir,
+						"SkillsRoute.marketplaceInstallRefresh",
+						discoverSkills,
+						requestLifecycle.signal,
+					);
+					requestLifecycle.signal.throwIfAborted();
+          json(res, { ok: true, skill: publicMarketplaceSkill(result) });
           requestLifecycle.markCompleted();
         } catch (cause) {
           // error-policy:J1 A disconnected repository install owns its git,
@@ -1783,25 +2012,31 @@ export async function handleSkillsRoutes(
     const uninstallId = validateSkillId(parsedMpUninstall.data.id, res, error);
     if (!uninstallId) return true;
 
+    const requestLifecycle = createInstallRequestLifecycle(req, res);
     try {
       const workspaceDir =
         state.config.agents?.defaults?.workspace ??
         resolveDefaultAgentWorkspaceDir();
-      const result = await uninstallMarketplaceSkill(workspaceDir, uninstallId);
+      const result = await uninstallMarketplaceSkill(workspaceDir, uninstallId, {
+        signal: requestLifecycle.signal,
+      });
 
-      state.skills = await discoverSkills(
-        workspaceDir,
-        state.config,
-        state.runtime,
-      );
+			await refreshAfterCommittedSkillMutation(
+				state,
+				workspaceDir,
+				"SkillsRoute.marketplaceUninstallRefresh",
+				discoverSkills,
+				requestLifecycle.signal,
+			);
+			requestLifecycle.signal.throwIfAborted();
 
-      json(res, { ok: true, skill: result });
+      json(res, { ok: true, skill: publicMarketplaceSkill(result) });
+			requestLifecycle.markCompleted();
     } catch (err) {
-      error(
-        res,
-        `Uninstall failed: ${err instanceof Error ? err.message : err}`,
-        500,
-      );
+      if (requestLifecycle.signal.aborted) return true;
+      respondToSkillInstallError(ctx, "Uninstall failed", err);
+    } finally {
+      requestLifecycle.dispose();
     }
     return true;
   }
