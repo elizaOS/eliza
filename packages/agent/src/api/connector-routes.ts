@@ -39,6 +39,13 @@ export interface ConnectorRouteContext {
     config: Record<string, unknown>,
   ) => Record<string, unknown>;
   isBlockedObjectKey: (key: string) => boolean;
+  /**
+   * Fail-closed companion to `cloneWithoutBlockedObjectKeys`. The clone throws
+   * the walk-budget error rather than returning a partial object, so callers
+   * must run this first and reject; otherwise the error escapes to the route
+   * kernel and becomes a 500.
+   */
+  hasBlockedObjectKeyDeep: (value: unknown) => boolean;
   cloneWithoutBlockedObjectKeys: <T>(value: T) => T;
   /** Optional host-supplied callback fired on every disconnect path. */
   onConnectorDisconnect?: (connectorName: string) => Promise<void> | void;
@@ -117,6 +124,7 @@ export async function handleConnectorRoutes(
     saveElizaConfig,
     redactConfigSecrets,
     isBlockedObjectKey,
+    hasBlockedObjectKeyDeep,
     cloneWithoutBlockedObjectKeys,
     onConnectorDisconnect,
   } = ctx;
@@ -143,6 +151,10 @@ export async function handleConnectorRoutes(
       return true;
     }
     const { name: connectorName, config } = parsed.data;
+    if (hasBlockedObjectKeyDeep(config)) {
+      error(res, "Connector config contains a blocked object key", 400);
+      return true;
+    }
     if (!state.config.connectors) state.config.connectors = {};
     const previousConnector = state.config.connectors[connectorName];
     state.config.connectors[connectorName] = cloneWithoutBlockedObjectKeys(
