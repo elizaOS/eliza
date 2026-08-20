@@ -14,6 +14,7 @@ import type { RouteRequestContext } from "@elizaos/shared";
 import { PostCharacterGenerateRequestSchema } from "@elizaos/shared";
 import {
   buildCharacterHistorySnapshot,
+  isCharacterHistoryUnbounded,
   listCharacterHistory,
   type RuntimeCharacterLike,
   recordCharacterHistory,
@@ -435,9 +436,19 @@ export async function handleCharacterRoutes(
     const runtime = state.runtime;
     if (runtime) {
       const character = runtime.character;
-      const previousCharacter = buildCharacterHistorySnapshot(
-        character as RuntimeCharacterLike,
-      );
+      let previousCharacter;
+      try {
+        previousCharacter = buildCharacterHistorySnapshot(
+          character as RuntimeCharacterLike,
+        );
+      } catch (err) {
+        // error-policy:J3 cyclic/over-deep live character is invalid input.
+        if (isCharacterHistoryUnbounded(err)) {
+          error(res, "Character payload exceeds the history walk budget", 400);
+          return true;
+        }
+        throw err;
+      }
       const previousCharacterName =
         typeof character.name === "string" ? character.name : undefined;
       const nextStoredCharacterName =
@@ -495,22 +506,32 @@ export async function handleCharacterRoutes(
       }
 
       // Persist character fields to DB so edits survive restarts
-      const charData = buildCharacterHistorySnapshot(
-        character as RuntimeCharacterLike,
-      );
-      await runtime.updateAgent(runtime.agentId, {
-        name: character.name,
-        metadata: {
-          ...(runtime.character as { metadata?: Record<string, unknown> })
-            .metadata,
-          character: charData,
-        },
-      });
-      await recordCharacterHistory(runtime, {
-        previousCharacter,
-        nextCharacter: character as RuntimeCharacterLike,
-        source: "manual",
-      });
+      let charData;
+      try {
+        charData = buildCharacterHistorySnapshot(
+          character as RuntimeCharacterLike,
+        );
+        await runtime.updateAgent(runtime.agentId, {
+          name: character.name,
+          metadata: {
+            ...(runtime.character as { metadata?: Record<string, unknown> })
+              .metadata,
+            character: charData,
+          },
+        });
+        await recordCharacterHistory(runtime, {
+          previousCharacter,
+          nextCharacter: character as RuntimeCharacterLike,
+          source: "manual",
+        });
+      } catch (err) {
+        // error-policy:J3 Zod-accepted passthrough extras can still overflow.
+        if (isCharacterHistoryUnbounded(err)) {
+          error(res, "Character payload exceeds the history walk budget", 400);
+          return true;
+        }
+        throw err;
+      }
     }
 
     syncRuntimeCharacterToConfig(state, saveConfig);

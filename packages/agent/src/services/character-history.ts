@@ -9,6 +9,108 @@ import { type IAgentRuntime, type Memory, MemoryType } from "@elizaos/core";
 
 export const CHARACTER_HISTORY_TABLE = "character_modifications";
 export const MAX_CHARACTER_HISTORY_LIMIT = 100;
+/**
+ * Honest character snapshots are a handful of objects deep. Zod
+ * `contentSchema.passthrough()` still admits extra keys that `JSON.parse`
+ * already accepted, including a 20k-deep nest (~40 KiB) that then
+ * RangeError'd `toCharacterHistoryValue` on origin develop.
+ */
+export const MAX_CHARACTER_HISTORY_WALK_DEPTH = 64;
+export const MAX_CHARACTER_HISTORY_WALK_NODES = 100_000;
+export const CHARACTER_HISTORY_UNBOUNDED = "CHARACTER_HISTORY_UNBOUNDED";
+
+export class CharacterHistoryError extends Error {
+  readonly code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "CharacterHistoryError";
+    if (code) this.code = code;
+  }
+}
+
+export function isCharacterHistoryUnbounded(error: unknown): boolean {
+  return (
+    error instanceof CharacterHistoryError &&
+    error.code === CHARACTER_HISTORY_UNBOUNDED
+  );
+}
+
+type HistoryWalkContext = {
+  visits: number;
+  visiting: WeakSet<object>;
+};
+
+function failHistoryUnbounded(
+  context: Record<string, unknown>,
+  cause?: unknown,
+): never {
+  const error = new CharacterHistoryError(
+    "Character history value exceeds the walk budget",
+    CHARACTER_HISTORY_UNBOUNDED,
+  );
+  if (cause !== undefined) {
+    (error as Error & { cause?: unknown }).cause = cause;
+  }
+  (error as Error & { context?: Record<string, unknown> }).context = context;
+  throw error;
+}
+
+function reserveHistoryVisits(ctx: HistoryWalkContext, count: number): void {
+  if (count > MAX_CHARACTER_HISTORY_WALK_NODES - ctx.visits) {
+    failHistoryUnbounded({
+      visits: ctx.visits + count,
+      maxNodes: MAX_CHARACTER_HISTORY_WALK_NODES,
+    });
+  }
+  ctx.visits += count;
+}
+
+function enterHistoryContainer(value: object, ctx: HistoryWalkContext): void {
+  if (ctx.visiting.has(value)) {
+    failHistoryUnbounded({ cycle: true });
+  }
+  ctx.visiting.add(value);
+}
+
+function inspectHistory<T>(operation: string, inspect: () => T): T {
+  try {
+    return inspect();
+  } catch (cause) {
+    // error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
+    failHistoryUnbounded({ inspection: operation }, cause);
+  }
+}
+
+function ownEnumerableStringKeys(value: object): string[] {
+  const keys: string[] = [];
+  for (const key of inspectHistory("ownKeys", () => Reflect.ownKeys(value))) {
+    if (typeof key !== "string") continue;
+    const descriptor = inspectHistory("getOwnPropertyDescriptor", () =>
+      Object.getOwnPropertyDescriptor(value, key),
+    );
+    if (!descriptor?.enumerable) continue;
+    keys.push(key);
+  }
+  return keys;
+}
+
+function ownValueDescriptor(
+  value: object,
+  key: string,
+): PropertyDescriptor | undefined {
+  const descriptor = inspectHistory("getOwnPropertyDescriptor", () =>
+    Object.getOwnPropertyDescriptor(value, key),
+  );
+  if (!descriptor) return undefined;
+  if (!("value" in descriptor)) {
+    failHistoryUnbounded({ accessor: true, key });
+  }
+  return descriptor;
+}
+
+function createHistoryWalkContext(): HistoryWalkContext {
+  return { visits: 0, visiting: new WeakSet<object>() };
+}
 
 export type RuntimeCharacterLike = {
   name?: string;
@@ -110,25 +212,48 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  try {
+    return JSON.parse(JSON.stringify(value)) as T;
+  } catch (cause) {
+    // error-policy:J2 stringify/parse overflow or cycle is unbounded input.
+    failHistoryUnbounded({ clone: true }, cause);
+  }
 }
 
 function cloneIfDefined<T>(value: T): T {
   return value === undefined ? value : cloneJson(value);
 }
 
-function normalizeForCompare(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((entry) => normalizeForCompare(entry));
+function normalizeForCompare(
+  value: unknown,
+  depth = 0,
+  ctx: HistoryWalkContext = createHistoryWalkContext(),
+): unknown {
+  if (depth > MAX_CHARACTER_HISTORY_WALK_DEPTH) {
+    failHistoryUnbounded({
+      depth,
+      max: MAX_CHARACTER_HISTORY_WALK_DEPTH,
+    });
   }
-  if (isRecord(value)) {
+  reserveHistoryVisits(ctx, 1);
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  enterHistoryContainer(value, ctx);
+  try {
+    if (Array.isArray(value)) {
+      return value.map((entry) => normalizeForCompare(entry, depth + 1, ctx));
+    }
     const normalized: Record<string, unknown> = {};
-    for (const key of Object.keys(value).sort()) {
-      normalized[key] = normalizeForCompare(value[key]);
+    for (const key of ownEnumerableStringKeys(value).sort()) {
+      const descriptor = ownValueDescriptor(value, key);
+      if (!descriptor) continue;
+      normalized[key] = normalizeForCompare(descriptor.value, depth + 1, ctx);
     }
     return normalized;
+  } finally {
+    ctx.visiting.delete(value);
   }
-  return value;
 }
 
 function areEqualForHistory(previous: unknown, next: unknown): boolean {
@@ -176,7 +301,16 @@ function buildHistorySummary(
 
 function toCharacterHistoryValue(
   value: unknown,
+  depth = 0,
+  ctx: HistoryWalkContext = createHistoryWalkContext(),
 ): CharacterHistoryValue | undefined {
+  if (depth > MAX_CHARACTER_HISTORY_WALK_DEPTH) {
+    failHistoryUnbounded({
+      depth,
+      max: MAX_CHARACTER_HISTORY_WALK_DEPTH,
+    });
+  }
+  reserveHistoryVisits(ctx, 1);
   if (
     value === null ||
     typeof value === "string" ||
@@ -187,22 +321,33 @@ function toCharacterHistoryValue(
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : undefined;
   }
-  if (Array.isArray(value)) {
-    return value.map(
-      (entry) => toCharacterHistoryValue(entry) ?? null,
-    ) as CharacterHistoryValue[];
+  if (typeof value !== "object") {
+    return undefined;
   }
-  if (isRecord(value)) {
+  enterHistoryContainer(value, ctx);
+  try {
+    if (Array.isArray(value)) {
+      return value.map(
+        (entry) => toCharacterHistoryValue(entry, depth + 1, ctx) ?? null,
+      ) as CharacterHistoryValue[];
+    }
     const normalized: Record<string, CharacterHistoryValue | undefined> = {};
-    for (const [key, entry] of Object.entries(value)) {
-      const normalizedEntry = toCharacterHistoryValue(entry);
+    for (const key of ownEnumerableStringKeys(value)) {
+      const descriptor = ownValueDescriptor(value, key);
+      if (!descriptor) continue;
+      const normalizedEntry = toCharacterHistoryValue(
+        descriptor.value,
+        depth + 1,
+        ctx,
+      );
       if (normalizedEntry !== undefined) {
         normalized[key] = normalizedEntry;
       }
     }
     return normalized;
+  } finally {
+    ctx.visiting.delete(value);
   }
-  return undefined;
 }
 
 export function buildCharacterHistorySnapshot(
@@ -342,6 +487,20 @@ export async function recordCharacterHistory(
   };
 }
 
+function safeCloneSnapshot(
+  value: Record<string, unknown>,
+): CharacterHistorySnapshot {
+  try {
+    return cloneJson(value) as CharacterHistorySnapshot;
+  } catch (error) {
+    // error-policy:J3 stored snapshot poison should not 500 the list path.
+    if (isCharacterHistoryUnbounded(error)) {
+      return {};
+    }
+    throw error;
+  }
+}
+
 export function parseCharacterHistoryEntry(
   memory: Memory,
 ): CharacterHistoryEntry | null {
@@ -372,12 +531,22 @@ export function parseCharacterHistoryEntry(
     ) {
       return null;
     }
-    const before = Object.hasOwn(rawChange, "before")
-      ? toCharacterHistoryValue(rawChange.before)
-      : undefined;
-    const after = Object.hasOwn(rawChange, "after")
-      ? toCharacterHistoryValue(rawChange.after)
-      : undefined;
+    let before: CharacterHistoryValue | undefined;
+    let after: CharacterHistoryValue | undefined;
+    try {
+      before = Object.hasOwn(rawChange, "before")
+        ? toCharacterHistoryValue(rawChange.before)
+        : undefined;
+      after = Object.hasOwn(rawChange, "after")
+        ? toCharacterHistoryValue(rawChange.after)
+        : undefined;
+    } catch (error) {
+      // error-policy:J3 a poisoned stored change is not a live input 500.
+      if (isCharacterHistoryUnbounded(error)) {
+        return null;
+      }
+      throw error;
+    }
 
     changes.push({
       field: field as CharacterHistoryField,
@@ -408,10 +577,10 @@ export function parseCharacterHistoryEntry(
     fieldsChanged,
     changes,
     before: isRecord(metadata.before)
-      ? (cloneJson(metadata.before) as CharacterHistorySnapshot)
+      ? safeCloneSnapshot(metadata.before)
       : {},
     after: isRecord(metadata.after)
-      ? (cloneJson(metadata.after) as CharacterHistorySnapshot)
+      ? safeCloneSnapshot(metadata.after)
       : {},
   };
 }

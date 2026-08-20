@@ -66,3 +66,46 @@ describe("GET /api/character/history", () => {
     expect(json).not.toHaveBeenCalled();
   });
 });
+
+describe("PUT /api/character history walk", () => {
+  it("returns 400 instead of RangeError on cyclic messageExamples", async () => {
+    const cyclic: Record<string, unknown> = { text: "hi" };
+    cyclic.self = cyclic;
+    const updateAgent = vi.fn();
+    const createMemory = vi.fn();
+    const json = vi.fn();
+    const error = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "PUT",
+      pathname: "/api/character",
+      state: {
+        agentName: "Ada",
+        runtime: {
+          agentId: "agent",
+          character: {
+            name: "Ada",
+            messageExamples: [[{ name: "Ada", content: cyclic }]],
+          },
+          updateAgent,
+          createMemory,
+        } as never,
+      },
+      json,
+      error,
+      readJsonBody: vi.fn(async () => ({ name: "Ada" })),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(() => ({ success: true })),
+    } as never);
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      {},
+      "Character payload exceeds the history walk budget",
+      400,
+    );
+    expect(updateAgent).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+});
