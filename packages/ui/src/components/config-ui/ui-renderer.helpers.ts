@@ -5,7 +5,11 @@
  * XSS from agent-authored specs), and enumerates the supported component types.
  * No React — logic only, so it can be unit-tested in isolation.
  */
-import { getByPath } from "../../config/config-catalog";
+import {
+  getByPath,
+  isSafeUntrustedRegexPattern,
+  MAX_UNTRUSTED_REGEX_INPUT_LENGTH,
+} from "../../config/config-catalog";
 import type {
   AuthState,
   UiSpecValidationCheck,
@@ -125,10 +129,14 @@ const BUILTIN_VALIDATORS: Record<
     typeof v === "string" && v.length <= Number(args?.length ?? Infinity),
   pattern: (v, args) => {
     if (typeof v !== "string" || !args?.pattern) return true;
+    const pat = String(args.pattern);
+    if (v.length > MAX_UNTRUSTED_REGEX_INPUT_LENGTH) return false;
+    if (!isSafeUntrustedRegexPattern(pat)) return false;
     try {
-      return new RegExp(String(args.pattern)).test(v);
+      return new RegExp(pat).test(v);
     } catch {
-      return true;
+      // error-policy:J3 invalid agent-authored regex -> check fails closed
+      return false;
     }
   },
   min: (v, args) => Number(v) >= Number(args?.value ?? -Infinity),
