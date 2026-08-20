@@ -215,16 +215,24 @@ async function installTrajectoryViewerInteractionRoutes(page: Page) {
             : '{"decision":"RESPOND","reasoning":"beta should respond"}',
           ["should_respond"],
         ),
-        trajectoryLlmCall(
-          `${record.id}-plan`,
-          record.id,
-          "response",
-          alpha ? "deterministic-model-a" : "deterministic-model-b",
-          alpha
-            ? "Alpha response from Playwright trajectory fixture."
-            : "Beta response from Playwright trajectory fixture.",
-          ["plan"],
-        ),
+        {
+          ...trajectoryLlmCall(
+            `${record.id}-plan`,
+            record.id,
+            "response",
+            alpha ? "deterministic-model-a" : "deterministic-model-b",
+            "Alpha response from Playwright trajectory fixture.",
+            ["plan"],
+          ),
+          ...(alpha
+            ? {}
+            : {
+                userPrompt: "   ",
+                prompt: 0,
+                response: "",
+                output: false,
+              }),
+        },
       ],
       providerAccesses: [
         {
@@ -453,8 +461,15 @@ test("trajectory viewer route refreshes, filters, and changes selected detail", 
     .toBe(true);
   await closeMobilePageSidebar(page);
   await expect(page.getByText("deterministic-model-b").first()).toBeVisible();
+  const sparseInput = page.locator('section[aria-label="Input (User)"]');
+  const sparseOutput = page.locator('section[aria-label="Output (Response)"]');
+  await expect(sparseInput).toHaveText("0");
+  await expect(sparseOutput).toHaveText("false");
   await expect(
-    page.getByText("Beta response from Playwright trajectory fixture.").first(),
+    sparseInput.locator("xpath=..").getByText("1 lines", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    sparseOutput.locator("xpath=..").getByText("1 lines", { exact: true }),
   ).toBeVisible();
 
   // NOTE: the trajectories list search moved to the floating chat composer.
