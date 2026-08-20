@@ -6709,7 +6709,13 @@ async function settleTasksOperation(args: {
       actionName: canonical?.actionName,
     };
   }
-  if (result.success && receipt.outcome === "failed") {
+  // A queued send is a CONFIRMED state — the queue itself is the effect and
+  // the runner's text already says so. The hedge projection replaced it with
+  // "the send may have gone through…" and that mechanism prose reached chat
+  // (live 2026-08-20, yahtzee follow-up).
+  const queuedResult =
+    (result.data as { queued?: unknown } | undefined)?.queued === true;
+  if (result.success && receipt.outcome === "failed" && !queuedResult) {
     // Model-phrased "unconfirmed outcome" note; the fallback carries the same
     // facts. This projection replaces whatever optimistic text the op wrote,
     // so it never claims success the receipt cannot back.

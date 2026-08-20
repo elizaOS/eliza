@@ -268,7 +268,21 @@ export function createActiveSessionForwardHandler(
           typeof active.metadata?.label === "string"
             ? active.metadata.label
             : active.name;
-        const busy = isSessionBusy(active.status);
+        // A smithers-driven session's conversation belongs to the workflow
+        // executor for the run's whole lifetime: a direct deliverNow prompt
+        // races the executor's own turn and killed the workflow mid-build
+        // ("status failed" ~10s after a follow-up arrived, live 2026-08-20
+        // — bmi / password-generator / yahtzee). Treat it as busy so every
+        // relevant follow-up queues; the idle-flush (or the orphan redirect
+        // when the session stops at completion) owns delivery.
+        const activeMeta = (active.metadata ?? {}) as Record<string, unknown>;
+        const smithersRunState = (
+          activeMeta.smithersDurableRun as { state?: string } | undefined
+        )?.state;
+        const busy =
+          isSessionBusy(active.status) ||
+          smithersRunState === "running" ||
+          smithersRunState === "pending";
         // What the sub-agent is working on, for the model classifier's
         // relevance judgement — best-effort from session metadata (all
         // optional).
