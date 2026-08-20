@@ -8,6 +8,7 @@ import { signInWithSolana } from "../src/lib/api/siws";
 
 const originalFetch = globalThis.fetch;
 const originalWindow = globalThis.window;
+const originalAbortSignalTimeout = AbortSignal.timeout;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -16,6 +17,8 @@ afterEach(() => {
     writable: true,
     value: originalWindow,
   });
+  // Bun mock.restore() does not reverse a direct property assignment.
+  AbortSignal.timeout = originalAbortSignalTimeout;
   mock.restore();
 });
 
@@ -111,5 +114,11 @@ describe("homepage SIWS hung HTTP", () => {
       name: "TimeoutError",
     });
     expect(Date.now() - started).toBeLessThan(1_000);
+    AbortSignal.timeout = originalAbortSignalTimeout;
+    expect(AbortSignal.timeout).toBe(originalAbortSignalTimeout);
+  });
+
+  test("does not leak the 50ms AbortSignal.timeout spy into later tests", () => {
+    expect(AbortSignal.timeout).toBe(originalAbortSignalTimeout);
   });
 });
