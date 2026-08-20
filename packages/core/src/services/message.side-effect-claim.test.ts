@@ -1261,3 +1261,131 @@ describe("subjectless past-participle openers (Discord group-surface fabrication
 		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
 	});
 });
+
+describe("multilingual completed-side-effect claim tiers (#17027 AC7)", () => {
+	// Fabricated confirmations per locale MUST fire: a reply asserting a
+	// finished save/schedule with zero tool calls is the exact invariant the
+	// receipt gate protects, regardless of language.
+	it.each([
+		// es — perfective, preterite, state, opener
+		"He guardado tu recordatorio para mañana a las 9.",
+		"Ya he creado la tarea de entrenamiento.",
+		"Acabo de programar el recordatorio.",
+		"Guardé la nota en tu calendario.",
+		"Tu recordatorio está programado para las 9.",
+		"Listo — tu recordatorio queda guardado.",
+		// pt — preterite, acabei de, state, opener
+		"Criei o lembrete para amanhã às 9.",
+		"Já salvei a sua tarefa.",
+		"Acabei de agendar o lembrete.",
+		"Seu lembrete está salvo.",
+		"Pronto — o lembrete foi criado.",
+		// ko — past, passive, headline
+		"알림을 설정했어요.",
+		"리마인더를 저장했습니다.",
+		"일정이 등록되었습니다.",
+		"메모 저장 완료!",
+		"알림을 예약해 뒀어요.",
+		// tl — completed aspect
+		"Naitakda ko na ang paalala mo para bukas.",
+		"Nai-save ko na ang tala.",
+		"Nakatakda na ang paalala mo.",
+		"Idinagdag ko na sa iskedyul mo.",
+		// vi — perfective đã / xong, incl. the "nhắc nhở" noun the ASCII \b
+		// boundary silently killed in the first attempt (#19824)
+		"Mình đã đặt lời nhắc lúc 9 giờ sáng.",
+		"Đã lưu nhắc nhở của bạn.",
+		"Nhắc nhở đã được lưu.",
+		"Mình đã giúp bạn tạo nhắc nhở tập luyện.",
+		"Lưu xong rồi, ghi chú của bạn đã có trong lịch.",
+		// zh-CN — 了 perfective, 已 perfective, passive
+		"我已经把提醒设置好了。",
+		"提醒已保存。",
+		"我帮你把任务添加了。",
+		"好了，提醒已经安排在明天早上九点。",
+	])("flags %p as a fabricated completion claim", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+
+	// Denials, negations, and not-yet statements must NOT fire.
+	it.each([
+		"No he guardado el recordatorio todavía.",
+		"Todavía no lo he programado.",
+		"Não salvei o lembrete ainda.",
+		"Ainda não criei a tarefa.",
+		"알림을 저장 안 했어요.",
+		"알림을 설정하지 않았어요.",
+		"Hindi ko pa nai-save ang paalala.",
+		"Mình chưa đặt lời nhắc.",
+		"Mình chưa lưu xong ghi chú.",
+		"我还没设置提醒。",
+		"我没有把任务保存下来。",
+	])("passes denial/negation %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Offers and questions — including full-width terminators and
+	// particle-final questions with no question mark — must NOT fire.
+	it.each([
+		"¿Quieres que guarde el recordatorio?",
+		"¿Guardé bien tu recordatorio?",
+		"Quer que eu salve o lembrete?",
+		"알림을 설정했어요?",
+		"알림을 저장할까요?",
+		"Gusto mo bang i-save ko ang paalala?",
+		"Naitakda ko ba ang paalala?",
+		"Bạn có muốn mình đặt lời nhắc không?",
+		"Bạn đã lưu lời nhắc chưa?",
+		// zh noun-plus-question-particle offers, the second #19824 killer:
+		// no ？ at all, question is carried by the particle alone
+		"要我把提醒设置好吗",
+		"需要我帮你把任务添加了吗",
+		"我把提醒设置好了吗？",
+		"提醒设置好了吧？",
+	])("passes offer/question %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Future intent, conditionals, and instructions are plans, not reports.
+	it.each([
+		"Cuando haya guardado el recordatorio te aviso.",
+		"Si guardo la nota, te lo confirmo.",
+		"Se você quiser, eu salvo o lembrete.",
+		"알림을 저장할게요.",
+		"지금 알림을 설정하겠습니다.",
+		"Ise-save ko ang paalala mamaya.",
+		"Kung gusto mo, itatakda ko ang paalala.",
+		"Mình sẽ đặt lời nhắc ngay bây giờ.",
+		"Nếu bạn muốn, mình đặt lời nhắc lúc 9 giờ.",
+		"如果你想，我可以把提醒设置好。",
+		"我会帮你把任务安排好的。",
+	])("passes future/conditional %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Descriptions of the USER's own actions or of existing state are not
+	// agent completion claims.
+	it.each([
+		"Bạn đã đặt lời nhắc lúc 9 giờ rồi mà.",
+		"你已经把提醒设置好了，不用再设一次。",
+		"Na-save mo na ang paalala kahapon.",
+		"Tus recordatorios están en la aplicación.",
+		"Os lembretes ficam na agenda do aplicativo.",
+		"알림은 설정에서 변경할 수 있어요.",
+		"你可以在日历里保存任务。",
+	])("passes second-person/state description %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Ordinary uses of save/set vocabulary with no tracked-work noun in the
+	// claiming sentence must pass (noun gate).
+	it.each([
+		"He guardado un buen recuerdo de ese viaje.",
+		"Salvei o melhor para o final.",
+		"저는 그 말을 기억했어요.",
+		"我把话说完了。",
+		"Đã lưu ý đến điều đó.",
+	])("passes tracked-noun-free sentence %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+});
