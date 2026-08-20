@@ -20,7 +20,9 @@
  *
  * `evaluateLogicExpression` is depth-, visit-, and cycle-bounded so a
  * hostile plugin-config `visible` tree cannot stack-overflow the form
- * renderer.
+ * renderer. Plugin `pattern` validators fail closed on nested-quantifier
+ * / quantified-alternation regex so a hostile UI spec cannot hang the
+ * form renderer (JS regex is synchronous and cannot be timed out).
  *
  * @module config-catalog
  */
@@ -49,6 +51,42 @@ export const MAX_LOGIC_EXPRESSION_PATH_SEGMENTS = 64;
 export const MAX_LOGIC_EXPRESSION_LITERAL_LENGTH = 2_048;
 export const LOGIC_EXPRESSION_UNBOUNDED = "LOGIC_EXPRESSION_UNBOUNDED";
 export const LOGIC_EXPRESSION_INVALID = "LOGIC_EXPRESSION_INVALID";
+
+/** Honest plugin-config patterns are short format strings, not engines. */
+export const MAX_UNTRUSTED_REGEX_PATTERN_LENGTH = 200;
+/** Bound the subject a user-supplied pattern is tested against. */
+export const MAX_UNTRUSTED_REGEX_INPUT_LENGTH = 4_096;
+
+/**
+ * Nested-quantifier and quantified-alternation shapes that backtrack
+ * catastrophically on origin (`^(a+)+$` / 28 `a`s → 14s on Node).
+ * Matches `(a+)+`, `(a+){2,}`, `(a|a)+`.
+ */
+const UNSAFE_UNTRUSTED_REGEX = /([+*?])\)?[+*?{]|(\([^)]*\|[^)]*\))[+*?{]/;
+
+/**
+ * True when `pattern` is short, compiles, and is not a nested-quantifier
+ * ReDoS shape. Used by catalog and UiRenderer validators so both copies
+ * fail closed on the same untrusted compile.
+ */
+export function isSafeUntrustedRegexPattern(pattern: string): boolean {
+  if (
+    pattern.length === 0 ||
+    pattern.length > MAX_UNTRUSTED_REGEX_PATTERN_LENGTH
+  ) {
+    return false;
+  }
+  if (UNSAFE_UNTRUSTED_REGEX.test(pattern)) {
+    return false;
+  }
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    // error-policy:J3 invalid user-supplied regex is not a validator
+    return false;
+  }
+}
 
 // ── JSON Schema types (subset we consume) ──────────────────────────────
 
@@ -702,6 +740,8 @@ export const builtInValidators: Record<string, ValidationFunction> = {
   pattern: (value, args) => {
     if (typeof value !== "string" || typeof args?.pattern !== "string")
       return false;
+    if (value.length > MAX_UNTRUSTED_REGEX_INPUT_LENGTH) return false;
+    if (!isSafeUntrustedRegexPattern(args.pattern)) return false;
     try {
       return new RegExp(args.pattern).test(value);
     } catch {

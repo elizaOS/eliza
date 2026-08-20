@@ -11,6 +11,7 @@ import {
   evaluateLogicExpression,
   getByPath,
   isConfigKeySatisfied,
+  isSafeUntrustedRegexPattern,
   LOGIC_EXPRESSION_INVALID,
   LOGIC_EXPRESSION_UNBOUNDED,
   MAX_LOGIC_EXPRESSION_DEPTH,
@@ -18,6 +19,7 @@ import {
   MAX_LOGIC_EXPRESSION_NODES,
   MAX_LOGIC_EXPRESSION_PATH_LENGTH,
   MAX_LOGIC_EXPRESSION_PATH_SEGMENTS,
+  MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
   runValidation,
   setByPath,
 } from "./config-catalog.js";
@@ -159,6 +161,44 @@ describe("config-catalog built-in validators", () => {
         {},
       ),
     ).toEqual({ valid: false, errors: ["Must be a finite number"] });
+  });
+
+  it("fails closed on nested-quantifier plugin patterns before compile", () => {
+    const evil = "^(a+)+$";
+    const value = `${"a".repeat(30)}!`;
+    const started = performance.now();
+    expect(isSafeUntrustedRegexPattern(evil)).toBe(false);
+    expect(builtInValidators.pattern(value, { pattern: evil })).toBe(false);
+    expect(performance.now() - started).toBeLessThan(20);
+    expect(
+      runValidation(
+        {
+          checks: [{ fn: "pattern", args: { pattern: evil }, message: "bad" }],
+        },
+        value,
+        {},
+      ),
+    ).toEqual({ valid: false, errors: ["bad"] });
+  });
+
+  it("fails closed on quantified-alternation patterns", () => {
+    expect(isSafeUntrustedRegexPattern("^(a|a)+$")).toBe(false);
+    expect(
+      builtInValidators.pattern(`${"a".repeat(28)}b`, { pattern: "^(a|a)+$" }),
+    ).toBe(false);
+  });
+
+  it("fails closed on overlong patterns", () => {
+    const overlong = `a${"x".repeat(MAX_UNTRUSTED_REGEX_PATTERN_LENGTH)}`;
+    expect(isSafeUntrustedRegexPattern(overlong)).toBe(false);
+    expect(builtInValidators.pattern("a", { pattern: overlong })).toBe(false);
+  });
+
+  it("still accepts an honest format pattern", () => {
+    const honest = "^[a-z0-9_-]{1,32}$";
+    expect(isSafeUntrustedRegexPattern(honest)).toBe(true);
+    expect(builtInValidators.pattern("ok_id", { pattern: honest })).toBe(true);
+    expect(builtInValidators.pattern("NO", { pattern: honest })).toBe(false);
   });
 });
 
