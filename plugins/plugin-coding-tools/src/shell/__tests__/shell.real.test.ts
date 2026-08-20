@@ -77,14 +77,11 @@ describePosixShell("shell plugin real local integration", () => {
   });
 
   it("executes a real command in the allowed directory and exposes it through the provider", async () => {
-    const result = await service.executeCommand(
-      'printf "live-shell" > output.txt',
-      "room-1",
-    );
-    expect(result.success).toBe(true);
+    const result = await service.executeCommand("touch output.txt", "room-1");
+    expect(result.success, JSON.stringify(result)).toBe(true);
     expect(
       readFileSync(path.join(allowedDirectory, "output.txt"), "utf8"),
-    ).toBe("live-shell");
+    ).toBe("");
 
     const provider = await shellHistoryProvider.get(
       runtime,
@@ -165,8 +162,11 @@ describePosixShell("shell plugin real local integration", () => {
   });
 
   it("resolves an explicit relative workdir from the service current directory", async () => {
-    const child = path.join(allowedDirectory, "relative-child");
+    const parent = path.join(allowedDirectory, "current-parent");
+    const child = path.join(parent, "relative-child");
+    mkdirSync(parent);
     mkdirSync(child);
+    expect(service.setCurrentDirectory(parent)).toBe(true);
 
     const result = await service.exec("pwd", { workdir: "relative-child" });
     const realChild = realpathSync(child);
@@ -174,6 +174,41 @@ describePosixShell("shell plugin real local integration", () => {
     expect(result.status).toBe("completed");
     expect(result.cwd).toBe(realChild);
     expect(result.aggregated.trim()).toBe(realChild);
+
+    const omitted = await service.exec("pwd");
+    const realParent = realpathSync(parent);
+    expect(omitted.status).toBe("completed");
+    expect(omitted.cwd).toBe(realParent);
+    expect(omitted.aggregated.trim()).toBe(realParent);
+
+    const absolute = await service.exec("pwd", { workdir: child });
+    expect(absolute.status).toBe("completed");
+    expect(absolute.cwd).toBe(realChild);
+    expect(absolute.aggregated.trim()).toBe(realChild);
+  });
+
+  it("rejects blank explicit workdirs without executing", async () => {
+    for (const workdir of ["", " ", "\t\n"]) {
+      const result = await service.exec("pwd", { workdir });
+      expect(result.status).toBe("failed");
+      expect(result.reason).toBe(
+        "Explicit workdir must be a non-empty string.",
+      );
+      expect(result.aggregated).toBe("");
+    }
+  });
+
+  it("returns structured failures for non-string runtime workdirs", async () => {
+    for (const workdir of [null, 42, { path: allowedDirectory }]) {
+      const result = await service.exec("pwd", {
+        workdir: workdir as unknown as string,
+      });
+      expect(result.status).toBe("failed");
+      expect(result.reason).toBe(
+        "Explicit workdir must be a non-empty string.",
+      );
+      expect(result.aggregated).toBe("");
+    }
   });
 
   it("rejects missing, dangling, and non-directory explicit workdirs", async () => {

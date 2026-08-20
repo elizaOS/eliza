@@ -1,7 +1,6 @@
 /**
- * ShellService — the shell plugin's core command executor. Runs commands via
- * executeCommand() (simple, timeout-bounded) or exec() (PTY, background/yield,
- * session tracking), and manages live sessions through processAction().
+ * Executes compatibility shell commands with path confinement, output
+ * redaction, session tracking, and optional PTY/background behavior.
  *
  * Short-circuits in cloud mode and routes through SandboxManager under sandbox
  * mode; PTY spawn (@lydell/node-pty) is optional and degrades to cross-spawn
@@ -574,14 +573,16 @@ export class ShellService extends Service {
 
     // An explicit cwd is command input, so it must reach the realpath boundary
     // unchanged instead of degrading to an unrelated process directory.
-    const explicitWorkdir = options.workdir?.trim();
-    if (options.workdir !== undefined && !explicitWorkdir) {
+    const rawWorkdir: unknown = options.workdir;
+    const explicitWorkdir =
+      typeof rawWorkdir === "string" ? rawWorkdir.trim() : undefined;
+    if (rawWorkdir !== undefined && !explicitWorkdir) {
       return {
         status: "failed",
         exitCode: 1,
         durationMs: 0,
         aggregated: "",
-        reason: "Explicit workdir must not be empty.",
+        reason: "Explicit workdir must be a non-empty string.",
       };
     }
     const requestedWorkdir = explicitWorkdir ?? this.currentDirectory;
