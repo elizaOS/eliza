@@ -631,6 +631,7 @@ describe("ChatOverlay first-run gating", () => {
       <ChatOverlay
         controller={waitingController}
         firstRunOpen={false}
+        releaseFirstRunToFull
         onStateChange={onStateChange}
       />,
     );
@@ -701,8 +702,14 @@ describe("ChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(overlay.getAttribute("data-open")).toBe("true");
 
-    // Onboarding completes: firstRunOpen falls true → false.
-    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
+    // Onboarding completes with the parent's mounted transcript-epoch proof.
+    rerender(
+      <ChatOverlay
+        controller={controller}
+        firstRunOpen={false}
+        releaseFirstRunToFull
+      />,
+    );
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("full");
     expect(overlay.getAttribute("data-open")).toBe("true");
@@ -727,6 +734,19 @@ describe("ChatOverlay first-run gating", () => {
     // The collapse gate is released: Escape closes the sheet again.
     fireEvent.keyDown(input, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
+  });
+
+  it("returns to INPUT when a false probe clears without mounted transcript authority", () => {
+    const controller = makeController();
+    const { rerender } = render(
+      <ChatOverlay controller={controller} firstRunOpen />,
+    );
+
+    rerender(<ChatOverlay controller={controller} firstRunOpen={false} />);
+
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
   });
 
   it("never auto-collapses a session where onboarding was not active", () => {

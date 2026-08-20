@@ -31,9 +31,12 @@ describe("useFirstRunChatRelease", () => {
     );
 
     act(() => result.current.recordMountedOverlay());
+    expect(result.current.mountedOnboarding).toBe(false);
     act(() => result.current.recordMountedTranscript());
+    expect(result.current.mountedOnboarding).toBe(true);
     rerender({ complete: true });
     expect(result.current.releasePending).toBe(true);
+    expect(result.current.mountedOnboarding).toBe(false);
 
     act(() => result.current.acknowledgeRelease());
     expect(result.current.releasePending).toBe(false);

@@ -393,6 +393,7 @@ describe("App chat-overlay first-run composition", () => {
     appState.firstRunComplete = false;
     appState.startupPhase = "first-run-required";
     appState.authPhase = "loading";
+    shellControllerMock.current = {};
 
     // 1. Onboarding: the shell paints (no StartupScreen gate).
     const shell = render(<App />);
@@ -432,6 +433,28 @@ describe("App chat-overlay first-run composition", () => {
     const shell = render(<App />);
     expect(shell.getByTestId("shell-controller-provider")).toBeTruthy();
 
+    appState.authPhase = "loading";
+    shell.rerender(<App />);
+
+    expect(shell.getByTestId("startup-screen")).toBeTruthy();
+    expect(shell.queryByTestId("shell-controller-provider")).toBeNull();
+  });
+
+  it("does not treat a non-authoritative false probe as auth-boundary authority", () => {
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = true;
+    appState.startupPhase = "ready";
+    appState.authPhase = "authenticated";
+
+    const shell = render(<App />);
+    expect(shell.getByTestId("shell-controller-provider")).toBeTruthy();
+
+    // A normal post-onboarding probe must hold the shell. The preservation
+    // capability belongs only to a previously committed first-run shell; a
+    // false/incomplete value observed outside first-run-required cannot arm it.
+    appState.firstRunComplete = false;
+    shell.rerender(<App />);
+    appState.firstRunComplete = true;
     appState.authPhase = "loading";
     shell.rerender(<App />);
 
