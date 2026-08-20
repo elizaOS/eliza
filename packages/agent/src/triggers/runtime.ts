@@ -668,6 +668,8 @@ export async function executeTriggerTask(
   let errorMessage = "";
   let workflowExecutionId: string | undefined;
   let workflowGone = false;
+  const dispatchedWorkflowId =
+    trigger.kind === "workflow" ? trigger.workflowId : undefined;
 
   const result =
     trigger.kind === "workflow"
@@ -842,7 +844,7 @@ export async function executeTriggerTask(
   const workflowStillGone =
     workflowGone &&
     triggerToPersist.kind === "workflow" &&
-    triggerToPersist.workflowId === trigger.workflowId;
+    triggerToPersist.workflowId === dispatchedWorkflowId;
   const shouldDeleteTask =
     workflowStillGone ||
     updatedTrigger.triggerType === "once" ||

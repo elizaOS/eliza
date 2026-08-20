@@ -1082,7 +1082,7 @@ describe("runtime event trigger bridge", () => {
       expect(handle.runtime.getTasks).toHaveBeenCalledTimes(4),
     );
 
-    const metadata = target.metadata as {
+    const metadata = target.metadata as unknown as {
       trigger: Record<string, unknown>;
     };
     handle.setTasks([
