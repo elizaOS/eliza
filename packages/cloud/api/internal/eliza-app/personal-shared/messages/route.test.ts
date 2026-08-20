@@ -791,6 +791,94 @@ describe("personal Shared messaging deliveries", () => {
     );
   });
 
+  test("keeps a Telegram reminder on the trusted gateway scheduler after Dedicated cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+
+    const response = await request({
+      ...valid,
+      message: "Remind me in 2 minutes to stretch",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "shared",
+        },
+        reply: "hello from Eliza",
+      },
+    });
+    expect(bridge).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      expect.objectContaining({ id: expect.stringMatching(/^personal:/) }),
+      expect.stringMatching(/^personal:/),
+      "Remind me in 2 minutes to stretch",
+      "Eliza",
+      runtimeExecutionCtx,
+      namespace,
+      "telegram:eliza:42",
+      "platform",
+      {
+        platform: "telegram",
+        project: "eliza-app",
+        chatId: "123456789",
+      },
+    );
+  });
+
+  test("keeps a Discord reminder on the trusted gateway scheduler after Dedicated cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    const discordUserId = "123456789012345678";
+
+    const response = await request({
+      platform: "discord",
+      discordUserId,
+      discordUsername: "shaw",
+      displayName: "Shaw",
+      messageId: "discord:reminder-42",
+      message: "Remind me in 2 minutes to stretch",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "shared",
+        },
+        reply: "hello from Eliza",
+      },
+    });
+    expect(bridge).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      expect.objectContaining({ id: expect.stringMatching(/^personal:/) }),
+      expect.stringMatching(/^personal:/),
+      "Remind me in 2 minutes to stretch",
+      "Eliza",
+      runtimeExecutionCtx,
+      namespace,
+      "discord:reminder-42",
+      "platform",
+      {
+        platform: "discord",
+        discordUserId,
+      },
+    );
+  });
+
   test("idempotently resumes stopped Dedicated and asks the gateway to retry", async () => {
     activeTarget = {
       id: "00000000-0000-4000-8000-000000000020",
