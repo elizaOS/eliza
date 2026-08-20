@@ -172,8 +172,16 @@ class RemoteRunnerHttpFactory implements E2BSandboxFactory {
     }
     const apiBase = config.remoteHttpBaseUrl.replace(/\/+$/, "");
     const headers = authHeaders(config.remoteHttpToken);
-    const response = await fetch(`${apiBase}/v1/health`, { headers });
-    if (!response.ok) throw new Error(await response.text());
+    const timeout = timeoutSignal(config.requestTimeoutMs);
+    try {
+      const response = await fetch(`${apiBase}/v1/health`, {
+        headers,
+        signal: timeout.signal,
+      });
+      if (!response.ok) throw new Error(await response.text());
+    } finally {
+      timeout.dispose();
+    }
     return new RemoteRunnerHttpClient(config.provider, apiBase, headers);
   }
 }
@@ -204,39 +212,47 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
   private async list(path: string): Promise<SandboxEntryInfo[]> {
     const url = new URL(`${this.apiBase}/v1/fs/entries`);
     url.searchParams.set("path", path);
-    const response = await fetch(url, { headers: this.headers });
-    if (!response.ok) throw new Error(await response.text());
-    const payload = await response.json();
-    const entries = Array.isArray(payload)
-      ? payload
-      : isObject(payload) && Array.isArray(payload.entries)
-        ? payload.entries
-        : null;
-    if (!entries) {
-      throw new Error("Remote runner fs entries response was not an array.");
+    const timeout = timeoutSignal(this.requestTimeoutMs);
+    try {
+      const response = await fetch(url, {
+        headers: this.headers,
+        signal: timeout.signal,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const payload = await response.json();
+      const entries = Array.isArray(payload)
+        ? payload
+        : isObject(payload) && Array.isArray(payload.entries)
+          ? payload.entries
+          : null;
+      if (!entries) {
+        throw new Error("Remote runner fs entries response was not an array.");
+      }
+      return entries.map((entry) => {
+        if (!isObject(entry)) {
+          throw new Error("Remote runner fs entry was not an object.");
+        }
+        const pathValue = String(entry.path ?? "");
+        const stat: SandboxEntryInfo = {
+          path: pathValue,
+          name: String(entry.name ?? nodePath.posix.basename(pathValue)),
+          type: remoteEntryType(entry),
+          size: typeof entry.size === "number" ? entry.size : 0,
+        };
+        const modified =
+          typeof entry.modifiedAt === "string"
+            ? entry.modifiedAt
+            : typeof entry.modified === "string"
+              ? entry.modified
+              : null;
+        if (modified) {
+          stat.modifiedTime = new Date(modified);
+        }
+        return stat;
+      });
+    } finally {
+      timeout.dispose();
     }
-    return entries.map((entry) => {
-      if (!isObject(entry)) {
-        throw new Error("Remote runner fs entry was not an object.");
-      }
-      const pathValue = String(entry.path ?? "");
-      const stat: SandboxEntryInfo = {
-        path: pathValue,
-        name: String(entry.name ?? nodePath.posix.basename(pathValue)),
-        type: remoteEntryType(entry),
-        size: typeof entry.size === "number" ? entry.size : 0,
-      };
-      const modified =
-        typeof entry.modifiedAt === "string"
-          ? entry.modifiedAt
-          : typeof entry.modified === "string"
-            ? entry.modified
-            : null;
-      if (modified) {
-        stat.modifiedTime = new Date(modified);
-      }
-      return stat;
-    });
   }
 
   private async read(
@@ -272,16 +288,22 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
   ): Promise<{ path: string; name: string }> {
     const url = new URL(`${this.apiBase}/v1/fs/file`);
     url.searchParams.set("path", path);
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: {
-        ...this.headers,
-        "content-type": "text/plain",
-      },
-      body: data,
-    });
-    if (!response.ok) throw new Error(await response.text());
-    return { path, name: nodePath.posix.basename(path) };
+    const timeout = timeoutSignal(this.requestTimeoutMs);
+    try {
+      const response = await fetch(url, {
+        method: "PUT",
+        headers: {
+          ...this.headers,
+          "content-type": "text/plain",
+        },
+        body: data,
+        signal: timeout.signal,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return { path, name: nodePath.posix.basename(path) };
+    } finally {
+      timeout.dispose();
+    }
   }
 
   private async runCommand(
@@ -399,6 +421,7 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
           },
           metadata: config.metadata,
         }),
+        signal: AbortSignal.timeout(config.timeoutMs),
       },
     );
     const payload = await readCloudEnvelope(response);
@@ -423,6 +446,7 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
         `${config.cloudApiBaseUrl}/containers/${encodeURIComponent(current.containerId)}`,
         {
           headers: { authorization: `Bearer ${config.cloudApiToken}` },
+          signal: AbortSignal.timeout(config.timeoutMs),
         },
       );
       const payload = await readCloudEnvelope(response);
