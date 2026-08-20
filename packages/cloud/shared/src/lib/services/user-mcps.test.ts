@@ -25,6 +25,12 @@ const USER = "33333333-3333-3333-3333-333333333333";
 
 let store: Map<string, UserMcp>;
 let idCounter: number;
+let usageStats: {
+  totalRequests: number;
+  totalCreditsCharged: number;
+  totalX402Usd: number;
+  uniqueOrgs: number;
+};
 
 function nowDate(): Date {
   return new Date("2026-01-01T00:00:00.000Z");
@@ -164,14 +170,12 @@ mock.module("../../db/repositories", () => ({
   },
   mcpUsageRepository: {
     async getStats() {
-      return {
-        totalRequests: 0,
-        totalCreditsCharged: 0,
-        totalX402Usd: 0,
-        uniqueOrgs: 0,
-      };
+      return usageStats;
     },
-    async create() {
+    async create(data: { credits_charged: string }) {
+      usageStats.totalRequests += 1;
+      usageStats.totalCreditsCharged += Number(data.credits_charged);
+      usageStats.uniqueOrgs = 1;
       return { id: "usage-1" };
     },
   },
@@ -233,6 +237,12 @@ function baseCreateParams(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   store = new Map();
   idCounter = 0;
+  usageStats = {
+    totalRequests: 0,
+    totalCreditsCharged: 0,
+    totalX402Usd: 0,
+    uniqueOrgs: 0,
+  };
 });
 
 afterAll(() => {
@@ -267,6 +277,35 @@ describe("userMcpsService.create", () => {
     await userMcpsService.create(baseCreateParams());
     const other = await userMcpsService.create(baseCreateParams({ organizationId: OTHER_ORG }));
     expect(other.organization_id).toBe(OTHER_ORG);
+  });
+
+  test("stores canonical USD prices in the legacy point column without changing value", async () => {
+    const mcp = await userMcpsService.create(baseCreateParams({ priceUsd: 0.0125 }));
+
+    expect(mcp.credits_per_request).toBe("1.25");
+    expect(userMcpsService.toApiMcp(mcp)).toMatchObject({
+      credit_unit: "USD",
+      price_usd: "0.0125",
+      credits_per_request: "1.25",
+      legacy_credits_per_request: "1.25",
+    });
+  });
+
+  test("keeps matching legacy pricing input but rejects conflicting units", async () => {
+    const compatible = await userMcpsService.create(
+      baseCreateParams({ priceUsd: 0.01, creditsPerRequest: 1 }),
+    );
+    expect(compatible.credits_per_request).toBe("1");
+
+    await expect(
+      userMcpsService.create(
+        baseCreateParams({
+          slug: "conflicting-price",
+          priceUsd: 1,
+          creditsPerRequest: 1,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "MCP_PRICE_UNIT_CONFLICT" });
   });
 });
 
@@ -360,6 +399,16 @@ describe("userMcpsService.update", () => {
     expect(updated.creator_share_percentage).toBe("90");
     expect(updated.platform_share_percentage).toBe("10");
     expect(updated.is_public).toBe(false);
+  });
+
+  test("updates a canonical USD price through the storage adapter", async () => {
+    const created = await userMcpsService.create(baseCreateParams());
+    const updated = await userMcpsService.update(created.id, ORG, {
+      priceUsd: 0.025,
+    });
+
+    expect(updated.credits_per_request).toBe("2.5");
+    expect(userMcpsService.toApiMcp(updated).price_usd).toBe("0.025");
   });
 
   test("rejects updates from a different organization", async () => {
@@ -464,6 +513,41 @@ describe("userMcpsService.toRegistryFormat", () => {
     });
     // The raw external_endpoint appears NOWHERE in the public entry.
     expect(JSON.stringify(entry)).not.toContain(live.external_endpoint as string);
+    expect(entry.pricing).toMatchObject({
+      creditUnit: "USD",
+      priceUsd: "0.01",
+      pricePerRequest: "1",
+      description: "$0.01 in cloud credit per request",
+    });
+  });
+});
+
+describe("userMcpsService base-price stats", () => {
+  test("names the base amount honestly when a precharge also included surcharges", async () => {
+    const mcp = await userMcpsService.create(baseCreateParams({ creatorSharePercentage: 0 }));
+
+    const result = await userMcpsService.recordUsageWithoutDeduction({
+      mcpId: mcp.id,
+      organizationId: OTHER_ORG,
+      toolName: "get_weather",
+      creditsCharged: 100,
+      affiliateFeeCredits: 25,
+      platformFeeCredits: 20,
+      metadata: { totalCreditsCharged: 145 },
+    });
+
+    expect(result).toMatchObject({
+      creditsCharged: 100,
+      basePriceUsd: 1,
+      creditUnit: "USD",
+    });
+    const stats = await userMcpsService.getStats(mcp.id, ORG);
+    expect(stats).toMatchObject({
+      totalCreditsEarned: 100,
+      baseCloudCreditsCharged: 1,
+      creditUnit: "USD",
+    });
+    expect(stats).not.toHaveProperty("totalCloudCreditsCharged");
   });
 });
 

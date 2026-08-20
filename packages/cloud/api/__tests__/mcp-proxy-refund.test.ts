@@ -102,8 +102,12 @@ test("unreachable upstream (502) refunds the upfront debit (#11637)", async () =
   safeFetch.mockRejectedValue(new Error("ECONNREFUSED"));
   const res = await post();
   expect(res.status).toBe(502);
-  expect(reserveAndDeductCredits).toHaveBeenCalledTimes(1);
-  expect(refundCredits).toHaveBeenCalledTimes(1);
+  expect(reserveAndDeductCredits).toHaveBeenCalledWith(
+    expect.objectContaining({ amount: 0.05, organizationId: "org1" }),
+  );
+  expect(refundCredits).toHaveBeenCalledWith(
+    expect.objectContaining({ amount: 0.05, organizationId: "org1" }),
+  );
 });
 
 test("non-owner org CANNOT invoke another org's PRIVATE MCP — 404, no billing (#11838)", async () => {
@@ -206,5 +210,8 @@ test("successful call does NOT refund", async () => {
   );
   const res = await post();
   expect(res.status).toBe(200);
+  expect(reserveAndDeductCredits).toHaveBeenCalledWith(
+    expect.objectContaining({ amount: 0.05, organizationId: "org1" }),
+  );
   expect(refundCredits).not.toHaveBeenCalled();
 });

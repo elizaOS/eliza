@@ -10,6 +10,8 @@
 import {
   calculateCreditMarkup,
   DEFAULT_PLATFORM_FEE_RATE,
+  legacyMcpPointsToOrganizationCredits,
+  ORGANIZATION_CREDIT_UNIT,
 } from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 
@@ -23,8 +25,6 @@ import { creditsService } from "@/lib/services/credits";
 import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-const CREDITS_PER_DOLLAR = 100;
 
 /** JSON subset for proxied MCP-RPC bodies (avoid `unknown`; values are forwarded as JSON). */
 export type McpProxyJson =
@@ -165,6 +165,7 @@ app.get("/", async (c) => {
   }
 
   const baseUrl = c.env.NEXT_PUBLIC_APP_URL ?? "https://cloud.eliza.app";
+  const apiMcp = userMcpsService.toApiMcp(mcp);
 
   return c.json({
     id: mcp.id,
@@ -173,6 +174,9 @@ app.get("/", async (c) => {
     tools: mcp.tools,
     pricing: {
       type: mcp.pricing_type,
+      creditUnit: apiMcp.credit_unit,
+      priceUsd: apiMcp.price_usd,
+      /** @deprecated Legacy MCP pricing points (100 points = $1). */
       creditsPerRequest: mcp.credits_per_request,
       x402PriceUsd: mcp.x402_price_usd,
       x402Enabled: mcp.x402_enabled,
@@ -256,7 +260,7 @@ app.post("/", async (c) => {
 
   const preChargeResult = await creditsService.reserveAndDeductCredits({
     organizationId: user.organization_id,
-    amount: totalCreditsRequired / CREDITS_PER_DOLLAR,
+    amount: legacyMcpPointsToOrganizationCredits(totalCreditsRequired),
     description: `MCP: ${mcp.name}`,
     metadata: {
       mcp_id: mcp.id,
@@ -266,6 +270,9 @@ app.post("/", async (c) => {
       affiliate_fee: affiliateFeeCredits.toFixed(4),
       platform_fee: platformFeeCredits.toFixed(4),
       total_credits_charged: totalCreditsRequired.toFixed(4),
+      price_usd:
+        legacyMcpPointsToOrganizationCredits(totalCreditsRequired).toString(),
+      credit_unit: ORGANIZATION_CREDIT_UNIT,
       ...(affiliateOwnerId && { affiliate_owner_id: affiliateOwnerId }),
       ...(affiliateCodeId && { affiliate_code_id: affiliateCodeId }),
     },
@@ -275,6 +282,9 @@ app.post("/", async (c) => {
     return c.json(
       {
         error: "Insufficient credits",
+        creditUnit: ORGANIZATION_CREDIT_UNIT,
+        requiredUsd: legacyMcpPointsToOrganizationCredits(totalCreditsRequired),
+        /** @deprecated Legacy MCP pricing points (100 points = $1). */
         required: totalCreditsRequired,
         balance: preChargeResult.newBalance,
       },
@@ -296,7 +306,7 @@ app.post("/", async (c) => {
     await creditsService
       .refundCredits({
         organizationId: user.organization_id,
-        amount: totalCreditsRequired / CREDITS_PER_DOLLAR,
+        amount: legacyMcpPointsToOrganizationCredits(totalCreditsRequired),
         description: `MCP refund: ${mcp.name} (${reason})`,
         metadata: {
           mcp_id: mcp.id,

@@ -5,6 +5,12 @@
  * with tools withheld; unconfigured entries are not advertised.
  */
 
+import {
+  BUILTIN_MCP_PRICING,
+  MCP_FREE_COST_LABEL,
+  MCP_USAGE_BASED_COST_LABEL,
+  PLATFORM_MCP_TOOL_PRICING,
+} from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 
 import {
@@ -27,7 +33,11 @@ const mcpDefinitions = [
     category: "platform",
     status: "live",
     x402Enabled: false,
-    pricing: { type: "credits", description: "Pay-per-use with credits" },
+    pricing: {
+      type: "credits",
+      description: "Pay per use in USD-denominated cloud credits",
+      creditUnit: "USD",
+    },
     tools: [
       {
         name: "check_credits",
@@ -98,7 +108,7 @@ const mcpDefinitions = [
             max: 4000,
           },
         },
-        cost: "$0.0001-$0.01",
+        cost: MCP_USAGE_BASED_COST_LABEL,
       },
       {
         name: "generate_image",
@@ -119,7 +129,7 @@ const mcpDefinitions = [
             description: "Aspect ratio for the generated image",
           },
         },
-        cost: "50 credits",
+        cost: MCP_USAGE_BASED_COST_LABEL,
       },
       {
         name: "search_web",
@@ -158,7 +168,7 @@ const mcpDefinitions = [
             description: "Prefer sources from a recent time window",
           },
         },
-        cost: "Usage-based credits",
+        cost: MCP_USAGE_BASED_COST_LABEL,
       },
       {
         name: "extract_page",
@@ -188,7 +198,7 @@ const mcpDefinitions = [
             description: "Wait time before extracting, in milliseconds",
           },
         },
-        cost: "Usage-based credits",
+        cost: MCP_USAGE_BASED_COST_LABEL,
       },
       {
         name: "browser_session",
@@ -238,12 +248,11 @@ const mcpDefinitions = [
             description: "Browser command subaction for command operation",
           },
         },
-        cost: "Usage-based credits",
+        cost: MCP_USAGE_BASED_COST_LABEL,
       },
       {
         name: "save_memory",
-        description:
-          "Save important information to long-term memory with semantic tagging. Deducts 1 credit per save.",
+        description: `Save important information to long-term memory with semantic tagging. Deducts ${PLATFORM_MCP_TOOL_PRICING.save_memory.label} per save.`,
         parameters: {
           content: {
             type: "string",
@@ -266,12 +275,12 @@ const mcpDefinitions = [
             description: "Optional tags for categorization",
           },
         },
-        cost: "1 credit",
+        cost: PLATFORM_MCP_TOOL_PRICING.save_memory.label,
       },
       {
         name: "retrieve_memories",
         description:
-          "Search and retrieve memories using semantic search or filters. Deducts 0.1 credit per memory retrieved (max 5 credits).",
+          "Search and retrieve memories using semantic search or filters. This read operation is free.",
         parameters: {
           query: {
             type: "string",
@@ -292,7 +301,7 @@ const mcpDefinitions = [
             max: 50,
           },
         },
-        cost: "0.1-5 credits",
+        cost: PLATFORM_MCP_TOOL_PRICING.retrieve_memories.label,
       },
       {
         name: "chat_with_agent",
@@ -317,7 +326,7 @@ const mcpDefinitions = [
             description: "Enable streaming response via SSE",
           },
         },
-        cost: "$0.0001-$0.01",
+        cost: "Unavailable",
       },
       {
         name: "list_agents",
@@ -369,36 +378,32 @@ const mcpDefinitions = [
     category: "utilities",
     status: "live",
     x402Enabled: false,
-    pricing: {
-      type: "credits",
-      description: "1 credit per request",
-      creditsPerRequest: 1,
-    },
+    pricing: BUILTIN_MCP_PRICING.time,
     tools: [
       {
         name: "get_current_time",
         description: "Get current date and time in any timezone",
-        cost: "1 credit",
+        cost: MCP_FREE_COST_LABEL,
       },
       {
         name: "convert_timezone",
         description: "Convert times between timezones",
-        cost: "1 credit",
+        cost: MCP_FREE_COST_LABEL,
       },
       {
         name: "format_date",
         description: "Format dates in various locales and styles",
-        cost: "1 credit",
+        cost: MCP_FREE_COST_LABEL,
       },
       {
         name: "calculate_time_diff",
         description: "Calculate difference between two dates",
-        cost: "1 credit",
+        cost: MCP_FREE_COST_LABEL,
       },
       {
         name: "list_timezones",
         description: "List common timezones with current offsets",
-        cost: "1 credit",
+        cost: MCP_FREE_COST_LABEL,
       },
     ],
   },
@@ -412,31 +417,27 @@ const mcpDefinitions = [
     category: "data",
     status: "live",
     x402Enabled: false,
-    pricing: {
-      type: "credits",
-      description: "1-2 credits per request",
-      creditsPerRequest: "1-2",
-    },
+    pricing: BUILTIN_MCP_PRICING.weather,
     tools: [
       {
         name: "get_current_weather",
         description: "Get current weather conditions for any city",
-        cost: "1 credit",
+        cost: MCP_FREE_COST_LABEL,
       },
       {
         name: "get_weather_forecast",
         description: "Get multi-day forecast (up to 16 days)",
-        cost: "2 credits",
+        cost: MCP_FREE_COST_LABEL,
       },
       {
         name: "compare_weather",
         description: "Compare weather between multiple cities",
-        cost: "2 credits",
+        cost: MCP_FREE_COST_LABEL,
       },
       {
         name: "search_location",
         description: "Search for location coordinates and timezone",
-        cost: "1 credit",
+        cost: MCP_FREE_COST_LABEL,
       },
     ],
   },
@@ -450,11 +451,7 @@ const mcpDefinitions = [
     category: "finance",
     status: "live",
     x402Enabled: false,
-    pricing: {
-      type: "free",
-      description: "Free",
-      creditsPerRequest: 0,
-    },
+    pricing: BUILTIN_MCP_PRICING.crypto,
     tools: [
       {
         name: "get_price",

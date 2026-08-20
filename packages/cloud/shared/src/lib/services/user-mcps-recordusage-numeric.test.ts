@@ -206,7 +206,8 @@ describe("recordUsage, NUMERIC money reads fail closed (#13415)", () => {
 
     expect(result.success).toBe(true);
     expect(result.creditsCharged).toBe(1);
-    // 1 credit charged, no affiliate => deduct 1/100 dollars.
+    expect(result).toMatchObject({ basePriceUsd: 0.01, creditUnit: "USD" });
+    // 1 legacy MCP point charged, no affiliate => deduct $0.01.
     expect(deductCalls).toHaveLength(1);
     expect(deductCalls[0].amount).toBeCloseTo(0.01, 6);
     // creator gets 80% of 1 credit => 0.8 credit => addCredits + addEarnings.
@@ -368,6 +369,7 @@ describe("recordUsage, NUMERIC money reads fail closed (#13415)", () => {
     });
 
     expect(result.success).toBe(true);
+    expect(result).toMatchObject({ basePriceUsd: 0, creditUnit: "USD" });
     expect(result.creditsCharged).toBe(0);
     // 0 credits => `totalCreditsToDeduct > 0` gate false => no charge, but this
     // is a real free-tier configuration, not corruption.
@@ -387,6 +389,7 @@ describe("recordUsageWithoutDeduction, share reads fail closed (#13415)", () => 
     });
 
     expect(result.success).toBe(true);
+    expect(result).toMatchObject({ basePriceUsd: 0.01, creditUnit: "USD" });
     expect(addCreditsCalls).toHaveLength(1);
     expect(addCreditsCalls[0].amount).toBeCloseTo(0.008, 6);
     expect(usageCreateCalls).toHaveLength(1);

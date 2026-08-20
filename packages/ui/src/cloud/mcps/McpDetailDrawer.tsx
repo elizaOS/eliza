@@ -41,6 +41,7 @@ import { StatusBadge } from "../../components/ui/status-badge";
 import { ApiError } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { UserMcpRecord } from "./lib/api-types";
+import { formatCloudCreditUsd } from "./lib/format-cloud-credit";
 import {
   useDeleteMcp,
   usePublishMcp,
@@ -258,15 +259,17 @@ export function McpDetailDrawer({
                     />
                     <Stat
                       label={t("cloud.mcps.statCredits", {
-                        defaultValue: "Credits earned",
+                        defaultValue: "Base cloud credits charged",
                       })}
-                      value={stats.totalCreditsEarned.toLocaleString()}
+                      value={formatCloudCreditUsd(
+                        stats.baseCloudCreditsCharged,
+                      )}
                     />
                     <Stat
                       label={t("cloud.mcps.statX402", {
                         defaultValue: "x402 (USD)",
                       })}
-                      value={`$${stats.totalX402EarnedUsd.toFixed(4)}`}
+                      value={formatCloudCreditUsd(stats.totalX402EarnedUsd)}
                     />
                     <Stat
                       label={t("cloud.mcps.statUsers", {

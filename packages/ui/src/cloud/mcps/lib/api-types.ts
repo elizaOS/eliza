@@ -49,7 +49,7 @@ export interface McpTool {
   name: string;
   description: string;
   inputSchema?: Record<string, unknown>;
-  /** Display-only cost label, e.g. `"1 credit"` / `"$0.001"`. */
+  /** Display-only cost label, e.g. `"$1 in cloud credit"` / `"$0.001"`. */
   cost?: string;
 }
 
@@ -84,7 +84,14 @@ export interface UserMcpRecord {
   color: string | null;
 
   pricing_type: McpPricingType;
+  /** Canonical organization cloud-credit denomination. */
+  credit_unit?: "USD";
+  /** Canonical per-request price in USD-denominated organization credits. */
+  price_usd?: string | null;
+  /** @deprecated Legacy MCP pricing points (100 points = $1). */
   credits_per_request: string | null;
+  /** Explicit compatibility mirror of credits_per_request. */
+  legacy_credits_per_request?: string | null;
   x402_price_usd: string | null;
   x402_enabled: boolean;
 
@@ -92,7 +99,9 @@ export interface UserMcpRecord {
   platform_share_percentage: string;
 
   total_requests: number;
+  /** @deprecated Legacy cumulative MCP pricing points (100 points = $1). */
   total_credits_earned: string | null;
+  total_creator_revenue_usd?: string;
   total_x402_earned_usd: string | null;
   unique_users: number;
 
@@ -117,7 +126,11 @@ export interface UserMcpRecord {
 /** Owner-only usage stats returned by `GET /api/v1/mcps/:mcpId`. */
 export interface McpStats {
   totalRequests: number;
+  /** @deprecated Legacy MCP pricing points (100 points = $1). */
   totalCreditsEarned: number;
+  /** Base MCP price only; excludes affiliate and platform surcharges. */
+  baseCloudCreditsCharged: number;
+  creditUnit: "USD";
   totalX402EarnedUsd: number;
   uniqueUsers: number;
 }
@@ -166,6 +179,8 @@ export interface CreateUserMcpInput {
   transportType?: McpTransportType;
   tools?: McpTool[];
   pricingType?: McpPricingType;
+  priceUsd?: number;
+  /** @deprecated Legacy MCP pricing points (100 points = $1). */
   creditsPerRequest?: number;
   x402PriceUsd?: number;
   x402Enabled?: boolean;
@@ -188,6 +203,8 @@ export interface UpdateUserMcpInput {
   transportType?: McpTransportType;
   tools?: McpTool[];
   pricingType?: McpPricingType;
+  priceUsd?: number;
+  /** @deprecated Legacy MCP pricing points (100 points = $1). */
   creditsPerRequest?: number;
   x402PriceUsd?: number;
   x402Enabled?: boolean;
@@ -218,6 +235,9 @@ export interface BuiltinMcpDefinition {
   pricing: {
     type: McpPricingType;
     description: string;
+    creditUnit?: "USD";
+    priceUsd?: number | string;
+    /** @deprecated Legacy MCP pricing points (100 points = $1). */
     creditsPerRequest?: number | string;
   };
   tools: Array<{
@@ -243,6 +263,9 @@ export interface McpProxyInfoResponse {
   tools: McpTool[];
   pricing: {
     type: McpPricingType;
+    creditUnit: "USD";
+    priceUsd: string;
+    /** @deprecated Legacy MCP pricing points (100 points = $1). */
     creditsPerRequest: string | null;
     x402PriceUsd: string | null;
     x402Enabled: boolean;

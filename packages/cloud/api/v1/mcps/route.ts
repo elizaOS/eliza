@@ -14,55 +14,73 @@ import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const createMcpSchema = z.object({
-  name: z.string().min(1).max(100),
-  slug: z
-    .string()
-    .min(1)
-    .max(50)
-    .regex(/^[a-z0-9-]+$/),
-  description: z.string().min(1).max(1000),
-  category: z
-    .enum([
-      "utilities",
-      "finance",
-      "data",
-      "communication",
-      "productivity",
-      "ai",
-      "search",
-      "platform",
-      "other",
-    ])
-    .optional(),
-  endpointType: z.enum(["container", "external"]).optional(),
-  containerId: z.string().uuid().optional(),
-  externalEndpoint: z.string().url().optional(),
-  endpointPath: z.string().max(100).optional(),
-  transportType: z.enum(["streamable-http", "stdio"]).optional(),
-  tools: z
-    .array(
-      z.object({
-        name: z.string().min(1).max(50),
-        description: z.string().min(1).max(500),
-        inputSchema: z.record(z.string(), z.unknown()).optional(),
-        cost: z.string().max(20).optional(),
-      }),
-    )
-    .max(50)
-    .optional(),
-  pricingType: z.enum(["free", "credits", "x402"]).optional(),
-  creditsPerRequest: z.number().min(0).max(1000).optional(),
-  x402PriceUsd: z.number().min(0).max(100).optional(),
-  x402Enabled: z.boolean().optional(),
-  creatorSharePercentage: z.number().min(0).max(100).optional(),
-  documentationUrl: z.string().url().optional(),
-  sourceCodeUrl: z.string().url().optional(),
-  supportEmail: z.string().email().optional(),
-  tags: z.array(z.string().max(30)).max(10).optional(),
-  icon: z.string().max(30).optional(),
-  color: z.string().max(10).optional(),
-});
+const createMcpSchema = z
+  .object({
+    name: z.string().min(1).max(100),
+    slug: z
+      .string()
+      .min(1)
+      .max(50)
+      .regex(/^[a-z0-9-]+$/),
+    description: z.string().min(1).max(1000),
+    category: z
+      .enum([
+        "utilities",
+        "finance",
+        "data",
+        "communication",
+        "productivity",
+        "ai",
+        "search",
+        "platform",
+        "other",
+      ])
+      .optional(),
+    endpointType: z.enum(["container", "external"]).optional(),
+    containerId: z.string().uuid().optional(),
+    externalEndpoint: z.string().url().optional(),
+    endpointPath: z.string().max(100).optional(),
+    transportType: z.enum(["streamable-http", "stdio"]).optional(),
+    tools: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(50),
+          description: z.string().min(1).max(500),
+          inputSchema: z.record(z.string(), z.unknown()).optional(),
+          cost: z.string().max(20).optional(),
+        }),
+      )
+      .max(50)
+      .optional(),
+    pricingType: z.enum(["free", "credits", "x402"]).optional(),
+    /** Canonical USD-denominated organization cloud-credit price. */
+    priceUsd: z.number().min(0).max(10).optional(),
+    /** @deprecated Legacy MCP pricing points (100 points = $1). */
+    creditsPerRequest: z.number().min(0).max(1000).optional(),
+    x402PriceUsd: z.number().min(0).max(100).optional(),
+    x402Enabled: z.boolean().optional(),
+    creatorSharePercentage: z.number().min(0).max(100).optional(),
+    documentationUrl: z.string().url().optional(),
+    sourceCodeUrl: z.string().url().optional(),
+    supportEmail: z.string().email().optional(),
+    tags: z.array(z.string().max(30)).max(10).optional(),
+    icon: z.string().max(30).optional(),
+    color: z.string().max(10).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.priceUsd !== undefined &&
+      value.creditsPerRequest !== undefined &&
+      Math.abs(value.priceUsd * 100 - value.creditsPerRequest) > 1e-9
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["creditsPerRequest"],
+        message:
+          "creditsPerRequest must equal priceUsd × 100 when both are supplied",
+      });
+    }
+  });
 
 const listMcpsSchema = z.object({
   category: z.string().max(30).optional(),
@@ -150,7 +168,7 @@ app.post("/", async (c) => {
       userId: user.id,
     });
 
-    return c.json({ mcp }, 201);
+    return c.json({ mcp: userMcpsService.toApiMcp(mcp) }, 201);
   } catch (error) {
     // MCP create path currently 500s in the cloud-api e2e because the user_mcps table
     // exists — migration 0147 applies — but the worker INSERT fails against
@@ -189,9 +207,7 @@ app.get("/", async (c) => {
     // Public (foreign) MCPs are redacted — no raw external_endpoint (metered-proxy
     // bypass) and no created_by_user_id (cross-org user identity). The caller's
     // OWN MCPs are returned in full. (#10918)
-    type ListedMcp =
-      | Awaited<ReturnType<typeof userMcpsService.listPublic>>[number]
-      | ReturnType<typeof userMcpsService.toPublicMcp>;
+    type ListedMcp = ReturnType<typeof userMcpsService.toApiMcp>;
     let mcps: ListedMcp[];
 
     if (scope === "public") {
@@ -202,14 +218,20 @@ app.get("/", async (c) => {
         offset,
       });
       mcps = publicMcps.map((m) =>
-        userMcpsService.toVisibleMcpForOrganization(m, user.organization_id),
+        userMcpsService.toApiMcp(
+          userMcpsService.toVisibleMcpForOrganization(m, user.organization_id),
+        ),
       );
     } else if (scope === "own") {
-      mcps = await userMcpsService.listByOrganization(user.organization_id, {
-        status,
-        limit,
-        offset,
-      });
+      const ownMcps = await userMcpsService.listByOrganization(
+        user.organization_id,
+        {
+          status,
+          limit,
+          offset,
+        },
+      );
+      mcps = ownMcps.map((m) => userMcpsService.toApiMcp(m));
     } else {
       const [ownMcps, publicMcps] = await Promise.all([
         userMcpsService.listByOrganization(user.organization_id, {
@@ -227,10 +249,10 @@ app.get("/", async (c) => {
 
       const ownIds = new Set(ownMcps.map((m) => m.id));
       mcps = [
-        ...ownMcps,
+        ...ownMcps.map((m) => userMcpsService.toApiMcp(m)),
         ...publicMcps
           .filter((m) => !ownIds.has(m.id))
-          .map((m) => userMcpsService.toPublicMcp(m)),
+          .map((m) => userMcpsService.toApiMcp(userMcpsService.toPublicMcp(m))),
       ];
     }
 

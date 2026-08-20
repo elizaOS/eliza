@@ -7,6 +7,11 @@
 
 import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
+import {
+  legacyMcpPointsToOrganizationCredits,
+  ORGANIZATION_CREDIT_UNIT,
+  organizationCreditsToLegacyMcpPoints,
+} from "../../billing/organization-credits";
 import { mcpUsageRepository, type UserMcp, userMcpsRepository } from "../../db/repositories";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -39,6 +44,9 @@ export interface CreateMcpParams {
     cost?: string;
   }>;
   pricingType?: "free" | "credits" | "x402";
+  /** Canonical price in USD-denominated organization cloud credits. */
+  priceUsd?: number;
+  /** @deprecated Legacy MCP pricing points (100 points = $1). */
   creditsPerRequest?: number;
   x402PriceUsd?: number;
   x402Enabled?: boolean;
@@ -65,6 +73,9 @@ export interface UpdateMcpParams {
     cost?: string;
   }>;
   pricingType?: "free" | "credits" | "x402";
+  /** Canonical price in USD-denominated organization cloud credits. */
+  priceUsd?: number;
+  /** @deprecated Legacy MCP pricing points (100 points = $1). */
   creditsPerRequest?: number;
   x402PriceUsd?: number;
   x402Enabled?: boolean;
@@ -102,7 +113,11 @@ export interface UseMcpWithoutDeductionParams {
 
 export interface UseMcpResult {
   success: boolean;
+  /** @deprecated Legacy MCP pricing points (100 points = $1). */
   creditsCharged: number;
+  /** Canonical base price; excludes affiliate and platform surcharges. */
+  basePriceUsd: number;
+  creditUnit: typeof ORGANIZATION_CREDIT_UNIT;
   x402AmountUsd: number;
   creatorEarnings: number;
   platformEarnings: number;
@@ -112,6 +127,17 @@ export interface UseMcpResult {
 export type PublicUserMcp = Omit<UserMcp, "external_endpoint" | "created_by_user_id"> & {
   external_endpoint: null;
   created_by_user_id: null;
+};
+
+export type ApiUserMcp = (UserMcp | PublicUserMcp) & {
+  /** Canonical external denomination. One organization cloud credit is $1 USD. */
+  credit_unit: typeof ORGANIZATION_CREDIT_UNIT;
+  /** Canonical per-request price for every pricing mode. */
+  price_usd: string;
+  /** Explicit compatibility mirror of the historical cent-like storage field. */
+  legacy_credits_per_request: string | null;
+  /** Canonical creator revenue represented by the legacy earned-points total. */
+  total_creator_revenue_usd: string;
 };
 
 // ============================================================================
@@ -193,6 +219,58 @@ function parseMcpSharePercentage(
   return parseMcpBillingNumber(value, field, fallback, { min: 0, max: 100 });
 }
 
+function resolveStoredMcpPricePoints(params: {
+  priceUsd?: number;
+  legacyCreditsPerRequest?: number;
+  fallback?: number;
+}): number | undefined {
+  const canonicalPrice =
+    params.priceUsd === undefined
+      ? undefined
+      : parseNonNegativeMcpBillingNumber(params.priceUsd, "priceUsd", 0);
+  const legacyPrice =
+    params.legacyCreditsPerRequest === undefined
+      ? undefined
+      : parseNonNegativeMcpBillingNumber(params.legacyCreditsPerRequest, "creditsPerRequest", 0);
+  const convertedCanonical =
+    canonicalPrice === undefined ? undefined : organizationCreditsToLegacyMcpPoints(canonicalPrice);
+
+  if (
+    convertedCanonical !== undefined &&
+    legacyPrice !== undefined &&
+    Math.abs(convertedCanonical - legacyPrice) > 1e-9
+  ) {
+    throw new ElizaError(
+      "priceUsd and deprecated creditsPerRequest describe different MCP prices",
+      {
+        code: "MCP_PRICE_UNIT_CONFLICT",
+        context: {
+          priceUsd: canonicalPrice,
+          creditsPerRequest: legacyPrice,
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+
+  return convertedCanonical ?? legacyPrice ?? params.fallback;
+}
+
+function formatCanonicalMcpPriceUsd(mcp: UserMcp | PublicUserMcp): string {
+  if (mcp.pricing_type === "credits") {
+    const legacyPoints = parseNonNegativeMcpBillingNumber(
+      mcp.credits_per_request,
+      "credits_per_request",
+      0,
+    );
+    return legacyMcpPointsToOrganizationCredits(legacyPoints).toString();
+  }
+  if (mcp.pricing_type === "x402") {
+    return parseNonNegativeMcpBillingNumber(mcp.x402_price_usd, "x402_price_usd", 0).toString();
+  }
+  return "0";
+}
+
 // ============================================================================
 // Service
 // ============================================================================
@@ -258,11 +336,11 @@ class UserMcpsService {
       transport_type: params.transportType ?? "streamable-http",
       tools: params.tools ?? [],
       pricing_type: params.pricingType ?? "credits",
-      credits_per_request: parseNonNegativeMcpBillingNumber(
-        params.creditsPerRequest,
-        "creditsPerRequest",
-        1,
-      ).toString(),
+      credits_per_request: resolveStoredMcpPricePoints({
+        priceUsd: params.priceUsd,
+        legacyCreditsPerRequest: params.creditsPerRequest,
+        fallback: 1,
+      })?.toString(),
       x402_price_usd: parseNonNegativeMcpBillingNumber(
         params.x402PriceUsd,
         "x402PriceUsd",
@@ -373,12 +451,11 @@ class UserMcpsService {
     if (params.transportType !== undefined) updateData.transport_type = params.transportType;
     if (params.tools !== undefined) updateData.tools = params.tools;
     if (params.pricingType !== undefined) updateData.pricing_type = params.pricingType;
-    if (params.creditsPerRequest !== undefined) {
-      updateData.credits_per_request = parseNonNegativeMcpBillingNumber(
-        params.creditsPerRequest,
-        "creditsPerRequest",
-        1,
-      ).toString();
+    if (params.priceUsd !== undefined || params.creditsPerRequest !== undefined) {
+      updateData.credits_per_request = resolveStoredMcpPricePoints({
+        priceUsd: params.priceUsd,
+        legacyCreditsPerRequest: params.creditsPerRequest,
+      })?.toString();
     }
     if (params.x402PriceUsd !== undefined) {
       updateData.x402_price_usd = parseNonNegativeMcpBillingNumber(
@@ -518,8 +595,6 @@ class UserMcpsService {
     let creditsCharged = 0;
     let x402AmountUsd = 0;
 
-    const CREDITS_PER_DOLLAR = 100; // 1 cent = 1 credit
-
     // Fail closed on corrupt price rows BEFORE any charge/credit/earnings runs:
     // a NaN price would slip past the `totalCreditsToDeduct > 0` charge gate
     // (NaN > 0 === false) yet still execute the tool call for free and write
@@ -533,7 +608,7 @@ class UserMcpsService {
     } else {
       x402AmountUsd = parseNonNegativeMcpBillingNumber(mcp.x402_price_usd, "x402_price_usd", 0);
       // Convert to credits using configured rate
-      creditsCharged = x402AmountUsd * CREDITS_PER_DOLLAR;
+      creditsCharged = organizationCreditsToLegacyMcpPoints(x402AmountUsd);
     }
 
     // WHY affiliate fee on top of creditsCharged: Customer pays base + affiliate% + platform%;
@@ -578,7 +653,7 @@ class UserMcpsService {
     if (params.paymentType === "credits" && totalCreditsToDeduct > 0) {
       const deductResult = await creditsService.deductCredits({
         organizationId: params.organizationId,
-        amount: totalCreditsToDeduct / CREDITS_PER_DOLLAR,
+        amount: legacyMcpPointsToOrganizationCredits(totalCreditsToDeduct),
         description: `MCP: ${mcp.name} - ${params.toolName}`,
         metadata: {
           mcp_id: mcp.id,
@@ -588,6 +663,8 @@ class UserMcpsService {
           affiliate_fee: affiliateFeeCredits.toFixed(4),
           platform_fee: platformFeeCredits.toFixed(4),
           total_credits_charged: totalCreditsToDeduct.toFixed(4),
+          price_usd: legacyMcpPointsToOrganizationCredits(totalCreditsToDeduct).toString(),
+          credit_unit: ORGANIZATION_CREDIT_UNIT,
         },
       });
 
@@ -601,7 +678,7 @@ class UserMcpsService {
       const callId = crypto.randomUUID();
       await redeemableEarningsService.addEarnings({
         userId: affiliateOwnerId,
-        amount: affiliateFeeCredits / CREDITS_PER_DOLLAR,
+        amount: legacyMcpPointsToOrganizationCredits(affiliateFeeCredits),
         source: "affiliate",
         sourceId: `affiliate_mcp:${affiliateCodeId}:${callId}`,
         description: `API Usage Affiliate Fee: ${mcp.name} - ${params.toolName}`,
@@ -617,7 +694,7 @@ class UserMcpsService {
     if (creatorEarnings > 0) {
       await creditsService.addCredits({
         organizationId: mcp.organization_id,
-        amount: creatorEarnings / CREDITS_PER_DOLLAR,
+        amount: legacyMcpPointsToOrganizationCredits(creatorEarnings),
         description: `MCP Revenue: ${mcp.name} - ${params.toolName}`,
         metadata: {
           mcp_id: mcp.id,
@@ -631,7 +708,7 @@ class UserMcpsService {
       if (mcp.created_by_user_id) {
         const result = await redeemableEarningsService.addEarnings({
           userId: mcp.created_by_user_id,
-          amount: creatorEarnings / CREDITS_PER_DOLLAR, // Convert credits to dollars
+          amount: legacyMcpPointsToOrganizationCredits(creatorEarnings),
           source: "mcp",
           sourceId: mcp.id,
           description: `MCP earnings: ${mcp.name} - ${params.toolName}`,
@@ -683,6 +760,8 @@ class UserMcpsService {
     return {
       success: true,
       creditsCharged,
+      basePriceUsd: legacyMcpPointsToOrganizationCredits(creditsCharged),
+      creditUnit: ORGANIZATION_CREDIT_UNIT,
       x402AmountUsd,
       creatorEarnings,
       platformEarnings,
@@ -725,8 +804,6 @@ class UserMcpsService {
     const creatorEarnings = creditsCharged * creatorSharePct;
     const platformEarnings = creditsCharged * platformSharePct + platformFeeCredits;
 
-    const CREDITS_PER_DOLLAR = 100; // 1 cent = 1 credit
-
     if (affiliateFeeCredits > 0 && params.affiliateOwnerId && params.affiliateCodeId) {
       const sourceSuffix =
         typeof params.metadata?.preChargeTransactionId === "string"
@@ -734,7 +811,7 @@ class UserMcpsService {
           : crypto.randomUUID();
       const result = await redeemableEarningsService.addEarnings({
         userId: params.affiliateOwnerId,
-        amount: affiliateFeeCredits / CREDITS_PER_DOLLAR,
+        amount: legacyMcpPointsToOrganizationCredits(affiliateFeeCredits),
         source: "affiliate",
         sourceId: `affiliate_mcp:${params.affiliateCodeId}:${sourceSuffix}`,
         dedupeBySourceId: true,
@@ -756,7 +833,7 @@ class UserMcpsService {
     if (creatorEarnings > 0) {
       await creditsService.addCredits({
         organizationId: mcp.organization_id,
-        amount: creatorEarnings / CREDITS_PER_DOLLAR, // Convert to dollars
+        amount: legacyMcpPointsToOrganizationCredits(creatorEarnings),
         description: `MCP Revenue: ${mcp.name} - ${params.toolName}`,
         metadata: {
           mcp_id: mcp.id,
@@ -772,7 +849,7 @@ class UserMcpsService {
       if (mcp.created_by_user_id) {
         const result = await redeemableEarningsService.addEarnings({
           userId: mcp.created_by_user_id,
-          amount: creatorEarnings / CREDITS_PER_DOLLAR,
+          amount: legacyMcpPointsToOrganizationCredits(creatorEarnings),
           source: "mcp",
           sourceId: mcp.id,
           description: `MCP earnings: ${mcp.name} - ${params.toolName}`,
@@ -826,6 +903,8 @@ class UserMcpsService {
     return {
       success: true,
       creditsCharged,
+      basePriceUsd: legacyMcpPointsToOrganizationCredits(creditsCharged),
+      creditUnit: ORGANIZATION_CREDIT_UNIT,
       x402AmountUsd: 0,
       creatorEarnings,
       platformEarnings,
@@ -841,7 +920,11 @@ class UserMcpsService {
     organizationId: string,
   ): Promise<{
     totalRequests: number;
+    /** @deprecated Legacy MCP pricing points (100 points = $1). */
     totalCreditsEarned: number;
+    /** Base MCP prices only; excludes affiliate and platform surcharges. */
+    baseCloudCreditsCharged: number;
+    creditUnit: typeof ORGANIZATION_CREDIT_UNIT;
     totalX402EarnedUsd: number;
     uniqueUsers: number;
   }> {
@@ -857,6 +940,8 @@ class UserMcpsService {
     return {
       totalRequests: stats.totalRequests,
       totalCreditsEarned: stats.totalCreditsCharged,
+      baseCloudCreditsCharged: legacyMcpPointsToOrganizationCredits(stats.totalCreditsCharged),
+      creditUnit: ORGANIZATION_CREDIT_UNIT,
       totalX402EarnedUsd: stats.totalX402Usd,
       uniqueUsers: stats.uniqueOrgs,
     };
@@ -912,6 +997,19 @@ class UserMcpsService {
     return mcp.organization_id === organizationId ? mcp : this.toPublicMcp(mcp);
   }
 
+  /** Add the canonical USD price while retaining explicit legacy point fields. */
+  toApiMcp(mcp: UserMcp | PublicUserMcp): ApiUserMcp {
+    return {
+      ...mcp,
+      credit_unit: ORGANIZATION_CREDIT_UNIT,
+      price_usd: formatCanonicalMcpPriceUsd(mcp),
+      legacy_credits_per_request: mcp.pricing_type === "credits" ? mcp.credits_per_request : null,
+      total_creator_revenue_usd: legacyMcpPointsToOrganizationCredits(
+        parseNonNegativeMcpBillingNumber(mcp.total_credits_earned, "total_credits_earned", 0),
+      ).toString(),
+    };
+  }
+
   /**
    * Convert UserMcp to registry format
    */
@@ -934,6 +1032,9 @@ class UserMcpsService {
     pricing: {
       type: "free" | "credits" | "x402";
       description: string;
+      creditUnit: typeof ORGANIZATION_CREDIT_UNIT;
+      priceUsd?: string;
+      /** @deprecated Legacy MCP pricing points (100 points = $1). */
       pricePerRequest?: string;
     };
     x402Enabled: boolean;
@@ -957,8 +1058,9 @@ class UserMcpsService {
     const endpoint = this.getPublicProxyUrl(mcp, baseUrl);
 
     let pricingDescription = "Free to use";
+    const priceUsd = formatCanonicalMcpPriceUsd(mcp);
     if (mcp.pricing_type === "credits") {
-      pricingDescription = `${mcp.credits_per_request} credits per request`;
+      pricingDescription = `$${priceUsd} in cloud credit per request`;
     } else if (mcp.pricing_type === "x402") {
       pricingDescription = `$${mcp.x402_price_usd} per request`;
     }
@@ -979,6 +1081,8 @@ class UserMcpsService {
       pricing: {
         type: mcp.pricing_type ?? "free",
         description: pricingDescription,
+        creditUnit: ORGANIZATION_CREDIT_UNIT,
+        priceUsd,
         pricePerRequest:
           mcp.pricing_type === "credits"
             ? mcp.credits_per_request?.toString()

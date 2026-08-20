@@ -1,22 +1,24 @@
 # Cloud billing contract matrix
 
-**Audit date:** 2026-08-20<br>
-**Audited source:** [`origin/develop@a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7`][source]<br>
+**Audit date:** 2026-08-21<br>
+**Audited source:** [`origin/develop@4d6789b41ca8e06e021560d115cc40490190f7a3`][source]<br>
 **Scope:** implementation inventory for [#22942][i22942], not a pricing or policy ratification.
 
 This matrix describes the contract observable at the audited commit. A value marked
 **UNKNOWN** is deliberately not inferred from UI copy, a dormant schema, or adjacent
 work. Every `Uxx` identifier links to its dedicated follow-up issue. “USD balance
 unit” below means the numeric unit stored in
-`organizations.credit_balance`; the word “credit” is currently not safe as a unit name
-because [U01] is unresolved.
+`organizations.credit_balance`: one organization cloud credit equals $1 USD.
+Legacy user-MCP `credits_per_request` values remain cent-like pricing points at
+100 points per dollar and are converted at the service/API boundary; they are
+not organization cloud-credit balances.
 
 ## Contract matrix
 
 | Capability | Price | Unit | Entitlement | Limit | Counter | Reset | Enforcement | UI | Ledger | Refund | Owner |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Credits | **CONTRADICTION:** the authoritative checkout grants `1.000000` balance unit for $1, while summary/docs/MCP say 100 credits = $1. **UNKNOWN [U01]**. [C01] [C02] [C03] [C04] [C08] | Implementation stores USD balance units; the public “credit” unit is **UNKNOWN [U01]**. [C01] [C05] | Prepaid organization balance; subscription entitlement is not implemented or decided. Human decision: [#20328][i20328]. [C05] | Custom checkout accepts $1–$1,000, but summary advertises a $5 minimum and UI accepts up to $10,000. **UNKNOWN [U11]**. [C02] [C03] [C06] | `organizations.credit_balance` plus `balance_revision`; mutations append `credit_transactions`. [C05] [C09] | None; balance changes by ledger mutation. [C05] | Money paths reserve/debit atomically or fail; checkout converts dollars to exact cents and grants the same numeric amount. [C02] [C07] | Billing tab renders the balance as dollars and offers a custom-amount top-up form; docs and summary expose the conflicting 100:1 story. [C03] [C04] [C06] | `credit_transactions`; Stripe credit grants are mediated by durable checkout orders. [C09] [T03] | Worker deferred settlement records actual usage; compatibility reservation reconciliation returns excess. Stripe reversal entitlement remains **UNKNOWN** pending [#22930][i22930]; server hold/reversal work is **[U19]** and customer-visible states/receipts are **[U15b]**. [I03] [I08] [I09] | Permanent implementation owner **UNKNOWN [U14]**; matrix inventory is [#22942][i22942]. |
-| Inference | Dynamic USD catalog price by provider/model/product/charge type, with platform markup. On a missing exact token price, runtime uses the highest matching provider/product/charge catalog rate, then configured environment fallback; it fails closed only if neither exists. Flat-operation pricing remains exact-catalog or fail-closed. [I01] [I02] [I07] | Catalog-defined unit (for example input/output tokens or a flat operation) and optional dimensions. [I01] | Authenticated organization with enough prepaid balance; no launched subscription tier is asserted. [I03] [#20328][i20328] | Before optional explicit organization overrides, runtime applies base RPM tiers of 60/100/30/5, 120/200/60/10 at the $5 threshold, and 300/600/120/30 at $100 (completions/embeddings/standard/strict). The implementation derives qualification from credit-ledger history, but which purchase/grant/adjustment/reversal provenances should qualify is **UNKNOWN [U17]**. Weekly credit quotas exist in service code but production enforcement is **UNKNOWN [U12]**. [I04] [I05] [I10] [I11] [I12] [I13] | Production Worker admission tracks a serialized Durable Object balance lease before dispatch and deterministic post-usage debit; compatibility paths may use synchronous credit reservation/reconciliation or DB/KV admission ledgers. Weekly `current_usage` is not established as a production counter. [I03] [I04] [I05] [I08] [I09] [I11] [I12] [I13] | RPM window is 60 seconds. Weekly period calculation/reset exists, but wiring is **UNKNOWN [U12]**. [I04] [I05] | Production Worker config enables deferred admission: acquire an exact Durable Object balance lease before provider dispatch, then debit deterministically after usage. Non-Worker/compatibility paths may reserve synchronously or use DB/KV ledgers. Token pricing follows the fallback ladder above and throws only when no applicable exact or fallback rate exists. [I02] [I03] [I07] [I08] [I09] [I10] [I11] [I12] [I13] | Account Limits shows configured RPM but explicitly does not show live window usage/reset. [I06] | Durable Object lease plus post-usage credit transaction on the Worker path; synchronous reservation/transaction or DB/KV admission-ledger receipts on compatibility paths. [I03] [I08] [I09] [I11] [I12] [I13] | Reconciliation refunds unused synchronous reservation; deferred settlement records actual collected/uncollected outcome. Stripe reversal policy remains **UNKNOWN** pending [#22930][i22930]; server implementation is **[U19]** and UI/receipt exposure is **[U15b]**. [I03] [I08] | Permanent implementation owner **UNKNOWN [U14]**. |
+| Credits | One organization cloud credit equals $1 USD. Checkout charges dollars and grants the same numeric balance amount; summary, docs, UI, and new MCP price fields use that denomination. Legacy MCP pricing points are converted at 100 points per dollar without rescaling organization balances. [C01] [C02] [C03] [C04] [C08] | USD-denominated organization cloud credit (1 credit = $1). [C01] [C05] | Decision B ratifies $30 Plus and $100 Pro subscriptions with separate expiring allowances, but no subscription entitlement is active in the audited source. The catalog foundation is still draft in [#23154][p23154]; current usage continues against purchased organization credits. [#20328][i20328] [C05] | Custom checkout accepts $1–$1,000, but summary advertises a $5 minimum and UI accepts up to $10,000. **UNKNOWN [U11]**. [C02] [C03] [C06] | `organizations.credit_balance` plus `balance_revision`; mutations append `credit_transactions`. Legacy MCP point columns remain storage-compatible and are converted at the service boundary. Future subscription allowance must remain a separate expiring authority. [C05] [C08] [C09] [#20328][i20328] | None for purchased credits; the ratified subscription allowance will expire at billing-period end after its implementation program lands. [C05] [#20328][i20328] | Money paths reserve/debit atomically or fail; checkout converts dollars to exact cents and grants the same numeric amount. The MCP adapter is value-preserving and idempotent, so no customer-balance migration or backfill is required. The subscription program is not yet enforcement authority. [C02] [C07] [C08] | Billing tab renders the balance as dollars; MCP pricing is entered and displayed in USD cloud credits. Subscription selection/management remains future work, not a launched surface. [C03] [C04] [C06] [C08] | `credit_transactions`; Stripe credit grants are mediated by durable checkout orders. No subscription allowance ledger is active in the audited source. [C09] [T03] | Worker deferred settlement records actual usage; compatibility reservation reconciliation returns excess. Stripe reversal entitlement remains **UNKNOWN** pending [#22930][i22930]; server hold/reversal work is **[U19]** and customer-visible states/receipts are **[U15b]**. [I03] [I08] [I09] | Permanent implementation owner **UNKNOWN [U14]**; subscription program [#23090][i23090]–[#23097][i23097]; matrix inventory [#22942][i22942]. |
+| Inference | Dynamic USD catalog price by provider/model/product/charge type, with platform markup. On a missing exact token price, runtime uses the highest matching provider/product/charge catalog rate, then configured environment fallback; it fails closed only if neither exists. Flat-operation pricing remains exact-catalog or fail-closed. [I01] [I02] [I07] | Catalog-defined unit (for example input/output tokens or a flat operation) and optional dimensions. [I01] | Authenticated organization with enough purchased balance in the audited implementation. Decision B defines future Plus/Pro allowance-first funding, but that subscription entitlement path has not landed. [I03] [#20328][i20328] [#23092][i23092] | Current runtime applies spend-derived RPM tiers of 60/100/30/5, 120/200/60/10 at the $5 threshold, and 300/600/120/30 at $100 (completions/embeddings/standard/strict). Decision B assigns the latter two envelopes to Plus/Pro once entitlement-derived enforcement lands; current cumulative-credit qualification is not proof of an active subscription. Weekly credit quotas exist in service code but production enforcement is **UNKNOWN [U12]**. [I04] [I05] [I10] [I11] [I12] [I13] [#23094][i23094] | Production Worker admission tracks a serialized Durable Object balance lease before dispatch and deterministic post-usage debit; compatibility paths may use synchronous credit reservation/reconciliation or DB/KV admission ledgers. No active subscription-allowance counter is present in the audited source. [I03] [I04] [I05] [I08] [I09] [I11] [I12] [I13] | RPM window is 60 seconds. Weekly period calculation/reset exists, but wiring is **UNKNOWN [U12]**. Future monthly allowances expire at billing-period end after implementation. [I04] [I05] [#20328][i20328] | Production Worker config enables deferred admission against purchased credits. The ratified subscription path will consume allowance first only after [#23092][i23092] and entitlement enforcement [#23094][i23094] land; do not infer activation from the decision or draft catalog. Token pricing follows the existing fallback ladder. [I02] [I03] [I07] [I08] [I09] [I10] [I11] [I12] [I13] | Account Limits shows configured RPM but explicitly does not show live window usage/reset; subscription selection/management is not yet active. [I06] [#23096][i23096] | Durable Object lease plus post-usage credit transaction on the current path. Future allowance accounting must use its separate expiring ledger, not `addCredits`. [I03] [I08] [I09] [I11] [I12] [I13] [#20328][i20328] | Reconciliation refunds unused synchronous reservation; deferred settlement records actual collected/uncollected outcome. Stripe reversal policy remains **UNKNOWN** pending [#22930][i22930]; server implementation is **[U19]** and UI/receipt exposure is **[U15b]**. [I03] [I08] | Permanent implementation owner **UNKNOWN [U14]**; subscription enforcement is tracked by [#23092][i23092] and [#23094][i23094]. |
 | Storage | Migration seeds PUT $0.0001/request + $0.000000001/byte; GET/HEAD/list/presign $0.00005; DELETE $0. Public docs instead say 0.01 credits/GB/day. When pricing rows are missing, runtime falls back to $0.001 per lookup component; PUT therefore becomes $0.001 + $0.001 per byte, while every single-component lookup—including DELETE—becomes $0.001. **UNKNOWN [U06]**. [S01] [S02] [S03] [S05] [S07] | Implementation bills request and byte units; docs describe GB/day. **UNKNOWN [U06]**. [S01] [S03] | Authenticated organization; default quota row is 5 GiB. [S01] [S04] | Default hard 5 GiB quota (413 on excess). Generated-media behavior when storage rejects is a human decision in [#20956][i20956]. Production reads/list/presign remain gated by [#21045][i21045] and [#22399][i22399]. [S01] [S04] | `org_storage_quota.bytes_used`/`bytes_limit`; paid operations use durable operation identity. [S04] [S05] | No periodic reset; delete decrements accounted bytes. [S01] [S04] | Atomic quota reservation on PUT and durable billing around object operations; do not infer production activation past the protected canary gates. [S04] [S05] [#21045][i21045] [#22399][i22399] | Account Limits exposes quota-accounted upload bytes, not every stored object; public billing docs carry the conflicting GB/day price. [S03] [S06] | Credit transactions plus storage-operation billing/idempotency records. [S05] | Failure/refund timing for generated media versus storage rejection is **UNKNOWN** pending human decision [#20956][i20956]. Stripe reversal/resource-hold policy is pending [#22930][i22930], with server authority **[U19]** and UI/receipt exposure **[U15b]**. | Active production gates: [#21045][i21045], [#22399][i22399]. Permanent owner and canonical price owner **UNKNOWN [U14]**. |
 | Shared agents | No dedicated-hosting charge: shared is container-free and excluded from the agent hosting biller. Standard shared REST inference defaults to organization-credit funding; the canonical Personal Shared path selects platform funding and does not debit organization credits. [A01] [A02] [A07] [A08] [A09] | No elapsed container-hour unit. Standard shared inference uses catalog-priced usage; Personal Shared has no organization-credit unit. [A01] [A02] [A07] [A08] [A09] | Default derived tier for agents that do not require a custom image, persistent connection/state, or always-on runtime; inference funding remains surface-specific as described under Price. [A01] [A07] [A08] [A09] | The audited non-eager/shared creation path uses a fixed ceiling of 5 against the combined non-terminal, non-pool sandbox population (shared plus dedicated). [A03] [A04] [A06] | Combined non-terminal sandbox count plus standard shared inference admission/usage; Personal Shared usage is platform-funded. [A03] [A06] [A07] [A08] [A09] [I03] [I08] [I09] | No periodic quota reset; count falls when lifecycle reaches a non-counted state. [A03] | The audited standard creation path is bounded by the fixed non-eager sandbox quota; shared creation skips dedicated credit/provisioning gates and the hosting biller excludes `execution_tier='shared'`. A later path audit found managed-Discord and eliza-app provisioning front doors that do not yet share the same atomic quota authority; [#23003][i23003] owns that bounded repair. Standard shared inference and Personal Shared use the distinct funding authorities stated above. [A02] [A04] [A07] [A08] [A09] | Personal Shared onboarding says free/no card; that copy is not generalized to every shared sandbox. Account Limits exposes the shared and eager limits separately but counts one combined shared/dedicated population. [A05] [A06] [A08] [A09] | No `agent_billing_records` for shared hosting. Standard shared inference uses the deferred Worker or compatibility credit ledger; Personal Shared does not debit the organization-credit ledger. [A02] [A07] [A08] [A09] [I03] [I08] [I09] | Standard shared Worker deferred settlement records actual usage, while compatibility reservation reconciliation returns unused reservation; Personal Shared has no organization-credit settlement. Stripe reversal policy for paid organization funding remains **UNKNOWN** pending [#22930][i22930], with server authority **[U19]** and UI/receipt exposure **[U15b]**. [A07] [A08] [A09] [I03] [I08] [I09] | Permanent implementation owner **UNKNOWN [U14]**. |
 | Dedicated agents | Current constants: running $0.01/hour; stopped with snapshot $0.0025/hour. Creation/resume requires more than $0.10; shared→dedicated upgrade requires $0.72 runway. Sleeping/frozen retention economics and conflicting `$0/hour` UI are **UNKNOWN [U13]**. [D01] [D02] | Prorated elapsed hour by recorded compute-rate segments; snapshot-retention unit is **UNKNOWN [U13]**. [D01] [D03] | Tier is derived when configuration requires dedicated runtime; credit/runway gates apply. [A01] [D01] | Eager/dedicated admission uses the balance-derived 5/20/100/500 ceiling (below $1 / at $1 / at $10 / at $100) against the same combined non-terminal, non-pool sandbox population as shared admission. [A03] [A04] [A06] | Billable selector plus the combined sandbox count, `last_billed_at`, state/rate segments, and total billed. [A03] [A06] [D03] | No clock reset; `last_billed_at` advances after settlement. [D03] | The hourly billing transaction locks the sandbox/org, rejects shared/deletion-in-flight rows, debits atomically, and records the billing period. Standard and coding creation paths use the sandbox quota authority, but managed-Discord and eliza-app provisioning gaps remain tracked by [#23003][i23003]. The deletion guard is already in the audited baseline; [#22553][i22553] owns remaining live/prod biller proof, not that merged predicate. [A04] [D03] | Pricing surfaces show running rates; one badge says sleeping is $0, which must not be treated as retention policy. **UNKNOWN [U13]**. [D02] | `agent_billing_records` linked to `credit_transactions`, with rate segments. [D03] | Frozen/sleeping retention remains **UNKNOWN [U13]**, adjacent to [#20726][i20726]. Stripe reversal/resource-hold policy is pending [#22930][i22930], with server authority **[U19]** and UI/receipt exposure **[U15b]**. | Active bounded live/prod slice: [#22553][i22553]. Permanent owner **UNKNOWN [U14]**. |
@@ -33,7 +35,7 @@ the dedicated issue explicitly owns the decision and lands an authoritative cont
 
 | ID | Unresolved contract | Evidence / contradiction | Tracking and gate |
 | --- | --- | --- | --- |
-| [U01] | `credit-unit-usd-vs-100`: choose one externally visible credit unit and migrate every API, UI, doc, MCP price, and ledger label consistently. | Checkout/balance are 1 unit = $1; summary/docs/MCP say 100 units = $1. [C01] [C02] [C03] [C04] [C08] | Dedicated issue [#22952][U01]. Human launch-model decision [#20328][i20328] is adjacent, not a unit decision. |
+| [U01] | **RESOLVED — `credit-unit-usd-vs-100`:** one organization cloud credit equals $1 USD across checkout, API, UI, docs, and new MCP price fields. | Existing balances/checkouts were already 1:1. Legacy user-MCP pricing points remain stored at 100 points per dollar and are explicitly converted at the boundary, so customer balances require no migration or backfill. [C01] [C02] [C03] [C04] [C08] | Implemented by [#22952][U01]. Decision B subscriptions [#20328][i20328] add a separate expiring allowance authority and do not change this purchased-credit unit. |
 | [U02] | `container-earnings-first-order`: make policy, UI, plan, and transactional settlement use the same funding order. | Policy/UI earnings-first; repository credits-first. [N03] [N04] [N05] | Dedicated issue [#22951][U02]. |
 | [U03] | `earnings-redemption-contract`: standardize query/body and response field names, then add UI↔route contract tests. | UI uses `amount`, `elizaPriceUsd`, `expiresAt`, and `safetySpread`; APIs require `pointsAmount` and return `twapPriceUsd`, `validUntil`, and `safetySpreadPercent`. [E02] [E04] [E05] | Dedicated issue [#22953][U03]. |
 | [U04] | `canonical-billing-snapshot`: define one read model for balances, active billables, limits, payment state, and reset windows. | Current UI snapshots are capability-specific and explicitly omit some live usage/reset data. [I06] [S06] [A06] | Dedicated issue [#22954][U04]. |
@@ -69,8 +71,10 @@ They are listed here to prevent the capability rows from overstating enforcement
 
 ## Human and production gates preserved by this inventory
 
-- [#20328][i20328] is an open human decision. This document does not claim that
-  prepaid/PAYG-only or a subscription model has been ratified.
+- [#20328][i20328] ratifies Decision B: $30 Plus and $100 Pro with separate,
+  non-rollover monthly allowances. The decision is complete, but implementation
+  remains dependency-ordered work [#23090][i23090]–[#23097][i23097]. Draft
+  catalog PR [#23154][p23154] is not production activation.
 - [#20956][i20956] is an open human decision for generated-media charging when
   storage quota enforcement rejects or later removes an object.
 - [#22930][i22930] is an open human decision for Stripe refunds, disputes,
@@ -133,92 +137,92 @@ All code links below are pinned to the audited commit.
   [E18] pre-broadcast hot-wallet inventory; [E19] validation, idempotency, earnings
   reservation, and admin-review setup.
 
-[source]: https://github.com/elizaOS/eliza/tree/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7
-[C01]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/credits.ts#L670-L676
-[C02]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/credits/checkout/route.ts#L35-L151
-[C03]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/credits/summary/route.ts#L171-L175
-[C04]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/docs/tracks/cloud/billing.mdx#L6-L8
-[C05]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/schemas/organizations.ts#L43-L59
-[C06]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/ui/src/cloud/billing/components/billing-tab.tsx#L61-L492
-[C07]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/credits.ts#L777-L922
-[C08]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/user-mcps.ts#L521-L655
-[C09]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/schemas/credit-transactions.ts#L17-L62
-[I01]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/schemas/ai-pricing.ts#L18-L50
-[I02]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/ai-pricing/lookup.ts#L44-L165
-[I03]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/ai-billing.ts#L316-L505
-[I04]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/org-rate-limits.ts#L42-L304
-[I05]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/usage-quotas.ts#L48-L269
-[I06]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/ui/src/cloud/billing/components/account-limits-card.tsx#L492-L510
-[I07]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/ai-pricing/lookup.ts#L190-L498
-[I08]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/organization-inference-admission.ts#L229-L524
-[I09]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/wrangler.toml#L781-L887
-[I10]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/middleware/rate-limit.ts#L443-L488
-[I11]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/chat/completions/route.ts#L1372-L1834
-[I12]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/embeddings/route.ts#L187-L323
-[I13]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/src/lib/generative-route-auth.ts#L90-L265
-[S01]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/migrations/0102_add_org_storage_quota.sql#L1-L38
-[S02]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/proxy/pricing.ts#L7-L89
-[S03]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/docs/cloud/billing.mdx#L53-L60
-[S04]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/repositories/org-storage-quota.ts#L12-L89
-[S05]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/apis/storage/objects/%5B...key%5D/route.ts#L96-L169
-[S06]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/ui/src/cloud/billing/components/account-limits-card.tsx#L393-L441
-[S07]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/apis/storage/objects/%5B...key%5D/route.ts#L302-L335
-[A01]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/shared-runtime/agent-tier.ts#L1-L74
-[A02]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/repositories/agent-billing.ts#L105-L148
-[A03]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/constants/agent-sandbox-quota.ts#L26-L54
-[A04]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/eliza/agents/route.ts#L344-L422
-[A05]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/eliza-app/onboarding-chat.ts#L169-L175
-[A06]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/account-limits-snapshot.ts#L231-L297
-[A07]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/shared-runtime/shared-rest-adapter.ts#L528-L566
-[A08]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts#L830-L912
-[A09]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts#L627-L636
-[D01]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/constants/agent-pricing.ts#L1-L48
-[D02]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/ui/src/cloud/instances/components/agent-cost-badge.tsx#L1-L65
-[D03]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/repositories/agent-billing.ts#L296-L439
-[N01]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/constants/pricing.ts#L31-L219
-[N02]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/cron/container-billing/route.ts#L80-L108
-[N03]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/container-billing-policy.ts#L41-L81
-[N04]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/repositories/container-billing.ts#L300-L462
-[N05]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/ui/src/cloud/billing/components/pay-as-you-go-card.tsx#L105-L137
-[N06]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/repositories/containers.ts#L724-L875
-[K01]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/schemas/api-keys.ts#L16-L62
-[K02]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/api-keys/route.ts#L61-L144
-[K03]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/api-keys.ts#L62-L69
-[K04]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/ui/src/cloud/api-keys/use-api-keys.ts#L16-L47
-[K05]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/ui/src/cloud/api-keys/ApiKeysSurface.tsx#L33-L95
-[K06]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/ui/src/cloud/api-keys/ApiKeysView.tsx#L90-L210
-[K07]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/api-keys/schemas.ts#L18-L29
-[T01]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/schemas/credit-packs.ts#L14-L41
-[T02]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/topup/10/route.ts#L20-L36
-[T04]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/topup/50/route.ts#L20-L36
-[T05]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/topup/100/route.ts#L20-L36
-[T03]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts#L454-L520
-[T06]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/topup-handler.ts#L395-L454
-[AT01]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/auto-top-up.ts#L36-L55
-[AT02]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/docs/auto-top-up-durable-cutover.md#L12-L26
-[AT03]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/schemas/auto-top-up-attempts.ts#L53-L162
-[AT04]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/wrangler.toml#L199-L205
-[AT05]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/ui/src/cloud/billing/components/auto-top-up-card.tsx#L408-L510
-[AT06]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/auto-top-up.ts#L1049-L1111
-[E01]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/schemas/redeemable-earnings.ts#L68-L250
-[E02]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/redemptions/route.ts#L27-L41
-[E03]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/config/redemption-security.ts#L12-L149
-[E04]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/redemptions/quote/route.ts#L34-L227
-[E05]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/ui/src/cloud/monetization/earnings/EarningsPageClient.tsx#L97-L286
-[E06]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/db/schemas/token-redemptions.ts#L64-L213
-[E07]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L67-L148
-[E08]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/middleware/rate-limit-hono-cloudflare.ts#L721-L730
-[E09]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L388-L419
-[E10]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L840-L994
-[E11]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L1190-L1273
-[E12]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/payout-processor.ts#L1077-L1242
-[E13]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L258-L470
-[E14]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/redemptions/route.ts#L65-L75
-[E15]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/middleware/rate-limit-hono-cloudflare.ts#L563-L688
-[E16]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/api/v1/redemptions/route.ts#L88-L198
-[E17]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L445-L494
-[E18]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/payout-processor.ts#L740-L913
-[E19]: https://github.com/elizaOS/eliza/blob/a83adaa8eba1901b1e9fa99e177b4e0f1d7e8bc7/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L282-L672
+[source]: https://github.com/elizaOS/eliza/tree/4d6789b41ca8e06e021560d115cc40490190f7a3
+[C01]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/credits.ts#L670-L676
+[C02]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/credits/checkout/route.ts#L35-L151
+[C03]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/credits/summary/route.ts#L171-L175
+[C04]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/docs/tracks/cloud/billing.mdx#L6-L8
+[C05]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/schemas/organizations.ts#L43-L59
+[C06]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/ui/src/cloud/billing/components/billing-tab.tsx#L61-L492
+[C07]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/credits.ts#L777-L922
+[C08]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/user-mcps.ts#L521-L655
+[C09]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/schemas/credit-transactions.ts#L17-L62
+[I01]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/schemas/ai-pricing.ts#L18-L50
+[I02]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/ai-pricing/lookup.ts#L44-L165
+[I03]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/ai-billing.ts#L316-L505
+[I04]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/org-rate-limits.ts#L42-L304
+[I05]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/usage-quotas.ts#L48-L269
+[I06]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/ui/src/cloud/billing/components/account-limits-card.tsx#L492-L510
+[I07]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/ai-pricing/lookup.ts#L190-L498
+[I08]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/organization-inference-admission.ts#L229-L524
+[I09]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/wrangler.toml#L781-L887
+[I10]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/middleware/rate-limit.ts#L443-L488
+[I11]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/chat/completions/route.ts#L1372-L1834
+[I12]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/embeddings/route.ts#L187-L323
+[I13]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/src/lib/generative-route-auth.ts#L90-L265
+[S01]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/migrations/0102_add_org_storage_quota.sql#L1-L38
+[S02]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/proxy/pricing.ts#L7-L89
+[S03]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/docs/cloud/billing.mdx#L53-L60
+[S04]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/repositories/org-storage-quota.ts#L12-L89
+[S05]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/apis/storage/objects/%5B...key%5D/route.ts#L96-L169
+[S06]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/ui/src/cloud/billing/components/account-limits-card.tsx#L393-L441
+[S07]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/apis/storage/objects/%5B...key%5D/route.ts#L302-L335
+[A01]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/shared-runtime/agent-tier.ts#L1-L74
+[A02]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/repositories/agent-billing.ts#L105-L148
+[A03]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/constants/agent-sandbox-quota.ts#L26-L54
+[A04]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/eliza/agents/route.ts#L344-L422
+[A05]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/eliza-app/onboarding-chat.ts#L169-L175
+[A06]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/account-limits-snapshot.ts#L231-L297
+[A07]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/shared-runtime/shared-rest-adapter.ts#L528-L566
+[A08]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts#L830-L912
+[A09]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/internal/eliza-app/personal-shared/messages/route.ts#L627-L636
+[D01]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/constants/agent-pricing.ts#L1-L48
+[D02]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/ui/src/cloud/instances/components/agent-cost-badge.tsx#L1-L65
+[D03]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/repositories/agent-billing.ts#L296-L439
+[N01]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/constants/pricing.ts#L31-L219
+[N02]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/cron/container-billing/route.ts#L80-L108
+[N03]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/container-billing-policy.ts#L41-L81
+[N04]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/repositories/container-billing.ts#L300-L462
+[N05]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/ui/src/cloud/billing/components/pay-as-you-go-card.tsx#L105-L137
+[N06]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/repositories/containers.ts#L724-L875
+[K01]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/schemas/api-keys.ts#L16-L62
+[K02]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/api-keys/route.ts#L61-L144
+[K03]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/api-keys.ts#L62-L69
+[K04]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/ui/src/cloud/api-keys/use-api-keys.ts#L16-L47
+[K05]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/ui/src/cloud/api-keys/ApiKeysSurface.tsx#L33-L95
+[K06]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/ui/src/cloud/api-keys/ApiKeysView.tsx#L90-L210
+[K07]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/api-keys/schemas.ts#L18-L29
+[T01]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/schemas/credit-packs.ts#L14-L41
+[T02]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/topup/10/route.ts#L20-L36
+[T04]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/topup/50/route.ts#L20-L36
+[T05]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/topup/100/route.ts#L20-L36
+[T03]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/stripe-checkout-orders.ts#L454-L520
+[T06]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/topup-handler.ts#L395-L454
+[AT01]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/auto-top-up.ts#L36-L55
+[AT02]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/docs/auto-top-up-durable-cutover.md#L12-L26
+[AT03]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/schemas/auto-top-up-attempts.ts#L53-L162
+[AT04]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/wrangler.toml#L199-L205
+[AT05]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/ui/src/cloud/billing/components/auto-top-up-card.tsx#L408-L510
+[AT06]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/auto-top-up.ts#L1049-L1111
+[E01]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/schemas/redeemable-earnings.ts#L68-L250
+[E02]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/redemptions/route.ts#L27-L41
+[E03]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/config/redemption-security.ts#L12-L149
+[E04]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/redemptions/quote/route.ts#L34-L227
+[E05]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/ui/src/cloud/monetization/earnings/EarningsPageClient.tsx#L97-L286
+[E06]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/db/schemas/token-redemptions.ts#L64-L213
+[E07]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L67-L148
+[E08]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/middleware/rate-limit-hono-cloudflare.ts#L721-L730
+[E09]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L388-L419
+[E10]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L840-L994
+[E11]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L1190-L1273
+[E12]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/payout-processor.ts#L1077-L1242
+[E13]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L258-L470
+[E14]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/redemptions/route.ts#L65-L75
+[E15]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/middleware/rate-limit-hono-cloudflare.ts#L563-L688
+[E16]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/api/v1/redemptions/route.ts#L88-L198
+[E17]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L445-L494
+[E18]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/payout-processor.ts#L740-L913
+[E19]: https://github.com/elizaOS/eliza/blob/4d6789b41ca8e06e021560d115cc40490190f7a3/packages/cloud/shared/src/lib/services/token-redemption-secure.ts#L282-L672
 
 [i20328]: https://github.com/elizaOS/eliza/issues/20328
 [i20717]: https://github.com/elizaOS/eliza/issues/20717
@@ -237,6 +241,15 @@ All code links below are pinned to the audited commit.
 [i23001]: https://github.com/elizaOS/eliza/issues/23001
 [i23003]: https://github.com/elizaOS/eliza/issues/23003
 [i23004]: https://github.com/elizaOS/eliza/issues/23004
+[i23090]: https://github.com/elizaOS/eliza/issues/23090
+[i23091]: https://github.com/elizaOS/eliza/issues/23091
+[i23092]: https://github.com/elizaOS/eliza/issues/23092
+[i23093]: https://github.com/elizaOS/eliza/issues/23093
+[i23094]: https://github.com/elizaOS/eliza/issues/23094
+[i23095]: https://github.com/elizaOS/eliza/issues/23095
+[i23096]: https://github.com/elizaOS/eliza/issues/23096
+[i23097]: https://github.com/elizaOS/eliza/issues/23097
+[p23154]: https://github.com/elizaOS/eliza/pull/23154
 
 [U01]: https://github.com/elizaOS/eliza/issues/22952
 [U02]: https://github.com/elizaOS/eliza/issues/22951

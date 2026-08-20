@@ -9,7 +9,10 @@ import { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const listPublicAgents = mock(async () => []);
-const listPublicMcps = mock(async () => []);
+const listPublicMcps = mock(
+  async (): Promise<Array<Record<string, unknown>>> => [],
+);
+const countPublicMcps = mock(async () => 0);
 const cacheGet = mock(async () => null);
 const cacheSet = mock(async () => undefined);
 
@@ -26,7 +29,7 @@ mock.module("@/lib/services/characters/characters", () => ({
 mock.module("@/lib/services/user-mcps", () => ({
   userMcpsService: {
     listPublic: listPublicMcps,
-    countPublic: mock(async () => 0),
+    countPublic: countPublicMcps,
     getPublicProxyUrl: mock(() => "https://app.example.test/mcp"),
   },
 }));
@@ -67,6 +70,9 @@ async function discover(query = ""): Promise<Response> {
 beforeEach(() => {
   listPublicAgents.mockClear();
   listPublicMcps.mockClear();
+  listPublicMcps.mockResolvedValue([]);
+  countPublicMcps.mockClear();
+  countPublicMcps.mockResolvedValue(0);
   cacheGet.mockClear();
   cacheSet.mockClear();
 });
@@ -124,5 +130,40 @@ describe("GET /api/v1/discovery supported type contract", () => {
     expect(response.status).toBe(200);
     expect(listPublicAgents).toHaveBeenCalledTimes(1);
     expect(listPublicMcps).toHaveBeenCalledTimes(1);
+  });
+
+  test("adds canonical USD while preserving the legacy discovery amount", async () => {
+    listPublicMcps.mockResolvedValueOnce([
+      {
+        id: "mcp-1",
+        name: "Legacy-priced MCP",
+        description: "compatibility fixture",
+        category: "utilities",
+        tags: [],
+        status: "live",
+        tools: [],
+        x402_enabled: false,
+        is_verified: true,
+        slug: "legacy-priced",
+        pricing_type: "credits",
+        credits_per_request: "125",
+        x402_price_usd: "0",
+      },
+    ]);
+    countPublicMcps.mockResolvedValueOnce(1);
+
+    const response = await discover("?types=mcp");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      services: Array<{ pricing?: Record<string, unknown> }>;
+    };
+    expect(body.services[0]?.pricing).toEqual({
+      type: "credits",
+      amount: 125,
+      amountUsd: 1.25,
+      amountUnit: "legacy_mcp_pricing_points",
+      currency: "USD",
+      description: "$1.25 in cloud credit per request",
+    });
   });
 });

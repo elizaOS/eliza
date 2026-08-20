@@ -227,6 +227,68 @@ describe("credits checkout service-key agent bridge", () => {
     );
   });
 
+  test("grants one USD-denominated credit for a one-dollar checkout", async () => {
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Service-Key": "svc",
+          "Idempotency-Key": "agent-checkout-usd-1",
+        },
+        body: JSON.stringify({
+          amountUsd: 1,
+          agent_id: agentId,
+          success_url: "https://waifu.example.test/success",
+          cancel_url: "https://waifu.example.test/cancel",
+        }),
+      }),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        creditsToGrant: "1.000000",
+        chargeAmountCents: 100,
+        currency: "usd",
+      }),
+    );
+    const createParams = checkoutCreate.mock.calls[0]?.[0];
+    if (!createParams) throw new Error("Stripe Checkout was not invoked");
+    const lineItems = (
+      createParams as {
+        line_items?: Array<{ price_data?: { unit_amount?: number } }>;
+      }
+    ).line_items;
+    expect(lineItems?.[0]?.price_data?.unit_amount).toBe(100);
+  });
+
+  test("rejects conflicting canonical and compatibility amounts", async () => {
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Service-Key": "svc",
+          "Idempotency-Key": "agent-checkout-unit-conflict",
+        },
+        body: JSON.stringify({
+          amountUsd: 1,
+          credits: 100,
+          agent_id: agentId,
+          success_url: "https://waifu.example.test/success",
+          cancel_url: "https://waifu.example.test/cancel",
+        }),
+      }),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(400);
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(checkoutCreate).not.toHaveBeenCalled();
+  });
+
   test("recovers an ambiguous provider response without creating another session", async () => {
     const orderId = "30000000-0000-4000-8000-000000000001";
     createOrder.mockImplementationOnce(async () => ({

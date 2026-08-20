@@ -76,7 +76,7 @@ interface FormState {
   externalEndpoint: string;
   endpointPath: string;
   pricingType: McpPricingType;
-  creditsPerRequest: string;
+  priceUsd: string;
   x402PriceUsd: string;
   x402Enabled: boolean;
   toolsText: string;
@@ -92,12 +92,24 @@ function emptyForm(): FormState {
     externalEndpoint: "",
     endpointPath: "/mcp",
     pricingType: "credits",
-    creditsPerRequest: "1",
+    priceUsd: "0.01",
     x402PriceUsd: "0.0001",
     x402Enabled: false,
     toolsText: "",
     documentationUrl: "",
   };
+}
+
+export function resolveEditorPriceUsd(mcp: UserMcpRecord): string {
+  const canonical = mcp.price_usd?.trim();
+  if (canonical) return canonical;
+
+  const legacyPoints = Number(mcp.credits_per_request);
+  if (Number.isFinite(legacyPoints) && legacyPoints >= 0) {
+    return String(legacyPoints / 100);
+  }
+
+  return "0.01";
 }
 
 function formFromRecord(mcp: UserMcpRecord): FormState {
@@ -109,7 +121,7 @@ function formFromRecord(mcp: UserMcpRecord): FormState {
     externalEndpoint: mcp.external_endpoint ?? "",
     endpointPath: mcp.endpoint_path ?? "/mcp",
     pricingType: mcp.pricing_type,
-    creditsPerRequest: mcp.credits_per_request ?? "1",
+    priceUsd: resolveEditorPriceUsd(mcp),
     x402PriceUsd: mcp.x402_price_usd ?? "0.0001",
     x402Enabled: mcp.x402_enabled,
     toolsText: mcp.tools.map((t) => `${t.name}: ${t.description}`).join("\n"),
@@ -182,9 +194,9 @@ export function McpEditorDialog({
           endpointPath: form.endpointPath.trim() || undefined,
           tools,
           pricingType: form.pricingType,
-          creditsPerRequest:
+          priceUsd:
             form.pricingType === "credits"
-              ? Number(form.creditsPerRequest) || 0
+              ? Number(form.priceUsd) || 0
               : undefined,
           x402PriceUsd:
             form.pricingType === "x402"
@@ -206,9 +218,9 @@ export function McpEditorDialog({
           endpointPath: form.endpointPath.trim() || undefined,
           tools,
           pricingType: form.pricingType,
-          creditsPerRequest:
+          priceUsd:
             form.pricingType === "credits"
-              ? Number(form.creditsPerRequest) || 0
+              ? Number(form.priceUsd) || 0
               : undefined,
           x402PriceUsd:
             form.pricingType === "x402"
@@ -368,18 +380,18 @@ export function McpEditorDialog({
 
           {form.pricingType === "credits" && (
             <div className="grid gap-2">
-              <Label htmlFor="mcp-credits">
+              <Label htmlFor="mcp-price-usd">
                 {t("cloud.mcps.creditsLabel", {
-                  defaultValue: "Credits per request",
+                  defaultValue: "Price per request (USD cloud credit)",
                 })}
               </Label>
               <Input
-                id="mcp-credits"
+                id="mcp-price-usd"
                 type="number"
                 min={0}
-                step="0.1"
-                value={form.creditsPerRequest}
-                onChange={(e) => update_("creditsPerRequest", e.target.value)}
+                step="0.0001"
+                value={form.priceUsd}
+                onChange={(e) => update_("priceUsd", e.target.value)}
               />
             </div>
           )}

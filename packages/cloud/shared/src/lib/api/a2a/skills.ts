@@ -11,6 +11,7 @@
  */
 
 import { streamText } from "ai";
+import { PLATFORM_MCP_TOOL_PRICING } from "../../../billing/mcp-pricing";
 import { BITROUTER_DEFAULT_TEXT_MODEL } from "../../models/catalog";
 import { calculateCost, estimateRequestCost, getProviderFromModel } from "../../pricing";
 import {
@@ -522,7 +523,7 @@ export async function executeSkillSaveMemory(
 
   if (!content || !roomId) throw new Error("content and roomId required");
 
-  const COST = 1;
+  const COST = PLATFORM_MCP_TOOL_PRICING.save_memory.priceUsd;
 
   // Reserve credits BEFORE the operation (TOCTOU-safe)
   let reservation: CreditReservation;

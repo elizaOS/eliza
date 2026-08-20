@@ -7,6 +7,10 @@
  * @route GET /api/v1/discovery
  */
 
+import {
+  legacyMcpPointsToOrganizationCredits,
+  ORGANIZATION_CREDIT_UNIT,
+} from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -27,7 +31,11 @@ type ServiceSource = "cloud" | "local";
 
 interface ServicePricing {
   type: "free" | "credits" | "x402" | "subscription";
+  /** @deprecated Legacy MCP amount; credits rows use cent-like pricing points. */
   amount?: number;
+  /** Canonical dollar amount for USD-denominated prices. */
+  amountUsd?: number;
+  amountUnit?: "legacy_mcp_pricing_points" | "USD";
   currency?: string;
   description?: string;
 }
@@ -590,11 +598,20 @@ async function fetchLocalMcps(
             ? {
                 type: "credits",
                 amount: Number(mcp.credits_per_request),
-                description: `${mcp.credits_per_request} credits per request`,
+                amountUsd: legacyMcpPointsToOrganizationCredits(
+                  Number(mcp.credits_per_request),
+                ),
+                amountUnit: "legacy_mcp_pricing_points",
+                currency: ORGANIZATION_CREDIT_UNIT,
+                description: `$${legacyMcpPointsToOrganizationCredits(
+                  Number(mcp.credits_per_request),
+                )} in cloud credit per request`,
               }
             : {
                 type: "x402",
                 amount: Number(mcp.x402_price_usd),
+                amountUsd: Number(mcp.x402_price_usd),
+                amountUnit: "USD",
                 currency: "USD",
                 description: `$${mcp.x402_price_usd} per request`,
               },
