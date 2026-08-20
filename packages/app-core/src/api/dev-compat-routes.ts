@@ -106,6 +106,7 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
 
   return {
     turnId,
+    traceId: typeof metadata.traceId === "string" ? metadata.traceId : null,
     label,
     roomId: typeof body.roomId === "string" ? body.roomId : null,
     modelProvider:

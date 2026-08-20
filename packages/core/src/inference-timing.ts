@@ -64,6 +64,14 @@ export const INFERENCE_MARKS = {
 
 export interface InferenceTurnSummary {
 	turnId: string;
+	/**
+	 * Gateway-compatible correlation id (32 lowercase hex, #16079). Sent as
+	 * `X-Eliza-Trace-Id` on elizaOS Cloud calls so one id joins the turn's
+	 * local spans with the gateway's structured events and Server-Timing.
+	 * Null only for summaries rehydrated from logs persisted before trace
+	 * correlation existed — never fabricated for such turns.
+	 */
+	traceId: string | null;
 	label: string;
 	roomId: string | null;
 	modelProvider: string | null;
@@ -316,8 +324,21 @@ export function buildInferenceFlowBreakdown(
 
 const DEFAULT_MAX_SPANS = 512;
 
+/** Shape accepted by the Cloud gateway's bounded trace-id validator. */
+export const INFERENCE_TRACE_ID_PATTERN = /^[0-9a-f]{32}$/;
+
+/**
+ * Mint a bounded, gateway-valid correlation id (32 lowercase hex). The format
+ * doubles as a W3C `traceparent` trace-id, so downstream hops can adopt it
+ * without re-minting.
+ */
+export function mintInferenceTraceId(): string {
+	return crypto.randomUUID().replace(/-/g, "");
+}
+
 export class InferenceTurnTimer {
 	readonly turnId: string;
+	readonly traceId: string;
 	readonly label: string;
 	readonly roomId: string | null;
 	readonly t0EpochMs: number;
@@ -331,12 +352,24 @@ export class InferenceTurnTimer {
 
 	constructor(args: {
 		turnId: string;
+		/** Caller-propagated id (e.g. from an upstream hop); minted when absent.
+		 *  Must match {@link INFERENCE_TRACE_ID_PATTERN}. */
+		traceId?: string;
 		label: string;
 		roomId?: string | null;
 		t0EpochMs?: number;
 		maxSpans?: number;
 	}) {
 		this.turnId = args.turnId;
+		if (
+			args.traceId !== undefined &&
+			!INFERENCE_TRACE_ID_PATTERN.test(args.traceId)
+		) {
+			throw new Error(
+				`InferenceTurnTimer: traceId must be 32 lowercase hex characters, got ${args.traceId.length} chars`,
+			);
+		}
+		this.traceId = args.traceId ?? mintInferenceTraceId();
 		this.label = args.label;
 		this.roomId = args.roomId ?? null;
 		this.t0EpochMs = args.t0EpochMs ?? Date.now();
@@ -432,6 +465,7 @@ export class InferenceTurnTimer {
 
 		return {
 			turnId: this.turnId,
+			traceId: this.traceId,
 			label: this.label,
 			roomId: this.roomId,
 			modelProvider: this.modelProvider,
@@ -890,7 +924,8 @@ export function formatInferenceTimingSummary(s: InferenceTurnSummary): string {
 	}
 	const head = `[InferenceTiming] ${s.label}`;
 	const provider = s.modelProvider ? ` provider=${s.modelProvider}` : "";
-	return `${head}${provider} ${parts.join(" ")}`;
+	const trace = s.traceId ? ` trace=${s.traceId}` : "";
+	return `${head}${provider}${trace} ${parts.join(" ")}`;
 }
 
 /**

@@ -12,9 +12,11 @@ import {
 	formatInferenceTimingSummary,
 	getInferenceTimer,
 	INFERENCE_MARKS,
+	INFERENCE_TRACE_ID_PATTERN,
 	InferenceTurnTimer,
 	inferenceTimingRegistry,
 	markInference,
+	mintInferenceTraceId,
 	nextInferenceTurnId,
 	recordInferenceSpan,
 	runWithInferenceTiming,
@@ -499,5 +501,56 @@ describe("emit + format + registry", () => {
 				execution: expect.objectContaining({ p95: 5 }),
 			}),
 		);
+	});
+});
+
+describe("turn trace correlation (#16079)", () => {
+	it("mints a distinct 32-lowercase-hex trace id per turn", () => {
+		const a = new InferenceTurnTimer({ turnId: "trace-a", label: "test" });
+		const b = new InferenceTurnTimer({ turnId: "trace-b", label: "test" });
+		expect(a.traceId).toMatch(INFERENCE_TRACE_ID_PATTERN);
+		expect(b.traceId).toMatch(INFERENCE_TRACE_ID_PATTERN);
+		expect(a.traceId).not.toBe(b.traceId);
+	});
+
+	it("adopts a caller-propagated trace id and rejects malformed ones", () => {
+		const upstream = mintInferenceTraceId();
+		const timer = new InferenceTurnTimer({
+			turnId: "trace-c",
+			traceId: upstream,
+			label: "test",
+		});
+		expect(timer.traceId).toBe(upstream);
+		expect(
+			() =>
+				new InferenceTurnTimer({
+					turnId: "trace-d",
+					traceId: "not-a-trace-id",
+					label: "test",
+				}),
+		).toThrow(/32 lowercase hex/);
+		expect(
+			() =>
+				new InferenceTurnTimer({
+					turnId: "trace-e",
+					traceId: "A".repeat(32),
+					label: "test",
+				}),
+		).toThrow(/32 lowercase hex/);
+	});
+
+	it("carries the trace id into the summary and formatted line", () => {
+		const timer = new InferenceTurnTimer({ turnId: "trace-f", label: "test" });
+		const s = timer.close();
+		expect(s.traceId).toBe(timer.traceId);
+		expect(formatInferenceTimingSummary(s)).toContain(`trace=${timer.traceId}`);
+	});
+
+	it("exposes the active turn's trace id through the ALS context", () => {
+		const timer = new InferenceTurnTimer({ turnId: "trace-g", label: "test" });
+		runWithInferenceTiming(timer, () => {
+			expect(getInferenceTimer()?.traceId).toBe(timer.traceId);
+		});
+		expect(getInferenceTimer()).toBeUndefined();
 	});
 });
