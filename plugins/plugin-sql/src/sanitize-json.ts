@@ -90,13 +90,18 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
     }
     context.seen.add(value);
 
-    if (reflectOrFail(() => value instanceof Date, "date-check")) {
-      try {
-        const timestamp = Date.prototype.getTime.call(value);
-        return Number.isFinite(timestamp) ? Date.prototype.toISOString.call(value) : null;
-      } catch (cause) {
-        failUnbounded({ reason: "date-read" }, cause);
-      }
+    let dateTimestamp: number | undefined;
+    try {
+      // Native Date brand checking is constant-work. `instanceof Date` would
+      // walk an arbitrarily deep caller-controlled prototype chain per node.
+      dateTimestamp = Date.prototype.getTime.call(value);
+    } catch {
+      // error-policy:J3 an incompatible native receiver is simply not a Date;
+      // no caller code or Proxy getPrototypeOf trap is invoked by this probe.
+      dateTimestamp = undefined;
+    }
+    if (dateTimestamp !== undefined) {
+      return Number.isFinite(dateTimestamp) ? Date.prototype.toISOString.call(value) : null;
     }
 
     if (reflectOrFail(() => Array.isArray(value), "array-check")) {

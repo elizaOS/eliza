@@ -216,6 +216,25 @@ describe("sanitizeJsonObject", () => {
     expect(JSON.parse(JSON.stringify(sanitized))).toEqual({ own: "kept" });
   });
 
+  it("does not traverse a shared input prototype once per graph node", () => {
+    let prototypeReads = 0;
+    const shared = new Proxy(
+      { value: 1 },
+      {
+        getPrototypeOf() {
+          prototypeReads += 1;
+          return Object.prototype;
+        },
+      }
+    );
+    const withinBudget = Array.from({ length: 4_999 }, () => shared);
+
+    const sanitized = sanitizeJsonObject(withinBudget) as Array<{ value: number }>;
+    expect(sanitized).toHaveLength(4_999);
+    expect(sanitized[0]).toEqual({ value: 1 });
+    expect(prototypeReads).toBe(0);
+  });
+
   it("rejects custom toJSON without invoking it", () => {
     let calls = 0;
     const value = {
