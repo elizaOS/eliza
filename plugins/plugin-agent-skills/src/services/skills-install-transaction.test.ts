@@ -3,14 +3,26 @@
  * cancellation hooks to prove forced replacement, rollback, and serialization.
  */
 
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	createSkillPackage,
 	MemorySkillStore,
 	type PreparedSkillReplacement,
 	type SkillPackage,
 } from "../storage";
 import { AgentSkillsService } from "./skills";
+
+const temporaryRoots: string[] = [];
+
+async function temporaryDirectory(prefix: string): Promise<string> {
+	const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+	temporaryRoots.push(root);
+	return root;
+}
 
 function runtime(): IAgentRuntime {
 	return {
@@ -57,8 +69,13 @@ class AbortAfterPublishStore extends MemorySkillStore {
 	}
 }
 
-afterEach(() => {
+afterEach(async () => {
 	vi.unstubAllGlobals();
+	await Promise.all(
+		temporaryRoots.splice(0).map((root) =>
+			fs.rm(root, { recursive: true, force: true }),
+		),
+	);
 });
 
 describe("managed skill install transactions", () => {
@@ -202,5 +219,76 @@ describe("managed skill install transactions", () => {
 		expect(service.getSkillInstructions("demo")?.body).toContain(
 			"second instructions",
 		);
+	});
+
+	it("merges concurrent different-slug lockfile commits", async () => {
+		const skillsDir = await temporaryDirectory("managed-skill-lock-");
+		const service = await AgentSkillsService.start(runtime(), {
+			autoLoad: false,
+			skillsDir,
+			storageType: "filesystem",
+		});
+		const transaction = service as unknown as {
+			commitCandidate(
+				pkg: SkillPackage,
+				options: { version: string },
+			): Promise<unknown>;
+		};
+
+		await Promise.all([
+			transaction.commitCandidate(
+				createSkillPackage("first", [
+					{ name: "SKILL.md", content: skillMarkdown("first", "First") },
+				]),
+				{ version: "1.0.0" },
+			),
+			transaction.commitCandidate(
+				createSkillPackage("second", [
+					{ name: "SKILL.md", content: skillMarkdown("second", "Second") },
+				]),
+				{ version: "2.0.0" },
+			),
+		]);
+
+		const lockfile = JSON.parse(
+			await fs.readFile(path.join(skillsDir, ".cache", "lock.json"), "utf-8"),
+		) as Record<string, { version: string }>;
+		expect(lockfile.first?.version).toBe("1.0.0");
+		expect(lockfile.second?.version).toBe("2.0.0");
+	});
+
+	it("fails closed without publishing when an existing lock entry is malformed", async () => {
+		const skillsDir = await temporaryDirectory("managed-skill-lock-");
+		const lockPath = path.join(skillsDir, ".cache", "lock.json");
+		const malformedLock = JSON.stringify({ existing: { version: 7 } });
+		await fs.mkdir(path.dirname(lockPath), { recursive: true });
+		await fs.writeFile(lockPath, malformedLock, "utf-8");
+		const service = await AgentSkillsService.start(runtime(), {
+			autoLoad: false,
+			skillsDir,
+			storageType: "filesystem",
+		});
+		const transaction = service as unknown as {
+			commitCandidate(
+				pkg: SkillPackage,
+				options: { version: string },
+			): Promise<unknown>;
+		};
+
+		await expect(
+			transaction.commitCandidate(
+				createSkillPackage("candidate", [
+					{
+						name: "SKILL.md",
+						content: skillMarkdown("candidate", "Candidate"),
+					},
+				]),
+				{ version: "1.0.0" },
+			),
+		).rejects.toMatchObject({ code: "SKILL_LOCKFILE_INVALID" });
+		await expect(
+			fs.stat(path.join(skillsDir, "candidate")),
+		).rejects.toMatchObject({ code: "ENOENT" });
+		expect(await fs.readFile(lockPath, "utf-8")).toBe(malformedLock);
 	});
 });

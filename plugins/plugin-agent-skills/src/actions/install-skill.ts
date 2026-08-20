@@ -116,6 +116,9 @@ export const installSkillAction = {
 			}
 			const resultText = `Skill **${existing.name}** (\`${existing.slug}\`) is already installed.`;
 			if (callback) await callback({ text: resultText });
+			if (installSignal?.aborted) {
+				return cancellationResult(installSignal.reason, slug);
+			}
 			return {
 				success: true,
 				text: resultText,
@@ -232,6 +235,9 @@ export const installSkillAction = {
 			return cancellationResult(installSignal.reason, installSlug);
 		}
 		if (callback) await callback({ text: boundedResultText });
+		if (installSignal?.aborted) {
+			return cancellationResult(installSignal.reason, installSlug);
+		}
 
 		return {
 			success: true,

@@ -399,6 +399,7 @@ function parseGithubUrl(rawUrl: string): {
   try {
     url = new URL(rawUrl);
   } catch (err) {
+    // error-policy:J3 An invalid external URL is rejected at the input boundary.
     throw new Error(`Invalid GitHub URL: ${String(err)}`);
   }
 
@@ -415,6 +416,7 @@ function parseGithubUrl(rawUrl: string): {
     try {
       decoded = decodeURIComponent(rawPath);
     } catch {
+      // error-policy:J3 The raw path remains subject to traversal validation.
       // Keep raw path if decode fails; still scan for traversal tokens.
     }
     if (/(^|\/)\.\.(\/|$)/.test(decoded)) {
@@ -469,6 +471,29 @@ async function readInstallRecords(
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error("Marketplace install records must be an object");
     }
+    for (const [id, candidate] of Object.entries(parsed)) {
+      const record = candidate as Partial<InstalledMarketplaceSkill> | null;
+      if (
+        !record ||
+        typeof record !== "object" ||
+        Array.isArray(record) ||
+        record.id !== id ||
+        typeof record.name !== "string" ||
+        typeof record.description !== "string" ||
+        typeof record.repository !== "string" ||
+        typeof record.githubUrl !== "string" ||
+        typeof record.path !== "string" ||
+        typeof record.installPath !== "string" ||
+        typeof record.installedAt !== "string" ||
+        (record.source !== "manual" && record.source !== "clawhub") ||
+        (record.scanStatus !== undefined &&
+          !["clean", "warning", "critical", "blocked"].includes(
+            record.scanStatus,
+          ))
+      ) {
+        throw new Error(`Marketplace install record "${id}" is malformed`);
+      }
+    }
     return parsed as Record<string, InstalledMarketplaceSkill>;
   } catch (err) {
     const isMissingFile =
@@ -520,6 +545,8 @@ function inferRepository(skill: Record<string, unknown>): string | null {
     try {
       return normalizeRepo(value);
     } catch (err) {
+      // error-policy:J3 Ignore one invalid optional repository hint and inspect
+      // the remaining explicit metadata candidates.
       logger.debug(
         `[skill-marketplace] Failed to normalize repo: ${String(err)}`,
       );
@@ -541,6 +568,7 @@ function inferRepository(skill: Record<string, unknown>): string | null {
         }
       }
     } catch (err) {
+      // error-policy:J3 An invalid optional GitHub hint is ignored explicitly.
       logger.debug(
         `[skill-marketplace] Failed to normalize repo: ${String(err)}`,
       );
@@ -645,6 +673,8 @@ export async function searchSkillsMarketplace(
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
   } catch (err) {
+    // error-policy:J1 Translate the marketplace transport boundary into a
+    // stable public request failure.
     searchSpan.failure({ error: err });
     const msg = String(err);
     throw new Error(
@@ -654,14 +684,29 @@ export async function searchSkillsMarketplace(
     );
   }
 
-  const payload = (await resp.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
+  let payload: Record<string, unknown> | null = null;
+  try {
+    const parsed: unknown = await resp.json();
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      payload = parsed as Record<string, unknown>;
+    } else if (resp.ok) {
+      throw new Error("Marketplace response root is not an object");
+    }
+  } catch (cause) {
+    // error-policy:J3 A successful malformed response cannot masquerade as an
+    // empty result; an error response may still be translated from its status.
+    if (resp.ok) {
+      throw new ElizaError("Skills marketplace returned invalid JSON", {
+        code: "SKILL_MARKETPLACE_RESPONSE_INVALID",
+        context: { boundary: "skill-marketplace-search", status: resp.status },
+        cause,
+      });
+    }
+  }
 
   if (!resp.ok) {
     searchSpan.failure({ statusCode: resp.status, errorKind: "http_error" });
-    const msg = (payload.error as Record<string, unknown> | undefined)?.message;
+    const msg = (payload?.error as Record<string, unknown> | undefined)?.message;
     throw new Error(
       typeof msg === "string" && msg
         ? msg
@@ -669,7 +714,7 @@ export async function searchSkillsMarketplace(
     );
   }
 
-  const buckets = [payload.results, payload.skills, payload.data];
+  const buckets = [payload?.results, payload?.skills, payload?.data];
   let list: unknown[] = [];
   for (const bucket of buckets) {
     if (Array.isArray(bucket)) {

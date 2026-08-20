@@ -108,6 +108,39 @@ describe("SKILL install with security-enveloped input", () => {
 		});
 	});
 
+	it("does not report an already-installed success when its callback disconnects", async () => {
+		const controller = new AbortController();
+		const service = {
+			getLoadedSkills: vi.fn(() => [
+				{ slug: "weather", name: "Weather" },
+			]),
+		};
+		const runtime = {
+			getService: vi.fn(() => service),
+		} as unknown as IAgentRuntime;
+		const callback = vi.fn(async () => {
+			controller.abort(new Error("turn disconnected"));
+		});
+
+		const result = await runWithStreamingContext(
+			{ abortSignal: controller.signal },
+			() =>
+				installSkillAction.handler(
+					runtime,
+					envelopeMessage(),
+					undefined,
+					undefined,
+					callback,
+				),
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			error: { code: "SKILL_DOWNLOAD_ABORTED" },
+		});
+		expect(callback).toHaveBeenCalledOnce();
+	});
+
 	it("does not start registry discovery for a pre-cancelled turn", async () => {
 		const controller = new AbortController();
 		controller.abort(new Error("turn already ended"));
