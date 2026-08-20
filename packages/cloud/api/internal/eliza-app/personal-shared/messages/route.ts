@@ -19,7 +19,10 @@ import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversat
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { prewarmPersonalSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
-import { sharedRestMessageSend } from "@/lib/services/shared-runtime/shared-rest-adapter";
+import {
+  sharedRestMessageSend,
+  sharedTurnServerTiming,
+} from "@/lib/services/shared-runtime/shared-rest-adapter";
 import { SharedRuntimeCacheWarmingError } from "@/lib/services/shared-runtime/shared-runtime-errors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -646,11 +649,26 @@ app.post("/", async (c) => {
       "platform",
       trustedDelivery,
     );
+    if (result.timing) {
+      logger.info("[personal-shared-messaging] shared provider timing", {
+        selectedProvider: result.timing.selectedProvider,
+        callCount: result.timing.callCount,
+        fallbackCount: result.timing.fallbackCount,
+        replayed: result.timing.replayed,
+        durationMs: result.timing.durationMs,
+      });
+    }
+    const providerTiming = sharedTurnServerTiming(result.timing);
     c.header(
       "Server-Timing",
-      `${accountTiming}, prewarm;dur=${prewarmMs.toFixed(1)}, shared;dur=${(
-        performance.now() - sharedStartedAt
-      ).toFixed(1)}`,
+      [
+        accountTiming,
+        `prewarm;dur=${prewarmMs.toFixed(1)}`,
+        `shared;dur=${(performance.now() - sharedStartedAt).toFixed(1)}`,
+        providerTiming,
+      ]
+        .filter(Boolean)
+        .join(", "),
     );
 
     return c.json({

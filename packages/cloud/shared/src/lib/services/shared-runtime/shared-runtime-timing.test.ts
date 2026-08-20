@@ -50,10 +50,37 @@ describe("SharedRuntimeTimingCollector", () => {
         providerTotalDurationMs: 0,
         slowestProviderDurationMs: null,
       },
+      model: {
+        replayed: false,
+        durationMs: 0,
+        callCount: 0,
+        fallbackCount: 0,
+        selectedProvider: "none",
+        callsTruncated: false,
+        calls: [],
+      },
       routing: {
         decision: "unknown",
         contextIds: [],
       },
+    });
+  });
+
+  test("measures model work after admission and records selected fallback authority", () => {
+    const timing = new SharedRuntimeTimingCollector("provider", 0, clock([0, 100, 145, 200]));
+    const call = timing.prepareModelCall();
+    call.select({ provider: "openrouter", fallback: true });
+    call.begin();
+    call.finish();
+
+    expect(timing.receipt("success").model).toEqual({
+      replayed: false,
+      durationMs: 45,
+      callCount: 1,
+      fallbackCount: 1,
+      selectedProvider: "openrouter",
+      callsTruncated: false,
+      calls: [{ provider: "openrouter", durationMs: 45, fallback: true }],
     });
   });
 

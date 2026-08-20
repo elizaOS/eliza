@@ -26,8 +26,87 @@ import type { SharedAgentCharacter } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
 import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
+import type { SharedProviderTimingReceipt } from "./shared-runtime-timing";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
+
+function isSharedProviderTimingReceipt(value: unknown): value is SharedProviderTimingReceipt {
+  if (!value || typeof value !== "object") return false;
+  const receipt = value as Record<string, unknown>;
+  const callCount = receipt.callCount;
+  const calls = receipt.calls;
+  if (
+    typeof callCount !== "number" ||
+    !Number.isInteger(callCount) ||
+    callCount < 0 ||
+    callCount > 1_000 ||
+    typeof receipt.callsTruncated !== "boolean" ||
+    !Array.isArray(calls) ||
+    calls.length !== Math.min(callCount, 16) ||
+    receipt.callsTruncated !== callCount > calls.length
+  ) {
+    return false;
+  }
+  const safeCalls = calls.every((call) => {
+    if (!call || typeof call !== "object") return false;
+    const entry = call as Record<string, unknown>;
+    return (
+      (entry.provider === "cerebras" ||
+        entry.provider === "openrouter" ||
+        entry.provider === "other") &&
+      typeof entry.durationMs === "number" &&
+      Number.isFinite(entry.durationMs) &&
+      entry.durationMs >= 0 &&
+      entry.durationMs <= 600_000 &&
+      typeof entry.fallback === "boolean"
+    );
+  });
+  if (!safeCalls) return false;
+  const selectedProvider = receipt.selectedProvider;
+  if (
+    selectedProvider !== "cerebras" &&
+    selectedProvider !== "openrouter" &&
+    selectedProvider !== "other" &&
+    selectedProvider !== "mixed" &&
+    selectedProvider !== "none"
+  ) {
+    return false;
+  }
+  const recordedFallbacks = calls.filter((call) => (call as { fallback: boolean }).fallback).length;
+  const fallbackCount = receipt.fallbackCount;
+  const hiddenCalls = callCount - calls.length;
+  const providers = new Set(calls.map((call) => (call as { provider: string }).provider));
+  const providerIsPossible =
+    callCount === 0
+      ? selectedProvider === "none"
+      : selectedProvider === "mixed"
+        ? providers.size > 1 || (receipt.callsTruncated && providers.size === 1)
+        : selectedProvider !== "none" && providers.size === 1 && providers.has(selectedProvider);
+  return (
+    typeof receipt.replayed === "boolean" &&
+    typeof receipt.durationMs === "number" &&
+    Number.isFinite(receipt.durationMs) &&
+    receipt.durationMs >= 0 &&
+    receipt.durationMs <= 600_000 &&
+    typeof fallbackCount === "number" &&
+    Number.isInteger(fallbackCount) &&
+    fallbackCount >= recordedFallbacks &&
+    fallbackCount <= recordedFallbacks + hiddenCalls &&
+    providerIsPossible &&
+    (!receipt.replayed ||
+      (receipt.durationMs === 0 &&
+        callCount === 0 &&
+        fallbackCount === 0 &&
+        selectedProvider === "none" &&
+        receipt.callsTruncated === false))
+  );
+}
+
+/** Serialize the privacy-bounded provider receipt into finite Server-Timing metrics. */
+export function sharedTurnServerTiming(receipt: SharedProviderTimingReceipt | undefined): string {
+  if (!receipt) return "";
+  return `shared_model;dur=${receipt.durationMs.toFixed(1)};desc="provider=${receipt.selectedProvider} calls=${receipt.callCount} fallbacks=${receipt.fallbackCount} replayed=${receipt.replayed ? 1 : 0}"`;
+}
 
 /** Minimal subset of the agent-server REST `Conversation` the chat client reads. */
 export interface SharedRestConversation {
@@ -544,7 +623,7 @@ export async function sharedRestMessageSend(
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
   trustedChannel?: SharedRuntimeChannel,
-): Promise<{ text: string; agentName: string }> {
+): Promise<{ text: string; agentName: string; timing?: SharedProviderTimingReceipt }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
     id: clientMessageId ?? crypto.randomUUID(),
@@ -579,7 +658,11 @@ export async function sharedRestMessageSend(
     }
     throw new Error(response.error.message || "shared message.send failed");
   }
-  const result = (response.result ?? {}) as { text?: unknown };
+  const result = (response.result ?? {}) as { text?: unknown; timing?: unknown };
   const replyText = typeof result.text === "string" ? result.text : "";
-  return { text: replyText, agentName: agentName || "Eliza" };
+  return {
+    text: replyText,
+    agentName: agentName || "Eliza",
+    ...(isSharedProviderTimingReceipt(result.timing) ? { timing: result.timing } : {}),
+  };
 }

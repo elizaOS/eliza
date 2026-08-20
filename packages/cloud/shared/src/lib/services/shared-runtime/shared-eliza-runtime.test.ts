@@ -604,6 +604,7 @@ describe("Shared Eliza Workerd runtime", () => {
 
     const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
     let dispatches = 0;
+    const startedAt = performance.now();
     const result = await runSharedAgentTurn({
       character: {
         name: "Shared Eliza",
@@ -618,6 +619,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
       onProviderDispatch: async () => {
         dispatches += 1;
+        await new Promise((resolve) => setTimeout(resolve, 50));
       },
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
@@ -641,6 +643,15 @@ describe("Shared Eliza Workerd runtime", () => {
       "hello from the genuine Shared runtime",
     ]);
     expect(dispatches).toBe(1);
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(40);
+    expect(result.timing).toMatchObject({
+      replayed: false,
+      callCount: 1,
+      fallbackCount: 0,
+      selectedProvider: "cerebras",
+      callsTruncated: false,
+    });
+    expect(result.timing?.durationMs).toBeLessThan(30);
     expect(requests).toHaveLength(1);
     expect(
       (requests[0].tools as Array<{ function?: { name?: string } }>).some(

@@ -113,6 +113,8 @@ mock.module("@/lib/services/eliza-app", () => ({
 }));
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessageSend,
+  sharedTurnServerTiming: (timing?: { durationMs: number }) =>
+    timing ? `shared_model;dur=${timing.durationMs.toFixed(1)}` : "",
 }));
 mock.module("@/lib/services/shared-runtime/prewarm-shared-agent", () => ({
   prewarmPersonalSharedAgentTurnCaches,

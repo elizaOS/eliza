@@ -88,7 +88,11 @@ import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
-import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
+import {
+  replayedSharedProviderTiming,
+  type SharedProviderTimingReceipt,
+  type SharedRuntimeTimingReceipt,
+} from "./shared-runtime-timing";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
 import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
 import { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
@@ -245,6 +249,7 @@ export interface SharedTurnTerminalResult {
   runtime: "shared";
   transport: "shared-runtime";
   actionResults?: unknown[];
+  timing?: SharedProviderTimingReceipt;
 }
 
 export type SharedTurnClaimDecision =
@@ -1275,7 +1280,10 @@ export class SharedRuntimeChatService {
         return {
           jsonrpc: "2.0",
           id: rpc.id,
-          result: replay as unknown as Record<string, unknown>,
+          result: {
+            ...replay,
+            timing: replayedSharedProviderTiming(),
+          } as unknown as Record<string, unknown>,
         };
       }
     }
@@ -1403,6 +1411,7 @@ export class SharedRuntimeChatService {
         runtime: "shared",
         transport: "shared-runtime",
         ...(actionResults ? { actionResults } : {}),
+        ...(turn.timing ? { timing: turn.timing } : {}),
       };
       if (turn.degraded) {
         await billing?.settle(0);
@@ -1488,6 +1497,7 @@ export class SharedRuntimeChatService {
                 text: replay.text,
                 fullText: replay.text,
                 ...(replay.actionResults ? { actionResults: replay.actionResults } : {}),
+                timing: replayedSharedProviderTiming(),
               }),
             { headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
           ),
@@ -1759,6 +1769,7 @@ export class SharedRuntimeChatService {
                     degraded: false,
                     runtime: "shared",
                     transport: "shared-runtime",
+                    ...(part.timing ? { timing: part.timing } : {}),
                   });
                 }
                 terminalSettlementStarted = true;
@@ -1777,6 +1788,7 @@ export class SharedRuntimeChatService {
                     text: "",
                     fullText: "",
                     responded: false,
+                    ...(part.timing ? { timing: part.timing } : {}),
                   }),
                 ),
               );
@@ -1827,6 +1839,7 @@ export class SharedRuntimeChatService {
                   degraded: false,
                   runtime: "shared",
                   transport: "shared-runtime",
+                  ...(part.timing ? { timing: part.timing } : {}),
                   ...(actionResults ? { actionResults } : {}),
                 });
               }
@@ -1847,12 +1860,14 @@ export class SharedRuntimeChatService {
                   text: finalReply,
                   fullText: finalReply,
                   actionResults,
+                  ...(part.timing ? { timing: part.timing } : {}),
                 }
               : {
                   messageId: messageIds.assistant,
                   userMessageId: messageIds.user,
                   text: finalReply,
                   fullText: finalReply,
+                  ...(part.timing ? { timing: part.timing } : {}),
                 };
             controller.enqueue(encoder.encode(chatSseFrame("done", done)));
           }

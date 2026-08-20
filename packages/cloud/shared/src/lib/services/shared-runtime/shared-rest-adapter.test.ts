@@ -49,6 +49,7 @@ const {
   sharedRestFirstRunStatus,
   sharedRestHealth,
   sharedRestMessageSend,
+  sharedTurnServerTiming,
   sharedRestMessagesGet,
   sharedRestStatus,
   sharedRestViews,
@@ -305,6 +306,61 @@ describe("shared-rest-adapter — messages", () => {
       namespace: NAMESPACE,
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
     });
+  });
+
+  test("POST preserves a consistent provider receipt and formats Server-Timing", async () => {
+    const timing = {
+      replayed: false,
+      durationMs: 8.1,
+      callCount: 2,
+      fallbackCount: 1,
+      selectedProvider: "mixed" as const,
+      callsTruncated: false,
+      calls: [
+        { provider: "cerebras" as const, durationMs: 3, fallback: false },
+        { provider: "openrouter" as const, durationMs: 5.1, fallback: true },
+      ],
+    };
+    coordinateSharedBridge.mockResolvedValueOnce({
+      jsonrpc: "2.0",
+      id: "timed",
+      result: { text: "four", timing },
+    });
+
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "2+2?",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+    expect(out.timing).toEqual(timing);
+    expect(sharedTurnServerTiming(out.timing)).toBe(
+      'shared_model;dur=8.1;desc="provider=mixed calls=2 fallbacks=1 replayed=0"',
+    );
+  });
+
+  test("POST rejects impossible provider timing from the untrusted bridge", async () => {
+    coordinateSharedBridge.mockResolvedValueOnce({
+      jsonrpc: "2.0",
+      id: "timed",
+      result: {
+        text: "four",
+        timing: {
+          replayed: false,
+          durationMs: 1,
+          callCount: 1,
+          fallbackCount: 1,
+          selectedProvider: "mixed",
+          callsTruncated: false,
+          calls: [{ provider: "cerebras", durationMs: 1, fallback: false }],
+        },
+      },
+    });
+    expect(
+      await sharedRestMessageSend(SHARED_AGENT, AGENT, "2+2?", "Eliza", EXECUTION_CTX, NAMESPACE),
+    ).toEqual({ text: "four", agentName: "Eliza" });
   });
 
   test("POST rides a caller-supplied clientMessageId as the bridge RPC id (retry idempotency, #18045)", async () => {

@@ -14,6 +14,25 @@ export interface SharedRuntimeInferenceSpan {
   durationMs: number;
 }
 
+export type SharedModelProvider = "cerebras" | "openrouter" | "other";
+
+export interface SharedModelCallTiming {
+  provider: SharedModelProvider;
+  durationMs: number;
+  fallback: boolean;
+}
+
+/** Privacy-bounded model timing safe for Shared REST and SSE clients. */
+export interface SharedProviderTimingReceipt {
+  replayed: boolean;
+  durationMs: number;
+  callCount: number;
+  fallbackCount: number;
+  selectedProvider: SharedModelProvider | "mixed" | "none";
+  callsTruncated: boolean;
+  calls: SharedModelCallTiming[];
+}
+
 export interface SharedRuntimeTimingReceipt {
   traceId: string;
   outcome: SharedRuntimeTimingOutcome;
@@ -36,6 +55,7 @@ export interface SharedRuntimeTimingReceipt {
     providerTotalDurationMs: number | null;
     slowestProviderDurationMs: number | null;
   };
+  model: SharedProviderTimingReceipt;
   routing: {
     decision: SharedRuntimeRoutingDecision;
     contextIds: string[];
@@ -78,6 +98,11 @@ export class SharedRuntimeTimingCollector {
   #slowestProviderDurationMs: number | null = null;
   #routingDecision: SharedRuntimeRoutingDecision = "unknown";
   #contextIds: string[] = [];
+  #modelDurationMs = 0;
+  #modelCallCount = 0;
+  #modelFallbackCount = 0;
+  #modelProviders = new Set<SharedModelProvider>();
+  #modelCalls: SharedModelCallTiming[] = [];
 
   constructor(
     readonly traceId: string,
@@ -114,6 +139,44 @@ export class SharedRuntimeTimingCollector {
   }
   markProviderFirstText(): void {
     this.#providerFirstTextAt ??= this.#now();
+  }
+
+  prepareModelCall(): {
+    select: (selection: { provider: SharedModelProvider; fallback: boolean }) => void;
+    begin: () => void;
+    finish: () => void;
+  } {
+    let selection: { provider: SharedModelProvider; fallback: boolean } = {
+      provider: "other",
+      fallback: false,
+    };
+    let startedAt: number | null = null;
+    let finished = false;
+    return {
+      select: (selected) => {
+        selection = selected;
+      },
+      begin: () => {
+        startedAt ??= this.#now();
+      },
+      finish: () => {
+        if (finished || startedAt === null) return;
+        finished = true;
+        const durationMs = boundedDuration(startedAt, this.#now()) ?? 0;
+        this.#modelCallCount = Math.min(this.#modelCallCount + 1, 1_000);
+        if (selection.fallback) {
+          this.#modelFallbackCount = Math.min(this.#modelFallbackCount + 1, 1_000);
+        }
+        this.#modelDurationMs = Math.min(
+          Math.round((this.#modelDurationMs + durationMs) * 10) / 10,
+          MAX_RUNTIME_TIMING_MS,
+        );
+        this.#modelProviders.add(selection.provider);
+        if (this.#modelCalls.length < 16) {
+          this.#modelCalls.push({ ...selection, durationMs });
+        }
+      },
+    };
   }
 
   markInferenceSpans(spans: readonly SharedRuntimeInferenceSpan[]): void {
@@ -175,10 +238,37 @@ export class SharedRuntimeTimingCollector {
         providerTotalDurationMs: this.#providerTotalDurationMs,
         slowestProviderDurationMs: this.#slowestProviderDurationMs,
       },
+      model: {
+        replayed: false,
+        durationMs: this.#modelDurationMs,
+        callCount: this.#modelCallCount,
+        fallbackCount: this.#modelFallbackCount,
+        selectedProvider:
+          this.#modelProviders.size === 0
+            ? "none"
+            : this.#modelProviders.size === 1
+              ? (this.#modelProviders.values().next().value ?? "none")
+              : "mixed",
+        callsTruncated: this.#modelCallCount > this.#modelCalls.length,
+        calls: this.#modelCalls.map((call) => ({ ...call })),
+      },
       routing: {
         decision: this.#routingDecision,
         contextIds: [...this.#contextIds],
       },
     };
   }
+}
+
+/** A replay performed no fresh provider work. */
+export function replayedSharedProviderTiming(): SharedProviderTimingReceipt {
+  return {
+    replayed: true,
+    durationMs: 0,
+    callCount: 0,
+    fallbackCount: 0,
+    selectedProvider: "none",
+    callsTruncated: false,
+    calls: [],
+  };
 }

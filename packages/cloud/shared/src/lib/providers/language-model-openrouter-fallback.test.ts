@@ -71,6 +71,7 @@ describe("getLanguageModel native → OpenRouter fallback (AI SDK path)", () => 
   });
 
   test("falls over to OpenRouter when the native provider returns a retryable 503", async () => {
+    const selections: unknown[] = [];
     globalThis.fetch = (async (url: RequestInfo | URL) => {
       const host = hostOf(url);
       hosts.push(host);
@@ -78,13 +79,14 @@ describe("getLanguageModel native → OpenRouter fallback (AI SDK path)", () => 
     }) as typeof fetch;
 
     const result = await generateText({
-      model: getLanguageModel("openai/gpt-4"),
+      model: getLanguageModel("openai/gpt-4", undefined, (selection) => selections.push(selection)),
       prompt: "hi",
       maxRetries: 0,
     });
 
     expect(result.text).toBe("from-openrouter");
     expect(hosts).toEqual(["openai", "openrouter"]);
+    expect(selections).toEqual([{ provider: "openrouter", fallback: true }]);
   });
 
   test("does not fall over on a non-retryable error (400)", async () => {
