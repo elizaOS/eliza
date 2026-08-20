@@ -18,9 +18,14 @@
  *   - Data binding: DynamicValue with path resolution (getByPath/setByPath)
  *   - Prompt generation: catalog.prompt() for AI system prompts
  *
+ * `evaluateLogicExpression` is depth-, visit-, and cycle-bounded so a
+ * hostile plugin-config `visible` tree cannot stack-overflow the form
+ * renderer.
+ *
  * @module config-catalog
  */
 
+import { ElizaError } from "@elizaos/core";
 import type { ReactNode } from "react";
 import z from "zod";
 import type {
@@ -31,6 +36,19 @@ import type {
   ValidationConfig,
   VisibilityCondition,
 } from "../types/index.js";
+
+/** Honest plugin-config visibility trees are a handful of and/or/not nodes. */
+export const MAX_LOGIC_EXPRESSION_DEPTH = 32;
+/** Node ceiling across the whole visibility walk. */
+export const MAX_LOGIC_EXPRESSION_NODES = 2048;
+/** Bounds one JSON Pointer leaf before segment parsing or state traversal. */
+export const MAX_LOGIC_EXPRESSION_PATH_LENGTH = 2_048;
+/** Bounds nested state reads even when every segment is one character. */
+export const MAX_LOGIC_EXPRESSION_PATH_SEGMENTS = 64;
+/** Bounds literal comparison work independently of path traversal. */
+export const MAX_LOGIC_EXPRESSION_LITERAL_LENGTH = 2_048;
+export const LOGIC_EXPRESSION_UNBOUNDED = "LOGIC_EXPRESSION_UNBOUNDED";
+export const LOGIC_EXPRESSION_INVALID = "LOGIC_EXPRESSION_INVALID";
 
 // ── JSON Schema types (subset we consume) ──────────────────────────────
 
@@ -196,69 +214,321 @@ export function interpolateString(
 
 // ── Rich visibility evaluation (≈ json-render evaluateVisibility) ───────
 
+type LogicWalkContext = {
+  visits: number;
+  visiting: WeakSet<object>;
+};
+
+function failLogicUnbounded(
+  axis:
+    | "depth"
+    | "visits"
+    | "cycle"
+    | "path-length"
+    | "path-segments"
+    | "literal-length",
+  context: Record<string, unknown>,
+): never {
+  const message =
+    axis === "literal-length"
+      ? `logic expression literal exceeds ${MAX_LOGIC_EXPRESSION_LITERAL_LENGTH} characters`
+      : axis === "path-length"
+        ? `logic expression path exceeds ${MAX_LOGIC_EXPRESSION_PATH_LENGTH} characters`
+        : axis === "path-segments"
+          ? `logic expression path exceeds ${MAX_LOGIC_EXPRESSION_PATH_SEGMENTS} segments`
+          : axis === "depth"
+            ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_DEPTH} nesting depth`
+            : axis === "visits"
+              ? `logic expression exceeds ${MAX_LOGIC_EXPRESSION_NODES} nodes`
+              : "logic expression contains a cycle";
+  throw new ElizaError(message, {
+    code: LOGIC_EXPRESSION_UNBOUNDED,
+    context,
+    severity: "fatal",
+  });
+}
+
+function failLogicInvalid(
+  reason: string,
+  context: Record<string, unknown>,
+): never {
+  throw new ElizaError(`logic expression is invalid: ${reason}`, {
+    code: LOGIC_EXPRESSION_INVALID,
+    context,
+    severity: "fatal",
+  });
+}
+
+const LOGIC_OPERATORS = [
+  "and",
+  "or",
+  "not",
+  "path",
+  "eq",
+  "neq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+] as const;
+
+function inspectOwnLogicProperty(
+  object: object,
+  key: PropertyKey,
+  context: Record<string, unknown>,
+): PropertyDescriptor | undefined {
+  try {
+    return Object.getOwnPropertyDescriptor(object, key);
+  } catch {
+    // error-policy:J3 hostile descriptor traps are invalid config metadata.
+    failLogicInvalid("a property descriptor could not be inspected", context);
+  }
+}
+
+function readLogicDataDescriptor(
+  descriptor: PropertyDescriptor | undefined,
+  context: Record<string, unknown>,
+): unknown {
+  if (!descriptor || !("value" in descriptor)) {
+    failLogicInvalid("accessor properties are not allowed", context);
+  }
+  return descriptor.value;
+}
+
+function readOwnLogicData(
+  object: object,
+  key: PropertyKey,
+  context: Record<string, unknown>,
+): unknown {
+  return readLogicDataDescriptor(
+    inspectOwnLogicProperty(object, key, context),
+    context,
+  );
+}
+
+function isLogicArray(
+  value: unknown,
+  context: Record<string, unknown>,
+): value is unknown[] {
+  try {
+    return Array.isArray(value);
+  } catch {
+    // error-policy:J3 revoked proxies are invalid config metadata.
+    failLogicInvalid("array identity could not be inspected", context);
+  }
+}
+
+function readLogicArrayLength(
+  value: unknown[],
+  context: Record<string, unknown>,
+): number {
+  const length = readOwnLogicData(value, "length", context);
+  if (!Number.isSafeInteger(length) || (length as number) < 0) {
+    failLogicInvalid("array length is invalid", context);
+  }
+  return length as number;
+}
+
+function requireLogicPath(path: unknown): string {
+  if (typeof path !== "string") {
+    failLogicInvalid("path requires a string", { valueType: typeof path });
+  }
+  if (path.length > MAX_LOGIC_EXPRESSION_PATH_LENGTH) {
+    failLogicUnbounded("path-length", {
+      actual: path.length,
+      max: MAX_LOGIC_EXPRESSION_PATH_LENGTH,
+    });
+  }
+  const segmentCount = parsePathSegments(path).length;
+  if (segmentCount > MAX_LOGIC_EXPRESSION_PATH_SEGMENTS) {
+    failLogicUnbounded("path-segments", {
+      actual: segmentCount,
+      max: MAX_LOGIC_EXPRESSION_PATH_SEGMENTS,
+    });
+  }
+  return path;
+}
+
+function resolveLogicDynamic(
+  value: DynamicValue,
+  state: Record<string, unknown>,
+): unknown {
+  if (value !== null && typeof value === "object") {
+    const pathDescriptor = inspectOwnLogicProperty(value, "path", {
+      operand: "dynamic-path",
+    });
+    if (pathDescriptor) {
+      const path = readLogicDataDescriptor(pathDescriptor, {
+        operand: "dynamic-path",
+      });
+      return getByPath(state, requireLogicPath(path));
+    }
+  }
+  if (
+    typeof value === "string" &&
+    value.length > MAX_LOGIC_EXPRESSION_LITERAL_LENGTH
+  ) {
+    failLogicUnbounded("literal-length", {
+      actual: value.length,
+      max: MAX_LOGIC_EXPRESSION_LITERAL_LENGTH,
+    });
+  }
+  return value;
+}
+
+function requireLogicTuple(
+  value: unknown,
+  operator: string,
+): [DynamicValue, DynamicValue] {
+  const context = { operator };
+  if (!isLogicArray(value, context)) {
+    failLogicInvalid(`${operator} requires exactly two operands`, { operator });
+  }
+  const length = readLogicArrayLength(value, context);
+  if (length !== 2) {
+    failLogicInvalid(`${operator} requires exactly two operands`, { operator });
+  }
+  return [
+    readOwnLogicData(value, 0, { operator, index: 0 }) as DynamicValue,
+    readOwnLogicData(value, 1, { operator, index: 1 }) as DynamicValue,
+  ];
+}
+
+function requireLogicChildren(
+  value: unknown,
+  operator: "and" | "or",
+  ctx: LogicWalkContext,
+): LogicExpression[] {
+  const context = { operator };
+  if (!isLogicArray(value, context)) {
+    failLogicInvalid(`${operator} requires an array`, { operator });
+  }
+  const length = readLogicArrayLength(value, context);
+  const remainingVisits = MAX_LOGIC_EXPRESSION_NODES - ctx.visits;
+  if (length > remainingVisits) {
+    failLogicUnbounded("visits", {
+      operator,
+      visits: ctx.visits + length,
+      max: MAX_LOGIC_EXPRESSION_NODES,
+    });
+  }
+  const children: LogicExpression[] = [];
+  for (let index = 0; index < length; index += 1) {
+    children.push(
+      readOwnLogicData(value, index, { operator, index }) as LogicExpression,
+    );
+  }
+  return children;
+}
+
 /**
  * Evaluate a LogicExpression against a state model.
+ *
+ * Plugin config `visible` trees are attacker-controlled JSON. The walk is
+ * depth-, visit-, and cycle-bounded; on origin a self-referential `and`
+ * graph threw `RangeError: Maximum call stack size exceeded`.
  */
 export function evaluateLogicExpression(
   expr: LogicExpression,
   state: Record<string, unknown>,
 ): boolean {
-  if ("and" in expr)
-    return (expr as { and: LogicExpression[] }).and.every((e) =>
-      evaluateLogicExpression(e, state),
-    );
-  if ("or" in expr)
-    return (expr as { or: LogicExpression[] }).or.some((e) =>
-      evaluateLogicExpression(e, state),
-    );
-  if ("not" in expr)
-    return !evaluateLogicExpression(
-      (expr as { not: LogicExpression }).not,
-      state,
-    );
-  if ("path" in expr)
-    return Boolean(getByPath(state, (expr as { path: string }).path));
-  if ("eq" in expr) {
-    const [l, r] = (expr as { eq: [DynamicValue, DynamicValue] }).eq;
-    return resolveDynamic(l, state) === resolveDynamic(r, state);
+  return evalLogic(expr, state, 0, {
+    visits: 0,
+    visiting: new WeakSet(),
+  });
+}
+
+function evalLogic(
+  expr: LogicExpression,
+  state: Record<string, unknown>,
+  depth: number,
+  ctx: LogicWalkContext,
+): boolean {
+  if (depth > MAX_LOGIC_EXPRESSION_DEPTH) {
+    failLogicUnbounded("depth", { depth, max: MAX_LOGIC_EXPRESSION_DEPTH });
   }
-  if ("neq" in expr) {
-    const [l, r] = (expr as { neq: [DynamicValue, DynamicValue] }).neq;
-    return resolveDynamic(l, state) !== resolveDynamic(r, state);
+  if (
+    expr === null ||
+    typeof expr !== "object" ||
+    isLogicArray(expr, { depth, role: "node" })
+  ) {
+    failLogicInvalid("a node must be an object", {
+      depth,
+      valueType: typeof expr,
+    });
   }
-  if ("gt" in expr) {
-    const [l, r] = (
-      expr as { gt: [DynamicValue<number>, DynamicValue<number>] }
-    ).gt;
-    const lv = resolveDynamic(l, state),
-      rv = resolveDynamic(r, state);
-    return typeof lv === "number" && typeof rv === "number" && lv > rv;
+  if (ctx.visiting.has(expr)) {
+    failLogicUnbounded("cycle", { depth });
   }
-  if ("gte" in expr) {
-    const [l, r] = (
-      expr as { gte: [DynamicValue<number>, DynamicValue<number>] }
-    ).gte;
-    const lv = resolveDynamic(l, state),
-      rv = resolveDynamic(r, state);
-    return typeof lv === "number" && typeof rv === "number" && lv >= rv;
+  ctx.visits += 1;
+  if (ctx.visits > MAX_LOGIC_EXPRESSION_NODES) {
+    failLogicUnbounded("visits", {
+      visits: ctx.visits,
+      max: MAX_LOGIC_EXPRESSION_NODES,
+    });
   }
-  if ("lt" in expr) {
-    const [l, r] = (
-      expr as { lt: [DynamicValue<number>, DynamicValue<number>] }
-    ).lt;
-    const lv = resolveDynamic(l, state),
-      rv = resolveDynamic(r, state);
-    return typeof lv === "number" && typeof rv === "number" && lv < rv;
+  ctx.visiting.add(expr);
+  const operatorEntries = LOGIC_OPERATORS.flatMap((operator) => {
+    const descriptor = inspectOwnLogicProperty(expr, operator, {
+      depth,
+      operator,
+    });
+    return descriptor ? [{ operator, descriptor }] : [];
+  });
+  if (operatorEntries.length !== 1) {
+    failLogicInvalid("a node must contain exactly one logic operator", {
+      depth,
+      operators: operatorEntries.map(({ operator }) => operator),
+    });
   }
-  if ("lte" in expr) {
-    const [l, r] = (
-      expr as { lte: [DynamicValue<number>, DynamicValue<number>] }
-    ).lte;
-    const lv = resolveDynamic(l, state),
-      rv = resolveDynamic(r, state);
-    return typeof lv === "number" && typeof rv === "number" && lv <= rv;
+  const { operator, descriptor } = operatorEntries[0];
+  try {
+    const operand = readLogicDataDescriptor(descriptor, { depth, operator });
+    switch (operator) {
+      case "and":
+        return requireLogicChildren(operand, "and", ctx).every((child) =>
+          evalLogic(child, state, depth + 1, ctx),
+        );
+      case "or":
+        return requireLogicChildren(operand, "or", ctx).some((child) =>
+          evalLogic(child, state, depth + 1, ctx),
+        );
+      case "not":
+        return !evalLogic(operand as LogicExpression, state, depth + 1, ctx);
+      case "path":
+        return Boolean(getByPath(state, requireLogicPath(operand)));
+      case "eq": {
+        const [left, right] = requireLogicTuple(operand, "eq");
+        return (
+          resolveLogicDynamic(left, state) === resolveLogicDynamic(right, state)
+        );
+      }
+      case "neq": {
+        const [left, right] = requireLogicTuple(operand, "neq");
+        return (
+          resolveLogicDynamic(left, state) !== resolveLogicDynamic(right, state)
+        );
+      }
+      case "gt":
+      case "gte":
+      case "lt":
+      case "lte": {
+        const [left, right] = requireLogicTuple(operand, operator);
+        const leftValue = resolveLogicDynamic(left, state);
+        const rightValue = resolveLogicDynamic(right, state);
+        if (typeof leftValue !== "number" || typeof rightValue !== "number") {
+          return false;
+        }
+        if (operator === "gt") return leftValue > rightValue;
+        if (operator === "gte") return leftValue >= rightValue;
+        if (operator === "lt") return leftValue < rightValue;
+        return leftValue <= rightValue;
+      }
+    }
+    return failLogicInvalid("unsupported operator", { depth, operator });
+  } finally {
+    ctx.visiting.delete(expr);
   }
-  return false;
 }
 
 /**
@@ -270,9 +540,6 @@ export function evaluateVisibility(
 ): boolean {
   if (condition === undefined) return true;
   if (typeof condition === "boolean") return condition;
-  if ("path" in condition && !("and" in condition) && !("or" in condition)) {
-    return Boolean(getByPath(state, (condition as { path: string }).path));
-  }
   return evaluateLogicExpression(condition as LogicExpression, state);
 }
 
