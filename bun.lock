@@ -2102,6 +2102,9 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+        "lucide-react": "^1.0.0",
+        "react": "^19.0.0",
         "zod": "^4.4.3",
       },
       "devDependencies": {
@@ -2109,11 +2112,19 @@
         "@elizaos/cloud-test-mocks": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/scenario-runner": "workspace:*",
+        "@testing-library/react": "^16.3.2",
+        "@testing-library/user-event": "^14.6.1",
         "@types/node": "^25.0.6",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
+        "vite": "^8.0.0",
         "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-matrix": {
