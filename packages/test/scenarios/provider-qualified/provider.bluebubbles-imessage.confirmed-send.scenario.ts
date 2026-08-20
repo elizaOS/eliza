@@ -13,7 +13,6 @@ export default buildProviderCanary({
   plugins: [
     "@elizaos/plugin-personal-assistant",
     "@elizaos/plugin-bluebubbles",
-    "@elizaos/plugin-imessage",
   ],
   effectLabel: "iMessage send",
   targetLabel: "BlueBubbles canary chat",
