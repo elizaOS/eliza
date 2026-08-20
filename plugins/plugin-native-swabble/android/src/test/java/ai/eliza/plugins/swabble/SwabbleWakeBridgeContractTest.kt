@@ -3,7 +3,6 @@ package ai.eliza.plugins.swabble
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SwabbleWakeBridgeContractTest {
@@ -68,21 +67,34 @@ class SwabbleWakeBridgeContractTest {
     }
 
     @Test
-    fun `oversized no-space tokens skip fuzzy match without hanging`() {
+    fun `oversized no-space tokens skip fuzzy match`() {
         val left = "a".repeat(32_768)
         val right = "b".repeat(32_768)
         val hostile = config.copy(triggers = listOf(right))
-        val started = System.nanoTime()
         val match = SwabbleWakeBridgeContract.matchWakeWord(
             transcript = "$left turn on the lights",
             segments = emptyList(),
             config = hostile
         )
-        val elapsedMs = (System.nanoTime() - started) / 1_000_000.0
         assertNull(match)
-        assertTrue(
-            "oversized Levenshtein must fail closed quickly, took ${elapsedMs}ms",
-            elapsedMs < 50.0
-        )
+    }
+
+    @Test
+    fun `fuzzy token cap accepts 64 UTF-16 units and rejects 65`() {
+        val acceptedTrigger = "a".repeat(64)
+        val acceptedCandidate = "a".repeat(63) + "b"
+        val rejectedTrigger = "a".repeat(65)
+        val rejectedCandidate = "a".repeat(64) + "b"
+
+        assertNotNull(SwabbleWakeBridgeContract.matchWakeWord(
+            transcript = "$acceptedCandidate run diagnostics",
+            segments = emptyList(),
+            config = config.copy(triggers = listOf(acceptedTrigger))
+        ))
+        assertNull(SwabbleWakeBridgeContract.matchWakeWord(
+            transcript = "$rejectedCandidate run diagnostics",
+            segments = emptyList(),
+            config = config.copy(triggers = listOf(rejectedTrigger))
+        ))
     }
 }

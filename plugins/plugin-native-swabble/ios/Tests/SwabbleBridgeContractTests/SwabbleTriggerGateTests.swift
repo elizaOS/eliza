@@ -42,19 +42,26 @@ final class SwabbleTriggerGateTests: XCTestCase {
                 transcript: "", triggers: triggers))
     }
 
-    func testOversizedNoSpaceTokensSkipFuzzyWithoutHanging() {
+    func testOversizedNoSpaceTokensSkipFuzzy() {
         let left = String(repeating: "a", count: 32_768)
         let right = String(repeating: "b", count: 32_768)
-        let started = Date()
         XCTAssertFalse(
             SwabbleWakeBridgeContract.fuzzyTokenMatch(left, right))
-        let elapsedMs = Date().timeIntervalSince(started) * 1000
-        XCTAssertLessThan(
-            elapsedMs,
-            50,
-            "oversized Levenshtein must fail closed quickly, took \(elapsedMs)ms")
         XCTAssertFalse(
             SwabbleWakeBridgeContract.isTriggerOnly(
                 transcript: left, triggers: [right]))
+    }
+
+    func testFuzzyCapCountsUTF16CodeUnits() {
+        let accepted = String(repeating: "a", count: 63) + "b"
+        let acceptedTrigger = String(repeating: "a", count: 64)
+        let rejected = String(repeating: "a", count: 64) + "b"
+        let rejectedTrigger = String(repeating: "a", count: 65)
+        let oversizedSingleGrapheme = "a" + String(repeating: "\u{0301}", count: 64)
+
+        XCTAssertTrue(SwabbleWakeBridgeContract.fuzzyTokenMatch(accepted, acceptedTrigger))
+        XCTAssertFalse(SwabbleWakeBridgeContract.fuzzyTokenMatch(rejected, rejectedTrigger))
+        XCTAssertEqual(oversizedSingleGrapheme.count, 1)
+        XCTAssertFalse(SwabbleWakeBridgeContract.fuzzyTokenMatch(oversizedSingleGrapheme, "b"))
     }
 }
